@@ -204,7 +204,6 @@ import {
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
-  type GamePlace,
   createInventoryTagRegex,
   gameInventoryBags,
   gameInventoryTellingStart,
@@ -255,7 +254,7 @@ import {
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
-import { gameRepliesBefore, loadGameMarket } from "../services/game/game-market.service.js";
+import { gameMarketDayFor, gameRepliesBefore, loadGameMarket } from "../services/game/game-market.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -4680,19 +4679,36 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const promptHistoryAsked = promptWorld
             ? worldHistoryAnswerText(promptWorld, (await promptReplies()).at(-1) ?? "")
             : undefined;
-          // The market where the scene is, where the ruleset has one (#6917): what its sellers sell.
-          const promptMarket =
+          // The market where the scene is, where the ruleset has one (#6917, #6934): the place the Game
+          // Master's replies last said (not the telling a regeneration replaces), what its sellers sell,
+          // and what the market day has left.
+          const promptMarketBook =
             pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.definition.items?.market
+              ? (promptItemBook ??
+                (await loadGameInventoryItemBook(
+                  app.db,
+                  { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
+                  "game-master",
+                )))
+              : undefined;
+          const promptMarketDay =
+            promptMarketBook && pinnedGameRuleset?.status === "ok"
+              ? await gameMarketDayFor(
+                  app.db,
+                  input.chatId,
+                  input.regenerateMessageId ?? null,
+                  undefined,
+                  promptMarketBook,
+                )
+              : undefined;
+          const promptMarket =
+            promptMarketBook && promptMarketDay && pinnedGameRuleset?.status === "ok"
               ? rulesetMarketPromptText(
                   pinnedGameRuleset.definition,
-                  promptItemBook ??
-                    (await loadGameInventoryItemBook(
-                      app.db,
-                      { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
-                      "game-master",
-                    )) ?? { entries: [] },
-                  await promptPlace(),
+                  promptMarketBook,
+                  promptMarketDay.place,
                   gameRulesetLayerOptions(pinnedGameRuleset),
+                  promptMarketDay.day,
                 )
               : undefined;
           // What each character carries, binds and wears against what they can, when the ruleset says.
@@ -9485,8 +9501,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             };
             /** What a `[loot:]` rolls: the ruleset its tables are in, and the dice's seed. */
             loot?: { definition: RulesetDefinition; seed: number };
-            /** Where the reply's buys are priced (#6917): the place in force, and the market there. */
-            market?: GameInventoryMarket;
+            /** Makes the market the reply's buys and sales are priced at (#6917, #6934): a fresh one for
+             *  each reading, since a market counts what the reply buys and sells. */
+            market?: () => GameInventoryMarket;
           } | null = null;
           // ── Place tags (#6917) ──
           // Where the scene is, for a ruleset with a market or a game with a world: the last place the
@@ -9620,18 +9637,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? { definition: turnGameRuleset.definition, seed: randomInt(0, 2 ** 31 - 1) }
                   : undefined;
               // A seller's `only` reads the turn's own live state, as the items this reply uses do.
-              const market =
+              const marketDay =
                 rules && turnMarket
+                  ? await gameMarketDayFor(app.db, input.chatId, input.regenerateMessageId ?? null, requested, rules)
+                  : undefined;
+              const market =
+                rules && marketDay
                   ? await loadGameMarket(
                       app.db,
                       input.chatId,
                       turnGameRuleset,
                       rules,
-                      turnPlace,
+                      marketDay.place,
                       rulesetSheetTurn?.live ?? {
                         ...((await turnStartRulesetLive()) ?? {}),
                         ...(checkSpendLive ?? {}),
                       },
+                      marketDay.day,
                     )
                   : undefined;
               const preview = tellsInventory
@@ -9645,7 +9667,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       ? gameInventoryItemUser(uses.context, rules.itemOf, uses.live, uses.seed).useItem
                       : undefined,
                     loot ? gameLootTagRoller(loot.definition, rules, loot.seed) : undefined,
-                    market,
+                    market?.(),
                   ).content
                 : requested;
               if (preview !== fullResponse) {
@@ -10070,7 +10092,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         pending.loot
                           ? gameLootTagRoller(pending.loot.definition, pending.rules, pending.loot.seed)
                           : undefined,
-                        pending.market,
+                        pending.market?.(),
                       )
                     : { content: pending.requested, stacks: plan.start, journal: [] };
                   // The turn's rests bring charges back on top of what its tags did, from the same start.

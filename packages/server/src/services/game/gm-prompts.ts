@@ -1524,8 +1524,13 @@ export function buildGmFormatReminder(
             : []),
           ...(ctx.ruleset?.items?.market
             ? [
-                `- [place: name="Name" size="${ctx.ruleset.items.market.places.at(-1)!.label}"] - whenever the scene moves to a new place, with its size, one of: ${ctx.ruleset.items.market.places.map((place) => place.label).join(", ")} (smallest first). Leave size out for somewhere with no market (a road, the wilds). The Engine keeps the last place said until you say another, and the MARKET block below shows what it sells.`,
+                `- [place: name="Name" size="${ctx.ruleset.items.market.places.at(-1)!.label}"] - whenever the scene moves to a new place, with its size, one of: ${ctx.ruleset.items.market.places.map((place) => place.label).join(", ")} (smallest first). Leave size out for somewhere with no market (a road, the wilds). The Engine keeps the last place said until you say another, and the MARKET block below shows what it sells. When a new day begins where the party is staying, say the place again with day="new": what the sellers have in stock and what they will pay out start over.`,
                 `- [inventory: action="buy" item="Name" count="1" level="${ctx.ruleset.items.market.prices.find((level) => level.default)!.label}" seller="Seller" who="Name"] - when a character buys something, instead of paying and adding it yourself. Levels: ${ctx.ruleset.items.market.prices.map((level) => `${level.label} ×${level.times}${level.default ? " (the default)" : ""}`).join(", ")}; haggling or a seller's mood moves the level, never the price. The Engine checks the place and the seller sell it, prices it, takes the price from the buyer's purse (the player's with who left out) and puts it in their bag (a service only pays), and the answer says what it cost or why not: narrate exactly that.`,
+                ...(ctx.ruleset.items.market.buyBack !== undefined
+                  ? [
+                      `- [inventory: action="sell" item="Name" count="1" seller="Seller" who="Name"] - when a character sells something here, instead of removing it and earning coins yourself. The Engine checks someone here buys that kind of thing and still has money today, takes it out of the seller's bag (the player's with who left out) and pays its coins in, and the answer says what it fetched or why not: narrate exactly that.`,
+                    ]
+                  : []),
               ]
             : []),
           ...(ctx.ruleset?.items?.lootTables?.length

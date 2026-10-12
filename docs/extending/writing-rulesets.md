@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, and a market, an item's `sold` place and a `service` need 1.65.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.66, and a rider that fires on held weapons (`weapons`) needs 1.67.
 
 ### The items block
 
@@ -748,7 +748,7 @@ Each entry carries an `item` instead of `rows` or a `creature`:
 - `slots`: how many of each slot the item takes, never more than a character has.
 - `stack`: the most one stack holds, from 1 to 999,999. Without it, a stack holds as many as any Game Mode stack. An item that holds `charges` is one to a stack.
 - `cost`: a whole `amount` of one coin, named by its `unit` id. The picker shows it, and the Game Master sees it beside the item (see Money, below).
-- `sold` (Capability API 1.65): `{ "place": "city" }`, the smallest of your market's places that sells the item, over any rule that would say otherwise (see Markets, below).
+- `sold` (Capability API 1.65): `{ "place": "city" }`, the smallest of your market's places that sells the item, over any rule that would say otherwise; with 1.66 it may instead, or as well, say how many a place keeps on hand in a day (`"limited": 2` or `"limited": "1d3"`) (see Markets, below).
 - `service` (Capability API 1.65): `true` for lodging, passage, a blessing: bought like an item and never carried. Buying it only pays; nothing else puts one in a bag (an add of one is refused as `service`), and the picker leaves services out. A service has a `cost`, and nothing about carrying or using it (`slots`, `stack`, `binds`, `worn`, `carried`, `requires`, `attack`, `use`, `charges`).
 - `binds`: the item has to be bound before it does anything while worn. `restriction` (optional) says in words who may bind it, and `cursed: true` marks one that will not let go. Only a ruleset with `binding` can have items that bind.
 - `worn` and `carried` (optional, Capability API 1.53): what the item does to its holder's checks and saves while it is worn, and while it is only carried, (1.54) the abilities it sets or raises, and (1.56) what it does in a fight. See [Checks outside a fight](#checks-outside-a-fight) and [Armor and worn effects in a fight](#armor-and-worn-effects-in-a-fight).
@@ -1093,7 +1093,7 @@ A `market` in the `items` block (Capability API 1.65) says what a place sells an
 }
 ```
 
-- `prices`: one to eight levels, each a multiplier (`times`, above 0) on an item's `cost`, and one of them the `default`. A price is the cost in its family's smallest coin times the level, rounded there (never below one coin for something that costs anything), and said in the largest coin your layers leave that pays it exactly: at `dear`, a coat that costs 8 shillings is 12 shillings. Haggling or a seller's mood moves the level, never the number.
+- `prices`: one to eight levels, each a multiplier (`times`, above 0) on an item's `cost`, and one of them the `default`. A price is the cost in its family's smallest coin times the level, rounded there (never below one coin for something that costs anything), and said in the coin its cost is written in where that coin pays it exactly, else in the largest coin your layers leave that does: at `dear`, a coat that costs 8 shillings is 12 shillings, and a 5e potion that costs 50 gp is 50 gold pieces, never 5 platinum. Haggling or a seller's mood moves the level, never the number.
 - `places`: one to twelve place sizes, smallest first, in your own words.
 - `sold`: rules for the smallest place that sells what a filter picks. A filter names a `rarity`, a `category` and a `tag`, any of them, and matches an item that has every one it names; the first rule that matches an item decides. An item's own `sold` wins over the rules, and an item nothing names is sold anywhere.
 - `sellers`: kinds of seller, each with what it `sells` (filters, any of which picks an item), the smallest `place` that has one (anywhere, without it), and optionally who it sells `only` to: a value off the buyer's sheet, with their live state and what they carry, at least `atLeast`, said to the Game Master as `label`. Without `sellers`, anybody at a place sells whatever that place sells.
@@ -1104,6 +1104,30 @@ A `market` in the `items` block (Capability API 1.65) says what a place sells an
 **Buying.** The Game Master buys with `[inventory: action="buy" item="Hand axe" count="1" level="dear" seller="smith" who="Ada"]`, `level` (the default without it) and `seller` (any seller here that sells the item, without it) optional. The Engine prices it at the place in force when the reply ends, takes the price out of the buyer's purse (the player's without `who=`) as a payment is, with change, and puts the item in their bag, or only pays for a service. Either both happen or neither does. The answer says what it cost (`price="12 shillings"`) and what was paid and given back, and a notification shows it. A buy is refused, and changes nothing, with no place said (`no-place`), a level, item or seller you do not have (`unknown-level`, `unknown-item`), no price (`not-for-sale`), a place too small for the item (`not-here`), no seller here who sells it (`no-seller`), a seller whose `only` the buyer does not meet (`not-to-you`), a purse that cannot meet it (`cannot-afford`), or a bag that cannot carry it.
 
 **What the Game Master sees.** While a scene is at a place with a market, a MARKET block names the place and its size, the price levels, and each seller there with a dozen of what they sell at the default level, cheapest first; anything they sell can be bought by name. Its instructions teach `[place:]` and `buy`, and only a ruleset with a market has them.
+
+#### A market day
+
+A market day (Capability API 1.66) makes a place's shelves change and run out, and lets the party sell back. Gravewatch's, a little shortened:
+
+```json
+"places": [
+  { "id": "hamlet", "label": "hamlet", "purse": { "amount": 10, "unit": "shilling" } },
+  { "id": "town", "label": "market town", "purse": { "amount": 100, "unit": "shilling" } }
+],
+"buyBack": 0.5,
+"sold": [{ "filter": { "rarity": "rare" }, "place": "town", "limited": "1d2" }],
+"sellers": [
+  { "id": "smith", "label": "smith", "sells": [{ "category": "arm" }], "stock": { "table": "smiths_odd_lot" } }
+]
+```
+
+- **The day.** A day at a place lasts until the Game Master names another place; it starts a new day at the same place by saying it again with `day="new"` (`[place: name="Millbrook" size="market town" day="new"]`). Everything below is worked out per day from the Game Master's replies the player sees, so a swipe, a regenerated reply or a branch needs nothing stored, and a day always rolls the same shelf.
+- **`limited`** on a `sold` rule or an item's own `sold`: how many a place keeps on hand in a day, a number or dice rolled for the day. A rule may name a limit without a place (sold anywhere, a few at a time); an item's place comes from the first rule that names a place, and its limit from the first that names a limit. Once they are bought, a buy is refused (`sold-out`) until a new day.
+- **`stock`** on a seller: one of your loot tables, rolled once a day for what that seller has in stock on top of what they sell. What it rolls (items only, never coins) is sold by that seller alone, as many as it rolled, whatever `sells` and `sold` say; a seller's `only` still applies.
+- **`buyBack`**: the share (above 0, at most 1) of an item's default price a seller pays for it. A seller here who sells that kind of thing buys it (anybody, without sellers). Without `buyBack`, nobody buys anything back.
+- **`purse`** on a place size: the most its sellers pay out in a day, all together, in one of your coins. Sales paid in that coin's family count against it; without a purse, they buy without limit.
+- **Selling.** The Game Master sells with `[inventory: action="sell" item="Silver coffin nail" count="1" seller="smith" who="Ada"]`. The Engine prices it, takes it out of the seller's bag (the player's without `who=`; never a bound cursed item) and pays its coins in, largest first, or refuses and changes nothing: no place said, nobody here buys it (`not-bought`), no price (`not-for-sale`), today's purse spent (`purse-spent`), none held, or coins the bag cannot carry. The answer says what it fetched (`price="1 crowns"`), the journal lists it as sold, and a notification shows it.
+- The MARKET block adds what each seller has in stock today, how many are left of a limited item, and what the sellers here pay and how much of today's purse is left; its instructions teach `sell` and `day="new"`.
 
 ### Using items outside a fight
 
@@ -1707,7 +1731,10 @@ adds one more damage clause to the first qualifying hit of a period, automatical
 
 `sources` names the attack lists it comes off and `requires` one truthy column of their rows, so a
 rider that only fires with certain weapons says which without the Engine knowing what a weapon is;
-naming neither means any hit its holder lands. `when` is ANY-of: `advantage` is how the attack roll
+naming neither means any hit its holder lands. A weapon held from the bag is no row, so `weapons`
+(Capability API 1.67) names the item tags it fires on as well: `"weapons": { "tags": ["finesse",
+"ranged"] }` fires on a hit with a held weapon carrying either tag, its off-hand strike included.
+Naming only `weapons` fires on no row, and naming only rows fires on no held weapon. `when` is ANY-of: `advantage` is how the attack roll
 finally leaned, and `ally-adjacent` is a standing ally of the attacker who can act, within one cell
 of the target on a board and anywhere at all without one. `oncePer` is `turn` (fresh at the start of
 every turn there is, so a strike made while somebody else acts can still carry one) or `round`.

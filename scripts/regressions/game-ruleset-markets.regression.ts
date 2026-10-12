@@ -9,6 +9,9 @@
  *     with change and put in their bag (a service only pays), or refused and nothing changes.
  *   - The Game Master's MARKET block and instructions, only where the ruleset has a market.
  *   - The server's place before a reply, and a seller's `only` read off the buyer's own sheet.
+ *   - A market day (#6934, 1.66): a stay, or a new day the Game Master marks; a seller's stock rolled
+ *     for the day, how many of a thing a place keeps a day, and selling back out of a place's purse.
+ *     The server reads the day and what it saw back off the Game Master's answered tags.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -19,13 +22,16 @@ import { fileURLToPath } from "node:url";
 import {
   applyGameInventoryOps,
   applyGameInventoryTags,
+  answeredGamePlaces,
   applyGamePlaceTags,
+  gameMarketDayStart,
   defaultRulesetSheetBuild,
   lastGamePlace,
   parseRulesetDefinition,
   readResolvedInventoryTags,
   rulesetItemBook,
   rulesetItemMatchesFilter,
+  rulesetItemLimit,
   rulesetItemSoldRank,
   rulesetMarketLevel,
   rulesetMarketPlace,
@@ -33,9 +39,12 @@ import {
   rulesetMarketPromptText,
   rulesetMarketQuoter,
   rulesetMarketSellersAt,
+  rulesetMarketShelf,
   type GameInventoryStack,
   type RulesetCatalogEntry,
   type RulesetDefinition,
+  type RulesetMarket,
+  type RulesetMarketDay,
 } from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-markets-"));
@@ -49,11 +58,23 @@ const { buildGmFormatReminder } = await import("../../packages/server/src/servic
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
-const { gamePlaceBefore, gameRepliesBefore, loadGameMarket } =
+const { gameMarketDayFor, gamePlaceBefore, gameRepliesBefore, loadGameMarket } =
   await import("../../packages/server/src/services/game/game-market.service.js");
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
-const gravewatchText = read("../../docs/examples/rulesets/gravewatch.json");
+/** The example as it is, with a market day (#6934, 1.66). */
+const gravewatchDayText = read("../../docs/examples/rulesets/gravewatch.json");
+/** The example's market as 1.65 had it: no purse, buy-back, stock or limit. Every section before the
+ *  market day's own reads this, so what it proves does not move with the day's dice. */
+const gravewatchText = (() => {
+  const doc = JSON.parse(gravewatchDayText) as Record<string, any>;
+  const market = doc.items.market;
+  delete market.buyBack;
+  for (const place of market.places) delete place.purse;
+  for (const seller of market.sellers) delete seller.stock;
+  for (const rule of market.sold) delete rule.limited;
+  return JSON.stringify(doc);
+})();
 const emberText = read("../../docs/examples/rulesets/ember-roads.json");
 const variant = (text: string, edit: (doc: Record<string, any>) => void = () => {}): Record<string, any> => {
   const doc = JSON.parse(text) as Record<string, any>;
@@ -232,7 +253,19 @@ const night = { "layer.long_night": true };
   assert.deepEqual(rulesetMarketPrice(gravewatch, coat, 1.5, 1)?.said, "12 shillings", "8 shillings, dear");
   assert.deepEqual(rulesetMarketPrice(gravewatch, coat, 0.75, 1)?.said, "6 shillings");
   assert.equal(rulesetMarketPrice(gravewatch, coat, 1, 2)?.owed, 192, "two coats in pennies");
-  assert.equal(rulesetMarketPrice(gravewatch, coat, 1, 10)?.said, "16 crowns", "the largest coin that pays it");
+  // Said in the coin the cost is written in where that coin pays it exactly, else the largest that does.
+  assert.equal(rulesetMarketPrice(gravewatch, coat, 1, 10)?.said, "80 shillings", "ten coats, in the coat's own coin");
+  assert.equal(rulesetMarketPrice(gravewatch, coat, 1.5, 1)?.said, "12 shillings");
+  assert.equal(
+    rulesetMarketPrice(gravewatch, { amount: 5, unit: "shilling" }, 1.5, 1)?.said,
+    "90 pennies",
+    "7.5 shillings: the shilling does not pay it, the penny does",
+  );
+  assert.equal(
+    rulesetMarketPrice(gravewatch, { amount: 15, unit: "penny" }, 1, 4)?.said,
+    "60 pennies",
+    "a price in pennies stays in pennies, though a crown would pay it",
+  );
   const tonic = book.itemOf("kit/warming-tonic")!.entry.item!.cost!;
   assert.equal(rulesetMarketPrice(gravewatch, tonic, 0.75, 1)?.owed, 3, "4 pennies cheap");
   assert.equal(rulesetMarketPrice(gravewatch, { amount: 1, unit: "penny" }, 0.3, 1)?.owed, 1, "never below one");
@@ -291,7 +324,7 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
   );
   assert.match(
     bram.content,
-    /count="3" who="Bram" level="fair" seller="chandler" result="ok" now="3" price="1 shillings"/,
+    /count="3" who="Bram" level="fair" seller="chandler" result="ok" now="3" price="12 pennies"/,
   );
   assert.deepEqual(held(bram.stacks), [
     ["shillings", 5, ""],
@@ -573,24 +606,25 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
   assert.doesNotMatch(untaught, /\[place:|action="buy"|MARKET:/);
 }
 
+const manifest = (minor: number) => ({
+  schemaVersion: 2,
+  capabilityApi: { major: 1, minor },
+  builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+  id: "ruleset-markets",
+  name: "Markets",
+  version: "0.1.0",
+  description: "A packaged ruleset with a market.",
+  engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+  kind: ["ruleset"],
+  entrypoints: {},
+  contributions: { assets: { paths: ["ruleset.json"] } },
+  files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+  permissions: [],
+  restartRequired: false,
+});
+
 // ── Install gate: 1.65 ──
 {
-  const manifest = (minor: number) => ({
-    schemaVersion: 2,
-    capabilityApi: { major: 1, minor },
-    builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
-    id: "ruleset-markets",
-    name: "Markets",
-    version: "0.1.0",
-    description: "A packaged ruleset with a market.",
-    engine: { min: "2.4.6", maxExclusive: "4.0.0" },
-    kind: ["ruleset"],
-    entrypoints: {},
-    contributions: { assets: { paths: ["ruleset.json"] } },
-    files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
-    permissions: [],
-    restartRequired: false,
-  });
   const gateIssue = /with a market, or whose items name where they are sold or are services.*capabilityApi 1\.65/;
   const issue = (minor: number, doc: Record<string, any>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
@@ -635,6 +669,474 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
     ) ?? "",
     gateIssue,
     "none of them",
+  );
+}
+
+// ── A market day (#6934, 1.66) ──
+{
+  // Import.
+  const day = (edit: (doc: Record<string, any>) => void, pattern: RegExp, what: string) => {
+    const parsed = parseRulesetDefinition(variant(gravewatchDayText, edit));
+    assert.equal(parsed.ok, false, `${what}: the file should be refused`);
+    if (!parsed.ok)
+      assert.ok(
+        parsed.issues.some((issue) => pattern.test(issue)),
+        `${what}: ${parsed.issues.join("; ")}`,
+      );
+  };
+  parsedOrThrow(JSON.parse(gravewatchDayText), "Gravewatch with a market day");
+  day(
+    (doc) => (doc.items.market.places[0].purse.unit = "florin"),
+    /places\.0\.purse\.unit: Unknown currency unit "florin"/,
+    "a purse's coin",
+  );
+  day(
+    (doc) => (doc.items.market.sellers[1].stock.table = "nothing"),
+    /sellers\.1\.stock\.table: Unknown loot table "nothing"/,
+    "a stock table",
+  );
+  day(
+    (doc) => (doc.items.market.sold[0] = { filter: { rarity: "rare" } }),
+    /A rule names a place, a limit or both/,
+    "a rule naming nothing",
+  );
+  day((doc) => (doc.items.market.buyBack = 0), /buyBack: Number must be greater than 0/, "nothing back");
+  day(
+    (doc) => (doc.items.market.buyBack = 1.5),
+    /buyBack: Number must be less than or equal to 1/,
+    "more back than paid",
+  );
+  day((doc) => (doc.items.market.sold[0].limited = 0), /sold\.0\.limited/, "a limit of none");
+  const pistolOf = (doc: Record<string, any>) =>
+    doc.catalogs
+      .find((catalog: { id: string }) => catalog.id === "kit")
+      .entries.find((entry: { id: string }) => entry.id === "watch-pistol").item;
+  day((doc) => (pistolOf(doc).sold = {}), /Sold names a place, a limit or both/, "an item's sold naming nothing");
+  const ownLimit = parsedOrThrow(
+    variant(gravewatchDayText, (doc) => (pistolOf(doc).sold = { limited: 1 })),
+    "an item's own limit with no place",
+  );
+  const ownPistol = rulesetItemBook(ownLimit, entriesOf(ownLimit)).itemOf("kit/watch-pistol")!.entry.item!;
+  assert.equal(rulesetItemLimit(ownLimit.items!.market!, ownPistol), 1);
+  assert.equal(
+    rulesetItemSoldRank(ownLimit.items!.market!, ownPistol),
+    2,
+    "no place of its own: the first rule naming one (rare things, from a market town)",
+  );
+  // A rule that names only a limit never decides the place, and one that names only a place never the
+  // limit: the first rule that names each decides it.
+  const arms = { filter: { category: "arm" } };
+  const ruled = (sold: Array<Record<string, unknown>>) => ({ ...ownLimit.items!.market!, sold }) as RulesetMarket;
+  const plainPistol = { ...ownPistol, sold: undefined };
+  assert.equal(
+    rulesetItemSoldRank(
+      ruled([
+        { ...arms, limited: 3 },
+        { ...arms, place: "town" },
+      ]),
+      plainPistol,
+    ),
+    2,
+  );
+  assert.equal(
+    rulesetItemLimit(
+      ruled([
+        { ...arms, place: "town" },
+        { ...arms, limited: 3 },
+      ]),
+      plainPistol,
+    ),
+    3,
+  );
+  assert.equal(rulesetItemLimit(ruled([{ ...arms, limited: 3 }]), ownPistol), 1, "an item's own limit wins");
+
+  // The 1.66 gate: each key alone.
+  const dayIssue = /keeps stock, limits what a place keeps, buys back or has a purse.*capabilityApi 1\.66/;
+  const issue = (minor: number, doc: Record<string, any>) =>
+    getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
+  assert.match(issue(65, JSON.parse(gravewatchDayText)) ?? "", dayIssue);
+  assert.equal(issue(66, JSON.parse(gravewatchDayText)), null);
+  assert.equal(issue(65, JSON.parse(gravewatchText)), null, "the 1.65 market alone");
+  const only = (edit: (market: Record<string, any>, doc: Record<string, any>) => void) =>
+    variant(gravewatchText, (doc) => edit(doc.items.market, doc));
+  assert.match(
+    issue(
+      65,
+      only((market) => (market.buyBack = 0.5)),
+    ) ?? "",
+    dayIssue,
+    "a buy-back alone",
+  );
+  assert.match(
+    issue(
+      65,
+      only((market) => (market.places[0].purse = { amount: 1, unit: "penny" })),
+    ) ?? "",
+    dayIssue,
+    "a purse alone",
+  );
+  assert.match(
+    issue(
+      65,
+      only((market) => (market.sellers[1].stock = { table: "grave_goods" })),
+    ) ?? "",
+    dayIssue,
+    "a stock alone",
+  );
+  assert.match(
+    issue(
+      65,
+      only((market) => (market.sold[0].limited = 2)),
+    ) ?? "",
+    dayIssue,
+    "a rule's limit alone",
+  );
+  assert.match(
+    issue(
+      65,
+      only((market) => market.sold.push({ filter: { tag: "silver" }, limited: 1 })),
+    ) ?? "",
+    dayIssue,
+    "a rule with no place",
+  );
+  assert.match(
+    issue(
+      65,
+      only(
+        (_market, doc) =>
+          (doc.catalogs
+            .find((c: { id: string }) => c.id === "kit")
+            .entries.find((e: { id: string }) => e.id === "watch-pistol").item.sold = { limited: 1 }),
+      ),
+    ) ?? "",
+    dayIssue,
+    "an item's limit alone",
+  );
+
+  // The day: restating the place keeps it, another place or day="new" begins one.
+  const sizeOf = (word: string) => rulesetMarketPlace(gravewatch.items!.market!, word);
+  assert.equal(
+    applyGamePlaceTags('[place: name="Millbrook" size="town" day="new"]', sizeOf).content,
+    '[place: name="Millbrook" size="town" day="new" result="ok"]',
+  );
+  const told = [
+    '[place: name="Millbrook" size="town" result="ok"] Morning.',
+    '[place: name="Millbrook" size="town" result="ok"] Noon.',
+    '[place: name="Barrowmere" size="hamlet" result="ok"] Evening.',
+    '[place: name="Barrowmere" size="hamlet" result="ok"] Night. [place: name="Barrowmere" size="hamlet" day="new" result="ok"] Dawn.',
+  ];
+  const startOf = (texts: string[]) => gameMarketDayStart(answeredGamePlaces(texts));
+  assert.equal(startOf(told.slice(0, 2))?.ordinal, 0, "the same place, the same day");
+  assert.equal(
+    startOf([told[0]!, told[1]!.replace("Millbrook", "MILLBROOK")])?.ordinal,
+    0,
+    "a place's name in another case",
+  );
+  assert.equal(startOf(told.slice(0, 3))?.ordinal, 2, "another place, another day");
+  assert.equal(startOf(told)?.ordinal, 4, "a new day at the same place");
+  assert.equal(startOf(told)?.mark.text, 3);
+  assert.equal(
+    startOf([told[0]!, '[place: name="Millbrook" size="city" result="ok"]'])?.ordinal,
+    1,
+    "the same name grown a size",
+  );
+  assert.equal(startOf([told[0]!, '[place: name="Thornby" size="town" result="ok"]'])?.ordinal, 1, "another town");
+  assert.equal(startOf([])?.ordinal, undefined);
+
+  // A fixed day: the smith's odd lot is one watch pistol, and a place keeps two rare things a day.
+  const fixed = parsedOrThrow(
+    variant(gravewatchDayText, (doc) => {
+      doc.items.lootTables.find((table: { id: string }) => table.id === "smiths_odd_lot").entries = [
+        { item: "kit/watch-pistol", weight: 1, count: 1 },
+      ];
+      doc.items.market.sold[0].limited = 2;
+    }),
+    "a fixed market day",
+  );
+  const dayBook = rulesetItemBook(fixed, entriesOf(fixed));
+  const dayMarket = fixed.items!.market!;
+  const dayTown = rulesetMarketPlace(dayMarket, "town")!;
+  const dayHamlet = rulesetMarketPlace(dayMarket, "hamlet")!;
+  const dayOf = (seen: Partial<RulesetMarketDay> = {}): RulesetMarketDay => ({
+    key: "d1",
+    bought: new Map(),
+    stockBought: new Map(),
+    paidOut: new Map(),
+    ...seen,
+  });
+  const dayQuoter = (place = dayTown, seen = dayOf()) =>
+    rulesetMarketQuoter(fixed, dayBook, place, () => true, undefined, seen);
+  const dayTags = (tag: string, stacks: GameInventoryStack[], at = dayQuoter()) =>
+    applyGameInventoryTags(tag, stacks, party, undefined, dayBook, undefined, undefined, at);
+  const shelf = rulesetMarketShelf(fixed, dayBook, dayTown, "d1");
+  assert.deepEqual(shelf.stock.get("smith"), [{ item: "kit/watch-pistol", name: "Watch pistol", count: 1 }]);
+  assert.equal(shelf.stock.has("chandler"), false, "only a seller with a stock table");
+  assert.equal(rulesetMarketShelf(fixed, dayBook, dayHamlet, "d1").stock.has("smith"), false, "no smith in a hamlet");
+  assert.equal(shelf.limit("kit/silver-nail", dayBook.itemOf("kit/silver-nail")!.entry.item!), 2);
+  assert.equal(
+    shelf.limit("kit/lantern-coat", dayBook.itemOf("kit/lantern-coat")!.entry.item!),
+    undefined,
+    "as many as wanted",
+  );
+  // The real example rolls its shelf by the day: the same day, the same shelf.
+  const example = parsedOrThrow(JSON.parse(gravewatchDayText), "Gravewatch");
+  const exampleBook = rulesetItemBook(example, entriesOf(example));
+  const rolled = (key: string) => {
+    const real = rulesetMarketShelf(example, exampleBook, dayTown, key);
+    return JSON.stringify([
+      real.stock.get("smith"),
+      real.limit("kit/silver-nail", dayBook.itemOf("kit/silver-nail")!.entry.item!),
+    ]);
+  };
+  assert.equal(rolled("chat|3|Millbrook|town"), rolled("chat|3|Millbrook|town"));
+  // ...and another day, another shelf: both what the smith turns up and how many rare things there are.
+  const days = Array.from({ length: 24 }, (_, index) => rulesetMarketShelf(example, exampleBook, dayTown, `d${index}`));
+  assert.ok(new Set(days.map((each) => JSON.stringify(each.stock.get("smith")))).size > 1, "the stock");
+  assert.ok(
+    new Set(days.map((each) => each.limit("kit/silver-nail", dayBook.itemOf("kit/silver-nail")!.entry.item!))).size > 1,
+    "the limit",
+  );
+  const coinLot = parsedOrThrow(
+    variant(gravewatchDayText, (doc) => {
+      doc.items.lootTables.find((table: { id: string }) => table.id === "smiths_odd_lot").entries = [
+        { coins: "shilling", weight: 1, count: 2 },
+      ];
+    }),
+    "a smith whose odd lot is coin",
+  );
+  assert.deepEqual(
+    rulesetMarketShelf(coinLot, rulesetItemBook(coinLot, entriesOf(coinLot)), dayTown, "d1").stock.get("smith"),
+    [],
+    "coin is never stock",
+  );
+
+  // Buying from the smith's stock: the city's pistol in a market town, once.
+  const purse = coins([["crowns", "crown", 9]]);
+  const pistol = dayTags(
+    '[inventory: action="buy" item="Watch pistol"] [inventory: action="buy" item="Watch pistol"]',
+    purse,
+  );
+  assert.match(
+    pistol.content,
+    /item="Watch pistol" count="1" level="fair" seller="smith" result="ok" now="1" price="3 crowns" stock="true"/,
+  );
+  assert.match(
+    pistol.content,
+    /result="ok"[^\]]*\] \[inventory: action="buy" item="Watch pistol" count="1" result="refused" reason="sold-out"\]/,
+  );
+  assert.match(
+    dayTags(
+      '[inventory: action="buy" item="Watch pistol"]',
+      purse,
+      dayQuoter(dayTown, dayOf({ stockBought: new Map([["smith|watch pistol", 1]]) })),
+    ).content,
+    /reason="sold-out"/,
+    "bought earlier today",
+  );
+  assert.match(
+    dayTags('[inventory: action="buy" item="Watch pistol"]', purse, dayQuoter(dayHamlet)).content,
+    /reason="not-here"/,
+    "no smith in a hamlet",
+  );
+  assert.match(
+    dayTags('[inventory: action="buy" item="Watch pistol" seller="chandler"]', purse).content,
+    /reason="not-here"/,
+    "the smith's stock is the smith's",
+  );
+  const choosySmith = parsedOrThrow(
+    variant(gravewatchDayText, (doc) => {
+      doc.items.lootTables.find((table: { id: string }) => table.id === "smiths_odd_lot").entries = [
+        { item: "kit/watch-pistol", weight: 1 },
+      ];
+      doc.items.market.sellers[1].only = { value: { abilityScore: "nerve" }, atLeast: 3, label: "the steady" };
+    }),
+    "a choosy smith",
+  );
+  const choosyBook = rulesetItemBook(choosySmith, entriesOf(choosySmith));
+  const choosy = (passes: boolean) =>
+    applyGameInventoryTags(
+      '[inventory: action="buy" item="Watch pistol"]',
+      purse,
+      party,
+      undefined,
+      choosyBook,
+      undefined,
+      undefined,
+      rulesetMarketQuoter(choosySmith, choosyBook, dayTown, () => passes, undefined, dayOf()),
+    ).content;
+  assert.match(choosy(true), /result="ok"[^\]]*stock="true"/);
+  assert.match(choosy(false), /reason="not-to-you"/, "a seller's only on their stock too");
+  // Two rare nails a day.
+  const nails = dayTags(
+    '[inventory: action="buy" item="Silver coffin nail" count="2"] [inventory: action="buy" item="Silver coffin nail"]',
+    purse,
+  );
+  assert.match(nails.content, /count="2" level="fair" seller="smith" result="ok"/);
+  assert.match(nails.content, /item="Silver coffin nail" count="1" result="refused" reason="sold-out"\]$/);
+  assert.match(
+    dayTags(
+      '[inventory: action="buy" item="Silver coffin nail"]',
+      purse,
+      dayQuoter(dayTown, dayOf({ bought: new Map([["silver coffin nail", 2]]) })),
+    ).content,
+    /reason="sold-out"/,
+  );
+
+  // Selling back: half the fair price, up to the place's purse a day.
+  const coats = (count: number, holder?: string): GameInventoryStack[] => [
+    {
+      id: "coat",
+      name: "Lantern-keeper's coat",
+      item: "kit/lantern-coat",
+      quantity: count,
+      ...(holder ? { holder } : {}),
+    },
+  ];
+  const sold = dayTags('[inventory: action="sell" item="Lantern-keeper\'s coat"]', coats(1), dayQuoter(dayHamlet));
+  assert.match(
+    sold.content,
+    /action="sell" item="Lantern-keeper's coat" count="1" seller="chandler" result="ok" now="0" price="4 shillings"/,
+  );
+  assert.deepEqual(held(sold.stacks), [["shillings", 4, ""]]);
+  assert.deepEqual(sold.journal, [
+    { item: "Lantern-keeper's coat", action: "sold", quantity: 1 },
+    { item: "shillings", action: "acquired", quantity: 4 },
+  ]);
+  // A hamlet pays out 10 shillings a day: two coats (8), then a third is too much.
+  const three = dayTags(
+    '[inventory: action="sell" item="Lantern-keeper\'s coat" count="2"] [inventory: action="sell" item="Lantern-keeper\'s coat"]',
+    coats(3),
+    dayQuoter(dayHamlet),
+  );
+  assert.match(three.content, /count="2" seller="chandler" result="ok" now="1" price="8 shillings"/);
+  assert.match(three.content, /reason="purse-spent"\]$/);
+  assert.match(
+    dayTags(
+      '[inventory: action="sell" item="Lantern-keeper\'s coat"]',
+      coats(1),
+      dayQuoter(dayHamlet, dayOf({ paidOut: new Map([["coin", 100]]) })),
+    ).content,
+    /reason="purse-spent"/,
+    "paid out earlier today",
+  );
+  assert.match(
+    dayTags('[inventory: action="sell" item="Page of the vigil litany"]', [], dayQuoter(dayHamlet)).content,
+    /reason="not-bought"/,
+    "nobody here deals in pages",
+  );
+  assert.match(
+    dayTags('[inventory: action="sell" item="Lantern-keeper\'s coat"]', [], dayQuoter(dayHamlet)).content,
+    /reason="none-held"/,
+  );
+  assert.match(
+    dayTags('[inventory: action="sell" item="Lantern-keeper\'s coat"]', coats(1, "Bram"), dayQuoter(dayHamlet)).content,
+    /reason="none-held"/,
+    "out of the seller's own bag: the player's without who",
+  );
+  const bramSold = dayTags(
+    '[inventory: action="sell" item="Lantern-keeper\'s coat" who="Bram"]',
+    coats(1, "Bram"),
+    dayQuoter(dayHamlet),
+  );
+  assert.deepEqual(held(bramSold.stacks), [["shillings", 4, "Bram"]]);
+  assert.match(
+    applyGameInventoryTags(
+      '[inventory: action="sell" item="Lantern-keeper\'s coat"]',
+      coats(1),
+      party,
+      undefined,
+      book,
+      undefined,
+      undefined,
+      rulesetMarketQuoter(gravewatch, book, town, () => true),
+    ).content,
+    /reason="not-bought"/,
+    "a market that buys nothing back",
+  );
+  assert.match(
+    dayTags('[inventory: action="sell" item="Lantern-keeper\'s coat" seller="smith"]', coats(1)).content,
+    /reason="not-bought"/,
+    "the smith does not deal in coats",
+  );
+  assert.match(
+    dayTags('[inventory: action="sell" item="A bed at the watch-house"]', []).content,
+    /reason="not-for-sale"/,
+    "a service is never sold back",
+  );
+  const short = dayTags('[inventory: action="sell" item="Lantern-keeper\'s coat" count="2"]', coats(1));
+  assert.match(short.content, /reason="none-held"/, "two coats sold, one held");
+  assert.deepEqual(short.stacks, coats(1), "nothing taken");
+  // Coins that will not fit: the coat stays and no coin comes in.
+  const heavyCoins = parsedOrThrow(
+    variant(gravewatchDayText, (doc) => {
+      doc.items.stats.push({ id: "weight", label: "Weight", type: "number", min: 0, max: 100, default: 0 });
+      doc.items.carry = { stat: "weight", encumberedAbove: { const: 1 }, limit: { const: 2 } };
+      doc.items.currencies[0].perWeight = 1;
+    }),
+    "Gravewatch whose coins weigh one each",
+  );
+  const heavyBook = rulesetItemBook(heavyCoins, entriesOf(heavyCoins), {
+    sheets: { player: defaultRulesetSheetBuild(heavyCoins) },
+  });
+  const heavy = applyGameInventoryTags(
+    '[inventory: action="sell" item="Lantern-keeper\'s coat"]',
+    coats(1),
+    party,
+    undefined,
+    heavyBook,
+    undefined,
+    undefined,
+    rulesetMarketQuoter(heavyCoins, heavyBook, dayHamlet, () => true, undefined, dayOf()),
+  );
+  assert.match(heavy.content, /reason="too-heavy"/);
+  assert.deepEqual(heavy.stacks, coats(1));
+
+  // What the Game Master sees of the day.
+  const block = rulesetMarketPromptText(
+    fixed,
+    dayBook,
+    { name: "Millbrook", size: "town" },
+    undefined,
+    dayOf({ bought: new Map([["silver coffin nail", 1]]) }),
+  )!.split("\n");
+  assert.equal(
+    block[2],
+    "- smith: Grave spade 3 shillings, Silver coffin nail 2 crowns (1 left); in stock today: Watch pistol ×1 3 crowns",
+  );
+  assert.equal(
+    block.at(-1),
+    "Selling: sellers here buy what they sell at ×0.5 of the fair price, up to 100 shillings a day (100 shillings left today).",
+  );
+  const later = rulesetMarketPromptText(
+    fixed,
+    dayBook,
+    { size: "hamlet" },
+    undefined,
+    dayOf({ paidOut: new Map([["coin", 48]]) }),
+  )!;
+  assert.match(later, /up to 10 shillings a day \(6 shillings left today\)\.$/);
+  assert.doesNotMatch(
+    rulesetMarketPromptText(
+      fixed,
+      dayBook,
+      { size: "town" },
+      undefined,
+      dayOf({ stockBought: new Map([["smith|watch pistol", 1]]) }),
+    )!,
+    /in stock today/,
+    "the pistol bought today",
+  );
+  assert.doesNotMatch(
+    rulesetMarketPromptText(gravewatch, book, { size: "town" })!,
+    /Selling:|in stock today|left\)/,
+    "a 1.65 market says none of it",
+  );
+  const taught = buildGmFormatReminder({ ruleset: fixed } as Parameters<typeof buildGmFormatReminder>[0]);
+  assert.match(taught, /say the place again with day="new"/);
+  assert.match(taught, /\[inventory: action="sell" item="Name" count="1" seller="Seller" who="Name"\]/);
+  assert.doesNotMatch(
+    buildGmFormatReminder({ ruleset: gravewatch } as Parameters<typeof buildGmFormatReminder>[0]),
+    /action="sell"/,
   );
 }
 
@@ -708,7 +1210,7 @@ try {
     gameCharacterCards: cards,
   });
   const resolved = { status: "ok", definition: gravewatch, packageId: null, layers: [], ref: {} } as never;
-  const buyers = (await loadGameMarket(db, game.id, resolved, book, { size: "town" }, {}))!;
+  const buyers = (await loadGameMarket(db, game.id, resolved, book, { size: "town" }, {}))!();
   const page = (who?: string) =>
     buyers.quote({ item: "Page of the vigil litany", count: 1, ...(who ? { who } : {}), stacks: [] });
   assert.equal(page().ok, true, "the player (Ada, Nerve 3)");
@@ -717,7 +1219,7 @@ try {
   assert.deepEqual(page("Cleo"), { ok: false, reason: "not-to-you" }, "a blank sheet, Nerve 2");
   assert.equal(
     await loadGameMarket(db, game.id, resolved, book, null, {}).then(
-      (m) => m?.quote({ item: "Warming tonic", count: 1, stacks: [] }).ok,
+      (m) => m?.().quote({ item: "Warming tonic", count: 1, stacks: [] }).ok,
     ),
     false,
   );
@@ -725,7 +1227,7 @@ try {
   // by the persona, they buy with Ada's sheet.
   const wren = await createCharactersStorage(db).createPersona("Wren", "The player");
   await chats.update(game.id, { personaId: wren.id });
-  const asPersona = (await loadGameMarket(db, game.id, resolved, book, { size: "town" }, {}))!;
+  const asPersona = (await loadGameMarket(db, game.id, resolved, book, { size: "town" }, {}))!();
   assert.equal(asPersona.quote({ item: "Page of the vigil litany", count: 1, who: "Wren", stacks: [] }).ok, true);
   // `only` reads the live state the turn hands it: a chapel that asks for Resolve left sells to Ada
   // with 3 and not with 1.
@@ -751,9 +1253,61 @@ try {
       {
         ada: { pools: { resolve: { value } } },
       },
-    ))!.quote({ item: "Page of the vigil litany", count: 1, who: "Ada", stacks: [] });
+    ))!().quote({ item: "Page of the vigil litany", count: 1, who: "Ada", stacks: [] });
   assert.equal((await withResolve(3)).ok, true);
   assert.deepEqual(await withResolve(1), { ok: false, reason: "not-to-you" });
+
+  // The market day before a reply: begun by the last place tag that changed the place or said
+  // day="new", named by the chat, that tag's count among place tags and the place, and counting the
+  // buys and sales the Engine answered after it.
+  const daily = await chats.create({ name: "Market days", mode: "game", characterIds: [] });
+  const say = (content: string, role: "assistant" | "user" = "assistant") =>
+    chats.createMessage({ chatId: daily.id, role, content });
+  const nail =
+    '[inventory: action="buy" item="Silver coffin nail" count="1" level="fair" seller="smith" result="ok" now="1" price="2 crowns"]';
+  await say(`${nail} On to town. [place: name="Millbrook" size="town" result="ok"]`);
+  await say(
+    '[inventory: action="buy" item="Watch pistol" count="1" level="fair" seller="smith" result="ok" now="1" price="3 crowns" stock="true"] ' +
+      '[inventory: action="buy" item="Watch pistol" count="1" result="refused" reason="sold-out"] ' +
+      '[inventory: action="sell" item="Lantern-keeper\'s coat" count="2" seller="chandler" result="ok" now="0" price="8 shillings"]',
+  );
+  await say(`I buy a nail. ${nail}`, "user");
+  const stay = await say(`[place: name="Millbrook" size="town" result="ok"] Still in town. ${nail}`);
+  const dayBefore = (replacing?: string, reply?: string) => gameMarketDayFor(db, daily.id, replacing, reply, book);
+  const seen = (day: RulesetMarketDay) => [day.key, [...day.bought], [...day.stockBought], [...day.paidOut]];
+  const today = await dayBefore();
+  assert.deepEqual(today.place, { name: "Millbrook", size: "town" });
+  assert.deepEqual(
+    seen(today.day),
+    [`${daily.id}|0|Millbrook|town`, [["silver coffin nail", 1]], [["smith|watch pistol", 1]], [["coin", 96]]],
+    "the nail before the town, the refused pistol and the player's own tag are not the day's",
+  );
+  assert.deepEqual(
+    seen((await dayBefore(undefined, `${nail} [place: name="Millbrook" size="town" result="ok"]`)).day),
+    seen(today.day),
+    "a reply's own buys are counted as it is read, and saying the place again keeps the day",
+  );
+  assert.deepEqual(
+    seen((await dayBefore(stay.id)).day).slice(1),
+    [[], [["smith|watch pistol", 1]], [["coin", 96]]],
+    "a regeneration",
+  );
+  const dawn = await dayBefore(undefined, '[place: name="Millbrook" size="town" day="new" result="ok"] Dawn.');
+  assert.deepEqual(seen(dawn.day), [`${daily.id}|2|Millbrook|town`, [], [], []], "a new day at the same place");
+  assert.equal(
+    (await dayBefore(stay.id, '[place: name="Millbrook" size="town" day="new" result="ok"]')).day.key,
+    `${daily.id}|1|Millbrook|town`,
+  );
+  const away = await dayBefore(undefined, '[place: name="Barrowmere" size="hamlet" result="ok"]');
+  assert.deepEqual(
+    [away.place, seen(away.day)],
+    [{ name: "Barrowmere", size: "hamlet" }, [`${daily.id}|2|Barrowmere|hamlet`, [], [], []]],
+  );
+  const quiet = await chats.create({ name: "No place yet", mode: "game", characterIds: [] });
+  assert.deepEqual(await gameMarketDayFor(db, quiet.id, null, undefined, book), {
+    place: null,
+    day: { key: "", bought: new Map(), stockBought: new Map(), paidOut: new Map() },
+  });
 } finally {
   await closeDB();
   rmSync(dataDir, { recursive: true, force: true });

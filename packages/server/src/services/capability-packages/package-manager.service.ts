@@ -1020,6 +1020,17 @@ function entriesCarryItemGate(entries: unknown): boolean {
   );
 }
 
+const HELD_RIDER_ISSUE =
+  "A ruleset whose riders fire on held weapons requires schemaVersion 2 and capabilityApi 1.67 or newer";
+
+/** A rider that names held `weapons`, which is 1.67: a new key on the strict rider. */
+function entriesCarryHeldRider(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(plainRecord(entry)?.mechanics)?.rider)?.weapons !== undefined)
+  );
+}
+
 const MONEY_ISSUE =
   "A ruleset whose layers remove coins, or whose loot tables drop coins, requires schemaVersion 2 and capabilityApi 1.64 or newer";
 
@@ -1048,6 +1059,37 @@ function entriesCarryMarket(entries: unknown): boolean {
       const item = plainRecord(plainRecord(entry)?.item);
       return item?.sold !== undefined || item?.service !== undefined;
     })
+  );
+}
+
+const MARKET_DAY_ISSUE =
+  "A ruleset whose market keeps stock, limits what a place keeps, buys back or has a purse requires schemaVersion 2 and capabilityApi 1.66 or newer";
+
+/** A `sold` (a rule's or an item's) of 1.66: one with a limit. (One naming neither a place nor a
+ *  limit is refused at import.) */
+const soldOfMarketDay = (sold: unknown): boolean => plainRecord(sold)?.limited !== undefined;
+
+/** An item's `sold` that keeps a limit, which is 1.66. */
+function entriesCarryMarketDay(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const sold = plainRecord(plainRecord(entry)?.item)?.sold;
+      return soldOfMarketDay(sold);
+    })
+  );
+}
+
+/** The market's 1.66 keys: a purse, a buy-back share, a seller's stock, a rule's limit. */
+function rulesetCarriesMarketDay166(ruleset: { items?: unknown } | undefined): boolean {
+  const market = plainRecord(plainRecord(ruleset?.items)?.market);
+  if (!market) return false;
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  return (
+    market.buyBack !== undefined ||
+    list(market.places).some((place) => plainRecord(place)?.purse !== undefined) ||
+    list(market.sellers).some((seller) => plainRecord(seller)?.stock !== undefined) ||
+    list(market.sold).some(soldOfMarketDay)
   );
 }
 
@@ -1240,6 +1282,7 @@ export function getCapabilityPackageInstallIssue(
   /** Whether a catalog, inline or in its own file, gives a creature its loot: 1.63, asked last. */
   let carriesLoot = false;
   let carriesMarket = false;
+  let carriesMarketDay = false;
   const catalogs = ruleset?.catalogs;
   if (Array.isArray(catalogs) && catalogs.length > 0) {
     if (!declaresApi(21)) {
@@ -1311,8 +1354,10 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
+      if (entriesCarryHeldRider(header.entries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
       if (entriesCarryMarket(header.entries)) carriesMarket = true;
+      if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1348,8 +1393,10 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
+      if (entriesCarryHeldRider(fileEntries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
       if (entriesCarryMarket(fileEntries)) carriesMarket = true;
+      if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1554,6 +1601,7 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(63) && (carriesLoot || plainRecord(ruleset?.items)?.lootTables !== undefined)) return LOOT_ISSUE;
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
+  if (!declaresApi(66) && (carriesMarketDay || rulesetCarriesMarketDay166(ruleset))) return MARKET_DAY_ISSUE;
   return null;
 }
 

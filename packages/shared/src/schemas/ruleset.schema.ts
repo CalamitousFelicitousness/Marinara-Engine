@@ -1163,12 +1163,17 @@ const riderAmountIssue = (rider: { amount: { dice?: string; flat?: number } }, c
 
 /** A rider a party member carries, from a catalog entry. `sources` names the attack lists it fires
  *  on and `requires` one truthy column of those lists' rows, so a rider that only comes off certain
- *  weapons says which without the Engine knowing one word of what a weapon is. */
+ *  weapons says which without the Engine knowing one word of what a weapon is. `weapons` (Capability
+ *  API 1.67) says the same of held weapons: one carrying any of these item tags. */
 const catalogRiderSchema = z
   .object({
     ...riderCoreShape,
     sources: z.array(sheetId).min(1).max(8).optional(),
     requires: z.object({ column: sheetId }).strict().optional(),
+    weapons: z
+      .object({ tags: z.array(sheetId).min(1).max(8) })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine(riderAmountIssue);
@@ -1954,8 +1959,18 @@ const itemFilterSchema = z
   .object({ rarity: sheetId.optional(), category: sheetId.optional(), tag: sheetId.optional() })
   .strict();
 
+/** How many of something a place keeps on hand in a day (#6934): a number, or dice rolled for the day. */
+const marketCountSchema = z.union([z.number().int().min(1).max(999), catalogDice]);
+
+/** A rule or an item's own word on where it is sold: the smallest place that sells it, how many a place
+ *  keeps on hand in a day (#6934), or both. */
+const marketSoldShape = { place: sheetId.optional(), limited: marketCountSchema.optional() };
+const soldNamesSomething = (sold: { place?: string; limited?: unknown }) =>
+  sold.place !== undefined || sold.limited !== undefined;
+
 /** What a place sells and at what price (#6917, Capability API 1.65). Buying is the Game Master's
- *  `buy`, answered with the price the Engine works out. */
+ *  `buy`, answered with the price the Engine works out. A market day (#6934, 1.66) adds rare stock,
+ *  limited items, and selling back up to a place's purse. */
 const marketSchema = z
   .object({
     /** Price levels, each a multiplier on an item's cost: cheap, fair and dear, say. One is the
@@ -1973,14 +1988,39 @@ const marketSchema = z
       )
       .min(1)
       .max(8),
-    /** Place sizes, smallest first: a hamlet, a town, a city, in the ruleset's own words. */
-    places: z.array(itemWordSchema).min(1).max(12),
-    /** The smallest place that sells what a filter picks, the first rule that matches an item
-     *  deciding. An item no rule reaches is sold anywhere. */
+    /** Place sizes, smallest first: a hamlet, a town, a city, in the ruleset's own words. `purse` is
+     *  the most a place's sellers pay out in a day for what the party sells them (#6934); without it,
+     *  they buy without limit. */
+    places: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            purse: z
+              .object({ amount: z.number().int().min(1).max(1_000_000_000), unit: sheetId })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(12),
+    /** Where what a filter picks is sold: the smallest place (the first matching rule that names one
+     *  deciding), and how many a place keeps on hand in a day (likewise). An item no rule reaches is
+     *  sold anywhere, as many as wanted. */
     sold: z
-      .array(z.object({ filter: itemFilterSchema, place: sheetId }).strict())
+      .array(
+        z
+          .object({ filter: itemFilterSchema, ...marketSoldShape })
+          .strict()
+          .refine(soldNamesSomething, "A rule names a place, a limit or both"),
+      )
       .max(48)
       .optional(),
+    /** The share of an item's default price a seller pays for it (#6934). Without it nobody here
+     *  buys anything back. */
+    buyBack: z.number().finite().gt(0).max(1).optional(),
     /** Kinds of seller, each with what it sells, the smallest place that has one, and who it sells
      *  to: a value on the buyer's sheet at least so high, said to the Game Master as `label`. */
     sellers: z
@@ -1991,6 +2031,9 @@ const marketSchema = z
             label,
             sells: z.array(itemFilterSchema).min(1).max(12),
             place: sheetId.optional(),
+            /** One of the ruleset's loot tables, rolled once a market day for what this seller has in
+             *  stock on top of what they sell (#6934). */
+            stock: z.object({ table: sheetId }).strict().optional(),
             only: z
               .object({ value: rulesetValueRefSchema, atLeast: z.number().finite(), label: promptSafeText(80) })
               .strict()
@@ -2252,7 +2295,11 @@ const catalogItemSchema = z
       .strict()
       .optional(),
     /** The smallest of the market's places that sells it, over any rule that would say otherwise. */
-    sold: z.object({ place: sheetId }).strict().optional(),
+    sold: z
+      .object(marketSoldShape)
+      .strict()
+      .refine(soldNamesSomething, "Sold names a place, a limit or both")
+      .optional(),
     /** Lodging, passage, a blessing: bought like an item, never carried. Buying it only pays. */
     service: z.literal(true).optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
@@ -4327,6 +4374,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       };
       const places = unique(market.places, at("market", "places"), "place");
+      // A purse is counted in one of the ruleset's coins.
+      market.places.forEach((place, index) => {
+        if (
+          place.purse &&
+          !items.currencies?.some((family) => family.units.some((unit) => unit.id === place.purse!.unit))
+        ) {
+          issue(at("market", "places", index, "purse", "unit"), `Unknown currency unit "${place.purse.unit}"`);
+        }
+      });
       const checkPlace = (place: string | undefined, path: (string | number)[]) => {
         if (place !== undefined && !places.has(place)) issue(path, `Unknown place "${place}"`);
       };
@@ -4344,6 +4400,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           checkFilter(filter, at("market", "sellers", index, "sells", filterIndex)),
         );
         checkPlace(seller.place, at("market", "sellers", index, "place"));
+        // A seller's stock is one of the ruleset's own loot tables.
+        if (seller.stock && !items.lootTables?.some((table) => table.id === seller.stock!.table)) {
+          issue(at("market", "sellers", index, "stock", "table"), `Unknown loot table "${seller.stock.table}"`);
+        }
         // Read off the buyer's sheet with their live state, as a gate's `unless` is.
         if (seller.only) checkRef(seller.only.value, at("market", "sellers", index, "only", "value"), derivedIds);
       });
@@ -5655,7 +5715,7 @@ function itemIssues(
   if (item.binds && !items.binding) add([...at, "binds"], "This ruleset declares no binding, so nothing is bound");
   if (item.sold) {
     if (!items.market) add([...at, "sold"], "This ruleset declares no market, so nothing is sold anywhere");
-    else if (!items.market.places.some((place) => place.id === item.sold!.place)) {
+    else if (item.sold.place !== undefined && !items.market.places.some((place) => place.id === item.sold!.place)) {
       add([...at, "sold", "place"], `Unknown place "${item.sold.place}"`);
     }
   }
@@ -6344,6 +6404,12 @@ export function rulesetCatalogEntryIssues(
           add([...path, "requires", "column"], `No attack list this rider reads has a column "${column}"`);
         }
       }
+      // A held weapon's tags are the items block's own.
+      mechanics.rider.weapons?.tags.forEach((tag, tagIndex) => {
+        if (!definition.items?.tags?.some((each) => each.id === tag)) {
+          add([...path, "weapons", "tags", tagIndex], `Unknown item tag "${tag}"`);
+        }
+      });
       const types = definition.combat.damageTypes
         ? new Set(definition.combat.damageTypes.map((type) => type.trim().toLowerCase()))
         : null;

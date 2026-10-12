@@ -56,7 +56,7 @@ interface Journal {
   npcLog: Array<{ npcName: string; interactions: string[] }>;
   inventoryLog: Array<{
     item: string;
-    action: "acquired" | "used" | "lost" | "removed";
+    action: "acquired" | "used" | "lost" | "removed" | "sold";
     quantity: number;
     timestamp: string;
   }>;
@@ -769,7 +769,7 @@ function InventoryView({
 }: {
   items: Array<{
     item: string;
-    action: "acquired" | "used" | "lost" | "removed";
+    action: "acquired" | "used" | "lost" | "removed" | "sold";
     quantity: number;
     timestamp: string;
   }>;
@@ -790,6 +790,7 @@ function InventoryView({
     used: "text-amber-400",
     lost: "text-red-400",
     removed: "text-red-300",
+    sold: "text-amber-300",
   };
 
   return (

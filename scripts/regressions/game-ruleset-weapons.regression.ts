@@ -14,6 +14,7 @@
  *     weapon's tags are what its blows carry.
  *   - Item facts and the Game Master's line say the attack, and an item invented like a weapon fights
  *     with its own stats.
+ *   - A rider may name held weapons by item tag (1.67), so a held weapon carries it as a row does.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -27,6 +28,7 @@ import {
   defaultRulesetSheetBuild,
   inventRulesetItem,
   parseRulesetDefinition,
+  RULESET_CATALOG_ROW_KEY,
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetItemBook,
@@ -661,6 +663,125 @@ try {
     const immune = { immune: [{ type: "tearing", except: ["silver"] }] };
     assert.equal(tearing(nail, immune), "none");
     assert.equal(tearing(plainNail, immune), "immune");
+  }
+
+  // ── A rider on held weapons (1.67) ──
+  {
+    // Ember Roads with a knack that adds a die to the first hit of a turn made with a thrown weapon:
+    // the knacks list's rows know nothing of the outfitter's items, so the rider names their tag.
+    const ambush = (rider: Record<string, unknown>) => (doc: Record<string, any>) =>
+      doc.catalogs
+        .find((catalog: { id: string }) => catalog.id === "knacks")
+        .entries.push({
+          id: "ambush",
+          label: "Ambush",
+          summary: "A throw nobody saw coming.",
+          rows: [{ list: "knacks", values: { name: "Ambush" } }],
+          mechanics: { kind: "rider", rider: { on: "hit", oncePer: "turn", amount: { dice: "1d4" }, ...rider } },
+        });
+    const thrown = { weapons: { tags: ["thrown"] } };
+    const withAmbush = parsedOrThrow(variant(emberText, ambush(thrown)), "a rider on thrown weapons");
+    refused(
+      emberText,
+      ambush({ weapons: { tags: ["glass"] } }),
+      /rider\.weapons\.tags\.0: Unknown item tag "glass"/,
+      "an unknown tag",
+    );
+    refused(emberText, ambush({ weapons: { tags: [] } }), /weapons\.tags/, "a rider on no tag");
+    const riderFight = (definition: RulesetDefinition, items: RulesetSheetItem[], gear: string[] = []) =>
+      createRulesetEncounter({
+        definition,
+        seed: 5,
+        roller: () => 4,
+        combatants: [
+          {
+            id: "juno",
+            name: "Juno",
+            side: "party",
+            build: {
+              ...build(definition, { brawn: 2, wits: 1 }),
+              lists: {
+                knacks: [{ name: "Ambush", [RULESET_CATALOG_ROW_KEY]: "knacks/ambush" }],
+                gear: gear.map((name) => ({ name, swing: "brawn", damage: "1d4", harm: "cut" })),
+              },
+            },
+            items,
+            // Every catalog, rows and all: the knack's entry is in one that writes rows.
+            catalogs: Object.fromEntries(
+              (definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+            ),
+          },
+          hound,
+        ],
+      });
+    const ridersOf = (state: RulesetEncounterState) =>
+      rulesetCombatant(state, "juno")!.riders?.map((rider) => rider.actions);
+    // The axe, never the bow, and only held.
+    assert.deepEqual(ridersOf(riderFight(withAmbush, [held(axe, "Hand axe"), held(bow, "Hunting bow")])), [["item:0"]]);
+    assert.deepEqual(ridersOf(riderFight(withAmbush, [held(axe, "Hand axe", false)])), [[]], "put away");
+    assert.deepEqual(
+      ridersOf(riderFight(withAmbush, [held(axe, "Hand axe")], ["Knife"])),
+      [["item:0"]],
+      "a rider that names only weapons fires on no row",
+    );
+    // An off hand strikes with the same weapon, so it carries the rider too.
+    const offHanded = { ...axe, attack: { ...axe.attack!, offHand: true } };
+    assert.deepEqual(ridersOf(riderFight(withAmbush, [held(offHanded, "Hand axe")])), [["item:0", "offhand:0"]]);
+    // A hit with the axe carries it; one with the bow does not.
+    const riders = (state: RulesetEncounterState) =>
+      applyRulesetCombatChoice(
+        withAmbush,
+        state,
+        { actorId: "juno", optionId: "item:0", targetIds: ["hound"] },
+        () => 4,
+      ).events.filter((event) => event.type === "rider").length;
+    assert.equal(riders(riderFight(withAmbush, [held(axe, "Hand axe")])), 1);
+    assert.equal(riders(riderFight(withAmbush, [held(bow, "Hunting bow")])), 0);
+    // A rider that names rows fires on no held weapon, as before 1.67; one that names both, on both.
+    const onRows = parsedOrThrow(variant(emberText, ambush({ sources: ["gear"] })), "a rider on gear rows");
+    assert.deepEqual(ridersOf(riderFight(onRows, [held(axe, "Hand axe")], ["Knife"])), [["attack:0:0"]]);
+    const onBoth = parsedOrThrow(variant(emberText, ambush({ sources: ["gear"], ...thrown })), "a rider on both");
+    assert.deepEqual(ridersOf(riderFight(onBoth, [held(axe, "Hand axe")], ["Knife"])), [["item:0", "attack:0:0"]]);
+    // One that names nothing still fires on any hit.
+    assert.deepEqual(ridersOf(riderFight(parsedOrThrow(variant(emberText, ambush({})), "any hit"), [])), [undefined]);
+
+    // The install gate: 1.67, in the ruleset file and in a catalog file.
+    const manifest = (minor: number, paths = ["ruleset.json"]) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-held-riders",
+      name: "Held riders",
+      version: "0.1.0",
+      description: "A packaged ruleset whose riders fire on held weapons.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths } },
+      files: paths.map((path) => ({ path, sha256: "0".repeat(64), bytes: 10 })),
+      permissions: [],
+      restartRequired: false,
+    });
+    const heldIssue = /riders fire on held weapons.*capabilityApi 1\.67/;
+    const document = variant(emberText, ambush(thrown));
+    assert.match(getCapabilityPackageInstallIssue(manifest(66) as any, document) ?? "", heldIssue);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(67) as any, document), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(66) as any, variant(emberText, ambush({}))), null);
+    const knacks = document.catalogs.find((catalog: { id: string }) => catalog.id === "knacks");
+    const inFile = {
+      ...document,
+      catalogs: document.catalogs.map((catalog: { id: string }) =>
+        catalog.id === "knacks" ? { ...catalog, entries: undefined, asset: "catalogs/knacks.json" } : catalog,
+      ),
+    };
+    const paths = ["ruleset.json", "catalogs/knacks.json"];
+    const files = new Map<string, unknown>([["catalogs/knacks.json", { entries: knacks.entries }]]);
+    assert.match(
+      getCapabilityPackageInstallIssue(manifest(66, paths) as any, inFile, files) ?? "",
+      heldIssue,
+      "a catalog file",
+    );
+    assert.equal(getCapabilityPackageInstallIssue(manifest(67, paths) as any, inFile, files), null);
   }
 
   // ── What an item says ──

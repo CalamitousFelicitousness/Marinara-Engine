@@ -5,6 +5,8 @@
 // ruleset's market declares. The Engine answers each tag in place, as it does an inventory tag, so the
 // size is always one of the ladder's own. The place in force is the last one answered: in the messages
 // the player sees, and then in the reply. A place with no size has no market (the road, the wilds).
+// A market day (#6934) lasts until the place changes, or until the Game Master says the same place
+// again with `day="new"`.
 // ──────────────────────────────────────────────
 
 import { readGmTagAttributes } from "./skill-check-tag.js";
@@ -18,6 +20,16 @@ const MAX_PLACE_NAME_LENGTH = 120;
 export interface GamePlace {
   name?: string;
   size?: string;
+  /** Said with `day="new"`: a new market day at the same place. */
+  newDay?: true;
+}
+
+/** An answered place tag where it stands: which text (oldest first) and where in it. */
+export interface GamePlaceMark {
+  place: GamePlace;
+  text: number;
+  /** Where the tag ends in its text: what follows it happened at that place. */
+  end: number;
 }
 
 /** A fresh global, case-insensitive matcher over `[place: ...]` tags. */
@@ -49,6 +61,7 @@ function serialize(place: GamePlace, answer: { result: "ok" } | { result: "refus
   const parts: string[] = [];
   if (place.name) parts.push(`name="${place.name}"`);
   if (place.size) parts.push(`size="${place.size}"`);
+  if (place.newDay) parts.push(`day="new"`);
   parts.push(`result="${answer.result}"`);
   if (answer.result === "refused") parts.push(`reason="${answer.reason}"`);
   return `[place: ${parts.join(" ")}]`;
@@ -81,24 +94,56 @@ export function applyGamePlaceTags(
     if (written !== undefined && !size) {
       return serialize({ ...(name ? { name } : {}), size: written }, { result: "refused", reason: "unknown-size" });
     }
-    place = { ...(name ? { name } : {}), ...(size ? { size: size.id } : {}) };
+    const newDay = clean(values.get("day"))?.toLowerCase() === "new";
+    place = {
+      ...(name ? { name } : {}),
+      ...(size ? { size: size.id } : {}),
+      ...(newDay ? { newDay: true as const } : {}),
+    };
     return serialize(place, { result: "ok" });
   });
   return { content: next, ...(place ? { place } : {}) };
 }
 
-/** The place in force after these texts, oldest first: the last place tag the Engine answered ok, or
- *  null when none was. */
-export function lastGamePlace(texts: readonly string[]): GamePlace | null {
-  for (let index = texts.length - 1; index >= 0; index--) {
-    const found = [...(texts[index] ?? "").matchAll(createPlaceTagRegex())].reverse();
-    for (const match of found) {
+/** Every place tag the Engine answered ok in these texts, oldest first, with where each stands. */
+export function answeredGamePlaces(texts: readonly string[]): GamePlaceMark[] {
+  const marks: GamePlaceMark[] = [];
+  texts.forEach((text, index) => {
+    for (const match of text.matchAll(createPlaceTagRegex())) {
       const values = readValues(match[1] ?? "");
       if (clean(values.get("result"))?.toLowerCase() !== "ok") continue;
       const name = clean(values.get("name"));
       const size = clean(values.get("size"));
-      return { ...(name ? { name } : {}), ...(size ? { size } : {}) };
+      const newDay = clean(values.get("day"))?.toLowerCase() === "new";
+      marks.push({
+        place: { ...(name ? { name } : {}), ...(size ? { size } : {}), ...(newDay ? { newDay: true as const } : {}) },
+        text: index,
+        end: (match.index ?? 0) + match[0].length,
+      });
     }
+  });
+  return marks;
+}
+
+/** The place in force after these texts, oldest first: the last place tag the Engine answered ok, or
+ *  null when none was. */
+export function lastGamePlace(texts: readonly string[]): GamePlace | null {
+  return answeredGamePlaces(texts).at(-1)?.place ?? null;
+}
+
+/**
+ * Which of these marks began the market day the last of them is in (#6934): a day begins where the
+ * place changes (another name, whatever its case, or size) or where the Game Master says `day="new"`. `ordinal` is that
+ * mark's place among all of them, which names the day. Null when there is no mark.
+ */
+export function gameMarketDayStart(marks: readonly GamePlaceMark[]): { mark: GamePlaceMark; ordinal: number } | null {
+  if (marks.length === 0) return null;
+  let ordinal = 0;
+  for (let index = 1; index < marks.length; index++) {
+    const before = marks[index - 1]!.place;
+    const here = marks[index]!.place;
+    const renamed = (here.name ?? "").toLowerCase() !== (before.name ?? "").toLowerCase();
+    if (here.newDay || renamed || here.size !== before.size) ordinal = index;
   }
-  return null;
+  return { mark: marks[ordinal]!, ordinal };
 }

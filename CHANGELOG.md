@@ -35,6 +35,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Applying a settings profile that turns **Hide summarised messages** on or off now hides or shows the summarised messages too, as the switch in the summary popover does. Before, the switch changed but the messages did not (#7426).
 - A turn with a change card shows its reason once, on the card, not again in a **Why** fold under the answer.
 - Professor Mari's held card for a new record shows one short line ("12 fields") instead of every field name, and an edit names up to three fields. **Turn on** on a saved memory goes away once the memory is on.
+- Exporting a very long chat no longer freezes the server. A 12,000-message chat now exports in under a second instead of about 20 seconds, and other tabs and replies keep working meanwhile. Branching, importing a JSONL chat and copying a scene into its own chat also take much less time on long chats (#7445).
 - A Professor Mari change that could not save names the record, or "Change to a character" when the record was not found, instead of the title "Not saved character.".
 - Every label that named Professor Mari now says **Professor Mari** in titles, settings and sentences, and **Prof. Mari** on buttons, chips, tabs and tight labels, so no screen shows a bare **Mari**. Her window, Search rows, toasts, pull-down labels and the composer placeholder follow the same rule.
 - Throwing Professor Mari against the screen edge now works on phones.

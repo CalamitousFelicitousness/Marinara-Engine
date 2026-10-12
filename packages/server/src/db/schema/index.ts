@@ -23,6 +23,7 @@ export * from "./game-scene-videos.js";
 export * from "./game-storyboards.js";
 export * from "./game-dice-pools.js";
 export * from "./game-rulesets.js";
+export * from "./game-tile-packs.js";
 export * from "./regex-scripts.js";
 export * from "./gallery.js";
 export * from "./custom-emojis.js";

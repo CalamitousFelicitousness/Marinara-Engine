@@ -33,6 +33,8 @@ import {
   terrainInfoAt,
 } from "./math.js";
 import { deterministicRng } from "./rng.js";
+import { TACTICAL_ENVIRONMENTS } from "./environments.js";
+import type { WorldElementSet } from "../world/elements.js";
 import type {
   ApplyActionResult,
   TacticalAction,
@@ -46,24 +48,7 @@ import type {
   TacticalUnit,
 } from "./types.js";
 
-const ENVIRONMENTS: TacticalEnvironment[] = [
-  "forest",
-  "dungeon",
-  "desert",
-  "cave",
-  "city",
-  "ruins",
-  "snow",
-  "water",
-  "castle",
-  "wasteland",
-  "plains",
-  "mountains",
-  "swamp",
-  "volcanic",
-  "spaceship",
-  "mansion",
-];
+const ENVIRONMENTS: readonly TacticalEnvironment[] = TACTICAL_ENVIRONMENTS;
 
 const FORMATIONS: TacticalFormation[] = ["line", "ambush", "surrounded", "skirmish", "defense"];
 
@@ -133,6 +118,7 @@ export function createTacticalCombat(
     seed: number;
     difficulty: string;
     weather?: CombatWeather;
+    elements?: WorldElementSet;
     environment?: string;
     formation?: string;
     battlefield?: TacticalBattlefieldBrief;
@@ -180,6 +166,7 @@ export function createTacticalCombat(
     log: [{ kind: "phase", text: "Player Phase — Round 1", phase: "player" }],
     difficulty,
     weather: opts.weather,
+    ...(opts.elements ? { elements: opts.elements } : {}),
     formation,
     battlefield: generated.battlefield,
     ...(environment ? { environment } : {}),
@@ -333,6 +320,7 @@ function forecastFrom(
     crit: false,
     difficulty: state.difficulty,
     weather: state.weather,
+    elements: state.elements,
     power: opts.power,
     element: opts.element,
   });
@@ -440,12 +428,13 @@ function resolveHit(
     crit,
     difficulty: state.difficulty,
     weather: state.weather,
+    elements: state.elements,
     power: opts.power,
     element,
   });
 
   defender.hp = Math.max(0, defender.hp - damage);
-  const mult = elementMultiplier(element, defender.element);
+  const mult = elementMultiplier(element, defender.element, state.elements);
   const elementNote = mult > 1 ? " (super effective!)" : mult < 1 ? " (resisted)" : "";
 
   if (crit) {

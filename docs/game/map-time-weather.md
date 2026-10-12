@@ -10,6 +10,32 @@ On a computer, the map is an inline panel you can read at a glance. You can drag
 
 On a phone, tap **Map** to open the map panel. Its button starts near the top left and can be dragged around the chat. Use the panel's **Lock window** button to keep the map button in place; **Close** returns to that button. The position is saved with the chat. The phone map uses your chat widget style from **Settings → Appearance → App**, and its button stays separate from the three-dot **Chat tools** menu.
 
+## The overworld
+
+A game with a generated world (see [Making a world](getting-started.md#making-a-world)) opens on the **overworld**: the world's ground drawn as a pixel map behind the narration, with its forests, hills, coasts and seas, the roads and lanes between its settlements, each settlement drawn by its size, and your party. The bigger places are named on the map, and so is the one you are in. Drag the map to look around.
+
+Tap or click a settlement, or pick it from **Places** (the places nearest first, with how long the way takes), to see its size and the trip from where you are: how many days or hours on the way, and by which ways. **Walk there** sends the party along the world's ways to it, by the quickest route, and the walk's days pass on the clock at once. The party is there from then on, and **your next turn tells the Game Master** where you walked, how long it took and by which ways, so it can tell the arrival. The world's own days go by with it, as they do when the Game Master says time passes. A second walk before your next turn carries on from where the first ended.
+
+A place in ruins is drawn in ruins. After dark the map dims and the settlements' windows light up. Each setting family has its own tiles: fantasy, wuxia, modern day, the 1920s, science fiction and the wasteland each have their own colours and buildings. A setting kit with no family draws plain tiles.
+
+The overworld is a view, and the scene view (the game's backgrounds and character art) is a switch away: **Show the scene** in the game's toolbar, or in the game's actions menu on a phone, and **Show the overworld** to come back. The game remembers which one you chose. A fight and a session replay use their own screens.
+
+### Tile packs
+
+The overworld and the towns are drawn from **tile packs**: a palette and every tile (each kind of ground, the settlements by size, the party, and the town's streets, roofs and townsfolk) as rows of pixels. Every setting family has its own built-in pack. Open the **Agents** panel and find **Tile packs** to:
+
+- choose which pack each setting is drawn with (**Built in** is its own);
+- **Import a tile pack** from a `.tilepack.json` file someone shared;
+- **Export** a pack to share it, or **Remove** it, which sends any setting drawn with it back to its own tiles.
+
+A pack only needs the tiles it changes: anything it leaves out is drawn plain. A pack that names a tile Marinara Engine does not draw keeps the rest and says what it left out.
+
+### The town
+
+When the party is at a settlement, pick it on the overworld and choose **Enter** to see the town. It is laid out from the world: its streets and square, the places the world or the story has in it (named on their buildings), its hall in a bigger place, the workplaces of the trades it is known for, and its homes. Its people are where the hour has them: at work by day, in the square at dusk, at home at night.
+
+Pick a building or the square, or choose from **Places in town**, to see who is there now and how many minutes away it is. **Walk there** takes the party across town: the minutes pass on the clock, and **your next turn tells the Game Master** where the party went and who is there. A visit to a named place, such as an inn the story added, makes it the place the party is in. **Leave town** goes back to the overworld. The game remembers which view you were in.
+
 ## Grid view and node view
 
 The map has two views. Marinara Engine picks the view for you based on the kind of place the map represents. You do not switch views by hand.
@@ -73,6 +99,12 @@ The game clock runs on its own. It uses fixed math, not the AI, so it is always 
 | Travel | 2 hours |
 
 When the clock passes midnight, the day number goes up by one.
+
+In a game with a world, time also passes on its own:
+
+- While the overworld is in front and the game is waiting on you, a game minute passes every five real seconds. It stops while the Game Master is writing, before you have read its reply, while the scene view is in front, and while the app is in the background.
+- A walk on the overworld passes the days its route takes.
+- When the Game Master says days pass (a journey, a long rest, a wait), the clock moves by those days too. A regenerated reply does not move it again; set the day by hand if the new telling takes a different time.
 
 ## Weather
 

@@ -10,6 +10,11 @@ import {
   gameInventoryUsableStack,
   normalizeGameInventoryStacks,
   rulesetFightItemChanges,
+  gameWorldElementSet,
+  worldElementSetSchema,
+  WORLD_DEFAULT_BATTLEFIELDS,
+  gameWorldBattlefields,
+  worldSceneLike,
 } from "@marinara-engine/shared";
 import {
   applyGameInventoryChangeHeld,
@@ -309,6 +314,8 @@ export async function combatDirectorRoutes(
       revision: z.number().int().min(0),
       style: z.enum(["classic", "tactical", "ruleset"]),
       weather: combatWeatherSchema.optional(),
+      // The setting's elements (worldgen W6c), checked like the rest a save may bring back.
+      elements: worldElementSetSchema.optional(),
       round: z.number().int().min(1),
       party: z.array(directedCombatantSchema).min(1).max(20),
       enemies: z.array(directedCombatantSchema).min(1).max(20),
@@ -773,8 +780,14 @@ export async function combatDirectorRoutes(
         // what their `use` says, worked out here rather than taken from the screen, and one with no use
         // is not offered; the rest do what a model guessed, unless the ruleset turns them off.
         const fightItems = await loadGameFightItems(app.db, meta, input.itemEffects);
+        const elements = gameWorldElementSet(meta);
+        // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
+        const environment =
+          worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, input.environment) ??
+          input.environment;
         const state = createCombatDirector({
           ...input,
+          ...(environment ? { environment } : {}),
           inventory: fightItems.lines.map(({ name, quantity, ownName, item }) => ({
             name,
             quantity,
@@ -788,7 +801,9 @@ export async function combatDirectorRoutes(
           id: randomUUID(),
           gm: setup.gmBossControl === true,
           difficulty: normalizeGameDifficulty(setup.difficulty),
-          weather: resolveCombatWeather(weatherSource, input.environment, battlefield.battlefield?.exposure),
+          weather: resolveCombatWeather(weatherSource, environment, battlefield.battlefield?.exposure),
+          // The setting's own elements (worldgen W6c), when its kit names them.
+          ...(elements ? { elements } : {}),
           seed: battlefield.seed,
           battlefield: battlefield.battlefield,
         });
@@ -828,7 +843,7 @@ export async function combatDirectorRoutes(
             definition,
             seed: battlefield.seed,
             positioned: input.positioned === true,
-            environment: input.environment ?? null,
+            environment: environment ?? null,
             formation: input.formation ?? null,
             ...(battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),

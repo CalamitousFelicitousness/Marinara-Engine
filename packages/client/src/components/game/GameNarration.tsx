@@ -356,6 +356,8 @@ function GameGenerationStatus() {
 }
 
 interface GameNarrationProps {
+  /** Clicks on its empty space reach what is drawn beneath it (the overworld, worldgen W8). */
+  passThrough?: boolean;
   messages: NarrationMessage[];
   isStreaming: boolean;
   characterMap: CharacterMap;
@@ -1114,6 +1116,7 @@ function formatSkillCheckLogContent(
 }
 
 export function GameNarration({
+  passThrough = false,
   messages,
   isStreaming,
   characterMap,
@@ -4938,7 +4941,12 @@ export function GameNarration({
   };
 
   return (
-    <div className="relative flex min-h-0 flex-1 items-end px-3 pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] pt-20 md:pt-24 sm:px-6 md:pb-4">
+    <div
+      className={cn(
+        "relative flex min-h-0 flex-1 items-end px-3 pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] pt-20 md:pt-24 sm:px-6 md:pb-4",
+        passThrough && "pointer-events-none",
+      )}
+    >
       {/* Readability scrim. It darkens the whole scene, not just the panel, so it has to fade
           out with the panel — otherwise collapsing hides the text but keeps the art dimmed. */}
       <div
@@ -4950,9 +4958,17 @@ export function GameNarration({
 
       <div
         data-tour="game-dialogue"
-        className="relative z-10 mx-auto flex h-full max-h-[calc(100svh-7rem)] min-h-0 w-full max-w-4xl flex-col justify-end md:max-h-[calc(100svh-8rem)]"
+        className={cn(
+          "relative z-10 mx-auto flex h-full max-h-[calc(100svh-7rem)] min-h-0 w-full max-w-4xl flex-col justify-end md:max-h-[calc(100svh-8rem)]",
+          passThrough && "pointer-events-none",
+        )}
       >
-        <div className="min-h-0 flex flex-1 flex-col justify-end overflow-hidden">
+        <div
+          className={cn(
+            "min-h-0 flex flex-1 flex-col justify-end overflow-hidden",
+            passThrough && "pointer-events-none [&>*]:pointer-events-auto",
+          )}
+        >
           {/* Stacked mode parks a second log card above the panel, so it collapses with it —
               otherwise "collapse" leaves stacked users looking at most of the same wall of text. */}
           {!effectiveCollapsed &&
@@ -5129,13 +5145,17 @@ export function GameNarration({
             nothing — GameSurface measures its bounding rect and ResizeObserves it to decide
             the HUD widget layout, and a null rect flips that layout to compact. */}
         {effectiveCollapsed ? (
-          collapsedNarrationHandle
+          passThrough ? (
+            <div className="pointer-events-auto contents">{collapsedNarrationHandle}</div>
+          ) : (
+            collapsedNarrationHandle
+          )
         ) : (
           <div
             ref={activePanelRef}
             data-game-skip-bg-nav="true"
             data-component="GameNarration.ActivePanel"
-            className="mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
+            className="pointer-events-auto mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
           >
             {/* Scene preparation gate: wait for effects before showing narration */}
             {scenePreparing && (
@@ -5619,7 +5639,7 @@ export function GameNarration({
       {/* Logs modal */}
       {logsOpen && showLogsButton && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/80"
           data-game-skip-bg-nav="true"
           role="dialog"
           aria-modal="true"

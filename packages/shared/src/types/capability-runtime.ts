@@ -201,6 +201,13 @@ export interface CapabilityMessageRecord {
   activeSwipeIndex: number;
   extra: string;
   createdAt: string;
+  /**
+   * The message as Engine agents read it (capability API 1.71): each live whisper at its saved place as
+   * `[Private whisper to <name>: …]`, a whisper-only message as its whispers alone, a reply's documents after it, and
+   * no leftover private notes. `listMessages` sets it in Roleplay chats outside hosted multiplayer rooms; it is absent
+   * elsewhere and on older Engines, so read `agentContent ?? content`. `extra` still holds every whisper in all modes.
+   */
+  agentContent?: string;
 }
 
 export interface CapabilitySpatialSnapshotWrite {

@@ -254,6 +254,10 @@ const reminderTags = new Set<string>();
 for (const file of [
   "packages/server/src/services/game/gm-prompts.ts",
   "packages/server/src/services/game/party-prompts.ts",
+  // The world's own blocks teach the Game Master its place, history and world tags (worldgen).
+  "packages/shared/src/features/world/game-world.ts",
+  "packages/shared/src/features/world/history.ts",
+  "packages/shared/src/features/world/ledger.ts",
 ]) {
   for (const match of withoutComments(sourceOf(file), file).matchAll(/\[([A-Za-z_][A-Za-z0-9_]*)\s*:/g)) {
     reminderTags.add(match[1]!.toLowerCase());

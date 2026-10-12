@@ -157,6 +157,8 @@ import type {
   DiceRollResult,
   ResolvedSpatialTravel,
   ThinkingTagPair,
+  GameWorld,
+  WorldPerson,
 } from "@marinara-engine/shared";
 import {
   createChatsStorage,
@@ -180,6 +182,7 @@ import { isHierarchicalMapsEnabledForChat } from "../services/spatial-context/ac
 import {
   createAssistantSpatialDirectiveStreamFilter,
   extractAssistantSpatialDirective,
+  parseStoredSpatialDefinition,
   materializeAssistantSpatialState,
 } from "../services/spatial-context/state-resolution.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -190,10 +193,39 @@ import {
   getRoleplayCommandActivity,
   applyGameInventoryTags,
   applyGamePlaceTags,
+  gameWorldFromMetadata,
+  worldKitSize,
+  worldPlaceByName,
+  worldPlaceInForce,
+  worldPlaceForTag,
+  worldWhereYouAreText,
+  worldPeopleNamed,
+  worldPersonNpc,
+  applyWorldHistoryTags,
+  worldHistoryAnswerText,
+  applyWorldTags,
+  readWorldLedger,
+  worldKitItems,
+  gameWorldKitFromMetadata,
+  worldPresent,
+  worldAddedPlace,
+  type WorldPresent,
+  worldWalkFromMetadata,
+  worldWalkSchema,
+  worldWalkTags,
+  worldWalkText,
+  type WorldWalk,
+  worldTown,
+  worldTownVisitFromMetadata,
+  worldTownVisitSchema,
+  worldTownVisitTags,
+  worldTownVisitText,
+  type WorldTownVisit,
+  lastGamePlace,
+  type GamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
-  type GamePlace,
   createInventoryTagRegex,
   gameInventoryBags,
   gameInventoryTellingStart,
@@ -210,6 +242,7 @@ import {
   rulesetLayerOptionKey,
   rulesetLayeredCurrencies,
   rulesetPurseText,
+  splitAtSceneBreaks,
   type RoleplayCommandActivity,
   type RulesetDefinition,
   type RulesetItemBook,
@@ -224,6 +257,8 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
   parseRoleplayUserCommands,
+  placeAfterPrefix,
+  placeRoleplayActivityInParts,
   roleplayAgentContinuation,
   roleplayAgentPrompt,
   roleplayAgentsSeeWhispers,
@@ -251,7 +286,12 @@ import {
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
-import { gamePlaceBefore, loadGameMarket } from "../services/game/game-market.service.js";
+import {
+  gameMarketDayFor,
+  gameRepliesBefore,
+  loadGameKitMarket,
+  loadGameMarket,
+} from "../services/game/game-market.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -597,6 +637,7 @@ import {
   shouldSuppressAssistantSpatialMutation,
   validateSpatialGenerationRequest,
 } from "./generate/spatial-transition-request.js";
+import { addMinutes, createInitialTime, formatGameTime, type GameTime } from "../services/game/time.service.js";
 import { runTurnGameBotTurns } from "../services/turn-games/turn-game-bot-runner.service.js";
 import { getTurnGameContextBuilder } from "../services/turn-games/turn-game-runner.service.js";
 import { getCapabilityService } from "../services/capability-packages/capability-service-registry.service.js";
@@ -1926,6 +1967,32 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : { acceptedTravel: acceptedSpatialTravel },
         chatMeta,
       );
+      // The walk this turn tells (worldgen W8): a regeneration tells its reply's own again, else a new
+      // turn tells the walk the game has pending. A continuation and the player's own turn tell none.
+      const turnWalkPromise: Promise<WorldWalk | null> =
+        chatMode === "game" && !input.impersonate && !input.continueMessageId
+          ? (async () => {
+              if (input.regenerateMessageId) {
+                const replaced = await chats.getMessage(input.regenerateMessageId);
+                const own = worldWalkSchema.safeParse(parseExtra(replaced?.extra).worldWalk);
+                if (own.success) return own.data;
+              }
+              return worldWalkFromMetadata(chatMeta);
+            })()
+          : Promise.resolve(null);
+      // The visit in town this turn tells (worldgen W8b), as the walk is told.
+      const turnVisitPromise: Promise<WorldTownVisit | null> =
+        chatMode === "game" && !input.impersonate && !input.continueMessageId
+          ? (async () => {
+              if (input.regenerateMessageId) {
+                const replaced = await chats.getMessage(input.regenerateMessageId);
+                const own = worldTownVisitSchema.safeParse(parseExtra(replaced?.extra).worldTownVisit);
+                if (own.success) return own.data;
+              }
+              return worldTownVisitFromMetadata(chatMeta);
+            })()
+          : Promise.resolve(null);
+      const turnHour = Number((chatMeta.gameTime as { hour?: unknown } | undefined)?.hour ?? 8) || 0;
       const rawSelectedGameStateSnapshotPromise = gameStateStore.getForGeneration(
         input.chatId,
         gameStateGenerationOptions,
@@ -4773,36 +4840,149 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   },
                 ).start
               : normalizeGameInventoryStacks(chatMeta.gameInventory);
+          // A game with no ruleset buys, pays and earns in its setting kit's money (worldgen W6b).
+          const promptKitItems =
+            chatMeta.gameRuleset == null ? worldKitItems(gameWorldKitFromMetadata(chatMeta)) : undefined;
           // What each ruleset item the party holds is, for the Game Master: read when one is held, or
           // when the game has coins in use (its layers may hide them all), so an empty purse is said
           // too (never told one is empty, the Game Master narrates a buy the Engine then refuses).
+          const promptHeldItem = promptInventoryStacks.some((stack) => stack.item);
           const promptItemBook =
-            pinnedGameRuleset?.status === "ok" &&
-            (promptInventoryStacks.some((stack) => stack.item) ||
-              rulesetLayeredCurrencies(pinnedGameRuleset.definition, gameRulesetLayerOptions(pinnedGameRuleset))
-                .length > 0)
+            (pinnedGameRuleset?.status === "ok" &&
+              (promptHeldItem ||
+                rulesetLayeredCurrencies(pinnedGameRuleset.definition, gameRulesetLayerOptions(pinnedGameRuleset))
+                  .length > 0)) ||
+            (promptKitItems && promptHeldItem)
               ? await loadGameInventoryItemBook(
                   app.db,
                   { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
                   "game-master",
                 )
               : undefined;
-          // The market where the scene is, where the ruleset has one (#6917): the place the visible
-          // messages last said (not the telling a regeneration replaces) and what its sellers sell.
-          const promptMarket =
+          // Where the scene is: the place the visible messages last said (not the telling a
+          // regeneration replaces), read once for the market and the world.
+          let promptRepliesRead: ReturnType<typeof gameRepliesBefore> | undefined;
+          const promptRepliesAll = () =>
+            (promptRepliesRead ??= gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
+          const promptReplies = async () => (await promptRepliesAll()).scoped;
+          // The place in force: the map's location when the game's atlas puts the party at a world place
+          // (worldgen W7), else the place the replies last named.
+          const promptPlace = async () => {
+            const ladder = (
+              pinnedGameRuleset?.status === "ok"
+                ? pinnedGameRuleset.definition.items?.market
+                : promptKitItems?.definition.items?.market
+            )?.places;
+            // A walk this turn tells has taken the party where it walked (worldgen W8).
+            const walk = promptWorld ? await turnWalkPromise : null;
+            // A visit in town to a named place there, or else a walk, has taken the party where it went; a
+            // visit in a town the party has since walked away from does not.
+            const visit = promptWorld ? await turnVisitPromise : null;
+            const visited =
+              visit && (!walk || visit.settlementId === walk.to)
+                ? worldTown(
+                    promptWorld!,
+                    visit.settlementId,
+                    worldPresent(promptWorld!, readWorldLedger((await promptRepliesAll()).all)),
+                  )?.buildings.find((building) => building.id === visit.to)
+                : undefined;
+            if (visited?.placeId && visited.name) {
+              return worldPlaceForTag(promptWorld!, visited.name, ladder) ?? { name: visited.name };
+            }
+            const walkedTo = walk ? promptWorld!.world.places.find((place) => place.id === walk.to) : undefined;
+            if (walkedTo) return worldPlaceForTag(promptWorld!, walkedTo.name, ladder) ?? { name: walkedTo.name };
+            return worldPlaceInForce(
+              promptWorld,
+              lastGamePlace(await promptReplies()),
+              (await ownerSpatialProjectionPromise)?.currentLocationId,
+              ladder,
+            );
+          };
+          // Where the party is in the game's world (worldgen W1): the place last said, when the world
+          // lists it, else where the world starts the party until the Game Master says.
+          const promptWorld = gameWorldFromMetadata(chatMeta);
+          // The people the party has already met (worldgen W2), so the block offers only new ones.
+          const promptMet = new Set(
+            (Array.isArray(chatMeta.gameNpcs) ? (chatMeta.gameNpcs as GameNpc[]) : []).flatMap((npc) =>
+              typeof npc.worldId === "string" ? [npc.worldId] : [],
+            ),
+          );
+          const promptWhereYouAre = promptWorld
+            ? await (async () => {
+                // The world as the story has left it (worldgen W4): the ledger in all the replies.
+                const present = worldPresent(promptWorld, readWorldLedger((await promptRepliesAll()).all));
+                const before = await promptPlace();
+                const walk = await turnWalkPromise;
+                const visit = await turnVisitPromise;
+                const visitTown = visit ? worldTown(promptWorld, visit.settlementId, present) : null;
+                // In the order they happened: a visit in a town the party then walked away from comes first.
+                const walkLine = walk ? `${worldWalkText(promptWorld, walk)}\n` : "";
+                const visitLine =
+                  visit && visitTown ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour)}\n` : "";
+                const walked =
+                  walk && visit && visit.settlementId !== walk.to ? visitLine + walkLine : walkLine + visitLine;
+                if (!before?.name) {
+                  const start = promptWorld.world.places.find((place) => place.id === promptWorld.world.startId);
+                  return walked + worldWhereYouAreText(promptWorld, { place: start, met: promptMet, present });
+                }
+                return (
+                  walked +
+                  worldWhereYouAreText(promptWorld, {
+                    place: worldPlaceByName(promptWorld.world, before.name),
+                    name: before.name,
+                    met: promptMet,
+                    present,
+                  })
+                );
+              })()
+            : undefined;
+          // The past the Game Master asked for in its last reply (worldgen W3).
+          const promptHistoryAsked = promptWorld
+            ? worldHistoryAnswerText(promptWorld, (await promptReplies()).at(-1) ?? "")
+            : undefined;
+          // The market where the scene is, where the ruleset has one (#6917, #6934): the place the Game
+          // Master's replies last said (not the telling a regeneration replaces), what its sellers sell,
+          // and what the market day has left.
+          const promptMarketBook =
             pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.definition.items?.market
-              ? rulesetMarketPromptText(
-                  pinnedGameRuleset.definition,
-                  promptItemBook ??
-                    (await loadGameInventoryItemBook(
-                      app.db,
-                      { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
-                      "game-master",
-                    )) ?? { entries: [] },
-                  await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null),
-                  gameRulesetLayerOptions(pinnedGameRuleset),
+              ? (promptItemBook ??
+                (await loadGameInventoryItemBook(
+                  app.db,
+                  { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
+                  "game-master",
+                )))
+              : undefined;
+          const promptMarketDay =
+            promptMarketBook && pinnedGameRuleset?.status === "ok"
+              ? await gameMarketDayFor(
+                  app.db,
+                  input.chatId,
+                  input.regenerateMessageId ?? null,
+                  undefined,
+                  promptMarketBook,
                 )
               : undefined;
+          const promptMarket =
+            promptMarketBook && promptMarketDay && pinnedGameRuleset?.status === "ok"
+              ? rulesetMarketPromptText(
+                  pinnedGameRuleset.definition,
+                  promptMarketBook,
+                  promptMarketDay.place,
+                  gameRulesetLayerOptions(pinnedGameRuleset),
+                  promptMarketDay.day,
+                )
+              : promptKitItems?.definition.items?.market
+                ? rulesetMarketPromptText(
+                    promptKitItems.definition,
+                    promptItemBook ??
+                      (await loadGameInventoryItemBook(
+                        app.db,
+                        { metadata: chatMeta, playerName: personaName || null },
+                        "game-master",
+                      )) ?? { entries: [], coins: [] },
+                    await promptPlace(),
+                  )
+                : undefined;
           // What each character carries, binds and wears against what they can, when the ruleset says.
           const promptBearers =
             promptItemBook?.bearer || promptItemBook?.slots
@@ -4867,6 +5047,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // the reminder renders the bytes it renders today.
               oneRequestDice: oneRequestDiceTurn,
               skillModifiers: gameSkillModifierView,
+              ...(promptKitItems ? { kitItems: promptKitItems.definition } : {}),
               ...(pinnedGameRuleset?.status === "ok"
                 ? {
                     ruleset: pinnedGameRuleset.definition,
@@ -4918,6 +5099,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
               ...(promptPurses ? { inventoryPurses: promptPurses } : {}),
+              ...(promptWhereYouAre
+                ? { whereYouAre: [promptWhereYouAre, promptHistoryAsked].filter(Boolean).join("\n\n") }
+                : {}),
               ...(promptMarket ? { market: promptMarket } : {}),
               ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
                 ? {
@@ -7040,6 +7224,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let reasoningDurationMs: number | null = null;
         let receivedThinking = false;
         let allResponses: string[] = [];
+        let lastReplyWasSplit = false;
         const allResponseSegments: NonNullable<AgentContext["mainResponseSegments"]> = [];
         const roleplayResponseIndexes = new Map<string, number>();
         let continuedMessageRewriteSource: string | null = null;
@@ -7625,6 +7810,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           savedMsg: Awaited<ReturnType<typeof chats.createMessage>>;
           savedSwipeIndex: number | null;
           response: string;
+          /** A reply split at scene breaks: the parts saved before `savedMsg`, its last part. */
+          earlierParts?: Array<{ message: any; content: string }>;
           commands: CharacterCommand[];
           commandCharacterIds: (string | null)[] | null;
           oocMessages: string[];
@@ -8016,6 +8203,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : chatResolvedToolNames.has("roll_dice"));
           const roleplayActivity: RoleplayCommandActivity[] = [];
           const roleplayInlinePrefixes = new Map<RoleplayCommandActivity, string>();
+          // The reply text before each command, so a reply split at scene breaks keeps it with its part.
+          const roleplayActivityPlaces = new Map<RoleplayCommandActivity, string>();
+          let roleplayParsedLength = 0;
           const responderToolDefs =
             chatMode === "roleplay"
               ? toolDefs
@@ -9008,11 +9198,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const parsed = parseRoleplayCommands(fullResponse);
             roleplayHadCommands = parsed.content !== fullResponse;
             fullResponse = parsed.content;
+            roleplayParsedLength = parsed.content.length;
+            // A swipe of a split reply's earlier part is a new version of that part alone (#7481). Its prompt is the
+            // whole reply's, but the scenes after its break already have their own message and audience.
+            let regeneratedPartEnd = Infinity;
+            if (input.regenerateMessageId && parseExtra(regenMsg?.extra).continuesAfterSceneBreak === true) {
+              const [firstPart] = splitAtSceneBreaks(fullResponse);
+              if (firstPart !== undefined && firstPart !== fullResponse) {
+                regeneratedPartEnd = fullResponse.indexOf(firstPart) + firstPart.length;
+                fullResponse = firstPart;
+              }
+            }
             if (!roleplayDmCommandsEnabled) fullResponse = parseDirectMessageCommands(fullResponse).cleanContent;
             contentReplaced = true;
             if (parsed.invalid) sendSseEvent(reply, { type: "roleplay_command_error", data: { invalid: true } });
             for (const activity of parsed.activity) {
               const { command } = activity;
+              if ((parsed.positions.get(activity) ?? 0) > regeneratedPartEnd) continue;
               if (
                 !roomRoleplayCommandAllowed(command.type) ||
                 !isRoleplayCommandAllowed(chatMeta, roleplayCommandKey(command), roleplayCallerId)
@@ -9053,6 +9255,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       : null;
               if (requiredAgent && !resolvedAgents.some((agent) => agent.type === requiredAgent)) continue;
               roleplayActivity.push(activity);
+              roleplayActivityPlaces.set(activity, parsed.content.slice(0, parsed.positions.get(activity)));
               if (
                 command.type === "illustrate" ||
                 command.type === "combat" ||
@@ -9701,6 +9904,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // add up. The answers are worked out here, on the stacks as they are, so the reply is saved
           // with them; the stacks themselves only change once the reply is saved (below), so a reply
           // that is never saved changes nothing.
+          // The world's people this reply named, tracked once it is saved.
+          let worldNpcsNamed: { world: GameWorld; people: WorldPerson[] } | undefined;
           let inventoryTurn: {
             requested: string;
             preview: string;
@@ -9723,28 +9928,139 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             };
             /** What a `[loot:]` rolls: the ruleset its tables are in, and the dice's seed. */
             loot?: { definition: RulesetDefinition; seed: number };
-            /** Where the reply's buys are priced (#6917): the place in force, and the market there. */
-            market?: GameInventoryMarket;
+            /** Makes the market the reply's buys and sales are priced at (#6917, #6934): a fresh one for
+             *  each reading, since a market counts what the reply buys and sells. */
+            market?: () => GameInventoryMarket;
           } | null = null;
           // ── Place tags (#6917) ──
-          // Where the scene is, for a ruleset with a market: the last place the player's visible
-          // messages said (not the telling a regeneration replaces), then the reply's own, each
-          // answered in place. The reply's buys are priced at the place it leaves the party in.
+          // Where the scene is, for a ruleset with a market or a game with a world: the last place the
+          // player's visible messages said (not the telling a regeneration replaces), then the reply's
+          // own, each answered in place. The reply's buys are priced at the place it leaves the party
+          // in. A name the world lists takes its size from the world (worldgen W1).
           let turnPlace: GamePlace | null = null;
+          let turnPlaceBefore: GamePlace | null = null;
+          let turnToldWalk: WorldWalk | null = null;
+          let turnToldVisit: WorldTownVisit | null = null;
+          let turnClockDays = 0;
+          // A game with no ruleset has its setting kit's market (worldgen W6b).
+          const turnKitItems =
+            chatMode === "game" && !input.impersonate && chatMeta.gameRuleset == null
+              ? worldKitItems(gameWorldKitFromMetadata(chatMeta))
+              : undefined;
           const turnMarket =
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
-              : undefined;
-          if (turnMarket) {
-            turnPlace = await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+              : turnKitItems?.definition.items?.market;
+          const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
+          let turnPresent: WorldPresent | undefined;
+          if (turnMarket || turnWorld) {
+            const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            turnPlace = worldPlaceInForce(
+              turnWorld,
+              lastGamePlace(replies.scoped),
+              (await ownerSpatialProjectionPromise)?.currentLocationId,
+              turnMarket?.places,
+            );
+            turnPlaceBefore = turnPlace;
+            // What the reply does to the world (worldgen W4): each world tag answered in place against
+            // the world as the replies before it left it, before its place tags, so a place it adds is
+            // a place it can go.
+            if (turnWorld) {
+              // The walk this turn tells (worldgen W8), its days and where it ended, then the visit in town
+              // (W8b), answered with the reply, so the world, the place and the map follow: a named place
+              // visited is where the reply leaves the party unless the Game Master's own place tags say
+              // otherwise. Never on a reply with nothing to tell.
+              const walk = await turnWalkPromise;
+              const visit = await turnVisitPromise;
+              const visitTown = visit
+                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, readWorldLedger(replies.all)))
+                : null;
+              let walkTags = "";
+              let visitTags = "";
+              if (walk && fullResponse.trim()) {
+                walkTags = worldWalkTags(turnWorld, walk);
+                turnToldWalk = walk;
+              }
+              if (visit && visitTown && fullResponse.trim()) {
+                visitTags = worldTownVisitTags(visitTown, visit);
+                turnToldVisit = visit;
+              }
+              // In the order they happened, so the place the reply leaves the party in is the last one.
+              const told =
+                walk && visit && visit.settlementId !== walk.to ? visitTags + walkTags : walkTags + visitTags;
+              if (told) {
+                fullResponse = `${told}${fullResponse}`;
+                contentReplaced = true;
+              }
+              const ledger = readWorldLedger(replies.all);
+              if (/\[world:/i.test(fullResponse)) {
+                const answered = applyWorldTags(fullResponse, turnWorld, ledger);
+                if (answered !== fullResponse) {
+                  fullResponse = answered;
+                  contentReplaced = true;
+                }
+              }
+              turnPresent = worldPresent(turnWorld, [...ledger, ...readWorldLedger([fullResponse])]);
+              // The days the Game Master's telling passed (not the walk's, already on the clock) move the
+              // game's clock, on a new turn: a regeneration does not move it again.
+              // ponytail: a regeneration that tells other days leaves the clock as the first telling set
+              // it (the HUD's day editor corrects it); per-reply clock deltas would undo and redo it.
+              if (!input.regenerateMessageId) {
+                const told = readWorldLedger([fullResponse]).reduce((sum, entry) => sum + (Number(entry.days) || 0), 0);
+                turnClockDays = Math.max(0, told - (turnToldWalk ? Math.round(turnToldWalk.days) : 0));
+              }
+            }
             if (/\[place:/i.test(fullResponse)) {
-              const placed = applyGamePlaceTags(fullResponse, (word) => rulesetMarketPlace(turnMarket, word));
+              const placed = applyGamePlaceTags(
+                fullResponse,
+                (word) => (turnMarket ? rulesetMarketPlace(turnMarket, word) : worldKitSize(turnWorld!.kit, word)),
+                turnWorld ? (name) => worldPlaceForTag(turnWorld, name, turnMarket?.places, turnPresent) : undefined,
+              );
               if (placed.content !== fullResponse) {
                 fullResponse = placed.content;
                 contentReplaced = true;
               }
               if (placed.place) turnPlace = placed.place;
+              // The map follows the story (worldgen W7): a world place the reply names, when the game's
+              // atlas has it, is the reply's move on the map unless the reply made one of its own.
+              // A market game without a world answers place tags too, and has no world places to map.
+              const mapped =
+                turnWorld && placed.place?.name ? worldPlaceByName(turnWorld.world, placed.place.name) : undefined;
+              if (
+                mapped &&
+                hierarchicalMapsEnabledForChat &&
+                !assistantSpatialDirective &&
+                !shouldSuppressAssistantSpatialMutation(input) &&
+                // By id alone, as the place in force reads the map: the player may rename it.
+                parseStoredSpatialDefinition(chatMeta)?.locations.some((location) => location.id === mapped.id)
+              ) {
+                assistantSpatialDirective = { type: "move", destinationId: mapped.id };
+              }
             }
+          }
+          // The past the reply asks for (worldgen W3): answered in place, carried on the next turn.
+          if (turnWorld && /\[history:/i.test(fullResponse)) {
+            const asked = applyWorldHistoryTags(fullResponse, turnWorld);
+            if (asked !== fullResponse) {
+              fullResponse = asked;
+              contentReplaced = true;
+            }
+          }
+          // People the reply brings in (worldgen W2): one of the people of the place the scene was in,
+          // or moved to, named in full, becomes a tracked NPC with the world's id and sheet, once.
+          if (turnWorld) {
+            const startPlace = turnWorld.world.places.find((place) => place.id === turnWorld.world.startId);
+            // Where the scene is now first, so a name both places have is the person here.
+            const placeIds = [turnPlace, turnPlaceBefore].flatMap((place) => {
+              const found = place?.name
+                ? (worldPlaceByName(turnWorld.world, place.name) ??
+                  (turnPresent ? worldAddedPlace(turnWorld, turnPresent, place.name)?.within : undefined))
+                : startPlace;
+              return found ? [found.id] : [];
+            });
+            const named = worldPeopleNamed(turnWorld, placeIds, fullResponse);
+            // Tracked once the reply is saved (below), so a discarded or stopped reply adds nobody.
+            if (named.length > 0) worldNpcsNamed = { world: turnWorld, people: named };
           }
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
@@ -9802,20 +10118,30 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? { definition: turnGameRuleset.definition, seed: randomInt(0, 2 ** 31 - 1) }
                   : undefined;
               // A seller's `only` reads the turn's own live state, as the items this reply uses do.
-              const market =
-                rules && turnMarket
-                  ? await loadGameMarket(
-                      app.db,
-                      input.chatId,
-                      turnGameRuleset,
-                      rules,
-                      turnPlace,
-                      rulesetSheetTurn?.live ?? {
-                        ...((await turnStartRulesetLive()) ?? {}),
-                        ...(checkSpendLive ?? {}),
-                      },
-                    )
+              const marketDay =
+                rules && turnMarket && !turnKitItems
+                  ? await gameMarketDayFor(app.db, input.chatId, input.regenerateMessageId ?? null, requested, rules)
                   : undefined;
+              // A fresh market for each reading, as the ruleset's is: a market counts what the reply buys.
+              const kitMarket =
+                rules && turnMarket && turnKitItems ? loadGameKitMarket(turnKitItems, rules, turnPlace) : undefined;
+              const market =
+                kitMarket && rules && turnKitItems
+                  ? () => loadGameKitMarket(turnKitItems, rules, turnPlace) ?? kitMarket
+                  : rules && marketDay
+                    ? await loadGameMarket(
+                        app.db,
+                        input.chatId,
+                        turnGameRuleset,
+                        rules,
+                        marketDay.place,
+                        rulesetSheetTurn?.live ?? {
+                          ...((await turnStartRulesetLive()) ?? {}),
+                          ...(checkSpendLive ?? {}),
+                        },
+                        marketDay.day,
+                      )
+                    : undefined;
               const preview = tellsInventory
                 ? applyGameInventoryTags(
                     requested,
@@ -9827,7 +10153,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       ? gameInventoryItemUser(uses.context, rules.itemOf, uses.live, uses.seed).useItem
                       : undefined,
                     loot ? gameLootTagRoller(loot.definition, rules, loot.seed) : undefined,
-                    market,
+                    market?.(),
                   ).content
                 : requested;
               if (preview !== fullResponse) {
@@ -10099,6 +10425,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Save assistant message (or user message for impersonate)
           let savedMsg: any;
           let savedSwipeIndex: number | null = null;
+          // A new reply split at scene breaks: each part with where it starts in the whole reply.
+          type ReplyPart = { content: string; start: number; message: any; activity: RoleplayCommandActivity[] };
+          let replyParts = null as ReplyPart[] | null;
           if (input.regenerateMessageId) {
             const createdSwipe = await chats.addSwipe(input.regenerateMessageId, fullResponse);
             savedSwipeIndex = createdSwipe.index;
@@ -10181,33 +10510,105 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const roomActor = roomAuthority?.characters.find((character) =>
               chatMode === "game" ? character.role === "gm" : character.id === targetCharId,
             );
-            savedMsg = await chats.createMessage({
-              chatId: input.chatId,
-              role: input.impersonate ? "user" : "assistant",
-              characterId: input.impersonate ? null : targetCharId,
-              content: fullResponse,
-              ...(roomAuthority
-                ? {
-                    extra: {
-                      multiplayerActor: roomActor
-                        ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
-                        : { id: null, name: "GM", role: "gm" },
-                      ...(roomAudience
-                        ? {
-                            multiplayerGameAudience: {
-                              roomId: roomAudience.roomId,
-                              participants: roomAudience.participants.map((participant) => ({
-                                id: participant.id,
-                                name: participant.persona.name,
-                              })),
-                            },
-                          }
-                        : {}),
-                    },
-                  }
-                : {}),
-            });
+            // With Advanced Memory, each scene or POV break starts a message of its own, so each part has its own
+            // audience (#7481). The last part is the reply the rest of this turn works with.
+            const parts =
+              advancedMemoryEnabled && !input.impersonate ? splitAtSceneBreaks(fullResponse) : [fullResponse];
+            const saved: ReplyPart[] = [];
+            try {
+              for (const content of parts) {
+                const previous = saved.at(-1);
+                const start = fullResponse.indexOf(content, previous ? previous.start + previous.content.length : 0);
+                savedMsg = await chats.createMessage({
+                  chatId: input.chatId,
+                  role: input.impersonate ? "user" : "assistant",
+                  characterId: input.impersonate ? null : targetCharId,
+                  content,
+                  ...(roomAuthority
+                    ? {
+                        extra: {
+                          multiplayerActor: roomActor
+                            ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
+                            : { id: null, name: "GM", role: "gm" },
+                          ...(roomAudience
+                            ? {
+                                multiplayerGameAudience: {
+                                  roomId: roomAudience.roomId,
+                                  participants: roomAudience.participants.map((participant) => ({
+                                    id: participant.id,
+                                    name: participant.persona.name,
+                                  })),
+                                },
+                              }
+                            : {}),
+                        },
+                      }
+                    : {}),
+                });
+                saved.push({ content, start, message: savedMsg, activity: [] });
+              }
+            } catch (error) {
+              // A reply is saved whole or not at all: drop the parts already saved, so no half-reply is left.
+              for (const part of saved) await chats.removeMessage(part.message.id).catch(() => undefined);
+              throw error;
+            }
+            if (saved.length > 1) replyParts = saved;
             savedSwipeIndex = 0;
+          }
+          // The walk the reply told (worldgen W8) stays with it, so a regeneration tells it again, and is
+          // no longer pending; the days the Game Master's telling passed go on the game's clock.
+          if (savedMsg?.id && (turnToldWalk || turnToldVisit || turnClockDays > 0)) {
+            try {
+              // Cleared first, so a failed write never leaves a told walk pending to be told twice.
+              let clock: GameTime | undefined;
+              await chats.patchMetadata(input.chatId, (fresh) => ({
+                ...(turnToldWalk && worldWalkFromMetadata(fresh)?.id === turnToldWalk.id
+                  ? { gameWorldWalk: null }
+                  : {}),
+                ...(turnToldVisit && worldTownVisitFromMetadata(fresh)?.id === turnToldVisit.id
+                  ? { gameTownVisit: null }
+                  : {}),
+                ...(turnClockDays > 0
+                  ? {
+                      gameTime: (clock = addMinutes(
+                        (fresh.gameTime as GameTime) ?? createInitialTime(),
+                        turnClockDays * 24 * 60,
+                      )),
+                    }
+                  : {}),
+              }));
+              if (turnToldWalk || turnToldVisit) {
+                await chats.updateMessageExtra(savedMsg.id, {
+                  ...(turnToldWalk ? { worldWalk: turnToldWalk } : {}),
+                  ...(turnToldVisit ? { worldTownVisit: turnToldVisit } : {}),
+                });
+              }
+              const latest = clock ? await gameStateStore.getLatest(input.chatId) : null;
+              if (clock && latest) {
+                await gameStateStore.updateLatest(
+                  input.chatId,
+                  applyTrackerFieldLocksToGameStatePatch(
+                    { time: formatGameTime(clock) },
+                    parseGameStateRow(latest as Record<string, unknown>),
+                  ) as any,
+                );
+              }
+            } catch (err) {
+              // The reply is saved either way: a failed write is logged, never the turn's failure.
+              logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);
+            }
+          }
+          // The world's people the saved reply named become tracked NPCs (worldgen W2).
+          if (worldNpcsNamed && savedMsg?.id && !generationSignal.aborted) {
+            const { world: namedWorld, people: named } = worldNpcsNamed;
+            await chats.patchMetadata(input.chatId, (current) => {
+              const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
+              const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
+              const added = named
+                .filter((person) => !known.has(person.id))
+                .map((person) => worldPersonNpc(namedWorld, person));
+              return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
+            });
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
           // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──
@@ -10252,7 +10653,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         pending.loot
                           ? gameLootTagRoller(pending.loot.definition, pending.rules, pending.loot.seed)
                           : undefined,
-                        pending.market,
+                        pending.market?.(),
                       )
                     : { content: pending.requested, stacks: plan.start, journal: [] };
                   // The turn's rests bring charges back on top of what its tags did, from the same start.
@@ -10377,6 +10778,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           if (savedMsg?.id && savedSwipeIndex !== null && outputTranslationConfig && !input.impersonate) {
+            // A split reply's earlier parts are translated first, in order; their source is saved with their extras.
+            for (const part of replyParts?.slice(0, -1) ?? []) translationMessages.set(part.message.id, 0);
             translationMessages.set(savedMsg.id, savedSwipeIndex);
             // Persist ownership before message_saved can trigger Game's legacy
             // browser backfill, which also runs when navigating between chats.
@@ -10587,26 +10990,37 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const previousExtra = input.continueMessageId
                 ? parseExtra((await chats.getMessage(savedMsg.id))?.extra)
                 : {};
+              const placeInReply = (rawPrefix: string) =>
+                placeAfterPrefix(fullResponse, stripSpacesBeforeLineBreaks(rawPrefix).trim());
+              // A split reply places its commands in the whole reply first, then in the part each one was in.
+              const placedContent = replyParts ? fullResponse : savedMsg.content;
               for (const [activity, rawPrefix] of roleplayInlinePrefixes) {
-                const prefix = stripSpacesBeforeLineBreaks(rawPrefix).trim();
-                const anchor = prefix.slice(-80);
-                const prefixStart = fullResponse.indexOf(prefix);
-                const anchorStart = fullResponse.indexOf(anchor);
-                const offset =
-                  prefixStart >= 0
-                    ? prefixStart + prefix.length
-                    : anchor && anchorStart >= 0 && anchorStart === fullResponse.lastIndexOf(anchor)
-                      ? anchorStart + anchor.length
-                      : null;
+                const offset = placeInReply(rawPrefix);
                 if (offset !== null) {
-                  activity.contentOffset = Math.max(0, savedMsg.content.length - fullResponse.length) + offset;
+                  activity.contentOffset = Math.max(0, placedContent.length - fullResponse.length) + offset;
                   activity.contentAnchor =
                     activity.contentOffset === 0
-                      ? savedMsg.content.slice(0, 80)
-                      : savedMsg.content.slice(Math.max(0, activity.contentOffset - 80), activity.contentOffset);
+                      ? placedContent.slice(0, 80)
+                      : placedContent.slice(Math.max(0, activity.contentOffset - 80), activity.contentOffset);
                 }
               }
-              extraUpdate.roleplayCommandActivity = [...getRoleplayCommandActivity(previousExtra), ...roleplayActivity];
+              if (replyParts) {
+                const placed = placeRoleplayActivityInParts(replyParts, roleplayActivity, (item) => {
+                  if (typeof item.contentOffset === "number") return item.contentOffset;
+                  const place = roleplayActivityPlaces.get(item);
+                  if (place === undefined) return null;
+                  // Not found after cleanup: the same relative place, so the command still lands near its part.
+                  return (
+                    placeInReply(place) ??
+                    Math.round((place.length * fullResponse.length) / Math.max(1, roleplayParsedLength))
+                  );
+                });
+                for (const [index, part] of replyParts.entries()) part.activity = placed[index]!;
+              }
+              extraUpdate.roleplayCommandActivity = [
+                ...getRoleplayCommandActivity(previousExtra),
+                ...(replyParts?.at(-1)!.activity ?? roleplayActivity),
+              ];
               // New records own their editable context; legacy extras are read only as a fallback.
               extraUpdate.roleplayPrivateCommands = null;
               extraUpdate.roleplayDocuments = null;
@@ -10624,11 +11038,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               )
                 extraUpdate.hiddenFromUser = false;
               const timelineMessage = { ...savedMsg, extra: { ...parseExtra(savedMsg.extra), ...extraUpdate } };
+              for (const part of replyParts?.slice(0, -1) ?? [])
+                roleplayTimeline.push({
+                  ...part.message,
+                  extra: {
+                    ...parseExtra(part.message.extra),
+                    roleplayCommandActivity: part.activity,
+                    roleplayPrivateContext: extraUpdate.roleplayPrivateContext,
+                  },
+                });
               const existingTimelineIndex = roleplayTimeline.findIndex((message) => message.id === savedMsg.id);
               if (existingTimelineIndex >= 0) roleplayTimeline[existingTimelineIndex] = timelineMessage;
               else roleplayTimeline.push(timelineMessage);
-              for (const command of currentRoleplayMedia)
-                roleplayMediaRequests.push({ command, messageId: savedMsg.id, swipeIndex: savedSwipeIndex ?? 0 });
+              for (const command of currentRoleplayMedia) {
+                const part = replyParts?.find((item) => item.activity.some((activity) => activity.command === command));
+                roleplayMediaRequests.push({
+                  command,
+                  messageId: (part?.message ?? savedMsg).id,
+                  swipeIndex: savedSwipeIndex ?? 0,
+                });
+              }
             }
             extraUpdate.generationReplay = buildGenerationReplay(input);
             extraUpdate.startsNewAssistantBubble = startsNewAssistantBubble;
@@ -10676,6 +11105,47 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               extraUpdate.advancedMemorySnapshot = advancedMemorySnapshot;
             const persistentAttachments = resolveUserRegenerationPersistentAttachments(regenMsg ?? {});
             if (persistentAttachments) extraUpdate.attachments = persistentAttachments;
+            if (replyParts) {
+              // The reasoning and the memory preparation belong to the first part, whose prompt produced them.
+              // Generation info, the prompt cache and everything that ends the turn stay with the last part.
+              // Each part keeps what regenerating it replays. Gemini parts hold the whole reply's text, so a
+              // split reply keeps none: replayed with one part, they would show the others to its readers.
+              const firstPartKeys = [
+                "thinking",
+                "chatCompletionsReasoning",
+                "encryptedReasoning",
+                "advancedMemorySnapshot",
+                "startsNewAssistantBubble",
+              ];
+              const pick = (keys: string[]) =>
+                Object.fromEntries(keys.filter((key) => key in extraUpdate).map((key) => [key, extraUpdate[key]]));
+              const everyPart = pick(["contextInjections", "generationReplay", "referencedCharacterIds"]);
+              for (const [index, part] of replyParts.slice(0, -1).entries()) {
+                const savedPart = await chats.updateMessageExtraForSwipe(part.message.id, 0, {
+                  ...everyPart,
+                  ...(index === 0 ? pick(firstPartKeys) : {}),
+                  roleplayCommandActivity: part.activity,
+                  roleplayPrivateContext: extraUpdate.roleplayPrivateContext,
+                  // The reply goes on in the next message: its reasoning covers both, and a swipe keeps this part.
+                  continuesAfterSceneBreak: true,
+                  ...(outputTranslationConfig ? { automaticTranslationSource: part.content } : {}),
+                });
+                // The live reply keeps showing the rest, so the part appears above it without a repeat. While a
+                // rewrite agent holds the reply, the live reply stays empty until the rewrite arrives.
+                sendSseEvent(reply, {
+                  type: "message_saved",
+                  data: savedPart ?? part.message,
+                  remainingContent: holdForTextRewrite
+                    ? ""
+                    : replyParts
+                        .slice(index + 1)
+                        .map((rest) => rest.content)
+                        .join("\n\n"),
+                });
+              }
+              for (const key of firstPartKeys) extraUpdate[key] = key === "startsNewAssistantBubble" ? false : null;
+              extraUpdate.geminiParts = null;
+            }
             let refreshedMsg;
             if (roleplayActivity.some((item) => item.command.type === "interrupt")) {
               const committed = await chats.commitRoleplayInterruption({
@@ -10849,10 +11319,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             postToDiscordWebhook(discordWebhookUrl, { content: fullResponse, username: charName });
           }
 
+          // The reply this turn goes on with is a split reply's last part; the caller records the earlier ones.
+          if (replyParts) fullResponse = replyParts.at(-1)!.content;
           return {
             savedMsg,
             savedSwipeIndex,
             response: fullResponse,
+            earlierParts: replyParts?.slice(0, -1).map(({ message, content }) => ({ message, content })),
             commands: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommands,
             commandCharacterIds: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommandCharacterIds,
             oocMessages: recoveredAlreadyAppliedSpatialTurn ? [] : oocMessages,
@@ -11013,18 +11486,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (generationSignal.aborted) break;
               continue;
             }
-            firstSavedMsg ??= genResult.savedMsg;
+            // A reply split at scene breaks is read and decided part by part, like separate replies.
+            const replyParts = [
+              ...(genResult.earlierParts ?? []),
+              { message: genResult.savedMsg, content: genResult.response },
+            ];
+            firstSavedMsg ??= replyParts[0]!.message;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
+            lastReplyWasSplit = replyParts.length > 1;
             currentIterationSavedMsg = genResult.savedMsg;
-            if (typeof genResult.savedMsg?.id === "string") {
-              knownConversationMessageIds.add(genResult.savedMsg.id);
-              inTurnMessageIds.add(genResult.savedMsg.id);
+            for (const part of replyParts) {
+              if (typeof part.message?.id === "string") {
+                knownConversationMessageIds.add(part.message.id);
+                inTurnMessageIds.add(part.message.id);
+                roleplayResponseIndexes.set(part.message.id, allResponses.length);
+              }
+              allResponses.push(part.content);
+              allResponseSegments.push({ characterId: charId, characterName: charName, content: part.content });
             }
             recordExpressionTarget(genResult.savedMsg, charId);
-            if (genResult.savedMsg?.id) roleplayResponseIndexes.set(genResult.savedMsg.id, allResponses.length);
-            allResponses.push(genResult.response);
-            allResponseSegments.push({ characterId: charId, characterName: charName, content: genResult.response });
             for (const cmd of genResult.commands) {
               collectedCommands.push({
                 command: cmd,
@@ -11038,7 +11519,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (routeCharacterMentions) {
               // Reuse this turn's queue: prioritize mentions, but never revisit a speaker.
               const visited = new Set(respondingCharIds.slice(0, ci + 1));
-              let mentioned = getExplicitlyMentionedCharacterIds(genResult.response).filter((id) => !visited.has(id));
+              let mentioned = getExplicitlyMentionedCharacterIds(
+                replyParts.map((part) => part.content).join("\n\n"),
+              ).filter((id) => !visited.has(id));
               let remaining = respondingCharIds.slice(ci + 1).filter((id) => !mentioned.includes(id!));
               let queueChanged = false;
               if (shouldAccountAutonomousGeneration && mentioned.length > 0) {
@@ -11086,33 +11569,35 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
 
             // Add this character's response to the running context for the next character
-            const inTurnMessage = {
-              id: genResult.savedMsg?.id,
-              role: "assistant",
-              content:
-                chatMode === "roleplay"
-                  ? conversationPromptHistoryContent(
-                      roleplayTimeline.find((message) => message.id === genResult.savedMsg?.id) ?? {
-                        role: "assistant",
-                        content: genResult.response,
-                      },
-                      chatMode,
-                    )
-                  : genResult.response,
-              contextKind: "history",
-              characterId: charId,
-            } as const;
-            if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
-              const characterNamesById = await getGroupHistoryCharacterNamesById();
-              const [prefixed] = prefixGroupIndividualHistorySpeakers([inTurnMessage], {
-                personaName,
-                characterNamesById,
-              });
-              roleplayHistoryBodies.set(inTurnMessage.id, (prefixed ?? inTurnMessage).content);
-              runningMessages.push(prefixed ?? inTurnMessage);
-            } else {
-              roleplayHistoryBodies.set(inTurnMessage.id, inTurnMessage.content);
-              runningMessages.push(inTurnMessage);
+            for (const part of replyParts) {
+              const inTurnMessage = {
+                id: part.message?.id,
+                role: "assistant",
+                content:
+                  chatMode === "roleplay"
+                    ? conversationPromptHistoryContent(
+                        roleplayTimeline.find((message) => message.id === part.message?.id) ?? {
+                          role: "assistant",
+                          content: part.content,
+                        },
+                        chatMode,
+                      )
+                    : part.content,
+                contextKind: "history",
+                characterId: charId,
+              } as const;
+              if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
+                const characterNamesById = await getGroupHistoryCharacterNamesById();
+                const [prefixed] = prefixGroupIndividualHistorySpeakers([inTurnMessage], {
+                  personaName,
+                  characterNamesById,
+                });
+                roleplayHistoryBodies.set(inTurnMessage.id, (prefixed ?? inTurnMessage).content);
+                runningMessages.push(prefixed ?? inTurnMessage);
+              } else {
+                roleplayHistoryBodies.set(inTurnMessage.id, inTurnMessage.content);
+                runningMessages.push(inTurnMessage);
+              }
             }
           }
         } else {
@@ -11169,6 +11654,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // target or a single explicit @mention pins it to exactly one speaker.
           const genResult = await generateForCharacter(targetCharId, sentMessages, true, mergedSpeaksOnlyTarget);
           if (genResult) {
+            // A reply split at scene breaks: agents read every part, each with its own whispers.
+            for (const part of genResult.earlierParts ?? []) {
+              firstSavedMsg ??= part.message;
+              roleplayResponseIndexes.set(part.message.id, allResponses.length);
+              allResponses.push(part.content);
+              allResponseSegments.push({
+                ...(genResult.characterId ? { characterId: genResult.characterId } : {}),
+                characterName:
+                  charInfo.find((character) => character.id === genResult.characterId)?.name ?? "Character",
+                content: part.content,
+              });
+            }
+            lastReplyWasSplit = Boolean(genResult.earlierParts?.length);
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
@@ -13826,7 +14324,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           // ── Text rewrite/editing agents: run after ALL other agents ──
-          const originalResponseBeforeRewrite = completedResponse;
+          // A split reply's earlier parts are messages of their own; rewrite agents edit its last part.
+          const originalResponseBeforeRewrite = lastReplyWasSplit ? allResponses.at(-1)! : completedResponse;
           let textRewriteApplied = false;
           // Rewrite agents edit the public text, so a reply without any is left alone.
           const hasPublicReply = !!completedResponse.trim();

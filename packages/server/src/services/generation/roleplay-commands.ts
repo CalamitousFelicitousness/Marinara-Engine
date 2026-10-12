@@ -143,9 +143,12 @@ function parseCommands(
   activity: RoleplayCommandActivity[];
   invalid: number;
   roll?: { command: Extract<RoleplayCommand, { type: "roll" }>; start: number; end: number };
+  /** Where each command was in `content`, kept apart so only whispers save a place. */
+  positions: Map<RoleplayCommandActivity, number>;
 } {
   const commands: RoleplayCommand[] = [];
   const activity: RoleplayCommandActivity[] = [];
+  const positions = new Map<RoleplayCommandActivity, number>();
   let content = "";
   let cursor = 0;
   let invalid = 0;
@@ -178,11 +181,13 @@ function parseCommands(
     const command = end - match.index <= MAX_COMMAND_LENGTH ? readCommand(match[1]!.toLowerCase(), body) : null;
     if (command && commands.length < 24) {
       commands.push(command);
-      activity.push({
+      const item = {
         command,
         raw: text.slice(match.index, end),
         ...(command.type === "whisper" ? { contentOffset: content.length } : {}),
-      });
+      };
+      activity.push(item);
+      positions.set(item, content.length);
       if (command.type === "roll" && !roll) roll = { command, start: match.index, end };
     } else recordInvalid(match[1]!.toLowerCase(), text.slice(match.index, end));
     cursor = end;
@@ -200,7 +205,7 @@ function parseCommands(
     recordInvalid("[whisper".startsWith(suffix) ? "whisper" : "notes", content.slice(lastBracket));
     content = content.slice(0, lastBracket);
   }
-  return { content, commands, activity, invalid, roll };
+  return { content, commands, activity, invalid, roll, positions };
 }
 
 export function parseRoleplayCommands(text: string) {
@@ -504,6 +509,59 @@ export function roleplayAgentsSeeWhispers(chatMode: unknown, metadata: Record<st
     !currentRoomGeneration() &&
     (room === undefined || room === null || parseExtra(room).status === "ended")
   );
+}
+
+/**
+ * Where a command sits in the saved `reply`, from `prefix`, the reply text before it when parsed: after the prefix,
+ * else after its longest ending (80 to 12 characters) found exactly once, since cleanup such as a stripped
+ * "Name:" can change the start. Null when neither is found.
+ */
+export function placeAfterPrefix(reply: string, prefix: string): number | null {
+  const start = reply.indexOf(prefix);
+  if (start >= 0) return start + prefix.length;
+  for (let length = Math.min(80, prefix.length); length >= 12; length--) {
+    const anchor = prefix.slice(-length);
+    const found = reply.indexOf(anchor);
+    if (found >= 0 && found === reply.lastIndexOf(anchor)) return found + length;
+  }
+  return null;
+}
+
+/**
+ * Give each command of a reply split at scene breaks to the part its text was in, so a whisper or document keeps
+ * that part's audience. `parts` say where each starts in the whole reply and `placeOf` where a command was in it.
+ * Saved inline places move into their part. A command with no place goes to the last part, and so does an
+ * interruption, which is committed with the last part.
+ */
+export function placeRoleplayActivityInParts(
+  parts: readonly { content: string; start: number }[],
+  activity: readonly RoleplayCommandActivity[],
+  placeOf: (item: RoleplayCommandActivity) => number | null,
+): RoleplayCommandActivity[][] {
+  const placed = parts.map((): RoleplayCommandActivity[] => []);
+  for (const item of activity) {
+    const offset = item.command.type === "interrupt" ? null : placeOf(item);
+    let index = parts.length - 1;
+    if (offset !== null) {
+      index = 0;
+      while (index + 1 < parts.length && parts[index + 1]!.start < offset) index++;
+    }
+    const part = parts[index]!;
+    if (typeof item.contentOffset !== "number") {
+      placed[index]!.push(item);
+      continue;
+    }
+    const contentOffset = Math.min(Math.max(0, item.contentOffset - part.start), part.content.length);
+    placed[index]!.push({
+      ...item,
+      contentOffset,
+      contentAnchor:
+        contentOffset === 0
+          ? part.content.slice(0, 80)
+          : part.content.slice(Math.max(0, contentOffset - 80), contentOffset),
+    });
+  }
+  return placed;
 }
 
 /**

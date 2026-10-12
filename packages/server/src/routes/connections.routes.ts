@@ -73,6 +73,7 @@ import {
 } from "../services/image/image-generation-defaults.js";
 import { buildVeniceApiUrl, normalizeVeniceImageModels } from "../services/image/venice-image.js";
 import { buildFalImageUrl } from "../services/image/fal-image.js";
+import { buildSpicyApiUrl, normalizeSpicyApiImageModels } from "../services/image/spicyapi-image.js";
 import { isImageLocalUrlsEnabled, isProviderLocalUrlsEnabled } from "../config/runtime-config.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
@@ -850,6 +851,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
       } else if (conn.provider === "image_generation" && imageSource === "horde") {
         // Horde: heartbeat is the lightweight health endpoint for the public API.
         testUrl = buildHordeUrl(baseUrl, "status/heartbeat");
+      } else if (conn.provider === "image_generation" && imageSource === "spicyapi") {
+        // Listing image models checks the key without starting a paid task.
+        testUrl = buildSpicyApiUrl(baseUrl, "models", { modality: "image" });
       } else if (conn.provider === "image_generation" && imageSource === "stability") {
         // Stability's generation endpoints live under v2beta, but account/key checks are v1.
         testUrl = buildStabilityUrl(baseUrl, "v1/user/account");
@@ -1309,6 +1313,24 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return { models: normalizeModelsResponse("openrouter", json) };
       }
 
+      if (conn.provider === "image_generation" && imageSource === "spicyapi") {
+        const res = await safeFetch(buildSpicyApiUrl(baseUrl, "models", { modality: "image" }), {
+          headers,
+          policy: localUrlPolicyForProvider(conn.provider, imageSource),
+          maxResponseBytes: 5 * 1024 * 1024,
+          decodeCompressedResponse: true,
+        });
+        const text = await res.text();
+        if (!res.ok) {
+          return reply.status(502).send({ error: `SpicyAPI returned ${res.status}: ${sanitizeProviderBody(text)}` });
+        }
+        try {
+          return { models: normalizeSpicyApiImageModels(JSON.parse(text)) };
+        } catch {
+          return reply.status(502).send({ error: `Failed to fetch models: ${sanitizeProviderBody(text)}` });
+        }
+      }
+
       if (conn.provider === "image_generation" && imageSource === "venice") {
         const res = await safeFetch(buildVeniceApiUrl(baseUrl, "models"), {
           headers,
@@ -1747,6 +1769,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
           settingSources: [],
           permissionMode: "bypassPermissions",
           includePartialMessages: false,
+          // A preset title skips the CLI's hidden session-naming request.
+          title: "Title",
           settings: { fastMode },
           ...(await claudeCodeExecutableOption()),
           env: {

@@ -561,7 +561,20 @@ const capabilityPackageManifestBaseSchema = z
 // 1.68: `embeddings.embed(texts, signal, inputType)` takes `"query"` or `"document"` (the default), so a
 //        model with query and document prefixes embeds a search query as a query. Soft seam: an older
 //        Engine ignores the third argument, so a package does not need to declare 1.68. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 68 } as const);
+// 1.69: a market day: a place size may carry a daily `purse`, the market a `buyBack` share, a seller a
+//        `stock` loot table rolled each day, and a `sold` rule or an item's `sold` a `limited` count kept
+//        on hand (a rule or an item's `sold` may now name a limit without a place); the Game Master
+//        sells with `[inventory: action="sell"]` and starts a new day with `[place: day="new"]`. Not a
+//        soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot read these refuses
+//        the whole ruleset or catalog file, so a package that ships any of them declares 1.69. No
+//        permission.
+// 1.70: a catalog entry's rider may name `weapons` by item tag, so it fires on a held weapon as it
+//        does on an attack row (Sneak Attack with a rapier held from the bag). A new key on the strict
+//        rider, so a package whose entries carry one declares 1.70.
+// 1.71: `listMessages` records carry `agentContent` in Roleplay outside hosted rooms: the message as Engine
+//        agents read it, with its whispers. Soft seam: a package reads `agentContent ?? content`, so it does not
+//        need to declare 1.71. Requires `chat-read`, like `listMessages`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 71 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

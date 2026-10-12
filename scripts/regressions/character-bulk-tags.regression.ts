@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -46,6 +46,40 @@ assert.deepEqual(summary.changedIds, ["1", "3"]);
 assert.deepEqual(summary.renamed, [{ from: "old", to: "new", count: 1 }]);
 assert.deepEqual(summary.removed, [{ tag: "drop", count: 1 }]);
 assert.deepEqual(summary.added, [{ tag: "keep", count: 1 }], "only cards missing the tag count as added");
+
+// ── Character editor tag suggestions (#7427) ──
+const characterEditorSource = readFileSync(
+  new URL("../../packages/client/src/components/characters/CharacterEditor.tsx", import.meta.url),
+  "utf8",
+);
+const metadataTabStart = characterEditorSource.indexOf("function MetadataTab(");
+assert.ok(metadataTabStart >= 0, "the Metadata tab remains discoverable");
+const metadataTabSource = characterEditorSource.slice(metadataTabStart);
+assert.match(
+  metadataTabSource,
+  /addTag\(\[\.\.\.newTag\.split\(","\)\.slice\(0, -1\), tag\]\.join\(","\)\)/u,
+  "picking a suggestion replaces only the last draft part, keeping earlier comma-separated tags",
+);
+assert.match(
+  metadataTabSource,
+  /if \(event\.nativeEvent\.isComposing \|\| event\.keyCode === 229\) return;\s*if \(event\.key === "ArrowDown" && tagSuggestions\.length > 0\)/u,
+  "keys that confirm an IME composition never pick a suggestion or add a half-typed tag",
+);
+assert.match(
+  metadataTabSource,
+  /role="option"\s+tabIndex=\{-1\}/u,
+  "suggestions stay out of the Tab order; focus stays on the input",
+);
+assert.match(
+  metadataTabSource,
+  /\.slice\(0, MAX_TAG_SUGGESTIONS\)/u,
+  "a large library does not render every tag as a suggestion",
+);
+assert.match(
+  metadataTabSource,
+  /useAllCharacterCatalog\(tagCatalogRequested\)/u,
+  "the whole library is only fetched once the tag field is used",
+);
 
 // ── Route: atomic per character, recorded in version history ──
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-bulk-tags-"));

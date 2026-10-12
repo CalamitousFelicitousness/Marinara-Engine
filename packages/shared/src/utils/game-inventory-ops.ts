@@ -75,7 +75,7 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
       name: itemName,
       count: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
       from: z.object({ holder: holder.optional() }).strict().optional(),
-      as: z.enum(["lost", "used", "removed"]).optional(),
+      as: z.enum(["lost", "used", "removed", "sold"]).optional(),
       worn: z.literal(true).optional(),
     })
     .strict(),
@@ -149,7 +149,7 @@ export type GameInventoryOpResult =
 
 export interface GameInventoryJournalEntry {
   item: string;
-  action: "acquired" | "lost" | "used" | "removed";
+  action: "acquired" | "lost" | "used" | "removed" | "sold";
   quantity: number;
 }
 

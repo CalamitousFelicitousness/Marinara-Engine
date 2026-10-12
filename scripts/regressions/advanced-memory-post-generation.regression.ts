@@ -53,6 +53,8 @@ let mainFirstUsage = true;
 // The first reply asks for a roll in text instead of a native tool call, and can be padded.
 let mainTextRoll = false;
 let mainFirstReplyPadding = "";
+// When set, the first main reply says this instead.
+let mainReply: string | undefined;
 // Streamed main replies send usage only on their last chunk, after a pause, as OpenAI-compatible
 // providers do. Counts streams the client closed before that chunk.
 let mainStreamUsageLast = false;
@@ -172,7 +174,7 @@ const provider = createServer(async (req, res) => {
             ? mainFirstReplyPadding +
               (mainTextRoll
                 ? 'The guard lunges. [roll: notation="1d1", reason="dodge"]'
-                : "The character continues the silver compass journey.")
+                : (mainReply ?? "The character continues the silver compass journey."))
             : followup && mainTextRoll && resolvedRolls <= mainFollowupRolls
               ? 'The guard swings again. [roll: notation="1d1", reason="parry"]'
               : "The character continues the silver compass journey.";
@@ -1046,16 +1048,14 @@ try {
       payload: { chatId, forCharacterId: character.id, streaming },
     });
   const sentFollowups = (since: number) =>
-    calls
-      .slice(since)
-      .filter(
-        (call) =>
-          call.kind === "main" &&
-          (call.messages.some((message) => message.role === "tool") ||
-            JSON.stringify(call.messages).includes("The engine resolved your roll request") ||
-            // The last tool round's follow-up retells the results as text (toolRoundsAsText).
-            JSON.stringify(call.messages).includes("The engine ran the tools you called")),
-      ).length;
+    calls.slice(since).filter(
+      (call) =>
+        call.kind === "main" &&
+        (call.messages.some((message) => message.role === "tool") ||
+          JSON.stringify(call.messages).includes("The engine resolved your roll request") ||
+          // The last tool round's follow-up retells the results as text (toolRoundsAsText).
+          JSON.stringify(call.messages).includes("The engine ran the tools you called")),
+    ).length;
   const expectFollowupWithoutCutoff = async (label: string) => {
     const before = calls.length;
     const result = await generateFollowup();
@@ -2934,6 +2934,133 @@ try {
   assert.match(await mergedView(everyone), /\[Known only to (?:Maukie, Pantalone|Pantalone, Maukie): MERGED_PLAIN\]/u);
   assert.equal(await mergedView([character.id]), "", "Dottore still reads nothing");
   summaryReply = undefined;
+
+  // #7481: with Advanced Memory, a new Roleplay reply is saved as one message per scene or POV break, from the
+  // same character, so each part can have its own audience.
+  closeLatestScene = false;
+  await chats.patchMetadata(chat.id, { enableAgents: false });
+  const splitChat = await chats.create({
+    name: "POV split",
+    mode: "roleplay",
+    characterIds: [character.id],
+    connectionId: connection.id,
+  });
+  assert(splitChat);
+  chatIds.push(splitChat.id);
+  const splitMemory = {
+    ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+    enabled: true,
+    maxContextTokens: 16_384,
+    helperConnectionId: connection.id,
+    sceneCheckInterval: 1,
+  };
+  await chats.patchMetadata(splitChat.id, { enableAgents: false, advancedMemory: splitMemory });
+  await memory.initialize(splitChat.id);
+  await chats.createMessage({ chatId: splitChat.id, role: "user", content: "Where is everyone?" });
+  const splitGenerate = async (chatId: string, extra: Record<string, unknown> = {}) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId, forCharacterId: character.id, ...extra },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.ok(!response.body.includes('"type":"error"'), response.body);
+    return response.body
+      .split("\n\n")
+      .filter((block) => block.startsWith("data: "))
+      .map((block) => JSON.parse(block.slice(6)) as { type: string; data: any; remainingContent?: string });
+  };
+  const extraOf = (message: { extra?: unknown }) =>
+    (typeof message.extra === "string" ? JSON.parse(message.extra) : (message.extra ?? {})) as Record<string, any>;
+  const splitReply = "CYNO_ALONE waits by the gate.\n\n***\n\nMARI_AND_MAUKIE run through the rain.";
+  mainReply = `<think>PLANNING_BOTH_SCENES</think>${splitReply}`;
+  const splitEvents = await splitGenerate(splitChat.id);
+  const [, splitFirst, splitLast, ...splitRest] = await chats.listMessages(splitChat.id);
+  assert(splitFirst && splitLast);
+  assert.equal(splitRest.length, 0, "one break makes two messages");
+  assert.equal(splitFirst.content, "CYNO_ALONE waits by the gate.");
+  assert.equal(splitLast.content, "***\n\nMARI_AND_MAUKIE run through the rain.", "the break line opens the second");
+  for (const part of [splitFirst, splitLast]) {
+    assert.equal(part.role, "assistant");
+    assert.equal(part.characterId, character.id, "both parts are from the same character");
+  }
+  assert.match(extraOf(splitFirst).thinking, /PLANNING_BOTH_SCENES/u, "the reasoning is on the first part");
+  assert.equal(extraOf(splitLast).thinking, null);
+  assert(extraOf(splitFirst).advancedMemorySnapshot, "so is the memory its prompt was prepared with");
+  assert.equal(extraOf(splitLast).advancedMemorySnapshot, null);
+  assert(
+    (await chats.getSwipes(splitFirst.id)).some((swipe) => extraOf(swipe).advancedMemorySnapshot),
+    "a swipe of the first part reuses that memory",
+  );
+  assert.equal(extraOf(splitFirst).generationInfo, null);
+  assert.equal(extraOf(splitLast).generationInfo.model, "fixture", "generation info is on the last part");
+  assert(extraOf(splitLast).cachedPrompt?.length && !extraOf(splitFirst).cachedPrompt);
+  assert.deepEqual(extraOf(splitFirst).generationReplay, extraOf(splitLast).generationReplay);
+  const savedEvents = splitEvents.filter((event) => event.type === "message_saved");
+  assert.deepEqual(
+    savedEvents.map((event) => [event.data.id, event.remainingContent]),
+    [
+      [splitFirst.id, splitLast.content],
+      [splitLast.id, undefined],
+    ],
+    "the first part reaches the chat with the rest still live, then the last part",
+  );
+  await waitFor(async () => {
+    const state = JSON.parse((await chats.getById(splitChat.id))!.metadata).advancedMemoryState;
+    return state.sceneCheckMessageId === splitLast.id && state.status === "ready";
+  });
+
+  // Only new replies split: a swipe, Continue and Impersonate keep one message.
+  const countOf = async (chatId: string) => (await chats.listMessages(chatId)).length;
+  mainReply = splitReply;
+  await splitGenerate(splitChat.id, { regenerateMessageId: splitLast.id });
+  assert.equal(await countOf(splitChat.id), 3, "a swipe never inserts messages");
+  assert.equal((await chats.getMessage(splitLast.id))!.content, splitReply, "it is a new version of that message");
+  // The earlier part's prompt brings back the whole reply, but the scenes after its break already have their own
+  // message and audience, so its new version keeps only its own scene, and the commands written in it.
+  assert.equal(extraOf(splitFirst).continuesAfterSceneBreak, true);
+  assert.equal(extraOf(splitLast).continuesAfterSceneBreak, undefined);
+  await chats.patchMetadata(splitChat.id, { roleplayCommandsEnabled: true, roleplayCommandToggles: { document: true } });
+  mainReply = splitReply
+    .replace("gate.", 'gate.[document title="Gate" content="FIRST_SCENE_DOCUMENT"]')
+    .replace("rain.", 'rain.[document title="Cellar" content="LATER_SCENE_DOCUMENT"]');
+  await splitGenerate(splitChat.id, { regenerateMessageId: splitFirst.id });
+  assert.equal(await countOf(splitChat.id), 3);
+  const regeneratedFirst = (await chats.getMessage(splitFirst.id))!;
+  assert.equal(regeneratedFirst.content, "CYNO_ALONE waits by the gate.");
+  assert.match(JSON.stringify(regeneratedFirst.extra), /FIRST_SCENE_DOCUMENT/u);
+  assert.doesNotMatch(JSON.stringify(regeneratedFirst.extra), /LATER_SCENE_DOCUMENT/u);
+  assert.equal(extraOf(regeneratedFirst).continuesAfterSceneBreak, true, "and it stays an earlier part");
+  mainReply = "\n\n***\n\nCONTINUED_SCENE";
+  await splitGenerate(splitChat.id, { continueMessageId: splitLast.id });
+  assert.equal(await countOf(splitChat.id), 3, "Continue extends the message");
+  assert.match((await chats.getMessage(splitLast.id))!.content, /\*\*\*\s+CONTINUED_SCENE$/u);
+  mainReply = splitReply;
+  await splitGenerate(splitChat.id, { impersonate: true });
+  const impersonated = (await chats.listMessages(splitChat.id)).at(-1)!;
+  assert.equal(await countOf(splitChat.id), 4, "Impersonate writes one message");
+  assert.equal(impersonated.role, "user");
+  assert.equal(impersonated.content, splitReply);
+  await chats.patchMetadata(splitChat.id, { advancedMemory: { ...splitMemory, enabled: false } });
+  await splitGenerate(splitChat.id);
+  assert.equal(await countOf(splitChat.id), 5, "without Advanced Memory a reply stays whole");
+  assert.equal((await chats.listMessages(splitChat.id)).at(-1)!.content, splitReply);
+  const conversationSplit = await chats.create({
+    name: "POV split conversation",
+    mode: "conversation",
+    characterIds: [character.id],
+    connectionId: connection.id,
+  });
+  assert(conversationSplit);
+  await chats.patchMetadata(conversationSplit.id, { enableAgents: false, advancedMemory: splitMemory });
+  await chats.createMessage({ chatId: conversationSplit.id, role: "user", content: "Hi." });
+  await splitGenerate(conversationSplit.id);
+  assert.deepEqual(
+    (await chats.listMessages(conversationSplit.id)).map((message) => message.content),
+    ["Hi.", splitReply],
+    "other modes never split",
+  );
+  mainReply = undefined;
 } finally {
   finishStream?.();
   for (const chatId of chatIds) await memory.cancel(chatId);

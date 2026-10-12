@@ -19,6 +19,7 @@ import { resolveMessageReasoningDisplay } from "../../packages/client/src/lib/me
 import { shouldFormatTextareaQuotes } from "../../packages/client/src/lib/textarea-quotes.js";
 import {
   findLatestTTSAutoplayMessage,
+  findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
 } from "../../packages/client/src/lib/tts-autoplay.js";
@@ -965,6 +966,51 @@ assert.match(
   /addEventListener\(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady\)/u,
   "TTS autoplay must listen for finalized text without waiting for the full agent stream to close",
 );
+// #7481: a reply split at scene breaks is read part by part, and a held rewrite keeps the live reply empty.
+assert.match(
+  generateHookSource,
+  /const splitPartsBefore = \(id: string\) =>\s*\(splitPartIdsBefore\.get\(id\) \?\? \[\]\)\.flatMap\(\(partId\) => persistedMessages\.get\(partId\) \?\? \[\]\)/u,
+  "split parts must resolve to their latest saved rows",
+);
+assert.match(
+  generateHookSource,
+  /case "assistant_message_ready": \{[\s\S]{0,500}earlierMessages: splitPartsBefore\(message\.id\) \}/u,
+  "the ready event must carry the earlier parts of a split reply",
+);
+assert.match(
+  chatAreaSource,
+  /Promise\.all\(\s*\[\.\.\.earlierMessages, lastMsg\]\.map\([\s\S]{0,1200}ttsService\.speakSequence\(\s*parts\.flatMap/u,
+  "autoplay must read a split reply's earlier parts before its last part, as one sequence",
+);
+assert.match(
+  generateRouteSource,
+  /type: "message_saved",\s*data: savedPart \?\? part\.message,\s*remainingContent: holdForTextRewrite\s*\?\s*""/u,
+  "while a rewrite agent holds the reply, an earlier part must not type out the unrewritten rest",
+);
+{
+  const part = (id: string, characterId: string, extra: unknown) => ({
+    id,
+    role: "assistant",
+    content: id,
+    characterId,
+    extra,
+  });
+  const history = [
+    part("other", "cyno", { continuesAfterSceneBreak: true }),
+    part("first", "mari", { continuesAfterSceneBreak: true }),
+    part("second", "mari", JSON.stringify({ continuesAfterSceneBreak: true })),
+    part("last", "mari", {}),
+  ];
+  assert.deepEqual(
+    findSplitReplyEarlierParts(history, history[3]!).map((message) => message.id),
+    ["first", "second"],
+    "stream-end autoplay must find a split reply's earlier parts from the saved rows",
+  );
+  assert.match(
+    chatAreaSource,
+    /speakTTSAutoplayMessage\(lastMsg, activeChatId, generation, findSplitReplyEarlierParts\(msgs, lastMsg\)\)/u,
+  );
+}
 const galleryCreateIndex = generateRouteSource.indexOf("const galleryEntry = await galleryStore.create");
 const illustrationMessageLookupIndex = generateRouteSource.indexOf(
   "const msgRow = await chats.getMessage(messageId)",

@@ -19,6 +19,10 @@ import {
   wrapGameInstructions,
   type GameInventoryBearerStatus,
   type RulesetLayerOptions,
+  type GameWorld,
+  type WorldKit,
+  worldKitPromptText,
+  worldOverviewPromptText,
 } from "@marinara-engine/shared";
 import type { CharacterSpriteInfo } from "./sprite.service.js";
 
@@ -144,6 +148,14 @@ export interface GmPromptContext {
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
   gameSystemPrompt?: string | null;
   gameSpecialInstructions?: string | null;
+  /** The game's setting kit (worldgen W0): the world's own words and the kinds of change it
+   *  allows. Fixed for the game, so it sits in the cached system prompt. */
+  worldKit?: WorldKit | null;
+  /** The game's generated world (worldgen W1), when it has one: its premise and outer places, fixed
+   *  for the game and so in the cached system prompt. Where the party is goes in the reminder. */
+  world?: GameWorld | null;
+  /** Where the party is in that world and where it can go from there (`worldWhereYouAreText`). */
+  whereYouAre?: string;
 }
 
 const MAX_PROMPT_MAP_LOCATIONS = 10;
@@ -229,6 +241,8 @@ function normalizePromptNpcs(value: unknown): GameNpc[] {
         reputation: typeof source.reputation === "number" && Number.isFinite(source.reputation) ? source.reputation : 0,
         notes: normalizePromptTextList(source.notes),
         avatarUrl: typeof source.avatarUrl === "string" ? source.avatarUrl : null,
+        ...(typeof source.worldId === "string" ? { worldId: source.worldId } : {}),
+        ...(typeof source.role === "string" ? { role: source.role } : {}),
       },
     ];
   });
@@ -384,8 +398,16 @@ function buildMapStateLines(map: GameMap, playerMoved?: boolean, turnNumber?: nu
 function buildTrackedNpcLines(npcs: GameNpc[]): string[] {
   const sorted = [...npcs].sort((left, right) => Math.abs(right.reputation) - Math.abs(left.reputation));
 
+  // People who share a name are told apart by what they are, and by id for the tags that name them.
+  const nameCounts = new Map<string, number>();
+  for (const npc of npcs) nameCounts.set(npc.name.toLowerCase(), (nameCounts.get(npc.name.toLowerCase()) ?? 0) + 1);
   const lines = sorted.slice(0, MAX_PROMPT_NPCS).map((npc) => {
-    const parts = [`- ${npc.name} @ ${npc.location || "unknown"}`, `rep ${npc.reputation}`];
+    const shared = (nameCounts.get(npc.name.toLowerCase()) ?? 0) > 1;
+    const who = [npc.role, shared ? npc.description : "", shared ? `id ${npc.worldId ?? npc.id}` : ""].filter(Boolean);
+    const parts = [
+      `- ${npc.name}${who.length ? ` (${who.join("; ")})` : ""} @ ${npc.location || "unknown"}`,
+      `rep ${npc.reputation}`,
+    ];
     if (npc.notes.length > 0) {
       parts.push(npc.notes.slice(0, 2).join("; "));
     }
@@ -642,6 +664,8 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   }
   gameBlockLines.push(`</game>`);
   sections.push(...gameBlockLines);
+  if (ctx.worldKit) sections.push(worldKitPromptText(ctx.worldKit));
+  if (ctx.world) sections.push(worldOverviewPromptText(ctx.world));
 
   if (ctx.tacticalBattlefieldContext) {
     sections.push(
@@ -1176,6 +1200,7 @@ export function buildGmFormatReminder(
     | "inventoryBearers"
     | "inventoryPurses"
     | "market"
+    | "whereYouAre"
     | "rulesetLayerOptions"
     | "language"
     | "rating"
@@ -1190,6 +1215,9 @@ export function buildGmFormatReminder(
      *  difficulty ladder replace the built-in skill-check lines. Absent is the Engine's own rules
      *  and renders today's reminder byte for byte. */
     ruleset?: import("@marinara-engine/shared").RulesetDefinition;
+    /** A game with no ruleset's money and market, built from its setting kit (worldgen W6b,
+     *  `worldKitItems`): taught as a ruleset's coins and market are, and nothing else of a ruleset. */
+    kitItems?: import("@marinara-engine/shared").RulesetDefinition;
     /** One rendered sheet block per party member (`renderRulesetSheetBlock`), current as of this
      *  turn. They live in this late reminder and never in the system prompt, because live state
      *  changes every turn and the system prompt is what a provider caches. Only read with `ruleset`. */
@@ -1284,7 +1312,13 @@ export function buildGmFormatReminder(
     ].join(", ");
     return worn ? { worn } : {};
   };
-  const coins = ctx.ruleset ? rulesetLayeredCurrencies(ctx.ruleset, ctx.rulesetLayerOptions) : [];
+  const coins = ctx.ruleset
+    ? rulesetLayeredCurrencies(ctx.ruleset, ctx.rulesetLayerOptions)
+    : ctx.kitItems
+      ? rulesetLayeredCurrencies(ctx.kitItems, undefined)
+      : [];
+  // The market the Game Master buys at: its ruleset's, or a game without one its setting kit's.
+  const market = ctx.ruleset ? ctx.ruleset.items?.market : ctx.kitItems?.items?.market;
   const bearerFor = (holder: string | undefined) =>
     [
       bearerNote(ctx.inventoryBearers?.[gameInventoryBagKey(holder)], bindingName),
@@ -1498,13 +1532,18 @@ export function buildGmFormatReminder(
             : []),
           ...(coins.length
             ? [
-                `- [inventory: action="pay" amount="5 ${coins[0]!.units.at(-1)!.label}" who="Name"] and [inventory: action="earn" amount="12 ${coins[0]!.units[0]!.label}" who="Name"] - when a character pays for something or is paid, in the ruleset's coins (${promptCoins(coins)}). Coins are items in each character's purse: a payment comes out of that character's purse (the player's with who left out), inside the coin's own family, with change in its smaller coins, and one they cannot afford is refused; an earning goes into the bags as an add does. The answer says what was paid and what is left: narrate exactly that. ${ctx.ruleset?.items?.market ? "Buying is a buy (below)" : "Buying is a payment and then an add"}; never add or remove coins any other way.`,
+                `- [inventory: action="pay" amount="5 ${coins[0]!.units.at(-1)!.label}" who="Name"] and [inventory: action="earn" amount="12 ${coins[0]!.units[0]!.label}" who="Name"] - when a character pays for something or is paid, in the ${ctx.ruleset ? "ruleset's coins" : "setting's money"} (${promptCoins(coins)}). Coins are items in each character's purse: a payment comes out of that character's purse (the player's with who left out), inside the coin's own family, with change in its smaller coins, and one they cannot afford is refused; an earning goes into the bags as an add does. The answer says what was paid and what is left: narrate exactly that. ${market ? "Buying is a buy (below)" : "Buying is a payment and then an add"}; never add or remove coins any other way.`,
               ]
             : []),
-          ...(ctx.ruleset?.items?.market
+          ...(market
             ? [
-                `- [place: name="Name" size="${ctx.ruleset.items.market.places.at(-1)!.label}"] - whenever the scene moves to a new place, with its size, one of: ${ctx.ruleset.items.market.places.map((place) => place.label).join(", ")} (smallest first). Leave size out for somewhere with no market (a road, the wilds). The Engine keeps the last place said until you say another, and the MARKET block below shows what it sells.`,
-                `- [inventory: action="buy" item="Name" count="1" level="${ctx.ruleset.items.market.prices.find((level) => level.default)!.label}" seller="Seller" who="Name"] - when a character buys something, instead of paying and adding it yourself. Levels: ${ctx.ruleset.items.market.prices.map((level) => `${level.label} ×${level.times}${level.default ? " (the default)" : ""}`).join(", ")}; haggling or a seller's mood moves the level, never the price. The Engine checks the place and the seller sell it, prices it, takes the price from the buyer's purse (the player's with who left out) and puts it in their bag (a service only pays), and the answer says what it cost or why not: narrate exactly that.`,
+                `- [place: name="Name" size="${market.places.at(-1)!.label}"] - whenever the scene moves to a new place, with its size, one of: ${market.places.map((place) => place.label).join(", ")} (smallest first). Leave size out for somewhere with no market (a road, the wilds). The Engine keeps the last place said until you say another, and the MARKET block below shows what it sells. When a new day begins where the party is staying, say the place again with day="new": what the sellers have in stock and what they will pay out start over.`,
+                `- [inventory: action="buy" item="Name" count="1" level="${market.prices.find((level) => level.default)!.label}" seller="Seller" who="Name"] - when a character buys something, instead of paying and adding it yourself. Levels: ${market.prices.map((level) => `${level.label} ×${level.times}${level.default ? " (the default)" : ""}`).join(", ")}; haggling or a seller's mood moves the level, never the price. The Engine checks the place and the seller sell it, prices it, takes the price from the buyer's purse (the player's with who left out) and puts it in their bag (a service only pays), and the answer says what it cost or why not: narrate exactly that.`,
+                ...(market.buyBack !== undefined
+                  ? [
+                      `- [inventory: action="sell" item="Name" count="1" seller="Seller" who="Name"] - when a character sells something here, instead of removing it and earning coins yourself. The Engine checks someone here buys that kind of thing and still has money today, takes it out of the seller's bag (the player's with who left out) and pays its coins in, and the answer says what it fetched or why not: narrate exactly that.`,
+                    ]
+                  : []),
               ]
             : []),
           ...(ctx.ruleset?.items?.lootTables?.length
@@ -1515,7 +1554,7 @@ export function buildGmFormatReminder(
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,
-    `- [reputation: npc="Name" action="helped"] - when an NPC's tracked stance changes because of what happened.`,
+    `- [reputation: npc="Name" action="helped"] - when an NPC's tracked stance changes because of what happened. When two tracked people share a name, add the one you mean: id="..." as listed.`,
     `- [party_change: character="Exact Character Name" change="add|remove"] - only when someone truly joins or leaves the party. Use remove when a party member dies, permanently departs, or is no longer traveling with the player.`,
     `- [session_end: reason="goal achieved|good place to pause"] - only when the current session truly ends.`,
   );
@@ -1666,6 +1705,7 @@ export function buildGmFormatReminder(
     );
   }
 
+  if (ctx.whereYouAre) lines.push(``, ctx.whereYouAre);
   if (ctx.market) lines.push(``, ctx.market);
 
   const specialInstructions = normalizePromptText(ctx.gameSpecialInstructions);
@@ -1701,6 +1741,10 @@ export interface SetupPromptContext {
    *  ruleset text world generation reads: everything else a ruleset says reaches the per-turn
    *  reminder instead, because the world is designed once and the sheets change every turn. */
   rulesetWorldGuidance?: string | null;
+  /** The game's setting kit (worldgen W0), so the world is designed in its words. */
+  worldKit?: WorldKit | null;
+  /** The game's generated world (worldgen W1), so the story is set among its places. */
+  world?: GameWorld | null;
   /** Language for natural-language JSON values */
   language?: string;
   /** User-overridable GM instruction body that will be used after setup. */
@@ -1779,6 +1823,19 @@ export function buildSetupPrompt(ctx: SetupPromptContext = {}): string {
       `This game runs on a rules system its author wrote. Design the world so it fits these rules:`,
       rulesetWorldGuidance,
       `</ruleset_world>`,
+    );
+  }
+  if (ctx.worldKit) {
+    contextSections.push(
+      `Design the world in the words of the setting below: its places, groups, travel and names.`,
+      worldKitPromptText(ctx.worldKit),
+    );
+  }
+  if (ctx.world) {
+    const start = ctx.world.world.places.find((place) => place.id === ctx.world!.world.startId);
+    contextSections.push(
+      worldOverviewPromptText(ctx.world),
+      `This world already exists: set the story among its places and do not rename them. The party starts in ${start?.name ?? "its starting place"}; the starting map is of that place.`,
     );
   }
   if (ctx.customHudWidgets?.length) {

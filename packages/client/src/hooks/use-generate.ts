@@ -688,6 +688,7 @@ import {
   resolveGameExperiencePackageId,
 } from "../lib/capability-client-events";
 import { messageHasPendingPostProcessing, parseMessageExtraRecord } from "../lib/chat-message-extra";
+import { applyMessageTextRewrite } from "../lib/message-rewrite-versions";
 import type { APIConnection, Chat, GameMap, Message } from "@marinara-engine/shared";
 
 function sortMessagesByCreatedAt(messages: Message[]): Message[] {
@@ -1549,6 +1550,13 @@ export function useGenerate() {
       let typewriterBufferUntil = 0;
       let roleplayTypewriterCharsPerSecond: number | null = null;
       const persistedMessages = new Map<string, Message>();
+      // Earlier parts of a reply split at scene breaks (#7481), by its last part's ID, so autoplay reads every part.
+      let pendingSplitPartIds: string[] = [];
+      const splitPartIdsBefore = new Map<string, string[]>();
+      const splitPartsBefore = (id: string) =>
+        (splitPartIdsBefore.get(id) ?? []).flatMap((partId) => persistedMessages.get(partId) ?? []);
+      const isSplitPart = (id: string) =>
+        pendingSplitPartIds.includes(id) || [...splitPartIdsBefore.values()].some((ids) => ids.includes(id));
       let vnReplyPublished = false;
       const publishVnReply = (message: Message | null) => {
         if (
@@ -2558,6 +2566,7 @@ export function useGenerate() {
             case "text_rewrite": {
               // A post-processing editor replaced the message — update displayed text.
               const rw = event.data as {
+                messageId?: string;
                 editedText?: string;
                 changes?: Array<{ description: string }>;
                 rewriteApplied?: boolean;
@@ -2565,16 +2574,27 @@ export function useGenerate() {
                 agentType?: string;
               };
               if (rw.editedText) {
-                // Post-processing rewrites the complete stored message, including its original text.
-                const continuation = useChatStore.getState().continuationStreams.get(params.chatId);
-                if (continuation) {
-                  useChatStore.getState().setContinuationStream(params.chatId, { ...continuation, content: "" });
-                }
                 const rewrittenText = normalizeLineBreakSpacing(rw.editedText);
                 const builtInRewriteApplied =
                   rw.rewriteApplied === true &&
                   (rw.agentType === "prose-guardian" || rw.agentType === "continuity" || rw.agentType === "html") &&
                   typeof rw.originalText === "string";
+                const rewriteOriginalText = builtInRewriteApplied ? (rw.originalText ?? null) : null;
+                // An earlier part of a split reply (#7481) is already in the chat, so its rewrite updates that row.
+                const splitPart =
+                  rw.messageId && isSplitPart(rw.messageId) ? persistedMessages.get(rw.messageId) : undefined;
+                if (splitPart) {
+                  const rewrittenPart = applyMessageTextRewrite(splitPart, rewrittenText, rewriteOriginalText);
+                  persistedMessages.set(rewrittenPart.id, rewrittenPart);
+                  await qc.cancelQueries({ queryKey: chatKeys.messages(params.chatId), exact: true });
+                  upsertPersistedMessages(qc, params.chatId, [rewrittenPart]);
+                  break;
+                }
+                // Post-processing rewrites the complete stored message, including its original text.
+                const continuation = useChatStore.getState().continuationStreams.get(params.chatId);
+                if (continuation) {
+                  useChatStore.getState().setContinuationStream(params.chatId, { ...continuation, content: "" });
+                }
                 leadingSpeakerPrefixFilter.discard();
                 if (holdingTextRewrite && heldTextRewriteMessage) {
                   thinkingStreamFilter.reset();
@@ -2587,22 +2607,11 @@ export function useGenerate() {
                     pendingText = "";
                     setStreamBuffer(fullBuffer, params.chatId);
                   }
-                  const heldExtra = { ...parseMessageExtraRecord(heldTextRewriteMessage.extra) };
-                  delete heldExtra.postProcessingPending;
-                  if (builtInRewriteApplied) {
-                    heldExtra.proseGuardianOriginalText = rw.originalText;
-                    heldExtra.proseGuardianRewrittenText = rewrittenText;
-                    heldExtra.proseGuardianRewrittenAt = new Date().toISOString();
-                  } else {
-                    delete heldExtra.proseGuardianOriginalText;
-                    delete heldExtra.proseGuardianRewrittenText;
-                    delete heldExtra.proseGuardianRewrittenAt;
-                  }
-                  const updatedMessage = {
-                    ...heldTextRewriteMessage,
-                    content: rewrittenText,
-                    extra: heldExtra as unknown as Message["extra"],
-                  };
+                  const updatedMessage = applyMessageTextRewrite(
+                    heldTextRewriteMessage,
+                    rewrittenText,
+                    rewriteOriginalText,
+                  );
                   rememberContinuedMessageContent(updatedMessage);
                   persistedMessages.set(updatedMessage.id, updatedMessage);
                   if (currentGroupTurnSavedMessage?.id === updatedMessage.id) {
@@ -2670,7 +2679,15 @@ export function useGenerate() {
             case "message_saved": {
               flushLeadingSpeakerPrefix();
               const savedMessage = event.data as Message;
-              if (savedMessage.role === "assistant") {
+              // An earlier part of a reply split at a scene break (#7481). It joins the chat above the live
+              // reply, which goes on with the rest and keeps the stream, so nothing shows twice.
+              const remainingContent = typeof event.remainingContent === "string" ? event.remainingContent : null;
+              if (remainingContent !== null) {
+                await waitForTypewriterDrain();
+                pendingSplitPartIds.push(savedMessage.id);
+              } else if (savedMessage.role === "assistant") {
+                if (pendingSplitPartIds.length) splitPartIdsBefore.set(savedMessage.id, pendingSplitPartIds);
+                pendingSplitPartIds = [];
                 completeQueuedResponse(params.chatId, savedMessage.characterId);
                 currentGroupTurnSavedMessage = savedMessage;
                 if (
@@ -2688,7 +2705,14 @@ export function useGenerate() {
               }
               await qc.cancelQueries({ queryKey: chatKeys.messages(params.chatId), exact: true });
               persistedMessages.set(savedMessage.id, savedMessage);
-              if (savedMessage.role === "assistant" && keepStreamLiveThroughPostProcessing) {
+              if (remainingContent !== null) {
+                // The part keeps the reasoning, so the live reply stops showing it. The cache update below
+                // lands in the same tick, so the part and the shortened live reply appear together.
+                clearThinkingBuffer(params.chatId);
+                leadingSpeakerPrefixFilter.discard();
+                thinkingStreamFilter.reset();
+                replaceGeneratedContentWithTypewriter(remainingContent);
+              } else if (savedMessage.role === "assistant" && keepStreamLiveThroughPostProcessing) {
                 setStreamedMessageId(params.chatId, savedMessage.id);
               }
               gameStatePatchAnchor = {
@@ -2706,7 +2730,9 @@ export function useGenerate() {
                 !Array.isArray(pendingPostProcessing)
                   ? (pendingPostProcessing as { agentType?: unknown }).agentType
                   : null;
+              // A held earlier part keeps its own row with the placeholder; only the live reply is held.
               if (
+                remainingContent === null &&
                 savedMessage.role === "assistant" &&
                 pendingPostProcessing &&
                 typeof pendingPostProcessing === "object" &&
@@ -2754,7 +2780,7 @@ export function useGenerate() {
               if (!message?.id || !message.content?.trim()) break;
               window.dispatchEvent(
                 new CustomEvent<TTSAutoplayMessageReadyDetail>(TTS_AUTOPLAY_MESSAGE_READY_EVENT, {
-                  detail: { chatId: params.chatId, message },
+                  detail: { chatId: params.chatId, message, earlierMessages: splitPartsBefore(message.id) },
                 }),
               );
               if (

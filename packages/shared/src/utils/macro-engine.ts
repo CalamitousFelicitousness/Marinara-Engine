@@ -2676,6 +2676,31 @@ export function scopeCharacterSummary(
 }
 
 /**
+ * The names the character-only conditions in `input` compare the character with, as `scopeCharacterSummary`
+ * reads them, e.g. to keep the part of a character who left the chat.
+ */
+export function characterConditionNames(input: string, depth = 0): string[] {
+  const names = new Set<string>();
+  let cursor = 0;
+  while (depth < MAX_MACRO_RESOLUTION_DEPTH) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) break;
+    if (block.branches.every(({ condition }) => characterOnlyCondition(condition)))
+      for (const { condition, contentStart, contentEnd } of block.branches) {
+        for (const { left, right } of condition === null ? [] : parseConditionComparisons(condition))
+          for (const operand of [left, right]) {
+            const name = operand === undefined ? null : stripOuterQuotes(operand);
+            if (name) names.add(name);
+          }
+        for (const name of characterConditionNames(input.slice(contentStart, contentEnd), depth + 1)) names.add(name);
+      }
+    cursor = block.endEnd;
+  }
+  return [...names];
+}
+
+/**
  * Render text once per reader of a shared prompt and mark each version not everyone gets,
  * e.g. `[Known only to Maukie: …]` (#7237). `everyone` is how many readers the prompt has.
  */

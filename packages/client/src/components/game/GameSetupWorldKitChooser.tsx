@@ -170,7 +170,17 @@ export function GameSetupWorldKitChooser({
     input.value = "";
     if (!file) return;
     const turn = ++lastRead.current;
-    const text = await file.text();
+    let text: string;
+    try {
+      text = await file.text();
+    } catch (error) {
+      // A file removed or locked after it was picked: say so rather than nothing.
+      if (turn !== lastRead.current) return;
+      return setFileNote({
+        error: true,
+        text: t("game.worldKit.setup.fileRefused", { reason: error instanceof Error ? error.message : String(error) }),
+      });
+    }
     if (turn !== lastRead.current) return;
     if (kind === "kit") {
       const read = readWorldKitFile(text);
@@ -1040,6 +1050,7 @@ export function GameSetupWorldKitChooser({
                         <NumberField
                           value={unit.value}
                           min={1}
+                          max={1_000_000}
                           onChange={(value) => edit((draft) => (draft.money!.units[index]!.value = value))}
                           label={t("game.worldKit.setup.coinWorth", { coin: unit.label })}
                           className={cn(INPUT, "w-28 shrink-0")}
@@ -1075,6 +1086,7 @@ export function GameSetupWorldKitChooser({
                         <NumberField
                           value={thing.price}
                           min={0}
+                          max={1_000_000_000}
                           onChange={(value) => edit((draft) => (draft.shop![index]!.price = value))}
                           label={t("game.worldKit.setup.shopPrice", { name: thing.name })}
                           className={cn(INPUT, "w-28 shrink-0")}

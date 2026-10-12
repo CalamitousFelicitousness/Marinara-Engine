@@ -13,6 +13,7 @@ import type {
   SetLorebooksEnabledResult,
 } from "@marinara-engine/shared";
 import { characterKeys } from "./use-characters";
+import { libraryFolderKeys } from "./use-library-folders";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
 import {
   collectAllPaginatedItems,
@@ -258,6 +259,8 @@ export function useDeleteLorebook() {
       // missing this lets the character editor keep rendering stale
       // entries and a broken "Edit Embedded Lorebook" button.
       qc.invalidateQueries({ queryKey: characterKeys.all });
+      // The server also drops the deleted book from library folders.
+      qc.invalidateQueries({ queryKey: libraryFolderKeys.list("lorebooks") });
     },
   });
 }

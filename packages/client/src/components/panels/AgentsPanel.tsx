@@ -2287,7 +2287,7 @@ function TilePacksSection() {
             aria-label={t("game.tilePacks.removeNamed", { name: pack.name })}
             onClick={() => void onRemove(pack.id, pack.name)}
           >
-            <Trash2 size="0.75rem" className="text-[var(--destructive)]" />
+            <Trash2 size="0.75rem" />
           </button>
         </div>
       ))}

@@ -143,7 +143,15 @@ Open **Session** (see [Opening Session](sessions-and-saves.md#opening-session)),
 - **Items**: a log of items you acquired, used, lost, or removed.
 - **Library**: in-world notes and books the Game Master has shown you, saved so you can read them again.
 - **Notes**: your own free-text notepad.
-- **World**: in a game with a generated world, the world as your party knows it: where you are, how well known the party is, its standing with each group it has dealt with, what it has done, the news that has reached it (rumours marked), trouble brewing that it has heard of, and the past any local would tell. It shows only what the party could know, never what only the Game Master knows, and follows the story through swipes and branches.
+- **World**: in a game with a generated world, the world as your party knows it. It shows:
+  - where you are, and how well known the party is
+  - the party's standing with each group it has dealt with
+  - what the party has done
+  - news that has reached it, with rumours marked
+  - trouble brewing that it has heard of
+  - the past any local would tell
+
+  It shows only what the party could know. Secrets only the Game Master knows stay hidden. It follows the story through swipes and branches.
 
 ### Player notes
 
@@ -157,15 +165,15 @@ The **NPCs** tab of the Adventure Journal tracks how each NPC feels about you. E
 
 The reputation label changes as you act in the story. It is one of these seven, from best to worst:
 
-| Label | Meaning |
-|---|---|
-| **Devoted** | Deeply loyal to you |
-| **Allied** | Strong ally |
-| **Friendly** | Positive |
-| **Neutral** | No strong feeling |
-| **Unfriendly** | Negative |
-| **Hostile** | Turned against you |
-| **Enemy** | Actively opposed |
+| Label          | Meaning             |
+| -------------- | ------------------- |
+| **Devoted**    | Deeply loyal to you |
+| **Allied**     | Strong ally         |
+| **Friendly**   | Positive            |
+| **Neutral**    | No strong feeling   |
+| **Unfriendly** | Negative            |
+| **Hostile**    | Turned against you  |
+| **Enemy**      | Actively opposed    |
 
 A label appears only after an NPC's reputation has moved away from the starting point. A brand-new NPC with unchanged reputation shows no label yet.
 

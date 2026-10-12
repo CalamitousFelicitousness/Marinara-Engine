@@ -226,6 +226,12 @@ try {
     assert.match(taught, /\[place: name="Name" size="metropolis"\]/);
     const plain = reminder();
     assert.doesNotMatch(plain, /action="pay"|action="buy"/);
+    // Money and no shop: the Game Master pays and earns, and has no market to buy from.
+    const moneyOnly = worldKitItems({ ...modern, shop: undefined })!;
+    assert.equal(moneyOnly.definition.items?.market, undefined);
+    assert.equal(loadGameKitMarket(moneyOnly, book, { name: "Elm Street", size: "town" }), undefined);
+    assert.match(reminder(moneyOnly), /action="pay"/);
+    assert.doesNotMatch(reminder(moneyOnly), /action="buy"/);
   }
 
   // ── The model writing a kit is asked for money and a shop ──

@@ -61,6 +61,7 @@ import { describeEmptyModelResponse, sentOutputBudget } from "../services/genera
 import { isGlm53MandatoryReasoningModel } from "../services/llm/providers/glm-request-compat.js";
 import { fetchOpenAIChatGPTModels, getOpenAIChatGPTAuth } from "../services/llm/openai-chatgpt-auth.js";
 import { fetchGrokCliModels } from "../services/llm/providers/grok-subscription.provider.js";
+import { stopIfClaudeCodeExposesMcp } from "../services/llm/providers/claude-subscription.provider.js";
 import {
   buildGoogleVertexModelUrl,
   googleAuthHeadersForVertex,
@@ -72,6 +73,7 @@ import {
 } from "../services/image/image-generation-defaults.js";
 import { buildVeniceApiUrl, normalizeVeniceImageModels } from "../services/image/venice-image.js";
 import { buildFalImageUrl } from "../services/image/fal-image.js";
+import { buildSpicyApiUrl, normalizeSpicyApiImageModels } from "../services/image/spicyapi-image.js";
 import { isImageLocalUrlsEnabled, isProviderLocalUrlsEnabled } from "../config/runtime-config.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
@@ -849,6 +851,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
       } else if (conn.provider === "image_generation" && imageSource === "horde") {
         // Horde: heartbeat is the lightweight health endpoint for the public API.
         testUrl = buildHordeUrl(baseUrl, "status/heartbeat");
+      } else if (conn.provider === "image_generation" && imageSource === "spicyapi") {
+        // Listing image models checks the key without starting a paid task.
+        testUrl = buildSpicyApiUrl(baseUrl, "models", { modality: "image" });
       } else if (conn.provider === "image_generation" && imageSource === "stability") {
         // Stability's generation endpoints live under v2beta, but account/key checks are v1.
         testUrl = buildStabilityUrl(baseUrl, "v1/user/account");
@@ -1308,6 +1313,24 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return { models: normalizeModelsResponse("openrouter", json) };
       }
 
+      if (conn.provider === "image_generation" && imageSource === "spicyapi") {
+        const res = await safeFetch(buildSpicyApiUrl(baseUrl, "models", { modality: "image" }), {
+          headers,
+          policy: localUrlPolicyForProvider(conn.provider, imageSource),
+          maxResponseBytes: 5 * 1024 * 1024,
+          decodeCompressedResponse: true,
+        });
+        const text = await res.text();
+        if (!res.ok) {
+          return reply.status(502).send({ error: `SpicyAPI returned ${res.status}: ${sanitizeProviderBody(text)}` });
+        }
+        try {
+          return { models: normalizeSpicyApiImageModels(JSON.parse(text)) };
+        } catch {
+          return reply.status(502).send({ error: `Failed to fetch models: ${sanitizeProviderBody(text)}` });
+        }
+      }
+
       if (conn.provider === "image_generation" && imageSource === "venice") {
         const res = await safeFetch(buildVeniceApiUrl(baseUrl, "models"), {
           headers,
@@ -1732,23 +1755,36 @@ export async function connectionsRoutes(app: FastifyInstance) {
       // strips the model's version awareness and every model falsely answers
       // "Sonnet" — see the chat provider for the full explanation. Passing the
       // preset gives a clean signal on the model's true identity.
+      // Same connector isolation as chat: no settings files or claude.ai connectors, and a hard stop
+      // if Claude Code loads MCP servers or tools anyway, since permission checks are off.
+      const abortController = new AbortController();
       const queryHandle = sdk.query({
         prompt:
           "[OOC, hold on for one second, and tell me which claude model you are, you don't need to give me the version, are you Opus, Sonnet, Or Haiku? Answer with only the 1 word model name.]",
         options: {
+          abortController,
           model: requestedModel,
           systemPrompt: { type: "preset", preset: "claude_code" },
           tools: [],
+          settingSources: [],
           permissionMode: "bypassPermissions",
           includePartialMessages: false,
+          // A preset title skips the CLI's hidden session-naming request.
+          title: "Title",
           settings: { fastMode },
           ...(await claudeCodeExecutableOption()),
-          ...(conn.apiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: conn.apiKey } } : {}),
+          env: {
+            ...process.env,
+            ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+            ...(conn.apiKey ? { ANTHROPIC_API_KEY: conn.apiKey } : {}),
+          },
         },
       });
 
       for await (const message of queryHandle) {
-        if (message.type === "assistant") {
+        if (message.type === "system" && message.subtype === "init") {
+          stopIfClaudeCodeExposesMcp(message, abortController);
+        } else if (message.type === "assistant") {
           const blocks = (message.message?.content ?? []) as Array<{ type: string; text?: string }>;
           for (const block of blocks) {
             if (block.type === "text" && block.text) responseText += block.text;

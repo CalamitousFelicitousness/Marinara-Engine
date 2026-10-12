@@ -496,6 +496,8 @@ export function applyGameInventoryTags(
             left -= count * coin.value;
             coinOps.push({ op: "add", name: coin.name, item: coin.item, count, holder, log: true });
           }
+          // Never pay less than the purse is charged.
+          if (left > 0) return serializeInventoryTag(answered, { ok: false, reason: "not-for-sale" });
           const paid = applyGameInventoryOps(taken.stacks, coinOps, newId, rules);
           if (paid.results.some((result) => !result.ok || (result.left ?? 0) > 0)) {
             return serializeInventoryTag(answered, { ok: false, reason: "too-heavy" });

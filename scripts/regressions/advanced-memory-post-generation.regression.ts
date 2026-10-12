@@ -53,6 +53,13 @@ let mainFirstUsage = true;
 // The first reply asks for a roll in text instead of a native tool call, and can be padded.
 let mainTextRoll = false;
 let mainFirstReplyPadding = "";
+// When set, the first main reply says this instead.
+let mainReply: string | undefined;
+// When set, the first main reply is this, given the prompt it answers.
+let mainReplyFor: ((prompt: string) => string) | undefined;
+// The text each rewrite agent call was given. A call given text containing rewriteFailsFor fails.
+const rewriteSources: string[] = [];
+let rewriteFailsFor: string | undefined;
 // Streamed main replies send usage only on their last chunk, after a pause, as OpenAI-compatible
 // providers do. Counts streams the client closed before that chunk.
 let mainStreamUsageLast = false;
@@ -111,13 +118,15 @@ const provider = createServer(async (req, res) => {
     })),
   ];
   const prompt = JSON.stringify(messages);
-  const kind = prompt.includes("TRACKER_SCENE_FIXTURE")
-    ? "tracker"
-    : prompt.includes("Identify scene transitions")
-      ? "scene"
-      : prompt.includes("Summarize only the supplied eligible source material")
-        ? "summary"
-        : "main";
+  const kind = prompt.includes("REWRITE_FIXTURE")
+    ? "rewrite"
+    : prompt.includes("TRACKER_SCENE_FIXTURE")
+      ? "tracker"
+      : prompt.includes("Identify scene transitions")
+        ? "scene"
+        : prompt.includes("Summarize only the supplied eligible source material")
+          ? "summary"
+          : "main";
   calls.push({
     kind,
     messages,
@@ -127,6 +136,18 @@ const provider = createServer(async (req, res) => {
     tools: body.tools,
   });
   if (kind === "summary" && summaryGate) await summaryGate;
+  const rewriteSource =
+    kind === "rewrite"
+      ? (/<assistant_response>\n([\s\S]*?)\n<\/assistant_response>/u.exec(
+          messages.map((message: { content: string }) => message.content).join("\n"),
+        )?.[1] ?? "")
+      : "";
+  if (kind === "rewrite") rewriteSources.push(rewriteSource);
+  if (kind === "rewrite" && rewriteFailsFor && rewriteSource.includes(rewriteFailsFor)) {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "The rewrite fixture refuses this part." } }));
+    return;
+  }
   // A tool round or roll follow-up resends the outgoing prompt with the first reply and the result.
   const followup =
     kind === "main" &&
@@ -172,10 +193,16 @@ const provider = createServer(async (req, res) => {
             ? mainFirstReplyPadding +
               (mainTextRoll
                 ? 'The guard lunges. [roll: notation="1d1", reason="dodge"]'
-                : "The character continues the silver compass journey.")
+                : (mainReplyFor?.(prompt) ?? mainReply ?? "The character continues the silver compass journey."))
             : followup && mainTextRoll && resolvedRolls <= mainFollowupRolls
               ? 'The guard swings again. [roll: notation="1d1", reason="parry"]'
-              : "The character continues the silver compass journey.";
+              : kind === "rewrite"
+                ? JSON.stringify({
+                    editNeeded: true,
+                    editedText: `REWRITTEN ${rewriteSource}`,
+                    changes: [{ description: "Fixture rewrite" }],
+                  })
+                : "The character continues the silver compass journey.";
   const response = {
     id: "fixture",
     status: "completed",
@@ -519,6 +546,15 @@ try {
       phase: "post_processing",
       enabledByDefault: false,
       defaultPromptTemplate: "TRACKER_SCENE_FIXTURE Return JSON values.",
+    },
+    {
+      id: "prose-guardian",
+      name: "Prose Guardian",
+      description: "Local regression fixture",
+      category: "writer",
+      phase: "post_processing",
+      enabledByDefault: false,
+      defaultPromptTemplate: "REWRITE_FIXTURE",
     },
   ]);
   const tracker = await createAgentsStorage(db).create({
@@ -1046,16 +1082,14 @@ try {
       payload: { chatId, forCharacterId: character.id, streaming },
     });
   const sentFollowups = (since: number) =>
-    calls
-      .slice(since)
-      .filter(
-        (call) =>
-          call.kind === "main" &&
-          (call.messages.some((message) => message.role === "tool") ||
-            JSON.stringify(call.messages).includes("The engine resolved your roll request") ||
-            // The last tool round's follow-up retells the results as text (toolRoundsAsText).
-            JSON.stringify(call.messages).includes("The engine ran the tools you called")),
-      ).length;
+    calls.slice(since).filter(
+      (call) =>
+        call.kind === "main" &&
+        (call.messages.some((message) => message.role === "tool") ||
+          JSON.stringify(call.messages).includes("The engine resolved your roll request") ||
+          // The last tool round's follow-up retells the results as text (toolRoundsAsText).
+          JSON.stringify(call.messages).includes("The engine ran the tools you called")),
+    ).length;
   const expectFollowupWithoutCutoff = async (label: string) => {
     const before = calls.length;
     const result = await generateFollowup();
@@ -1889,11 +1923,17 @@ try {
   calls.length = 0;
   summaryFinishReason = "error";
   await assert.rejects(memory.checkScenesAfterGeneration(partialChat.id), /summary model.*complete/u);
-  assert.deepEqual(
-    JSON.parse((await chats.getById(partialChat.id))!.metadata).summaryEntries,
-    [manual, maukieManual],
+  const afterFailure = JSON.parse((await chats.getById(partialChat.id))!.metadata).summaryEntries;
+  assert.deepEqual(afterFailure.slice(0, 2), [manual, maukieManual]);
+  // The scene's constant that needs no Helper call is saved first, so the failed re-summary of a partly
+  // covered copy doesn't hold it back.
+  assert.equal(afterFailure.length, 3, "Pantalone's constant is saved before the failed call");
+  assert.match(
+    afterFailure[2].content,
+    /^\{\{#if char == "Pantalone"\}\}/u,
     "a failed new-range summary is not added to Chat Summaries",
   );
+  assert.equal(afterFailure[2].rangeStartIndex, 1);
   summaryFinishReason = "stop";
   calls.length = 0;
   await memory.checkScenesAfterGeneration(partialChat.id);
@@ -2015,6 +2055,118 @@ try {
     /NIGHT_OF_WHISPER|WHISPERED_PLAN|Messages #1–#2/u,
     "Pantalone gets neither the hidden message's range and date nor Maukie's section",
   );
+
+  // #7454: a scene's one constant for every reader is still shortened when a reader leaves the chat, keeping
+  // their part for them, and when its shared part uses {{user}}, which reads the same for everyone.
+  const sharedSceneChat = async (name: string, shared: string) => {
+    const chat = await chats.create({
+      name,
+      mode: "roleplay",
+      characterIds: [character.id, privateA.id, privateB.id],
+      connectionId: connection.id,
+    });
+    assert(chat);
+    chatIds.push(chat.id);
+    await chats.patchMetadata(chat.id, {
+      enableAgents: false,
+      groupChatMode: "individual",
+      summaryMaxTokens: 1024,
+      advancedMemory: {
+        ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+        enabled: true,
+        maxContextTokens: 16_384,
+        summaryBudgetTokens: 3000,
+        narratorCharacterId: character.id,
+        knowledgeStarts: { [character.id]: null, [privateA.id]: null, [privateB.id]: null },
+      },
+    });
+    await chats.createMessage({ chatId: chat.id, role: "user", content: "A shared stroll." });
+    await chats.createMessage({
+      chatId: chat.id,
+      role: "user",
+      content: "Maukie whispers the plan.",
+      extra: { hiddenFromAICharacterIds: [privateB.id] },
+    });
+    await chats.createMessage({
+      chatId: chat.id,
+      role: "user",
+      content: "Pantalone counts the coins.",
+      extra: { hiddenFromAICharacterIds: [privateA.id] },
+    });
+    await chats.createMessage({
+      chatId: chat.id,
+      role: "user",
+      content: "SCENE_CHANGE present day",
+      extra: { isConversationStart: true },
+    });
+    summaryReply = () =>
+      `${shared} ${"FILL_S ".repeat(60)}{{#if char == "Maukie"}}${"FILL_M ".repeat(150)}MAUKIE_PLAN{{/if}}` +
+      `{{#if char == "Pantalone"}}${"FILL_P ".repeat(150)}PANTALONE_COINS{{/if}}`;
+    await memory.initialize(chat.id);
+    await memory.checkScenesAfterGeneration(chat.id, { blocking: false });
+    const entries = JSON.parse((await chats.getById(chat.id))!.metadata).summaryEntries as Array<{ content: string }>;
+    assert.equal(entries.length, 1, "the scene has one constant for every reader");
+    assert.match(entries[0]!.content, /PANTALONE_COINS/u);
+    summaryReply = (prompt) => (JSON.parse(prompt).at(-1).content as string).replace(/(?:FILL_\w+ )+/gu, "SHORT ");
+    await chats.patchMetadata(chat.id, {
+      advancedMemory: {
+        ...JSON.parse((await chats.getById(chat.id))!.metadata).advancedMemory,
+        summaryBudgetTokens: 200,
+      },
+    });
+    const source = await chats.listMessages(chat.id);
+    const view = async (id: string) =>
+      (
+        await memory.prepare({
+          chatId: chat.id,
+          messages: source,
+          audienceCharacterIds: [id],
+          budgetTokens: 50_000,
+          readOnly: true,
+        })
+      ).chatSummary ?? "";
+    return { chat, view };
+  };
+  const combineCalls = () =>
+    calls.filter((call) => /Condense the ordered summaries/u.test(JSON.stringify(call.messages)));
+  const departure = await sharedSceneChat("Reader leaves", "They took a SHARED_STROLL.");
+  await chats.update(departure.chat.id, { characterIds: [character.id, privateA.id] });
+  const maukieBefore = estimateChatSummaryTokens(await departure.view(privateA.id));
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(departure.chat.id, { blocking: false });
+  assert.equal(combineCalls().length, 1, "Maukie's share is shortened after Pantalone leaves");
+  assert.match(
+    JSON.stringify(combineCalls()[0]!.messages),
+    /\{\{#if char == \\"Pantalone\\"\}\}(?:FILL_P )+PANTALONE_COINS/u,
+    "Pantalone's part reaches the Helper with its own condition",
+  );
+  const departureEntry = (
+    JSON.parse((await chats.getById(departure.chat.id))!.metadata).summaryEntries as Array<{
+      enabled: boolean;
+      content: string;
+    }>
+  ).find((entry) => entry.enabled)!;
+  assert.match(departureEntry.content, /\{\{#if char == "Pantalone"\}\}SHORT PANTALONE_COINS\{\{\/if\}\}/u);
+  const maukieAfter = await departure.view(privateA.id);
+  assert(estimateChatSummaryTokens(maukieAfter) < maukieBefore);
+  assert.match(maukieAfter, /SHARED_STROLL[\s\S]*MAUKIE_PLAN/u);
+  assert.doesNotMatch(maukieAfter, /PANTALONE_COINS/u, "Maukie still never reads Pantalone's part");
+  await chats.update(departure.chat.id, { characterIds: [character.id, privateA.id, privateB.id] });
+  const pantaloneBack = await departure.view(privateB.id);
+  assert.match(pantaloneBack, /PANTALONE_COINS/u, "Pantalone's part is still his when he comes back");
+  assert.doesNotMatch(pantaloneBack, /MAUKIE_PLAN/u);
+
+  const userMacro = await sharedSceneChat("User macro", "{{user}} took a SHARED_STROLL.");
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(userMacro.chat.id, { blocking: false });
+  assert.equal(combineCalls().length, 1, "a shared part with {{user}} is shortened too");
+  const maukieUser = await userMacro.view(privateA.id);
+  const pantaloneUser = await userMacro.view(privateB.id);
+  assert.match(maukieUser, /SHARED_STROLL[\s\S]*SHORT MAUKIE_PLAN/u);
+  assert.doesNotMatch(maukieUser, /PANTALONE_COINS|\{\{user\}\}/u);
+  assert.match(pantaloneUser, /SHARED_STROLL[\s\S]*SHORT PANTALONE_COINS/u);
+  assert.doesNotMatch(pantaloneUser, /MAUKIE_PLAN/u);
+  summaryReply = undefined;
 
   // #7270: compaction combines Advanced Memory's own summaries with private character sections,
   // keeping each section for exactly the characters who knew it.
@@ -2816,6 +2968,295 @@ try {
   assert.match(await mergedView(everyone), /\[Known only to (?:Maukie, Pantalone|Pantalone, Maukie): MERGED_PLAIN\]/u);
   assert.equal(await mergedView([character.id]), "", "Dottore still reads nothing");
   summaryReply = undefined;
+
+  // #7481: with Advanced Memory, a new Roleplay reply is saved as one message per scene or POV break, from the
+  // same character, so each part can have its own audience.
+  closeLatestScene = false;
+  await chats.patchMetadata(chat.id, { enableAgents: false });
+  const splitChat = await chats.create({
+    name: "POV split",
+    mode: "roleplay",
+    characterIds: [character.id],
+    connectionId: connection.id,
+  });
+  assert(splitChat);
+  chatIds.push(splitChat.id);
+  const splitMemory = {
+    ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+    enabled: true,
+    maxContextTokens: 16_384,
+    helperConnectionId: connection.id,
+    sceneCheckInterval: 1,
+  };
+  await chats.patchMetadata(splitChat.id, { enableAgents: false, advancedMemory: splitMemory });
+  await memory.initialize(splitChat.id);
+  await chats.createMessage({ chatId: splitChat.id, role: "user", content: "Where is everyone?" });
+  const splitGenerate = async (chatId: string, extra: Record<string, unknown> = {}) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId, forCharacterId: character.id, ...extra },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.ok(!response.body.includes('"type":"error"'), response.body);
+    return response.body
+      .split("\n\n")
+      .filter((block) => block.startsWith("data: "))
+      .map((block) => JSON.parse(block.slice(6)) as { type: string; data: any; remainingContent?: string });
+  };
+  const extraOf = (message: { extra?: unknown }) =>
+    (typeof message.extra === "string" ? JSON.parse(message.extra) : (message.extra ?? {})) as Record<string, any>;
+  const splitReply = "CYNO_ALONE waits by the gate.\n\n***\n\nMARI_AND_MAUKIE run through the rain.";
+  mainReply = `<think>PLANNING_BOTH_SCENES</think>${splitReply}`;
+  const splitEvents = await splitGenerate(splitChat.id);
+  const [, splitFirst, splitLast, ...splitRest] = await chats.listMessages(splitChat.id);
+  assert(splitFirst && splitLast);
+  assert.equal(splitRest.length, 0, "one break makes two messages");
+  assert.equal(splitFirst.content, "CYNO_ALONE waits by the gate.");
+  assert.equal(splitLast.content, "***\n\nMARI_AND_MAUKIE run through the rain.", "the break line opens the second");
+  for (const part of [splitFirst, splitLast]) {
+    assert.equal(part.role, "assistant");
+    assert.equal(part.characterId, character.id, "both parts are from the same character");
+  }
+  assert.match(extraOf(splitFirst).thinking, /PLANNING_BOTH_SCENES/u, "the reasoning is on the first part");
+  assert.equal(extraOf(splitLast).thinking, null);
+  assert(extraOf(splitFirst).advancedMemorySnapshot, "so is the memory its prompt was prepared with");
+  assert.equal(extraOf(splitLast).advancedMemorySnapshot, null);
+  assert(
+    (await chats.getSwipes(splitFirst.id)).some((swipe) => extraOf(swipe).advancedMemorySnapshot),
+    "a swipe of the first part reuses that memory",
+  );
+  assert.equal(extraOf(splitFirst).generationInfo, null);
+  assert.equal(extraOf(splitLast).generationInfo.model, "fixture", "generation info is on the last part");
+  assert(extraOf(splitLast).cachedPrompt?.length && !extraOf(splitFirst).cachedPrompt);
+  assert.deepEqual(extraOf(splitFirst).generationReplay, extraOf(splitLast).generationReplay);
+  const savedEvents = splitEvents.filter((event) => event.type === "message_saved");
+  assert.deepEqual(
+    savedEvents.map((event) => [event.data.id, event.remainingContent]),
+    [
+      [splitFirst.id, splitLast.content],
+      [splitLast.id, undefined],
+    ],
+    "the first part reaches the chat with the rest still live, then the last part",
+  );
+  await waitFor(async () => {
+    const state = JSON.parse((await chats.getById(splitChat.id))!.metadata).advancedMemoryState;
+    return state.sceneCheckMessageId === splitLast.id && state.status === "ready";
+  });
+
+  // Only new replies split: a swipe, Continue and Impersonate keep one message.
+  const countOf = async (chatId: string) => (await chats.listMessages(chatId)).length;
+  mainReply = splitReply;
+  await splitGenerate(splitChat.id, { regenerateMessageId: splitLast.id });
+  assert.equal(await countOf(splitChat.id), 3, "a swipe never inserts messages");
+  assert.equal((await chats.getMessage(splitLast.id))!.content, splitReply, "it is a new version of that message");
+  // The earlier part's prompt brings back the whole reply, but the scenes after its break already have their own
+  // message and audience, so its new version keeps only its own scene, and the commands written in it.
+  assert.equal(extraOf(splitFirst).continuesAfterSceneBreak, true);
+  assert.equal(extraOf(splitLast).continuesAfterSceneBreak, undefined);
+  await chats.patchMetadata(splitChat.id, {
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { document: true },
+  });
+  mainReply = splitReply
+    .replace("gate.", 'gate.[document title="Gate" content="FIRST_SCENE_DOCUMENT"]')
+    .replace("rain.", 'rain.[document title="Cellar" content="LATER_SCENE_DOCUMENT"]');
+  await splitGenerate(splitChat.id, { regenerateMessageId: splitFirst.id });
+  assert.equal(await countOf(splitChat.id), 3);
+  const regeneratedFirst = (await chats.getMessage(splitFirst.id))!;
+  assert.equal(regeneratedFirst.content, "CYNO_ALONE waits by the gate.");
+  assert.match(JSON.stringify(regeneratedFirst.extra), /FIRST_SCENE_DOCUMENT/u);
+  assert.doesNotMatch(JSON.stringify(regeneratedFirst.extra), /LATER_SCENE_DOCUMENT/u);
+  assert.equal(extraOf(regeneratedFirst).continuesAfterSceneBreak, true, "and it stays an earlier part");
+  mainReply = "\n\n***\n\nCONTINUED_SCENE";
+  await splitGenerate(splitChat.id, { continueMessageId: splitLast.id });
+  assert.equal(await countOf(splitChat.id), 3, "Continue extends the message");
+  assert.match((await chats.getMessage(splitLast.id))!.content, /\*\*\*\s+CONTINUED_SCENE$/u);
+  mainReply = splitReply;
+  await splitGenerate(splitChat.id, { impersonate: true });
+  const impersonated = (await chats.listMessages(splitChat.id)).at(-1)!;
+  assert.equal(await countOf(splitChat.id), 4, "Impersonate writes one message");
+  assert.equal(impersonated.role, "user");
+  assert.equal(impersonated.content, splitReply);
+  await chats.patchMetadata(splitChat.id, { advancedMemory: { ...splitMemory, enabled: false } });
+  await splitGenerate(splitChat.id);
+  assert.equal(await countOf(splitChat.id), 5, "without Advanced Memory a reply stays whole");
+  assert.equal((await chats.listMessages(splitChat.id)).at(-1)!.content, splitReply);
+  const conversationSplit = await chats.create({
+    name: "POV split conversation",
+    mode: "conversation",
+    characterIds: [character.id],
+    connectionId: connection.id,
+  });
+  assert(conversationSplit);
+  await chats.patchMetadata(conversationSplit.id, { enableAgents: false, advancedMemory: splitMemory });
+  await chats.createMessage({ chatId: conversationSplit.id, role: "user", content: "Hi." });
+  await splitGenerate(conversationSplit.id);
+  assert.deepEqual(
+    (await chats.listMessages(conversationSplit.id)).map((message) => message.content),
+    ["Hi.", splitReply],
+    "other modes never split",
+  );
+
+  // Rewrite agents rewrite every part of a split reply on its own, one call per part, under the part's break line.
+  // With hold on, each part shows the placeholder until its rewrite arrives; without it, each saved part is updated
+  // in place. A failed rewrite leaves its part as written, and the next part is still rewritten.
+  await createAgentsStorage(db).create({
+    type: "prose-guardian",
+    name: "Prose Guardian",
+    phase: "post_processing",
+    connectionId: connection.id,
+    promptTemplate: "REWRITE_FIXTURE",
+    settings: {},
+  });
+  const player = await createCharactersStorage(db).createPersona("Mari", "The player.");
+  assert(player);
+  const rewriteChat = await chats.create({
+    name: "POV split rewrite",
+    mode: "roleplay",
+    characterIds: [character.id],
+    personaId: player.id,
+    connectionId: connection.id,
+  });
+  assert(rewriteChat);
+  chatIds.push(rewriteChat.id);
+  await chats.patchMetadata(rewriteChat.id, {
+    enableAgents: true,
+    activeAgentIds: ["prose-guardian"],
+    advancedMemory: splitMemory,
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { whisper: true },
+  });
+  await memory.initialize(rewriteChat.id);
+  const firstScene = "CYNO_ALONE waits by the gate.";
+  const laterScene = "MARI_AND_MAUKIE run through the rain.";
+  mainReply = splitReply;
+  for (const [hold, failFirst] of [
+    [true, false],
+    [false, false],
+    [true, true],
+  ] as const) {
+    const label = `${hold ? "held" : "not held"}${failFirst ? ", first part's rewrite failing" : ""}`;
+    await chats.patchMetadata(rewriteChat.id, { proseGuardianHoldForRewrite: hold });
+    await chats.createMessage({ chatId: rewriteChat.id, role: "user", content: "And then?" });
+    rewriteSources.length = 0;
+    rewriteFailsFor = failFirst ? "CYNO_ALONE" : undefined;
+    const events = await splitGenerate(rewriteChat.id);
+    const [first, last] = (await chats.listMessages(rewriteChat.id)).slice(-2);
+    assert(first && last);
+    assert.deepEqual(rewriteSources, [firstScene, laterScene], `${label}: one rewrite per part, without its break`);
+    assert.equal(first.content, failFirst ? firstScene : `REWRITTEN ${firstScene}`, label);
+    assert.equal(last.content, `***\n\nREWRITTEN ${laterScene}`, `${label}: the break line stays on top`);
+    const pending = "Prose Guardian is working!";
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "message_saved")
+        .map((event) => [event.data.id, event.data.content, Boolean(extraOf(event.data).postProcessingPending)]),
+      hold
+        ? [
+            [first.id, pending, true],
+            [last.id, pending, true],
+          ]
+        : [
+            [first.id, firstScene, false],
+            [last.id, `***\n\n${laterScene}`, false],
+          ],
+      `${label}: held parts show the placeholder`,
+    );
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "text_rewrite")
+        .map((event) => [event.data.messageId, event.data.editedText, event.data.rewriteApplied]),
+      [
+        [first.id, first.content, !failFirst],
+        [last.id, last.content, true],
+      ],
+      `${label}: each rewrite, or the held text a failed one releases, goes to its own part`,
+    );
+  }
+  rewriteFailsFor = undefined;
+  // A whisper written in a later part moves with that part's rewrite.
+  mainReply = splitReply.replace("run through", 'run [whisper: character="Mari" text="PART_SECRET"] through');
+  const whisperEvents = await splitGenerate(rewriteChat.id);
+  const whisperOffset = (message: { extra?: unknown }) => extraOf(message).roleplayCommandActivity?.[0]?.contentOffset;
+  const writtenWhisperPart = whisperEvents.filter((event) => event.type === "message_saved").at(-1)!.data;
+  const rewrittenWhisperPart = (await chats.listMessages(rewriteChat.id)).at(-1)!;
+  assert.equal(typeof whisperOffset(writtenWhisperPart), "number");
+  assert.equal(
+    whisperOffset(rewrittenWhisperPart),
+    whisperOffset(writtenWhisperPart) + "REWRITTEN ".length,
+    "the whisper keeps its place in its own part",
+  );
+  // In an individual group only the last reply is rewritten, so an earlier responder's held part shows its text again.
+  const groupRewriteChat = await chats.create({
+    name: "POV split rewrite group",
+    mode: "roleplay",
+    characterIds: [character.id, newcomer.id],
+    connectionId: connection.id,
+  });
+  assert(groupRewriteChat);
+  chatIds.push(groupRewriteChat.id);
+  await chats.patchMetadata(groupRewriteChat.id, {
+    enableAgents: true,
+    activeAgentIds: ["prose-guardian"],
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...splitMemory,
+      knowledgeStarts: { [character.id]: null, [newcomer.id]: null },
+      knowledgeConfirmed: true,
+    },
+  });
+  await memory.initialize(groupRewriteChat.id);
+  await chats.createMessage({ chatId: groupRewriteChat.id, role: "user", content: "Everyone?" });
+  mainReply = splitReply;
+  const groupEvents = await splitGenerate(groupRewriteChat.id, { forCharacterId: undefined });
+  const [, earlierResponderFirst, , lastResponderFirst, lastResponderLast] = await chats.listMessages(
+    groupRewriteChat.id,
+  );
+  assert(earlierResponderFirst && lastResponderFirst && lastResponderLast);
+  assert.notEqual(earlierResponderFirst.characterId, lastResponderLast.characterId);
+  assert.deepEqual(
+    groupEvents
+      .filter((event) => event.type === "text_rewrite")
+      .map((event) => [event.data.messageId, event.data.editedText, event.data.rewriteApplied]),
+    [
+      [earlierResponderFirst.id, firstScene, false],
+      [lastResponderFirst.id, `REWRITTEN ${firstScene}`, true],
+      [lastResponderLast.id, `***\n\nREWRITTEN ${laterScene}`, true],
+    ],
+  );
+  // A last reply that is not split is rewritten alone too: the earlier responder's reply never ends up in it.
+  mainReplyFor = (prompt) => `REPLY_FROM_${[...prompt.matchAll(/Respond ONLY as (\w+)\./gu)].at(-1)?.[1]}.`;
+  const groupReplyOf = (message: { characterId?: string | null }) =>
+    `REPLY_FROM_${message.characterId === character.id ? "Dottore" : "Cyno"}.`;
+  for (const [hold, fail] of [
+    [true, false],
+    [false, false],
+    [true, true],
+  ] as const) {
+    const label = `group, ${hold ? "held" : "not held"}${fail ? ", rewrite failing" : ""}`;
+    await chats.patchMetadata(groupRewriteChat.id, { proseGuardianHoldForRewrite: hold });
+    await chats.createMessage({ chatId: groupRewriteChat.id, role: "user", content: "Again?" });
+    rewriteSources.length = 0;
+    rewriteFailsFor = fail ? "REPLY_FROM_" : undefined;
+    const events = await splitGenerate(groupRewriteChat.id, { forCharacterId: undefined });
+    const [earlier, last] = (await chats.listMessages(groupRewriteChat.id)).slice(-2);
+    assert(earlier && last);
+    assert.notEqual(earlier.characterId, last.characterId, label);
+    assert.deepEqual(rewriteSources, [groupReplyOf(last)], `${label}: only the last reply is rewritten`);
+    assert.equal(earlier.content, groupReplyOf(earlier), label);
+    assert.equal(last.content, fail ? groupReplyOf(last) : `REWRITTEN ${groupReplyOf(last)}`, label);
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "text_rewrite")
+        .map((event) => [event.data.messageId, event.data.editedText, event.data.rewriteApplied]),
+      [[last.id, last.content, !fail]],
+      `${label}: the rewrite, or the held text a failed one releases, is the last reply's own`,
+    );
+  }
+  rewriteFailsFor = undefined;
+  mainReplyFor = undefined;
+  mainReply = undefined;
 } finally {
   finishStream?.();
   for (const chatId of chatIds) await memory.cancel(chatId);

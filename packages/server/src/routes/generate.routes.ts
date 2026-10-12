@@ -157,6 +157,8 @@ import type {
   DiceRollResult,
   ResolvedSpatialTravel,
   ThinkingTagPair,
+  GameWorld,
+  WorldPerson,
 } from "@marinara-engine/shared";
 import {
   createChatsStorage,
@@ -252,6 +254,8 @@ import {
   rulesetLayerOptionKey,
   rulesetLayeredCurrencies,
   rulesetPurseText,
+  leadingSceneBreak,
+  splitAtSceneBreaks,
   type RoleplayCommandActivity,
   type RulesetDefinition,
   type RulesetItemBook,
@@ -266,6 +270,8 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
   parseRoleplayUserCommands,
+  placeAfterPrefix,
+  placeRoleplayActivityInParts,
   roleplayAgentContinuation,
   roleplayAgentPrompt,
   roleplayAgentsSeeWhispers,
@@ -7285,6 +7291,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let allResponses: string[] = [];
         // The scenes a game reply shows as written (worldgen W10): a rewrite of the reply must keep them.
         let turnShownScenes: readonly string[] = [];
+        // The earlier parts of the last reply, when it was split at scene breaks; its last part is the last response.
+        let lastReplyEarlierParts: Array<{ message: any; content: string }> = [];
         const allResponseSegments: NonNullable<AgentContext["mainResponseSegments"]> = [];
         const roleplayResponseIndexes = new Map<string, number>();
         let continuedMessageRewriteSource: string | null = null;
@@ -7870,6 +7878,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           savedMsg: Awaited<ReturnType<typeof chats.createMessage>>;
           savedSwipeIndex: number | null;
           response: string;
+          /** A reply split at scene breaks: the parts saved before `savedMsg`, its last part. */
+          earlierParts?: Array<{ message: any; content: string }>;
           commands: CharacterCommand[];
           commandCharacterIds: (string | null)[] | null;
           oocMessages: string[];
@@ -8261,6 +8271,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : chatResolvedToolNames.has("roll_dice"));
           const roleplayActivity: RoleplayCommandActivity[] = [];
           const roleplayInlinePrefixes = new Map<RoleplayCommandActivity, string>();
+          // The reply text before each command, so a reply split at scene breaks keeps it with its part.
+          const roleplayActivityPlaces = new Map<RoleplayCommandActivity, string>();
+          let roleplayParsedLength = 0;
           const responderToolDefs =
             chatMode === "roleplay"
               ? toolDefs
@@ -9253,11 +9266,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const parsed = parseRoleplayCommands(fullResponse);
             roleplayHadCommands = parsed.content !== fullResponse;
             fullResponse = parsed.content;
+            roleplayParsedLength = parsed.content.length;
+            // A swipe of a split reply's earlier part is a new version of that part alone (#7481). Its prompt is the
+            // whole reply's, but the scenes after its break already have their own message and audience.
+            let regeneratedPartEnd = Infinity;
+            if (input.regenerateMessageId && parseExtra(regenMsg?.extra).continuesAfterSceneBreak === true) {
+              const [firstPart] = splitAtSceneBreaks(fullResponse);
+              if (firstPart !== undefined && firstPart !== fullResponse) {
+                regeneratedPartEnd = fullResponse.indexOf(firstPart) + firstPart.length;
+                fullResponse = firstPart;
+              }
+            }
             if (!roleplayDmCommandsEnabled) fullResponse = parseDirectMessageCommands(fullResponse).cleanContent;
             contentReplaced = true;
             if (parsed.invalid) sendSseEvent(reply, { type: "roleplay_command_error", data: { invalid: true } });
             for (const activity of parsed.activity) {
               const { command } = activity;
+              if ((parsed.positions.get(activity) ?? 0) > regeneratedPartEnd) continue;
               if (
                 !roomRoleplayCommandAllowed(command.type) ||
                 !isRoleplayCommandAllowed(chatMeta, roleplayCommandKey(command), roleplayCallerId)
@@ -9298,6 +9323,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       : null;
               if (requiredAgent && !resolvedAgents.some((agent) => agent.type === requiredAgent)) continue;
               roleplayActivity.push(activity);
+              roleplayActivityPlaces.set(activity, parsed.content.slice(0, parsed.positions.get(activity)));
               if (
                 command.type === "illustrate" ||
                 command.type === "combat" ||
@@ -9946,6 +9972,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // add up. The answers are worked out here, on the stacks as they are, so the reply is saved
           // with them; the stacks themselves only change once the reply is saved (below), so a reply
           // that is never saved changes nothing.
+          // The world's people this reply named, tracked once it is saved.
+          let worldNpcsNamed: { world: GameWorld; people: WorldPerson[] } | undefined;
           let inventoryTurn: {
             requested: string;
             preview: string;
@@ -10122,16 +10150,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               return found ? [found.id] : [];
             });
             const named = worldPeopleNamed(turnWorld, placeIds, fullResponse);
-            if (named.length > 0) {
-              await chats.patchMetadata(input.chatId, (current) => {
-                const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
-                const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
-                const added = named
-                  .filter((person) => !known.has(person.id))
-                  .map((person) => worldPersonNpc(turnWorld, person));
-                return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
-              });
-            }
+            // Tracked once the reply is saved (below), so a discarded or stopped reply adds nobody.
+            if (named.length > 0) worldNpcsNamed = { world: turnWorld, people: named };
           }
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
@@ -10496,6 +10516,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Save assistant message (or user message for impersonate)
           let savedMsg: any;
           let savedSwipeIndex: number | null = null;
+          // A new reply split at scene breaks: each part with where it starts in the whole reply.
+          type ReplyPart = { content: string; start: number; message: any; activity: RoleplayCommandActivity[] };
+          let replyParts = null as ReplyPart[] | null;
           if (input.regenerateMessageId) {
             const createdSwipe = await chats.addSwipe(input.regenerateMessageId, fullResponse);
             savedSwipeIndex = createdSwipe.index;
@@ -10578,32 +10601,49 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const roomActor = roomAuthority?.characters.find((character) =>
               chatMode === "game" ? character.role === "gm" : character.id === targetCharId,
             );
-            savedMsg = await chats.createMessage({
-              chatId: input.chatId,
-              role: input.impersonate ? "user" : "assistant",
-              characterId: input.impersonate ? null : targetCharId,
-              content: fullResponse,
-              ...(roomAuthority
-                ? {
-                    extra: {
-                      multiplayerActor: roomActor
-                        ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
-                        : { id: null, name: "GM", role: "gm" },
-                      ...(roomAudience
-                        ? {
-                            multiplayerGameAudience: {
-                              roomId: roomAudience.roomId,
-                              participants: roomAudience.participants.map((participant) => ({
-                                id: participant.id,
-                                name: participant.persona.name,
-                              })),
-                            },
-                          }
-                        : {}),
-                    },
-                  }
-                : {}),
-            });
+            // With Advanced Memory, each scene or POV break starts a message of its own, so each part has its own
+            // audience (#7481). The last part is the reply the rest of this turn works with.
+            const parts =
+              advancedMemoryEnabled && !input.impersonate ? splitAtSceneBreaks(fullResponse) : [fullResponse];
+            const saved: ReplyPart[] = [];
+            try {
+              for (const content of parts) {
+                const previous = saved.at(-1);
+                const start = fullResponse.indexOf(content, previous ? previous.start + previous.content.length : 0);
+                savedMsg = await chats.createMessage({
+                  chatId: input.chatId,
+                  role: input.impersonate ? "user" : "assistant",
+                  characterId: input.impersonate ? null : targetCharId,
+                  content,
+                  ...(roomAuthority
+                    ? {
+                        extra: {
+                          multiplayerActor: roomActor
+                            ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
+                            : { id: null, name: "GM", role: "gm" },
+                          ...(roomAudience
+                            ? {
+                                multiplayerGameAudience: {
+                                  roomId: roomAudience.roomId,
+                                  participants: roomAudience.participants.map((participant) => ({
+                                    id: participant.id,
+                                    name: participant.persona.name,
+                                  })),
+                                },
+                              }
+                            : {}),
+                        },
+                      }
+                    : {}),
+                });
+                saved.push({ content, start, message: savedMsg, activity: [] });
+              }
+            } catch (error) {
+              // A reply is saved whole or not at all: drop the parts already saved, so no half-reply is left.
+              for (const part of saved) await chats.removeMessage(part.message.id).catch(() => undefined);
+              throw error;
+            }
+            if (saved.length > 1) replyParts = saved;
             savedSwipeIndex = 0;
           }
           // The scenes the reply shows as written (worldgen W10) stay with it, so a rewrite later (a retry, or
@@ -10655,6 +10695,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // The reply is saved either way: a failed write is logged, never the turn's failure.
               logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);
             }
+          }
+          // The world's people the saved reply named become tracked NPCs (worldgen W2).
+          if (worldNpcsNamed && savedMsg?.id && !generationSignal.aborted) {
+            const { world: namedWorld, people: named } = worldNpcsNamed;
+            await chats.patchMetadata(input.chatId, (current) => {
+              const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
+              const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
+              const added = named
+                .filter((person) => !known.has(person.id))
+                .map((person) => worldPersonNpc(namedWorld, person));
+              return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
+            });
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
           // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──
@@ -10824,6 +10876,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           if (savedMsg?.id && savedSwipeIndex !== null && outputTranslationConfig && !input.impersonate) {
+            // A split reply's earlier parts are translated first, in order; their source is saved with their extras.
+            for (const part of replyParts?.slice(0, -1) ?? []) translationMessages.set(part.message.id, 0);
             translationMessages.set(savedMsg.id, savedSwipeIndex);
             // Persist ownership before message_saved can trigger Game's legacy
             // browser backfill, which also runs when navigating between chats.
@@ -11034,26 +11088,37 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const previousExtra = input.continueMessageId
                 ? parseExtra((await chats.getMessage(savedMsg.id))?.extra)
                 : {};
+              const placeInReply = (rawPrefix: string) =>
+                placeAfterPrefix(fullResponse, stripSpacesBeforeLineBreaks(rawPrefix).trim());
+              // A split reply places its commands in the whole reply first, then in the part each one was in.
+              const placedContent = replyParts ? fullResponse : savedMsg.content;
               for (const [activity, rawPrefix] of roleplayInlinePrefixes) {
-                const prefix = stripSpacesBeforeLineBreaks(rawPrefix).trim();
-                const anchor = prefix.slice(-80);
-                const prefixStart = fullResponse.indexOf(prefix);
-                const anchorStart = fullResponse.indexOf(anchor);
-                const offset =
-                  prefixStart >= 0
-                    ? prefixStart + prefix.length
-                    : anchor && anchorStart >= 0 && anchorStart === fullResponse.lastIndexOf(anchor)
-                      ? anchorStart + anchor.length
-                      : null;
+                const offset = placeInReply(rawPrefix);
                 if (offset !== null) {
-                  activity.contentOffset = Math.max(0, savedMsg.content.length - fullResponse.length) + offset;
+                  activity.contentOffset = Math.max(0, placedContent.length - fullResponse.length) + offset;
                   activity.contentAnchor =
                     activity.contentOffset === 0
-                      ? savedMsg.content.slice(0, 80)
-                      : savedMsg.content.slice(Math.max(0, activity.contentOffset - 80), activity.contentOffset);
+                      ? placedContent.slice(0, 80)
+                      : placedContent.slice(Math.max(0, activity.contentOffset - 80), activity.contentOffset);
                 }
               }
-              extraUpdate.roleplayCommandActivity = [...getRoleplayCommandActivity(previousExtra), ...roleplayActivity];
+              if (replyParts) {
+                const placed = placeRoleplayActivityInParts(replyParts, roleplayActivity, (item) => {
+                  if (typeof item.contentOffset === "number") return item.contentOffset;
+                  const place = roleplayActivityPlaces.get(item);
+                  if (place === undefined) return null;
+                  // Not found after cleanup: the same relative place, so the command still lands near its part.
+                  return (
+                    placeInReply(place) ??
+                    Math.round((place.length * fullResponse.length) / Math.max(1, roleplayParsedLength))
+                  );
+                });
+                for (const [index, part] of replyParts.entries()) part.activity = placed[index]!;
+              }
+              extraUpdate.roleplayCommandActivity = [
+                ...getRoleplayCommandActivity(previousExtra),
+                ...(replyParts?.at(-1)!.activity ?? roleplayActivity),
+              ];
               // New records own their editable context; legacy extras are read only as a fallback.
               extraUpdate.roleplayPrivateCommands = null;
               extraUpdate.roleplayDocuments = null;
@@ -11071,11 +11136,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               )
                 extraUpdate.hiddenFromUser = false;
               const timelineMessage = { ...savedMsg, extra: { ...parseExtra(savedMsg.extra), ...extraUpdate } };
+              for (const part of replyParts?.slice(0, -1) ?? [])
+                roleplayTimeline.push({
+                  ...part.message,
+                  extra: {
+                    ...parseExtra(part.message.extra),
+                    roleplayCommandActivity: part.activity,
+                    roleplayPrivateContext: extraUpdate.roleplayPrivateContext,
+                  },
+                });
               const existingTimelineIndex = roleplayTimeline.findIndex((message) => message.id === savedMsg.id);
               if (existingTimelineIndex >= 0) roleplayTimeline[existingTimelineIndex] = timelineMessage;
               else roleplayTimeline.push(timelineMessage);
-              for (const command of currentRoleplayMedia)
-                roleplayMediaRequests.push({ command, messageId: savedMsg.id, swipeIndex: savedSwipeIndex ?? 0 });
+              for (const command of currentRoleplayMedia) {
+                const part = replyParts?.find((item) => item.activity.some((activity) => activity.command === command));
+                roleplayMediaRequests.push({
+                  command,
+                  messageId: (part?.message ?? savedMsg).id,
+                  swipeIndex: savedSwipeIndex ?? 0,
+                });
+              }
             }
             extraUpdate.generationReplay = buildGenerationReplay(input);
             extraUpdate.startsNewAssistantBubble = startsNewAssistantBubble;
@@ -11123,6 +11203,62 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               extraUpdate.advancedMemorySnapshot = advancedMemorySnapshot;
             const persistentAttachments = resolveUserRegenerationPersistentAttachments(regenMsg ?? {});
             if (persistentAttachments) extraUpdate.attachments = persistentAttachments;
+            // While a rewrite agent holds the reply, each saved message shows its placeholder until its rewrite arrives.
+            const heldForRewrite = (message: any) =>
+              holdForTextRewrite && !input.impersonate
+                ? {
+                    ...message,
+                    content: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
+                    extra: {
+                      ...parseExtra(message.extra),
+                      postProcessingPending: {
+                        agentType: textRewritePendingState?.agentType ?? "prose-guardian",
+                        message: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
+                      },
+                    },
+                  }
+                : message;
+            if (replyParts) {
+              // The reasoning and the memory preparation belong to the first part, whose prompt produced them.
+              // Generation info, the prompt cache and everything that ends the turn stay with the last part.
+              // Each part keeps what regenerating it replays. Gemini parts hold the whole reply's text, so a
+              // split reply keeps none: replayed with one part, they would show the others to its readers.
+              const firstPartKeys = [
+                "thinking",
+                "chatCompletionsReasoning",
+                "encryptedReasoning",
+                "advancedMemorySnapshot",
+                "startsNewAssistantBubble",
+              ];
+              const pick = (keys: string[]) =>
+                Object.fromEntries(keys.filter((key) => key in extraUpdate).map((key) => [key, extraUpdate[key]]));
+              const everyPart = pick(["contextInjections", "generationReplay", "referencedCharacterIds"]);
+              for (const [index, part] of replyParts.slice(0, -1).entries()) {
+                const savedPart = await chats.updateMessageExtraForSwipe(part.message.id, 0, {
+                  ...everyPart,
+                  ...(index === 0 ? pick(firstPartKeys) : {}),
+                  roleplayCommandActivity: part.activity,
+                  roleplayPrivateContext: extraUpdate.roleplayPrivateContext,
+                  // The reply goes on in the next message: its reasoning covers both, and a swipe keeps this part.
+                  continuesAfterSceneBreak: true,
+                  ...(outputTranslationConfig ? { automaticTranslationSource: part.content } : {}),
+                });
+                // The live reply keeps showing the rest, so the part appears above it without a repeat. While a
+                // rewrite agent holds the reply, the live reply stays empty until the rewrite arrives.
+                sendSseEvent(reply, {
+                  type: "message_saved",
+                  data: heldForRewrite(savedPart ?? part.message),
+                  remainingContent: holdForTextRewrite
+                    ? ""
+                    : replyParts
+                        .slice(index + 1)
+                        .map((rest) => rest.content)
+                        .join("\n\n"),
+                });
+              }
+              for (const key of firstPartKeys) extraUpdate[key] = key === "startsNewAssistantBubble" ? false : null;
+              extraUpdate.geminiParts = null;
+            }
             let refreshedMsg;
             if (roleplayActivity.some((item) => item.command.type === "interrupt")) {
               const committed = await chats.commitRoleplayInterruption({
@@ -11183,23 +11319,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               });
             }
 
-            const savedMessagePayload =
-              holdForTextRewrite && !input.impersonate
-                ? {
-                    ...(refreshedMsg ?? savedMsg),
-                    content: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
-                    extra: {
-                      ...parseExtra((refreshedMsg ?? savedMsg).extra),
-                      postProcessingPending: {
-                        agentType: textRewritePendingState?.agentType ?? "prose-guardian",
-                        message: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
-                      },
-                    },
-                  }
-                : (refreshedMsg ?? savedMsg);
             sendSseEvent(reply, {
               type: "message_saved",
-              data: savedMessagePayload,
+              data: heldForRewrite(refreshedMsg ?? savedMsg),
             });
 
             if (chatMode === "game" && !input.impersonate) {
@@ -11296,10 +11418,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             postToDiscordWebhook(discordWebhookUrl, { content: fullResponse, username: charName });
           }
 
+          // The reply this turn goes on with is a split reply's last part; the caller records the earlier ones.
+          if (replyParts) fullResponse = replyParts.at(-1)!.content;
           return {
             savedMsg,
             savedSwipeIndex,
             response: fullResponse,
+            earlierParts: replyParts?.slice(0, -1).map(({ message, content }) => ({ message, content })),
             commands: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommands,
             commandCharacterIds: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommandCharacterIds,
             oocMessages: recoveredAlreadyAppliedSpatialTurn ? [] : oocMessages,
@@ -11460,18 +11585,33 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (generationSignal.aborted) break;
               continue;
             }
-            firstSavedMsg ??= genResult.savedMsg;
+            // A reply split at scene breaks is read and decided part by part, like separate replies.
+            const replyParts = [
+              ...(genResult.earlierParts ?? []),
+              { message: genResult.savedMsg, content: genResult.response },
+            ];
+            firstSavedMsg ??= replyParts[0]!.message;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
+            // Rewrite agents rewrite only the last reply, so an earlier responder's held parts show their text again.
+            if (holdForTextRewrite)
+              for (const part of lastReplyEarlierParts)
+                sendSseEvent(reply, {
+                  type: "text_rewrite",
+                  data: { messageId: part.message.id, editedText: part.content, changes: [], rewriteApplied: false },
+                });
+            lastReplyEarlierParts = genResult.earlierParts ?? [];
             currentIterationSavedMsg = genResult.savedMsg;
-            if (typeof genResult.savedMsg?.id === "string") {
-              knownConversationMessageIds.add(genResult.savedMsg.id);
-              inTurnMessageIds.add(genResult.savedMsg.id);
+            for (const part of replyParts) {
+              if (typeof part.message?.id === "string") {
+                knownConversationMessageIds.add(part.message.id);
+                inTurnMessageIds.add(part.message.id);
+                roleplayResponseIndexes.set(part.message.id, allResponses.length);
+              }
+              allResponses.push(part.content);
+              allResponseSegments.push({ characterId: charId, characterName: charName, content: part.content });
             }
             recordExpressionTarget(genResult.savedMsg, charId);
-            if (genResult.savedMsg?.id) roleplayResponseIndexes.set(genResult.savedMsg.id, allResponses.length);
-            allResponses.push(genResult.response);
-            allResponseSegments.push({ characterId: charId, characterName: charName, content: genResult.response });
             for (const cmd of genResult.commands) {
               collectedCommands.push({
                 command: cmd,
@@ -11485,7 +11625,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (routeCharacterMentions) {
               // Reuse this turn's queue: prioritize mentions, but never revisit a speaker.
               const visited = new Set(respondingCharIds.slice(0, ci + 1));
-              let mentioned = getExplicitlyMentionedCharacterIds(genResult.response).filter((id) => !visited.has(id));
+              let mentioned = getExplicitlyMentionedCharacterIds(
+                replyParts.map((part) => part.content).join("\n\n"),
+              ).filter((id) => !visited.has(id));
               let remaining = respondingCharIds.slice(ci + 1).filter((id) => !mentioned.includes(id!));
               let queueChanged = false;
               if (shouldAccountAutonomousGeneration && mentioned.length > 0) {
@@ -11533,33 +11675,35 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
 
             // Add this character's response to the running context for the next character
-            const inTurnMessage = {
-              id: genResult.savedMsg?.id,
-              role: "assistant",
-              content:
-                chatMode === "roleplay"
-                  ? conversationPromptHistoryContent(
-                      roleplayTimeline.find((message) => message.id === genResult.savedMsg?.id) ?? {
-                        role: "assistant",
-                        content: genResult.response,
-                      },
-                      chatMode,
-                    )
-                  : genResult.response,
-              contextKind: "history",
-              characterId: charId,
-            } as const;
-            if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
-              const characterNamesById = await getGroupHistoryCharacterNamesById();
-              const [prefixed] = prefixGroupIndividualHistorySpeakers([inTurnMessage], {
-                personaName,
-                characterNamesById,
-              });
-              roleplayHistoryBodies.set(inTurnMessage.id, (prefixed ?? inTurnMessage).content);
-              runningMessages.push(prefixed ?? inTurnMessage);
-            } else {
-              roleplayHistoryBodies.set(inTurnMessage.id, inTurnMessage.content);
-              runningMessages.push(inTurnMessage);
+            for (const part of replyParts) {
+              const inTurnMessage = {
+                id: part.message?.id,
+                role: "assistant",
+                content:
+                  chatMode === "roleplay"
+                    ? conversationPromptHistoryContent(
+                        roleplayTimeline.find((message) => message.id === part.message?.id) ?? {
+                          role: "assistant",
+                          content: part.content,
+                        },
+                        chatMode,
+                      )
+                    : part.content,
+                contextKind: "history",
+                characterId: charId,
+              } as const;
+              if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
+                const characterNamesById = await getGroupHistoryCharacterNamesById();
+                const [prefixed] = prefixGroupIndividualHistorySpeakers([inTurnMessage], {
+                  personaName,
+                  characterNamesById,
+                });
+                roleplayHistoryBodies.set(inTurnMessage.id, (prefixed ?? inTurnMessage).content);
+                runningMessages.push(prefixed ?? inTurnMessage);
+              } else {
+                roleplayHistoryBodies.set(inTurnMessage.id, inTurnMessage.content);
+                runningMessages.push(inTurnMessage);
+              }
             }
           }
         } else {
@@ -11616,6 +11760,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // target or a single explicit @mention pins it to exactly one speaker.
           const genResult = await generateForCharacter(targetCharId, sentMessages, true, mergedSpeaksOnlyTarget);
           if (genResult) {
+            // A reply split at scene breaks: agents read every part, each with its own whispers.
+            for (const part of genResult.earlierParts ?? []) {
+              firstSavedMsg ??= part.message;
+              roleplayResponseIndexes.set(part.message.id, allResponses.length);
+              allResponses.push(part.content);
+              allResponseSegments.push({
+                ...(genResult.characterId ? { characterId: genResult.characterId } : {}),
+                characterName:
+                  charInfo.find((character) => character.id === genResult.characterId)?.name ?? "Character",
+                content: part.content,
+              });
+            }
+            lastReplyEarlierParts = genResult.earlierParts ?? [];
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
@@ -14273,10 +14430,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           // ── Text rewrite/editing agents: run after ALL other agents ──
-          const originalResponseBeforeRewrite = completedResponse;
-          let textRewriteApplied = false;
-          // Rewrite agents edit the public text, so a reply without any is left alone.
-          const hasPublicReply = !!completedResponse.trim();
           // A game reply keeps what the Engine wrote (worldgen W10): every world, place and story tag, and
           // every scene shown as written (a continuation's, kept with the reply it continues).
           const engineScenes =
@@ -14287,163 +14440,181 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? storyScenesOf(continueTargetMessage?.extra)
                   : []
               : null;
-          if (activatedTextRewriteRunAgents.length > 0 && messageId && hasPublicReply && !generationSignal.aborted) {
-            let currentResponseForRewrite = originalResponseBeforeRewrite;
+          // Each part of a reply split at scene breaks is a message of its own, so the agents rewrite every part on
+          // its own, in order. A part's break line stays on top of it, and a failed rewrite leaves its part as written.
+          // They rewrite only the last reply's own text, never the replies of earlier responders in an individual group.
+          const rewriteParts = lastReplyEarlierParts.length
+            ? [...lastReplyEarlierParts, { message: lastSavedMsg, content: allResponses.at(-1)! }].map((part) => ({
+                messageId: (part.message?.id as string | undefined) ?? "",
+                content: part.content,
+              }))
+            : [{ messageId, content: continuedMessageRewriteSource ?? allResponses.at(-1) ?? "" }];
+          // Every successful agent output, as a summary for rewrite agents; it is the same for every part.
+          const agentSummary: Record<string, unknown> = {};
+          for (const result of postResults) {
+            if (result.success && result.data) {
+              agentSummary[result.agentType ?? result.type] = result.data;
+            }
+          }
+          for (const { messageId, content: originalResponseBeforeRewrite } of rewriteParts) {
+            const sceneBreak = lastReplyEarlierParts.length ? leadingSceneBreak(originalResponseBeforeRewrite) : "";
+            let textRewriteApplied = false;
+            // Rewrite agents edit the public text, so a reply without any is left alone.
+            const hasPublicReply = !!originalResponseBeforeRewrite.slice(sceneBreak.length).trim();
+            if (activatedTextRewriteRunAgents.length > 0 && messageId && hasPublicReply && !generationSignal.aborted) {
+              let currentResponseForRewrite = originalResponseBeforeRewrite.slice(sceneBreak.length);
 
-            for (const textRewriteAgent of activatedTextRewriteRunAgents) {
-              if (generationSignal.aborted) break;
-              try {
-                // Collect all successful agent outputs as a summary for rewrite agents.
-                const agentSummary: Record<string, unknown> = {};
-                for (const result of postResults) {
-                  if (result.success && result.data) {
-                    agentSummary[result.agentType ?? result.type] = result.data;
-                  }
-                }
-
-                const editorContext: AgentContext = {
-                  ...agentContext,
-                  ...postReplyDecisionContext,
-                  mainResponse: currentResponseForRewrite,
-                  preGenInjections:
-                    textRewriteAgent.settings.includePreGenInjections === true ? contextInjections : undefined,
-                  parallelResults:
-                    textRewriteAgent.settings.includeParallelResults === true ? parallelResults : undefined,
-                  memory: { ...agentContext.memory, _agentResults: agentSummary },
-                };
-
-                const editorResult = await executeAgent(
-                  textRewriteAgent,
-                  editorContext,
-                  textRewriteAgent.provider,
-                  textRewriteAgent.model,
-                );
-                sendAgentEvent(editorResult);
-
+              for (const textRewriteAgent of activatedTextRewriteRunAgents) {
+                if (generationSignal.aborted) break;
                 try {
-                  await agentsStore.saveRun({
-                    agentConfigId: editorResult.agentId,
-                    chatId: input.chatId,
-                    messageId,
-                    result: editorResult,
-                  });
-                } catch {
-                  /* Non-critical */
-                }
+                  const editorContext: AgentContext = {
+                    ...agentContext,
+                    ...postReplyDecisionContext,
+                    mainResponse: currentResponseForRewrite,
+                    preGenInjections:
+                      textRewriteAgent.settings.includePreGenInjections === true ? contextInjections : undefined,
+                    parallelResults:
+                      textRewriteAgent.settings.includeParallelResults === true ? parallelResults : undefined,
+                    memory: { ...agentContext.memory, _agentResults: agentSummary },
+                  };
 
-                if (
-                  editorResult.success &&
-                  editorResult.type === "text_rewrite" &&
-                  editorResult.data &&
-                  customAgentCanApplyResult(editorResult, resolvedAgents, builtInAgentTypes, "edit_messages")
-                ) {
-                  const edData = editorResult.data as Record<string, unknown>;
-                  const editedText = typeof edData.editedText === "string" ? edData.editedText : "";
-                  let sanitizedEditedText = editedText;
+                  const editorResult = await executeAgent(
+                    textRewriteAgent,
+                    editorContext,
+                    textRewriteAgent.provider,
+                    textRewriteAgent.model,
+                  );
+                  sendAgentEvent(editorResult);
+
+                  try {
+                    await agentsStore.saveRun({
+                      agentConfigId: editorResult.agentId,
+                      chatId: input.chatId,
+                      messageId,
+                      result: editorResult,
+                    });
+                  } catch {
+                    /* Non-critical */
+                  }
+
                   if (
-                    hierarchicalMapsEnabledForChat &&
-                    (requestChatMode === "roleplay" || requestChatMode === "game")
+                    editorResult.success &&
+                    editorResult.type === "text_rewrite" &&
+                    editorResult.data &&
+                    customAgentCanApplyResult(editorResult, resolvedAgents, builtInAgentTypes, "edit_messages")
                   ) {
-                    const parsedRewriteSpatial = extractAssistantSpatialDirective(editedText);
-                    if (parsedRewriteSpatial.matched) {
-                      sanitizedEditedText = parsedRewriteSpatial.cleanContent;
+                    const edData = editorResult.data as Record<string, unknown>;
+                    const editedText = typeof edData.editedText === "string" ? edData.editedText : "";
+                    let sanitizedEditedText = editedText;
+                    if (
+                      hierarchicalMapsEnabledForChat &&
+                      (requestChatMode === "roleplay" || requestChatMode === "game")
+                    ) {
+                      const parsedRewriteSpatial = extractAssistantSpatialDirective(editedText);
+                      if (parsedRewriteSpatial.matched) {
+                        sanitizedEditedText = parsedRewriteSpatial.cleanContent;
+                        logger.warn(
+                          "[text-rewrite] Stripped package-owned spatial directive from rewritten message %s",
+                          messageId,
+                        );
+                      }
+                    }
+                    const changes = Array.isArray(edData.changes)
+                      ? (edData.changes as Array<{ description: string }>)
+                      : [{ description: "Rewrote the assistant response." }];
+                    const editNeededValue = edData.editNeeded;
+                    const strictEditNeeded = isBuiltInTextRewriteAgentType(editorResult.agentType);
+                    const rewriteAllowed =
+                      editNeededValue === false
+                        ? false
+                        : strictEditNeeded
+                          ? explicitlyRequestsTextRewrite(editNeededValue)
+                          : true;
+                    const droppedProtectedMarkup =
+                      (strictEditNeeded &&
+                        textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText)) ||
+                      (engineScenes !== null &&
+                        textRewriteChangesEngineText(currentResponseForRewrite, sanitizedEditedText, engineScenes));
+                    if (droppedProtectedMarkup) {
                       logger.warn(
-                        "[text-rewrite] Stripped package-owned spatial directive from rewritten message %s",
+                        "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",
+                        editorResult.agentType,
                         messageId,
                       );
                     }
-                  }
-                  const changes = Array.isArray(edData.changes)
-                    ? (edData.changes as Array<{ description: string }>)
-                    : [{ description: "Rewrote the assistant response." }];
-                  const editNeededValue = edData.editNeeded;
-                  const strictEditNeeded = isBuiltInTextRewriteAgentType(editorResult.agentType);
-                  const rewriteAllowed =
-                    editNeededValue === false
-                      ? false
-                      : strictEditNeeded
-                        ? explicitlyRequestsTextRewrite(editNeededValue)
-                        : true;
-                  const droppedProtectedMarkup =
-                    (strictEditNeeded &&
-                      textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText)) ||
-                    (engineScenes !== null &&
-                      textRewriteChangesEngineText(currentResponseForRewrite, sanitizedEditedText, engineScenes));
-                  if (droppedProtectedMarkup) {
-                    logger.warn(
-                      "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",
-                      editorResult.agentType,
-                      messageId,
-                    );
-                  }
-                  const rewriteCharacterId =
-                    typeof (lastSavedMsg as { characterId?: unknown } | null)?.characterId === "string"
-                      ? (lastSavedMsg as { characterId: string }).characterId
-                      : null;
-                  const repeatsPriorConversationResponse =
-                    rewriteAllowed &&
-                    !strictEditNeeded &&
-                    chatMode === "conversation" &&
-                    !input.impersonate &&
-                    !input.regenerateMessageId &&
-                    !input.continueMessageId &&
-                    sanitizedEditedText.trim().length > 0 &&
-                    isRepeatedConversationResponse(
-                      await chats.listMessages(input.chatId),
-                      rewriteCharacterId,
-                      sanitizedEditedText,
-                      { excludeMessageId: messageId },
-                    );
-                  if (repeatsPriorConversationResponse) {
-                    logger.warn(
-                      { chatId: input.chatId, characterId: rewriteCharacterId, messageId },
-                      "[text-rewrite] Skipping custom rewrite because it repeated a prior Conversation response",
-                    );
-                  }
-                  const changedMessage =
-                    rewriteAllowed &&
-                    !droppedProtectedMarkup &&
-                    !repeatsPriorConversationResponse &&
-                    sanitizedEditedText.trim().length > 0 &&
-                    sanitizedEditedText !== currentResponseForRewrite;
-                  if (changedMessage) {
-                    const originalText = strictEditNeeded ? originalResponseBeforeRewrite : null;
-                    currentResponseForRewrite = sanitizedEditedText;
-                    await chats.updateMessageContent(messageId, sanitizedEditedText);
-                    if (originalText) {
-                      await chats.updateMessageExtra(messageId, {
-                        proseGuardianOriginalText: originalText,
-                        proseGuardianRewrittenText: sanitizedEditedText,
-                        proseGuardianRewrittenAt: new Date().toISOString(),
+                    const rewriteCharacterId =
+                      typeof (lastSavedMsg as { characterId?: unknown } | null)?.characterId === "string"
+                        ? (lastSavedMsg as { characterId: string }).characterId
+                        : null;
+                    const repeatsPriorConversationResponse =
+                      rewriteAllowed &&
+                      !strictEditNeeded &&
+                      chatMode === "conversation" &&
+                      !input.impersonate &&
+                      !input.regenerateMessageId &&
+                      !input.continueMessageId &&
+                      sanitizedEditedText.trim().length > 0 &&
+                      isRepeatedConversationResponse(
+                        await chats.listMessages(input.chatId),
+                        rewriteCharacterId,
+                        sanitizedEditedText,
+                        { excludeMessageId: messageId },
+                      );
+                    if (repeatsPriorConversationResponse) {
+                      logger.warn(
+                        { chatId: input.chatId, characterId: rewriteCharacterId, messageId },
+                        "[text-rewrite] Skipping custom rewrite because it repeated a prior Conversation response",
+                      );
+                    }
+                    const changedMessage =
+                      rewriteAllowed &&
+                      !droppedProtectedMarkup &&
+                      !repeatsPriorConversationResponse &&
+                      sanitizedEditedText.trim().length > 0 &&
+                      sanitizedEditedText !== currentResponseForRewrite;
+                    if (changedMessage) {
+                      const originalText = strictEditNeeded ? originalResponseBeforeRewrite : null;
+                      currentResponseForRewrite = sanitizedEditedText;
+                      // A split part keeps its break line on top of the rewritten text.
+                      sanitizedEditedText = sceneBreak + sanitizedEditedText;
+                      await chats.updateMessageContent(messageId, sanitizedEditedText);
+                      if (originalText) {
+                        await chats.updateMessageExtra(messageId, {
+                          proseGuardianOriginalText: originalText,
+                          proseGuardianRewrittenText: sanitizedEditedText,
+                          proseGuardianRewrittenAt: new Date().toISOString(),
+                        });
+                      }
+                      textRewriteApplied = true;
+                      sendSseEvent(reply, {
+                        type: "text_rewrite",
+                        data: {
+                          messageId,
+                          editedText: sanitizedEditedText,
+                          changes,
+                          rewriteApplied: true,
+                          ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
+                        },
                       });
                     }
-                    textRewriteApplied = true;
-                    sendSseEvent(reply, {
-                      type: "text_rewrite",
-                      data: {
-                        editedText: sanitizedEditedText,
-                        changes,
-                        rewriteApplied: true,
-                        ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
-                      },
-                    });
                   }
+                } catch {
+                  // Non-critical — don't fail generation if a rewrite agent errors.
                 }
-              } catch {
-                // Non-critical — don't fail generation if a rewrite agent errors.
               }
             }
-          }
 
-          if (holdForTextRewrite && !textRewriteApplied && !generationSignal.aborted) {
-            sendSseEvent(reply, {
-              type: "text_rewrite",
-              data: {
-                editedText: originalResponseBeforeRewrite,
-                changes: [],
-                rewriteApplied: false,
-              },
-            });
+            if (holdForTextRewrite && !textRewriteApplied && !generationSignal.aborted) {
+              sendSseEvent(reply, {
+                type: "text_rewrite",
+                data: {
+                  messageId,
+                  editedText: originalResponseBeforeRewrite,
+                  changes: [],
+                  rewriteApplied: false,
+                },
+              });
+            }
           }
         }
 

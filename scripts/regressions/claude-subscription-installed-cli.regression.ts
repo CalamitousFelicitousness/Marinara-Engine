@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { logger } from "../../packages/server/src/lib/logger.js";
+import {
+  __setSdkForTesting,
+  ClaudeSubscriptionProvider,
+} from "../../packages/server/src/services/llm/providers/claude-subscription.provider.js";
 import {
   compareVersions,
   findClaudeCodeInstall,
@@ -20,20 +25,53 @@ try {
   const versions = new Map([[native, "2.1.294"]]);
   const probe = async (path: string) => versions.get(path) ?? null;
   const env = { PATH: join(home, "bin") };
-  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe }), { path: native, version: "2.1.294" });
+  const platform = "linux" as const; // the bundled build runs here; Android is covered below
+  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }), {
+    path: native,
+    version: "2.1.294",
+  });
   versions.set(native, "2.1.200");
-  assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe }), null, "never downgrade the bundled build");
+  assert.equal(
+    await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }),
+    null,
+    "never downgrade the bundled build",
+  );
   versions.set(onPath, "2.1.300");
-  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe }), { path: onPath, version: "2.1.300" });
-  assert.equal(await findClaudeCodeInstall(null, { env, home, probe }), null, "unknown bundled version keeps it");
+  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }), {
+    path: onPath,
+    version: "2.1.300",
+  });
+  assert.equal(
+    await findClaudeCodeInstall(null, { env, home, probe, platform }),
+    null,
+    "unknown bundled version keeps it",
+  );
   const optedOut = { ...env, CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI: "false" };
   assert.equal(
-    await findClaudeCodeInstall("2.1.282", { env: optedOut, home, probe }),
+    await findClaudeCodeInstall("2.1.282", { env: optedOut, home, probe, platform }),
     null,
     "env opt-out keeps bundled",
   );
+  const android = { env, home, probe, platform: "android" as const };
+  assert.deepEqual(
+    await findClaudeCodeInstall("2.1.282", android),
+    { path: onPath, version: "2.1.300" },
+    "Android still prefers a current install over an older one found first",
+  );
+  assert.equal(
+    await findClaudeCodeInstall("2.1.282", { ...android, env: optedOut }),
+    null,
+    "env opt-out holds on Android",
+  );
+  versions.set(onPath, "2.1.100");
+  assert.deepEqual(
+    await findClaudeCodeInstall("2.1.282", android),
+    { path: native, version: "2.1.200" },
+    "Android has no bundled build to fall back to",
+  );
+  assert.deepEqual(await findClaudeCodeInstall(null, android), { path: native, version: "2.1.200" });
   versions.clear();
-  assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe }), null);
+  assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }), null);
 
   // Model catalog: only the signed-in organization's newest catalog, gated by CLI version.
   const org = "11111111-2222-3333-4444-555555555555";
@@ -76,6 +114,85 @@ try {
   );
 } finally {
   await rm(home, { recursive: true, force: true });
+}
+
+// Claude Code runs with permission checks off, so claude.ai connectors (MCP servers or tools) reported at
+// startup stop the request before the model turn is read, for chat and the connection test alike.
+{
+  let init: Record<string, unknown> = {};
+  let controller: AbortController | undefined;
+  let modelTurnRead = false;
+  const stopLogs: Array<Record<string, unknown>> = [];
+  const originalError = logger.error;
+  logger.error = ((data: Record<string, unknown>) => {
+    stopLogs.push(data);
+  }) as typeof logger.error;
+  __setSdkForTesting({
+    query: ((args: { options: { abortController: AbortController } }) => {
+      controller = args.options.abortController;
+      return (async function* () {
+        yield { type: "system", subtype: "init", tools: [], mcp_servers: [], skills: [], slash_commands: [], ...init };
+        modelTurnRead = true;
+        yield {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "OK" } },
+        };
+        yield { type: "result", subtype: "success", result: "OK", usage: { input_tokens: 3, output_tokens: 1 } };
+      })();
+    }) as never,
+  });
+  const provider = new ClaudeSubscriptionProvider("", "");
+  const run = async (stream: boolean) => {
+    let text = "";
+    for await (const chunk of provider.chat([{ role: "user", content: "Reply with OK." }], {
+      model: "claude-opus-5",
+      maxTokens: 32,
+      stream,
+    })) {
+      text += chunk;
+    }
+    return text;
+  };
+  try {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    for (const [stream, reported, android] of [
+      [true, { mcp_servers: [{ name: "claude.ai Gmail", status: "connected" }] }, false],
+      [false, { tools: ["mcp__claude_ai_Gmail__search_threads"], claude_code_version: "2.1.200" }, false],
+      [true, { mcp_servers: [{ name: "claude.ai Gmail", status: "connected" }] }, true],
+    ] as const) {
+      init = reported;
+      modelTurnRead = false;
+      stopLogs.length = 0;
+      if (android) Object.defineProperty(process, "platform", { ...platform, value: "android" });
+      try {
+        await assert.rejects(run(stream), (err: Error) => {
+          assert.match(
+            err.message,
+            /claude\.ai connectors \((claude\.ai Gmail|mcp__claude_ai_Gmail__search_threads)\)/,
+          );
+          // Android has no bundled copy, so it is only told to update.
+          if (android) assert.match(err.message, /update it\.$/);
+          else assert.match(err.message, /update it, or set CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false/);
+          return true;
+        });
+      } finally {
+        Object.defineProperty(process, "platform", platform);
+      }
+      assert.equal(modelTurnRead, false, "the model turn is never read once connectors are reported");
+      assert.equal(controller?.signal.aborted, true, "Claude Code is aborted");
+      assert.equal(stopLogs.length, 1, "the stop is logged");
+    }
+    init = {};
+    modelTurnRead = false;
+    stopLogs.length = 0;
+    assert.equal(await run(true), "OK", "no connectors reported: the request runs normally");
+    assert.equal(modelTurnRead, true);
+    assert.equal(controller?.signal.aborted, false);
+    assert.deepEqual(stopLogs, []);
+  } finally {
+    logger.error = originalError;
+    __setSdkForTesting(null);
+  }
 }
 
 console.log("claude-subscription installed CLI regression passed");

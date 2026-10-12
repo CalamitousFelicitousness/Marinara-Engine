@@ -76,10 +76,10 @@ export function worldKitItems(kit: WorldKit | null | undefined): WorldKitItems |
         { id: "service", label: "service" },
       ],
       currencies: [{ id: WORLD_KIT_MONEY_FAMILY, label: kit.money.label, units }],
-      market: {
-        prices: [{ id: "fair", label: "fair", times: 1, default: true as const }],
-        places,
-      },
+      // A kit with money and no shop pays and earns, but has no market to buy from.
+      ...(shop.length > 0
+        ? { market: { prices: [{ id: "fair", label: "fair", times: 1, default: true as const }], places } }
+        : {}),
       // The Game Master's own plain items stay as they are in a game with no ruleset; it invents none.
       propose: false,
       native: true,

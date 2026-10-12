@@ -819,6 +819,16 @@ const manifest = (minor: number) => ({
     applyGamePlaceTags('[place: name="Millbrook" size="town" day="new"]', sizeOf).content,
     '[place: name="Millbrook" size="town" day="new" result="ok"]',
   );
+  // A world's place keeps day="new" too, so staying in a world town still starts a new day.
+  const worldTown = (name: string) => (name === "thornmere" ? { name: "Thornmere", size: "town" } : undefined);
+  const worldDay = applyGamePlaceTags('[place: name="thornmere" size="hamlet" day="new"]', sizeOf, worldTown);
+  assert.equal(worldDay.content, '[place: name="Thornmere" size="town" day="new" result="ok"]');
+  assert.equal(
+    gameMarketDayStart(answeredGamePlaces(['[place: name="Thornmere" size="town" result="ok"]', worldDay.content]))
+      ?.ordinal,
+    1,
+    "a new day at a world's place",
+  );
   const told = [
     '[place: name="Millbrook" size="town" result="ok"] Morning.',
     '[place: name="Millbrook" size="town" result="ok"] Noon.',

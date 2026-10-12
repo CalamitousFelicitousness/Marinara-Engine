@@ -85,16 +85,21 @@ export function applyGamePlaceTags(
     const name = clean(values.get("name"));
     const written = clean(values.get("size"));
     if (!name && !written) return serialize({}, { result: "refused", reason: "unreadable" });
+    // A new day at a world's place as at any other.
+    const newDay = clean(values.get("day"))?.toLowerCase() === "new";
     const listed = name && known ? known(name) : undefined;
     if (listed) {
-      place = { name: listed.name, ...(listed.size ? { size: listed.size } : {}) };
+      place = {
+        name: listed.name,
+        ...(listed.size ? { size: listed.size } : {}),
+        ...(newDay ? { newDay: true as const } : {}),
+      };
       return serialize(place, { result: "ok" });
     }
     const size = written === undefined ? undefined : sizeOf(written);
     if (written !== undefined && !size) {
       return serialize({ ...(name ? { name } : {}), size: written }, { result: "refused", reason: "unknown-size" });
     }
-    const newDay = clean(values.get("day"))?.toLowerCase() === "new";
     place = {
       ...(name ? { name } : {}),
       ...(size ? { size: size.id } : {}),

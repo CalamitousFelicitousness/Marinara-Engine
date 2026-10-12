@@ -102,6 +102,7 @@ import {
   IMAGE_GENERATION_SOURCES,
   CODEX_IMAGE_MODEL,
   ZAI_IMAGE_MODELS,
+  SPICYAPI_IMAGE_MODELS,
   VIDEO_GENERATION_SOURCES,
   inferImageSource,
   isOpenAIGptImageModel,
@@ -728,7 +729,12 @@ export function ConnectionEditor() {
                               label: t("connections.mediaSources.deepseek.apiKeyLink"),
                               url: "https://platform.deepseek.com/api_keys",
                             }
-                          : API_KEY_LINKS[localProvider];
+                          : localProvider === "image_generation" && selectedImageService === "spicyapi"
+                            ? {
+                                label: t("connections.mediaSources.spicyapi.apiKeyLink"),
+                                url: "https://spicyapi.ai/console/keys",
+                              }
+                            : API_KEY_LINKS[localProvider];
 
   useEffect(() => {
     if (localProvider !== "image_generation" || !selectedImageDefaultsService) {
@@ -2261,7 +2267,9 @@ export function ConnectionEditor() {
                               ? t("connections.mediaSources.arli.imageDescription")
                               : src.id === "codex_chatgpt"
                                 ? t("connections.mediaSources.codexChatgpt.imageDescription")
-                                : src.description;
+                                : src.id === "spicyapi"
+                                  ? t("connections.mediaSources.spicyapi.imageDescription")
+                                  : src.description;
                   return (
                     <button
                       key={src.id}
@@ -2280,6 +2288,9 @@ export function ConnectionEditor() {
                         }
                         if (src.id === "fal" && selectedImageService !== "fal") {
                           setLocalModel("fal-ai/flux/schnell");
+                        }
+                        if (src.id === "spicyapi" && selectedImageService !== "spicyapi") {
+                          setLocalModel(SPICYAPI_IMAGE_MODELS[0]!.id);
                         }
                         if (src.id === "codex_chatgpt" && selectedImageService !== "codex_chatgpt") {
                           // The hidden Base URL and API key fields must not keep another service's values.

@@ -36,15 +36,27 @@ let dropEnds = false;
 /** When set, the fake Jev gives this unsure score to every presence question. */
 let unsurePresence: number | null = null;
 let mainReplies: string[] = [];
+/** When set, the fake helper places Pantalone in the messages that contain it. */
+let pantaloneSceneMarker: string | null = null;
 
 /** The fake helper keeps Maukie (by first name only) and leaves Pantalone out of every scene. */
-function presence(task: { decide: Array<{ messageNumber: number; candidates: string[] }> }) {
-  return task.decide.map(({ messageNumber, candidates }) => ({
-    messageNumber,
-    present: Object.fromEntries(
-      candidates.map((name) => [name.split(" ")[0]!.toUpperCase(), !name.startsWith("Pantalone")]),
-    ),
-  }));
+function presence(task: {
+  decide: Array<{ messageNumber: number; candidates: string[] }>;
+  transcript?: Array<{ messageNumber: number; content: string }>;
+}) {
+  return task.decide.map(({ messageNumber, candidates }) => {
+    const content = task.transcript?.find((entry) => entry.messageNumber === messageNumber)?.content ?? "";
+    const pantalonePresent = pantaloneSceneMarker !== null && content.includes(pantaloneSceneMarker);
+    return {
+      messageNumber,
+      present: Object.fromEntries(
+        candidates.map((name) => [
+          name.split(" ")[0]!.toUpperCase(),
+          !name.startsWith("Pantalone") || pantalonePresent,
+        ]),
+      ),
+    };
+  });
 }
 
 const provider = createServer(async (req, res) => {
@@ -776,6 +788,68 @@ try {
     ),
     "the crossed-eye marker reaches the written message without waiting for a refresh",
   );
+
+  // #7481: a reply split at a scene break is decided part by part, and each responder's reply splits on its own.
+  const splitChat = await createChat();
+  await memory.initialize(splitChat);
+  await say(splitChat, "user", "P waits for news.");
+  pantaloneSceneMarker = "WITH_PANTALONE";
+  calls.length = 0;
+  mainReplies = [
+    "MAUKIE_ALONE hides the letter.\n\n***\n\nMaukie joins Pantalone, MAUKIE_WITH_PANTALONE.",
+    "PANTALONE_COUNTS coins.\n\n---\n\nPANTALONE_LEAVES the tavern.",
+    "NARRATOR_SPLIT_REPLY",
+  ];
+  const splitTurn = await app.inject({ method: "POST", url: "/api/generate/", payload: { chatId: splitChat } });
+  pantaloneSceneMarker = null;
+  assert.equal(splitTurn.statusCode, 200, splitTurn.body);
+  assert(!splitTurn.body.includes('"type":"error"'), splitTurn.body);
+  const splitMessages = (await chats.listMessages(splitChat)).slice(1);
+  assert.deepEqual(
+    splitMessages.map((message) => [message.characterId, message.content.split("\n")[0]]),
+    [
+      [ids.maukie, "MAUKIE_ALONE hides the letter."],
+      [ids.maukie, "***"],
+      [ids.pantalone, "PANTALONE_COUNTS coins."],
+      [ids.pantalone, "---"],
+      [ids.narrator, "NARRATOR_SPLIT_REPLY"],
+    ],
+    "each responder's reply is split at its own break, in order",
+  );
+  const [maukieAlone, maukieWithPantalone] = splitMessages;
+  assert.deepEqual((await extraOf(maukieAlone!.id)).hiddenFromAICharacterIds, [ids.pantalone]);
+  assert.deepEqual(
+    (await extraOf(maukieWithPantalone!.id)).hiddenFromAICharacterIds ?? [],
+    [],
+    "the part with Pantalone in it is decided on its own",
+  );
+  const splitMains = calls.filter((call) => call.kind === "main");
+  assert(!splitMains[1]!.prompt.includes("MAUKIE_ALONE"), "Pantalone never reads the part he was away for");
+  assert(splitMains[1]!.prompt.includes("MAUKIE_WITH_PANTALONE"), "but reads the part he was there for");
+  assert(splitMains[2]!.prompt.includes("MAUKIE_ALONE") && splitMains[2]!.prompt.includes("PANTALONE_LEAVES"));
+
+  // A reply with more parts than one visibility pass looks at is still decided whole.
+  const manyPartsChat = await createChat();
+  await memory.initialize(manyPartsChat);
+  await say(manyPartsChat, "user", "P waits for news.");
+  calls.length = 0;
+  mainReplies = [
+    Array.from({ length: 10 }, (_, index) => `MAUKIE_PART_${index + 1}_ALONE in the cellar.`).join("\n\n***\n\n"),
+    "PANTALONE_WAITS.",
+    "NARRATOR_MANY_PARTS",
+  ];
+  const manyPartsTurn = await app.inject({
+    method: "POST",
+    url: "/api/generate/",
+    payload: { chatId: manyPartsChat },
+  });
+  assert.equal(manyPartsTurn.statusCode, 200, manyPartsTurn.body);
+  const manyParts = (await chats.listMessages(manyPartsChat)).filter((message) => message.characterId === ids.maukie);
+  assert.equal(manyParts.length, 10);
+  for (const part of manyParts)
+    assert.deepEqual((await extraOf(part.id)).hiddenFromAICharacterIds, [ids.pantalone], part.content);
+  const manyPartsMains = calls.filter((call) => call.kind === "main");
+  assert(!manyPartsMains[1]!.prompt.includes("MAUKIE_PART_1_ALONE"), "Pantalone never reads the earliest parts");
 } finally {
   await app.close();
   provider.close();

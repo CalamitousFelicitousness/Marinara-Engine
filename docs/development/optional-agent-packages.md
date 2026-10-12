@@ -1054,10 +1054,10 @@ definition is older than the pinned version) is reported as unavailable and neve
 another ruleset. The pin is matched on the ruleset id and on the package that supplied it, so
 another package claiming the same id does not take over an existing game.
 
-### Capability API 1.71: an Experience's map pack
+### Capability API 1.72: an Experience's map pack
 
 A `game-surface` package that sets up through the Game wizard (`gameSurface.setup`, 1.18) can ship a
-map pack with schema version 2 and Capability API 1.71: its own setting kit, ready-made worlds built
+map pack with schema version 2 and Capability API 1.72: its own setting kit, ready-made worlds built
 with that kit, and its own tile pack. Each is the share file Game Mode and Pixelforge already read and
 write (a `.worldkit.json`, `.world.json` files and a `.tilepack.json`), and each is also a declared,
 hash-pinned asset.
@@ -1149,6 +1149,30 @@ summary.
 Use the existing startup-readiness declaration independently when the world must
 be prepared before the opening turn. Declare API 1.18 as the package minimum;
 older hosts cannot interpret this setup declaration.
+
+### Capability API 1.71: read messages as agents read them
+
+In Roleplay, a message can carry whispers that are not part of its `content`. Every agent the Engine
+runs reads them, and a package that reads the chat itself can now read the same text. Each record
+from `persistence.listMessages(chatId)` gets `agentContent`: the message as Engine agents read it.
+Each whisper sits at its place, marked `[Private whisper to <name>: …]`, and a message that is only
+a whisper reads as its whispers. A document a character hands over, such as a letter, follows the
+message. The player's private notes are left out.
+
+`agentContent` is there only in Roleplay chats. It is missing in other modes and in a hosted
+multiplayer room, where everyone sees what agents write. `content` never changes: it is still the
+public text. `extra` doesn't change either: it is the message's saved data, with every whisper in it,
+in every mode. Never show text built from it to players or characters a whisper was not for.
+
+```ts
+const messages = await api.runtime.persistence.listMessages(chatId);
+const history = messages.map((message) => message.agentContent ?? message.content);
+```
+
+It is a soft seam: older Engines leave the field out, so a package that reads
+`agentContent ?? content` does not need to declare 1.71. It needs the `chat-read` permission, like
+`listMessages`. Whispers are private: anything a package writes from them, such as a note or a memory,
+can reach characters the whisper was not for.
 
 ### Capability API 1.68: embed search queries as queries
 

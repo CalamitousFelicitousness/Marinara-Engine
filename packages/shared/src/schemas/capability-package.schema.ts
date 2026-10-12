@@ -571,7 +571,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.70: a catalog entry's rider may name `weapons` by item tag, so it fires on a held weapon as it
 //        does on an attack row (Sneak Attack with a rapier held from the bag). A new key on the strict
 //        rider, so a package whose entries carry one declares 1.70.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 70 } as const);
+// 1.71: `listMessages` records carry `agentContent` in Roleplay outside hosted rooms: the message as Engine
+//        agents read it, with its whispers. Soft seam: a package reads `agentContent ?? content`, so it does not
+//        need to declare 1.71. Requires `chat-read`, like `listMessages`.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 71 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

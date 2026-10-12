@@ -1385,9 +1385,12 @@ try {
   });
   calls.length = 0;
   await memory.checkScenesAfterGeneration(macroChat.id, { blocking: false });
-  assert.equal(calls.length, 1);
-  assert.match(JSON.stringify(calls[0]!.messages), /STABLE_CONSTANT/u);
-  assert.doesNotMatch(JSON.stringify(calls[0]!.messages), /MAUKIE_SECTION|PANTALONE_SECTION/u);
+  // #7454: a summary written by hand with a section per character goes to the Helper too, with its conditions.
+  // This answer drops those sections, so it is not saved; retried in halves, the other summary is shortened alone.
+  assert.equal(calls.length, 3);
+  assert.match(calls[0]!.messages[1]!.content, /\{\{#if char == "Maukie"\}\}MAUKIE_SECTION[\s\S]*STABLE_CONSTANT/u);
+  assert.match(JSON.stringify(calls[2]!.messages), /STABLE_CONSTANT/u);
+  assert.doesNotMatch(JSON.stringify(calls[2]!.messages), /MAUKIE_SECTION|PANTALONE_SECTION/u);
   const macroAfter = JSON.parse((await chats.getById(macroChat.id))!.metadata).summaryEntries;
   assert.deepEqual(
     macroAfter.find((entry: { id: string }) => entry.id === template.id),
@@ -1422,12 +1425,13 @@ try {
   });
   calls.length = 0;
   await memory.checkScenesAfterGeneration(macroChat.id, { blocking: false });
-  assert.equal(calls.length, 1);
-  assert.doesNotMatch(
-    JSON.stringify(calls[0]!.messages),
-    /MAUKIE_SECTION|PANTALONE_SECTION/u,
+  assert.equal(calls.length, 3);
+  assert.match(
+    calls[0]!.messages[1]!.content,
+    /\{\{#if char == "Maukie"\}\}MAUKIE_SECTION[\s\S]*\{\{#if char == "Pantalone"\}\}PANTALONE_SECTION/u,
     "shared-mode compaction must not resolve a mixed-POV template as only the first character",
   );
+  assert.doesNotMatch(JSON.stringify(calls[2]!.messages), /MAUKIE_SECTION|PANTALONE_SECTION/u);
   assert.deepEqual(
     JSON.parse((await chats.getById(macroChat.id))!.metadata).summaryEntries.find(
       (entry: { id: string }) => entry.id === template.id,
@@ -1462,7 +1466,10 @@ try {
   summaryResponse = "R".repeat(2400 * 4);
   calls.length = 0;
   await memory.checkScenesAfterGeneration(macroChat.id, { blocking: false });
-  assert.equal(calls.length, 1, "a valid shorter recap is kept without retries to force a tiny group target");
+  // #7454: the hand-written template goes to the Helper too. This answer drops its sections, so the two are
+  // retried in halves (calls 2 and 3); the other summary's shorter recap is then kept without further retries.
+  assert.equal(calls.length, 3, "a valid shorter recap is kept without retries to force a tiny group target");
+  assert.doesNotMatch(JSON.stringify(calls[2]!.messages), /AAAA|BBBB/u);
   assert.equal(calls[0]!.maxTokens, 12_000, "compaction preserves a larger Chat Summary output allowance");
   assert.doesNotMatch(calls[0]!.messages[0]!.content, /196 tokens/u);
   const softBudgetAfter = JSON.parse((await chats.getById(macroChat.id))!.metadata).summaryEntries;
@@ -1727,10 +1734,13 @@ try {
   await chats.patchMetadata(combineChat.id, { summaryEntries: [privateRecap, sharedRecap] });
   calls.length = 0;
   await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
-  assert.equal(calls.length, 2);
-  assert.match(JSON.stringify(calls[0]!.messages), /MAUKIE_SECRET/u);
+  // #7454: a rejected answer is retried in halves, in chat order: the private summary alone, rejected again
+  // and kept, then the plain one.
+  assert.equal(calls.length, 3);
+  assert.match(JSON.stringify(calls[0]!.messages), /MAUKIE_SECRET[\s\S]*SHARED_TWO/u);
+  assert.match(JSON.stringify(calls[1]!.messages), /MAUKIE_SECRET/u);
   assert.doesNotMatch(
-    JSON.stringify(calls[1]!.messages),
+    JSON.stringify(calls[2]!.messages),
     /MAUKIE_SECRET|SHARED_WALK|exactly its original condition/u,
     "the plain summary is shortened on its own, as before",
   );
@@ -1793,19 +1803,36 @@ try {
     "a shared sentence with other quote marks and apostrophes does not block the combination",
   );
 
-  // A summary edited by hand keeps its text; only the plain summary is shortened.
+  // #7454: a summary written or edited by hand with a private section is combined too, its sections kept.
+  // The original is never rewritten: it stays as an inactive version that can be turned back on.
   summaryReply = undefined;
   const editedRecap = {
     ...privateRecap,
+    origin: "manual" as const,
     content: privateRecap.content.replace("hid", "buried"),
     updatedAt: new Date(Date.parse(privateRecap.createdAt) + 1000).toISOString(),
   };
+  const buriedSecret = '{{#if char == "Maukie"}}MAUKIE_SECRET buried the key.{{/if}}';
+  summaryResponse = `COMBINED_EDIT. ${buriedSecret}`;
   await chats.patchMetadata(combineChat.id, { summaryEntries: [editedRecap, sharedRecap] });
   calls.length = 0;
   await memory.checkScenesAfterGeneration(combineChat.id, { blocking: false });
   assert.equal(calls.length, 1);
-  assert.doesNotMatch(JSON.stringify(calls[0]!.messages), /MAUKIE_SECRET/u);
-  assert.deepEqual((await combineEntries())[0], editedRecap, "an edited summary is never rewritten");
+  assert(calls[0]!.messages[1]!.content.includes(buriedSecret), "the edited section reaches the Helper as written");
+  const editedEntries = await combineEntries();
+  assert.deepEqual(
+    editedEntries.filter((entry) => !entry.enabled).map((entry) => entry.id),
+    [editedRecap.id, sharedRecap.id],
+    "a hand-edited summary is combined when over the share",
+  );
+  assert.equal(
+    editedEntries.find((entry) => entry.id === editedRecap.id)!.content,
+    editedRecap.content,
+    "an edited summary is never rewritten",
+  );
+  assert(editedEntries.find((entry) => entry.enabled)!.content.includes(buriedSecret));
+  assert.doesNotMatch(await recallFor(privateB.id), /MAUKIE_SECRET/u);
+  summaryResponse = undefined;
 
   // Merged group chats combine them too, instead of skipping every summary with a character condition.
   summaryResponse = `COMBINED_WALK. ${maukieSecret}`;
@@ -1910,8 +1937,9 @@ try {
   assert.deepEqual((await combineEntries())[0], privateRecap, "a private sentence next to another macro is not saved");
   assert.doesNotMatch(await recallFor(privateB.id), /MAUKIE_SECRET/u);
 
-  // A summary keeps one message range for all its readers, shown with that range's story dates, so in a
-  // merged chat a summary only Maukie reads is not combined with one Pantalone also reads.
+  // A summary only Maukie reads is combined with one Pantalone also reads (#7454). Each reader's prompt shows
+  // the range and story dates of only the messages that reader can see, so the combined summary never shows
+  // Pantalone the number or date of a message hidden from him.
   const rangeChat = await chats.create({
     name: "Merged private range",
     mode: "roleplay",
@@ -1967,7 +1995,14 @@ try {
     }`;
   calls.length = 0;
   await memory.checkScenesAfterGeneration(rangeChat.id, { blocking: false });
-  assert.equal(calls.length, 2, "each group of readers is shortened on its own");
+  assert.equal(calls.length, 1, "summaries different characters read are combined in one call");
+  const rangeEntries = JSON.parse((await chats.getById(rangeChat.id))!.metadata).summaryEntries as Array<
+    ReturnType<typeof createChatSummaryEntry>
+  >;
+  assert.deepEqual(
+    rangeEntries.filter((entry) => entry.enabled).map((entry) => entry.messageIds),
+    [[rangeSource[0]!.id, rangeSource[1]!.id]],
+  );
   const rangeFor = async (id: string) =>
     (
       await memory.prepare({
@@ -1980,13 +2015,248 @@ try {
     ).chatSummary ?? "";
   const maukieRange = await rangeFor(privateA.id);
   for (const text of ["NIGHT_OF_THE_HEIST", "MAUKIE_SHORT", "SHARED_SHORT"]) assert(maukieRange.includes(text), text);
-  const pantaloneRange = await rangeFor(privateB.id);
-  assert.match(pantaloneRange, /SHARED_SHORT/u);
-  assert.doesNotMatch(
-    pantaloneRange,
-    /NIGHT_OF_THE_HEIST|Messages #1/u,
-    "Pantalone never gets the range or story date of a message hidden from him",
+  for (const mode of ["shared", "individual"]) {
+    await chats.patchMetadata(rangeChat.id, { groupChatMode: mode });
+    const pantaloneRange = await rangeFor(privateB.id);
+    assert.match(
+      pantaloneRange,
+      /^Messages #2–#2; source timeframe \(summary corrections take precedence\): MORNING_AFTER\.\nSHARED_SHORT\.$/u,
+      mode,
+    );
+    assert.doesNotMatch(
+      pantaloneRange,
+      /NIGHT_OF_THE_HEIST|Messages #1/u,
+      "Pantalone never gets the range or story date of a message hidden from him",
+    );
+    assert.match(
+      await rangeFor(privateA.id),
+      /^Messages #1–#2; source timeframe [^:]*: NIGHT_OF_THE_HEIST → MORNING_AFTER\./u,
+    );
+  }
+  summaryReply = undefined;
+
+  // #7454, as in a one-by-one chat with a narrator and four characters: every summary has its own readers, some
+  // leave the narrator out, and two were written or edited by hand with private sections. The narrator reads all
+  // of them, so its view is over the share. One call combines them all and brings it under; the next reply calls
+  // nothing. This Helper keeps every condition and shortens each run of filler.
+  const keepSections = (prompt: string) =>
+    (JSON.parse(prompt).at(-1).content as string).replace(/(?:FILL_\w+ )+/gu, "SHORT ");
+  const powers = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Powers That Be" }));
+  assert(powers);
+  const canonChat = await chats.create({
+    name: "Narrator canon",
+    mode: "roleplay",
+    characterIds: [powers.id, character.id, privateA.id, privateB.id],
+    connectionId: connection.id,
+  });
+  assert(canonChat);
+  chatIds.push(canonChat.id);
+  for (let index = 1; index <= 5; index++)
+    await chats.createMessage({ chatId: canonChat.id, role: "user", content: `Scene ${index}.` });
+  await chats.createMessage({
+    chatId: canonChat.id,
+    role: "user",
+    content: "The next scene.",
+    extra: { isConversationStart: true },
+  });
+  const canonSource = await chats.listMessages(canonChat.id);
+  const fill = (name: string, count = 150) => `FILL_${name} `.repeat(count);
+  const canonEntry = (index: number, content: string, extra: Record<string, unknown> = {}) =>
+    createChatSummaryEntry({
+      id: `canon-${index}`,
+      origin: "automated",
+      title: `Messages #${index + 1}–#${index + 1}`,
+      sourceMode: "range",
+      content,
+      enabled: true,
+      messageIds: [canonSource[index]!.id],
+      messageCount: 1,
+      rangeStartIndex: index + 1,
+      rangeEndIndex: index + 1,
+      ...extra,
+    });
+  const arcSecret = '{{#if char == "Maukie"}}ARC_SECRET Maukie keeps the brass key hidden.{{/if}}';
+  const canonEntries = [
+    canonEntry(0, `{{#if char == "Maukie" || "Pantalone"}}${fill("A")}{{/if}}`),
+    canonEntry(1, `{{#if char == "Maukie"}}${fill("B")}{{/if}}`),
+    canonEntry(2, `{{#if char == "Dottore" || "Pantalone" || "Powers That Be"}}${fill("C")}{{/if}}`),
+    canonEntry(3, `{{#if char == "Maukie" || "Pantalone" || "Dottore"}}${fill("D")}${arcSecret}{{/if}}`, {
+      origin: "manual",
+      title: "Arc One",
+    }),
+    canonEntry(4, `{{#if char == "Pantalone"}}${fill("E")}{{/if}}`, {
+      title: "Combined summary",
+      updatedAt: new Date(Date.now() + 1000).toISOString(),
+    }),
+  ];
+  const canonBudget = 1430;
+  const canonTrigger = Math.floor(canonBudget * 0.7);
+  await chats.patchMetadata(canonChat.id, {
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      summaryBudgetTokens: canonBudget,
+      sceneCheckInterval: 100,
+      narratorCharacterId: powers.id,
+      knowledgeStarts: { [character.id]: null, [privateA.id]: null, [privateB.id]: null },
+    },
+    summaryEntries: canonEntries,
+  });
+  const canonView = async (id: string) =>
+    (
+      await memory.prepare({
+        chatId: canonChat.id,
+        messages: canonSource,
+        audienceCharacterIds: [id],
+        budgetTokens: 50_000,
+        readOnly: true,
+      })
+    ).chatSummary ?? "";
+  const narratorBefore = await canonView(powers.id);
+  assert(estimateChatSummaryTokens(narratorBefore) > canonTrigger, "the narrator's view starts over the share");
+  for (const name of ["A", "B", "C", "D", "E"]) assert(narratorBefore.includes(`FILL_${name}`), name);
+  summaryReply = keepSections;
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(canonChat.id, { blocking: false });
+  assert.equal(calls.length, 1, "one call combines summaries different characters read");
+  const canonAfter = JSON.parse((await chats.getById(canonChat.id))!.metadata).summaryEntries as Array<
+    ReturnType<typeof createChatSummaryEntry>
+  >;
+  assert.equal(canonAfter.filter((entry) => entry.enabled).length, 1);
+  assert.deepEqual(
+    canonAfter.filter((entry) => !entry.enabled),
+    canonEntries.map((entry) => ({ ...entry, enabled: false, updatedAt: canonAfter[1]!.updatedAt })),
+    "the originals, including the hand-written ones, stay unchanged as inactive versions",
   );
+  const narratorAfter = await canonView(powers.id);
+  assert(
+    estimateChatSummaryTokens(narratorAfter) <= canonTrigger,
+    "one pass brings the narrator's view under the share",
+  );
+  assert.match(narratorAfter, /^Messages #1–#5;[^\n]*\nSHORT[\s\S]*ARC_SECRET/u);
+  assert.match(await canonView(privateA.id), /ARC_SECRET/u);
+  for (const id of [character.id, privateB.id]) assert.doesNotMatch(await canonView(id), /ARC_SECRET/u);
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(canonChat.id, { blocking: false });
+  assert.deepEqual(calls, [], "the next reply, with no new summaries, calls nothing");
+
+  // Summaries that can't be combined and already fill a view are not shortened again on every reply.
+  const unmergeable = [
+    canonEntry(0, `${fill("F", 700)}{{char}} remembers.`),
+    canonEntry(1, `{{#if char == "Maukie"}}${fill("G")}{{/if}}`),
+  ];
+  await chats.patchMetadata(canonChat.id, { summaryEntries: unmergeable });
+  for (let pass = 0; pass < 2; pass++) await memory.checkScenesAfterGeneration(canonChat.id, { blocking: false });
+  assert.deepEqual(calls, [], "no view has room to win back");
+  assert.deepEqual(JSON.parse((await chats.getById(canonChat.id))!.metadata).summaryEntries, unmergeable);
+
+  // An answer that adds or drops the narrator in a condition changes no reader, so it is saved.
+  const mapSecret = "HIDE_A Maukie hid the map in the cellar.";
+  const ledgerSecret = "HIDE_B Pantalone sold the old ledger.";
+  const twoReaders = [
+    canonEntry(0, `{{#if char == "Maukie" || "Powers That Be"}}${fill("H", 400)}${mapSecret}{{/if}}`),
+    canonEntry(1, `{{#if char == "Pantalone"}}${fill("I", 400)}${ledgerSecret}{{/if}}`),
+  ];
+  summaryReply = () =>
+    `{{#if char == "Maukie"}}SHORT ${mapSecret}{{/if}} {{#if char == "Pantalone" || "Powers That Be"}}SHORT ${ledgerSecret}{{/if}}`;
+  await chats.patchMetadata(canonChat.id, { summaryEntries: twoReaders });
+  await memory.checkScenesAfterGeneration(canonChat.id, { blocking: false });
+  assert.equal(calls.length, 1);
+  const slipEntries = JSON.parse((await chats.getById(canonChat.id))!.metadata).summaryEntries as Array<{
+    enabled: boolean;
+  }>;
+  assert.equal(slipEntries.filter((entry) => entry.enabled).length, 1, "a narrator slip is not a rejection");
+  for (const [id, own, other] of [
+    [privateA.id, mapSecret, ledgerSecret],
+    [privateB.id, ledgerSecret, mapSecret],
+  ]) {
+    const view = await canonView(id!);
+    assert(view.includes(own!) && !view.includes(other!));
+  }
+  const narratorSlip = await canonView(powers.id);
+  assert(narratorSlip.includes(mapSecret) && narratorSlip.includes(ledgerSecret), "the narrator reads both");
+  // One that drops a reader's section is not saved; the halves are tried on their own.
+  summaryReply = (prompt) =>
+    prompt.includes("HIDE_A") && prompt.includes("HIDE_B")
+      ? `{{#if char == "Maukie"}}SHORT ${mapSecret}{{/if}}`
+      : `SHORT ${prompt.includes("HIDE_A") ? mapSecret : ledgerSecret}`;
+  await chats.patchMetadata(canonChat.id, { summaryEntries: twoReaders });
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(canonChat.id, { blocking: false });
+  assert.equal(calls.length, 3);
+  assert.match(JSON.stringify(calls[1]!.messages), /HIDE_A/u);
+  assert.doesNotMatch(JSON.stringify(calls[1]!.messages), /HIDE_B/u);
+  assert.match(JSON.stringify(calls[2]!.messages), /HIDE_B/u);
+  const halvesEntries = JSON.parse((await chats.getById(canonChat.id))!.metadata).summaryEntries as Array<{
+    enabled: boolean;
+    content: string;
+  }>;
+  assert.equal(halvesEntries.filter((entry) => entry.enabled && entry.content.includes("SHORT")).length, 2);
+  assert.doesNotMatch(await canonView(privateB.id), /HIDE_A/u);
+  assert.doesNotMatch(await canonView(privateA.id), /HIDE_B/u);
+
+  // A merged chat measures what its shared prompt carries, not the first character's view, and a combined
+  // summary is for the characters who read its sources, not for everyone in the chat.
+  const mergedCanon = await chats.create({
+    name: "Merged canon",
+    mode: "roleplay",
+    characterIds: [character.id, privateA.id, privateB.id],
+    connectionId: connection.id,
+  });
+  assert(mergedCanon);
+  chatIds.push(mergedCanon.id);
+  for (const content of ["Scene one.", "Scene two."])
+    await chats.createMessage({ chatId: mergedCanon.id, role: "user", content });
+  await chats.createMessage({
+    chatId: mergedCanon.id,
+    role: "user",
+    content: "The next scene.",
+    extra: { isConversationStart: true },
+  });
+  const mergedSource = await chats.listMessages(mergedCanon.id);
+  await chats.patchMetadata(mergedCanon.id, {
+    groupChatMode: "merged",
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      summaryBudgetTokens: canonBudget,
+      sceneCheckInterval: 100,
+      knowledgeStarts: { [character.id]: null, [privateA.id]: null, [privateB.id]: null },
+    },
+    summaryEntries: mergedSource.slice(0, 2).map((message, index) =>
+      createChatSummaryEntry({
+        id: `merged-canon-${index}`,
+        origin: "automated",
+        sourceMode: "range",
+        content: `{{#if char == "Maukie" || "Pantalone"}}${fill(`M${index}`, 300)}{{/if}}`,
+        enabled: true,
+        messageIds: [message.id],
+        rangeStartIndex: index + 1,
+        rangeEndIndex: index + 1,
+      }),
+    ),
+  });
+  const mergedView = async (ids: string[]) =>
+    (
+      await memory.prepare({
+        chatId: mergedCanon.id,
+        messages: mergedSource,
+        audienceCharacterIds: ids,
+        budgetTokens: 50_000,
+        readOnly: true,
+      })
+    ).chatSummary ?? "";
+  const everyone = [character.id, privateA.id, privateB.id];
+  assert.equal(await mergedView([character.id]), "", "Dottore, the first character, reads none of it");
+  assert(estimateChatSummaryTokens(await mergedView(everyone)) > canonTrigger);
+  summaryReply = () => "MERGED_PLAIN";
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(mergedCanon.id, { blocking: false });
+  assert.equal(calls.length, 1, "the shared prompt's constants are over the share");
+  assert(estimateChatSummaryTokens(await mergedView(everyone)) <= canonTrigger);
+  assert.match(await mergedView(everyone), /\[Known only to (?:Maukie, Pantalone|Pantalone, Maukie): MERGED_PLAIN\]/u);
+  assert.equal(await mergedView([character.id]), "", "Dottore still reads nothing");
   summaryReply = undefined;
 } finally {
   finishStream?.();

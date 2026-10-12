@@ -2542,6 +2542,48 @@ function flattenAgentConditionalMacrosInner(input: string, decodeTextEntities: b
   return result;
 }
 
+/** A condition, or `null` for an {{else}}, that compares only the character name and literals. */
+function characterOnlyCondition(condition: string | null): boolean {
+  return (
+    condition === null ||
+    (!condition.includes("{{") &&
+      parseConditionComparisons(condition).every(({ left, right }) =>
+        [left, right].every(
+          (operand) =>
+            operand === undefined ||
+            ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
+            stripOuterQuotes(operand) !== null,
+        ),
+      ))
+  );
+}
+
+/**
+ * Keep the text of every branch of each character-only condition, once and without its tags, for a reader
+ * who knows every character's part. Other conditions stay as they are, with their parts flattened inside.
+ */
+export function flattenCharacterConditions(input: string, depth = 0): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) return result + input.slice(cursor);
+    result += input.slice(cursor, start.start);
+    const characterOnly = block.branches.every(({ condition }) => characterOnlyCondition(condition));
+    let tag = start.start;
+    for (const branch of block.branches) {
+      if (!characterOnly) result += input.slice(tag, branch.contentStart);
+      result += flattenCharacterConditions(input.slice(branch.contentStart, branch.contentEnd), depth + 1);
+      tag = branch.contentEnd;
+    }
+    if (!characterOnly) result += input.slice(tag, block.endEnd);
+    cursor = block.endEnd;
+  }
+  return result;
+}
+
 /**
  * Keep generated summaries inside their readers' scope without nesting duplicate character guards.
  * With `mark`, each part goes to `mark(text, itsReaders, depth)` instead of a character guard, and parts no
@@ -2577,19 +2619,7 @@ export function scopeCharacterSummary(
     result += wrap(input.slice(cursor, start.start));
     // Only character/literal conditions can be simplified now. Keep authored
     // variable conditions intact so changing a variable still changes visibility.
-    const characterOnly = block.branches.every(
-      ({ condition }) =>
-        condition === null ||
-        (!condition.includes("{{") &&
-          parseConditionComparisons(condition).every(({ left, right }) =>
-            [left, right].every(
-              (operand) =>
-                operand === undefined ||
-                ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
-                stripOuterQuotes(operand) !== null,
-            ),
-          )),
-    );
+    const characterOnly = block.branches.every(({ condition }) => characterOnlyCondition(condition));
     if (!characterOnly) result += wrap(input.slice(start.start, block.endEnd));
     else {
       let remaining = names;

@@ -19,6 +19,7 @@ import {
   resolveMacros,
   scopeCharacterSummary,
   markReaderVersions,
+  flattenCharacterConditions,
   parseTrackerHiddenFields,
   isTrackerFieldHidden,
   worldTrackerLockKey,
@@ -320,7 +321,7 @@ function preparationPolicyRevision(ctx: Context): string {
   // Automatic message visibility changes no prepared memory; keep existing snapshots reusable.
   const { autoMessageVisibility: _visibility, ...settings } = ctx.settings;
   return hash([
-    "scene-timeframe-constants-v23", // Invalidate reusable contexts without rebuilding valid source archives.
+    "scene-timeframe-constants-v24", // Invalidate reusable contexts without rebuilding valid source archives.
     policyFingerprint(ctx),
     settings,
     ctx.metadata.summaryEntries,
@@ -1831,6 +1832,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
   }
 
   function renderEntry(ctx: Context, text: string, audience: string[]): string {
+    // The narrator alone reads every character's section, plain and once, whoever its condition names.
+    if (audience.length === 1 && audience[0] === ctx.settings.narratorCharacterId)
+      text = flattenCharacterConditions(text);
     const names = (audience.length ? audience : ctx.characterIds).map((id) => ctx.names.get(id) ?? "Character");
     // Narrator privilege needs the narrator as the only reader, even in a merged chat with one character (#7237).
     const char = audience.find((id) => id !== ctx.settings.narratorCharacterId);
@@ -3444,10 +3448,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     ctx = await context(chatId);
     const views = ctx.individual ? ctx.characterIds : [""];
     const eligible = sourceEntries(ctx, ctx.messages, false);
+    // A merged reply reads the summaries as one prompt for every character in the chat.
     const rendered = new Map(
       views.map((id) => [
         id,
-        new Map(eligible.map((entry) => [entry.id, renderEntry(ctx, entry.content, id ? [id] : [])])),
+        new Map(eligible.map((entry) => [entry.id, renderEntry(ctx, entry.content, id ? [id] : ctx.characterIds)])),
       ]),
     );
     const indexes = new Map(ctx.messages.map((message, index) => [message.id, index]));
@@ -3469,33 +3474,32 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     );
     const outsideLive = (entry: (typeof eligible)[number], id: string) =>
       coverage(entry).every((messageId) => !liveIds.get(id)!.has(messageId));
-    const viewTokens = new Map(
-      views.map((id) => [
-        id,
-        tokenSize(
-          eligible
-            .filter((entry) => outsideLive(entry, id))
-            .map((entry) => rendered.get(id)!.get(entry.id)!)
-            // An entry with no text for this view adds nothing here, not even a separator (#7250).
-            .filter((text) => text.trim())
-            .join("\n\n"),
-        ),
-      ]),
-    );
+    const viewSize = (id: string, entries: typeof eligible) =>
+      tokenSize(
+        entries
+          .filter((entry) => outsideLive(entry, id))
+          .map((entry) => rendered.get(id)!.get(entry.id)!)
+          // An entry with no text for this view adds nothing here, not even a separator (#7250).
+          .filter((text) => text.trim())
+          .join("\n\n"),
+      );
+    const viewTokens = new Map(views.map((id) => [id, viewSize(id, eligible)]));
     const constantBudget = Math.floor(ctx.settings.summaryBudgetTokens * 0.7);
     if ([...viewTokens.values()].every((tokens) => tokens <= constantBudget)) {
       await progress(ctx, { status: "ready", stage: "ready", error: null }, options);
       return;
     }
     const names = ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character");
+    const narrator = ctx.settings.narratorCharacterId ? ctx.names.get(ctx.settings.narratorCharacterId) : undefined;
     // The text of each group of readers in these texts; "{{" stands for any other macro. It is lowercased,
     // with plain quote marks and one space or line break between words, also where a condition splits a
-    // sentence, so spacing, a condition or a curly apostrophe can't hide a copied sentence.
+    // sentence, so spacing, a condition or a curly apostrophe can't hide a copied sentence. The narrator
+    // reads every section, so a condition that names or leaves out the narrator changes no reader.
     const sections = (texts: string[]) => {
       const found = new Map<string, string>();
       for (const text of texts)
         scopeCharacterSummary(text, names, 0, (part, readers) => {
-          const key = part.includes("{{") ? "{{" : JSON.stringify([...readers].sort());
+          const key = part.includes("{{") ? "{{" : JSON.stringify(readers.filter((name) => name !== narrator).sort());
           if (part.trim()) found.set(key, `${found.get(key) ?? ""} ${part}`);
           return part;
         });
@@ -3551,53 +3555,76 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               sentences(text).some((sentence) => output.includes(sentence) && !before.get(wider)?.includes(sentence)),
           ),
       );
-    // Combine the summaries the same characters read. One whose text differs by character joins
-    // with its conditions kept, if Advanced Memory wrote it and nobody changed it since (#7270).
-    const conditional = new Set<string>();
-    const groups = new Map<
-      string,
-      { audience: string[]; ranged: boolean; entries: typeof eligible; combine: boolean }
-    >();
+    // Who reads each summary that may be combined. One whose text differs by character goes to the Helper
+    // with its conditions kept, also when you wrote or edited it (#7270, #7454).
+    const flat = (text: string) => flattenCharacterConditions(text).replace(/\s+/gu, "");
+    const combinable = new Map<string, { readers: string[]; text: string; conditional: boolean }>();
     for (const entry of eligible) {
-      const audience = ctx.individual
-        ? ctx.characterIds.filter((id) => rendered.get(id)!.get(entry.id)!.trim()).sort()
-        : [];
-      if (ctx.individual && !audience.length) continue;
+      const texts = ctx.characterIds.map((id) => renderEntry(ctx, entry.content, [id]));
+      const readers = ctx.characterIds.filter((_, index) => texts[index]!.trim());
+      if (!readers.length) continue;
       // Keep shared entries intact until their range is archived for every
       // reader; replacing only one character's section would lose the others.
-      if (!(ctx.individual ? audience : [""]).every((id) => outsideLive(entry, id))) continue;
-      const readers = ctx.individual ? audience : ctx.characterIds;
-      const texts = readers.map((id) => renderEntry(ctx, entry.content, [id]));
-      if (new Set(texts).size > 1) {
-        // ponytail: Chat Summaries record no edits, so any updatedAt change counts as one, even
-        // turning a summary off and on. Stamp hand edits on the entry to combine those too.
-        if (entry.origin !== "automated" || entry.createdAt !== entry.updatedAt || sections([entry.content]).has("{{"))
-          continue;
-        conditional.add(entry.id);
-      }
-      const ranged = coverage(entry).length > 0;
-      // Every reader of a summary gets its whole message range and that range's story dates, so merged
-      // chats also combine only summaries the same characters read.
-      const key = JSON.stringify([readers.filter((_, index) => texts[index]!.trim()), ranged]);
-      const group = groups.get(key) ?? { audience, ranged, entries: [], combine: false };
-      group.entries.push(entry);
-      group.combine ||= conditional.has(entry.id);
-      groups.set(key, group);
+      if (!(ctx.individual ? readers : [""]).every((id) => outsideLive(entry, id))) continue;
+      const read = texts.filter((text) => text.trim());
+      const conditional = new Set(read).size > 1;
+      // ponytail: the privacy check can't tell who reads text next to another macro, and a section only for a
+      // character who left the chat has no reader to keep it for, so those summaries stay as they are.
+      // Upgrade by checking each macro's rendering per reader, and by counting characters named in conditions.
+      if (
+        conditional &&
+        (sections([entry.content]).has("{{") ||
+          flat(scopeConstantSummary(ctx, entry.content, readers)) !== flat(entry.content))
+      )
+        continue;
+      combinable.set(entry.id, { readers, text: read[0]!, conditional });
     }
-    const queue = [...groups.values()];
-    for (const { audience, ranged, entries, combine } of queue) {
+    // Shrink only for views over the share that shrinking can bring under it: the room is what summaries that
+    // can't be combined leave. A view they already fill is left alone, so it isn't shortened on every reply.
+    const fixedTokens = new Map(
+      views.map((id) => [
+        id,
+        viewSize(
+          id,
+          eligible.filter((entry) => !combinable.has(entry.id)),
+        ),
+      ]),
+    );
+    const room = (id: string) => constantBudget - fixedTokens.get(id)!;
+    const over = views.filter((id) => viewTokens.get(id)! > constantBudget && room(id) > 0);
+    const shows = (id: string, entry: (typeof eligible)[number]) => !!rendered.get(id)!.get(entry.id)!.trim();
+    // Every summary someone over the share reads is combined, whoever else reads it (#7454). Ranged and legacy
+    // unranged summaries stay apart, and ranged ones go in chat order.
+    const shrinkable = eligible.filter((entry) => combinable.has(entry.id) && over.some((id) => shows(id, entry)));
+    const shrinkTokens = new Map(over.map((id) => [id, viewSize(id, shrinkable)]));
+    const first = (entry: (typeof eligible)[number]) =>
+      Math.min(...coverage(entry).map((id) => indexes.get(id) ?? Infinity));
+    const queue = [
+      shrinkable.filter((entry) => coverage(entry).length).sort((a, b) => first(a) - first(b)),
+      shrinkable.filter((entry) => !coverage(entry).length),
+    ].filter((entries) => entries.length);
+    for (const entries of queue) {
       ctx = await context(chatId);
-      const audienceIds = ctx.individual ? audience : [""];
-      const readers = ctx.individual ? audience : ctx.characterIds;
-      // A combined group keeps character conditions; the other summaries read the same for all its readers.
-      const inputs = entries.map((entry) => {
-        const text = rendered.get(audienceIds[0]!)!.get(entry.id)!;
-        return combine ? scopeConstantSummary(ctx, conditional.has(entry.id) ? entry.content : text, readers) : text;
+      const ranged = coverage(entries[0]!).length > 0;
+      const info = entries.map((entry) => combinable.get(entry.id)!);
+      // The result is for everyone who read one of these summaries, not for every character in the chat.
+      const readers = ctx.characterIds.filter((id) => info.some((item) => item.readers.includes(id)));
+      // Summaries that different characters read, or with private sections, keep their conditions.
+      const combine =
+        info.some((item) => item.conditional) || new Set(info.map((item) => item.readers.join("\0"))).size > 1;
+      const inputs = entries.map((entry, index) => {
+        const { readers: own, text, conditional } = info[index]!;
+        return combine ? scopeConstantSummary(ctx, conditional ? entry.content : text, own) : text;
       });
       const groupTokens = tokenSize(inputs.join("\n\n"));
       if (!groupTokens) continue;
+      // Each view these summaries show in gets this group's share of its room.
       const target = Math.floor(
-        Math.min(...audienceIds.map((id) => (constantBudget * groupTokens) / viewTokens.get(id)!)),
+        Math.min(
+          ...over
+            .filter((id) => entries.some((entry) => shows(id, entry)))
+            .map((id) => (room(id) * groupTokens) / shrinkTokens.get(id)!),
+        ),
       );
       if (target < 1 || groupTokens <= target) continue;
       const ids = new Set(entries.flatMap(coverage));
@@ -3610,7 +3637,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         end: ctx.messages.indexOf(source.at(-1)!),
         closed: true,
       };
-      const cache = buildRecord(ctx, scene, "continuity", audience, source, "pending");
+      const cache = buildRecord(ctx, scene, "continuity", readers, source, "pending");
       cache.dependencies = entries.map((entry) => ({ id: `summary:${entry.id}`, revision: hash(entry) }));
       cache.id = `memory-${hash([cache.id, cache.dependencies, target]).slice(0, 32)}`;
       await progress(
@@ -3630,14 +3657,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       // may reach more readers. ponytail: a reworded private fact in a wider section still passes;
       // upgrade by asking a second model to compare the facts in each section.
       if (after.size !== before.size || [...after.keys()].some((key) => !before.has(key)) || leaks(before, after)) {
-        const plain = entries.filter((entry) => !conditional.has(entry.id));
         logger.warn(
-          "[advanced-memory] Chat %s: the Helper's combined summary would change who can read a private part, so it was not saved. Summaries with private parts kept as they are: %d. Other summaries shortened on their own: %d.",
+          "[advanced-memory] Chat %s: the Helper's combined summary would change who can read a private part, so it was not saved. Summaries in it: %d.",
           chatId,
-          entries.length - plain.length,
-          plain.length,
+          entries.length,
         );
-        if (plain.length) queue.push({ audience, ranged, entries: plain, combine: false });
+        // Try again in two halves, in chat order, down to single summaries. ponytail: a single summary the
+        // Helper can't shorten without changing who reads what stays as it is, and a rejected set is asked
+        // again once its share of the room changes; upgrade by remembering rejected sets and by asking again
+        // with the reason it was rejected.
+        const half = Math.ceil(entries.length / 2);
+        if (entries.length > 1) queue.push(entries.slice(0, half), entries.slice(half));
         continue;
       }
       await validateSnapshot(ctx, source, options);
@@ -3860,15 +3890,19 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     );
     const constants = sourceEntries(ctx, sources, historical)
       .map((entry) => {
-        const covered = entry.messageIds?.length
-          ? sources.filter((message) => entry.messageIds!.includes(message.id))
-          : entry.rangeStartIndex && entry.rangeEndIndex
-            ? sources.slice(entry.rangeStartIndex - 1, entry.rangeEndIndex)
-            : [];
+        // One summary can combine what different characters read: its range and story dates come only
+        // from the messages this prompt's readers can see, so no reader learns of a message hidden from them.
+        const covered = (
+          entry.messageIds?.length
+            ? sources.filter((message) => entry.messageIds!.includes(message.id))
+            : entry.rangeStartIndex && entry.rangeEndIndex
+              ? sources.slice(entry.rangeStartIndex - 1, entry.rangeEndIndex)
+              : []
+        ).filter((message) => recallIds.has(message.id));
         const text = renderEntry(ctx, entry.content, audience);
         // Nothing for this reader: leave the entry out, unless it covers a scene they took part in
         // (read any of its messages) that has a story date, which participants share (#7250).
-        if (!text.trim() && !(covered.some((message) => recallIds.has(message.id)) && sourceTimeline(covered)))
+        if (!text.trim() && !(covered.length && sourceTimeline(covered)))
           return { messageIds: [], text: "", timelineRecords: [] };
         const coveredIds = new Set(covered.map((message) => message.id));
         const timelineRecords = text.trim()
@@ -3884,7 +3918,16 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         const timelineNotes = wholeTimeline
           ? ""
           : correctedTimelines
-              .map((record) => renderMemoryText(indexes, record.messageIds, "", record.timeline, false, true).trim())
+              .map((record) =>
+                renderMemoryText(
+                  indexes,
+                  record.messageIds.filter((id) => recallIds.has(id)),
+                  "",
+                  record.timeline,
+                  false,
+                  true,
+                ).trim(),
+              )
               .join("\n");
         const rendered = covered.length
           ? renderMemoryText(

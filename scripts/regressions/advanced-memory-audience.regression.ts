@@ -838,8 +838,9 @@ try {
   assert.equal(cara.recalledScenes, null, "an individual newcomer recalls nothing from before joining");
   assert(!/CONST_SHARED|CONST_MAUKIE|MIXED_SECRET/u.test(cara.chatSummary ?? ""));
 
-  // A summary whose sections all render empty for its reader adds nothing, not even its range header.
-  assert.equal(cara.chatSummary, `${range("1–#2")}\nCONST_PLAIN The compass promise.`, "no bare header for Cara");
+  // A summary whose sections all render empty for its reader adds nothing, not even its range header. The one
+  // Cara reads covers only #1–#2, from before she joined, so it shows her no range or date of those (#7454).
+  assert.equal(cara.chatSummary, "CONST_PLAIN The compass promise.", "no bare header for Cara");
   const groupEntries = JSON.parse((await chats.getById(group.id))!.metadata).summaryEntries;
   const narratorNote = createChatSummaryEntry({
     content: '{{#if char == "Narrator"}}NARRATOR_ONLY_NOTE{{/if}}',
@@ -872,12 +873,34 @@ try {
     /\n\nMessages #5–#6; [^\n]+\nNARRATOR_ONLY_NOTE$/u,
     "the reader it is written for still gets it, header and all",
   );
+  // #7454: the narrator alone reads every character's section once and plain, also one whose condition leaves
+  // the narrator out or names a character who left the chat. A condition with a variable still decides as usual.
+  const othersNote = createChatSummaryEntry({
+    content: '{{#if char == "Pantalone"}}PANTALONE_ONLY_NOTE{{/if}} {{#if char == "Cyno"}}LEFT_CHAT_NOTE{{/if}}',
+    enabled: true,
+    messageIds: groupSource.slice(4, 6).map((message) => message.id),
+  });
+  await chats.patchMetadata(group.id, { summaryEntries: [...groupEntries, narratorNote, othersNote] });
+  const narratorView = (await groupRecall(["narrator"])).chatSummary!;
+  for (const text of ["CONST_MAUKIE", "CONST_NARRATOR", "NARRATOR_ONLY_NOTE", "PANTALONE_ONLY_NOTE", "LEFT_CHAT_NOTE"])
+    assert.equal(narratorView.split(text).length, 2, `the narrator reads ${text} once`);
+  assert.doesNotMatch(narratorView, /MIXED_SECRET|\{\{|Known only/u);
+  assert.doesNotMatch(
+    (await groupRecall(["maukie"])).chatSummary!,
+    /PANTALONE_ONLY_NOTE|LEFT_CHAT_NOTE|CONST_NARRATOR/u,
+  );
+  // A merged prompt the narrator shares with the characters keeps marking who knows what (#7237).
+  await chats.patchMetadata(group.id, { groupChatMode: "merged" });
+  const sharedView = (await groupRecall(["maukie", "pantalone", "narrator"])).chatSummary!;
+  assert.match(sharedView, /\[Known only to Pantalone: PANTALONE_ONLY_NOTE\]/u);
+  assert.doesNotMatch(sharedView, /LEFT_CHAT_NOTE|CONST_NARRATOR/u);
+  await chats.patchMetadata(group.id, { groupChatMode: "individual", summaryEntries: [...groupEntries, narratorNote] });
   // A story date keeps the header only for characters who read part of that range, never for a newcomer.
   await chats.updateMessageContent(groupSource[2]!.id, `Date: June 12\n${groupSource[2]!.content}`);
   await chats.updateMessageContent(groupSource[4]!.id, `Date: June 13\n${groupSource[4]!.content}`);
   assert.equal(
     (await groupRecall(["aaa-newcomer"])).chatSummary,
-    `${range("1–#2")}\nCONST_PLAIN The compass promise.`,
+    "CONST_PLAIN The compass promise.",
     "no dated header for scenes Cara never read",
   );
   assert.match((await groupRecall(["pantalone"])).chatSummary!, /\n\nMessages #5–#6; [^\n]+: June 13\.\n$/u);

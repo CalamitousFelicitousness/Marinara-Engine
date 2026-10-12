@@ -94,8 +94,10 @@ export const WORLD_HOLD_REASONS = Object.freeze(["no-sense", "no-agency"] as con
 export const WORLD_DAYS_CAP = 365;
 const FORTUNE_OF: Record<WorldProsperity, number> = { struggling: 20, modest: 50, thriving: 80 };
 
-const WORLD_TAG = /\[world:([^\]]*)\]/gi;
-const LEDGER_TAG = /\[(world|place):([^\]]*)\]/gi;
+// A body never holds "[", so each tag is read in one pass: a tag opener repeated without a "]" cannot
+// make every start scan to the end of the reply.
+const WORLD_TAG = /\[world:([^[\]]*)\]/gi;
+const LEDGER_TAG = /\[(world|place):([^[\]]*)\]/gi;
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp = (value: number) => Math.max(-100, Math.min(100, value));
 

@@ -16,16 +16,19 @@ import assert from "node:assert/strict";
 import {
   WORLD_DEED_KINDS,
   WORLD_STARTER_KITS,
+  applyWorldHistoryTags,
   applyWorldTags,
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
+  readReputationTags,
   readWorldLedger,
   worldHistory,
   worldLedgerInstructions,
   worldOverviewPromptText,
   worldPlaceForTag,
   worldPresent,
+  stripReputationTags,
   worldStandingWord,
   worldWhereYouAreText,
   type GameWorld,
@@ -315,6 +318,28 @@ const answer = (game: GameWorld, content: string, before: string[] = []) =>
   assert.ok(
     worldWhereYouAreText(fantasy, { name: "The Crypt" }).includes("which this world does not list"),
     "without the ledger it is a place the world does not list",
+  );
+}
+
+// ── A tag opener repeated without a closing "]" is read in one pass ──
+{
+  const timed = <T>(label: string, run: () => T): T => {
+    const started = performance.now();
+    const value = run();
+    const took = performance.now() - started;
+    assert.ok(took < 1000, `${label} took ${Math.round(took)} ms`);
+    return value;
+  };
+  const repeat = 40000;
+  assert.equal(timed("ledger", () => readWorldLedger(["[world:" + "[place:".repeat(repeat)])).length, 0);
+  timed("world tags", () => answer(fantasy, "[world:".repeat(repeat)));
+  timed("history tags", () => applyWorldHistoryTags("[history:".repeat(repeat), fantasy));
+  assert.equal(timed("reputation read", () => readReputationTags("[reputation:".repeat(repeat))).length, 0);
+  timed("reputation strip", () => stripReputationTags("[reputation:".repeat(repeat)));
+  // A tag after the unclosed openers is still read.
+  assert.equal(
+    readReputationTags("[reputation:".repeat(100) + '[reputation: npc="Mira" action="helped"]').length,
+    1,
   );
 }
 

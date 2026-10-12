@@ -62,7 +62,7 @@ export function buildWorldBriefPrompt(input: WorldBriefWritingInput): { system: 
   const kindsOn = WORLD_CHANGE_KINDS.filter((kind) => input.kit.change.kinds[kind].on);
   const system = [
     `You write the brief of a role-playing game's world: what exists in it, in the words of its setting. Code lays the world out from your brief, so say what exists and what it is like, never where it lies on a map.`,
-    `Return one JSON object only: {"briefVersion": 1, "premise": "...", "places": [...], "placeNames": [...], "groups": [...], "peopleNames": [...]}. No prose, no code fences.`,
+    `Return one JSON object only: {"briefVersion": 1, "premise": "...", "places": [...], "placeNames": [...], "groups": [...], "peopleNames": [...], "events": [...]}. No prose, no code fences.`,
     `Rules:`,
     `- "premise": the present day as the game begins, in one or two sentences: name a cause and a person or group, not a mood. At most 600 characters.`,
     `- "places": the major places, each {"name", "layer", "parent", "size", "tags", "note", "start"}. "layer" is a layer id below; "parent" is the name of another place in this list in an outer layer; "size" (settlements only) is a size id; "tags" are tag ids; "note" is one line of at most 240 characters. Mark the one place the party starts in with "start": true.`,

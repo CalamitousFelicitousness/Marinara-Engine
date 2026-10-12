@@ -969,7 +969,12 @@ assert.match(
 // #7481: a reply split at scene breaks is read part by part, and a held rewrite keeps the live reply empty.
 assert.match(
   generateHookSource,
-  /case "assistant_message_ready": \{[\s\S]{0,500}splitPartIdsBefore\.get\(message\.id\)[\s\S]{0,600}earlierMessages \}/u,
+  /const splitPartsBefore = \(id: string\) =>\s*\(splitPartIdsBefore\.get\(id\) \?\? \[\]\)\.flatMap\(\(partId\) => persistedMessages\.get\(partId\) \?\? \[\]\)/u,
+  "split parts must resolve to their latest saved rows",
+);
+assert.match(
+  generateHookSource,
+  /case "assistant_message_ready": \{[\s\S]{0,500}earlierMessages: splitPartsBefore\(message\.id\) \}/u,
   "the ready event must carry the earlier parts of a split reply",
 );
 assert.match(

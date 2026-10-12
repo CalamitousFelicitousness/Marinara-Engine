@@ -1552,6 +1552,8 @@ export function useGenerate() {
       // Earlier parts of a reply split at scene breaks (#7481), by its last part's ID, so autoplay reads every part.
       let pendingSplitPartIds: string[] = [];
       const splitPartIdsBefore = new Map<string, string[]>();
+      const splitPartsBefore = (id: string) =>
+        (splitPartIdsBefore.get(id) ?? []).flatMap((partId) => persistedMessages.get(partId) ?? []);
       let vnReplyPublished = false;
       const publishVnReply = (message: Message | null) => {
         if (
@@ -2770,13 +2772,9 @@ export function useGenerate() {
             case "assistant_message_ready": {
               const message = event.data as TTSAutoplayMessage;
               if (!message?.id || !message.content?.trim()) break;
-              const earlierMessages = (splitPartIdsBefore.get(message.id) ?? []).flatMap((id) => {
-                const part = persistedMessages.get(id);
-                return part ? [part] : [];
-              });
               window.dispatchEvent(
                 new CustomEvent<TTSAutoplayMessageReadyDetail>(TTS_AUTOPLAY_MESSAGE_READY_EVENT, {
-                  detail: { chatId: params.chatId, message, earlierMessages },
+                  detail: { chatId: params.chatId, message, earlierMessages: splitPartsBefore(message.id) },
                 }),
               );
               if (

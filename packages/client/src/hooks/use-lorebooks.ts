@@ -348,6 +348,8 @@ function combineLorebookEntryQueries(queries: UseQueryResult<LorebookEntry[]>[])
 export function useDisabledFolderIdsAcrossLorebooks(lorebookIds: string[]): {
   disabledFolderIds: ReadonlySet<string>;
   isLoading: boolean;
+  /** A lorebook's folders failed to load and none are cached, so the set may miss folders. */
+  isError: boolean;
 } {
   return useQueries({
     queries: Array.from(new Set(lorebookIds)).map((id) => ({
@@ -362,6 +364,7 @@ function combineDisabledFolderQueries(queries: UseQueryResult<LorebookFolder[]>[
   return {
     disabledFolderIds: collectEffectivelyDisabledFolderIds(queries.flatMap((q) => q.data ?? [])),
     isLoading: queries.some((q) => q.isLoading),
+    isError: queries.some((q) => q.isError && q.data === undefined),
   };
 }
 

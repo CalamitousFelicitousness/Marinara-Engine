@@ -102,6 +102,20 @@ for (const mode of ["roleplay", "conversation"] as const) {
         .toEqual([schedule.id]);
       expect((await chatState(request, chat.id)).updatedAt).toBe(before.updatedAt);
       await expect(reader.getByRole("button", { name: "Unpin entry", exact: true })).toBeVisible();
+
+      // Two quick clicks cancel out: the second one builds on the first one's change.
+      let pinSaves = 0;
+      page.on("response", (response) => {
+        if (
+          response.request().method() === "PATCH" &&
+          response.request().postData()?.includes("lorebookPinnedEntryIds")
+        )
+          pinSaves++;
+      });
+      await reader.getByRole("button", { name: "Unpin entry", exact: true }).dblclick();
+      await expect.poll(() => pinSaves).toBe(2);
+      expect((await chatState(request, chat.id)).metadata.lorebookPinnedEntryIds).toEqual([schedule.id]);
+      await expect(reader.getByRole("button", { name: "Unpin entry", exact: true })).toBeVisible();
       await reader.getByRole("button", { name: "Back to entries", exact: true }).click();
       await expect(reader.getByRole("region", { name: "Pinned" }).locator(`[data-lorebook-reader-entry]`)).toHaveText([
         /Class schedule/,
@@ -126,6 +140,16 @@ for (const mode of ["roleplay", "conversation"] as const) {
       await reader.getByRole("button", { name: "Back to entries", exact: true }).click();
       await expect(last).toBeFocused();
       expect(await list.evaluate((element) => element.scrollTop)).toBe(scrolled);
+
+      // Pinning moves the entry to the top, so Back brings it into view as well as focusing it.
+      await last.click();
+      await reader.getByRole("button", { name: "Pin entry", exact: true }).click();
+      await reader.getByRole("button", { name: "Back to entries", exact: true }).click();
+      await expect(
+        reader.getByRole("region", { name: "Pinned" }).locator(`[data-lorebook-reader-entry="${notes.at(-1).id}"]`),
+      ).toHaveCount(1);
+      await expect(last).toBeFocused();
+      await expect(last).toBeInViewport();
     } finally {
       for (const remove of created.reverse()) await remove().catch(() => undefined);
     }

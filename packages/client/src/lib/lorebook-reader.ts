@@ -15,13 +15,16 @@ type MessageMacroContextInput = Parameters<typeof createMessageMacroResolver>[0]
 /** Chat metadata key holding the Reader's pinned entry ids. */
 export const LOREBOOK_PINNED_ENTRY_IDS_KEY = "lorebookPinnedEntryIds";
 
-export interface LorebookReaderEntry {
+/** An entry's name and content with macros replaced, as the Reader shows them. */
+interface LorebookReaderText {
+  name: string;
+  content: string;
+}
+
+export interface LorebookReaderEntry extends LorebookReaderText {
   id: string;
   lorebookId: string;
   lorebookName: string;
-  /** Name and content with macros replaced, as the Reader shows them. */
-  name: string;
-  content: string;
   /** Off for the model: disabled itself, by its folder, or for this chat. */
   off: boolean;
 }
@@ -44,28 +47,40 @@ export function toggleLorebookPinnedEntry(pinnedIds: readonly string[], entryId:
 }
 
 /**
- * Every entry of the chat's lorebooks, book by book, as the Reader displays it, with macros resolved
- * the way chat messages resolve them. Each text gets a fresh macro context, so a variable macro such
- * as {{setvar}} or {{incvar}} never carries into another text or into the next build.
+ * Shows an entry's name and content the way chat messages show text, with macros replaced. Each text gets
+ * a fresh macro context, so a variable macro such as {{setvar}} or {{incvar}} never carries into another
+ * text or into the next build. The result is kept per entry, so rebuilding the list after a pin or another
+ * chat update does not resolve every entry again.
  */
+export function createLorebookReaderDisplay(macros: MessageMacroContextInput, randomSeed?: string) {
+  const shown = new WeakMap<LorebookEntry, LorebookReaderText>();
+  const resolve = (text: string) =>
+    createMessageMacroResolver({ ...macros, variables: { ...macros.variables } }, { randomSeed })(text);
+  return (entry: LorebookEntry): LorebookReaderText => {
+    let text = shown.get(entry);
+    if (!text) {
+      text = { name: resolve(entry.name ?? "").trim(), content: resolve(entry.content ?? "") };
+      shown.set(entry, text);
+    }
+    return text;
+  };
+}
+
+/** Every entry of the chat's lorebooks, book by book, as the Reader displays it. */
 export function buildLorebookReaderEntries({
   lorebooks,
   entries,
   entryStateOverrides,
   disabledFolderIds,
-  macros,
-  randomSeed,
+  display,
 }: {
   lorebooks: ReadonlyArray<{ id: string; name: string }>;
   entries: readonly LorebookEntry[];
   entryStateOverrides?: Record<string, { enabled?: boolean } | undefined> | null;
   /** Folders whose entries never activate (see collectEffectivelyDisabledFolderIds). */
   disabledFolderIds?: ReadonlySet<string>;
-  macros: MessageMacroContextInput;
-  randomSeed?: string;
+  display: (entry: LorebookEntry) => LorebookReaderText;
 }): LorebookReaderEntry[] {
-  const display = (text: string) =>
-    createMessageMacroResolver({ ...macros, variables: { ...macros.variables } }, { randomSeed })(text);
   return lorebooks.flatMap((lorebook) =>
     entries
       .filter((entry) => entry.lorebookId === lorebook.id)
@@ -73,8 +88,7 @@ export function buildLorebookReaderEntries({
         id: entry.id,
         lorebookId: lorebook.id,
         lorebookName: lorebook.name,
-        name: display(entry.name ?? "").trim(),
-        content: display(entry.content ?? ""),
+        ...display(entry),
         off:
           entry.enabled === false ||
           (!!entry.folderId && !!disabledFolderIds?.has(entry.folderId)) ||

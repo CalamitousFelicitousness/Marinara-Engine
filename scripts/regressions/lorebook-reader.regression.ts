@@ -6,6 +6,7 @@ import { CHAT_PRESET_EXCLUDED_METADATA_KEYS } from "../../packages/shared/src/ty
 import { isViewOnlyChatMetadataPatch } from "../../packages/shared/src/utils/chat-window-defaults.js";
 import {
   buildLorebookReaderEntries,
+  createLorebookReaderDisplay,
   groupLorebookReaderEntries,
   readLorebookPinnedEntryIds,
   toggleLorebookPinnedEntry,
@@ -14,6 +15,12 @@ import {
 const entry = (id: string, lorebookId: string, name: string, content: string, enabled = true, folderId?: string) =>
   ({ id, lorebookId, name, content, enabled, folderId: folderId ?? null }) as LorebookEntry;
 
+const macros = {
+  persona: { name: "Jem" },
+  primaryCharacter: { name: "Mira" },
+  characters: [{ name: "Mira" }],
+  variables: { term: "Fall" },
+};
 const build = () =>
   buildLorebookReaderEntries({
     lorebooks: [
@@ -31,12 +38,7 @@ const build = () =>
     ],
     entryStateOverrides: { cafe: { enabled: false } },
     disabledFolderIds: new Set(["drawer"]),
-    macros: {
-      persona: { name: "Jem" },
-      primaryCharacter: { name: "Mira" },
-      characters: [{ name: "Mira" }],
-      variables: { term: "Fall" },
-    },
+    display: createLorebookReaderDisplay(macros),
   });
 const entries = build();
 
@@ -53,6 +55,31 @@ assert.deepEqual(
     "entries off when disabled, in a switched-off folder, or switched off for this chat",
 );
 assert.deepEqual(build(), entries, "showing the list again shows the same text ({{incvar}} does not count up)");
+
+// A pin or another chat update rebuilds the list with the same display: each entry's text is not resolved again.
+let contentReads = 0;
+const watched = {
+  ...entry("watched", "world", "Watched", ""),
+  get content() {
+    contentReads++;
+    return "{{user}} reads this.";
+  },
+} as LorebookEntry;
+const display = createLorebookReaderDisplay(macros);
+const rebuild = (overrides?: Record<string, { enabled?: boolean }>) =>
+  buildLorebookReaderEntries({
+    lorebooks: [{ id: "world", name: "Riverside World" }],
+    entries: [watched],
+    entryStateOverrides: overrides,
+    display,
+  })[0];
+const before = rebuild();
+const after = rebuild({ watched: { enabled: false } });
+assert.deepEqual(
+  [before.content, before.off, after.content, after.off],
+  ["Jem reads this.", false, "Jem reads this.", true],
+);
+assert.equal(contentReads, 1, "the entry's text is resolved once while the macros stay the same");
 
 const list = groupLorebookReaderEntries(entries, ["schedule", "missing", "riverside"]);
 assert.deepEqual(

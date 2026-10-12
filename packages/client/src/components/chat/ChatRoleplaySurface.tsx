@@ -65,7 +65,11 @@ import { useGameStateStore } from "../../stores/game-state.store";
 import { useChatComposerFocused, useChatKeyboardOpen } from "../../hooks/use-visual-viewport-chat-bottom";
 import { useActiveLorebookEntries, useLorebooks } from "../../hooks/use-lorebooks";
 import { usePresetFull, usePresets } from "../../hooks/use-presets";
-import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import {
+  partitionTrackerCapabilityPackages,
+  selectRoleplayTrackerPackages,
+  useInstalledCapabilityPackages,
+} from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -984,8 +988,13 @@ export function ChatRoleplaySurface({
     trackerPanelOpen &&
     (chatMeta.enableAgents === true || chatMeta.advancedMemory?.enabled === true);
   const phoneSlotOffset = phoneLayout && showTrackerPanelBubble ? 1 : 0;
-  // The Lorebook Reader's bubble follows the connected chat (slot 0), package toolbars and Beholder.
-  const lorebookReaderSlot = conversationToolbarPackages.length + 1 + (enabledAgentTypes.has("beholder") ? 1 : 0);
+  // The Lorebook Reader's bubble follows the connected chat (slot 0), package toolbars and the Beholder
+  // windows that RoleplayTrackerWindow draws.
+  const beholderWindowCount = chatMeta.enableAgents
+    ? partitionTrackerCapabilityPackages(selectRoleplayTrackerPackages(installedCapabilities, enabledAgentTypes))
+        .beholder.length
+    : 0;
+  const lorebookReaderSlot = conversationToolbarPackages.length + 1 + beholderWindowCount;
   useRenderTimer("rp-surface"); // [#3104 diagnostic]
   const isMobileToolbarViewport = useIsMobileToolbarViewport();
   const streamedMessageId = useChatStore((s) => s.streamedMessageIds.get(activeChatId) ?? null);

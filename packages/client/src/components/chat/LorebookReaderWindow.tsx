@@ -6,16 +6,18 @@
 // display, and "Open in editor" hands over to the lorebook editor for changes. Pins
 // are saved with the chat as a view-only metadata key.
 // ──────────────────────────────────────────────
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BookMarked, BookOpen, ChevronLeft, ChevronRight, Pin, PinOff, Search, SquarePen } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Chat } from "@marinara-engine/shared";
 import {
   useDisabledFolderIdsAcrossLorebooks,
   useEntriesAcrossLorebooks,
   useLorebooks,
 } from "../../hooks/use-lorebooks";
-import { useUpdateChatMetadata } from "../../hooks/use-chats";
+import { chatKeys, useUpdateChatMetadata } from "../../hooks/use-chats";
+import { parseChatMetadata } from "../../lib/chat-display";
 import { useMessagePresetVariables } from "../../hooks/use-message-preset-variables";
 import {
   deriveActiveLorebookViews,
@@ -25,6 +27,7 @@ import {
 import {
   LOREBOOK_PINNED_ENTRY_IDS_KEY,
   buildLorebookReaderEntries,
+  createLorebookReaderDisplay,
   groupLorebookReaderEntries,
   readLorebookPinnedEntryIds,
   toggleLorebookPinnedEntry,
@@ -118,47 +121,72 @@ function LorebookReader({
   personaInfo?: PersonaInfo;
 }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const lorebookIds = useMemo(() => lorebooks.map((lorebook) => lorebook.id), [lorebooks]);
-  const { entries: rawEntries, isLoading: entriesLoading, isError } = useEntriesAcrossLorebooks(lorebookIds);
-  const { disabledFolderIds, isLoading: foldersLoading } = useDisabledFolderIdsAcrossLorebooks(lorebookIds);
+  const {
+    entries: rawEntries,
+    isLoading: entriesLoading,
+    isError: entriesError,
+  } = useEntriesAcrossLorebooks(lorebookIds);
+  const {
+    disabledFolderIds,
+    isLoading: foldersLoading,
+    isError: foldersError,
+  } = useDisabledFolderIdsAcrossLorebooks(lorebookIds);
   const isLoading = entriesLoading || foldersLoading;
+  // Without its folders, an entry in a switched-off folder would wrongly show as on.
+  const isError = entriesError || foldersError;
   const randomSeed = `lorebook-reader:${chatId}`;
   const presetVariables = useMessagePresetVariables(randomSeed);
   const updateMeta = useUpdateChatMetadata({ serialize: true });
   const [query, setQuery] = useState("");
+  const shownQuery = useDeferredValue(query);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
   const listScrollTop = useRef(0);
   const returnFocusId = useRef<string | null>(null);
 
-  // Macros read as they do in this chat's messages (display only; entries are never changed).
-  const macros = useMemo(() => {
-    const characters = chatCharIds.flatMap((id) => {
-      const character = characterMap.get(id);
-      return character
-        ? [
-            {
-              id,
-              name: character.name,
-              description: character.description,
-              personality: character.personality,
-              backstory: character.backstory,
-              appearance: character.appearance,
-              scenario: character.scenario,
-              example: character.example,
-            },
-          ]
-        : [];
-    });
-    return {
-      persona: personaInfo,
-      userName: personaInfo?.name,
-      primaryCharacter: characters[0] ?? null,
-      characters,
-      variables: presetVariables,
-    };
-  }, [characterMap, chatCharIds, personaInfo, presetVariables]);
+  // Macros read as they do in this chat's messages, with the same fallback names (display only; entries are
+  // never changed). Kept as text so a chat update that leaves these values alone, such as a pin or a reply,
+  // keeps the display and its per-entry results.
+  const characters = chatCharIds.flatMap((id) => {
+    const character = characterMap.get(id);
+    return character
+      ? [
+          {
+            id,
+            name: character.name,
+            description: character.description,
+            personality: character.personality,
+            backstory: character.backstory,
+            appearance: character.appearance,
+            scenario: character.scenario,
+            example: character.example,
+          },
+        ]
+      : [];
+  });
+  const userName = personaInfo?.name ?? "You";
+  const fallbackCharacter = { name: "Assistant" };
+  const macrosJson = JSON.stringify({
+    userName,
+    persona: {
+      name: userName,
+      description: personaInfo?.description,
+      personality: personaInfo?.personality,
+      backstory: personaInfo?.backstory,
+      appearance: personaInfo?.appearance,
+      scenario: personaInfo?.scenario,
+    },
+    primaryCharacter: characters[0] ?? fallbackCharacter,
+    characters: characters.length > 0 ? characters : [fallbackCharacter],
+    variables: presetVariables,
+  });
+  const display = useMemo(
+    () => createLorebookReaderDisplay(JSON.parse(macrosJson), randomSeed),
+    [macrosJson, randomSeed],
+  );
   const entryStateOverrides = chatMeta.entryStateOverrides as
     Record<string, { enabled?: boolean } | undefined> | undefined;
   const entries = useMemo(
@@ -168,13 +196,15 @@ function LorebookReader({
         entries: rawEntries ?? [],
         entryStateOverrides,
         disabledFolderIds,
-        macros,
-        randomSeed,
+        display,
       }),
-    [disabledFolderIds, entryStateOverrides, lorebooks, macros, randomSeed, rawEntries],
+    [disabledFolderIds, display, entryStateOverrides, lorebooks, rawEntries],
   );
   const pinnedIds = useMemo(() => readLorebookPinnedEntryIds(chatMeta), [chatMeta]);
-  const list = useMemo(() => groupLorebookReaderEntries(entries, pinnedIds, query), [entries, pinnedIds, query]);
+  const list = useMemo(
+    () => groupLorebookReaderEntries(entries, pinnedIds, shownQuery),
+    [entries, pinnedIds, shownQuery],
+  );
   const openEntry = openEntryId ? entries.find((entry) => entry.id === openEntryId) : undefined;
   const showingEntry = !!openEntry;
 
@@ -188,23 +218,27 @@ function LorebookReader({
     listRef.current.scrollTop = listScrollTop.current;
     const id = returnFocusId.current;
     returnFocusId.current = null;
-    if (id) {
-      listRef.current
-        .querySelector<HTMLElement>(`[data-lorebook-reader-entry="${CSS.escape(id)}"]`)
-        ?.focus({ preventScroll: true });
-    }
+    if (!id) return;
+    const row = listRef.current.querySelector<HTMLElement>(`[data-lorebook-reader-entry="${CSS.escape(id)}"]`);
+    row?.focus({ preventScroll: true });
+    // Pinning or unpinning moves the entry, so make sure it is still in view.
+    row?.scrollIntoView({ block: "nearest" });
   }, [showingEntry]);
 
-  const open = (id: string) => {
+  const open = useCallback((id: string) => {
     listScrollTop.current = listRef.current?.scrollTop ?? 0;
     setOpenEntryId(id);
-  };
+  }, []);
   const back = () => {
     returnFocusId.current = openEntryId;
     setOpenEntryId(null);
   };
-  const togglePin = (id: string) =>
-    updateMeta.mutate({ id: chatId, [LOREBOOK_PINNED_ENTRY_IDS_KEY]: toggleLorebookPinnedEntry(pinnedIds, id) });
+  const togglePin = (id: string) => {
+    // The cache already holds a pin made a moment ago, even before this view shows it.
+    const cached = qc.getQueryData<Chat>(chatKeys.detail(chatId));
+    const current = cached ? readLorebookPinnedEntryIds(parseChatMetadata(cached.metadata)) : pinnedIds;
+    updateMeta.mutate({ id: chatId, [LOREBOOK_PINNED_ENTRY_IDS_KEY]: toggleLorebookPinnedEntry(current, id) });
+  };
 
   if (openEntry) {
     const pinned = pinnedIds.includes(openEntry.id);
@@ -301,7 +335,7 @@ function LorebookReader({
           <p className="px-1 py-3 text-xs text-[var(--destructive)]">{t("chat.lorebookReader.loadError")}</p>
         ) : empty ? (
           <p className="px-1 py-3 text-xs text-[var(--marinara-chat-chrome-panel-muted)]">
-            {query.trim() ? t("chat.lorebookReader.noMatches") : t("chat.lorebookReader.empty")}
+            {shownQuery.trim() ? t("chat.lorebookReader.noMatches") : t("chat.lorebookReader.empty")}
           </p>
         ) : (
           <>
@@ -339,32 +373,58 @@ function EntryList({
   showLorebook?: boolean;
   onOpen: (id: string) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <ul className="space-y-1">
       {entries.map((entry) => (
-        <li key={entry.id}>
-          <button
-            type="button"
-            data-lorebook-reader-entry={entry.id}
-            data-off={entry.off || undefined}
-            onClick={() => onOpen(entry.id)}
-            className="mari-chrome-control w-full justify-start gap-2 px-3 py-2 text-left text-xs data-[off]:opacity-60"
-          >
-            <span className="min-w-0 flex-1">{entry.name || t("chat.lorebookReader.untitled")}</span>
-            {entry.off && <OffLabel />}
-            {showLorebook && (
-              <span className="max-w-[40%] shrink-0 text-[0.625rem] font-normal text-[var(--marinara-chat-chrome-panel-muted)]">
-                {entry.lorebookName}
-              </span>
-            )}
-            <ChevronRight size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-panel-muted)]" />
-          </button>
-        </li>
+        <EntryRow
+          key={entry.id}
+          id={entry.id}
+          name={entry.name}
+          off={entry.off}
+          lorebookName={showLorebook ? entry.lorebookName : undefined}
+          onOpen={onOpen}
+        />
       ))}
     </ul>
   );
 }
+
+// Memoized on plain values, so a search keystroke or a chat update redraws only the rows that changed.
+const EntryRow = memo(function EntryRow({
+  id,
+  name,
+  off,
+  lorebookName,
+  onOpen,
+}: {
+  id: string;
+  name: string;
+  off: boolean;
+  lorebookName?: string;
+  onOpen: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <li>
+      <button
+        type="button"
+        data-lorebook-reader-entry={id}
+        data-off={off || undefined}
+        onClick={() => onOpen(id)}
+        className="mari-chrome-control w-full justify-start gap-2 px-3 py-2 text-left text-xs data-[off]:opacity-60"
+      >
+        <span className="min-w-0 flex-1">{name || t("chat.lorebookReader.untitled")}</span>
+        {off && <OffLabel />}
+        {lorebookName !== undefined && (
+          <span className="max-w-[40%] shrink-0 text-[0.625rem] font-normal text-[var(--marinara-chat-chrome-panel-muted)]">
+            {lorebookName}
+          </span>
+        )}
+        <ChevronRight size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-panel-muted)]" />
+      </button>
+    </li>
+  );
+});
 
 function OffLabel() {
   const { t } = useTranslation();

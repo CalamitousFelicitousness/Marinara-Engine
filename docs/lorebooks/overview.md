@@ -110,7 +110,7 @@ Lorebooks can also hold notes for you, such as a class schedule or a map of the 
 The Reader shows up only when the chat uses at least one lorebook. On a computer, click its button near the top right of the chat (a book with a bookmark). On a phone, open the **Chat tools** three-dot menu and tap **Lorebook Reader**.
 
 - The Reader lists the entries of every lorebook the chat uses: the chat's own, its characters' and persona's, and global ones. Entries are grouped by lorebook.
-- Turned-off entries stay in the list, dimmed and marked **OFF**. That is handy for notes you keep off on purpose so the AI never sees them.
+- Turned-off entries stay in the list, dimmed and marked **OFF**. That is handy for notes you keep off on purpose so the AI never sees them. A whole lorebook that is turned off, or turned off for this chat, is left out of the Reader.
 - Tap an entry to read it. Its text is formatted the same way as the editor's preview, and names such as `{{user}}` and `{{char}}` show as the chat's real names. Nothing in the entry changes. Tap **Back** to return to the same spot in the list.
 - Use **Search entries** to find text in entry names and content.
 - Use the pin button on an entry to keep it at the top under **Pinned**. Pins belong to the chat, so they follow it to your other devices and into backups.

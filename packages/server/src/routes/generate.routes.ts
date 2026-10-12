@@ -14343,6 +14343,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 content: part.content,
               }))
             : [{ messageId, content: continuedMessageRewriteSource ?? allResponses.at(-1) ?? "" }];
+          // Every successful agent output, as a summary for rewrite agents; it is the same for every part.
+          const agentSummary: Record<string, unknown> = {};
+          for (const result of postResults) {
+            if (result.success && result.data) {
+              agentSummary[result.agentType ?? result.type] = result.data;
+            }
+          }
           for (const { messageId, content: originalResponseBeforeRewrite } of rewriteParts) {
             const sceneBreak = lastReplyEarlierParts.length ? leadingSceneBreak(originalResponseBeforeRewrite) : "";
             let textRewriteApplied = false;
@@ -14354,14 +14361,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               for (const textRewriteAgent of activatedTextRewriteRunAgents) {
                 if (generationSignal.aborted) break;
                 try {
-                  // Collect all successful agent outputs as a summary for rewrite agents.
-                  const agentSummary: Record<string, unknown> = {};
-                  for (const result of postResults) {
-                    if (result.success && result.data) {
-                      agentSummary[result.agentType ?? result.type] = result.data;
-                    }
-                  }
-
                   const editorContext: AgentContext = {
                     ...agentContext,
                     ...postReplyDecisionContext,

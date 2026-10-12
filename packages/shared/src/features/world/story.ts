@@ -382,7 +382,8 @@ export interface StoryLedgerEntry {
   show: string[];
 }
 
-const STORY_TAG = /\[story:([^\]]*)\]/gi;
+// A body never holds "[", so a tag opener repeated without a "]" is read in one pass.
+const STORY_TAG = /\[story:([^[\]]*)\]/gi;
 
 function attributes(body: string): Map<string, string> {
   const values = new Map<string, string>();

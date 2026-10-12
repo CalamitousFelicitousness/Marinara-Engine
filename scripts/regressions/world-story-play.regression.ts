@@ -614,6 +614,24 @@ try {
   );
   assert.deepEqual(storyScenesOf(JSON.stringify({ worldShownScenes: ["x"] })), ["x"]);
 
+  // A tag opener repeated without a closing "]" is read in one pass, not from every start to the end.
+  for (const [name, read] of [
+    ["applyStoryTags", (text: string) => applyStoryTags(text, story, game, storyState(story, []))],
+    ["refuseStoryTags", refuseStoryTags],
+    ["textRewriteChangesEngineText", (text: string) => textRewriteChangesEngineText(text, text, [])],
+  ] as const) {
+    const started = performance.now();
+    read("[story:".repeat(40000));
+    read("[world:".repeat(40000));
+    const took = performance.now() - started;
+    assert.ok(took < 1000, `${name} read unclosed openers in ${Math.round(took)} ms`);
+  }
+  assert.match(
+    refuseStoryTags(`${"[story:".repeat(100)} [story: flag="y" value="1"]`),
+    /\[story: flag="y" result="refused" reason="no-story"\]/,
+    "a tag after unclosed openers is still read",
+  );
+
   // ── Through the routes, with a stand-in model ──
   const replies: string[] = [];
   const prompts: string[] = [];

@@ -14336,12 +14336,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // ── Text rewrite/editing agents: run after ALL other agents ──
           // Each part of a reply split at scene breaks is a message of its own, so the agents rewrite every part on
           // its own, in order. A part's break line stays on top of it, and a failed rewrite leaves its part as written.
+          // They rewrite only the last reply's own text, never the replies of earlier responders in an individual group.
           const rewriteParts = lastReplyEarlierParts.length
             ? [...lastReplyEarlierParts, { message: lastSavedMsg, content: allResponses.at(-1)! }].map((part) => ({
                 messageId: (part.message?.id as string | undefined) ?? "",
                 content: part.content,
               }))
-            : [{ messageId, content: completedResponse }];
+            : [{ messageId, content: continuedMessageRewriteSource ?? allResponses.at(-1) ?? "" }];
           for (const { messageId, content: originalResponseBeforeRewrite } of rewriteParts) {
             const sceneBreak = lastReplyEarlierParts.length ? leadingSceneBreak(originalResponseBeforeRewrite) : "";
             let textRewriteApplied = false;

@@ -14,6 +14,7 @@ import { newId } from "../../utils/id-generator.js";
 import {
   CODEX_IMAGE_MODEL,
   COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
+  SPICYAPI_IMAGE_MODELS,
   buildComfyUiLoraWorkflowReplacements,
   DEFAULT_AUTOMATIC1111_DEFAULTS,
   DEFAULT_COMFYUI_DEFAULTS,
@@ -63,6 +64,13 @@ import {
 import { buildVeniceApiUrl, buildVeniceImageRequest, parseVeniceImageResponse } from "./venice-image.js";
 import { buildZaiImageRequest, buildZaiImageUrl, parseZaiImageUrl } from "./zai-image.js";
 import { buildFalImageUrl } from "./fal-image.js";
+import {
+  assertSpicyApiModelId,
+  buildSpicyApiImageInput,
+  buildSpicyApiUrl,
+  parseSpicyApiTask,
+  readSpicyApiMessage,
+} from "./spicyapi-image.js";
 import { buildAtlasCloudImageRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
 import {
   OPENAI_CHATGPT_CODEX_BASE_URL,
@@ -136,6 +144,7 @@ const EXPLICIT_IMAGE_SOURCES = new Set([
   "venice",
   "zai",
   "fal",
+  "spicyapi",
   "atlas",
   "comfyui",
   "swarmui",
@@ -298,6 +307,8 @@ async function generateImageUncapped(
             return generateZai(normalizedBaseUrl, apiKey, scopedRequest);
           case "fal":
             return generateFal(normalizedBaseUrl, apiKey, scopedRequest);
+          case "spicyapi":
+            return generateSpicyApi(normalizedBaseUrl, apiKey, scopedRequest);
           case "atlas":
             return generateAtlasCloudImage(normalizedBaseUrl, apiKey, scopedRequest);
           case "comfyui":
@@ -1549,6 +1560,85 @@ async function generateFal(baseUrl: string, apiKey: string, request: ImageGenReq
   const url = response?.images?.[0]?.url;
   if (typeof url !== "string" || !url.trim()) throw new Error("fal.ai response did not contain an image URL");
   return downloadImageUrl(url.trim(), request.privateImageResultOrigin, request.signal);
+}
+
+const SPICYAPI_POLL_INTERVAL_MS = 2_000;
+const SPICYAPI_FAILED_STATES = new Set(["failed", "canceled", "expired"]);
+
+async function readSpicyApiJson(resp: Response, operation: string): Promise<unknown> {
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(
+      `SpicyAPI ${operation} failed (${resp.status}): ${sanitizeErrorText(readSpicyApiMessage(text) ?? text)}`,
+    );
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`SpicyAPI ${operation} returned invalid JSON`);
+  }
+}
+
+async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
+  if (!apiKey.trim()) throw new Error("SpicyAPI requires an API key");
+  const model = assertSpicyApiModelId(request.model?.trim() || SPICYAPI_IMAGE_MODELS[0]!.id);
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  const fetchPolicy = { allowLocal: request.allowLocalUrls };
+  const signal = imageRequestSignal(request);
+
+  // Each model declares its own inputs; read them first so only accepted fields are sent.
+  const modelInfo = await readSpicyApiJson(
+    await imageFetch(buildSpicyApiUrl(baseUrl, `models/${model}`), { headers, signal }, fetchPolicy),
+    "model lookup",
+  );
+  const inputSchema = (modelInfo as { data?: { inputSchema?: unknown } } | null)?.data?.inputSchema;
+  const input = withImageCustomParameters(
+    request,
+    buildSpicyApiImageInput(inputSchema, {
+      prompt: request.prompt,
+      negativePrompt: request.negativePrompt,
+      width: request.width,
+      height: request.height,
+      referenceImages: openAIReferenceImages(request).map(imageDataUrlFromReference),
+    }),
+  );
+  const body = { model, input };
+  logDebugOverride(
+    request.debugMode === true,
+    "[debug/image/spicyapi] final request payload:\n%s",
+    imagePayloadForLog(body),
+  );
+
+  // `wait` holds the request open until the task finishes (up to 50 seconds), so most images need no polling.
+  const created = await imageFetch(
+    buildSpicyApiUrl(baseUrl, "jobs/createTask", { wait: "50" }),
+    {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", "Idempotency-Key": randomUUID() },
+      body: JSON.stringify(body),
+      signal,
+    },
+    fetchPolicy,
+  );
+  let task = parseSpicyApiTask(await readSpicyApiJson(created, "image generation"));
+  if (!task.taskId) throw new Error("SpicyAPI image generation response did not include a task ID");
+  const pollUrl = buildSpicyApiUrl(baseUrl, "jobs/recordInfo", { taskId: task.taskId });
+  while (task.state !== "succeeded") {
+    if (task.state && SPICYAPI_FAILED_STATES.has(task.state)) {
+      throw new Error(`SpicyAPI image generation ${task.state}${task.error ? `: ${task.error}` : ""}`);
+    }
+    await sleepWithAbort(SPICYAPI_POLL_INTERVAL_MS, signal);
+    const polled = await imageFetch(pollUrl, { headers, signal }, fetchPolicy);
+    // A busy or briefly unavailable API must not abandon a task that is already paid for.
+    if (polled.status === 429 || polled.status >= 500) {
+      await polled.body?.cancel().catch(() => undefined);
+      continue;
+    }
+    task = parseSpicyApiTask(await readSpicyApiJson(polled, "task status"));
+  }
+  if (!task.imageUrl) throw new Error("SpicyAPI image generation finished without an image URL");
+  // Result links are signed; the API key must never be sent with the download.
+  return downloadImageUrl(task.imageUrl, request.privateImageResultOrigin, request.signal);
 }
 
 async function generateAtlasCloudImage(

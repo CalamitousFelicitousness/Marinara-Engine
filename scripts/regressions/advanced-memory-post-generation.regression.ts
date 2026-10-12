@@ -22,6 +22,8 @@ const { createAgentsStorage } = await import("../../packages/server/src/services
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
+const { estimateTextTokens, measureContextBudget } =
+  await import("../../packages/server/src/services/llm/base-provider.js");
 const {
   DEFAULT_ADVANCED_MEMORY_SETTINGS,
   characterDataSchema,
@@ -35,6 +37,7 @@ const calls: Array<{
   streaming?: boolean;
   path?: string;
   maxTokens?: number;
+  tools?: unknown[];
 }> = [];
 let summaryGate: Promise<void> | undefined;
 let summaryResponse: string | undefined;
@@ -44,6 +47,18 @@ let closeLatestScene = false;
 let mainInputTokens = 40;
 let mainOutputTokens = 20;
 let mainToolCall = false;
+// A follow-up reports mainFollowupInputTokens; the first request reports mainInputTokens (or no usage).
+let mainFollowupInputTokens: number | undefined;
+let mainFirstUsage = true;
+// The first reply asks for a roll in text instead of a native tool call, and can be padded.
+let mainTextRoll = false;
+let mainFirstReplyPadding = "";
+// Streamed main replies send usage only on their last chunk, after a pause, as OpenAI-compatible
+// providers do. Counts streams the client closed before that chunk.
+let mainStreamUsageLast = false;
+let mainStreamsCutBeforeUsage = 0;
+// How many roll follow-ups ask for another roll. Each later follow-up reports 100 more input tokens.
+let mainFollowupRolls = 0;
 const decisionRequests: Array<{ state: Record<string, any>; questions: Record<string, { instructions: string }> }> = [];
 const sceneDecision = (transcript: Array<{ messageNumber: number; content: string; alreadyChecked?: boolean }>) => ({
   ends: closeLatestScene
@@ -109,8 +124,19 @@ const provider = createServer(async (req, res) => {
     streaming: body.stream,
     path: req.url,
     maxTokens: body.max_output_tokens ?? body.max_completion_tokens ?? body.max_tokens,
+    tools: body.tools,
   });
   if (kind === "summary" && summaryGate) await summaryGate;
+  // A tool round or roll follow-up resends the outgoing prompt with the first reply and the result.
+  const followup =
+    kind === "main" &&
+    (messages.some((message: { role: string }) => message.role === "tool") ||
+      prompt.includes("The engine resolved your roll request"));
+  const firstMainReply = kind === "main" && !followup;
+  const resolvedRolls = prompt.split("The engine resolved your roll request").length - 1;
+  const inputTokens = followup
+    ? (mainFollowupInputTokens ?? mainInputTokens) + 100 * Math.max(0, resolvedRolls - 1)
+    : mainInputTokens;
   const bundledSceneCheck = messages.find((message: { content: string }) => message.content.includes("Transcript:\n"));
   const content =
     kind === "tracker"
@@ -142,15 +168,22 @@ const provider = createServer(async (req, res) => {
                 summaryResponse ??
                 "ARCHIVED_RECAP: The silver compass promise guided the travelers.",
             })
-          : "The character continues the silver compass journey.";
+          : firstMainReply
+            ? mainFirstReplyPadding +
+              (mainTextRoll
+                ? 'The guard lunges. [roll: notation="1d1", reason="dodge"]'
+                : "The character continues the silver compass journey.")
+            : followup && mainTextRoll && resolvedRolls <= mainFollowupRolls
+              ? 'The guard swings again. [roll: notation="1d1", reason="parry"]'
+              : "The character continues the silver compass journey.";
   const response = {
     id: "fixture",
     status: "completed",
     output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: content }] }],
     usage: {
-      input_tokens: mainInputTokens,
+      input_tokens: inputTokens,
       output_tokens: mainOutputTokens,
-      total_tokens: mainInputTokens + mainOutputTokens,
+      total_tokens: inputTokens + mainOutputTokens,
     },
   };
   if (body.stream) {
@@ -166,10 +199,37 @@ const provider = createServer(async (req, res) => {
       await streamGate;
       streamFinished = true;
     }
+    const usageLast = !responses && kind === "main" && mainStreamUsageLast;
+    if (usageLast) {
+      // The route cuts a reply at its roll by closing the stream. Wait for that close, with a fixed
+      // fallback in case it never comes, rather than a fixed sleep a slow runner could outlast.
+      let closed = false;
+      if (content.includes("[roll:") && !res.destroyed)
+        await new Promise<void>((resolve) => {
+          const fallback = setTimeout(resolve, 5_000);
+          res.once("close", () => {
+            closed = true;
+            clearTimeout(fallback);
+            resolve();
+          });
+        });
+      if (closed || res.destroyed) mainStreamsCutBeforeUsage++;
+    }
     res.end(
       responses
         ? `data: ${JSON.stringify({ type: "response.completed", response })}\n\n`
-        : `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+        : `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n${
+            usageLast
+              ? `data: ${JSON.stringify({
+                  choices: [],
+                  usage: {
+                    prompt_tokens: inputTokens,
+                    completion_tokens: mainOutputTokens,
+                    total_tokens: inputTokens + mainOutputTokens,
+                  },
+                })}\n\n`
+              : ""
+          }data: [DONE]\n\n`,
     );
   } else {
     res.writeHead(200, { "content-type": "application/json" });
@@ -201,11 +261,15 @@ const provider = createServer(async (req, res) => {
                   finish_reason: kind === "summary" ? summaryFinishReason : "stop",
                 },
               ],
-              usage: {
-                prompt_tokens: mainInputTokens,
-                completion_tokens: mainOutputTokens,
-                total_tokens: mainInputTokens + mainOutputTokens,
-              },
+              ...(firstMainReply && !mainFirstUsage
+                ? {}
+                : {
+                    usage: {
+                      prompt_tokens: inputTokens,
+                      completion_tokens: mainOutputTokens,
+                      total_tokens: inputTokens + mainOutputTokens,
+                    },
+                  }),
             },
       ),
     );
@@ -903,12 +967,12 @@ try {
     "neither tool-turn totals nor output may trigger a cutoff",
   );
   mainToolCall = false;
-  mainInputTokens = 65000;
+  mainInputTokens = 64999;
   await generateUsage();
   assert.equal(
     (await memory.status(actualUsageChat.id)).job.contextStarts,
     undefined,
-    "input at the threshold still fits",
+    "input one token under the threshold still fits",
   );
   mainInputTokens = 65001;
   latestUsageReply = (await chats.listMessages(actualUsageChat.id)).at(-1)!;
@@ -939,6 +1003,238 @@ try {
     ),
     "the cutoff reuses the closed scene recap in Chat Summaries",
   );
+
+  // Only the outgoing prompt counts (#7455). A roll or tool follow-up resends it with the
+  // model's own reply and the result, so it never cuts and never fails on the cap.
+  const followupSettings = {
+    ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+    enabled: true,
+    maxContextTokens: 65_000,
+    sceneCheckInterval: 100,
+  };
+  const createFollowupChat = async (name: string, connectionId = connection.id) => {
+    const created = await chats.create({
+      name,
+      mode: "roleplay",
+      characterIds: [character.id],
+      connectionId,
+    });
+    assert(created);
+    chatIds.push(created.id);
+    await chats.patchMetadata(created.id, {
+      enableAgents: false,
+      roleplayCommandsEnabled: true,
+      roleplayCommandToggles: { roll: true },
+      advancedMemory: followupSettings,
+    });
+    await chats.createMessagesBatch(
+      created.id,
+      Array.from({ length: 9 }, (_, index) => ({
+        role: "user" as const,
+        content: `${index === 4 ? "SCENE_CHANGE " : ""}The silver compass journey continues.`,
+      })),
+    );
+    await memory.initialize(created.id);
+    return created;
+  };
+  const followupChat = await createFollowupChat("Follow-up input cutoff");
+  const followupSource = await chats.listMessages(followupChat.id);
+  const generateFollowup = (chatId = followupChat.id, streaming = false) =>
+    app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId, forCharacterId: character.id, streaming },
+    });
+  const sentFollowups = (since: number) =>
+    calls
+      .slice(since)
+      .filter(
+        (call) =>
+          call.kind === "main" &&
+          (call.messages.some((message) => message.role === "tool") ||
+            JSON.stringify(call.messages).includes("The engine resolved your roll request")),
+      ).length;
+  const expectFollowupWithoutCutoff = async (label: string) => {
+    const before = calls.length;
+    const result = await generateFollowup();
+    assert.equal(result.statusCode, 200, result.body);
+    assert.ok(!result.body.includes('"type":"error"'), `${label}: ${result.body}`);
+    assert.equal(sentFollowups(before), 1, `${label}: the follow-up was sent`);
+    const info = JSON.parse((await chats.listMessages(followupChat.id)).at(-1)!.extra).generationInfo;
+    assert.equal(info.tokensLastRequestInput, 66_600, `${label}: the follow-up reported input over the cap`);
+    assert.equal((await memory.status(followupChat.id)).job.contextStarts, undefined, label);
+  };
+  mainInputTokens = 64_000;
+  mainFollowupInputTokens = 66_600;
+  mainTextRoll = true;
+  await expectFollowupWithoutCutoff("a roll follow-up over the cap does not cut when the outgoing prompt fit");
+  mainTextRoll = false;
+  mainToolCall = true;
+  await expectFollowupWithoutCutoff("a native tool round over the cap does not cut when the outgoing prompt fit");
+  mainFirstUsage = false;
+  await expectFollowupWithoutCutoff("a follow-up never stands in for a first request that reported no usage");
+  mainFirstUsage = true;
+
+  // The model's own window, not the cap, bounds a follow-up before it is sent.
+  mainInputTokens = 40;
+  mainFollowupInputTokens = undefined;
+  await chats.patchMetadata(followupChat.id, { advancedMemory: { ...followupSettings, maxContextTokens: 1_500 } });
+  mainFirstReplyPadding = "The guard circles slowly. ".repeat(3000); // ~19,500 tokens: past the 16,384 window.
+  const oversizedBefore = calls.length;
+  const oversizedFollowup = await generateFollowup();
+  assert.match(
+    oversizedFollowup.body,
+    /"type":"error"[^\n]*exceeds the model's context window/u,
+    "a follow-up past the model's own window still fails clearly",
+  );
+  assert.equal(sentFollowups(oversizedBefore), 0, "the oversized follow-up is never sent");
+  mainFirstReplyPadding = "The guard circles slowly. ".repeat(400); // ~2,600 tokens: past the cap, inside the window.
+  const roomyBefore = calls.length;
+  const roomyFollowup = await generateFollowup();
+  assert.equal(roomyFollowup.statusCode, 200, roomyFollowup.body);
+  assert.ok(
+    !roomyFollowup.body.includes('"type":"error"'),
+    `a follow-up past the cap but inside the model's window is sent: ${roomyFollowup.body}`,
+  );
+  assert.equal(sentFollowups(roomyBefore), 1, "the follow-up past the cap reached the model");
+  assert.equal((await memory.status(followupChat.id)).job.contextStarts, undefined);
+
+  // A follow-up reserves room only for the tool definitions it sends. The final follow-up of the
+  // last allowed tool round sends none, so one that fits the window only without them is sent,
+  // while a tool round of the same size, which sends them, fails before it is sent.
+  const reservePadding = "The guard circles slowly. ";
+  // Without an output override, each request carries the reply reserve its fit used.
+  const reserveConnection = await createConnectionsStorage(db).create({
+    name: "Tool reserve fixture",
+    provider: "custom",
+    model: "fixture",
+    apiKey: "fixture",
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    maxContext: 16_384,
+    embeddingModel: "fixture-embedding",
+  });
+  const generateWithToolRounds = async (repeats: number, maxToolRounds?: string) => {
+    const reserveChat = await createFollowupChat("Follow-up tool reserve", reserveConnection.id);
+    await chats.patchMetadata(reserveChat.id, { advancedMemory: { ...followupSettings, maxContextTokens: 1_500 } });
+    mainFirstReplyPadding = reservePadding.repeat(repeats);
+    const previousMaxToolRounds = process.env.MAX_TOOL_ROUNDS;
+    if (maxToolRounds) process.env.MAX_TOOL_ROUNDS = maxToolRounds;
+    const before = calls.length;
+    try {
+      const result = await generateFollowup(reserveChat.id);
+      assert.equal(result.statusCode, 200, result.body);
+      return { body: result.body, before, main: calls.slice(before).filter((call) => call.kind === "main") };
+    } finally {
+      if (previousMaxToolRounds === undefined) delete process.env.MAX_TOOL_ROUNDS;
+      else process.env.MAX_TOOL_ROUNDS = previousMaxToolRounds;
+    }
+  };
+  const windowFit = (call: (typeof calls)[number], tools?: unknown[]) =>
+    measureContextBudget(call.messages as Parameters<typeof measureContextBudget>[0], {
+      maxContext: 16_384,
+      maxTokens: call.maxTokens,
+      tools: tools as Parameters<typeof measureContextBudget>[1]["tools"],
+    });
+  // Place the follow-up halfway into the room the tool definitions take, measured on a small one.
+  const reserveSample = await generateWithToolRounds(0, "1");
+  assert.ok(!reserveSample.body.includes('"type":"error"'), reserveSample.body);
+  const [sampleOutgoing, sampleFinal] = reserveSample.main;
+  assert.ok(sampleOutgoing?.tools?.length, "the outgoing request sends the responder's tools");
+  assert.ok(sampleFinal && sentFollowups(reserveSample.before) === 1, "the final follow-up was sent");
+  assert.equal(sampleFinal.tools, undefined, "the final follow-up sends no tools");
+  const toolReserve =
+    windowFit(sampleFinal, sampleOutgoing.tools).reservedTokens - windowFit(sampleFinal).reservedTokens;
+  const tokensPerRepeat = estimateTextTokens(reservePadding.repeat(1000)) / 1000;
+  const reserveRepeats = Math.round(
+    (windowFit(sampleFinal).inputBudget - toolReserve / 2 - windowFit(sampleFinal).estimatedTokens) / tokensPerRepeat,
+  );
+  const finalWithoutTools = await generateWithToolRounds(reserveRepeats, "1");
+  assert.ok(
+    !finalWithoutTools.body.includes('"type":"error"'),
+    `a final follow-up that sends no tools reserves no room for them: ${finalWithoutTools.body}`,
+  );
+  assert.equal(sentFollowups(finalWithoutTools.before), 1, "the final follow-up without tools reached the model");
+  const sentFinal = finalWithoutTools.main.at(-1)!;
+  assert.equal(sentFinal.tools, undefined, "the final follow-up past the tool reserve sends no tools");
+  assert.ok(
+    windowFit(sentFinal).fits && !windowFit(sentFinal, sampleOutgoing.tools).fits,
+    "the follow-up fits the model's window only without the tool definitions",
+  );
+  const roundWithTools = await generateWithToolRounds(reserveRepeats);
+  assert.match(
+    roundWithTools.body,
+    /"type":"error"[^\n]*exceeds the model's context window/u,
+    "a tool round of the same size still reserves room for the tools it sends",
+  );
+  assert.equal(sentFollowups(roundWithTools.before), 0, "the tool round past the window is never sent");
+  mainFirstReplyPadding = "";
+  mainToolCall = false;
+
+  // Reaching the cap exactly cuts (one token under is checked above).
+  await chats.patchMetadata(followupChat.id, { advancedMemory: followupSettings });
+  mainInputTokens = 65_000;
+  const exactResult = await generateFollowup();
+  assert.equal(exactResult.statusCode, 200, exactResult.body);
+  assert.deepEqual(
+    (await memory.status(followupChat.id)).job.contextStarts?.map((start) => [
+      start.messageId,
+      start.audienceCharacterIds,
+    ]),
+    [[followupSource[4]!.id, []]],
+    "an outgoing prompt that reaches the cap exactly resets everyone to the latest scene",
+  );
+
+  // A streamed reply is cut where it asks for a roll, before an OpenAI-compatible provider sends
+  // the outgoing prompt's usage on its last chunk. The roll follow-up's input, less a ceiling on
+  // what the follow-up added, then stands for that prompt: it never cuts early, but still cuts.
+  const streamedRollChat = await createFollowupChat("Streamed roll cutoff");
+  const streamedRollSource = await chats.listMessages(streamedRollChat.id);
+  mainStreamUsageLast = true;
+  mainTextRoll = true;
+  const streamRoll = async (outgoingInput: number, followupInput: number, chat = streamedRollChat, rolls = 1) => {
+    mainInputTokens = outgoingInput;
+    mainFollowupInputTokens = followupInput;
+    mainFollowupRolls = rolls - 1;
+    const before = calls.length;
+    const cutBefore = mainStreamsCutBeforeUsage;
+    const result = await generateFollowup(chat.id, true);
+    assert.equal(result.statusCode, 200, result.body);
+    assert.ok(!result.body.includes('"type":"error"'), result.body);
+    assert.equal(sentFollowups(before), rolls, "the streamed roll follow-up was sent");
+    assert.equal(mainStreamsCutBeforeUsage - cutBefore, rolls, "the reply was cut at its roll before usage arrived");
+    return (await memory.status(chat.id)).job.contextStarts?.map((start) => [
+      start.messageId,
+      start.audienceCharacterIds,
+    ]);
+  };
+  assert.equal(
+    await streamRoll(64_999, 65_099),
+    undefined,
+    "a streamed roll follow-up past the cap does not cut when what it added explains the difference",
+  );
+  assert.deepEqual(
+    await streamRoll(66_000, 66_100),
+    [[streamedRollSource[4]!.id, []]],
+    "a streamed roll whose outgoing prompt passed the cap still resets everyone to the latest scene",
+  );
+  // A reply that rolls twice is cut at both rolls, so neither stream reports usage. The first
+  // request that does, less everything added since the outgoing prompt, still stands for it.
+  const twoRollChat = await createFollowupChat("Two streamed rolls cutoff");
+  const twoRollSource = await chats.listMessages(twoRollChat.id);
+  assert.equal(
+    await streamRoll(64_999, 65_099, twoRollChat, 2),
+    undefined,
+    "a reply cut at two rolls does not cut when what the follow-ups added explains the difference",
+  );
+  assert.deepEqual(
+    await streamRoll(66_000, 66_100, twoRollChat, 2),
+    [[twoRollSource[4]!.id, []]],
+    "a reply cut at two rolls whose outgoing prompt passed the cap still resets everyone to the latest scene",
+  );
+  mainFollowupRolls = 0;
+  mainStreamUsageLast = false;
+  mainTextRoll = false;
+  mainFollowupInputTokens = undefined;
   mainInputTokens = 40;
   mainOutputTokens = 20;
 

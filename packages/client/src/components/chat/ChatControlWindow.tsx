@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────
 // Chat control windows: the chat's top controls as minimizable windows
 //
-// Game's Session, Volume, Assets and Game controls, the connected chat, package
-// toolbars and Beholder each open in a small window that minimizes to a button (its
+// Game's Session, Volume, Assets and Game controls, the connected chat, the Lorebook
+// Reader, package toolbars and Beholder each open in a small window that minimizes to a button (its
 // bubble). They start minimized, their bubbles in a row at the chat's top right where
 // the buttons (and a phone's menu button) used to be. On a phone each opens as a sheet.
 // ──────────────────────────────────────────────
@@ -39,6 +39,7 @@ const TRACKER_CLEARANCE_VARIABLE = "--tracker-panel-overlay-clearance";
 /** Each control window's id; Game's ids are only used in Game chats. */
 export const CHAT_CONTROL_WINDOW_IDS = {
   connectedChat: "control:connected-chat",
+  lorebookReader: "control:lorebook-reader",
   beholder: (packageId: string) => `control:beholder:${packageId}`,
   gameControls: "control:game",
   session: "control:session",

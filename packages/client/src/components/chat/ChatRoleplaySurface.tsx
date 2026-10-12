@@ -71,6 +71,7 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
 import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "./ChatControlWindow";
+import { LorebookReaderWindow } from "./LorebookReaderWindow";
 import { TrackerPanelBubble } from "./TrackerPanelBubble";
 import { PHONE_BUBBLE_SIZE_PX, WINDOW_BUBBLE_SIZE_PX, WINDOW_MARGIN_PX } from "../../lib/floating-window-layout";
 import { useMatchMedia } from "../../hooks/use-match-media";
@@ -2218,7 +2219,7 @@ export function ChatRoleplaySurface({
         </Suspense>
       </div>
 
-      {/* Package toolbars, Beholder and the connected chat are windows that minimize to bubbles. */}
+      {/* Package toolbars, Beholder, the connected chat and the Lorebook Reader are windows that minimize to bubbles. */}
       {showTrackerPanelBubble && <TrackerPanelBubble chatId={activeChatId} />}
       {conversationToolbarPackages.map((item, index) => (
         <ChatControlWindow
@@ -2247,6 +2248,17 @@ export function ChatRoleplaySurface({
           name={linkedChatName}
           onSwitch={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
           phoneSlot={phoneSlotOffset}
+        />
+      )}
+      {chat && isRoleplay && (
+        <LorebookReaderWindow
+          chat={chat}
+          chatMeta={chatMeta}
+          characterMap={characterMap}
+          chatCharIds={chatCharIds}
+          personaInfo={personaInfo}
+          // After the connected chat (slot 0), the package toolbars and Beholder.
+          slot={conversationToolbarPackages.length + 2}
         />
       )}
 

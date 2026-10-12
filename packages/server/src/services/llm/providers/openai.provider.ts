@@ -32,7 +32,8 @@ import {
   shouldSuppressUnknownModelParameters,
   supportsXhighReasoningEffort,
 } from "@marinara-engine/shared";
-import { logger } from "../../../lib/logger.js";
+import { logger, logDebugOverride } from "../../../lib/logger.js";
+import { isDebugAgentsEnabled } from "../../../config/runtime-config.js";
 import { isLocalInferenceBaseUrl } from "../../../middleware/ip-allowlist.js";
 import {
   applyGlmThinkingParameters,
@@ -104,6 +105,13 @@ export function extractOpenAICompatibleContentBlocks(
   return { text, thinking, toolCalls, anonymousToolCallIds };
 }
 
+/** The text of the final `prefix: true` assistant message actually sent, after any role-alternation retry merged it. */
+function mistralPrefixText(body: Record<string, unknown>): string | undefined {
+  const last = Array.isArray(body.messages) ? body.messages.at(-1) : undefined;
+  // ponytail: a prefix with image parts keeps any repeat in the reply; read its text parts if Mistral repeats those.
+  return last?.prefix === true && typeof last.content === "string" ? last.content : undefined;
+}
+
 /**
  * Mistral starts its reply with the text of a final `prefix: true` assistant message
  * (https://docs.mistral.ai/guides/prefix). This drops that repeat so callers get only the continuation, as they do from
@@ -127,6 +135,54 @@ function createPrefixEchoFilter(prefix: string | undefined): { push(text: string
       return released;
     },
   };
+}
+
+/**
+ * The error strict chat templates raise for consecutive same-role messages, e.g. Mistral's "After the optional system
+ * message, conversation roles must alternate user/assistant/..." (llama.cpp and vLLM pass it through), or Gemma's.
+ * llama.cpp also rejects an Assistant Prefill after an assistant turn ("Cannot have 2 or more assistant messages at the
+ * end of the list.") before it renders any template.
+ */
+const ROLE_ALTERNATION_ERROR =
+  /\b(?:roles?|messages?|turns?)\b[^\n]{0,80}?\bmust\s+(?:strictly\s+)?alternate\b|\bcannot have 2 or more assistant messages\b/i;
+const ROLE_ALTERNATION_HINT =
+  " This model's chat template needs user and assistant messages to take turns, and Marinara could not make this request fit. Set Post-Processing Messages to Single User Message, or serve the model with a less strict chat template.";
+
+type ChatCompletionsWireMessage = Record<string, unknown> & { role?: unknown; content?: unknown };
+
+function joinWireContent(first: unknown, second: unknown): unknown {
+  if (typeof first === "string" && typeof second === "string") return [first, second].filter(Boolean).join("\n\n");
+  const parts = (content: unknown) =>
+    Array.isArray(content) ? content : typeof content === "string" && content ? [{ type: "text", text: content }] : [];
+  return [...parts(first), ...parts(second)];
+}
+
+/**
+ * Reshape Chat Completions messages for a strict chat template: one leading system message, then user and assistant
+ * turns that alternate, starting with user. Later system messages join the user turn around them; tool results and
+ * assistant tool calls are left as they are.
+ */
+function alternateWireMessageRoles(messages: ChatCompletionsWireMessage[]): ChatCompletionsWireMessage[] {
+  const isSystem = (message: ChatCompletionsWireMessage) => message.role === "system" || message.role === "developer";
+  const mergeable = (message: ChatCompletionsWireMessage) => message.role !== "tool" && !message.tool_calls;
+  const result: ChatCompletionsWireMessage[] = [];
+  for (const message of messages) {
+    const role = isSystem(message) && !result.every(isSystem) ? "user" : message.role;
+    const previous = result.at(-1);
+    if (previous && previous.role === role && mergeable(previous) && mergeable(message)) {
+      result[result.length - 1] = {
+        ...previous,
+        ...message,
+        role,
+        content: joinWireContent(previous.content, message.content),
+      };
+    } else {
+      result.push({ ...message, role });
+    }
+  }
+  const firstTurn = result.findIndex((message) => !isSystem(message));
+  if (result[firstTurn]?.role === "assistant") result.splice(firstTurn, 0, { role: "user", content: "[Start]" });
+  return result;
 }
 
 type ResponsesUsagePayload = {
@@ -662,6 +718,53 @@ export class OpenAIProvider extends BaseLLMProvider {
     return `${this.chatCompletionsErrorLabel()} error ${status}: ${detail}${streamingHint}`;
   }
 
+  /**
+   * POST a Chat Completions body and throw on an HTTP error. A strict chat template's rejection of consecutive
+   * same-role messages is retried once with them merged, so endpoints that accept the original request never see a
+   * change.
+   */
+  private async postChatCompletions(
+    url: string,
+    body: Record<string, unknown>,
+    stream: boolean,
+    options: ChatOptions,
+  ): Promise<Response> {
+    const send = () =>
+      llmFetch(url, {
+        method: "POST",
+        headers: this.buildHeaders(),
+        body: JSON.stringify(body),
+        bufferResponse: !stream,
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    let response = await send();
+    if (response.ok) return response;
+    let errorText = await response.text();
+    if (ROLE_ALTERNATION_ERROR.test(errorText) && Array.isArray(body.messages)) {
+      const messages = alternateWireMessageRoles(body.messages);
+      if (JSON.stringify(messages) !== JSON.stringify(body.messages)) {
+        logger.warn(
+          "[OpenAI] %s requires alternating roles; retrying once with consecutive same-role messages merged",
+          this.chatCompletionsErrorLabel(),
+        );
+        logDebugOverride(
+          options.debugMode === true || isDebugAgentsEnabled(),
+          "[debug/openai] role-alternation retry messages:\n%j",
+          messages,
+        );
+        body.messages = messages;
+        response = await send();
+        if (response.ok) return response;
+        errorText = await response.text();
+      }
+    }
+    const hint = ROLE_ALTERNATION_ERROR.test(errorText) ? ROLE_ALTERNATION_HINT : "";
+    throw llmHttpErrorFromResponse(
+      `${this.formatChatCompletionsHttpError(response.status, errorText, stream)}${hint}`,
+      response,
+    );
+  }
+
   private isGpt55Model(model: string): boolean {
     return model.toLowerCase().startsWith("gpt-5.5");
   }
@@ -1089,15 +1192,12 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
   }
 
-  /**
-   * Mistral request rules, applied after Custom Parameters. Returns the text of a final assistant message sent as a
-   * prefix, which Mistral repeats at the start of its reply.
-   */
-  private normalizeMistralRequest(body: Record<string, unknown>): string | undefined {
-    if (this.providerKind !== "mistral") return undefined;
+  /** Mistral request rules, applied after Custom Parameters. */
+  private normalizeMistralRequest(body: Record<string, unknown>): void {
+    if (this.providerKind !== "mistral") return;
     // Mistral rejects prompt_mode together with reasoning_effort; a prompt_mode from Custom Parameters wins.
     if (body.prompt_mode !== undefined) delete body.reasoning_effort;
-    if (!Array.isArray(body.messages)) return undefined;
+    if (!Array.isArray(body.messages)) return;
     // Mistral rejects a system message right after an assistant turn, so a mid-chat instruction there goes as user.
     for (let index = 1; index < body.messages.length; index++) {
       if (body.messages[index]?.role === "system" && body.messages[index - 1]?.role === "assistant") {
@@ -1106,10 +1206,8 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
     // Mistral continues a final assistant message (Assistant Prefill, depth-0 injections) only when it is a prefix.
     const last = body.messages.at(-1);
-    if (last?.role !== "assistant" || last.tool_calls?.length) return undefined;
+    if (last?.role !== "assistant" || last.tool_calls?.length) return;
     last.prefix = true;
-    // ponytail: a prefix with image parts keeps any repeat in the reply; read its text parts if Mistral repeats those.
-    return typeof last.content === "string" ? last.content : undefined;
   }
 
   private applyResponsesReasoning(body: Record<string, unknown>, options: ChatOptions): void {
@@ -1477,7 +1575,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
-    const prefixEcho = createPrefixEchoFilter(this.normalizeMistralRequest(body));
+    this.normalizeMistralRequest(body);
 
     logger.debug(
       "[OpenAI chat()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s max_completion_tokens=%s max_tokens=%s temperature=%s top_p=%s tools=%s",
@@ -1493,21 +1591,8 @@ export class OpenAIProvider extends BaseLLMProvider {
       Array.isArray(body.tools) ? body.tools.length : 0,
     );
 
-    const response = await llmFetch(url, {
-      method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(body),
-      bufferResponse: !effectiveStream,
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw llmHttpErrorFromResponse(
-        this.formatChatCompletionsHttpError(response.status, errorText, effectiveStream),
-        response,
-      );
-    }
+    const response = await this.postChatCompletions(url, body, effectiveStream, options);
+    const prefixEcho = createPrefixEchoFilter(mistralPrefixText(body));
 
     if (!effectiveStream) {
       const json = await OpenAIProvider.parseJsonBody<Record<string, unknown>>(
@@ -1769,7 +1854,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
-    const prefixEcho = createPrefixEchoFilter(this.normalizeMistralRequest(body));
+    this.normalizeMistralRequest(body);
 
     logger.debug(
       "[OpenAI chatComplete()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s onToken=%s",
@@ -1781,21 +1866,8 @@ export class OpenAIProvider extends BaseLLMProvider {
       !!options.onToken,
     );
 
-    const response = await llmFetch(url, {
-      method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(body),
-      bufferResponse: !useStream,
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw llmHttpErrorFromResponse(
-        this.formatChatCompletionsHttpError(response.status, errorText, useStream),
-        response,
-      );
-    }
+    const response = await this.postChatCompletions(url, body, useStream, options);
+    const prefixEcho = createPrefixEchoFilter(mistralPrefixText(body));
 
     if (!useStream) {
       // Non-streaming path (no onToken callback)

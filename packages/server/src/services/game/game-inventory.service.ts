@@ -15,6 +15,8 @@ import {
   readGameInventoryTurn,
   readRulesetInventedItems,
   rulesetItemBook,
+  gameWorldKitFromMetadata,
+  worldKitItems,
   rulesetLayerOptionKey,
   type RulesetLayerOptions,
   type CombatItemEffect,
@@ -129,7 +131,14 @@ export async function loadGameInventoryItemBook(
     metadata = source.metadata;
     playerName = source.playerName;
   }
-  if (metadata.gameRuleset == null) return undefined;
+  if (metadata.gameRuleset == null) {
+    // A game with no ruleset buys, pays and earns in its setting kit's money (worldgen W6b), the rest of
+    // its items staying the plain ones it always had.
+    const kitItems = worldKitItems(gameWorldKitFromMetadata(metadata));
+    return kitItems
+      ? rulesetItemBook(kitItems.definition, kitItems.entries, { plain: "allow", actor: who })
+      : undefined;
+  }
   const resolved =
     ("resolved" in source ? source.resolved : null) ?? resolveGameRuleset(metadata, await loadRulesetRegistry(db));
   if (resolved.status !== "ok" || !resolved.definition.items) return undefined;

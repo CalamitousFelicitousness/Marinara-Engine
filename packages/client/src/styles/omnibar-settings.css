@@ -344,3 +344,69 @@
 .omnibar-settings-pack:has(input:checked) .omnibar-settings-pack__check {
   display: inline-flex;
 }
+
+/* Height and width side by side. The whole row is desktop-only: the window is a full-screen sheet on a phone. */
+.omnibar-settings-size-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.omnibar-settings-size {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.omnibar-settings-size__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.omnibar-settings-size__fit {
+  color: var(--primary);
+  font-size: 0.65rem;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.omnibar-settings-size__fit[aria-pressed="true"] {
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+/* Live preview: while one size slider has focus, the sheet becomes a small card over the window, shows only
+   that window's sliders, and the window resizes behind it as the slider moves. Blur brings the full sheet back. */
+.omnibar-settings-sheet[data-sizing] {
+  inset: auto;
+  bottom: 1rem;
+  left: 50%;
+  width: min(32rem, calc(100% - 2rem));
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.55);
+}
+
+.omnibar-settings-sheet[data-sizing] .omnibar-settings-sheet__card {
+  height: auto;
+  overflow: visible;
+}
+
+.omnibar-settings-sheet[data-sizing] .omnibar-settings-sheet__header {
+  display: none;
+}
+
+.omnibar-settings-sheet[data-sizing="search"]
+  .omnibar-settings-sheet__card
+  > section:not(:has([data-size-group="search"])),
+.omnibar-settings-sheet[data-sizing="mari"]
+  .omnibar-settings-sheet__card
+  > section:not(:has([data-size-group="mari"])) {
+  display: none;
+}

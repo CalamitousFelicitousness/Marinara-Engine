@@ -7,9 +7,11 @@ import {
   readRulesetInventedItems,
   rulesetItemBook,
   rulesetItemCatalogIds,
+  worldKitItems,
   type RulesetCatalogEntry,
   type RulesetItemBook,
   type RulesetItemBookSheets,
+  type WorldKit,
 } from "@marinara-engine/shared";
 import { rulesetCatalogQuery } from "./use-capability-packages";
 import type { ResolvedGameRulesetClient } from "./use-game-ruleset";
@@ -17,12 +19,15 @@ import type { ResolvedGameRulesetClient } from "./use-game-ruleset";
 /** The book for the player's own changes: undefined while the game has no ruleset with an `items`
  *  block. A catalog still loading, or one that failed, is simply not in it yet. `sheets` are the
  *  party's, which what each character carries and binds is read off; keep the object stable.
- *  `invented` is the chat's `gameInventedItems` as saved: the items the Game Master invented. */
+ *  `invented` is the chat's `gameInventedItems` as saved: the items the Game Master invented. A game
+ *  with no ruleset reads its setting `kit`'s money and shop instead (worldgen W6b), as the server does. */
 export function useRulesetItemBook(
   ruleset: ResolvedGameRulesetClient,
   sheets?: RulesetItemBookSheets,
   invented?: unknown,
+  kit?: WorldKit | null,
 ): RulesetItemBook | undefined {
+  const kitItems = useMemo(() => (ruleset.status === "none" ? worldKitItems(kit) : undefined), [ruleset.status, kit]);
   const definition = ruleset.status === "ok" && ruleset.definition.items ? ruleset.definition : undefined;
   const layerOptions = ruleset.status === "ok" ? ruleset.layerOptions : undefined;
   const catalogIds = useMemo(() => (definition ? rulesetItemCatalogIds(definition) : []), [definition]);
@@ -56,7 +61,9 @@ export function useRulesetItemBook(
             ...(sheets ? { sheets } : {}),
             invented: inventedItems,
           })
-        : undefined,
-    [definition, entries, inventedItems, layerOptions, sheets],
+        : kitItems
+          ? rulesetItemBook(kitItems.definition, kitItems.entries, { plain: "allow", actor: "player" })
+          : undefined,
+    [definition, entries, inventedItems, kitItems, layerOptions, sheets],
   );
 }

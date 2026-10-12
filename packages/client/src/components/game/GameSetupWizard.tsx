@@ -1,4 +1,11 @@
-import { normalizeGameDifficulty } from "@marinara-engine/shared";
+import {
+  compileGameWorld,
+  normalizeGameDifficulty,
+  parseWorldKit,
+  worldSpatialDraft,
+  type GenerateSpatialMapDraftResponse,
+  type WorldKitInput,
+} from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Setup Wizard (initial game setup modal)
 // ──────────────────────────────────────────────
@@ -28,6 +35,7 @@ import {
   Map as MapIcon,
   RotateCcw,
   FolderOpen,
+  Globe2,
   FileUp,
   Download,
   CheckCircle2,
@@ -82,6 +90,15 @@ import { useConnections, useModelParameterCapabilities } from "../../hooks/use-c
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
+import { GameSetupWorldKitChooser } from "./GameSetupWorldKitChooser";
+import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
+import { GameSetupWorldChooser, worldDraftConfig, type WorldDraft } from "./GameSetupWorldChooser";
+import {
+  GAME_SETUP_FIELD_LABEL,
+  GAME_SETUP_GHOST_BUTTON_CLASS,
+  GAME_SETUP_INPUT_CLASS,
+  GAME_SETUP_PRIMARY_BUTTON_CLASS,
+} from "./game-setup-classes";
 import { SettingsSwitchTrack } from "../panels/settings/SettingControls";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { useEntriesAcrossLorebooks, useLorebooks } from "../../hooks/use-lorebooks";
@@ -111,7 +128,16 @@ import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { NewGameExperienceChooser } from "./NewGameExperienceChooser";
 import { LegacyExperienceSetupDialog } from "./LegacyExperienceSetupDialog";
 import { MAX_EXPERIENCE_SEED, buildExperienceSetup, parseExperienceSeed } from "../../lib/game-experience-setup";
+import {
+  SETTING_GENRE,
+  SUGGESTION_SETTINGS,
+  allSetupSuggestionKeys,
+  setupSuggestionKeys,
+} from "../../lib/game-setup-suggestions";
 import { restoredRulesetLayers, rulesetLayerOptions, toggleRulesetLayer } from "../../lib/ruleset-layers";
+
+/** The "Surprise me!" chip, told apart from the localized ideas by this value, never by its text. */
+const SURPRISE_SUGGESTION = "__surprise__";
 
 const GameAssetsBrowserView = lazy(() =>
   import("../game-assets/GameAssetsBrowserView").then((module) => ({ default: module.GameAssetsBrowserView })),
@@ -146,6 +172,8 @@ export interface GameSetupWizardProps {
       | { mode: "manual" }
       | { mode: "template"; selection: CapabilitySetupSelection }
       | { mode: "shared-world"; selection: CapabilitySetupSelection }
+      /** The atlas made from the game's world (worldgen W7), reviewed and saved like a drafted map. */
+      | { mode: "world"; draft: GenerateSpatialMapDraftResponse }
       | {
           mode: "ai";
           size: SpatialMapDraftSize;
@@ -225,25 +253,21 @@ function getPersonaTitle(persona: Persona): string | null {
   return title ? title : null;
 }
 
-const GENRES = ["Fantasy", "Sci-Fi", "Horror", "Modern", "Post-Apocalyptic", "Cyberpunk", "Steampunk", "Historical"];
+const GENRES = [
+  "Fantasy",
+  "Sci-Fi",
+  "Horror",
+  "Modern",
+  "Post-Apocalyptic",
+  "Cyberpunk",
+  "Steampunk",
+  "Historical",
+  "Wuxia",
+];
 const TONES = ["Heroic", "Dark", "Comedic", "Gritty", "Whimsical", "Serious", "Campy"];
 const DIFFICULTIES = ["Casual", "Normal", "Hard", "Brutal"];
 const LEARNED_OPTION_PREVIEW_LIMIT = 8;
 const GAME_SETUP_IMPORT_MAX_BYTES = 1_000_000;
-
-const SETTING_SUGGESTIONS = [
-  "Surprise me!",
-  "A war-torn kingdom with ancient ruins",
-  "A neon-lit city of hackers and megacorps",
-  "A cursed forest hiding a forgotten god",
-];
-
-const GOAL_SUGGESTIONS = [
-  "Surprise me!",
-  "Find the lost artifact",
-  "Survive and uncover the truth",
-  "Become the ruler of the land",
-];
 
 const PREFERENCE_SUGGESTIONS = [
   "Include romance subplot",
@@ -279,13 +303,6 @@ function normalizeSpatialMapTargetLocationCount(value: string): number | null {
   return Math.max(1, Math.min(SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT, parsed));
 }
 
-const GAME_SETUP_FIELD_LABEL = "mb-1.5 block text-xs font-medium text-[var(--foreground)]";
-const GAME_SETUP_INPUT_CLASS =
-  "w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40";
-const GAME_SETUP_GHOST_BUTTON_CLASS =
-  "flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]";
-const GAME_SETUP_PRIMARY_BUTTON_CLASS =
-  "flex items-center gap-1 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 const GAME_SETUP_WIZARD_PANEL_CLASS = cn(
   NEUTRAL_PANEL_SHELL,
   "pointer-events-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden sm:max-h-[min(90dvh,44rem)]",
@@ -541,11 +558,24 @@ export function GameSetupWizard({
     ? restoredRulesetLayers(activeRuleset.definition, rulesetLayerOptions(rulesetLayerIds))
     : [];
   const [rulesetImportNotice, setRulesetImportNotice] = useState<string | null>(null);
+  // The setting kit (worldgen W0): off unless the player picks one, and only for a new game.
+  const [worldKit, setWorldKit] = useState<WorldKitInput | null>(null);
+  // Overworld games are locked on this server unless it says otherwise: no kit, no world.
+  const overworldEnabled = useOverworldGamesEnabled();
+  const effectiveWorldKit: WorldKitInput | null = overworldEnabled ? worldKit : null;
+  const checkedWorldKit = isNewGame && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
+  // The world made in that kit's words (worldgen W1): off unless the player asks for one.
+  const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
+  const checkedWorld = checkedWorldKit?.ok && worldDraft ? worldDraftConfig(checkedWorldKit.kit, worldDraft) : null;
   const experienceSeedInvalid = Boolean(experienceSetup?.seed && parseExperienceSeed(experienceSeed) === null);
   const [experienceImportNotice, setExperienceImportNotice] = useState<string | null>(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [gameName, setGameName] = useState("");
   const [genres, setGenres] = useState<string[]>(["Fantasy"]);
+  // Whether the player chose the genres: until they do, a picked setting kit sets its own (worldgen W6g).
+  const genresChosenRef = useRef(false);
+  // The suggestions' rotation, drawn once each time the wizard opens.
+  const [suggestionOffset] = useState(() => Math.floor(Math.random() * SUGGESTION_SETTINGS.length * 2));
   const [customGenre, setCustomGenre] = useState("");
   const [setting, setSetting] = useState("");
   const [tones, setTones] = useState<string[]>(["Heroic"]);
@@ -628,6 +658,7 @@ export function GameSetupWizard({
   const [draftSpatialMap, setDraftSpatialMap] = useState(false);
   const [manualSpatialMap, setManualSpatialMap] = useState(false);
   const [templateSpatialMap, setTemplateSpatialMap] = useState(false);
+  const [worldSpatialMap, setWorldSpatialMap] = useState(false);
   const [spatialTemplatePickerOpen, setSpatialTemplatePickerOpen] = useState(false);
   const [spatialTemplateSelection, setSpatialTemplateSelection] = useState<CapabilitySetupSelection | null>(null);
   const [spatialMapDraftSize, setSpatialMapDraftSize] = useState<SpatialMapDraftSize>("medium");
@@ -884,13 +915,21 @@ export function GameSetupWizard({
     () => filterLearnedOptions(learnedGameSetupOptions?.tones, [...TONES, ...tones]),
     [learnedGameSetupOptions?.tones, tones],
   );
+  const suggestionText = useCallback(
+    (keys: string[]) => [SURPRISE_SUGGESTION, ...keys.map((key) => localizeUi(key))],
+    [localizeUi],
+  );
+  const settingSuggestions = suggestionText(setupSuggestionKeys("setting", worldKit?.id, suggestionOffset));
+  const goalSuggestions = suggestionText(setupSuggestionKeys("goal", worldKit?.id, suggestionOffset));
+  const allSettingSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("setting")), [suggestionText]);
+  const allGoalSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("goal")), [suggestionText]);
   const learnedSettings = useMemo(
-    () => filterLearnedOptions(learnedGameSetupOptions?.settings, [...SETTING_SUGGESTIONS, setting]),
-    [learnedGameSetupOptions?.settings, setting],
+    () => filterLearnedOptions(learnedGameSetupOptions?.settings, [...allSettingSuggestions, setting]),
+    [learnedGameSetupOptions?.settings, setting, allSettingSuggestions],
   );
   const learnedGoals = useMemo(
-    () => filterLearnedOptions(learnedGameSetupOptions?.goals, [...GOAL_SUGGESTIONS, playerGoals]),
-    [learnedGameSetupOptions?.goals, playerGoals],
+    () => filterLearnedOptions(learnedGameSetupOptions?.goals, [...allGoalSuggestions, playerGoals]),
+    [learnedGameSetupOptions?.goals, playerGoals, allGoalSuggestions],
   );
   const learnedPreferences = useMemo(
     () => filterLearnedOptions(learnedGameSetupOptions?.preferences, [...PREFERENCE_SUGGESTIONS, preferences]),
@@ -902,12 +941,22 @@ export function GameSetupWizard({
   };
 
   const toggleGenre = (g: string) => {
+    genresChosenRef.current = true;
     setGenres((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
+  };
+
+  // A picked starter kit brings its genre while the player has not chosen one (no cyberpunk kit told
+  // the Game Master it is "Fantasy").
+  const chooseWorldKit = (kit: WorldKitInput | null) => {
+    setWorldKit(kit);
+    const genre = kit ? SETTING_GENRE[kit.id] : undefined;
+    if (genre && !genresChosenRef.current) setGenres([genre]);
   };
 
   const addCustomGenre = () => {
     const trimmed = customGenre.trim();
     if (trimmed && !genres.includes(trimmed)) {
+      genresChosenRef.current = true;
       setGenres((prev) => [...prev, trimmed]);
     }
     setCustomGenre("");
@@ -968,7 +1017,7 @@ export function GameSetupWizard({
   );
 
   const applySuggestion = useCallback((setter: (v: string) => void, value: string) => {
-    if (value === "Surprise me!") {
+    if (value === SURPRISE_SUGGESTION) {
       setter("Surprise me, go wild!");
     } else {
       setter(value);
@@ -1010,6 +1059,7 @@ export function GameSetupWizard({
       setDraftSpatialMap(false);
       setManualSpatialMap(false);
       setTemplateSpatialMap(false);
+      setWorldSpatialMap(false);
       setSpatialTemplateSelection(null);
       setSpatialTemplatePickerOpen(false);
     }
@@ -1054,6 +1104,7 @@ export function GameSetupWizard({
       setTemplateSpatialMap(true);
       setDraftSpatialMap(false);
       setManualSpatialMap(false);
+      setWorldSpatialMap(false);
       setSpatialTemplatePickerOpen(false);
     },
     [localizeUi],
@@ -1066,9 +1117,14 @@ export function GameSetupWizard({
 
   const spatialMapTargetLocationCountValid =
     normalizeSpatialMapTargetLocationCount(spatialMapTargetLocationCountInput) !== null;
+  // A kit or a world that does not hold together is never quietly left out of a downloaded setup.
+  const setupDownloadBlocked =
+    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok);
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
+    !(checkedWorldKit && !checkedWorldKit.ok) &&
+    !(checkedWorld && !checkedWorld.ok) &&
     (!activeLorebookEntryIds.length || Boolean(eligibleEntries)) &&
     !!gmConnectionId &&
     (!enableAgents || !hierarchicalMapsInstalled || !draftSpatialMap || spatialMapTargetLocationCountValid);
@@ -1076,16 +1132,32 @@ export function GameSetupWizard({
     ? localizeUi("multiplayer.game.missingPersona")
     : experienceSeedInvalid
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
-      : activeLorebookEntryIds.length && !eligibleEntries
-        ? localizeUi(entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading")
-        : !gmConnectionId
-          ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-          : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-            ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-              })
-            : null;
+      : checkedWorldKit && !checkedWorldKit.ok
+        ? localizeUi("game.worldKit.setup.fixBeforeStart")
+        : checkedWorld && !checkedWorld.ok
+          ? localizeUi("game.world.setup.fixBeforeStart")
+          : activeLorebookEntryIds.length && !eligibleEntries
+            ? localizeUi(
+                entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+              )
+            : !gmConnectionId
+              ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+              : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+                ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                    value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                  })
+                : null;
   const normalizedLanguage = normalizeGameLanguage(language);
+  // What the model writes a setting kit or a world's brief for: the World step's own choices.
+  const worldWriteRequest = gmConnectionId
+    ? {
+        connectionId: gmConnectionId,
+        genre: genres.join(", ") || "Fantasy",
+        setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
+        tone: tones.join(", ") || "Heroic",
+        language: normalizedLanguage || undefined,
+      }
+    : null;
   const illustratorEnabled = enableAgents && illustratorInstalled && enableSpriteGeneration;
   const musicDjEnabled = enableAgents && musicDjInstalled && enableSpotifyDj;
   const lorebookKeeperEnabled = enableAgents && lorebookKeeperInstalled && enableLorebookKeeper;
@@ -1131,6 +1203,23 @@ export function GameSetupWizard({
       });
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
+      setWorldKit(config.worldKit ?? null);
+      setWorldDraft(
+        config.world
+          ? {
+              seed: String(config.world.seed),
+              grounding: config.world.grounding ?? "expand",
+              lorebookIds: [],
+              canon: (config.world.brief.places ?? [])
+                .filter((place) => place.lore?.length)
+                .map((place) => ({ ...place, tags: place.tags ?? [] })),
+              canonEvents: (config.world.brief.events ?? [])
+                .filter((event) => event.lore?.length)
+                .map((event) => ({ ...event, places: event.places ?? [], groups: event.groups ?? [] })),
+              brief: config.world.brief,
+            }
+          : null,
+      );
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);
@@ -1203,6 +1292,7 @@ export function GameSetupWizard({
 
       setStep(0);
       setGameName(imported.gameName);
+      genresChosenRef.current = true;
       setGenres(importedGenres.length > 0 ? importedGenres : ["Fantasy"]);
       setCustomGenre("");
       setSetting(config.setting);
@@ -1302,6 +1392,7 @@ export function GameSetupWizard({
       );
       setManualSpatialMap(false);
       setTemplateSpatialMap(false);
+      setWorldSpatialMap(false);
       setSpatialTemplateSelection(null);
       setSpatialTemplatePickerOpen(false);
       setSpatialMapDraftSize(importedSpatialMapDraftOptions.size);
@@ -1364,6 +1455,8 @@ export function GameSetupWizard({
             },
           }
         : {}),
+      ...(checkedWorldKit?.ok ? { worldKit: checkedWorldKit.kit } : {}),
+      ...(checkedWorld?.ok ? { world: checkedWorld.world } : {}),
       combatDirector: true,
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
@@ -1372,7 +1465,9 @@ export function GameSetupWizard({
           ? spatialMapInstructions.trim() || undefined
           : undefined,
       gameWorldMapMode:
-        enableAgents && hierarchicalMapsInstalled && (draftSpatialMap || manualSpatialMap || templateSpatialMap)
+        enableAgents &&
+        hierarchicalMapsInstalled &&
+        (draftSpatialMap || manualSpatialMap || templateSpatialMap || (worldSpatialMap && checkedWorld?.ok))
           ? "hierarchical"
           : "standard",
       spatialMapDraftSize:
@@ -1510,8 +1605,8 @@ export function GameSetupWizard({
       {
         genres: filterCustomLearnedValues(genres, GENRES),
         tones: filterCustomLearnedValues(tones, TONES),
-        settings: filterCustomLearnedValues(setting ? [setting] : [], SETTING_SUGGESTIONS),
-        goals: filterCustomLearnedValues(playerGoals ? [playerGoals] : [], GOAL_SUGGESTIONS),
+        settings: filterCustomLearnedValues(setting ? [setting] : [], allSettingSuggestions),
+        goals: filterCustomLearnedValues(playerGoals ? [playerGoals] : [], allGoalSuggestions),
         preferences: filterCustomLearnedValues(preferences ? [preferences] : [], PREFERENCE_SUGGESTIONS),
       },
       {
@@ -1527,24 +1622,33 @@ export function GameSetupWizard({
         shareLabels: buildSetupShareLabels(),
       },
       gameName.trim() || undefined,
-      enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+      enableAgents && hierarchicalMapsInstalled && worldSpatialMap && checkedWorld?.ok && checkedWorldKit?.ok
         ? {
-            mode: "ai" as const,
-            size: spatialMapDraftSize,
-            targetLocationCount: spatialMapTargetLocationCount,
-            groundingMode: spatialMapGroundingMode,
-            sourceLorebookIds: spatialMapGroundingMode === "setup" ? [] : activeLorebookIds,
-            instructions: spatialMapInstructions.trim() || undefined,
+            mode: "world" as const,
+            draft: worldSpatialDraft({
+              kit: checkedWorldKit.kit,
+              ...checkedWorld.world,
+              world: compileGameWorld({ kit: checkedWorldKit.kit, ...checkedWorld.world }),
+            }),
           }
-        : enableAgents && hierarchicalMapsInstalled && manualSpatialMap
-          ? { mode: "manual" as const }
-          : enableAgents && hierarchicalMapsInstalled && templateSpatialMap
-            ? spatialTemplateSelection
-              ? spatialTemplateSelection.kind === "shared-world"
-                ? { mode: "shared-world" as const, selection: spatialTemplateSelection }
-                : { mode: "template" as const, selection: spatialTemplateSelection }
-              : undefined
-            : undefined,
+        : enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+          ? {
+              mode: "ai" as const,
+              size: spatialMapDraftSize,
+              targetLocationCount: spatialMapTargetLocationCount,
+              groundingMode: spatialMapGroundingMode,
+              sourceLorebookIds: spatialMapGroundingMode === "setup" ? [] : activeLorebookIds,
+              instructions: spatialMapInstructions.trim() || undefined,
+            }
+          : enableAgents && hierarchicalMapsInstalled && manualSpatialMap
+            ? { mode: "manual" as const }
+            : enableAgents && hierarchicalMapsInstalled && templateSpatialMap
+              ? spatialTemplateSelection
+                ? spatialTemplateSelection.kind === "shared-world"
+                  ? { mode: "shared-world" as const, selection: spatialTemplateSelection }
+                  : { mode: "template" as const, selection: spatialTemplateSelection }
+                : undefined
+              : undefined,
     );
   };
 
@@ -1913,14 +2017,14 @@ export function GameSetupWizard({
                         className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {SETTING_SUGGESTIONS.map((s) => (
+                        {settingSuggestions.map((s) => (
                           <button
                             key={s}
                             onClick={() => applySuggestion(setSetting, s)}
                             className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
-                            {s === "Surprise me!" && <Sparkles size={9} />}
-                            {s}
+                            {s === SURPRISE_SUGGESTION && <Sparkles size={9} />}
+                            {s === SURPRISE_SUGGESTION ? localizeUi("game.setup.suggestions.surprise") : s}
                           </button>
                         ))}
                       </div>
@@ -2126,6 +2230,32 @@ export function GameSetupWizard({
                         {rulesetImportNotice}
                       </p>
                     )}
+                    {isNewGame && !overworldEnabled && (
+                      <p role="note" className="text-xs text-[var(--muted-foreground)]">
+                        {localizeUi("game.worldKit.setup.overworldLocked")}
+                      </p>
+                    )}
+                    <fieldset
+                      disabled={!overworldEnabled}
+                      className={cn("m-0 min-w-0 space-y-4 border-0 p-0", !overworldEnabled && "opacity-50")}
+                    >
+                      {isNewGame && (
+                        <GameSetupWorldKitChooser
+                          kit={worldKit}
+                          onChange={chooseWorldKit}
+                          writeRequest={worldWriteRequest}
+                        />
+                      )}
+                      {checkedWorldKit?.ok && (
+                        <GameSetupWorldChooser
+                          kit={checkedWorldKit.kit}
+                          draft={worldDraft}
+                          onChange={setWorldDraft}
+                          lorebooks={lorebooks}
+                          request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
+                        />
+                      )}
+                    </fieldset>
 
                     {/* Content Rating */}
                     <div>
@@ -3171,14 +3301,14 @@ export function GameSetupWizard({
                         className="w-full resize-none rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {GOAL_SUGGESTIONS.map((s) => (
+                        {goalSuggestions.map((s) => (
                           <button
                             key={s}
                             onClick={() => applySuggestion(setPlayerGoals, s)}
                             className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
-                            {s === "Surprise me!" && <Sparkles size={9} />}
-                            {s}
+                            {s === SURPRISE_SUGGESTION && <Sparkles size={9} />}
+                            {s === SURPRISE_SUGGESTION ? localizeUi("game.setup.suggestions.surprise") : s}
                           </button>
                         ))}
                       </div>
@@ -3382,6 +3512,41 @@ export function GameSetupWizard({
                       <MapIcon size={12} className="mr-1 inline" />
                       {localizeUi("ui.game.gamesetupwizard.hierarchicalWorldMap")}
                     </label>
+                    {checkedWorld?.ok && (
+                      <button
+                        type="button"
+                        aria-pressed={worldSpatialMap}
+                        onClick={() => {
+                          setWorldSpatialMap((enabled) => !enabled);
+                          setDraftSpatialMap(false);
+                          setManualSpatialMap(false);
+                          setTemplateSpatialMap(false);
+                          setSpatialTemplateSelection(null);
+                        }}
+                        className={cn(
+                          "mb-2 flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
+                          worldSpatialMap
+                            ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                            : "bg-[var(--secondary)] ring-1 ring-transparent hover:ring-[var(--border)]",
+                        )}
+                      >
+                        <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                          <Globe2
+                            size={14}
+                            className={worldSpatialMap ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium text-[var(--foreground)]">
+                              {localizeUi("game.world.atlas.fromTheWorld")}
+                            </span>
+                            <span className="block text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
+                              {localizeUi("game.world.atlas.fromTheWorldHelp")}
+                            </span>
+                          </span>
+                        </span>
+                        <SettingsSwitchTrack checked={worldSpatialMap} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       aria-pressed={draftSpatialMap}
@@ -3389,6 +3554,7 @@ export function GameSetupWizard({
                         setDraftSpatialMap((enabled) => !enabled);
                         setManualSpatialMap(false);
                         setTemplateSpatialMap(false);
+                        setWorldSpatialMap(false);
                         setSpatialTemplateSelection(null);
                       }}
                       className={cn(
@@ -3422,6 +3588,7 @@ export function GameSetupWizard({
                         setManualSpatialMap((enabled) => !enabled);
                         setDraftSpatialMap(false);
                         setTemplateSpatialMap(false);
+                        setWorldSpatialMap(false);
                         setSpatialTemplateSelection(null);
                       }}
                       className={cn(
@@ -3983,7 +4150,7 @@ export function GameSetupWizard({
                     <button
                       type="button"
                       onClick={handleExportSetup}
-                      disabled={isLoading}
+                      disabled={isLoading || setupDownloadBlocked}
                       className={cn(GAME_SETUP_GHOST_BUTTON_CLASS, "disabled:cursor-wait disabled:opacity-40")}
                     >
                       <Download size={14} />

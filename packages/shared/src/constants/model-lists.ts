@@ -863,6 +863,13 @@ export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
     requiresApiKey: true,
   },
   {
+    id: "spicyapi",
+    name: "SpicyAPI",
+    description: "Uncensored image models from SpicyAPI's catalog.",
+    defaultBaseUrl: "https://api.spicyapi.ai/api/v1",
+    requiresApiKey: true,
+  },
+  {
     id: "pollinations",
     name: "Pollinations",
     description: "Free, no-key-needed image generation via Pollinations AI.",
@@ -949,6 +956,12 @@ export const FAL_IMAGE_MODELS: KnownModel[] = [
   { id: "fal-ai/flux/dev", name: "FLUX.1 Dev (fal.ai)", context: 0, maxOutput: 0 },
 ];
 
+export const SPICYAPI_IMAGE_MODELS: KnownModel[] = [
+  { id: "alibaba/z-image-spicy-pro/text-to-image", name: "Z-Image Spicy Pro (SpicyAPI)", context: 0, maxOutput: 0 },
+  { id: "bytedance/seedream-5.0-pro/text-to-image", name: "Seedream 5.0 Pro (SpicyAPI)", context: 0, maxOutput: 0 },
+  { id: "alibaba/qwen-image-2.1/text-to-image", name: "Qwen Image 2.1 (SpicyAPI)", context: 0, maxOutput: 0 },
+];
+
 export const ATLAS_CLOUD_VIDEO_MODELS: KnownModel[] = [
   { id: "google/veo3.1/text-to-video", name: "Veo 3.1 Text to Video (Atlas Cloud)", context: 0, maxOutput: 0 },
   { id: "google/veo3.1/image-to-video", name: "Veo 3.1 Image to Video (Atlas Cloud)", context: 0, maxOutput: 0 },
@@ -1024,6 +1037,7 @@ const IMAGE_GEN_MODELS: KnownModel[] = [
   { id: "venice-sd35", name: "Venice SD3.5", context: 0, maxOutput: 0 },
   ...ZAI_IMAGE_MODELS,
   ...FAL_IMAGE_MODELS,
+  ...SPICYAPI_IMAGE_MODELS,
   ...ATLAS_CLOUD_IMAGE_MODELS,
   // NovelAI
   { id: "nai-diffusion-3", name: "NAI Diffusion 3 (Anime V3)", context: 0, maxOutput: 0 },
@@ -1126,6 +1140,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
     m === "zai" ||
     m === "atlas" ||
     m === "fal" ||
+    m === "spicyapi" ||
     m === "comfyui" ||
     m === "swarmui" ||
     m === "automatic1111" ||
@@ -1136,6 +1151,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
   }
   if (m === "drawthings") return "automatic1111";
   if (hostname === "fal.run") return "fal";
+  if (isProviderHost(hostname, "spicyapi.ai")) return "spicyapi";
   if (isProviderHost(hostname, "nano-gpt.com")) return "nanogpt";
   if (isProviderHost(hostname, "openrouter.ai")) return "openrouter";
   if (isProviderHost(hostname, "x.ai")) return "xai";

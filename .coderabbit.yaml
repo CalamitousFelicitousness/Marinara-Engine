@@ -52,7 +52,7 @@ reviews:
         User guides are for newcomers: plain English, short sentences, no internals. When a PR adds, renames or edits a guide here, it must update the translated packs on the docs-i18n branch or link a "[docs-i18n] <paths>" follow-up issue.
     - path: "CHANGELOG.md"
       instructions: |
-        New entries go under the right heading of ## [Unreleased], are user-focused and concise, and appear once. Flag duplicated entries; they often appear after CHANGELOG merge conflicts.
+        Only release PRs (ones that bump the root package.json version) edit this file: entries are compiled from the PRs merged since the last release. Entries are user-focused and concise, and appear once. Flag duplicated entries.
     - path: "{package.json,packages/*/package.json,packages/shared/src/constants/defaults.ts,win/installer/**,android/app/build.gradle}"
       instructions: |
         The root package.json version is canonical. Version-bearing files must stay in sync (pnpm version:sync), and Android versionCode increments for every shipped APK. Flag a version change in one file without the others.
@@ -84,11 +84,11 @@ reviews:
         mode: "warning"
         instructions: |
           Fail if the diff adds console.log, console.warn, console.error, console.info or console.debug in packages/server/src. Pass otherwise.
-      - name: "Changelog entry"
+      - name: "No changelog edits outside releases"
         mode: "warning"
         instructions: |
-          Pass for purely mechanical or internal changes: refactors without behaviour change, CI-only, tests-only, dependency bumps without user impact, translation-only PRs.
-          Fail if the PR fixes a bug, changes behaviour or adds a feature for users or contributors and adds no entry under ## [Unreleased] in CHANGELOG.md.
+          Pass if the PR doesn't change CHANGELOG.md, or if it bumps the version in the root package.json (a release PR).
+          Fail if any other PR changes CHANGELOG.md in any way: the changelog is compiled from merged PRs at release time, and per-PR edits make every open PR conflict.
       - name: "Existing tests not weakened"
         mode: "warning"
         instructions: |
@@ -108,9 +108,6 @@ reviews:
     resolve_merge_conflict:
       enabled: true
     custom:
-      - name: "changelog"
-        instructions: |
-          Add one concise, user-focused entry for this PR under the right heading of ## [Unreleased] in CHANGELOG.md, matching the style of neighbouring entries. Do not change other entries.
       - name: "localize"
         instructions: |
           Move hard-coded user-facing English strings added by this PR in packages/client/src into semantic localization keys in packages/client/src/localization/locales/en.json, following neighbouring key names, and use them through the existing translation helpers. Do not edit other locale files and do not change the wording.

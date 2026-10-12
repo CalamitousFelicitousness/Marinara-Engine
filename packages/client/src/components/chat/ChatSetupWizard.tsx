@@ -33,7 +33,7 @@ import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-pre
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
 import { useLorebooks } from "../../hooks/use-lorebooks";
 import { useUpdateChat, useUpdateChatMetadata, useCreateMessage, chatKeys } from "../../hooks/use-chats";
-import { useChatPresets, useApplyChatPreset } from "../../hooks/use-chat-presets";
+import { useChatPresets, useApplyChatPreset, useIsApplyingChatPreset } from "../../hooks/use-chat-presets";
 import { useAgentConfigs, useCreateAgent, useUpdateAgent, type AgentConfigRow } from "../../hooks/use-agents";
 import { useCapabilityAgentRegistry } from "../../hooks/use-capability-packages";
 import { useUIStore } from "../../stores/ui.store";
@@ -934,16 +934,42 @@ function SetupGenerationParametersPanel({
 }
 
 export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
+  const applyingProfile = useIsApplyingChatPreset(chat.id);
   const chatMode = (chat as unknown as { mode?: string }).mode ?? "roleplay";
   // Game mode has its own wizard in GameSurface — skip the roleplay wizard
   if (chatMode === "game") return null;
+  // A new chat's starred profile is still being applied: start from its settings, not the blank chat's,
+  // or finishing setup would write the blank chat's commands back over the profile's.
+  if (applyingProfile) return <WizardLoading onClose={onFinish} />;
   return <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} />;
+}
+
+function WizardLoading({ onClose }: { onClose: () => void }) {
+  const { t } = useUiTranslation();
+  return (
+    <>
+      <WizardBackdrop onClose={onClose} />
+      <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center p-3">
+        <div
+          role="status"
+          className={cn(NEUTRAL_PANEL_SHELL, "flex items-center gap-2 p-4 text-sm text-[var(--foreground)]")}
+        >
+          <Loader2 size="1rem" className="animate-spin" aria-hidden="true" />
+          {t("navigation.common.loading")}
+        </div>
+      </div>
+    </>
+  );
 }
 
 function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const { t } = useUiTranslation();
   const mode = chat.mode === "conversation" ? "conversation" : "roleplay";
-  const [initial] = useState(() => captureChatWizardDefaults(chat));
+  const queryClient = useQueryClient();
+  // The cached chat already holds a just-applied profile even when this render's prop does not yet.
+  const [initial] = useState(() =>
+    captureChatWizardDefaults(queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat),
+  );
   const saved = useUIStore((state) => state.chatWizardDefaults[mode]);
   const settingsSyncReady = useUIStore((state) => state.settingsSyncReady);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
@@ -953,7 +979,6 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const initialApplyDone = useRef(false);
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
-  const queryClient = useQueryClient();
   const apply = useCallback(
     async (defaults: ChatWizardDefaults, reset = false) => {
       const { metadata, connectionId, promptPresetId, personaId, personaCharacterId, characterIds } = defaults;
@@ -1036,21 +1061,7 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
     </button>
   );
 
-  if (!ready)
-    return (
-      <>
-        <WizardBackdrop onClose={onFinish} />
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center p-3">
-          <div
-            role="status"
-            className={cn(NEUTRAL_PANEL_SHELL, "flex items-center gap-2 p-4 text-sm text-[var(--foreground)]")}
-          >
-            <Loader2 size="1rem" className="animate-spin" aria-hidden="true" />
-            {t("navigation.common.loading")}
-          </div>
-        </div>
-      </>
-    );
+  if (!ready) return <WizardLoading onClose={onFinish} />;
   const currentChat = queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat;
   const props = { chat: currentChat, onFinish, defaultsApplied, defaultsAction };
   return mode === "conversation" ? (
@@ -1197,7 +1208,11 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     return readChatMetadata(chat);
   }, [chat]);
   const [commandsEnabled, setCommandsEnabled] = useState(
-    () => (defaultsApplied || metadata.conversationSetupComplete === true) && metadata.characterCommands !== false,
+    () =>
+      (defaultsApplied ||
+        metadata.conversationSetupComplete === true ||
+        typeof metadata.appliedChatPresetId === "string") &&
+      metadata.characterCommands !== false,
   );
   const [conversationCommandToggles, setConversationCommandToggles] = useState<
     Partial<Record<ConversationCommandKey, boolean>>

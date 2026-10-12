@@ -92,6 +92,8 @@ export * from "./features/world/atlas.js";
 export * from "./features/world/overworld.js";
 export * from "./features/world/town.js";
 export * from "./features/world/tile-pack.js";
+export * from "./features/world/edits.js";
+export * from "./features/world/share-files.js";
 export * from "./features/world/overused-names.js";
 export * from "./schemas/capability-package.schema.js";
 export * from "./schemas/gm-verb-table.schema.js";

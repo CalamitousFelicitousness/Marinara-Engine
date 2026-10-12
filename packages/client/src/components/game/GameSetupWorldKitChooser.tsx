@@ -4,7 +4,7 @@
 // game starts; the game keeps the kit it was created with.
 import { useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { Sparkles } from "lucide-react";
+import { Download, Sparkles, Upload } from "lucide-react";
 import {
   TACTICAL_ENVIRONMENTS,
   TACTICAL_TERRAINS,
@@ -22,7 +22,15 @@ import {
   type WorldKit,
   type WorldKitInput,
 } from "@marinara-engine/shared";
+import {
+  readWorldFile,
+  readWorldKitFile,
+  worldKitFile,
+  type ExperienceMapPack,
+  type WorldFileWorld,
+} from "@marinara-engine/shared";
 import { ApiError, api } from "../../lib/api-client";
+import { downloadJsonFile } from "../../lib/download-json";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import { GAME_SETUP_GHOST_BUTTON_CLASS, GAME_SETUP_INPUT_CLASS as INPUT } from "./game-setup-classes";
@@ -136,16 +144,50 @@ export function WordsField({
 export function GameSetupWorldKitChooser({
   kit,
   onChange,
+  onImportWorld,
   writeRequest,
 }: {
   kit: WorldKitInput | null;
   onChange: (kit: WorldKitInput | null) => void;
+  /** A world file read (worldgen W9d): its kit and world, both taken. */
+  onImportWorld: (kit: WorldKit, world: WorldFileWorld) => void;
   /** What the model writes a kit for; null until a connection is chosen. */
   writeRequest: WorldKitWriteRequest | null;
 }) {
   const { t } = useUiTranslation();
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
+  // Kit and world files (worldgen W9d): what was read, or why it could not be.
+  const [fileNote, setFileNote] = useState<{ error: boolean; text: string } | null>(null);
+  const kitFileRef = useRef<HTMLInputElement>(null);
+  const worldFileRef = useRef<HTMLInputElement>(null);
+  // Only the file picked last is read in: an earlier one still reading never replaces it.
+  const lastRead = useRef(0);
+  const readFile = async (input: HTMLInputElement, kind: "kit" | "world") => {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    const turn = ++lastRead.current;
+    const text = await file.text();
+    if (turn !== lastRead.current) return;
+    if (kind === "kit") {
+      const read = readWorldKitFile(text);
+      if (!read.ok)
+        return setFileNote({ error: true, text: t("game.worldKit.setup.fileRefused", { reason: read.issues[0] }) });
+      setWriteError(null);
+      onChange(structuredClone(read.kit));
+      return setFileNote({ error: false, text: t("game.worldKit.setup.kitImported", { name: read.kit.label }) });
+    }
+    const read = readWorldFile(text);
+    if (!read.ok)
+      return setFileNote({ error: true, text: t("game.worldKit.setup.fileRefused", { reason: read.issues[0] }) });
+    setWriteError(null);
+    onImportWorld(structuredClone(read.kit), read.world);
+    setFileNote({
+      error: false,
+      text: [t("game.worldKit.setup.worldImported", { name: read.name }), ...read.notes.slice(0, 3)].join(" "),
+    });
+  };
   const checked = kit ? parseWorldKit(kit) : null;
   // The family its art and music come from: its own, or a kit saved before families its starter's.
   const family = worldKitArtFamily(kit);
@@ -218,6 +260,66 @@ export function GameSetupWorldKitChooser({
     <div>
       <span className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.worldKit.setup.label")}</span>
       <p className="mb-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">{t("game.worldKit.setup.help")}</p>
+      <div className="mb-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => kitFileRef.current?.click()}
+          className={cn(GAME_SETUP_GHOST_BUTTON_CLASS, "gap-2 ring-1 ring-[var(--border)]")}
+        >
+          <Upload size={13} />
+          {t("game.worldKit.setup.importKit")}
+        </button>
+        <button
+          type="button"
+          onClick={() => worldFileRef.current?.click()}
+          className={cn(GAME_SETUP_GHOST_BUTTON_CLASS, "gap-2 ring-1 ring-[var(--border)]")}
+        >
+          <Upload size={13} />
+          {t("game.worldKit.setup.importWorld")}
+        </button>
+        <button
+          type="button"
+          disabled={!checked?.ok}
+          onClick={() =>
+            checked?.ok &&
+            downloadJsonFile(worldKitFile(checked.kit), `${checked.kit.label.replace(/[^\w.-]+/g, "_")}.worldkit.json`)
+          }
+          className={cn(
+            GAME_SETUP_GHOST_BUTTON_CLASS,
+            "gap-2 ring-1 ring-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50",
+          )}
+        >
+          <Download size={13} />
+          {t("game.worldKit.setup.downloadKit")}
+        </button>
+        <input
+          ref={kitFileRef}
+          type="file"
+          accept=".json,application/json"
+          aria-label={t("game.worldKit.setup.importKit")}
+          className="hidden"
+          onChange={(event) => void readFile(event.currentTarget, "kit")}
+        />
+        <input
+          ref={worldFileRef}
+          type="file"
+          accept=".json,application/json"
+          aria-label={t("game.worldKit.setup.importWorld")}
+          className="hidden"
+          onChange={(event) => void readFile(event.currentTarget, "world")}
+        />
+      </div>
+      {fileNote && (
+        <p
+          role={fileNote.error ? "alert" : "status"}
+          className={cn(
+            "mb-2 text-xs",
+            fileNote.error ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]",
+          )}
+        >
+          {fileNote.text}
+        </p>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         <button type="button" onClick={() => choose(null)} aria-pressed={!kit} className={cardClass(!kit)}>
           <span className="block font-medium text-[var(--foreground)]">{t("game.worldKit.setup.none")}</span>
@@ -1065,6 +1167,64 @@ export function GameSetupWorldKitChooser({
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** The kit, and the maps when it ships any, an Experience's map pack (worldgen W9e) sets while the
+ *  Experience is on: shown, not chosen. One of its maps is picked here. */
+export function MapPackLock({
+  name,
+  pack,
+  error,
+  worldPath,
+  onPickWorld,
+}: {
+  name: string;
+  pack: ExperienceMapPack | null;
+  error: string | null;
+  worldPath: string | null;
+  onPickWorld: (path: string) => void;
+}) {
+  const { t } = useUiTranslation();
+  const label = (
+    <span className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.worldKit.setup.label")}</span>
+  );
+  if (!pack) {
+    return (
+      <div>
+        {label}
+        <p role="alert" className="text-xs text-[var(--destructive)]">
+          {t("game.mapPack.unreadable", { name, reason: error ?? "" })}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      {label}
+      <div className="rounded-lg bg-[var(--primary)]/10 p-3 text-xs ring-1 ring-[var(--primary)]/40">
+        <span className="block font-medium text-[var(--foreground)]">{pack.kit.label}</span>
+        <span className="mt-1 block text-[var(--muted-foreground)]">{t("game.mapPack.kitSetBy", { name })}</span>
+      </div>
+      {pack.worlds.length > 0 && (
+        <fieldset className="mt-3 space-y-1.5">
+          <legend className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.mapPack.maps")}</legend>
+          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("game.mapPack.mapsHelp", { name })}</p>
+          {pack.worlds.map((world) => (
+            <label key={world.path} className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+              <input
+                type="radio"
+                name="map-pack-world"
+                checked={world.path === worldPath}
+                onChange={() => onPickWorld(world.path)}
+                className="size-4 accent-[var(--primary)]"
+              />
+              {world.name}
+            </label>
+          ))}
+        </fieldset>
       )}
     </div>
   );

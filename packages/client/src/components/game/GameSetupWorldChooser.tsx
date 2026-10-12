@@ -4,12 +4,15 @@
 // same compile, run in the browser. The game keeps the world it was created with.
 import { useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { Shuffle, Sparkles } from "lucide-react";
+import { Download, Shuffle, Sparkles } from "lucide-react";
 import {
   WORLD_GENERATOR_VERSION,
   checkWorldBrief,
   compileGameWorld,
   withWorldCanon,
+  worldEditIssues,
+  worldFile,
+  type WorldEdits,
   type WorldBrief,
   type WorldBriefEvent,
   type WorldBriefInput,
@@ -17,6 +20,7 @@ import {
   type WorldKit,
 } from "@marinara-engine/shared";
 import { ApiError, api } from "../../lib/api-client";
+import { downloadJsonFile } from "../../lib/download-json";
 import { parseExperienceSeed } from "../../lib/game-experience-setup";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
@@ -35,6 +39,37 @@ export interface WorldDraft {
   canonEvents?: WorldBriefEvent[];
   /** The brief the model wrote, as the player has changed it; null until one is written. */
   brief: WorldBriefInput | null;
+  /** The hand edits (worldgen W9c) of a world read from a file, and the seed, grounding and brief they
+   *  were made for: kept while those stay as they are and the edits fit them. */
+  edits?: WorldEdits;
+  editsFor?: string;
+}
+
+const editsKey = (seed: number, grounding: WorldDraft["grounding"], brief: WorldBriefInput | null) =>
+  JSON.stringify([seed, grounding, brief]);
+
+/** A world (from a setup or world file) as a draft: its lore-read places and events kept as canon. */
+export function worldDraftFromWorld(world: {
+  seed: number;
+  grounding?: WorldDraft["grounding"];
+  brief: WorldBriefInput;
+  edits?: WorldEdits;
+}): WorldDraft {
+  return {
+    seed: String(world.seed),
+    grounding: world.grounding ?? "expand",
+    lorebookIds: [],
+    canon: (world.brief.places ?? [])
+      .filter((place) => place.lore?.length)
+      .map((place) => ({ ...place, tags: place.tags ?? [] })),
+    canonEvents: (world.brief.events ?? [])
+      .filter((event) => event.lore?.length)
+      .map((event) => ({ ...event, places: event.places ?? [], groups: event.groups ?? [] })),
+    brief: world.brief,
+    ...(world.edits
+      ? { edits: world.edits, editsFor: editsKey(world.seed, world.grounding ?? "expand", world.brief) }
+      : {}),
+  };
 }
 
 export interface WorldWriteRequest {
@@ -56,9 +91,17 @@ export function worldDraftConfig(
 ):
   | {
       ok: true;
-      world: { seed: number; generatorVersion: number; grounding: WorldDraft["grounding"]; brief: WorldBrief };
+      world: {
+        seed: number;
+        generatorVersion: number;
+        grounding: WorldDraft["grounding"];
+        brief: WorldBrief;
+        edits?: WorldEdits;
+      };
       /** What of the brief the kit no longer fits, left out or changed. */
       repairs: string[];
+      /** The draft's hand edits no longer fit it (its seed or brief changed), so they are left out. */
+      editsLeftOut?: true;
     }
   | { ok: false; issues: string[] } {
   const seed = parseExperienceSeed(draft.seed);
@@ -72,10 +115,18 @@ export function worldDraftConfig(
   };
   const checked = checkWorldBrief(kit, brief);
   if (!checked.ok) return { ok: false, issues: checked.issues };
+  const world = { seed, generatorVersion: WORLD_GENERATOR_VERSION, grounding: draft.grounding, brief: checked.brief };
+  // Hand edits are made for one compile: they stay while they fit it, and are left out once the seed or
+  // the brief changes under them.
+  const fits =
+    draft.edits &&
+    draft.editsFor === editsKey(seed, draft.grounding, draft.brief) &&
+    worldEditIssues({ kit, ...world }, draft.edits).length === 0;
   return {
     ok: true,
-    world: { seed, generatorVersion: WORLD_GENERATOR_VERSION, grounding: draft.grounding, brief: checked.brief },
+    world: fits ? { ...world, edits: draft.edits } : world,
     repairs: checked.repairs,
+    ...(draft.edits && !fits ? { editsLeftOut: true as const } : {}),
   };
 }
 
@@ -241,7 +292,33 @@ export function GameSetupWorldChooser({
               <Shuffle size={13} />
               {t("game.world.setup.roll")}
             </button>
+            <button
+              type="button"
+              disabled={!config?.ok}
+              onClick={() =>
+                config?.ok &&
+                downloadJsonFile(
+                  worldFile(`${kit.label} ${config.world.seed}`, kit, config.world),
+                  `${`${kit.label} ${config.world.seed}`.replace(/[^\w.-]+/g, "_")}.world.json`,
+                )
+              }
+              className={cn(
+                GAME_SETUP_GHOST_BUTTON_CLASS,
+                "gap-2 ring-1 ring-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50",
+              )}
+            >
+              <Download size={13} />
+              {t("game.world.setup.download")}
+            </button>
           </div>
+          {config?.ok && config.world.edits && (
+            <p className="text-[var(--muted-foreground)]">{t("game.world.setup.handEdits")}</p>
+          )}
+          {config?.ok && config.editsLeftOut && (
+            <p role="status" className="text-[var(--muted-foreground)]">
+              {t("game.world.setup.editsLeftOut")}
+            </p>
+          )}
 
           {lorebooks.length > 0 && (
             <fieldset className="space-y-1.5">

@@ -122,13 +122,15 @@ export type OverworldTileDrawer = (
 
 /** The tiles a family is drawn with: the pack chosen for it, else the Engine's own for the family, laid
  *  out once on a canvas. A family with neither is drawn plain. */
-export function useOverworldAtlas(family: string | undefined): OverworldTileDrawer {
+/** `own`: the game's own tiles (an Experience's map pack), drawn instead of the family's; "loading" while
+ *  they are still on their way, so the family's are never fetched and drawn first. */
+export function useOverworldAtlas(family: string | undefined, own?: TilePack | null | "loading"): OverworldTileDrawer {
   const { data: library } = useTilePackLibrary();
   const chosen = (family && library?.selection[family]) || null;
   // By version, so a pack saved again is drawn anew.
   const version = (chosen && library?.packs.find((pack) => pack.id === chosen)?.version) || null;
   const builtIn = Boolean(family && library?.builtIn.includes(family));
-  const { data: pack } = useQuery({
+  const { data: fetched } = useQuery({
     queryKey: tilePackKeys.pack(family ?? "", chosen, version),
     queryFn: async () => {
       if (chosen) {
@@ -145,9 +147,11 @@ export function useOverworldAtlas(family: string | undefined): OverworldTileDraw
       if (!builtIn) return null;
       return (await api.get<{ pack: TilePack }>(`/game-tile-packs/builtin/${encodeURIComponent(family!)}`)).pack;
     },
-    enabled: Boolean(family && library),
+    // A game with its own tiles (an Experience's map pack, worldgen W9e) draws with them.
+    enabled: Boolean(family && library) && !own,
     staleTime: Infinity,
   });
+  const pack = own === "loading" ? null : (own ?? fetched);
   const atlas = useMemo(() => {
     if (!pack) return null;
     const ids = Object.keys(pack.tiles);

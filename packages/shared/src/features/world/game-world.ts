@@ -8,7 +8,8 @@ import { z } from "zod";
 import { gameWorldKitFromMetadata, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { checkWorldBrief, worldBriefSchema, type WorldBrief } from "../../schemas/world-brief.schema.js";
 import { WORLD_GENERATOR_VERSION, compileWorld, type CompiledWorld, type WorldPlace } from "./compile.js";
-import { worldCast, worldPersonSheet } from "./people.js";
+import { applyWorldEdits, checkWorldEdits, worldEditsSchema, worldPlaceNamed, type WorldEdits } from "./edits.js";
+import { worldCast, worldCastSize, worldPersonSheet } from "./people.js";
 import { worldHistory, worldHistoryLine, worldNotablePast, worldPlacePast } from "./history.js";
 import {
   worldAddedPlace,
@@ -32,6 +33,8 @@ export const gameWorldSchema = z
     generatorVersion: z.number().int().min(1),
     grounding: z.enum(WORLD_GROUNDINGS).default("expand"),
     brief: worldBriefSchema,
+    /** The hand edits kept with it (W9c), applied after the compile. */
+    edits: worldEditsSchema.optional(),
   })
   .strict();
 export type GameWorldInput = z.input<typeof gameWorldSchema>;
@@ -41,6 +44,8 @@ export interface GameWorld {
   seed: number;
   grounding: (typeof WORLD_GROUNDINGS)[number];
   brief: WorldBrief;
+  /** The hand edits kept with it (W9c); `world` already has them applied. */
+  edits?: WorldEdits;
   world: CompiledWorld;
 }
 
@@ -49,24 +54,28 @@ export interface GameWorld {
 const cache = new Map<string, CompiledWorld>();
 const CACHE_SIZE = 8;
 
-/** Compiles a world from its stored inputs, or reuses the same inputs' last compile. */
-export function compileGameWorld(input: Omit<GameWorld, "world">): CompiledWorld {
-  const key = JSON.stringify([input.seed, input.grounding, input.kit, input.brief]);
+const cached = (key: string, make: () => CompiledWorld) => {
   const hit = cache.get(key);
   if (hit) {
     cache.delete(key);
     cache.set(key, hit);
     return hit;
   }
-  const world = compileWorld({
-    seed: input.seed,
-    kit: input.kit,
-    brief: input.brief,
-    strict: input.grounding === "strict",
-  });
+  const world = make();
   cache.set(key, world);
   if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);
   return world;
+};
+
+/** Compiles a world from its stored inputs and applies its edit layer, or reuses the same inputs' last
+ *  compile. The compile is kept apart from the edits, so editing a world never compiles it again. */
+export function compileGameWorld(input: Omit<GameWorld, "world">): CompiledWorld {
+  const key = JSON.stringify([input.seed, input.grounding, input.kit, input.brief]);
+  const compiled = cached(key, () =>
+    compileWorld({ seed: input.seed, kit: input.kit, brief: input.brief, strict: input.grounding === "strict" }),
+  );
+  if (!input.edits) return compiled;
+  return cached(JSON.stringify([key, input.edits]), () => applyWorldEdits(input.kit, compiled, input.edits));
 }
 
 /** The game's world, or null when it has none, or none this Engine can read. A world made by another
@@ -80,14 +89,29 @@ export function gameWorldFromMetadata(metadata: Record<string, unknown> | null |
   const checked = checkWorldBrief(kit, parsed.data.brief);
   if (!checked.ok) return null;
   const inputs = { kit, seed: parsed.data.seed, grounding: parsed.data.grounding, brief: checked.brief };
-  return { ...inputs, world: compileGameWorld(inputs) };
+  // A layer that does not fit its world (one written around the editor's check) is not applied at all,
+  // so what the editor's route refuses never reaches a reader by another route.
+  const edits = parsed.data.edits;
+  const full = edits && worldEditIssues(inputs, edits).length === 0 ? { ...inputs, edits } : inputs;
+  return { ...full, world: compileGameWorld(full) };
 }
 
-/** The world's place by the name the Game Master used, ignoring case and spacing. */
+/** Why an edit layer (W9c) does not fit a world, or nothing: checked against the world as compiled.
+ *  Drawn people are checked by their place's cast size, since they are drawn rather than stored. */
+export function worldEditIssues(inputs: Omit<GameWorld, "world" | "edits">, edits: WorldEdits): string[] {
+  // Against the world as compiled, never as already edited (a game read back carries its stored layer).
+  const compiled = compileGameWorld({ ...inputs, edits: undefined });
+  const byId = new Map(compiled.places.map((place) => [place.id, place]));
+  return checkWorldEdits(inputs.kit, compiled, edits, (place) => {
+    const settlement = place.rank !== undefined ? place : place.parentId ? byId.get(place.parentId) : undefined;
+    return settlement?.rank !== undefined ? worldCastSize(place, settlement) : 0;
+  });
+}
+
+/** The world's place by the name the Game Master used, ignoring case and spacing, or by a name it went
+ *  by before a hand edit renamed it. */
 export function worldPlaceByName(world: CompiledWorld, name: string | undefined): WorldPlace | undefined {
-  if (!name) return undefined;
-  const key = name.trim().replace(/\s+/g, " ").toLowerCase();
-  return world.places.find((place) => place.name.toLowerCase() === key);
+  return worldPlaceNamed(world.places, name);
 }
 
 /**
@@ -166,10 +190,12 @@ export function worldTripDays(kit: WorldKit, count: number): string {
 }
 
 function describe(kit: WorldKit, place: WorldPlace, present?: WorldPresent): string {
+  // A place renamed by hand says what it was called, so earlier narration still reads.
+  const once = place.aliases?.length ? `, once called ${place.aliases.join(", ")}` : "";
   const layer = labelOf(kit.layers, place.layer);
-  if (place.size === undefined) return `${place.name} (${layer})`;
+  if (place.size === undefined) return `${place.name} (${layer}${once})`;
   const state = present?.ruined.includes(place.id) ? "in ruins" : (present?.prosperity[place.id] ?? place.prosperity);
-  return `${place.name} (${labelOf(kit.sizes, place.size)}, ${state})`;
+  return `${place.name} (${labelOf(kit.sizes, place.size)}, ${state}${once})`;
 }
 
 /** The fixed part, for the cached system prompt: the premise, the outer places, the biggest settlements. */
@@ -192,7 +218,7 @@ export function worldOverviewPromptText(game: GameWorld): string {
       .slice(0, 8)
       .map((group) =>
         [
-          `- ${group.name} (${labelOf(kit.groupKinds, group.kind)}${group.seat ? `, at ${group.seat}` : ""}${
+          `- ${group.name} (${labelOf(kit.groupKinds, group.kind)}${group.seat ? `, at ${worldPlaceNamed(world.places, group.seat)?.name ?? group.seat}` : ""}${
             history.leaders[group.name]?.name ? `, led by ${history.leaders[group.name]!.name}` : ""
           })`,
           group.note ? `: ${group.note}` : ".",

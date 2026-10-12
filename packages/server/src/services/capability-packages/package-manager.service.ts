@@ -33,6 +33,7 @@ import {
   type CapabilityReleaseNotes,
   type InstalledCapabilityPackage,
 } from "@marinara-engine/shared";
+import { WORLD_SHARE_FILE_MAX_BYTES } from "@marinara-engine/shared";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { safeFetch } from "../../utils/security.js";
 import { logger } from "../../lib/logger.js";
@@ -2383,6 +2384,39 @@ export const capabilityPackageManager = {
       );
       return null;
     }
+  },
+
+  /** An Experience's map pack files (worldgen W9e), verified: its kit, worlds and tile pack, by the
+   *  paths its manifest declares, each declared as an asset, hash-pinned in `files[]` and re-verified
+   *  against the install-time hash. Null when the package is not installed, not ready, or ships no map
+   *  pack; throws (with the reason) when one is declared but cannot be read as installed. */
+  async mapPackFiles(packageId: string): Promise<{
+    version: string;
+    name: string;
+    kit: Buffer;
+    worlds: Array<{ path: string; data: Buffer }>;
+    tiles: Buffer | null;
+  } | null> {
+    const installed = (await readRegistry()).packages.find((item) => item.id === packageId);
+    if (!installed || !isInstalledCapabilityReady(installed)) return null;
+    const mapPack = installed.manifest.contributions?.gameSurface?.mapPack;
+    if (!mapPack) return null;
+    const read = async (path: string) => {
+      const declaration = installed.manifest.files.find(
+        (item) => tryNormalizeArchivePath(item.path) === tryNormalizeArchivePath(path),
+      );
+      if (!declaration) throw new Error(`${path} is not listed in the package's files`);
+      // Refused on its DECLARED size, before the read, as a share file is.
+      if (declaration.bytes > WORLD_SHARE_FILE_MAX_BYTES) throw new Error(`${path} is larger than a share file can be`);
+      return (await readVerifiedInstalledPackageFile(installed, path)).data;
+    };
+    return {
+      version: installed.version,
+      name: installed.manifest.name,
+      kit: await read(mapPack.kit),
+      worlds: await Promise.all((mapPack.worlds ?? []).map(async (path) => ({ path, data: await read(path) }))),
+      tiles: mapPack.tiles ? await read(mapPack.tiles) : null,
+    };
   },
 
   /** Every ready package's `ruleset.json`, verified, for the ruleset registry. Same discipline as

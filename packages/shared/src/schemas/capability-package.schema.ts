@@ -121,6 +121,36 @@ const capabilityPackageManifestBaseSchema = z
               })
               .strict()
               .optional(),
+            /** A map pack (worldgen W9e): the Experience's own setting kit, ready-made worlds built with it
+             *  and its own tile pack, as the kit, world and tile pack share files among its assets. A new
+             *  game with the Experience on is locked to its kit, and to one of its worlds when it ships
+             *  any; its overworld and towns are drawn with its tiles. Requires Capability API 1.71. */
+            mapPack: z
+              .object({
+                kit: z
+                  .string()
+                  .min(1)
+                  .max(240)
+                  .regex(/\.worldkit\.json$/u, "A map pack's kit is a .worldkit.json file"),
+                worlds: z
+                  .array(
+                    z
+                      .string()
+                      .min(1)
+                      .max(240)
+                      .regex(/\.world\.json$/u, "A map pack's world is a .world.json file"),
+                  )
+                  .max(32)
+                  .optional(),
+                tiles: z
+                  .string()
+                  .min(1)
+                  .max(240)
+                  .regex(/\.tilepack\.json$/u, "A map pack's tiles are a .tilepack.json file")
+                  .optional(),
+              })
+              .strict()
+              .optional(),
             /** Class the host puts on the game area while this surface is mounted, so the package can
              *  restyle the shared chrome that renders outside its element. Declared rather than pushed at
              *  runtime, so the theme applies on first paint. */
@@ -571,7 +601,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.70: a catalog entry's rider may name `weapons` by item tag, so it fires on a held weapon as it
 //        does on an attack row (Sneak Attack with a rapier held from the bag). A new key on the strict
 //        rider, so a package whose entries carry one declares 1.70.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 70 } as const);
+// 1.71: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
+//        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
+//        its declared assets. A new game with the Experience on is locked to them.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 71 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -604,6 +637,42 @@ export const capabilityPackageManifestV2Schema = capabilityPackageManifestBaseSc
 export const capabilityPackageManifestSchema = z
   .discriminatedUnion("schemaVersion", [capabilityPackageManifestV1Schema, capabilityPackageManifestV2Schema])
   .superRefine((manifest, ctx) => {
+    const mapPack = manifest.contributions?.gameSurface?.mapPack;
+    if (mapPack) {
+      const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
+      if (!api || api.major !== 1 || api.minor < 71) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contributions", "gameSurface", "mapPack"],
+          message: "A map pack requires schemaVersion 2 and capabilityApi 1.71 or newer",
+        });
+      }
+      // The lock lives in the Engine's own setup, so an Experience with a map pack sets up through it
+      // (and the setup's own rule asks for the game-surface slot).
+      if (!manifest.contributions?.gameSurface?.setup) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contributions", "gameSurface", "mapPack"],
+          message: "A map pack needs the Engine's own setup (contributions.gameSurface.setup)",
+        });
+      }
+      // Its files are package assets like any other: declared, hash-pinned and served the same way.
+      const declared = new Set(manifest.contributions?.assets?.paths ?? []);
+      const files: Array<[string, Array<string | number>]> = [
+        [mapPack.kit, ["kit"]],
+        ...(mapPack.worlds ?? []).map((path, index): [string, Array<string | number>] => [path, ["worlds", index]]),
+        ...(mapPack.tiles ? [[mapPack.tiles, ["tiles"]] as [string, Array<string | number>]] : []),
+      ];
+      for (const [path, at] of files) {
+        if (!declared.has(path)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["contributions", "gameSurface", "mapPack", ...at],
+            message: `${path} must also be declared in contributions.assets.paths`,
+          });
+        }
+      }
+    }
     const setup = manifest.contributions?.gameSurface?.setup;
     if (setup) {
       const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;

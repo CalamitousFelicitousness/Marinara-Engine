@@ -125,6 +125,10 @@ function serialize(entry: WorldLedgerEntry, answer: { result: "ok" } | { result:
 /** The world's places and groups as the story has left them, to read a tag's names against. */
 function known(game: GameWorld, present: WorldPresent) {
   const places = new Map<string, string>();
+  for (const place of game.world.places) {
+    // A name a place went by before a hand edit renamed it (W9c) still reads as that place.
+    for (const alias of place.aliases ?? []) places.set(alias.toLowerCase(), place.name);
+  }
   for (const place of game.world.places) places.set(place.name.toLowerCase(), place.name);
   for (const place of present.places) places.set(place.name.toLowerCase(), place.name);
   const groups = new Map<string, string>();
@@ -287,7 +291,7 @@ const PRESENT_CACHE_SIZE = 16;
 
 /** The world as the history left it, with the ledger folded over it, stepping as time passes. */
 export function worldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): WorldPresent {
-  const key = JSON.stringify([game.seed, game.grounding, game.kit, game.brief, ledger]);
+  const key = JSON.stringify([game.seed, game.grounding, game.kit, game.brief, game.edits ?? null, ledger]);
   const hit = presentCache.get(key);
   if (hit) return structuredClone(hit);
   const present = foldPresent(game, ledger);
@@ -298,7 +302,12 @@ export function worldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[
 
 function foldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): WorldPresent {
   const history = worldHistory(game);
-  const byName = new Map(game.world.places.map((place) => [place.name.toLowerCase(), place]));
+  const byName = new Map([
+    ...game.world.places.flatMap((place) =>
+      (place.aliases ?? []).map((alias) => [alias.toLowerCase(), place] as const),
+    ),
+    ...game.world.places.map((place) => [place.name.toLowerCase(), place] as const),
+  ]);
   const present: WorldPresent = {
     day: 0,
     fortune: Object.fromEntries(

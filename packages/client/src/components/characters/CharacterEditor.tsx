@@ -235,12 +235,15 @@ const CHARACTER_ONBOARDING_SECTIONS = [
     label: "Character Questions",
     labelKey: "ui.characters.onboarding.cardQuestions",
   },
+  // Persona questions come second in the tab, not last: the persona FIELDS they
+  // fill are rendered after them, so listing this after Scenario made the nav
+  // disagree with the page it scrolls.
+  { id: "character-onboarding-questions", label: "Persona Questions", labelKey: "ui.characters.onboarding.questions" },
   { id: "character-onboarding-description", label: "Description" },
   { id: "character-onboarding-personality", label: "Personality" },
   { id: "character-onboarding-backstory", label: "Backstory" },
   { id: "character-onboarding-appearance", label: "Appearance" },
   { id: "character-onboarding-scenario", label: "Scenario" },
-  { id: "character-onboarding-questions", label: "Persona Questions", labelKey: "ui.characters.onboarding.questions" },
   { id: "character-onboarding-preview", label: "Rendered preview" },
 ] as const;
 

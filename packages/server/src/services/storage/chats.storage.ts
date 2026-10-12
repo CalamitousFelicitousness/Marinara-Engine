@@ -2610,8 +2610,9 @@ export function createChatsStorage(db: DB) {
     /** Branch/JSONL copies retain receipts while replacing chat-local message/swipe identities. */
     async remapRoleplayInterruptionTargets(chatId: string, messageIdMap: ReadonlyMap<string, string>) {
       const rows = await this.listMessages(chatId);
+      const swipesByMessageId = await this.getSwipesByMessageId(rows.map((row) => row.id));
       for (const owner of rows) {
-        for (const swipe of await readSwipes(owner.id)) {
+        for (const swipe of swipesByMessageId.get(owner.id) ?? []) {
           const extra = {
             ...parseExtraRecord(swipe.extra),
             ...(swipe.index === owner.activeSwipeIndex ? parseExtraRecord(owner.extra) : {}),
@@ -2624,7 +2625,7 @@ export function createChatsStorage(db: DB) {
             changed = true;
             const targetId = messageIdMap.get(receipt.targetMessageId);
             const targetSwipe = targetId
-              ? (await readSwipes(targetId)).find((row) => row.index === receipt.targetSwipeIndex)
+              ? swipesByMessageId.get(targetId)?.find((row) => row.index === receipt.targetSwipeIndex)
               : null;
             item.interruption = {
               ...receipt,
@@ -3396,6 +3397,21 @@ export function createChatsStorage(db: DB) {
     async listSwipesByMessageIds(messageIds: string[]) {
       if (messageIds.length === 0) return [];
       return db.select().from(messageSwipes).where(inArray(messageSwipes.messageId, messageIds));
+    },
+
+    /**
+     * The swipes of many messages from one read, each list in index order like getSwipes. A getSwipes per
+     * message scans every swipe each time, so whole-chat copies and exports grew with the square of their length (#7445).
+     */
+    async getSwipesByMessageId(messageIds: string[]) {
+      const grouped = new Map<string, (typeof messageSwipes.$inferSelect)[]>();
+      for (const swipe of await this.listSwipesByMessageIds(messageIds)) {
+        const list = grouped.get(swipe.messageId);
+        if (list) list.push(swipe);
+        else grouped.set(swipe.messageId, [swipe]);
+      }
+      for (const list of grouped.values()) list.sort((left, right) => left.index - right.index);
+      return grouped;
     },
 
     async addSwipe(messageId: string, content: string, silent?: boolean) {

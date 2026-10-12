@@ -3067,6 +3067,44 @@ try {
     whisperOffset(writtenWhisperPart) + "REWRITTEN ".length,
     "the whisper keeps its place in its own part",
   );
+  // In an individual group only the last reply is rewritten, so an earlier responder's held part shows its text again.
+  const groupRewriteChat = await chats.create({
+    name: "POV split rewrite group",
+    mode: "roleplay",
+    characterIds: [character.id, newcomer.id],
+    connectionId: connection.id,
+  });
+  assert(groupRewriteChat);
+  chatIds.push(groupRewriteChat.id);
+  await chats.patchMetadata(groupRewriteChat.id, {
+    enableAgents: true,
+    activeAgentIds: ["prose-guardian"],
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...splitMemory,
+      knowledgeStarts: { [character.id]: null, [newcomer.id]: null },
+      knowledgeConfirmed: true,
+    },
+  });
+  await memory.initialize(groupRewriteChat.id);
+  await chats.createMessage({ chatId: groupRewriteChat.id, role: "user", content: "Everyone?" });
+  mainReply = splitReply;
+  const groupEvents = await splitGenerate(groupRewriteChat.id, { forCharacterId: undefined });
+  const [, earlierResponderFirst, , lastResponderFirst, lastResponderLast] = await chats.listMessages(
+    groupRewriteChat.id,
+  );
+  assert(earlierResponderFirst && lastResponderFirst && lastResponderLast);
+  assert.notEqual(earlierResponderFirst.characterId, lastResponderLast.characterId);
+  assert.deepEqual(
+    groupEvents
+      .filter((event) => event.type === "text_rewrite")
+      .map((event) => [event.data.messageId, event.data.editedText, event.data.rewriteApplied]),
+    [
+      [earlierResponderFirst.id, firstScene, false],
+      [lastResponderFirst.id, `REWRITTEN ${firstScene}`, true],
+      [lastResponderLast.id, `***\n\nREWRITTEN ${laterScene}`, true],
+    ],
+  );
   mainReply = undefined;
 } finally {
   finishStream?.();

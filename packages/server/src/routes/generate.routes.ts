@@ -11132,6 +11132,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             firstSavedMsg ??= replyParts[0]!.message;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
+            // Rewrite agents rewrite only the last reply, so an earlier responder's held parts show their text again.
+            if (holdForTextRewrite)
+              for (const part of lastReplyEarlierParts)
+                sendSseEvent(reply, {
+                  type: "text_rewrite",
+                  data: { messageId: part.message.id, editedText: part.content, changes: [], rewriteApplied: false },
+                });
             lastReplyEarlierParts = genResult.earlierParts ?? [];
             currentIterationSavedMsg = genResult.savedMsg;
             for (const part of replyParts) {

@@ -557,7 +557,9 @@ export function worldHistoryLine(event: WorldHistoryEvent): string {
 // `[history: place="Ashby"]` or `[history: group="House Vane"]`. The Engine answers the tag in place,
 // and the next turn's reminder carries what was asked for, so any model can recall the past.
 
-const HISTORY_TAG = /\[history:([^\]]*)\]/gi;
+// A body never holds "[", so each tag is read in one pass: "[history:" repeated without a "]" cannot
+// make every start scan to the end of the reply.
+const HISTORY_TAG = /\[history:([^[\]]*)\]/gi;
 
 function historyTagValues(body: string): Map<string, string> {
   return new Map(

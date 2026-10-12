@@ -6,6 +6,9 @@
 // through every enabled chat instead of re-checking the first two listed, only a
 // saved message counts as a generated one, and a character without a schedule
 // keeps the check's reason so that reason's cooldown is recorded.
+// #7475: on an APK-managed Android install, local auth refuses 127.0.0.1 without
+// the install secret, and app.inject() arrives from 127.0.0.1. The scheduler's
+// eligibility check and generate call must carry that credential.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,6 +19,7 @@ import type { FastifyInstance } from "fastify";
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
 import { appSettings, chats } from "../../packages/server/src/db/schema/index.js";
+import { isAndroidLocalAuthSatisfied } from "../../packages/server/src/middleware/android-local-auth.js";
 
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-write-gen-"));
 process.env.FILE_STORAGE_DIR = storageDir;
@@ -105,10 +109,21 @@ try {
   let generated = 'data: {"type":"done"}\n\n';
   let checked: string[] = [];
   let generatedIntentKey: unknown;
+  const originalAndroidSecret = process.env.MARINARA_ANDROID_SECRET;
+  process.env.MARINARA_ANDROID_SECRET = "11".repeat(32);
+  const asInjected = (headers: Record<string, string> = {}) =>
+    ({ ip: "127.0.0.1", headers }) as unknown as Parameters<typeof isAndroidLocalAuthSatisfied>[0];
+  assert.equal(isAndroidLocalAuthSatisfied(asInjected()), false, "Android local auth refuses a bare injected request");
   const app = {
     db,
     addHook() {},
-    async inject(input: { url: string; payload: { chatId: string; autonomousIntentKey?: string } }) {
+    async inject(input: {
+      url: string;
+      headers?: Record<string, string>;
+      payload: { chatId: string; autonomousIntentKey?: string };
+    }) {
+      // The same check androidLocalAuthHook runs on every request.
+      if (!isAndroidLocalAuthSatisfied(asInjected(input.headers))) return { statusCode: 401, payload: "{}" };
       if (!input.url.endsWith("/check")) {
         generatedIntentKey = input.payload.autonomousIntentKey;
         return { statusCode: 200, payload: generated };
@@ -159,6 +174,8 @@ try {
   } finally {
     scheduler.stop();
     mock.timers.reset();
+    if (originalAndroidSecret === undefined) delete process.env.MARINARA_ANDROID_SECRET;
+    else process.env.MARINARA_ANDROID_SECRET = originalAndroidSecret;
   }
 
   console.info("Autonomous scheduler gate regressions passed.");

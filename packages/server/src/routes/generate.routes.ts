@@ -7592,9 +7592,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           return prepared;
         };
 
-        // Only individual main-model inputs count toward the memory cutoff, never
-        // summed tool usage, output tokens, or agent/planner requests.
+        // Only the outgoing prompt counts toward the memory cutoff: the first main-model input
+        // of each responder (the narrator or a character). Tool rounds and roll or Game
+        // follow-ups resend that prompt with the model's own output and results, so they
+        // never count, nor do output tokens, summed usage or agent/planner requests.
         let maxMainRequestInputTokens: number | null = null;
+        // The model's own window, before Advanced Memory narrows it to the cap for the
+        // outgoing prompt. Follow-ups are bounded only by this window.
+        const modelMaxContext = effectiveMaxContext;
         /** Generate a single response for a given character and save it. */
         const generateForCharacter = async (
           targetCharId: string | null,
@@ -8121,20 +8126,32 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             agentContext.memory._mainPromptPreview = promptPreviewForAgents(agentRoleplayPrompt ?? messages);
           };
           let effectiveMaxTokensForSend: number | undefined = maxTokens;
+          let maxContextForSend = effectiveMaxContext;
           let lastContextFit: ReturnType<typeof fitMessagesForModelAccess>["contextFit"] | undefined;
-          const fitPromptForSend = async (candidateMessages: ChatMessage[]): Promise<ChatMessage[]> => {
+          // Advanced Memory holds the outgoing prompt to its cap. A follow-up (tool round, roll or
+          // Game continuation) resends that prompt with the reply so far and the results, so only
+          // the model's own window bounds it, and it reserves room only for the tools it sends.
+          const fitPromptForSend = async (
+            candidateMessages: ChatMessage[],
+            followUp?: { tools: ChatOptions["tools"] },
+          ): Promise<ChatMessage[]> => {
             if (advancedMemoryEnabled) {
               if (advancedMemoryReceipt)
                 await advancedMemory.validatePrepared(input.chatId, advancedSourceMessages, advancedMemoryReceipt);
               const messages = limitPastReasoningMetadata(candidateMessages, chatMeta);
-              const budget = measureContextBudget(messages, {
-                maxContext: effectiveMaxContext!,
-                maxTokens,
-                tools: gameToolConnection ? undefined : responderToolDefs,
-              });
-              if (!budget.fits)
+              maxContextForSend = followUp ? modelMaxContext : effectiveMaxContext;
+              const budget = maxContextForSend
+                ? measureContextBudget(messages, {
+                    maxContext: maxContextForSend,
+                    maxTokens,
+                    tools: followUp ? followUp.tools : gameToolConnection ? undefined : responderToolDefs,
+                  })
+                : undefined;
+              if (budget && !budget.fits)
                 throw new Error(
-                  "Advanced Memory: this tool follow-up or continuation exceeds the context cap. Increase the cap or reduce the tool result or reply space.",
+                  followUp
+                    ? "This tool follow-up or continuation exceeds the model's context window. Reduce the tool result or reply space."
+                    : "Advanced Memory: the complete request exceeds the context cap. Reduce fixed prompt content, attachments or the reply reserve, or increase the cap.",
                 );
               finalPromptSent = messages;
               effectiveMaxTokensForSend = maxTokens;
@@ -8190,12 +8207,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let tokensContext: number | null = null;
           let tokensLastRequestInput: number | null = null;
           let requestCount = 0;
-          const recordRequestUsage = (next: LLMUsage | undefined) => {
+          /** `addedToLostPrompt`: what a follow-up added to an outgoing prompt whose usage was lost. */
+          const recordRequestUsage = (next: LLMUsage | undefined, addedToLostPrompt?: ChatMessage[]) => {
             requestCount++;
             tokensContext = getRequestContextTokens(next, generationProviderOrigin.provider);
             tokensLastRequestInput = getRequestInputTokens(next, generationProviderOrigin.provider);
-            if (tokensLastRequestInput !== null)
-              maxMainRequestInputTokens = Math.max(maxMainRequestInputTokens ?? 0, tokensLastRequestInput);
+            // The first request carries the outgoing prompt; a follow-up never stands in for it.
+            // When cutting a streamed reply at its roll lost that usage (OpenAI-compatible providers
+            // send it last), the first later request that reports input, minus the bytes added since,
+            // is a floor for it: every token covers at least one byte, so it never cuts early.
+            // ponytail: a prompt only just past the cap can cut a turn late. Upgrade: a
+            // provider-reported count of the outgoing prompt.
+            const outgoingInput =
+              tokensLastRequestInput === null
+                ? null
+                : requestCount === 1
+                  ? tokensLastRequestInput
+                  : addedToLostPrompt
+                    ? tokensLastRequestInput - Buffer.byteLength(JSON.stringify(addedToLostPrompt))
+                    : null;
+            if (outgoingInput !== null)
+              maxMainRequestInputTokens = Math.max(maxMainRequestInputTokens ?? 0, outgoingInput);
             usage = addGenerationUsage(usage, next);
           };
           let finishReason: string | undefined;
@@ -8224,7 +8256,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 conn.provider,
                 effTemp,
                 effectiveMaxTokensForSend,
-                effectiveMaxContext ?? connectionMaxContext ?? "default",
+                maxContextForSend ?? connectionMaxContext ?? "default",
                 effTopP,
                 providerTopK ?? "default",
                 enableThinking,
@@ -8341,7 +8373,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           if (responderToolsAttached && (gameToolPlan || (!gameToolConnection && provider.chatComplete))) {
             const maxToolRounds = gameToolPlan ? 1 : getMaxToolRounds();
             let loopMessages: ChatMessage[] = [...initialProviderMessages];
+            const loopTools = supportsNativeToolCalls(conn.provider) ? responderToolDefs : undefined;
             let rollRequestAbort: AbortController | null = null;
+            // Length of the outgoing prompt when cutting its stream at a roll lost its usage. It stays
+            // set while each later round is also cut at a roll without usage, since those rounds add
+            // only their text and roll results; the first request that finishes or reports usage ends it.
+            let lostPromptLength: number | null = null;
+            const addedToLostPrompt = () =>
+              lostPromptLength === null ? undefined : loopMessages.slice(lostPromptLength);
             // Stream tokens in real-time via onToken callback.
             // Some providers (e.g. Gemini with thinking) return the entire response
             // in one chunk. Break large chunks into small pieces so the client sees
@@ -8378,7 +8417,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   // usage, signatures and encrypted reasoning belong to this pass only.
                   result = { content: null, toolCalls: gameToolPlan.toolCalls, finishReason: "tool_calls" };
                 } else {
-                  loopMessages = await fitPromptForSend(loopMessages);
+                  loopMessages = await fitPromptForSend(loopMessages, round > 0 ? { tools: loopTools } : undefined);
                   rememberMainPromptPreviewForAgents(loopMessages);
                   logPromptSentToModel(
                     loopMessages,
@@ -8390,14 +8429,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       preserveContext: advancedMemoryEnabled,
                       temperature,
                       maxTokens: effectiveMaxTokensForSend,
-                      maxContext: effectiveMaxContext,
+                      maxContext: maxContextForSend,
                       topP,
                       topK: providerTopK,
                       frequencyPenalty: frequencyPenalty || undefined,
                       presencePenalty: presencePenalty || undefined,
                       minP: minP || undefined,
                       stop: stopSequences.length ? stopSequences : undefined,
-                      tools: supportsNativeToolCalls(conn.provider) ? responderToolDefs : undefined,
+                      tools: loopTools,
                       toolChoice: supportsNativeToolCalls(conn.provider)
                         ? resolveMainGenerationToolChoice({ chatMetadata: chatMeta, enableChatTools, round })
                         : undefined,
@@ -8468,7 +8507,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               geminiResponseParts = appendRoundGeminiParts(geminiResponseParts, result.providerMetadata);
 
               // Accumulate usage across tool rounds
-              if (!gameToolPlan) recordRequestUsage(result.usage);
+              if (!gameToolPlan) {
+                recordRequestUsage(result.usage, addedToLostPrompt());
+                const usageLostAtRoll =
+                  rollRequestAbort?.signal.aborted &&
+                  getRequestInputTokens(result.usage, generationProviderOrigin.provider) === null;
+                if (!usageLostAtRoll) lostPromptLength = null;
+                else if (round === 0) lostPromptLength = loopMessages.length;
+              }
               finishReason = result.finishReason;
 
               let textualRoleplayRoll = false;
@@ -8691,7 +8737,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     toolResults.map(formatToolExecutionResultForModel).join("\n") +
                     "\nWrite the narration using these results. Do not reroll these actions or claim a failed tool succeeded.",
                 });
-                narratorMessages = await fitPromptForSend(withToolResults);
+                narratorMessages = await fitPromptForSend(withToolResults, { tools: undefined });
                 break;
               }
 
@@ -8716,7 +8762,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (round === maxToolRounds - 1) {
                 // Reset per-character accumulator for final round content
                 const prevLen = fullResponse.length;
-                loopMessages = await fitPromptForSend(loopMessages);
+                loopMessages = await fitPromptForSend(loopMessages, { tools: undefined });
                 rememberMainPromptPreviewForAgents(loopMessages);
                 logPromptSentToModel(loopMessages, "Prompt sent to model (final tool follow-up)");
                 const finalResult = await withLlmRequestTimeout(chatGenerationTimeoutMs, () =>
@@ -8725,7 +8771,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     preserveContext: advancedMemoryEnabled,
                     temperature,
                     maxTokens: effectiveMaxTokensForSend,
-                    maxContext: effectiveMaxContext,
+                    maxContext: maxContextForSend,
                     topP,
                     topK: providerTopK,
                     frequencyPenalty: frequencyPenalty || undefined,
@@ -8770,7 +8816,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   await writeContentChunked(finalResult.content);
                 }
                 geminiResponseParts = appendRoundGeminiParts(geminiResponseParts, finalResult.providerMetadata);
-                recordRequestUsage(finalResult.usage);
+                recordRequestUsage(finalResult.usage, addedToLostPrompt());
                 finishReason = finalResult.finishReason;
               }
             }
@@ -8781,7 +8827,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             finishReason = undefined;
             rememberMainPromptPreviewForAgents(narratorMessages);
             logPromptSentToModel(narratorMessages);
-            const gen = provider.chat(narratorMessages, textChatOptions);
+            const gen = provider.chat(narratorMessages, { ...textChatOptions, maxContext: maxContextForSend });
             try {
               let result = await withLlmRequestTimeout(chatGenerationTimeoutMs, () => gen.next());
               await recordAcceptedLongTermMemoryPrompt(narratorMessages);
@@ -9506,14 +9552,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ...checks.map(formatSkillCheckResultSummary),
                 ...toolDiceRollResults.map((result) => `🎲 ${result.notation} = ${result.total}`),
               ].join("\n");
-              const continuationMessages = await fitPromptForSend([
-                ...narratorMessages,
-                { role: "assistant", content: gameDraftWithCommands },
-                {
-                  role: "user",
-                  content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them. Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language.`,
-                },
-              ]);
+              const continuationMessages = await fitPromptForSend(
+                [
+                  ...narratorMessages,
+                  { role: "assistant", content: gameDraftWithCommands },
+                  {
+                    role: "user",
+                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them. Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language.`,
+                  },
+                ],
+                { tools: undefined },
+              );
               logPromptSentToModel(continuationMessages, "Game narration after engine rolls");
               rememberMainPromptPreviewForAgents(continuationMessages);
               // The replacement is a new assistant response; old native parts
@@ -9525,6 +9574,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const followup = provider.chat(continuationMessages, {
                 ...textChatOptions,
                 maxTokens: effectiveMaxTokensForSend,
+                maxContext: maxContextForSend,
                 encryptedReasoningItems: undefined,
               });
               try {

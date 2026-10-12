@@ -1935,7 +1935,7 @@
   "game.input.sendTurn": "Send game turn",
   "game.input.sessionConcluded": "Session concluded. Start a new session to keep playing.",
   "game.input.startNewSession": "New Session",
-  "game.mapPack.fixBeforeStart": "This Experience's map pack does not read, so it cannot start a game.",
+  "game.mapPack.fixBeforeStart": "Marinara could not read this Experience's map pack, so the Experience cannot start a game.",
   "game.mapPack.kitSetBy": "{{name}} sets this setting kit with its map pack.",
   "game.mapPack.loading": "Reading this Experience's map pack…",
   "game.mapPack.maps": "Map",

@@ -209,7 +209,7 @@ test("an Experience's map pack sets the kit and offers only its maps, and lets g
   expect(result.config.world).toEqual(downriver);
 });
 
-test("an Experience whose map pack does not read cannot start a game, and says why", async ({ page }, testInfo) => {
+test("an Experience whose map pack Marinara cannot read cannot start a game, and says why", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const wizard = await mountWizard(page, testInfo);
   // Registered last, so it answers instead of the good pack.
@@ -240,7 +240,7 @@ test("an Experience whose map pack does not read cannot start a game, and says w
   const start = wizard.getByRole("button", { name: "Start Game", exact: true });
   for (let step = 0; step < 6 && !(await start.isVisible()); step++) await next();
   await expect(start).toBeDisabled();
-  await expect(wizard.getByText("This Experience's map pack does not read, so it cannot start a game.")).toBeVisible();
+  await expect(wizard.getByText("Marinara could not read this Experience's map pack, so the Experience cannot start a game.")).toBeVisible();
 });
 
 test("a game started with a map pack draws its overworld with the pack's tiles", async ({ page, request }) => {

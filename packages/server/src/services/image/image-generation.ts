@@ -1563,6 +1563,8 @@ async function generateFal(baseUrl: string, apiKey: string, request: ImageGenReq
 }
 
 const SPICYAPI_POLL_INTERVAL_MS = 2_000;
+/** About two minutes of busy or unavailable status replies in a row before giving up on the task. */
+const SPICYAPI_MAX_TRANSIENT_POLL_FAILURES = 60;
 const SPICYAPI_FAILED_STATES = new Set(["failed", "canceled", "expired"]);
 
 async function readSpicyApiJson(resp: Response, operation: string): Promise<unknown> {
@@ -1623,8 +1625,10 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
   let task = parseSpicyApiTask(await readSpicyApiJson(created, "image generation"));
   if (!task.taskId) throw new Error("SpicyAPI image generation response did not include a task ID");
   const pollUrl = buildSpicyApiUrl(baseUrl, "jobs/recordInfo", { taskId: task.taskId });
+  let transientFailures = 0;
   while (task.state !== "succeeded" || (!task.imageUrl && task.pending)) {
-    if (task.state && SPICYAPI_FAILED_STATES.has(task.state)) {
+    if (!task.state) throw new Error("SpicyAPI task status did not include a state");
+    if (SPICYAPI_FAILED_STATES.has(task.state)) {
       throw new Error(`SpicyAPI image generation ${task.state}${task.error ? `: ${task.error}` : ""}`);
     }
     await sleepWithAbort(SPICYAPI_POLL_INTERVAL_MS, signal);
@@ -1632,8 +1636,12 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
     // A busy or briefly unavailable API must not abandon a task that is already paid for.
     if (polled.status === 429 || polled.status >= 500) {
       await polled.body?.cancel().catch(() => undefined);
+      if (++transientFailures >= SPICYAPI_MAX_TRANSIENT_POLL_FAILURES) {
+        throw new Error(`SpicyAPI task status kept failing (${polled.status}); task ${task.taskId}`);
+      }
       continue;
     }
+    transientFailures = 0;
     task = parseSpicyApiTask(await readSpicyApiJson(polled, "task status"));
   }
   if (!task.imageUrl) throw new Error("SpicyAPI image generation finished without an image URL");

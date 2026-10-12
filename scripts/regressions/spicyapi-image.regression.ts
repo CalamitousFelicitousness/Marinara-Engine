@@ -89,6 +89,8 @@ const provider = createServer(async (request, response) => {
       response.end(
         envelope({ taskId: "task-1", state: "failed", errorCode: "content_rejected", errorMessage: "Refused" }),
       );
+    } else if (mode === "no-state") {
+      response.end(envelope({ taskId: "task-1" }));
     } else if (mode === "no-url") {
       response.end(envelope({ ...done, output: { assets: [{ unavailable: true }] } }));
     } else if (mode === "poll") {
@@ -208,6 +210,8 @@ try {
     Array(3).fill("/api/v1/jobs/recordInfo?taskId=task-1"),
   );
 
+  mode = "no-state";
+  await assert.rejects(generate("alibaba/z-image-spicy-pro/text-to-image"), /did not include a state/);
   mode = "no-url";
   await assert.rejects(generate("alibaba/z-image-spicy-pro/text-to-image"), /finished without an image URL/);
   mode = "failed";

@@ -56,6 +56,7 @@ import {
 } from "@marinara-engine/shared";
 import {
   AGENT_MAX_TOOL_ROUNDS,
+  LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS,
   getAgentCallTimeoutMs,
   getMaxToolRounds,
   isDebugAgentsEnabled,
@@ -1267,7 +1268,11 @@ async function executeAgentWithTools(
   // (a proxy that loses the results) costs a bounded number of calls, not a hundred.
   // A run that only saves (a lorebook backfill) may ask for more in its settings' `toolRounds`.
   const asked = config.settings.toolRounds;
-  const agentRounds = typeof asked === "number" && Number.isInteger(asked) && asked > 0 ? asked : AGENT_MAX_TOOL_ROUNDS;
+  // Never past the backfill's own allowance, whatever a stored agent's settings say.
+  const agentRounds =
+    typeof asked === "number" && Number.isInteger(asked) && asked > 0
+      ? Math.min(asked, LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS)
+      : AGENT_MAX_TOOL_ROUNDS;
   const maxToolRounds = Math.min(getMaxToolRounds(), agentRounds);
   const loopMessages = [...initialMessages];
   let totalTokens = 0;

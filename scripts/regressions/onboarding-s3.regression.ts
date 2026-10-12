@@ -19,6 +19,7 @@ import {
   listNames,
   MAX_CARD_VARIABLES,
   MAX_CHAT_VARIABLE_VALUE_LENGTH,
+  mergeCardVariables,
   ONBOARDING_MAX_QUESTIONS,
   resolveCardVariables,
   resolveCardQuestions,
@@ -207,6 +208,59 @@ assert.deepEqual(
   ),
   {},
   "an over-long seeded default is skipped on the write-through path too",
+);
+
+// The modal merges every card's answers into one map, and it must keep only the
+// names each card actually ASKS. `resolveCardVariables` also writes a
+// declared-but-unasked name, because its answer map carries a default for every
+// declared question — and a name no card field reads is never "relevant", so the
+// clash warning cannot see it either. Merging it unfiltered let one card silently
+// overwrite another card's real answer with its own first option.
+const asks = (variables: Array<{ variableName: string }>) => new Set(variables.map((v) => v.variableName));
+
+// One card that reads the name, one that declares it but reads nothing.
+const readingCard = onboarding({
+  cardVariables: [{ id: "r", variableName: "tone", question: "?", options: [option("o", "warm")] }],
+  description: "She speaks {{tone}}.",
+});
+const silentCard = onboarding({
+  cardVariables: [{ id: "s", variableName: "tone", question: "?", options: [option("s", "cold")] }],
+});
+const readingAnswers = answers({ tone: { optionIds: ["o"] } });
+const silentAnswers = answers({ tone: { optionIds: ["s"] } });
+
+// Unfiltered, the silent card wins by being last — the bug.
+assert.deepEqual(
+  {
+    ...resolveCardVariables(readingCard, readingAnswers),
+    ...resolveCardVariables(silentCard, silentAnswers),
+  },
+  { tone: "cold" },
+  "unfiltered, the card that asks nothing still overwrites the card that does",
+);
+// Filtered to what each card asks, the reading card's answer survives.
+assert.deepEqual(
+  mergeCardVariables(
+    [
+      { onboarding: readingCard, answers: readingAnswers },
+      { onboarding: silentCard, answers: silentAnswers },
+    ],
+    [
+      asks(getRelevantCardVariables(readingCard, { description: "She speaks {{tone}}." }, readingAnswers)),
+      asks(getRelevantCardVariables(silentCard, { description: "no tags" }, silentAnswers)),
+    ],
+  ),
+  { tone: "warm" },
+  "the merge keeps the answer from the card that asks, and drops the silent one",
+);
+// And a silent card alone contributes nothing at all.
+assert.deepEqual(
+  mergeCardVariables(
+    [{ onboarding: silentCard, answers: silentAnswers }],
+    [asks(getRelevantCardVariables(silentCard, { description: "no tags" }, silentAnswers))],
+  ),
+  {},
+  "a card that reads nothing writes nothing",
 );
 
 // The server rejects a whole `macroVariables` patch over one bad name, which

@@ -604,6 +604,36 @@ export function resolveCardVariables(
 }
 
 /**
+ * The one map written to a chat when several cards ask their questions at once.
+ *
+ * Every card's answers share the chat's variables, so a name two cards declare is
+ * written once, by the last card that asks it — the same card the clash warning
+ * names last.
+ *
+ * The merge keeps only names the card actually ASKS, and that filter is the point
+ * of this helper. `resolveCardVariables` writes a declared name even when nothing
+ * asked it, because its answer map carries a default for every declared question.
+ * Such a name is not "relevant", so it never reaches the clash warning and is
+ * never rendered — merging it anyway let a card overwrite another card's real
+ * answer for that name with its own first option, with nothing shown to the
+ * player. Restricting the merge to the asked names makes what is written exactly
+ * what the window displayed.
+ */
+export function mergeCardVariables(
+  entries: ReadonlyArray<{ onboarding: CharacterOnboarding; answers: OnboardingAnswers }>,
+  askedNames: ReadonlyArray<ReadonlySet<string>>,
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  entries.forEach((entry, index) => {
+    const asked = askedNames[index];
+    for (const [name, value] of Object.entries(resolveCardVariables(entry.onboarding, entry.answers))) {
+      if (asked?.has(name)) merged[name] = value;
+    }
+  });
+  return merged;
+}
+
+/**
  * The card variables a chat should START with, so a card field never reaches the
  * model with a raw `{{tag}}` in it.
  *

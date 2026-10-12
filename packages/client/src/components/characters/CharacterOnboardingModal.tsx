@@ -15,8 +15,8 @@ import {
   getRelevantCardVariables,
   getRelevantOnboardingVariables,
   listNames,
+  mergeCardVariables,
   ONBOARDING_PLAYER_VARIABLE,
-  resolveCardVariables,
   resolveOnboardingPersona,
   resolveCardQuestions,
   resolveOnboardingQuestions,
@@ -215,12 +215,13 @@ export function CharacterOnboardingModal({
     creatingRef.current = true;
     setBusy(true);
     try {
-      // Every card's answers merged into ONE map: they share the chat's
-      // variables, so a name two cards both declare is written once, by the card
-      // the clash warning named last.
-      const cardVariables: Record<string, string> = {};
-      for (const entry of perCard)
-        Object.assign(cardVariables, resolveCardVariables(entry.card.onboarding, entry.cardAnswers));
+      // Every card's answers merged into ONE map, keeping only the names each
+      // card actually asks. The merge itself lives in the shared layer so the
+      // rule is pinned by a regression instead of by a copy of it here.
+      const cardVariables = mergeCardVariables(
+        perCard.map((entry) => ({ onboarding: entry.card.onboarding, answers: entry.cardAnswers })),
+        perCard.map((entry) => new Set(entry.questions.map((question) => question.variableName))),
+      );
       let personaId: string | null = null;
       if (withPersona && personaOnboarding) {
         try {

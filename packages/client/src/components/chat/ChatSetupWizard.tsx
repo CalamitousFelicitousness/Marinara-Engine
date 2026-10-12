@@ -3819,9 +3819,17 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
 
       {showOnboardingWindow && (
         <CharacterOnboardingModal
-          // Re-keyed by the whole card set: adding or removing a participant has
-          // to rebuild the answer state, not keep another chat's answers.
-          key={onboardingCardTargets.map((card) => card.characterId).join("|") || "persona"}
+          // Re-keyed by the whole card set AND the persona template: adding or
+          // removing a participant has to rebuild the answer state, not keep
+          // another chat's answers.
+          //
+          // The template belongs in the key because it can drop out while this
+          // modal is already open: removing the card, or turning its onboarding
+          // off elsewhere, clears `onboardingCharacterId` and flips `withPersona`
+          // to false on the mounted modal. Persona answers are held by scope
+          // rather than by character, so without the re-key the answers typed for
+          // the old template would linger instead of being discarded.
+          key={`${onboardingCardTargets.map((card) => card.characterId).join("|") || "persona"}|${onboardingCharacterId ?? "no-template"}`}
           open={showOnboarding}
           cards={onboardingCardTargets}
           participantNames={participantNames}

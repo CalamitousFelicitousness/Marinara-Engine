@@ -754,14 +754,14 @@ const manifest = (minor: number) => ({
   const dayIssue = /keeps stock, limits what a place keeps, buys back or has a purse.*capabilityApi 1\.69/;
   const issue = (minor: number, doc: Record<string, any>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-  assert.match(issue(65, JSON.parse(gravewatchDayText)) ?? "", dayIssue);
-  assert.equal(issue(66, JSON.parse(gravewatchDayText)), null);
+  assert.match(issue(68, JSON.parse(gravewatchDayText)) ?? "", dayIssue);
+  assert.equal(issue(69, JSON.parse(gravewatchDayText)), null);
   assert.equal(issue(65, JSON.parse(gravewatchText)), null, "the 1.65 market alone");
   const only = (edit: (market: Record<string, any>, doc: Record<string, any>) => void) =>
     variant(gravewatchText, (doc) => edit(doc.items.market, doc));
   assert.match(
     issue(
-      65,
+      68,
       only((market) => (market.buyBack = 0.5)),
     ) ?? "",
     dayIssue,
@@ -769,7 +769,7 @@ const manifest = (minor: number) => ({
   );
   assert.match(
     issue(
-      65,
+      68,
       only((market) => (market.places[0].purse = { amount: 1, unit: "penny" })),
     ) ?? "",
     dayIssue,
@@ -777,7 +777,7 @@ const manifest = (minor: number) => ({
   );
   assert.match(
     issue(
-      65,
+      68,
       only((market) => (market.sellers[1].stock = { table: "grave_goods" })),
     ) ?? "",
     dayIssue,
@@ -785,7 +785,7 @@ const manifest = (minor: number) => ({
   );
   assert.match(
     issue(
-      65,
+      68,
       only((market) => (market.sold[0].limited = 2)),
     ) ?? "",
     dayIssue,
@@ -793,7 +793,7 @@ const manifest = (minor: number) => ({
   );
   assert.match(
     issue(
-      65,
+      68,
       only((market) => market.sold.push({ filter: { tag: "silver" }, limited: 1 })),
     ) ?? "",
     dayIssue,
@@ -801,7 +801,7 @@ const manifest = (minor: number) => ({
   );
   assert.match(
     issue(
-      65,
+      68,
       only(
         (_market, doc) =>
           (doc.catalogs

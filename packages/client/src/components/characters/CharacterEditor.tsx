@@ -317,8 +317,11 @@ const CHARACTER_CARD_HELP =
 // The Onboarding tab's own help, matching the Card tab's per-section pattern. It
 // answers a different question from `enableHelp` beside the switch: that one is
 // about the switch, this one about what the tab holds and where answers land.
+// It names the lists rather than saying "the questions above": Character
+// Questions render first, and their answers are the ones that never become a
+// persona, so a positional phrase here says the opposite of the truth.
 const CHARACTER_ONBOARDING_HELP =
-  "Two lists of questions, and the persona fields they fill. The questions above are asked in the Roleplay setup wizard; the fields below are what the player's answers become. Answers are saved per chat unless a persona is created, which is permanent.";
+  "Persona Questions become a new persona. Character Questions are saved on the chat. The five fields below are the persona's starting text.";
 
 const CHARACTER_DESCRIPTION_HELP =
   "The character's general identity and role. This is sent in every prompt as part of who the character is.";

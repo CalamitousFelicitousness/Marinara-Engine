@@ -757,7 +757,11 @@ function VariableCard({
                   </span>
                 </div>
                 <SettingsSwitch
-                  ariaLabel={isMultiSelect ? "Disable multi-select" : "Enable multi-select"}
+                  ariaLabel={localizeUi(
+                    isMultiSelect
+                      ? "ui.presets.presetvariableseditor.disableMultiselect"
+                      : "ui.presets.presetvariableseditor.enableMultiselect",
+                  )}
                   checked={isMultiSelect}
                   onChange={(checked) => update({ multiSelect: checked })}
                   className="p-0 hover:bg-transparent"
@@ -880,11 +884,11 @@ function VariableCard({
                 </p>
               </div>
               <SettingsSwitch
-                ariaLabel={
+                ariaLabel={localizeUi(
                   optionOrderIsAlphabetical
-                    ? "Use manual option display order"
-                    : "Use alphabetical option display order"
-                }
+                    ? "ui.presets.presetvariableseditor.useManualOptionDisplayOrder"
+                    : "ui.presets.presetvariableseditor.useAlphabeticalOptionDisplayOrder",
+                )}
                 checked={optionOrderIsAlphabetical}
                 onChange={(checked) => update({ optionSort: checked ? "alphabetical" : "manual" })}
                 className="p-0 hover:bg-transparent"

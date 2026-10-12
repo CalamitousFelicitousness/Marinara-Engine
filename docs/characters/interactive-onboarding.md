@@ -8,7 +8,7 @@ A persona is the character that represents you in a chat. See [User Personas](pe
 
 When a player starts a Roleplay chat with the card, they can choose **Create your persona**, answer the questions, and get a new, ordinary persona. The answers are written into the text once. The result is a normal persona that the player can edit, keep, or delete like any other. The card itself does not change.
 
-A card can also ask **character questions**, whose answers are saved on that one chat instead of in a persona. The card then reads a different answer in every chat, while the card file stays the same. See [Character questions](#character-questions) below.
+A card can also ask **character questions**, whose answers are saved on that one chat instead of in a persona. See [Character questions](#character-questions) below.
 
 Onboarding uses the existing macro syntax. It runs no scripts.
 
@@ -38,15 +38,15 @@ The editor warns you when a name is empty, invalid, used twice, or taken by a bu
 
 ### Character questions
 
-Lower down the same tab there is a second list, **Character Questions**. Its questions work exactly like the ones above, but the answers are saved on the **chat**, not in a persona. Put the name in one of the card's own fields — **Description**, **Personality**, **Backstory**, **Appearance**, or **Scenario**:
+Lower down the same tab there is a second list, **Character Questions**. Its questions work exactly like the ones above, but the answers are saved on the **chat**, not in a persona. Put the name in one of the card's own fields: **Description**, **Personality**, **Backstory**, **Appearance**, or **Scenario**.
 
 ```
 {{char}} treats {{relationshipToUser}} with open warmth.
 ```
 
-**Description**, **Personality**, **Backstory**, **Appearance**, and **Scenario** are the fields the model reads, so those are the ones a character answer can reach.
+Those five fields are the ones the model reads, so they are the ones a character answer can reach.
 
-The answers are stored as chat variables, so the card reads a different value in every chat and never has to be edited. A card question is asked whenever the card is in the chat, whether or not the player creates a persona — the window shows an **About you** section only when one is being made.
+The answers are stored as chat variables, so the card reads a different value in every chat and never has to be edited. A card question is asked whenever the card is in the chat, whether or not the player creates a persona. The window shows an **About you** section only when one is being made.
 
 Two things an author should know:
 
@@ -80,12 +80,12 @@ The **Rendered preview** at the bottom shows the persona built from example answ
 ## Answering the questions as a player
 
 1. Start a new Roleplay chat. In the **Persona & Characters** step, cards with onboarding show a small person-with-plus icon in the character list.
-2. Add the character. To get a new persona out of it, select the **Create your persona** row at the top of **Your Persona** — it names the card it belongs to. Any other choice (or **None**) skips the persona and keeps yours.
+2. Add the character. To get a new persona out of it, select the **Create your persona** row at the top of **Your Persona**. It names the card it belongs to. Any other choice (or **None**) skips the persona and keeps yours.
 3. Click **Next**. The questions window opens whenever a card in the chat has character questions, whether or not you are creating a persona.
 4. Answer the questions. **Character questions** come first, with one section per card, then **About you** when a persona is being made. Follow-up questions appear as soon as your answers make them relevant.
-5. Click **Create persona** — or **Save answers** when you are not making one. The character answers are saved on the chat, and the wizard continues.
+5. Click **Create persona**, or **Save answers** when you are not making one. The character answers are saved on the chat, and the wizard continues.
 
-Onboarding questions are asked in the Roleplay new chat wizard. Quick Start, the Conversation setup, and starting a chat straight from a character card do not ask them yet — but a chat started that way still fills in each card question's first option, so a card that reads `{{relationshipToUser}}` resolves instead of showing the tag. Answering in the wizard replaces that default, for that chat only.
+Onboarding questions are asked in the Roleplay new chat wizard. Quick Start, the Conversation setup, and starting a chat straight from a character card do not ask them yet. A chat started that way still fills in each question's first option, so `{{relationshipToUser}}` resolves instead of showing the tag. Answering in the wizard replaces that default, for that chat only.
 
 ## Sharing cards with onboarding
 

@@ -1647,6 +1647,77 @@ try {
     "manual activation changes still invalidate a saved swipe",
   );
 
+  // #7454: a scene with a message hidden from Pantalone becomes one constant for everyone who reads its recap,
+  // not a copy per reader, so the narrator, who reads every section, gets the scene once. Pantalone's prompt
+  // still shows only the range and text he may read.
+  const whisperChat = await chats.create({
+    name: "Whispered scene, one constant",
+    mode: "roleplay",
+    characterIds: [character.id, privateA.id, privateB.id],
+    connectionId: connection.id,
+  });
+  assert(whisperChat);
+  chatIds.push(whisperChat.id);
+  await chats.patchMetadata(whisperChat.id, {
+    enableAgents: false,
+    groupChatMode: "individual",
+    summaryMaxTokens: 1024,
+    advancedMemory: {
+      ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+      enabled: true,
+      maxContextTokens: 16_384,
+      summaryBudgetTokens: 3000,
+      narratorCharacterId: character.id,
+      knowledgeStarts: { [character.id]: null, [privateA.id]: null, [privateB.id]: null },
+    },
+  });
+  await chats.createMessage({ chatId: whisperChat.id, role: "user", content: "Date: DAY_OF_STROLL\nA shared stroll." });
+  await chats.createMessage({
+    chatId: whisperChat.id,
+    role: "user",
+    content: "Date: NIGHT_OF_WHISPER\nMaukie whispers the plan.",
+    extra: { hiddenFromAICharacterIds: [privateB.id] },
+  });
+  await chats.createMessage({
+    chatId: whisperChat.id,
+    role: "user",
+    content: "SCENE_CHANGE present day",
+    extra: { isConversationStart: true },
+  });
+  summaryReply = () => 'They took a SHARED_STROLL. {{#if char == "Maukie"}}Maukie heard the WHISPERED_PLAN.{{/if}}';
+  await memory.initialize(whisperChat.id);
+  await memory.checkScenesAfterGeneration(whisperChat.id, { blocking: false });
+  summaryReply = undefined;
+  const whisperEntries = (
+    JSON.parse((await chats.getById(whisperChat.id))!.metadata).summaryEntries as Array<
+      ReturnType<typeof createChatSummaryEntry>
+    >
+  ).filter((entry) => entry.enabled);
+  const whisperSource = await chats.listMessages(whisperChat.id);
+  assert.equal(whisperEntries.length, 1, "readers who get the same recap share one constant");
+  assert.deepEqual(whisperEntries[0]!.messageIds, [whisperSource[0]!.id, whisperSource[1]!.id]);
+  const whisperPrompt = async (id: string) =>
+    (
+      await memory.prepare({
+        chatId: whisperChat.id,
+        messages: whisperSource,
+        audienceCharacterIds: [id],
+        budgetTokens: 12_000,
+        readOnly: true,
+      })
+    ).chatSummary ?? "";
+  const narratorWhisper = await whisperPrompt(character.id);
+  assert.equal(narratorWhisper.match(/SHARED_STROLL/gu)?.length, 1, "the narrator reads the scene once");
+  assert.equal(narratorWhisper.match(/WHISPERED_PLAN/gu)?.length, 1);
+  assert.match(await whisperPrompt(privateA.id), /DAY_OF_STROLL → NIGHT_OF_WHISPER[\s\S]*WHISPERED_PLAN/u);
+  const pantaloneWhisper = await whisperPrompt(privateB.id);
+  assert.match(pantaloneWhisper, /^Messages #1–#1; [^\n]*: DAY_OF_STROLL\.\nThey took a SHARED_STROLL\.\s*$/u);
+  assert.doesNotMatch(
+    pantaloneWhisper,
+    /NIGHT_OF_WHISPER|WHISPERED_PLAN|Messages #1–#2/u,
+    "Pantalone gets neither the hidden message's range and date nor Maukie's section",
+  );
+
   // #7270: compaction combines Advanced Memory's own summaries with private character sections,
   // keeping each section for exactly the characters who knew it.
   const combineChat = await chats.create({

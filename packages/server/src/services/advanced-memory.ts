@@ -474,12 +474,14 @@ function mergedReaders(ctx: Context, audience: string[]): string[] {
 }
 
 /**
- * The narrator alone reads each character's copy of a scene's summary next to its own (#7454). A summary whose
- * sentences all appear, in the same order, in another one covering the same or more messages tells it nothing
- * new, so it is left out; of two identical summaries, the later one stays. ponytail: once the Helper rewrites
- * the copies, apart or as sections of one combined summary, they no longer match and the narrator reads each;
- * upgrade by letting a combined answer write text several characters already read once, for all of them,
- * which needs a privacy check per reader in place of the one per group of readers.
+ * The narrator alone reads each character's copy of a scene's summary next to its own (#7454). New scenes get
+ * one summary for every reader of their recap; copies remain from before that, and for a scene another summary
+ * partly covered for some readers. A summary whose sentences all appear, in the same order, in another one
+ * covering the same or more messages tells it nothing new, so it is left out; of two identical summaries, the
+ * later one stays. ponytail: once the Helper rewrites such copies, apart or as sections of one combined summary,
+ * they no longer match and the narrator reads each; upgrade by letting a combined answer write text several
+ * characters already read once, for all of them, which needs a privacy check per reader in place of the one per
+ * group of readers.
  */
 function repeatedSummaries(entries: ReadonlyArray<{ id: string; messageIds: readonly string[]; text: string }>) {
   const pieces = new Map(
@@ -3397,6 +3399,19 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         );
         addition.audience.push(...(id ? [id] : ctx.characterIds));
         additions.set(key, addition);
+      }
+      // Readers who get the scene recap itself share one summary. Prompts show its range and story dates per
+      // reader, so a message hidden from one of them needs no copy of its own, and the narrator, who reads
+      // every section, doesn't read the same scene twice (#7454).
+      const whole = [...additions].filter(([, addition]) => !addition.partiallyCovered);
+      if (whole.length > 1) {
+        const ids = new Set(whole.flatMap(([, addition]) => addition.source.map((message) => message.id)));
+        for (const [key] of whole) additions.delete(key);
+        additions.set("whole", {
+          audience: whole.flatMap(([, addition]) => addition.audience),
+          source: ctx.messages.filter((message) => ids.has(message.id)),
+          partiallyCovered: false,
+        });
       }
       for (const { audience, source, partiallyCovered } of additions.values()) {
         abortIfNeeded(options.signal);

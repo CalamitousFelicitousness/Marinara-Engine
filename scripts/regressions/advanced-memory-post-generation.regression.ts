@@ -50,6 +50,10 @@ let mainFirstUsage = true;
 // The first reply asks for a roll in text instead of a native tool call, and can be padded.
 let mainTextRoll = false;
 let mainFirstReplyPadding = "";
+// Streamed main replies send usage only on their last chunk, after a pause, as OpenAI-compatible
+// providers do. Counts streams the client closed before that chunk.
+let mainStreamUsageLast = false;
+let mainStreamsCutBeforeUsage = 0;
 const decisionRequests: Array<{ state: Record<string, any>; questions: Record<string, { instructions: string }> }> = [];
 const sceneDecision = (transcript: Array<{ messageNumber: number; content: string; alreadyChecked?: boolean }>) => ({
   ends: closeLatestScene
@@ -184,10 +188,26 @@ const provider = createServer(async (req, res) => {
       await streamGate;
       streamFinished = true;
     }
+    const usageLast = !responses && kind === "main" && mainStreamUsageLast;
+    if (usageLast) {
+      await delay(150);
+      if (res.destroyed) mainStreamsCutBeforeUsage++;
+    }
     res.end(
       responses
         ? `data: ${JSON.stringify({ type: "response.completed", response })}\n\n`
-        : `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+        : `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n${
+            usageLast
+              ? `data: ${JSON.stringify({
+                  choices: [],
+                  usage: {
+                    prompt_tokens: inputTokens,
+                    completion_tokens: mainOutputTokens,
+                    total_tokens: inputTokens + mainOutputTokens,
+                  },
+                })}\n\n`
+              : ""
+          }data: [DONE]\n\n`,
     );
   } else {
     res.writeHead(200, { "content-type": "application/json" });
@@ -964,40 +984,44 @@ try {
 
   // Only the outgoing prompt counts (#7455). A roll or tool follow-up resends it with the
   // model's own reply and the result, so it never cuts and never fails on the cap.
-  const followupChat = await chats.create({
-    name: "Follow-up input cutoff",
-    mode: "roleplay",
-    characterIds: [character.id],
-    connectionId: connection.id,
-  });
-  assert(followupChat);
-  chatIds.push(followupChat.id);
   const followupSettings = {
     ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
     enabled: true,
     maxContextTokens: 65_000,
     sceneCheckInterval: 100,
   };
-  await chats.patchMetadata(followupChat.id, {
-    enableAgents: false,
-    roleplayCommandsEnabled: true,
-    roleplayCommandToggles: { roll: true },
-    advancedMemory: followupSettings,
-  });
-  await chats.createMessagesBatch(
-    followupChat.id,
-    Array.from({ length: 9 }, (_, index) => ({
-      role: "user" as const,
-      content: `${index === 4 ? "SCENE_CHANGE " : ""}The silver compass journey continues.`,
-    })),
-  );
-  await memory.initialize(followupChat.id);
+  const createFollowupChat = async (name: string) => {
+    const created = await chats.create({
+      name,
+      mode: "roleplay",
+      characterIds: [character.id],
+      connectionId: connection.id,
+    });
+    assert(created);
+    chatIds.push(created.id);
+    await chats.patchMetadata(created.id, {
+      enableAgents: false,
+      roleplayCommandsEnabled: true,
+      roleplayCommandToggles: { roll: true },
+      advancedMemory: followupSettings,
+    });
+    await chats.createMessagesBatch(
+      created.id,
+      Array.from({ length: 9 }, (_, index) => ({
+        role: "user" as const,
+        content: `${index === 4 ? "SCENE_CHANGE " : ""}The silver compass journey continues.`,
+      })),
+    );
+    await memory.initialize(created.id);
+    return created;
+  };
+  const followupChat = await createFollowupChat("Follow-up input cutoff");
   const followupSource = await chats.listMessages(followupChat.id);
-  const generateFollowup = () =>
+  const generateFollowup = (chatId = followupChat.id, streaming = false) =>
     app.inject({
       method: "POST",
       url: "/api/generate/",
-      payload: { chatId: followupChat.id, forCharacterId: character.id, streaming: false },
+      payload: { chatId, forCharacterId: character.id, streaming },
     });
   const sentFollowups = (since: number) =>
     calls
@@ -1068,6 +1092,42 @@ try {
     [[followupSource[4]!.id, []]],
     "an outgoing prompt that reaches the cap exactly resets everyone to the latest scene",
   );
+
+  // A streamed reply is cut where it asks for a roll, before an OpenAI-compatible provider sends
+  // the outgoing prompt's usage on its last chunk. The roll follow-up's input, less a ceiling on
+  // what the follow-up added, then stands for that prompt: it never cuts early, but still cuts.
+  const streamedRollChat = await createFollowupChat("Streamed roll cutoff");
+  const streamedRollSource = await chats.listMessages(streamedRollChat.id);
+  mainStreamUsageLast = true;
+  mainTextRoll = true;
+  const streamRoll = async (outgoingInput: number, followupInput: number) => {
+    mainInputTokens = outgoingInput;
+    mainFollowupInputTokens = followupInput;
+    const before = calls.length;
+    const cutBefore = mainStreamsCutBeforeUsage;
+    const result = await generateFollowup(streamedRollChat.id, true);
+    assert.equal(result.statusCode, 200, result.body);
+    assert.ok(!result.body.includes('"type":"error"'), result.body);
+    assert.equal(sentFollowups(before), 1, "the streamed roll follow-up was sent");
+    assert.equal(mainStreamsCutBeforeUsage - cutBefore, 1, "the reply was cut at its roll before usage arrived");
+    return (await memory.status(streamedRollChat.id)).job.contextStarts?.map((start) => [
+      start.messageId,
+      start.audienceCharacterIds,
+    ]);
+  };
+  assert.equal(
+    await streamRoll(64_999, 65_099),
+    undefined,
+    "a streamed roll follow-up past the cap does not cut when what it added explains the difference",
+  );
+  assert.deepEqual(
+    await streamRoll(66_000, 66_100),
+    [[streamedRollSource[4]!.id, []]],
+    "a streamed roll whose outgoing prompt passed the cap still resets everyone to the latest scene",
+  );
+  mainStreamUsageLast = false;
+  mainTextRoll = false;
+  mainFollowupInputTokens = undefined;
   mainInputTokens = 40;
   mainOutputTokens = 20;
 

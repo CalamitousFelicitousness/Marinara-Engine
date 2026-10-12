@@ -8207,14 +8207,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let tokensContext: number | null = null;
           let tokensLastRequestInput: number | null = null;
           let requestCount = 0;
-          const recordRequestUsage = (next: LLMUsage | undefined) => {
+          /** `addedToLostPrompt`: what a follow-up added to an outgoing prompt whose usage was lost. */
+          const recordRequestUsage = (next: LLMUsage | undefined, addedToLostPrompt?: ChatMessage[]) => {
             requestCount++;
             tokensContext = getRequestContextTokens(next, generationProviderOrigin.provider);
             tokensLastRequestInput = getRequestInputTokens(next, generationProviderOrigin.provider);
-            // The first request carries the outgoing prompt. Without its usage nothing counts:
-            // a follow-up's larger input never stands in for it.
-            if (requestCount === 1 && tokensLastRequestInput !== null)
-              maxMainRequestInputTokens = Math.max(maxMainRequestInputTokens ?? 0, tokensLastRequestInput);
+            // The first request carries the outgoing prompt; a follow-up never stands in for it.
+            // When cutting a streamed reply at its roll lost that usage (OpenAI-compatible providers
+            // send it last), the first follow-up's input minus the bytes it added is a floor for it:
+            // every token covers at least one byte, so it never cuts early.
+            // ponytail: a prompt only just past the cap can cut a turn late. Upgrade: a
+            // provider-reported count of the outgoing prompt.
+            const outgoingInput =
+              tokensLastRequestInput === null
+                ? null
+                : requestCount === 1
+                  ? tokensLastRequestInput
+                  : requestCount === 2 && addedToLostPrompt
+                    ? tokensLastRequestInput - Buffer.byteLength(JSON.stringify(addedToLostPrompt))
+                    : null;
+            if (outgoingInput !== null)
+              maxMainRequestInputTokens = Math.max(maxMainRequestInputTokens ?? 0, outgoingInput);
             usage = addGenerationUsage(usage, next);
           };
           let finishReason: string | undefined;
@@ -8243,7 +8256,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 conn.provider,
                 effTemp,
                 effectiveMaxTokensForSend,
-                effectiveMaxContext ?? connectionMaxContext ?? "default",
+                maxContextForSend ?? connectionMaxContext ?? "default",
                 effTopP,
                 providerTopK ?? "default",
                 enableThinking,
@@ -8361,6 +8374,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const maxToolRounds = gameToolPlan ? 1 : getMaxToolRounds();
             let loopMessages: ChatMessage[] = [...initialProviderMessages];
             let rollRequestAbort: AbortController | null = null;
+            // Length of the outgoing prompt when cutting its stream at a roll lost its usage.
+            let lostPromptLength: number | null = null;
+            const addedToLostPrompt = () =>
+              lostPromptLength === null ? undefined : loopMessages.slice(lostPromptLength);
             // Stream tokens in real-time via onToken callback.
             // Some providers (e.g. Gemini with thinking) return the entire response
             // in one chunk. Break large chunks into small pieces so the client sees
@@ -8487,7 +8504,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               geminiResponseParts = appendRoundGeminiParts(geminiResponseParts, result.providerMetadata);
 
               // Accumulate usage across tool rounds
-              if (!gameToolPlan) recordRequestUsage(result.usage);
+              if (!gameToolPlan) {
+                recordRequestUsage(result.usage, addedToLostPrompt());
+                if (
+                  round === 0 &&
+                  rollRequestAbort?.signal.aborted &&
+                  getRequestInputTokens(result.usage, generationProviderOrigin.provider) === null
+                )
+                  lostPromptLength = loopMessages.length;
+              }
               finishReason = result.finishReason;
 
               let textualRoleplayRoll = false;
@@ -8789,7 +8814,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   await writeContentChunked(finalResult.content);
                 }
                 geminiResponseParts = appendRoundGeminiParts(geminiResponseParts, finalResult.providerMetadata);
-                recordRequestUsage(finalResult.usage);
+                recordRequestUsage(finalResult.usage, addedToLostPrompt());
                 finishReason = finalResult.finishReason;
               }
             }

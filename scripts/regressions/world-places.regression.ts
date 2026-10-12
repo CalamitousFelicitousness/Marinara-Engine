@@ -667,6 +667,17 @@ try {
       payload: { connectionId: connection!.id, kit: fantasy, lorebookIds: [book!.id], entryIds: ["nothing"] },
     });
     assert.equal(none.statusCode, 400);
+    // A lorebook switched off states nothing, even its entries that are on.
+    const off = await lorebooks.create(createLorebookSchema.parse({ name: "Shelved lore", enabled: false }));
+    await lorebooks.createEntry(
+      createLorebookEntrySchema.parse({ lorebookId: off!.id, name: "Shelf", content: "Shelved.", keys: ["Shelf"] }),
+    );
+    const shelved = await app.inject({
+      method: "POST",
+      url: "/api/game/world-canon",
+      payload: { connectionId: connection!.id, kit: fantasy, lorebookIds: [off!.id] },
+    });
+    assert.equal(shelved.statusCode, 400, "an off lorebook has no entries to read");
   }
 
   // A new game stores its world only when it holds together.

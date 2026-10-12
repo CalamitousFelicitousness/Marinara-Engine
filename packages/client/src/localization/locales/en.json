@@ -2243,7 +2243,7 @@
   "game.world.setup.start": "The party starts in {{name}}.",
   "game.world.setup.summaryRow": "World seed",
   "game.world.setup.writeBrief": "Write the world's brief",
-  "game.world.setup.writeHelp": "The model says what exists: the premise, the major places and names for the rest. Code lays them out. The lore's places are kept exactly.",
+  "game.world.setup.writeHelp": "The model writes the main places and names, and keeps every place from your lore.",
   "game.world.setup.writing": "Writing…",
   "game.worldKit.setup.addCulture": "Add a people",
   "game.worldKit.setup.change": "Kinds of change",

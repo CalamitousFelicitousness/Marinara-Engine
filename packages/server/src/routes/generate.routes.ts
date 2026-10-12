@@ -157,6 +157,8 @@ import type {
   DiceRollResult,
   ResolvedSpatialTravel,
   ThinkingTagPair,
+  GameWorld,
+  WorldPerson,
 } from "@marinara-engine/shared";
 import {
   createChatsStorage,
@@ -9772,6 +9774,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // add up. The answers are worked out here, on the stacks as they are, so the reply is saved
           // with them; the stacks themselves only change once the reply is saved (below), so a reply
           // that is never saved changes nothing.
+          // The world's people this reply named, tracked once it is saved.
+          let worldNpcsNamed: { world: GameWorld; people: WorldPerson[] } | undefined;
           let inventoryTurn: {
             requested: string;
             preview: string;
@@ -9863,16 +9867,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               return found ? [found.id] : [];
             });
             const named = worldPeopleNamed(turnWorld, placeIds, fullResponse);
-            if (named.length > 0) {
-              await chats.patchMetadata(input.chatId, (current) => {
-                const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
-                const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
-                const added = named
-                  .filter((person) => !known.has(person.id))
-                  .map((person) => worldPersonNpc(turnWorld, person));
-                return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
-              });
-            }
+            // Tracked once the reply is saved (below), so a discarded or stopped reply adds nobody.
+            if (named.length > 0) worldNpcsNamed = { world: turnWorld, people: named };
           }
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
@@ -10341,6 +10337,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : {}),
             });
             savedSwipeIndex = 0;
+          }
+          // The world's people the saved reply named become tracked NPCs (worldgen W2).
+          if (worldNpcsNamed && savedMsg?.id && !generationSignal.aborted) {
+            const { world: namedWorld, people: named } = worldNpcsNamed;
+            await chats.patchMetadata(input.chatId, (current) => {
+              const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
+              const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
+              const added = named
+                .filter((person) => !known.has(person.id))
+                .map((person) => worldPersonNpc(namedWorld, person));
+              return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
+            });
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
           // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──

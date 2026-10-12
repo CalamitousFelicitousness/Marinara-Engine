@@ -51,22 +51,22 @@ const postGenerationSource = generateRouteSource.slice(
 );
 assert.match(
   postGenerationSource,
-  /content: completedResponse,/u,
+  /content: agentCompletedResponse,/u,
   "Lorebook triggers must receive the completed response",
 );
 assert.match(
   postGenerationSource,
-  /const postAgentContext:[\s\S]{0,220}mainResponse: completedResponse/u,
+  /const postAgentContext:[\s\S]{0,220}mainResponse: agentCompletedResponse/u,
   "Post-agent context must receive the completed response",
 );
 assert.match(
   postGenerationSource,
-  /pipeline\.postGenerate\(completedResponse/u,
+  /pipeline\.postGenerate\(agentCompletedResponse/u,
   "The post-generation pipeline must receive the completed response",
 );
 assert.match(
   postGenerationSource,
-  /phaseRetryContext[\s\S]{0,240}mainResponse: completedResponse/u,
+  /phaseRetryContext[\s\S]{0,240}mainResponse: agentCompletedResponse/u,
   "Post-processing retries must receive the completed response",
 );
 assert.match(

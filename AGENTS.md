@@ -53,6 +53,7 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Before pushing, follow the local validation and reporting requirements in `CONTRIBUTING.md § Validation`.
 - Run `pnpm version:check` when you touch release metadata, version-bearing files, or README release references.
 - For every bug fix, behavior change, or new feature, add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading. Purely mechanical changes with no product or contributor-workflow impact do not need an entry.
+- Write that entry last, from the final diff, not from the issue, and say plainly when something that worked before no longer does. See `.github/agents/chai-workflow.md § Universal Operating Rules`.
 
 ## Temporary Tests
 
@@ -78,8 +79,8 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 
 1. Open a draft early while implementation is in progress, so issue ownership and work status are visible.
 2. Finish implementation and the required local checks. Run CodeRabbit locally; reproduce or trace each finding, fix legitimate defects and rerun review after substantive fixes. Record code-based reasons for rejecting false positives, non-regressions and purely pedantic suggestions. Do not claim zero findings when findings were dismissed.
-3. Once implementation, required local validation and substantive local review are complete, **push and mark the PR ready for review in the same workflow without asking again**. If the first PR is only being created at that point, create it ready rather than draft. A user request to keep it draft is an exception.
-4. Keep a PR draft only for unfinished implementation, unresolved substantive local findings, blocked required local validation, or an explicit maintainer instruction. Unchecked human checklist items and documented optional follow-ups are not automatic draft blockers. Pending GitHub CI and GitHub CodeRabbit are merge gates, not reasons to leave completed local work in draft; the GitHub review must be allowed to run.
+3. Once implementation, required local validation and substantive local review are complete, **push and mark the PR ready for review in the same workflow without asking again**, except when `.github/agents/chai-workflow.md` requires a maintainer decision first. If the first PR is only being created at that point, create it ready rather than draft. A user request to keep it draft is an exception.
+4. Keep a PR draft only for unfinished implementation, unresolved substantive local findings, blocked required local validation, a required maintainer decision, or an explicit maintainer instruction. Unchecked human checklist items and documented optional follow-ups are not automatic draft blockers. Pending GitHub CI and GitHub CodeRabbit are merge gates, not reasons to leave completed local work in draft; the GitHub review must be allowed to run.
 5. Inspect CI/review feedback when preparing a PR for review or shipping it. Address valid failures within scope. Never merge until all repository merge gates pass and merging is authorized.
 
 The local review conserves the shared CodeRabbit quota and complements the GitHub review. Use an existing PR rather than creating another for follow-up fixes.

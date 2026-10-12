@@ -175,6 +175,7 @@ import {
   parseExtra,
   resolveRoleplayChatSummary,
   resolveRoleplaySummaryTail,
+  summaryHidingPatch,
   isMessageHiddenFromAI,
   resolveBaseUrl,
   resolveActiveCharacterIds,
@@ -1701,64 +1702,10 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       const updated = await storage.patchMetadata(
         req.params.id,
-        async (freshMeta) => {
-          const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
-          if (previousHideEnabled === incoming.hideSummarisedMessages) {
-            return incoming;
-          }
-
-          const allMessages = await storage.listMessages(req.params.id);
-          const currentEntries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
-            legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
-          });
-          const now = new Date().toISOString();
-          let nextEntries: ChatSummaryEntry[];
-
-          if (incoming.hideSummarisedMessages) {
-            const tail = resolveRoleplaySummaryTail(freshMeta.summaryTailMessages);
-            nextEntries = [];
-            for (const entry of currentEntries) {
-              if (!entry.enabled || !entry.messageIds?.length) {
-                nextEntries.push(entry);
-                continue;
-              }
-
-              const eligibleToHide = computeSummaryHideIds({
-                messages: allMessages,
-                entryMessageIds: entry.messageIds,
-                tail,
-              });
-              const hiddenMessageIds =
-                eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
-              const ownedHiddenMessageIds = Array.from(
-                new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]),
-              );
-              nextEntries.push(
-                ownedHiddenMessageIds.length > 0
-                  ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
-                  : entry,
-              );
-            }
-          } else {
-            const summaryOwnedHiddenIds = Array.from(
-              new Set(currentEntries.flatMap((entry) => entry.hiddenMessageIds ?? [])),
-            );
-            if (summaryOwnedHiddenIds.length > 0) {
-              await storage.bulkSetHiddenFromAI(req.params.id, summaryOwnedHiddenIds, false);
-            }
-            nextEntries = currentEntries.map((entry) => {
-              if (!entry.hiddenMessageIds?.length) return entry;
-              const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
-              return { ...rest, updatedAt: now };
-            });
-          }
-
-          return {
-            ...incoming,
-            summaryEntries: nextEntries,
-            summary: compileChatSummaryEntries(nextEntries),
-          };
-        },
+        async (freshMeta) => ({
+          ...incoming,
+          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
+        }),
         { afterWrite: cancelReplacedAdvancedMemory },
       );
       return updated ? normalizeChatForResponse(updated) : updated;
@@ -4841,6 +4788,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       }),
     ];
 
+    const swipesByMessageId = await storage.getSwipesByMessageId(exportedMessages.map((msg) => msg.id));
     for (const msg of exportedMessages) {
       const rawMessageExtra = parseExportMetadata(msg.extra);
       const normalizeInterruptionExtra = (extra: Record<string, unknown>) =>
@@ -4851,7 +4799,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         exportNoteExtra(sanitizeJsonlMessageExtra(rawMessageExtra)),
       );
       const thinking = includeReasoning ? getExportThinking(rawMessageExtra) : null;
-      const swipes = await storage.getSwipes(msg.id);
+      const swipes = swipesByMessageId.get(msg.id) ?? [];
       const activeContent = msg.content;
       const exportSwipes =
         swipes.length > 0
@@ -5150,8 +5098,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     const copiedSourceMessages: typeof msgs = [];
     const copiedMessageInputs: Parameters<typeof storage.createMessagesBatch>[1] = [];
 
-    for (const msg of msgs) {
-      const swipes = await storage.getSwipes(msg.id);
+    const swipesByMessageId = await storage.getSwipesByMessageId(sourceMessagesToCopy.map((msg) => msg.id));
+    for (const msg of sourceMessagesToCopy) {
+      const swipes = swipesByMessageId.get(msg.id) ?? [];
       const messageExtra = await storage.prepareRoleplayInterruptionExtraForCopy(
         sanitizeBranchedMessageExtra(parseExportMetadata(msg.extra)),
       );
@@ -5205,9 +5154,6 @@ export async function chatsRoutes(app: FastifyInstance) {
         msg.id,
         copiedSwipes.map((swipe) => swipe.index),
       );
-
-      // Stop if we hit the specified message
-      if (upToMessageId && msg.id === upToMessageId) break;
     }
 
     // A branch ending before the interrupting response keeps the full preceding message.

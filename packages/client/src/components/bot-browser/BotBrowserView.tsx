@@ -1473,11 +1473,11 @@ class BrowserSourceError extends Error {}
 
 const plotlightClient = createPlotLightClient();
 
-function plotlightUserError(error: unknown): BrowserSourceError {
+function plotlightUserError(error: unknown, isDownload = true): BrowserSourceError {
   if (error instanceof PlotLightError && error.status === 429) {
     return new BrowserSourceError(translate("ui.botBrowser.plotlight.busy", { count: error.retryAfterSeconds ?? 30 }));
   }
-  if (error instanceof PlotLightError && [401, 403, 404].includes(error.status)) {
+  if (isDownload && error instanceof PlotLightError && [401, 403, 404].includes(error.status)) {
     return new BrowserSourceError(translate("ui.botBrowser.plotlight.unavailable"));
   }
   return new BrowserSourceError(translate("ui.botBrowser.plotlight.failed"));
@@ -1547,7 +1547,7 @@ function createPlotlightProvider(type: PlotLightContentType): ProviderConfig {
           })),
         };
       } catch (error) {
-        throw plotlightUserError(error);
+        throw plotlightUserError(error, false);
       }
     },
     fetchDetail: async (card) => {

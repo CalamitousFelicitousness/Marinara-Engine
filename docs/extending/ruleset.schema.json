@@ -6396,6 +6396,11 @@
                     "minLength": 1,
                     "maxLength": 80
                   },
+                  "icon": {
+                    "type": "string",
+                    "maxLength": 60,
+                    "pattern": "^ic_[a-z0-9]+(?:_[a-z0-9]+)*$"
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -9214,6 +9219,11 @@
                   "type": "string",
                   "maxLength": 300,
                   "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029]*$"
+                },
+                "icon": {
+                  "type": "string",
+                  "maxLength": 60,
+                  "pattern": "^ic_[a-z0-9]+(?:_[a-z0-9]+)*$"
                 },
                 "filters": {
                   "type": "object",

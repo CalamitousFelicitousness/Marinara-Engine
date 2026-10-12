@@ -2741,6 +2741,8 @@ export interface RulesetCombatOption {
   /** A check that ends a condition its actor holds (1.308): Maze's way out. */
   checkEnds?: { condition: string; label: string };
   id: string;
+  /** The icons it may be drawn with, best first (1.333): its catalog entry's. Absent for none. */
+  icons?: string[];
   /** `move` is the one a positioned fight adds: walking, and getting back up. `reload` fills a
    *  weapon's clip. */
   kind: "attack" | "ability" | "block" | "contest" | "standard" | "end-turn" | "move" | "reload" | "item" | "switch";

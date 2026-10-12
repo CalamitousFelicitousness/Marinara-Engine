@@ -244,6 +244,7 @@ export * from "./features/rulesets/live-state.js";
 export * from "./features/rulesets/sheet-commands.js";
 export * from "./features/rulesets/sheet-prompt.js";
 export * from "./features/rulesets/scaled-rows.js";
+export * from "./features/rulesets/art-icons.js";
 export * from "./features/rulesets/combat-bridge.js";
 export * from "./features/rulesets/layers.js";
 export * from "./features/rulesets/item-book.js";

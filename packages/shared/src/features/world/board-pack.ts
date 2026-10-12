@@ -13,6 +13,10 @@
 //                         walk's reach, in place of today's tint
 //   bp_<name>             a prop's sprite, spanning its cells; bp_<name>_broken once it is broken
 //   bz_<name>             a lasting area's look, per cell, in place of bo_zone
+//   ic_<name>             an icon (Capability API 1.333), in an `icons` pack: a condition's, an item's,
+//                         a spell's or any catalog entry's, in place of today's letter or text
+//   pt_<name>[@<mood>]    a portrait (Capability API 1.334), in a `portraits` pack: a pixel bust, with its
+//                         expressions as pt_<name>@happy and so on; one without an expression is neutral
 //
 // A board names its pack with `pack`; with none, the library's pack for its environment, then the built-in
 // `board/<environment>`, then today's drawing. Props also read a shared props pack. A tile a pack lacks
@@ -50,6 +54,74 @@ export type BoardOverlayTileId = (typeof BOARD_OVERLAY_TILE_IDS)[number];
 /** A prop's art and a lasting area's: `bp_` or `bz_`, then lowercase letters, digits and _. */
 export const BOARD_PROP_ART = /^bp_[a-z0-9]+(?:_[a-z0-9]+)*$/;
 export const BOARD_ZONE_ART = /^bz_[a-z0-9]+(?:_[a-z0-9]+)*$/;
+/** An icon (1.333): `ic_` then lowercase words joined by _. */
+export const ART_ICON = /^ic_[a-z0-9]+(?:_[a-z0-9]+)*$/;
+/** A portrait (1.334): `pt_` then lowercase words joined by _, and its expression after @ when it has one. */
+export const ART_PORTRAIT = /^pt_[a-z0-9]+(?:_[a-z0-9]+)*(?:@[a-z]+(?:_[a-z]+)*)?$/;
+/** The expressions a portrait is drawn with, the first five the core set (W5); any other word is allowed. */
+export const ART_PORTRAIT_EXPRESSIONS = Object.freeze([
+  "neutral",
+  "happy",
+  "sad",
+  "angry",
+  "surprised",
+  "afraid",
+  "disgusted",
+  "smug",
+  "shy",
+  "thinking",
+  "tired",
+  "hurt",
+  "determined",
+  "laughing",
+  "crying",
+  "flirty",
+] as const);
+/** The packs icons and portraits are kept in, beside the environments' and the props pack. */
+export const ART_PACK_KINDS = Object.freeze(["icons", "portraits"] as const);
+export type ArtPackKind = (typeof ART_PACK_KINDS)[number];
+
+const artWords = (text: string) =>
+  text
+    .trim()
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+
+/**
+ * The icon a thing is drawn with when it names none (1.333): a condition `ic_cond_<id>`, an item
+ * `ic_item_<id or name>`, any other catalog entry `ic_<catalog>_<entry>` (`ic_spells_fireball`). Null
+ * for a name with no letters or digits.
+ */
+export function artIconFor(
+  subject: { condition: string } | { catalog: string; entry: string; item?: boolean } | { item: string },
+): string | null {
+  const parts =
+    "condition" in subject
+      ? ["cond", ...artWords(subject.condition)]
+      : "catalog" in subject
+        ? subject.item
+          ? ["item", ...artWords(subject.entry)]
+          : [...artWords(subject.catalog), ...artWords(subject.entry)]
+        : ["item", ...artWords(subject.item)];
+  const id = `ic_${parts.join("_")}`;
+  return parts.length > 1 && id.length <= 60 && ART_ICON.test(id) ? id : null;
+}
+
+/** The portrait a person is drawn with when they name none (1.334): `pt_` and their name's words, and the
+ *  expression after @ ("Brenna Hale", happy: pt_brenna_hale@happy). Null for a name with no letters. */
+export function artPortraitFor(name: string, expression?: string): string | null {
+  const words = artWords(name);
+  if (!words.length) return null;
+  const mood = expression ? artWords(expression).join("_") : "";
+  const id = `pt_${words.join("_")}${mood && mood !== "neutral" ? `@${mood}` : ""}`;
+  return id.length <= 60 && ART_PORTRAIT.test(id) ? id : null;
+}
+
+/** A portrait id without its expression: what a missing expression falls back to. */
+export const artPortraitNeutral = (id: string) => id.split("@")[0]!;
+
 /** A prop's sprite once it is broken. */
 export const boardBrokenArt = (art: string) => `${art}_broken`;
 
@@ -61,7 +133,9 @@ const FIXED = new Set<string>([
 ]);
 /** Whether a tile id is one a board draws. */
 export function isBoardTileId(id: string): boolean {
-  return FIXED.has(id) || BOARD_PROP_ART.test(id) || BOARD_ZONE_ART.test(id);
+  return (
+    FIXED.has(id) || BOARD_PROP_ART.test(id) || BOARD_ZONE_ART.test(id) || ART_ICON.test(id) || ART_PORTRAIT.test(id)
+  );
 }
 
 /** The built-in pack drawn for an environment when a board names none and the library has none for it. */
@@ -97,8 +171,9 @@ export const boardPackSchema = z
     version: z.number().int().min(1).max(100_000),
     author: z.string().trim().max(80).optional(),
     /** The environment it is drawn for (forest, dungeon ...), which boards of it are drawn with when they
-     *  name no pack; `props` for a pack of props every board reads. Left out: only boards naming it. */
-    environment: z.enum([...TACTICAL_ENVIRONMENTS, "props"]).optional(),
+     *  name no pack; `props` for a pack of props every board reads; `icons` and `portraits` for the
+     *  game's icons (1.333) and portraits (1.334). Left out: only boards naming it. */
+    environment: z.enum([...TACTICAL_ENVIRONMENTS, "props", ...ART_PACK_KINDS]).optional(),
     /** One cell, in pixels (as an image tile pack's and a creature pack's). */
     tileSize: z
       .number()

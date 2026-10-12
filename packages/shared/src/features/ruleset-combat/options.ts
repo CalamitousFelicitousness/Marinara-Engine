@@ -2,6 +2,7 @@
 // forecast - picks an id from here, so legality is decided in exactly one place and a client never
 // computes it.
 
+import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
   RulesetDefinition,
@@ -2311,10 +2312,12 @@ function optionFrom(
   const paid = planRulesetCombatCost(definition, actor, action);
   const payments = [...rulesetPaymentPools(definition, actor, action), ...chargePayments(actor, action)];
   if (!paid && payments.length === 0) return null;
+  const icons = rulesetEntryIcons(definition, action.entry ?? (action.id.includes("/") ? action.id : undefined));
   const option: RulesetCombatOption = {
     id: action.id,
     kind: action.kind,
     label: action.label,
+    ...(icons.length ? { icons } : {}),
     ...(free ? {} : { budget }),
     ...(following ? { followUp: true as const } : {}),
     ...(oneStrike ? { oneStrike: true as const } : {}),

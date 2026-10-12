@@ -1628,6 +1628,16 @@ function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesSaveDifficulty(one, depth + 1));
 }
 
+/** Whether a catalog entry or a condition names its icon (1.333). */
+function carriesArtIcon(value: unknown, depth = 0): boolean {
+  if (depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesArtIcon(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.icon === "string" && record.icon.startsWith("ic_")) return true;
+  return Object.values(record).some((one) => carriesArtIcon(one, depth + 1));
+}
+
 /** Whether anything names a list of lair actions for a broken concentration to pick from (1.331). */
 function carriesBrokenLairList(value: unknown, depth = 0): boolean {
   if (depth > 8) return false;
@@ -4478,6 +4488,10 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // Icons named by a catalog entry or a condition, 1.333.
+  if (!declaresApi(333) && carriesArtIcon(ruleset)) {
+    return "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.333 or newer";
   }
   // Rest dice over several pools, 1.332.
   if (

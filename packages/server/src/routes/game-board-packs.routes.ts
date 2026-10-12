@@ -5,7 +5,8 @@
 // `local/<id>` as creature packs are. A board reads the pack it names, else the library's pack for its
 // environment, else the Engine's built-in `board/<environment>` (shipped in src/assets/board-packs, when
 // there is one), else none and today's drawing; its props also read the library's props pack, else the
-// built-in `board/props`. Saving, importing and removing are administrative acts behind
+// built-in `board/props`. Icons (1.333) and portraits (1.334) are packs of their own kind, read the same
+// way: the library's `icons` or `portraits` pack, else the built-in one. Saving, importing and removing are administrative acts behind
 // `requirePrivilegedAccess`.
 // ──────────────────────────────────────────────
 import { readFile } from "node:fs/promises";
@@ -13,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import {
+  ART_PACK_KINDS,
   BOARD_PACK_MAX_BYTES,
   BOARD_PROPS_PACK_ID,
   TACTICAL_ENVIRONMENTS,
@@ -49,7 +51,7 @@ function packOf(row: GameBoardPackRow): BoardPack | null {
 
 /** The Engine's own pack for an environment (`forest`) or for props (`props`), when one is shipped. */
 async function builtIn(name: string): Promise<BoardPack | null> {
-  if (![...TACTICAL_ENVIRONMENTS, "props"].includes(name)) return null;
+  if (![...TACTICAL_ENVIRONMENTS, "props", ...ART_PACK_KINDS].includes(name)) return null;
   let text: string;
   try {
     text = await readFile(`${BUILT_IN_DIR}${name}.json`, "utf8");
@@ -114,6 +116,13 @@ export async function gameBoardPacksRoutes(app: FastifyInstance) {
         : null);
     const props = board?.environment === "props" ? board : await forEnvironment("props");
     return { board, props };
+  });
+
+  // ── GET /api/game-tile-packs/boards/art?kind=icons|portraits ── the game's icons (1.333) or portraits
+  // (1.334): the library's pack of that kind, else the built-in `board/<kind>`; none draws as today.
+  app.get("/art", async (req) => {
+    const { kind } = z.object({ kind: z.enum(ART_PACK_KINDS) }).parse(req.query);
+    return { pack: await forEnvironment(kind) };
   });
 
   // ── GET /api/game-tile-packs/boards/library ── the stored packs.

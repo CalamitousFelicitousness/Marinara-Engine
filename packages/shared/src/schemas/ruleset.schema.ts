@@ -800,6 +800,14 @@ const liveTrackSchema = z
 /** How many live states one sheet may carry. */
 export const RULESET_LIVE_STATES_MAX = 12;
 
+/** Its icon (Capability API 1.333): a tile of the game's icons pack, `ic_` then lowercase words joined
+ *  by _. Without one, the derived name (`ic_cond_<id>`, `ic_item_<id>`, `ic_<catalog>_<entry>`), then
+ *  today's look. */
+const artIconRef = z
+  .string()
+  .max(60)
+  .regex(/^ic_[a-z0-9]+(?:_[a-z0-9]+)*$/, "An icon is ic_ then lowercase words joined by _");
+
 /** A LIVE STATE: one value out of a closed set that changes in play, such as a form, a stance or how
  *  lit a lantern is. An enum field is chosen when the character is made and stays chosen, and a
  *  condition is only on or off; a state is exactly one of its values at a time. The sheet command
@@ -838,7 +846,7 @@ const liveSchema = z
       .max(12)
       .default([]),
     conditions: z
-      .array(z.object({ id: sheetId, label }).strict())
+      .array(z.object({ id: sheetId, label, icon: artIconRef.optional() }).strict())
       .max(RULESET_CONDITIONS_MAX)
       .default([]),
     states: z.array(liveStateSchema).max(RULESET_LIVE_STATES_MAX).default([]),
@@ -6461,6 +6469,7 @@ const catalogEntrySchema = z
     id: z.string().max(80).regex(RULESET_ID_PATTERN, "An entry id is lowercase letters, digits and single hyphens"),
     label: promptSafeText(120),
     summary: catalogText(300).optional(),
+    icon: artIconRef.optional(),
     /** Values for the catalog's declared filters: a number, one word, or a list of words. */
     filters: z
       .record(z.union([z.number().finite(), z.string().max(80), z.array(z.string().max(80)).max(24)]))

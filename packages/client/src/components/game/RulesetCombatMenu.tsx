@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { RULESET_CHARGE_STEP_PREFIX, RULESET_PASS_OPTION } from "@marinara-engine/shared";
 import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { useTranslation } from "react-i18next";
 import {
   rulesetAimSoFar,
@@ -982,7 +983,10 @@ export function RulesetCombatMenu({
                       "border-white/10 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",
                     )}
                   >
-                    <span className="block font-semibold text-white/90">{rulesetOptionLabel(option, t)}</span>
+                    <span className="flex items-center gap-1.5 font-semibold text-white/90">
+                      <ArtIcon ids={option.icons ?? []} className="h-5 w-5" />
+                      {rulesetOptionLabel(option, t)}
+                    </span>
                     {option.cancelSave && (
                       <span className="block text-[0.65rem] text-white/55">
                         {t("game.combat.ruleset.menu.cancelSave", {

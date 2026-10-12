@@ -1,0 +1,47 @@
+// The game's icons (Capability API 1.333) and portraits (1.334): a board pack of kind `icons` or
+// `portraits`, the library's or the built-in one the server resolves. How one is drawn is
+// `components/game/ArtIcon.tsx`; a thing the pack lacks keeps today's look.
+import { useQuery } from "@tanstack/react-query";
+import {
+  artPortraitNeutral,
+  boardPackSchema,
+  boardPackSprite,
+  type ArtPackKind,
+  type BoardPack,
+  type BoardPackSlice,
+} from "@marinara-engine/shared";
+import { api } from "./api-client";
+
+/** The pack of a kind, or null: none stored, none built in, or a server that does not answer. */
+export function useArtPack(kind: ArtPackKind): BoardPack | null {
+  const { data } = useQuery({
+    queryKey: ["game", "art-pack", kind],
+    queryFn: async (): Promise<BoardPack | null> => {
+      try {
+        const answer = await api.get<{ pack: unknown }>(`/game-tile-packs/boards/art?kind=${kind}`);
+        const parsed = boardPackSchema.safeParse(answer.pack);
+        return parsed.success ? parsed.data : null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 5 * 60_000,
+  });
+  return data ?? null;
+}
+
+/** The first of `ids` the pack draws, whole; a portrait's expression the pack lacks falls back to its
+ *  neutral one. Null for none. */
+export function artPackSlice(
+  pack: BoardPack | null,
+  ids: ReadonlyArray<string | null | undefined>,
+): BoardPackSlice | null {
+  if (!pack) return null;
+  for (const id of ids) {
+    if (!id) continue;
+    const found =
+      boardPackSprite([pack], id) ?? (id.includes("@") ? boardPackSprite([pack], artPortraitNeutral(id)) : null);
+    if (found) return found;
+  }
+  return null;
+}

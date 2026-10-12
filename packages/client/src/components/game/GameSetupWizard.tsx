@@ -83,6 +83,7 @@ import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
 import { GameSetupWorldKitChooser } from "./GameSetupWorldKitChooser";
+import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
 import { GameSetupWorldChooser, worldDraftConfig, type WorldDraft } from "./GameSetupWorldChooser";
 import {
   GAME_SETUP_FIELD_LABEL,
@@ -544,7 +545,10 @@ export function GameSetupWizard({
   const [rulesetImportNotice, setRulesetImportNotice] = useState<string | null>(null);
   // The setting kit (worldgen W0): off unless the player picks one, and only for a new game.
   const [worldKit, setWorldKit] = useState<WorldKitInput | null>(null);
-  const checkedWorldKit = isNewGame && worldKit ? parseWorldKit(worldKit) : null;
+  // Overworld games are locked on this server unless it says otherwise: no kit, no world.
+  const overworldEnabled = useOverworldGamesEnabled();
+  const effectiveWorldKit: WorldKitInput | null = overworldEnabled ? worldKit : null;
+  const checkedWorldKit = isNewGame && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
   const checkedWorld = checkedWorldKit?.ok && worldDraft ? worldDraftConfig(checkedWorldKit.kit, worldDraft) : null;
@@ -2173,22 +2177,32 @@ export function GameSetupWizard({
                         {rulesetImportNotice}
                       </p>
                     )}
-                    {isNewGame && (
-                      <GameSetupWorldKitChooser
-                        kit={worldKit}
-                        onChange={setWorldKit}
-                        writeRequest={worldWriteRequest}
-                      />
+                    {isNewGame && !overworldEnabled && (
+                      <p role="note" className="text-xs text-[var(--muted-foreground)]">
+                        {localizeUi("game.worldKit.setup.overworldLocked")}
+                      </p>
                     )}
-                    {checkedWorldKit?.ok && (
-                      <GameSetupWorldChooser
-                        kit={checkedWorldKit.kit}
-                        draft={worldDraft}
-                        onChange={setWorldDraft}
-                        lorebooks={lorebooks}
-                        request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
-                      />
-                    )}
+                    <fieldset
+                      disabled={!overworldEnabled}
+                      className={cn("m-0 min-w-0 space-y-4 border-0 p-0", !overworldEnabled && "opacity-50")}
+                    >
+                      {isNewGame && (
+                        <GameSetupWorldKitChooser
+                          kit={worldKit}
+                          onChange={setWorldKit}
+                          writeRequest={worldWriteRequest}
+                        />
+                      )}
+                      {checkedWorldKit?.ok && (
+                        <GameSetupWorldChooser
+                          kit={checkedWorldKit.kit}
+                          draft={worldDraft}
+                          onChange={setWorldDraft}
+                          lorebooks={lorebooks}
+                          request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
+                        />
+                      )}
+                    </fieldset>
 
                     {/* Content Rating */}
                     <div>

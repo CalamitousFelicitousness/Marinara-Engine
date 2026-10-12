@@ -683,6 +683,26 @@ try {
     };
     const create = (setupConfig: Record<string, unknown>) =>
       app.inject({ method: "POST", url: "/api/game/create", payload: { name: "Aldmark", setupConfig } });
+    // Overworld games locked (MARINARA_OVERWORLD_GAMES off): a kit or a world is refused, a Classic game is not,
+    // and the server says it is locked.
+    const overworldBefore = process.env.MARINARA_OVERWORLD_GAMES;
+    delete process.env.MARINARA_OVERWORLD_GAMES;
+    try {
+      assert.deepEqual((await app.inject({ method: "GET", url: "/api/game/overworld" })).json(), { enabled: false });
+      for (const config of [
+        { ...baseConfig, worldKit: fantasy, world: storedWorld },
+        { ...baseConfig, worldKit: fantasy },
+        { ...baseConfig, world: storedWorld },
+      ]) {
+        const locked = await create(config);
+        assert.equal(locked.statusCode, 403, locked.body);
+        assert.equal(locked.json().code, "overworld_locked");
+      }
+      assert.equal((await create(baseConfig)).statusCode, 200, "a Classic game is made while Overworld is locked");
+    } finally {
+      process.env.MARINARA_OVERWORLD_GAMES = overworldBefore ?? "true";
+    }
+    assert.deepEqual((await app.inject({ method: "GET", url: "/api/game/overworld" })).json(), { enabled: true });
     const made = await create({ ...baseConfig, worldKit: fantasy, world: storedWorld });
     assert.equal(made.statusCode, 200, made.body);
     const meta = JSON.parse(made.json().sessionChat.metadata);

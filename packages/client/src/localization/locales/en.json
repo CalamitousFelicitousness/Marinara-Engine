@@ -2255,6 +2255,7 @@
   "game.worldKit.setup.editWords": "Change its words",
   "game.worldKit.setup.era": "Years are counted by",
   "game.worldKit.setup.fixBeforeStart": "Fix the setting kit on the World step before starting.",
+  "game.worldKit.setup.overworldLocked": "Overworld games, with a setting kit and a generated world, are not ready yet. New games start as Classic games.",
   "game.worldKit.setup.groups": "Kinds of group",
   "game.worldKit.setup.help": "Optional. Gives the Game Master the words this kind of world uses for places, groups, travel and time, and which kinds of change it allows. The game keeps the kit it starts with.",
   "game.worldKit.setup.invalid": "This kit cannot be used yet:",

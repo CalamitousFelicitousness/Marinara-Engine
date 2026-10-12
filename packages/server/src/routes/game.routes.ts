@@ -265,6 +265,7 @@ import {
   getChatGenerationTimeoutMs,
   getGameDynamicImagePromptTimeoutMs,
   isDebugAgentsEnabled,
+  isOverworldGamesEnabled,
 } from "../config/runtime-config.js";
 import type {
   GameActiveState,
@@ -6519,6 +6520,17 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       });
     }
     const parsedCreateGameInput = parsed.data;
+    // Overworld games are locked on this server (MARINARA_OVERWORLD_GAMES): a game with a setting kit or a
+    // world is refused, so only Classic games are made.
+    if (
+      !isOverworldGamesEnabled() &&
+      (parsedCreateGameInput.setupConfig.worldKit || parsedCreateGameInput.setupConfig.world)
+    ) {
+      return rejectGenerationOutput(reply, 403, {
+        error: "Overworld games are not available on this server yet.",
+        code: "overworld_locked",
+      });
+    }
     const { name, connectionId, promptPresetId, chatId, preferences, shareLabels } = parsedCreateGameInput;
     const normalizedSpatialMapDraftOptions =
       parsedCreateGameInput.setupConfig.spatialMapDraftSize !== undefined ||
@@ -10791,6 +10803,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     return { journal, recap: buildStructuredRecap(journal, sessionNumber), playerNotes };
   });
+
+  // Whether this server lets players make Overworld games (MARINARA_OVERWORLD_GAMES); the wizard greys the
+  // setting kit and world out when it does not.
+  app.get("/overworld", async () => ({ enabled: isOverworldGamesEnabled() }));
 
   // ── PUT /game/:chatId/journal/entries/:entryIndex ──
   app.put<{ Params: { chatId: string; entryIndex: string } }>(

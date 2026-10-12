@@ -146,7 +146,8 @@ With Advanced Memory on, a new character reply can switch scenes or point of vie
 - The character who wrote the reply still sees every part, as with any of their messages. Hide a part from them yourself if they shouldn't.
 - The break line stays at the top of the part after it. A break inside a code block or an HTML block, such as a `<details>` panel, doesn't count.
 - The reply's thinking shows on the first part. It isn't sent back to the model, even with **Exclude Past Reasoning** off.
-- Message info, trackers and agent results go with the last part. Prose Guardian and other rewrite agents only edit the last part.
+- Message info, trackers and agent results go with the last part.
+- Prose Guardian and other rewrite agents rewrite each part on its own, and the break line stays at the top. With **Hold Message Until Rewrite** on, each part waits for its own rewrite. If one part's rewrite fails, that part stays as written and the others are still rewritten.
 - Speech autoplay reads every part in order.
 - Swiping or regenerating a part gives a new version of just that message. For an earlier part, the new version keeps only the text before the first break, because the scenes after it already have their own messages.
 - Continue and Impersonate never split.

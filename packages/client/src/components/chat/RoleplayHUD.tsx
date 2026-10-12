@@ -17,7 +17,6 @@ import { useUIStore } from "../../stores/ui.store";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import {
   partitionTrackerCapabilityPackages,
-  selectRoleplayTrackerPackages,
   useInstalledCapabilityPackages,
 } from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
@@ -52,6 +51,7 @@ import type {
   CustomTrackerField,
   WorldCustomField,
   TrackerHiddenFields,
+  InstalledCapabilityPackage,
 } from "@marinara-engine/shared";
 import {
   isNamedTrackerRow,
@@ -84,6 +84,20 @@ const CombinedPlayerPanel = lazy(async () =>
 const CombinedWorldPanel = lazy(async () =>
   import("./RoleplayHUDPanels").then((module) => ({ default: module.CombinedWorldPanel })),
 );
+
+/** Installed tracker packages the chat runs that draw in the Roleplay HUD. */
+export function selectRoleplayTrackerPackages(
+  installed: readonly InstalledCapabilityPackage[],
+  enabledAgentTypes: Set<string>,
+) {
+  return installed.filter(
+    (item) =>
+      item.status === "active" &&
+      enabledAgentTypes.has(item.id) &&
+      Boolean(item.manifest.entrypoints.client) &&
+      item.manifest.contributions?.slots?.includes("roleplay-tracker"),
+  );
+}
 
 /**
  * Live tracker values and their edit handlers, shared by the HUD and the Tracker window. Each caller

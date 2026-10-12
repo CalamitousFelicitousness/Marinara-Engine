@@ -1,9 +1,8 @@
 import { useMemo, type ComponentProps, type ReactNode } from "react";
 import type { Message, SpriteSide } from "@marinara-engine/shared";
-import { ConversationPackageWindows, ConversationView, useConversationToolbarPackages } from "./ConversationView";
+import { ConversationPackageWindows, ConversationView } from "./ConversationView";
 import { ChatCommonOverlays } from "./ChatCommonOverlays";
 import { ChatConnectedChatWindow } from "./ChatControlWindow";
-import { LorebookReaderWindow } from "./LorebookReaderWindow";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
 import type { CharacterMap, MessageSelectionToggle, PeekPromptData, PersonaInfo } from "./chat-area.types";
@@ -178,7 +177,6 @@ export function ChatConversationSurface({
     [characterMap, chatCharIds, onGenerateSelfie, onIllustrate, onIllustrateWithAgent],
   );
   useProvideChatGalleryActions(activeChatId, galleryActions);
-  const toolbarPackageCount = useConversationToolbarPackages(chatMeta).length;
   return (
     <div data-component="ChatArea.Conversation" className="flex flex-1 overflow-hidden">
       <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -222,7 +220,7 @@ export function ChatConversationSurface({
         />
       </div>
 
-      {/* The connected chat, package toolbars and the Lorebook Reader are windows that minimize to bubbles. */}
+      {/* The connected chat and package toolbars are windows that minimize to bubbles. */}
       {onSwitchChat && <ChatConnectedChatWindow name={connectedChatName} onSwitch={onSwitchChat} />}
       <ConversationPackageWindows
         chatId={activeChatId}
@@ -231,17 +229,6 @@ export function ChatConversationSurface({
         chatCharIds={chatCharIds}
         personaInfo={personaInfo}
       />
-      {chat && (
-        <LorebookReaderWindow
-          chat={chat}
-          chatMeta={chatMeta}
-          characterMap={characterMap}
-          chatCharIds={chatCharIds}
-          personaInfo={personaInfo}
-          // After the connected chat (slot 0) and the package toolbars.
-          slot={toolbarPackageCount + 1}
-        />
-      )}
 
       <ChatCommonOverlays
         chat={chat}

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
+  GAME_TILE_PACKS_RATE_LIMIT,
   PACKAGE_UPDATE_DECLINE_RATE_LIMIT,
   PROFESSOR_MARI_QUICK_RATE_LIMIT,
   rateLimitHook,
@@ -13,6 +14,9 @@ app.addHook("onRequest", rateLimitHook);
 app.post("/api/professor-mari/quick/prompt", async () => ({ ok: true }));
 app.post("/api/professor-mari/quick/proposals/:id/apply", async () => ({ ok: true }));
 app.post("/api/capability-packages/updates/decline", async () => ({ ok: true }));
+app.post("/api/game-tile-packs", async () => ({ ok: true }));
+app.post("/api/game-tile-packs/import", async () => ({ ok: true }));
+app.post("/api/game-tile-packs/builtin/:family", async () => ({ ok: true }));
 
 async function hitsWallAt(urls: string[], max: number) {
   for (let request = 0; request < max; request += 1) {
@@ -28,7 +32,11 @@ try {
     PROFESSOR_MARI_QUICK_RATE_LIMIT.max,
   );
   await hitsWallAt(["/api/capability-packages/updates/decline"], PACKAGE_UPDATE_DECLINE_RATE_LIMIT.max);
+  await hitsWallAt(
+    ["/api/game-tile-packs", "/api/game-tile-packs/import", "/api/game-tile-packs/builtin/fantasy"],
+    GAME_TILE_PACKS_RATE_LIMIT.max,
+  );
 } finally {
   await app.close();
 }
-console.log("Quick answers and bulk update decline hit their own rate limits.");
+console.log("Quick answers, bulk update decline and tile packs hit their own rate limits.");

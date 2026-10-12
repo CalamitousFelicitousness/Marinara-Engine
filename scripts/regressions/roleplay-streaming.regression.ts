@@ -979,7 +979,7 @@ assert.match(
 );
 assert.match(
   chatAreaSource,
-  /for \(const message of \[\.\.\.earlierMessages, lastMsg\]\)[\s\S]{0,1200}ttsService\.speakSequence\(\s*parts\.flatMap/u,
+  /Promise\.all\(\s*\[\.\.\.earlierMessages, lastMsg\]\.map\([\s\S]{0,1200}ttsService\.speakSequence\(\s*parts\.flatMap/u,
   "autoplay must read a split reply's earlier parts before its last part, as one sequence",
 );
 assert.match(

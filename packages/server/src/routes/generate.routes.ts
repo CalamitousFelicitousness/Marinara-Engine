@@ -10211,36 +10211,42 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const parts =
               advancedMemoryEnabled && !input.impersonate ? splitAtSceneBreaks(fullResponse) : [fullResponse];
             const saved: ReplyPart[] = [];
-            for (const content of parts) {
-              const previous = saved.at(-1);
-              const start = fullResponse.indexOf(content, previous ? previous.start + previous.content.length : 0);
-              savedMsg = await chats.createMessage({
-                chatId: input.chatId,
-                role: input.impersonate ? "user" : "assistant",
-                characterId: input.impersonate ? null : targetCharId,
-                content,
-                ...(roomAuthority
-                  ? {
-                      extra: {
-                        multiplayerActor: roomActor
-                          ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
-                          : { id: null, name: "GM", role: "gm" },
-                        ...(roomAudience
-                          ? {
-                              multiplayerGameAudience: {
-                                roomId: roomAudience.roomId,
-                                participants: roomAudience.participants.map((participant) => ({
-                                  id: participant.id,
-                                  name: participant.persona.name,
-                                })),
-                              },
-                            }
-                          : {}),
-                      },
-                    }
-                  : {}),
-              });
-              saved.push({ content, start, message: savedMsg, activity: [] });
+            try {
+              for (const content of parts) {
+                const previous = saved.at(-1);
+                const start = fullResponse.indexOf(content, previous ? previous.start + previous.content.length : 0);
+                savedMsg = await chats.createMessage({
+                  chatId: input.chatId,
+                  role: input.impersonate ? "user" : "assistant",
+                  characterId: input.impersonate ? null : targetCharId,
+                  content,
+                  ...(roomAuthority
+                    ? {
+                        extra: {
+                          multiplayerActor: roomActor
+                            ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
+                            : { id: null, name: "GM", role: "gm" },
+                          ...(roomAudience
+                            ? {
+                                multiplayerGameAudience: {
+                                  roomId: roomAudience.roomId,
+                                  participants: roomAudience.participants.map((participant) => ({
+                                    id: participant.id,
+                                    name: participant.persona.name,
+                                  })),
+                                },
+                              }
+                            : {}),
+                        },
+                      }
+                    : {}),
+                });
+                saved.push({ content, start, message: savedMsg, activity: [] });
+              }
+            } catch (error) {
+              // A reply is saved whole or not at all: drop the parts already saved, so no half-reply is left.
+              for (const part of saved) await chats.removeMessage(part.message.id).catch(() => undefined);
+              throw error;
             }
             if (saved.length > 1) replyParts = saved;
             savedSwipeIndex = 0;

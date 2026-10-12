@@ -895,6 +895,11 @@ assert.deepEqual(
   [statusPanel, '***\n\n<div class="x"/>Mari runs.<br>', "---\nOn."],
   "a closed element, a self-closing tag or a void element doesn't stop a split",
 );
+assert.deepEqual(
+  splitAtSceneBreaks("Cyno, <b>alone\n***\nMari asks <name>.\n---\nMaukie <i>thinks"),
+  ["Cyno, <b>alone", "***\nMari asks <name>.", "---\nMaukie <i>thinks"],
+  "an unclosed inline tag or an angle-bracket placeholder doesn't stop later splits",
+);
 
 // A command is placed after the text before it, even when cleanup stripped a "Name:" from the reply's start.
 assert.equal(placeAfterPrefix("Maukie reads alone.\n\n***\n\nOn.", "Maukie reads alone."), 19);

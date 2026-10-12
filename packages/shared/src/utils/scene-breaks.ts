@@ -1,9 +1,13 @@
 /** A Markdown thematic break on its own line: 3+ of one of `*`, `-`, `_`, spaced or not, indented up to 3 spaces. */
 const SCENE_BREAK = /^ {0,3}([*_-])(?:[ \t]*\1){2,}[ \t]*$/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
-/** HTML tags that open or close an element; void elements and `/>` never stay open. */
+/**
+ * Block HTML elements that can hold a break line of their own, such as a `<details>` status panel. Inline tags are
+ * not counted: models often leave one like `<b>` or a `<name>` placeholder unclosed, which would stop every later
+ * split. `/>` never stays open.
+ */
 const HTML_TAG =
-  /<(\/?)(?!(?:area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)\b)([a-z][\w-]*)\b[^<>]*?(\/?)>/giu;
+  /<(\/?)(address|article|aside|blockquote|center|details|dialog|div|dl|fieldset|figure|footer|form|header|main|nav|ol|pre|section|table|ul)\b[^<>]*?(\/?)>/giu;
 
 /**
  * Split a reply at its scene or POV break lines (`***`, `---`, `___`, `* * *`), outside fenced code and open HTML

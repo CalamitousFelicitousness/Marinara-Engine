@@ -3060,10 +3060,11 @@ const LocalChatArea = memo(function LocalChatArea({
         }
         return visualNovel ? withRoleplayTTSParagraphs(requests, message.content, cfg) : requests;
       };
-      // A reply split at scene breaks (#7481) is read part by part, in order, as one sequence.
-      const parts: Array<{ message: TTSAutoplayMessage; requests: Awaited<ReturnType<typeof requestsFor>> }> = [];
-      for (const message of [...earlierMessages, lastMsg])
-        parts.push({ message, requests: await requestsFor(message) });
+      // A reply split at scene breaks (#7481) is read part by part, in order, as one sequence. Its parts are
+      // prepared at once so playback doesn't wait one round trip per part.
+      const parts = await Promise.all(
+        [...earlierMessages, lastMsg].map(async (message) => ({ message, requests: await requestsFor(message) })),
+      );
 
       const currentGeneration = ttsGenerationRef.current;
       const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);

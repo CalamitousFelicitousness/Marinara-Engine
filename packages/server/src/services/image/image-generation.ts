@@ -1606,7 +1606,9 @@ async function fitSpicyApiReference(reference: unknown): Promise<unknown> {
 async function fitSpicyApiReferences(body: { input: Record<string, unknown> }): Promise<void> {
   const { input } = body;
   if (Array.isArray(input.image_urls)) {
-    input.image_urls = (await Promise.all(input.image_urls.map(fitSpicyApiReference))).filter((ref) => ref !== null);
+    const fitted = (await Promise.all(input.image_urls.map(fitSpicyApiReference))).filter((ref) => ref !== null);
+    if (fitted.length) input.image_urls = fitted;
+    else delete input.image_urls;
   } else if (input.image_url !== undefined) {
     input.image_url = await fitSpicyApiReference(input.image_url);
     if (input.image_url === null) delete input.image_url;

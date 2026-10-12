@@ -124,6 +124,19 @@ export function worldPlaceForTag(
   return { name: named, size: ladder[Math.min(ladder.length - 1, Math.max(0, at))]!.id };
 }
 
+/** The place in force (worldgen W7): where the game's map has the party, when the map's location is
+ *  one of the world's places (an atlas made from the world), else the last place the replies named. Its
+ *  size is read as an answered place tag reads it, on the market's ladder when there is one. */
+export function worldPlaceInForce(
+  game: GameWorld | null | undefined,
+  named: { name?: string; size?: string } | null,
+  mapLocationId: string | null | undefined,
+  ladder?: ReadonlyArray<{ id: string }>,
+): { name?: string; size?: string } | null {
+  const onMap = game && mapLocationId ? game.world.places.find((place) => place.id === mapLocationId) : undefined;
+  return onMap ? (worldPlaceForTag(game!, onMap.name, ladder) ?? { name: onMap.name }) : named;
+}
+
 /** A size word (id or label, any case) on the kit's own ladder, for a world without a market. */
 export function worldKitSize(kit: WorldKit, word: string): { id: string } | undefined {
   const key = word.trim().toLowerCase();
@@ -135,14 +148,17 @@ export function worldKitSize(kit: WorldKit, word: string): { id: string } | unde
 const labelOf = (entries: ReadonlyArray<{ id: string; label: string }>, id: string | undefined) =>
   entries.find((entry) => entry.id === id)?.label ?? id ?? "";
 const plural = (word: string) => (/s$/i.test(word) ? word : `${word}s`);
+/** The kit's word for a day, for several days. */
+export const worldDayPlural = plural;
 
-/** How long ago, in the kit's days. */
-function daysAgo(kit: WorldKit, count: number): string {
+/** How long ago, in the kit's own word for a day. */
+export function worldDaysAgo(kit: WorldKit, count: number): string {
   if (count <= 0) return "Today";
   return `${count} ${count === 1 ? kit.calendar.day : plural(kit.calendar.day)} ago`;
 }
 
-function days(kit: WorldKit, count: number): string {
+/** How long a trip takes, in the kit's own word for a day. */
+export function worldTripDays(kit: WorldKit, count: number): string {
   const day = kit.calendar.day;
   if (count < 0.1) return `well under a ${day}`;
   if (count < 1) return `about ${Math.round(count * 10) / 10} of a ${day}`;
@@ -271,7 +287,7 @@ export function worldWhereYouAreText(
         `- From here: ${routes
           .map(
             ({ other, link }) =>
-              `${describe(kit, other, present)}, ${days(kit, link.days)} by ${labelOf(kit.travel, link.way)}`,
+              `${describe(kit, other, present)}, ${worldTripDays(kit, link.days)} by ${labelOf(kit.travel, link.way)}`,
           )
           .join("; ")}.`,
       );
@@ -284,7 +300,7 @@ export function worldWhereYouAreText(
       lines.push(
         `- Word that has reached here, newest first:`,
         ...news.map(
-          ({ news: each, ago, rumour }) => `  - ${daysAgo(kit, ago)}${rumour ? ", a rumour" : ""}: ${each.text}`,
+          ({ news: each, ago, rumour }) => `  - ${worldDaysAgo(kit, ago)}${rumour ? ", a rumour" : ""}: ${each.text}`,
         ),
       );
     }

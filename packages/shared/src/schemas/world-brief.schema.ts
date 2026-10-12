@@ -23,7 +23,8 @@ export const WORLD_BRIEF_LIMITS = Object.freeze({
 export const WORLD_NAME_ORDERS = Object.freeze(["given-family", "family-given", "given"] as const);
 
 const ref = z.string().max(40);
-const placeName = promptSafeText(60);
+/** A place's or a group's name: something besides spaces, since a map or a tag has to name it. */
+const placeName = promptSafeText(60).refine((value) => value.trim().length > 0, "A name needs more than spaces");
 
 const briefPlace = z
   .object({

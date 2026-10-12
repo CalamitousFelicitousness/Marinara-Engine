@@ -39,7 +39,7 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat } from "@marinara-engine/shared";
+import type { Chat, WorldJournal, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -47,6 +47,9 @@ import { isJsonRecord } from "@marinara-engine/shared";
 export const gameKeys = {
   all: ["game"] as const,
   sessions: (gameId: string) => [...gameKeys.all, "sessions", gameId] as const,
+  overworld: (chatId: string) => [...gameKeys.all, "overworld", chatId] as const,
+  town: (chatId: string) => [...gameKeys.all, "town", chatId] as const,
+  worldJournal: (chatId: string) => [...gameKeys.all, "world-journal", chatId] as const,
 };
 
 // ── Types ──
@@ -919,8 +922,13 @@ export function useTacticalCombatAction() {
 export function useAdvanceTime() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { chatId: string; action: string }) =>
-      api.post<{ time: unknown; formatted: string }>("/game/time/advance", data),
+    // An action's span, or a number of minutes (the overworld's real time, worldgen W8).
+    mutationFn: (data: { chatId: string; action: string } | { chatId: string; minutes: number; keepalive?: boolean }) =>
+      api.post<{ time: unknown; formatted: string }>(
+        "/game/time/advance",
+        "minutes" in data ? { chatId: data.chatId, minutes: data.minutes } : data,
+        "minutes" in data && data.keepalive ? { keepalive: true } : undefined,
+      ),
     onSuccess: (res, variables) => {
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
       // Sync time into the game state snapshot so WeatherEffects updates immediately
@@ -969,6 +977,96 @@ export function useUpdateReputation() {
       store.getState().setNpcs(res.npcs as any[]);
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
       qc.invalidateQueries({ queryKey: [...gameKeys.all, "journal", variables.chatId] });
+    },
+  });
+}
+
+// ── The overworld (worldgen W8) ──
+
+/** Where the party is on the overworld, the walk its next turn tells, and the places in ruins. */
+export interface OverworldState {
+  here: string | null;
+  walk: WorldWalk | null;
+  ruined: string[];
+}
+
+/** The world as the party knows it (the Journal's World tab), read again after each turn (`turnKey`), so
+ *  a swipe or branch never shows another turn's world. */
+export function useWorldJournal(chatId: string, turnKey: string | null) {
+  return useQuery({
+    queryKey: [...gameKeys.worldJournal(chatId), turnKey],
+    queryFn: () => api.get<{ journal: WorldJournal | null }>(`/game/${chatId}/world-journal`),
+    select: (data) => data.journal,
+    enabled: !!chatId,
+  });
+}
+
+/** The overworld of a game with a world, read again after each turn (`turnKey`). */
+export function useOverworld(chatId: string, turnKey: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...gameKeys.overworld(chatId), turnKey],
+    queryFn: () => api.get<{ overworld: OverworldState | null }>(`/game/${chatId}/overworld`),
+    select: (data) => data.overworld,
+    enabled: enabled && !!chatId,
+    staleTime: 30_000,
+  });
+}
+
+/** A walk to a settlement: the server reads the route and passes its days on the game's clock. */
+export function useOverworldWalk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; to: string }) =>
+      api.post<{ walk: WorldWalk; route: WorldRoute; formatted: string }>(`/game/${data.chatId}/overworld/walk`, {
+        to: data.to,
+      }),
+    // The party is where it walked at once, so the overworld never shows it back where it set out.
+    onSuccess: (res, variables) => {
+      qc.setQueriesData<{ overworld: OverworldState | null }>(
+        { queryKey: gameKeys.overworld(variables.chatId) },
+        (old) => (old?.overworld ? { overworld: { ...old.overworld, here: res.walk.to, walk: res.walk } } : old),
+      );
+    },
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.overworld(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}
+
+// ── The town (worldgen W8b) ──
+
+/** The town the party is in, where in it the party stands, and the visit its next turn tells. */
+export type TownState = WorldTown & { at: string; visit: WorldTownVisit | null };
+
+export function useTown(chatId: string, turnKey: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...gameKeys.town(chatId), turnKey],
+    queryFn: () => api.get<{ town: TownState | null }>(`/game/${chatId}/town`),
+    select: (data) => data.town,
+    enabled: enabled && !!chatId,
+    staleTime: 30_000,
+  });
+}
+
+/** A walk across town to a building or the square: its minutes go on the game's clock. */
+export function useTownVisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; to: string }) =>
+      api.post<{ visit: WorldTownVisit; at: string; minutes: number; formatted: string }>(
+        `/game/${data.chatId}/town/visit`,
+        { to: data.to },
+      ),
+    // The party is where it walked at once, so the town never shows it back where it set out.
+    onSuccess: (res, variables) => {
+      qc.setQueriesData<{ town: TownState | null }>({ queryKey: gameKeys.town(variables.chatId) }, (old) =>
+        old?.town ? { town: { ...old.town, at: res.at, visit: res.visit } } : old,
+      );
+    },
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.town(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
     },
   });
 }

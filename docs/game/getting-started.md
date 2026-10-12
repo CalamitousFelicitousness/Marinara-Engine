@@ -96,6 +96,8 @@ What the party does to the world stays done. When the party helps or hinders a g
 
 The world also goes on without the party. When the Game Master says time passes (a journey, a night's rest, a long wait), the world takes its own steps, a week at a time, and only in the kinds of change the kit has: fortunes rise and fall, newcomers settle, groups grow close or become rivals, heads step down, and, where the world has them, trouble finds places on hard times and tension between two groups can become a war after a season of building up. Catastrophes never come on their own; only the Game Master can narrate one, as it can any event beyond the party, refused if its kind is off. Nothing is decided where the party is: something about to happen there is left for the scene to play out. News travels: the Game Master hears of a change once the days the roads take have passed, as a rumour from far away, and sees what is brewing nearby, so the party can step in. It may hold a brewing war only when it makes no sense for the world or would wreck the game with no real chance for the party to stop it. The party's deeds count for more as it becomes known: a stranger's help changes little, a famous party's a lot.
 
+A game with a world opens on the **overworld**, the world drawn as a pixel map where you can walk the party from settlement to settlement along the world's ways and enter the town it is in; the scene view is a switch away. See [The overworld](map-time-weather.md#the-overworld).
+
 ### Defaults worth knowing
 
 These are the starting values in the **World**, **Party**, and **Features** steps. You can change any of them.

@@ -205,6 +205,7 @@ import {
   worldAddedPlace,
   type WorldPresent,
   lastGamePlace,
+  type GamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,

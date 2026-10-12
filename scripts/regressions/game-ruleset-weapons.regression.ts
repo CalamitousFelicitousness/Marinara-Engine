@@ -764,9 +764,9 @@ try {
     });
     const heldIssue = /riders fire on held weapons.*capabilityApi 1\.70/;
     const document = variant(emberText, ambush(thrown));
-    assert.match(getCapabilityPackageInstallIssue(manifest(66) as any, document) ?? "", heldIssue);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(67) as any, document), null);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(66) as any, variant(emberText, ambush({}))), null);
+    assert.match(getCapabilityPackageInstallIssue(manifest(69) as any, document) ?? "", heldIssue);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(70) as any, document), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(69) as any, variant(emberText, ambush({}))), null);
     const knacks = document.catalogs.find((catalog: { id: string }) => catalog.id === "knacks");
     const inFile = {
       ...document,
@@ -777,11 +777,11 @@ try {
     const paths = ["ruleset.json", "catalogs/knacks.json"];
     const files = new Map<string, unknown>([["catalogs/knacks.json", { entries: knacks.entries }]]);
     assert.match(
-      getCapabilityPackageInstallIssue(manifest(66, paths) as any, inFile, files) ?? "",
+      getCapabilityPackageInstallIssue(manifest(69, paths) as any, inFile, files) ?? "",
       heldIssue,
       "a catalog file",
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(67, paths) as any, inFile, files), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(70, paths) as any, inFile, files), null);
   }
 
   // ── What an item says ──

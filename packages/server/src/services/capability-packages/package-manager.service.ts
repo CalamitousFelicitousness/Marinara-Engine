@@ -1082,7 +1082,7 @@ function entriesCarryMarketDay(entries: unknown): boolean {
 }
 
 /** The market's 1.69 keys: a purse, a buy-back share, a seller's stock, a rule's limit. */
-function rulesetCarriesMarketDay166(ruleset: { items?: unknown } | undefined): boolean {
+function rulesetCarriesMarketDay169(ruleset: { items?: unknown } | undefined): boolean {
   const market = plainRecord(plainRecord(ruleset?.items)?.market);
   if (!market) return false;
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
@@ -1355,7 +1355,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
-      if (entriesCarryHeldRider(header.entries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
+      if (entriesCarryHeldRider(header.entries) && !declaresApi(70)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
       if (entriesCarryMarket(header.entries)) carriesMarket = true;
       if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
@@ -1394,7 +1394,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
-      if (entriesCarryHeldRider(fileEntries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
+      if (entriesCarryHeldRider(fileEntries) && !declaresApi(70)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
       if (entriesCarryMarket(fileEntries)) carriesMarket = true;
       if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;
@@ -1602,7 +1602,7 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(63) && (carriesLoot || plainRecord(ruleset?.items)?.lootTables !== undefined)) return LOOT_ISSUE;
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
-  if (!declaresApi(66) && (carriesMarketDay || rulesetCarriesMarketDay166(ruleset))) return MARKET_DAY_ISSUE;
+  if (!declaresApi(69) && (carriesMarketDay || rulesetCarriesMarketDay169(ruleset))) return MARKET_DAY_ISSUE;
   return null;
 }
 

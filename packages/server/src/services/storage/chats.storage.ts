@@ -678,6 +678,8 @@ function freshSwipeMessageExtra(value: unknown): Record<string, unknown> {
     "conversationStartForCharacterIds",
     "reactions",
     "personaSnapshot",
+    // An earlier part of a reply split at a scene break stays one (#7481).
+    "continuesAfterSceneBreak",
     ...MESSAGE_MARK_EXTRA_KEYS,
   ]) {
     if (current.commandOnly === true && (key === "hiddenFromAI" || key === "hiddenFromUser")) continue;

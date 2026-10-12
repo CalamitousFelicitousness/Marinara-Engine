@@ -586,6 +586,11 @@ export function resolveCardVariables(
     // them would lose an answer like `"{{user}}'s old friend"`. Any OTHER
     // leftover names a question, which nothing resolves once this map is
     // written, so the prompt would show it raw and the answer is not stored.
+    //
+    // Order matters: the blanking above only rewrites names in THIS list, so a
+    // reference to a sibling question is already substituted or emptied by the
+    // time this runs, and the guard covers what it leaves. A value that blanks
+    // down to nothing fails the `!value` test rather than being stored empty.
     if (!value || unresolvedNonMacroName(value) !== null) continue;
     entries.push([name, value]);
     stored += 1;
@@ -740,8 +745,13 @@ export function validateOnboarding(onboarding: CharacterOnboarding, card?: Onboa
   // `seen` is shared across both lists: the two are answered in one window, so
   // the same name twice would show `{{name}}` on two questions at once.
   const seen = new Set<string>();
-  /** `usedNames` null = the caller gave no card text, so `unused` cannot be judged. */
-  const checkNames = (variables: CharacterOnboardingVariable[], usedNames: Set<string> | null) => {
+  /**
+   * `usedNames` null = the caller gave no card text, so `unused` cannot be judged.
+   * `playerExempt` is the persona list's rule: `player` names the persona, so an
+   * unused one is not a mistake there. As a card variable it is an ordinary chat
+   * name, and an unread one is worth the same warning as any other.
+   */
+  const checkNames = (variables: CharacterOnboardingVariable[], usedNames: Set<string> | null, playerExempt = true) => {
     for (const variable of variables) {
       const { id: variableId, variableName: name } = variable;
       if (!name) issues.push({ code: "emptyName", variableId, name });
@@ -749,17 +759,28 @@ export function validateOnboarding(onboarding: CharacterOnboarding, card?: Onboa
       else if (seen.has(name)) issues.push({ code: "duplicateName", variableId, name });
       else if (name !== ONBOARDING_PLAYER_VARIABLE && isReservedMacroName(name))
         issues.push({ code: "reservedName", variableId, name });
-      else if (name !== ONBOARDING_PLAYER_VARIABLE && usedNames && !usedNames.has(name))
+      else if (!(playerExempt && name === ONBOARDING_PLAYER_VARIABLE) && usedNames && !usedNames.has(name))
         issues.push({ code: "unused", variableId, name });
       if (name) seen.add(name);
     }
   };
   checkNames(onboarding.variables ?? [], used);
   // `player` names the persona, so it is only meaningful for the persona list;
-  // as a card variable it is an ordinary chat-variable name.
+  // as a card variable it is an ordinary chat-variable name — exemption off.
   checkNames(
     onboarding.cardVariables ?? [],
-    card === undefined ? null : readNames(onboardingCardFieldTexts(card).join("\n")),
+    card === undefined
+      ? null
+      : readNames(
+          [
+            ...onboardingCardFieldTexts(card),
+            // A card question reached only from another card question's option is
+            // used, exactly as on the persona side above. Without this it was
+            // flagged unused while the question that asks it was not.
+            ...(onboarding.cardVariables ?? []).flatMap((variable) => variable.options.map((option) => option.value)),
+          ].join("\n"),
+        ),
+    false,
   );
   const cardNames = new Set((onboarding.cardVariables ?? []).map((variable) => variable.variableName));
   // Every name either list defines is known to the persona's own text: a card

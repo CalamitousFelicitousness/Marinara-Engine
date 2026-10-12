@@ -489,6 +489,62 @@ assert.deepEqual(
   "a persona field does not read a card question, so neither card question is used",
 );
 
+// A card question reached ONLY from another card question's option value is used.
+// The persona list already counted option values; the card list did not, so a
+// follow-up question was flagged unused while the question that asks it was not.
+assert.deepEqual(
+  issuesFor(
+    {
+      cardVariables: [
+        { id: "a", variableName: "pick", options: [{ id: "o", label: "One", value: "{{followUp}}" }] },
+        { id: "b", variableName: "followUp" },
+      ],
+    },
+    { description: "Reads {{pick}}." },
+  )
+    .filter((issue) => issue.code === "unused")
+    .map((issue) => issue.name),
+  [],
+  "a card question referenced only by another card question's option is not reported unused",
+);
+// But a card question nothing reaches is still reported, so the fix did not
+// simply silence the warning for the whole card list.
+assert.deepEqual(
+  issuesFor(
+    {
+      cardVariables: [
+        { id: "a", variableName: "pick", options: [{ id: "o", label: "One", value: "{{followUp}}" }] },
+        { id: "b", variableName: "followUp" },
+        { id: "c", variableName: "nothingReadsMe" },
+      ],
+    },
+    { description: "Reads {{pick}}." },
+  )
+    .filter((issue) => issue.code === "unused")
+    .map((issue) => issue.name),
+  ["nothingReadsMe"],
+  "an unreachable card question is still reported unused",
+);
+// `player` is exempt on the persona list because it names the persona. As a card
+// variable it is an ordinary chat name, so an unread one is worth the warning —
+// the two lists must not share that exemption. Tested with a card-only `player`:
+// declaring it on both lists trips the shared `duplicateName` rule first, since
+// the two are answered in one window.
+assert.deepEqual(
+  issuesFor({ cardVariables: [{ id: "c", variableName: "player" }] }, { description: "nothing here" })
+    .filter((issue) => issue.code === "unused")
+    .map((issue) => issue.name),
+  ["player"],
+  "an unread card question named player is reported, unlike the exempt persona one",
+);
+assert.deepEqual(
+  issuesFor({ variables: [{ id: "p", variableName: "player" }] }, { description: "nothing here" }).filter(
+    (issue) => issue.code === "unused",
+  ),
+  [],
+  "the persona list keeps its player exemption, so the card rule did not leak into it",
+);
+
 // ── The deferred greeting limitation is detectable ──
 // A greeting is shown from the client's own macro context, which does not read
 // chat variables, so a card variable there renders literally for now (see PR).

@@ -22,7 +22,7 @@ Turning the switch off hides the onboarding fields but keeps what you wrote.
 
 ### Add questions
 
-Under **Onboarding Questions**, click **Add Question**. Each question works like a preset variable. See [Presets](../prompts/presets.md). A card can have up to 100 questions.
+Under **Persona Questions**, click **Add Question**. Each question works like a preset variable. See [Presets](../prompts/presets.md). A card can have up to 100 questions.
 
 - **Variable Name** is the name you use in the fields, such as `faction`. Pick any name with letters, numbers, and underscores that starts with a letter or underscore. Names are case-sensitive: `Gender` and `gender` are different.
 - **Question (shown to user)** is what the player reads. It can use earlier answers, such as `What does {{player}} look like?`. Here `{{char}}` is the card's name and `{{user}}` the player's name.
@@ -38,7 +38,7 @@ The editor warns you when a name is empty, invalid, used twice, or taken by a bu
 
 ### Character questions
 
-Lower down the same tab there is a second list, **Card Questions**. Its questions work exactly like the ones above, but the answers are saved on the **chat**, not in a persona. Put the name in one of the card's own fields — **Description**, **Personality**, **Backstory**, **Appearance**, or **Scenario**:
+Lower down the same tab there is a second list, **Character Questions**. Its questions work exactly like the ones above, but the answers are saved on the **chat**, not in a persona. Put the name in one of the card's own fields — **Description**, **Personality**, **Backstory**, **Appearance**, or **Scenario**:
 
 ```
 {{char}} treats {{relationshipToUser}} with open warmth.

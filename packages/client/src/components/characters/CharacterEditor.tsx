@@ -8,6 +8,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useId,
   useMemo,
   type ChangeEvent,
   type ReactNode,
@@ -391,6 +392,8 @@ function appendNewTags(existingTags: string[], rawInput: string) {
   return additions.length > 0 ? [...existingTags, ...additions] : existingTags;
 }
 
+const MAX_TAG_SUGGESTIONS = 50;
+
 const CHARACTER_QUOTE_FIELD_KEYS = new Set<string>([
   "description",
   "personality",
@@ -432,14 +435,6 @@ export function CharacterEditor() {
   const characterId = useUIStore((s) => s.characterDetailId);
   const closeDetail = useUIStore((s) => s.closeCharacterDetail);
   const { data: rawCharacter, isLoading } = useCharacter(characterId);
-  const { data: allCharacters = [] } = useAllCharacterCatalog();
-  const existingTagCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const character of allCharacters) {
-      for (const tag of character.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [allCharacters]);
   const updateCharacter = useUpdateCharacter();
   const uploadAvatar = useUploadAvatar();
   const removeAvatar = useRemoveAvatar();
@@ -1400,7 +1395,6 @@ export function CharacterEditor() {
               <MetadataTab
                 characterId={characterId}
                 formData={formData}
-                existingTagCounts={existingTagCounts}
                 characterComment={characterComment}
                 updateCharacterComment={updateCharacterComment}
                 updateField={updateField}
@@ -2532,7 +2526,6 @@ function ConvoTab({
 function MetadataTab({
   characterId,
   formData,
-  existingTagCounts,
   characterComment,
   updateCharacterComment,
   updateField,
@@ -2553,7 +2546,6 @@ function MetadataTab({
 }: {
   characterId: string | null;
   formData: CharacterData;
-  existingTagCounts: Array<[string, number]>;
   characterComment: string;
   updateCharacterComment: (value: string) => void;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
@@ -2576,14 +2568,32 @@ function MetadataTab({
   const { t } = useTranslation();
   const [tagSuggestionsOpen, setTagSuggestionsOpen] = useState(false);
   const [activeTagSuggestionIndex, setActiveTagSuggestionIndex] = useState(-1);
+  // The whole library is only downloaded once the tag field is first focused.
+  const [tagCatalogRequested, setTagCatalogRequested] = useState(false);
+  const { data: allCharacters } = useAllCharacterCatalog(tagCatalogRequested);
+  const tagListboxId = useId();
   const tagSuggestionsContainerRef = useRef<HTMLDivElement>(null);
   const tagSuggestionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const existingTagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const character of allCharacters ?? []) {
+      for (const tag of character.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [allCharacters]);
   const existingTagSet = useMemo(() => new Set(formData.tags.map((tag) => tag.toLowerCase())), [formData.tags]);
   const tagFilter = newTag.split(",").at(-1)?.trim().toLowerCase() ?? "";
-  const tagSuggestions = existingTagCounts.filter(
-    ([tag]) => !existingTagSet.has(tag.toLowerCase()) && tag.toLowerCase().includes(tagFilter),
-  );
+  const tagSuggestions = existingTagCounts
+    .filter(([tag]) => !existingTagSet.has(tag.toLowerCase()) && tag.toLowerCase().includes(tagFilter))
+    .slice(0, MAX_TAG_SUGGESTIONS);
+  const tagSuggestionsShown = tagSuggestionsOpen && tagSuggestions.length > 0;
   const activeSuggestionIndex = activeTagSuggestionIndex < tagSuggestions.length ? activeTagSuggestionIndex : -1;
+  const pickTagSuggestion = (tag: string) => {
+    // Replace only the part being typed, so earlier comma-separated tags in the draft are kept.
+    addTag([...newTag.split(",").slice(0, -1), tag].join(","));
+    setTagSuggestionsOpen(false);
+    setActiveTagSuggestionIndex(-1);
+  };
   useEffect(() => {
     if (!tagSuggestionsOpen || activeSuggestionIndex < 0) return;
     tagSuggestionRefs.current[activeSuggestionIndex]?.scrollIntoView({ block: "nearest" });
@@ -2787,6 +2797,7 @@ function MetadataTab({
             <input
               value={newTag}
               onFocus={() => {
+                setTagCatalogRequested(true);
                 setTagSuggestionsOpen(true);
                 setActiveTagSuggestionIndex(-1);
               }}
@@ -2805,6 +2816,8 @@ function MetadataTab({
                 setTagSuggestionsOpen(true);
               }}
               onKeyDown={(event) => {
+                // Keys pressed while an input method is composing belong to the composition.
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
                 if (event.key === "ArrowDown" && tagSuggestions.length > 0) {
                   event.preventDefault();
                   setTagSuggestionsOpen(true);
@@ -2820,9 +2833,7 @@ function MetadataTab({
                 } else if (event.key === "Enter") {
                   event.preventDefault();
                   if (tagSuggestionsOpen && activeSuggestionIndex >= 0) {
-                    addTag(tagSuggestions[activeSuggestionIndex][0]);
-                    setTagSuggestionsOpen(false);
-                    setActiveTagSuggestionIndex(-1);
+                    pickTagSuggestion(tagSuggestions[activeSuggestionIndex][0]);
                   } else {
                     addTag();
                   }
@@ -2834,18 +2845,21 @@ function MetadataTab({
               }}
               role="combobox"
               aria-autocomplete="list"
-              aria-expanded={tagSuggestionsOpen && tagSuggestions.length > 0}
-              aria-controls="character-editor-tag-suggestions"
+              aria-expanded={tagSuggestionsShown}
+              aria-controls={tagSuggestionsShown ? tagListboxId : undefined}
               aria-activedescendant={
-                activeSuggestionIndex >= 0 ? `character-editor-tag-suggestion-${activeSuggestionIndex}` : undefined
+                tagSuggestionsShown && activeSuggestionIndex >= 0
+                  ? `${tagListboxId}-${activeSuggestionIndex}`
+                  : undefined
               }
               placeholder={localizeUi("ui.characters.metadatatab.addTag")}
               className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)]/40"
             />
-            {tagSuggestionsOpen && tagSuggestions.length > 0 && (
+            {tagSuggestionsShown && (
               <div
-                id="character-editor-tag-suggestions"
+                id={tagListboxId}
                 role="listbox"
+                aria-label={localizeUi("ui.characters.metadatatab.tags")}
                 className="absolute z-30 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] py-1 shadow-lg"
               >
                 {tagSuggestions.map(([tag, count], index) => (
@@ -2854,16 +2868,13 @@ function MetadataTab({
                     ref={(element) => {
                       tagSuggestionRefs.current[index] = element;
                     }}
-                    id={`character-editor-tag-suggestion-${index}`}
+                    id={`${tagListboxId}-${index}`}
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={index === activeSuggestionIndex}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      addTag(tag);
-                      setTagSuggestionsOpen(false);
-                      setActiveTagSuggestionIndex(-1);
-                    }}
+                    onClick={() => pickTagSuggestion(tag)}
                     className={cn(
                       "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
                       index === activeSuggestionIndex

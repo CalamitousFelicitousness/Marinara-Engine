@@ -2271,6 +2271,7 @@
   "game.worldKit.setup.noMoney": "No money or shop",
   "game.worldKit.setup.none": "No setting kit",
   "game.worldKit.setup.noneDescription": "The Game Master works from the genre, setting and tone alone.",
+  "game.worldKit.setup.overworldLocked": "Overworld games, with a setting kit and a generated world, are not ready yet. New games start as Classic games.",
   "game.worldKit.setup.pace": "Pace of change",
   "game.worldKit.setup.paces.quick": "Quick",
   "game.worldKit.setup.paces.slow": "Slow",

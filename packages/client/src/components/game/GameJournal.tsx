@@ -31,6 +31,7 @@ import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { AnimatedText } from "./AnimatedText";
 import { GameMakeWorld } from "./GameMakeWorld";
+import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
 
 import type { GameNpc, WorldFile, WorldJournal } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -211,6 +212,8 @@ export function GameJournal({
   worldKit = null,
 }: GameJournalProps) {
   const [makingWorld, setMakingWorld] = useState(false);
+  // Overworld games locked on this server: the World tab says so and cannot make a world.
+  const overworldEnabled = useOverworldGamesEnabled();
   const { t: localizeUi } = useUiTranslation();
   const [journal, setJournal] = useState<Journal | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("all");
@@ -460,10 +463,16 @@ export function GameJournal({
         {activeTab === "world" && !hasWorld && canMakeWorld && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <p className="max-w-sm text-xs leading-relaxed text-white/60">{localizeUi("ui.game.makeworld.intro")}</p>
+            {!overworldEnabled && (
+              <p role="note" className="max-w-sm text-xs leading-relaxed text-white/60">
+                {localizeUi("game.worldKit.setup.overworldLocked")}
+              </p>
+            )}
             <button
               type="button"
               onClick={() => setMakingWorld(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity"
+              disabled={!overworldEnabled}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Globe2 size={13} />
               {localizeUi("ui.game.makeworld.open")}

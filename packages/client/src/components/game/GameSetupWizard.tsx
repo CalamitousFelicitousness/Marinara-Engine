@@ -95,6 +95,7 @@ import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
+import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
 import {
   GameSetupWorldChooser,
   newWorldDraft,
@@ -584,8 +585,10 @@ export function GameSetupWizard({
   const mapPackWorld = mapPack
     ? (mapPack.worlds.find((world) => world.path === mapPackWorldPath) ?? mapPack.worlds[0] ?? null)
     : null;
-  // An Experience's map pack is always played on the Overworld; Classic has no kit or world at all.
-  const overworldChosen = Boolean(mapPack) || gameStyle === "overworld";
+  // An Experience's map pack is always played on the Overworld; Classic has no kit or world at all. Overworld
+  // games locked on this server (MARINARA_OVERWORLD_GAMES) leave every new game Classic.
+  const overworldEnabled = useOverworldGamesEnabled();
+  const overworldChosen = overworldEnabled && (Boolean(mapPack) || gameStyle === "overworld");
   const effectiveWorldKit: WorldKitInput | null = mapPack ? mapPack.kit : worldKit;
   const checkedWorldKit = isNewGame && overworldChosen && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
@@ -1838,7 +1841,12 @@ export function GameSetupWizard({
                     </div>
 
                     {isNewGame && !mapPack && (
-                      <GameSetupStyleChooser value={gameStyle} onChange={setGameStyle} disabled={isLoading} />
+                      <GameSetupStyleChooser
+                        value={overworldEnabled ? gameStyle : "classic"}
+                        onChange={setGameStyle}
+                        disabled={isLoading}
+                        overworldLocked={!overworldEnabled}
+                      />
                     )}
 
                     {/* Absent when nothing provides an experience, leaving this step exactly as it was. */}

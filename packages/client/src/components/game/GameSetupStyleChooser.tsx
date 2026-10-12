@@ -21,10 +21,13 @@ export function GameSetupStyleChooser({
   value,
   onChange,
   disabled,
+  overworldLocked = false,
 }: {
   value: GameStyle;
   onChange: (style: GameStyle) => void;
   disabled?: boolean;
+  /** Overworld games are locked on this server (MARINARA_OVERWORLD_GAMES): its card is greyed out. */
+  overworldLocked?: boolean;
 }) {
   const { t } = useUiTranslation();
   return (
@@ -36,13 +39,14 @@ export function GameSetupStyleChooser({
       <div className="grid gap-2 sm:grid-cols-2">
         {STYLES.map(({ id, icon: Icon, title, description }) => {
           const selected = value === id;
+          const locked = overworldLocked && id === "overworld";
           return (
             <button
               key={id}
               type="button"
               role="radio"
               aria-checked={selected}
-              disabled={disabled}
+              disabled={disabled || locked}
               onClick={() => onChange(id)}
               className={cn(
                 "flex w-full items-start gap-2.5 rounded-lg p-3 text-left text-xs ring-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60",
@@ -57,7 +61,9 @@ export function GameSetupStyleChooser({
               />
               <span className="min-w-0">
                 <span className="block font-medium text-[var(--foreground)]">{t(title)}</span>
-                <span className="mt-1 block leading-relaxed text-[var(--muted-foreground)]">{t(description)}</span>
+                <span className="mt-1 block leading-relaxed text-[var(--muted-foreground)]">
+                  {t(locked ? "game.worldKit.setup.overworldLocked" : description)}
+                </span>
               </span>
             </button>
           );

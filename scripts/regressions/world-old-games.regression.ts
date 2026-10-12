@@ -119,6 +119,16 @@ try {
     app.inject({ method: "POST", url: `/api/game/${chatId}/world`, payload });
 
   const chatId = await olderGame();
+  // Overworld games locked (MARINARA_OVERWORLD_GAMES off): a legacy game is not given a world.
+  const overworldBefore = process.env.MARINARA_OVERWORLD_GAMES;
+  delete process.env.MARINARA_OVERWORLD_GAMES;
+  try {
+    const locked = await give(chatId, { worldKit: kit, world });
+    assert.equal(locked.statusCode, 403, locked.body);
+    assert.equal(locked.json().code, "overworld_locked");
+  } finally {
+    process.env.MARINARA_OVERWORLD_GAMES = overworldBefore ?? "true";
+  }
   const given = await give(chatId, { worldKit: kit, world });
   assert.equal(given.statusCode, 200, given.body);
   assert.deepEqual(given.json().world.world, made, "the world as this generator makes it");

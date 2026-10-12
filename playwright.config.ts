@@ -63,6 +63,8 @@ export default defineConfig({
             LOG_DISABLE_REQUEST_LOGGING: "true",
             LOG_LEVEL: "silent",
             MARINARA_E2E_DISABLE_RATE_LIMIT: "true",
+            // The world, town and map specs make Overworld games, which are locked by default.
+            MARINARA_OVERWORLD_GAMES: "true",
             PLAYWRIGHT_CLIENT_PORT: String(clientPort),
             PLAYWRIGHT_MOBILE_CLIENT_PORT: String(mobileClientPort),
             PLAYWRIGHT_MOBILE_SERVER_PORT: String(mobileServerPort),

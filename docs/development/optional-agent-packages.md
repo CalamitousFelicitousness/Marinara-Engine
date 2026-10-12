@@ -1111,13 +1111,15 @@ older hosts cannot interpret this setup declaration.
 
 In Roleplay, a message can carry whispers that are not part of its `content`. Every agent the Engine
 runs reads them, and a package that reads the chat itself can now read the same text. Each record
-from `persistence.listMessages(chatId)` gets `agentContent`: the message with each whisper at its
-place, marked `[Private whisper to <name>: …]`. A message that is only a whisper reads as its
-whispers. A message without whispers reads as its `content`.
+from `persistence.listMessages(chatId)` gets `agentContent`: the message as Engine agents read it.
+Each whisper sits at its place, marked `[Private whisper to <name>: …]`, and a message that is only
+a whisper reads as its whispers. A document a character hands over, such as a letter, follows the
+message. The player's private notes are left out.
 
 `agentContent` is there only in Roleplay chats. It is missing in other modes and in a hosted
-multiplayer room, where everyone sees what agents write, so a whisper must stay with its recipient.
-`content` never changes: it is still the public text.
+multiplayer room, where everyone sees what agents write. `content` never changes: it is still the
+public text. `extra` doesn't change either: it is the message's saved data, with every whisper in it,
+in every mode. Never show text built from it to players or characters a whisper was not for.
 
 ```ts
 const messages = await api.runtime.persistence.listMessages(chatId);

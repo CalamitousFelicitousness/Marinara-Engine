@@ -382,6 +382,41 @@ try {
   const conversationView = await persistence.listMessages(conversation.id);
   assert.equal(conversationView.length, 1);
   assert(!("agentContent" in conversationView[0]!), JSON.stringify(conversationView[0]));
+  // It is the text the generate route gives agents: a leftover private tag stays out and a letter stays in.
+  const packageChat = await chats.create({
+    name: "Package agent view",
+    mode: "roleplay",
+    characterIds: [alice.id, bob.id],
+    personaId: persona.id,
+    promptPresetId: null,
+  });
+  assert(packageChat);
+  await persistence.createMessageWithSwipe({
+    id: "package-noted-turn",
+    swipeId: "package-noted-turn-swipe",
+    chatId: packageChat.id,
+    role: "user",
+    characterId: null,
+    content: "I nod. [notes: NOTE_SECRET] Then I leave.",
+    extra: {},
+    createdAt: new Date().toISOString(),
+  });
+  const documentActivity = {
+    command: { type: "document", documentType: "letter", title: "Letter", content: "DOC_BODY" },
+    raw: '[document: title="Letter"]',
+  };
+  await chats.createMessage({
+    chatId: packageChat.id,
+    role: "assistant",
+    characterId: alice.id,
+    content: "Plain.",
+    extra: { roleplayCommandActivity: [whisper("DOC_WHISPER", {}), documentActivity] },
+  });
+  const [notedTurn, letter] = await persistence.listMessages(packageChat.id);
+  assert(notedTurn!.content.includes("NOTE_SECRET"), "content stays as saved");
+  assert(inOrder(notedTurn!.agentContent!, "I nod.", "Then I leave."), notedTurn!.agentContent);
+  assert(!notedTurn!.agentContent!.includes("NOTE_SECRET"), notedTurn!.agentContent);
+  assert.equal(letter!.agentContent, "Plain. [Private whisper to Bob: DOC_WHISPER]\n\nDocument: Letter\nDOC_BODY");
 
   // A reply that is only a whisper still reaches post-generation agents; a rewrite agent has nothing to edit.
   await chats.patchMetadata(chat.id, { activeAgentIds: [pre.type, post.type, rewrite.type] });

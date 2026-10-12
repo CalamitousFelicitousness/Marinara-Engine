@@ -35,8 +35,13 @@ import { createCharactersStorage } from "../storage/characters.storage.js";
 import { withNewGlobalGalleryCapabilityReferences } from "../image/global-gallery-capability-references.js";
 import { resolveChatUserIdentity } from "../chat-user-identity.js";
 import { parseExtra } from "../generation/prompt-attachments.js";
-import { roleplayAgentsSeeWhispers, roleplayAgentText } from "../generation/roleplay-commands.js";
+import {
+  parseRoleplayUserCommands,
+  roleplayAgentsSeeWhispers,
+  roleplayAgentText,
+} from "../generation/roleplay-commands.js";
 import { resolveCharacterNameMap } from "../../routes/generate/generate-route-utils.js";
+import { conversationPromptHistoryContent } from "../../routes/generate/conversation-prompt-formatting.js";
 
 function parseStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
@@ -111,7 +116,16 @@ function mapChat(row: typeof chats.$inferSelect): CapabilityChatRecord {
   };
 }
 
-/** `names` gives each message its agent view, as roleplayAgentText; null leaves `agentContent` out. */
+/**
+ * A Roleplay message as the generate route's agents read it: a user turn without leftover private tags, a reply with
+ * its documents, and each whisper at its place (roleplayAgentText).
+ */
+function roleplayAgentContent(row: typeof messages.$inferSelect, names: ReadonlyMap<string, string>): string {
+  const source = row.role === "user" ? { ...row, content: parseRoleplayUserCommands(row.content).content } : row;
+  return roleplayAgentText(conversationPromptHistoryContent(source, "roleplay"), source, names);
+}
+
+/** `names` gives each message its agent view (roleplayAgentContent); null leaves `agentContent` out. */
 function mapMessage(
   row: typeof messages.$inferSelect,
   names: ReadonlyMap<string, string> | null = null,
@@ -125,7 +139,7 @@ function mapMessage(
     activeSwipeIndex: row.activeSwipeIndex,
     extra: row.extra,
     createdAt: row.createdAt,
-    ...(names ? { agentContent: roleplayAgentText(row.content, row, names) } : {}),
+    ...(names ? { agentContent: roleplayAgentContent(row, names) } : {}),
   };
 }
 

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Search and Professor Mari windows can now be resized on big screens, with height and width sliders in Search settings. Both keep their current size until you move a slider, and phones are unchanged.
 - Overworld games, with a setting kit and a generated world, are off unless the server sets `MARINARA_OVERWORLD_GAMES=true`; until then new games start as Classic games and the wizard says why the world choices are greyed out.
 - A Game Mode world now goes on without the party: as time passes it takes its own steps (fortunes, newcomers, rivalries, and where allowed, trouble and wars), news travels to the party, and the party's deeds count for more as it becomes known.
 - In a Game Mode world, what the party does now stays done: the Game Master records the party's dealings with groups and places and the places the story brings in, and a swipe or regeneration takes a change back with its reply.

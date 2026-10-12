@@ -51,6 +51,16 @@ export const SPRITE_RENAME_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/**
+ * Tile packs: the overworld reads the list, the selection and one built-in pack per family from disk;
+ * saving, importing and removing write the store. A person browsing or editing packs stays far below
+ * this; a scripted loop does not.
+ */
+export const GAME_TILE_PACKS_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const ADMIN_RESTART_RATE_LIMIT = {
   max: 5,
   timeWindow: 60_000,
@@ -153,6 +163,14 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
       key: "greeting-image-bake",
       limit: GREETING_IMAGE_BAKE_RATE_LIMIT.max,
       windowMs: GREETING_IMAGE_BAKE_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
+    pattern: /^\/api\/game-tile-packs(?:\/|$)/,
+    rule: {
+      key: "game-tile-packs",
+      limit: GAME_TILE_PACKS_RATE_LIMIT.max,
+      windowMs: GAME_TILE_PACKS_RATE_LIMIT.timeWindow,
     },
   },
   {

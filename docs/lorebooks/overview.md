@@ -103,6 +103,19 @@ Below these settings is a **Semantic Search (Embeddings)** panel. It builds the 
 
 The finer points of budgets, the **Entry Limit**, and recursion have their own guide too. Start with the defaults above. They work well for most lorebooks, and you can adjust them later.
 
+## Reading entries while you chat
+
+Lorebooks can also hold notes for you, such as a class schedule or a map of the town. The **Lorebook Reader** lets you read them without leaving a Roleplay or Conversation chat.
+
+The Reader shows up only when the chat uses at least one lorebook. On a computer, click its button near the top right of the chat (a book with a bookmark). On a phone, open the **Chat tools** three-dot menu and tap **Lorebook Reader**.
+
+- The Reader lists the entries of every lorebook the chat uses: the chat's own, its characters' and persona's, and global ones. Entries are grouped by lorebook.
+- Turned-off entries stay in the list, dimmed and marked **OFF**. That is handy for notes you keep off on purpose so the AI never sees them. A whole lorebook that is turned off, or turned off for this chat, is left out of the Reader.
+- Tap an entry to read it. Its text is formatted the same way as the editor's preview, and names such as `{{user}}` and `{{char}}` show as the chat's real names. Nothing in the entry changes. Tap **Back** to return to the same spot in the list.
+- Use **Search entries** to find text in entry names and content.
+- Use the pin button on an entry to keep it at the top under **Pinned**. Pins belong to the chat, so they follow it to your other devices and into backups.
+- Use **Open in editor** to change an entry. The Reader itself is read-only.
+
 ## Related guides
 
 - [Lorebook Entries: Keys, Position, and Timing](entries.md)

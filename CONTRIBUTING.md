@@ -244,21 +244,21 @@ The overlay is not a substitute for this guide. When instructions conflict, foll
 
 - Target the `staging` branch. The GitHub UI defaults to `main`; change the base before submitting. See [Branches](#branches).
 - Wait for every required check and the CodeRabbit review to complete. Outside and first-time contributors must also obtain an approving review from `SpicyMarinara`.
-- CodeRabbit can fix common review findings on your PR when you comment `@coderabbitai run changelog` (adds the `CHANGELOG.md` entry), `@coderabbitai run localize` (moves new UI text into `en.json`), `@coderabbitai run theme colours` (swaps hard-coded colours for theme tokens) or `@coderabbitai resolve merge conflict`. Check what it pushes before you ask for review.
+- CodeRabbit can fix common review findings on your PR when you comment `@coderabbitai run localize` (moves new UI text into `en.json`), `@coderabbitai run theme colours` (swaps hard-coded colours for theme tokens) or `@coderabbitai resolve merge conflict`. Check what it pushes before you ask for review.
 - Link the issue or feature request your PR addresses. If there isn't one yet, open one first (see [Before You Open a Pull Request](#before-you-open-a-pull-request)).
 - Keep PRs focused. Separate unrelated refactors from user-facing fixes or documentation work.
 - Explain the why clearly in the PR description. Reviewers should understand the user problem, regression, or tradeoff being addressed, not just the implementation summary.
 - Update documentation in the same PR when behavior changes affect installation, updates, release flow, launchers, or platform-specific behavior.
 - Include screenshots or short recordings for UI changes.
 - Call out manual validation clearly, especially for launcher, installer, or Android wrapper changes.
-- Add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading for every bug fix, behavior change, or new feature. Purely mechanical changes with no product or contributor-workflow impact may omit one.
-- Write that entry last, from the final diff, not from the issue or plan. If the change makes something stop working that worked before, say so in plain user words in the entry and at the top of "What changed" in the PR description.
+- Don't add or edit `CHANGELOG.md` entries. When every PR added one under `[Unreleased]`, each merge made the other open PRs conflict on that file, and resolving the conflict reran all their checks. Release notes are now compiled from the merged PRs before each main release (see [Standard release flow](#standard-release-flow)).
+- Describe every user-visible fix, behavior change or feature under "What changed" in the PR description, written last from the final diff, not from the issue or plan; the release notes are written from it. If the change makes something stop working that worked before, say so in plain user words at the top of "What changed".
 - Avoid version drift. If your PR intentionally bumps a release, update every version-bearing file in one pass.
 
 ## Documentation Rules
 
 - `README.md` is the user-facing overview and quickstart, not the full release log.
-- `CHANGELOG.md` is the durable release-notes source and should be reusable for GitHub Releases.
+- `CHANGELOG.md` is the durable release-notes source and should be reusable for GitHub Releases. Only release PRs edit it.
 - `android/README.md` is scoped to the Android wrapper around the Termux-served app.
 - `CONTRIBUTING.md` is the canonical contributor and maintainer workflow document.
 - `docs/CONFIGURATION.md` is the environment variable and `.env` reference.
@@ -351,7 +351,7 @@ from stable Engine users. Leave other staging-only packages at their existing re
 1. Bump the canonical version in root `package.json`.
 2. Run `pnpm version:sync -- --android-version-code <next-code>` to sync all derived version fields.
 3. Run `pnpm credits:check`; if it reports stale contributor credits, run `pnpm credits:sync` and include the Credits modal update in the release PR.
-4. Update `CHANGELOG.md`; when publishing a stable release, update README's current-stable-release link to the matching tag.
+4. Compile `CHANGELOG.md` from the PRs merged to `staging` since the last release. List them with `git fetch origin --tags && git log --first-parent --format='%h %s%n%b' "$(git describe --tags --abbrev=0 --match 'v*' origin/main)"..origin/staging`: merged PRs appear as `Merge pull request #N …` with the PR title on the next line, squashed ones as `… (#N)`. Read each with `gh pr view N`, then write one concise, user-focused entry per user-visible change under the new version heading, from the PR's "What changed". Group related PRs, skip purely internal ones, and put anything that stops working first. Move any entries still under `[Unreleased]` into the same heading. When publishing a stable release, update README's current-stable-release link to the matching tag.
 5. Open the promotion PR from `staging` to `main` and wait for its full browser matrix and required checks to pass before merging. If the candidate changes, validate the updated candidate. For a release without a promotion PR, manually run the full matrix against its exact candidate commit before tagging.
 6. Create and push the tag `vX.Y.Z` from the `main` commit that contains that exact version bump.
 7. Let the release workflows publish or update the GitHub Release, named source ZIP, Windows installer, Android WebView shell APK, and GHCR container images (`X.Y.Z`, `X.Y`, `X`, `latest`, plus `X.Y.Z-lite` / `lite`) from the matching changelog entry.

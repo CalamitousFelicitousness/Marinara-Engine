@@ -31,7 +31,12 @@ import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useCombatRound } from "../../hooks/use-game";
 import { useTTSConfig } from "../../hooks/use-tts";
 import { AnimatedText } from "./AnimatedText";
-import { combatInterruptFields } from "@marinara-engine/shared";
+import {
+  combatInterruptFields,
+  WORLD_DEFAULT_ELEMENTS,
+  worldElementId,
+  type WorldElementSet,
+} from "@marinara-engine/shared";
 import type {
   Combatant,
   CombatAttackResult,
@@ -435,6 +440,8 @@ function CombatantSpriteVisual({
 }
 
 interface GameCombatUIProps {
+  /** The game's elements (worldgen W6c), whose own colours mark an aura. */
+  elements?: WorldElementSet;
   directed?: {
     actorId?: string;
     canAct: boolean;
@@ -694,6 +701,7 @@ function combatItemTargetsEnemies(effect?: CombatItemEffect): boolean {
 // ── Component ──
 
 export function GameCombatUI({
+  elements,
   directed,
   chatId,
   party: initialParty,
@@ -1916,6 +1924,7 @@ export function GameCombatUI({
               <div className="flex w-max min-w-full flex-nowrap items-start justify-center gap-[clamp(0.25rem,1.5vw,0.5rem)]">
                 {enemies.map((enemy) => (
                   <CombatantCard
+                    elements={elements}
                     key={`stage-${enemy.id}`}
                     combatant={enemy}
                     side="enemy"
@@ -1934,6 +1943,7 @@ export function GameCombatUI({
               <div className="flex w-max min-w-full flex-nowrap items-end justify-center gap-[clamp(0.25rem,1.5vw,0.5rem)]">
                 {party.map((member, i) => (
                   <CombatantCard
+                    elements={elements}
                     key={`stage-${member.id}`}
                     combatant={member}
                     side="player"
@@ -2453,6 +2463,7 @@ export function GameCombatUI({
                 <div className="grid grid-cols-2 gap-2">
                   {party.map((member, i) => (
                     <CombatantCard
+                      elements={elements}
                       key={member.id}
                       combatant={member}
                       side="player"
@@ -2552,6 +2563,7 @@ export function GameCombatUI({
         <div className="relative flex min-h-0 flex-nowrap items-start justify-center gap-[clamp(0.25rem,1vw,1rem)] overflow-visible px-3 pt-[clamp(3.25rem,13svh,5.5rem)] sm:px-6">
           {enemies.map((enemy) => (
             <CombatantCard
+              elements={elements}
               key={enemy.id}
               combatant={enemy}
               side="enemy"
@@ -2570,6 +2582,7 @@ export function GameCombatUI({
         <div className="relative flex min-h-0 shrink-0 flex-nowrap items-end justify-center gap-[clamp(0.25rem,1vw,1rem)] overflow-visible px-3 pb-[clamp(0.25rem,2svh,1rem)] sm:px-6">
           {party.map((member, i) => (
             <CombatantCard
+              elements={elements}
               key={member.id}
               combatant={member}
               side="player"
@@ -3188,6 +3201,7 @@ function CombatantCard({
   sideCount = 1,
   onDismissDialogue,
   compact = false,
+  elements,
 }: {
   combatant: Combatant;
   side: "player" | "enemy";
@@ -3199,8 +3213,15 @@ function CombatantCard({
   sideCount?: number;
   onDismissDialogue?: (line: PartyDialogueLine) => void;
   compact?: boolean;
+  elements?: WorldElementSet;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  // An aura's colour is its element's own in the game's set, else the older colours by its word.
+  const auraSet = elements ?? WORLD_DEFAULT_ELEMENTS;
+  const auraColor = combatant.elementAura
+    ? (auraSet.elements.find((element) => element.id === worldElementId(auraSet, combatant.elementAura!.element))
+        ?.color ?? ELEMENT_AURA_COLORS[combatant.elementAura.element])
+    : undefined;
   const hpPercent = combatant.maxHp > 0 ? (combatant.hp / combatant.maxHp) * 100 : 0;
   const mpPercent = combatant.maxMp && combatant.maxMp > 0 ? ((combatant.mp ?? 0) / combatant.maxMp) * 100 : null;
   const isKo = combatant.hp <= 0;
@@ -3445,8 +3466,8 @@ function CombatantCard({
           <div
             className="rounded-full px-1.5 py-0 text-[0.5rem] font-bold uppercase tracking-wider"
             style={{
-              backgroundColor: `${ELEMENT_AURA_COLORS[combatant.elementAura.element] ?? "#888"}20`,
-              color: ELEMENT_AURA_COLORS[combatant.elementAura.element] ?? "#aaa",
+              backgroundColor: `${auraColor ?? "#888"}20`,
+              color: auraColor ?? "#aaa",
             }}
             title={localizeUi("ui.game.combatantcard.value1AuraGaugeValue2", {
               value1: combatant.elementAura.element,

@@ -21,6 +21,9 @@
 //   • SDK docs: https://docs.anthropic.com/en/docs/claude-code/sdk
 //
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeSonnet55Model,
@@ -49,6 +52,26 @@ import { claudeCodeExecutableOption } from "./claude-subscription/installed-cli.
 const CACHE_WRITE_5M_COST_MULTIPLIER = 1.25;
 const CACHE_WRITE_1H_COST_MULTIPLIER = 2;
 const CACHE_READ_COST_MULTIPLIER = 0.1;
+
+/** Claude Code mod that removes the coding-agent context the CLI adds to every
+ * chat. Plain files under `src/assets`, which the build copies to `dist/assets`. */
+const CHAT_CONTEXT_PLUGIN_DIR = fileURLToPath(new URL("../../../assets/claude-code-plugin", import.meta.url));
+const CHAT_CONTEXT_PLUGIN_NAME = "marinara-chat-context";
+const CHAT_CONTEXT_PLUGIN_FILES = [".claude-plugin/plugin.json", "hooks/hooks.json", "hooks/register.mjs"];
+
+/**
+ * Refuse to start a request without the chat-context mod. This runs before the
+ * SDK: the CLI sends its request without waiting for Marinara to read `init`,
+ * so a load error reported there arrives too late to stop it.
+ */
+export function assertChatContextPlugin(dir = CHAT_CONTEXT_PLUGIN_DIR): void {
+  const missing = CHAT_CONTEXT_PLUGIN_FILES.filter((file) => !existsSync(join(dir, file)));
+  if (missing.length > 0) {
+    throw new Error(
+      `Claude (Subscription) needs Marinara's chat-context plugin, which keeps your account email and this computer's details out of the prompt. Missing from ${dir}: ${missing.join(", ")}. Reinstall or update Marinara, then try again.`,
+    );
+  }
+}
 
 /** Model-generation SDK options that Custom Parameters may tune. Everything
  * else owns process, tool, filesystem, environment, or session behavior and
@@ -347,6 +370,7 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
   }
 
   async *chat(messages: ChatMessage[], options: ChatOptions): AsyncGenerator<string, LLMUsage | void, unknown> {
+    assertChatContextPlugin();
     const suppressModelParameters = this.shouldSuppressModelParameters(options);
     const configuredMaxTokens = this.applyMaxTokensCap(options.maxTokens ?? 4096);
     const contextFit = this.fitMessagesToContext(messages, { ...options, maxTokens: configuredMaxTokens });
@@ -398,11 +422,23 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
     //     permission resolution framing.
     //   • `maxTurns: 1` — single assistant turn per call; we drive any
     //     multi-turn agent loop ourselves at the route layer.
+    //   • `title` — a preset session title. Without it the CLI spends a
+    //     second, hidden model request (`generate_session_title`) naming
+    //     every new session: the first message of a chat, every one-off
+    //     `[system, user]` call and every fold-path request. Resumed
+    //     sessions never trigger it.
+    //   • `plugins` — loads the `marinara-chat-context` mod
+    //     (`src/assets/claude-code-plugin`). It drops every message the CLI
+    //     puts between the system prompt and the chat: the account email,
+    //     the `# Environment` block, the model note, the date and the like.
+    //     `chat()` refuses to start when the plugin's files are missing, and
+    //     the `init` guard below warns when it reports a load error. Where
+    //     mods can't run (disabled by settings or policy), Claude Code
+    //     reports nothing and that context comes back.
     //
-    // Wire-level artifacts the SDK still injects (`<system-reminder>`
-    // userEmail/currentDate, metadata account/device UUIDs, the SDK
-    // preamble system block) need a loopback passthrough to strip; that's
-    // tracked as future work.
+    // What stays: the billing-header and SDK-identity system blocks the CLI
+    // prepends, and the metadata account/device UUIDs. No SDK option or mod
+    // event controls them.
 
     const sdkOptions: Parameters<SdkModule["query"]>[0]["options"] = {
       abortController,
@@ -414,6 +450,8 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       settingSources: [],
+      title: "Title",
+      plugins: [{ type: "local", path: CHAT_CONTEXT_PLUGIN_DIR }],
       // Always pass `settings.fastMode` explicitly so the SDK can't fall back
       // on a persisted CLI value that would silently downgrade the model. The
       // value comes from the connection-level toggle — default `false` so
@@ -552,6 +590,7 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
               tools: message.tools,
               mcpServers,
               skills: message.skills,
+              plugins: message.plugins?.map((p) => p.name),
               slashCommandCount: message.slash_commands.length,
               claudeCodeVersion: message.claude_code_version,
               apiKeySource: message.apiKeySource,
@@ -565,6 +604,20 @@ export class ClaudeSubscriptionProvider extends BaseLLMProvider {
                 mcpTools,
               },
               "[claude-subscription] SDK exposed MCP servers/tools to the model despite zero-tool config — likely account-level claude.ai connectors",
+            );
+          }
+          // Only our mod's errors: a built-in Claude Code plugin's failure
+          // doesn't bring the context back. This warns and doesn't throw,
+          // because by now the CLI may already have sent the request.
+          const pluginErrors = message.plugin_errors?.filter(
+            (error) =>
+              error.plugin.startsWith(`${CHAT_CONTEXT_PLUGIN_NAME}@`) ||
+              (error.path !== undefined && resolve(error.path) === CHAT_CONTEXT_PLUGIN_DIR),
+          );
+          if (pluginErrors?.length) {
+            logger.warn(
+              { pluginErrors },
+              "[claude-subscription] chat-context mod failed to load; the CLI's email, date and environment context reach the model",
             );
           }
         } else if (message.type === "assistant" && !(options.stream ?? true)) {

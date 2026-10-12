@@ -445,6 +445,8 @@ try {
   {
     const noTables = (doc: Record<string, any>) => {
       delete doc.items.lootTables;
+      // And the smith's stock, which is rolled from one of them.
+      for (const seller of doc.items.market?.sellers ?? []) delete seller.stock;
       for (const entry of catalogOf(doc, "night").entries) delete entry.creature.loot;
     };
     const plainDoc = variant(gravewatchText, noTables);
@@ -644,6 +646,7 @@ try {
     const plain = parsedOrThrow(
       variant(gravewatchText, (doc) => {
         delete doc.items.lootTables;
+        for (const seller of doc.items.market?.sellers ?? []) delete seller.stock;
         for (const entry of catalogOf(doc, "night").entries) delete entry.creature.loot;
       }),
       "",

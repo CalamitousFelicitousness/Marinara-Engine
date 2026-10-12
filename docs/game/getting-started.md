@@ -31,7 +31,7 @@ When you create a Game Mode chat, a **setup wizard** opens. It has seven steps. 
 The seven steps are:
 
 1. **Connection.** Set the game name, pick the GM connection, and optionally set a scene-effects connection. Scene effects default to **Local Model (Gemma)**.
-2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. Choose **Classic** or **Tactical** under **Combat Preference**. Tactical games also offer optional battlefield seed, size and terrain guidance. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules).
+2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. The ideas offered under the setting, and later under the goals, come from different kinds of setting, a new mix each time the wizard opens. Choose **Classic** or **Tactical** under **Combat Preference**. Tactical games also offer optional battlefield seed, size and terrain guidance. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules). Below that is an optional **Setting kit**, and with one chosen, **Make a world**. See [Choosing a setting kit](#choosing-a-setting-kit) and [Making a world](#making-a-world).
 3. **Party.** Pick your persona (the character you play), the **Game Master Mode**, and any party members.
 4. **Goals.** Tell the GM what you want from the adventure.
 5. **Lorebooks.** Attach any lorebooks whose facts the GM should treat as canon. A lorebook is a set of background world facts. See [Lorebooks](../lorebooks/overview.md).
@@ -61,13 +61,50 @@ After you pick a ruleset, the **Party** step lists your persona and party member
 
 A shared setup file remembers its ruleset. If you import one and do not have that ruleset, or have an older version of it, the wizard tells you which ruleset it was and the game uses Marinara's own rules unless you install it and pick it.
 
+### Choosing a setting kit
+
+A **Setting kit** gives the Game Master the words your kind of world is written in: what its places are called and how big a settlement can be, its kinds of group, what a place may be known for, how people travel, what a year and a day are called, how its peoples name themselves, what a won fight can drop, its money and the everyday things it sells, its elements, the places its fights happen in, and which family of art, music and sounds it uses (see [Game Assets](game-assets.md#a-settings-own-art-and-music)). It also says which kinds of change the world has, such as rivalries, crime, wars or disasters, and how fast it changes on its own. A kind that is off is never brought in as a background event, and a scene does not escalate into it, so a quarrel can stay a quarrel.
+
+It is off by default (**No setting kit**), and only offered for a new game. There are eight to start from: high fantasy, wuxia and xianxia, modern day, modern supernatural, the 1920s, cyberpunk, space opera and post-apocalyptic. Modern day is gentle by default, with no crime, conflict or catastrophe, at a slow pace, for slice of life.
+
+Picking a kit before you have chosen a genre sets the genre that fits it, such as **Cyberpunk** for cyberpunk or **Wuxia** for wuxia and xianxia, and the setting and goal ideas then start with the kit's own. A genre you chose yourself stays as it is.
+
+After you pick one, **Write it for my setting** asks your Game Master connection to rewrite it for the genre, setting and tone you chose. If what the model writes does not hold together, it is asked once more with the reasons, and then the wizard tells you what was wrong and keeps the kit you had. **Change its words** opens every word of the kit for editing. A list is typed on one line, separated by commas. A kit with a problem, such as an empty name or no settlements, says what is wrong, and the game cannot start until it is fixed.
+
+The game keeps the kit it was created with. The Game Master reads it every turn, and world generation uses its words. A shared setup file carries its kit too.
+
+### Making a world
+
+With a setting kit chosen, **Make a world** lays out a whole world in the kit's words before the game starts: its regions, settlements of every size on the kit's ladder, what each place is known for, and the ways between them (roads, rivers, sea lanes, jump lanes) with how many days each trip takes. It is off by default, and only offered for a new game.
+
+A world is made from a **World seed**. The same seed, kit and brief always make the same world, so **Roll** gives you another and typing a number back brings one back. The preview under it is the world the game will play: a small map of the ground and its settlements, where the party starts, and a list of every settlement by region.
+
+- **Start from this lore** reads the lorebooks you tick for the places they state and the dated events they record, each kept exactly as the lore says, with the entries it came from. **Build around the lore** fills the world in around them; **Only the lore's places** makes nothing beside them.
+- **Write the world's brief** asks your Game Master connection for the rest: the present day as the game begins, the major places, the groups the present day turns on (what each wants, and who its allies and rivals are), and names for the places and people the world draws, in each of the kit's peoples' own sound and order. The lore's places are kept whatever the model writes, and anything that does not fit the kit is left out and counted, as are the few names models reach for again and again. **Change the brief** opens its words for editing, including each people's given and family names.
+
+Without a brief, the world is the kit and the lore's places alone, and the places it draws are numbered until a brief gives them names.
+
+A world also has a past. Before the game begins, the world's own engine runs it forward year by year from its founding: every settlement is founded and grows to its size now, the brief's groups are founded at their seats, take and lose leaders, and fall in and out with each other, and, where the world has them, bandits, wars and famines leave their marks, some places lost to them. A severe change only comes after it has been brewing for a while (tension before a war, a dry spell before a famine), and it only uses the kinds of change the kit allows: a gentle world's past is gentle too. Dated events your lore states, or the brief names, happen when and where they say. The same seed and brief always give the same past.
+
+The Game Master is told the most notable events of the past, who keeps the place the party is in and who leads them, and that place's own past. For any other place or group it can ask, and gets the answer on its next turn.
+
+Every settlement has its people, drawn by the seed when the party gets there: more in bigger places, each with a name from their own culture's list, a job suited to what the place is known for, a temperament, what they care about, how they speak and how they look, and some who came from elsewhere. The Game Master is shown a few people of the current place the party has not met, and brings in one of them when someone new enters the scene. Someone it names in full joins the game's tracked characters with what they do and how they look, so two people who share a name are told apart. Without a brief's name lists, people go by their job.
+
+In play, the Game Master always knows where the party is in the world and where it can go from there, and how long each way takes. It says where the party goes with a place tag; a place the world lists takes the world's own size, and on a ruleset with markets, the matching place on the market's ladder, so a world's capital is the market's biggest place. A place the world does not list, such as a farmhouse or a camp, keeps the name the Game Master gives it. The world's layout and past are fixed once the game starts, and a shared setup file carries them.
+
+What the party does to the world stays done. When the party helps or hinders a group, makes two groups friends or enemies, sides with a group or betrays it, improves or damages a place, takes a place for a group, destroys a group, puts someone at a group's head, or brings a place to ruin, the Game Master records it in its reply, as it does a place or group the story brings in. Each is checked against the world: a change of a kind the kit has off, such as a war in a cozy modern-day world, or one naming a place or group the world does not have, is refused. From then on the Game Master is told the world as the story left it: how the place is doing, who keeps it and who leads them, what the party did there, the party's standing with each group it has dealt with, and what has changed since play began. A place the story added is a place the party can go. A change belongs to the reply that made it, so a swipe, a regeneration or a deleted message takes it back with that reply.
+
+The world also goes on without the party. When the Game Master says time passes (a journey, a night's rest, a long wait), the world takes its own steps, a week at a time, and only in the kinds of change the kit has: fortunes rise and fall, newcomers settle, groups grow close or become rivals, heads step down, and, where the world has them, trouble finds places on hard times and tension between two groups can become a war after a season of building up. Catastrophes never come on their own; only the Game Master can narrate one, as it can any event beyond the party, refused if its kind is off. Nothing is decided where the party is: something about to happen there is left for the scene to play out. News travels: the Game Master hears of a change once the days the roads take have passed, as a rumour from far away, and sees what is brewing nearby, so the party can step in. It may hold a brewing war only when it makes no sense for the world or would wreck the game with no real chance for the party to stop it. The party's deeds count for more as it becomes known: a stranger's help changes little, a famous party's a lot.
+
+A game with a world opens on the **overworld**, the world drawn as a pixel map where you can walk the party from settlement to settlement along the world's ways and enter the town it is in; the scene view is a switch away. See [The overworld](map-time-weather.md#the-overworld).
+
 ### Defaults worth knowing
 
 These are the starting values in the **World**, **Party**, and **Features** steps. You can change any of them.
 
 | Setting            | Default       | Notes                                                                                                                                      |
 | ------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Genre              | Fantasy       | Multi-select, plus your own custom entries                                                                                                 |
+| Genre              | Fantasy       | Multi-select, plus your own custom entries; a setting kit picked first sets its own                                                        |
 | Tone               | Heroic        | Multi-select                                                                                                                               |
 | Difficulty         | Normal        | Casual, Normal, Hard, or Brutal; higher settings make combat more punishing                                                                |
 | Content Rating     | SFW           | SFW or NSFW; NSFW only permits adult content, it does not force it                                                                         |

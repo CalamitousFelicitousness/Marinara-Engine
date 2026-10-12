@@ -4131,6 +4131,29 @@ assert.ok(!("mariDetailId" in mariSession));
 }
 
 {
+  // Reopening her window: a hidden window has no height and its scroll resets, so the first layout after she
+  // is shown pins a reader who was following to the newest line.
+  let grow = () => {};
+  const realResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(callback: () => void) {
+      grow = callback;
+    }
+    observe() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  const scroller = { clientHeight: 0, scrollHeight: 769, scrollTop: 0 } as unknown as HTMLElement;
+  const stop = followTranscriptGrowth(scroller, {} as HTMLElement, () => true);
+  grow();
+  assert.equal(scroller.scrollTop, 0, "a hidden window has nothing to pin yet");
+  (scroller as { clientHeight: number }).clientHeight = 500;
+  grow();
+  stop();
+  globalThis.ResizeObserver = realResizeObserver;
+  assert.equal(scroller.scrollTop, 769, "a reopened window pins a following reader to the bottom");
+}
+
+{
   // Slice 67b: two rounds' words with no step between start a new paragraph, live and in the saved trace.
   const trace: Parameters<typeof emitRoundText>[0] = [];
   const live: string[] = [];

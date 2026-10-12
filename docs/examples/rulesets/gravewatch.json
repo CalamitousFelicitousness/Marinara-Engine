@@ -431,23 +431,35 @@
           { "filter": { "category": "arm" }, "weight": 1 },
           { "coins": "shilling", "weight": 2, "count": "1d6" }
         ]
+      },
+      {
+        "$comment": "What a smith turns up of an evening: rolled once a market day for the smith's stock, on top of what a smith sells anyway.",
+        "id": "smiths_odd_lot",
+        "label": "A smith's odd lot",
+        "rolls": 1,
+        "entries": [
+          { "item": "kit/silver-nail", "weight": 2, "count": "1d2" },
+          { "item": "kit/watch-pistol", "weight": 1 },
+          { "item": "kit/grave-spade", "weight": 1 }
+        ]
       }
     ],
     "market": {
-      "$comment": "What a place sells and at what price. Rare things are found from a market town up and arms from a village up, and the watch pistol only in a city; the chapel sells its litany pages only to wardens steady enough to read them.",
+      "$comment": "What a place sells and at what price. Rare things are found from a market town up, one or two a day, and arms from a village up, and the watch pistol only in a city; the chapel sells its litany pages only to wardens steady enough to read them. Sellers buy back at half the fair price, up to a purse a day that grows with the place, and a smith may turn up something rare.",
       "prices": [
         { "id": "cheap", "label": "cheap", "times": 0.75 },
         { "id": "fair", "label": "fair", "times": 1, "default": true },
         { "id": "dear", "label": "dear", "times": 1.5 }
       ],
       "places": [
-        { "id": "hamlet", "label": "hamlet" },
-        { "id": "village", "label": "village" },
-        { "id": "town", "label": "market town" },
-        { "id": "city", "label": "city" }
+        { "id": "hamlet", "label": "hamlet", "purse": { "amount": 10, "unit": "shilling" } },
+        { "id": "village", "label": "village", "purse": { "amount": 30, "unit": "shilling" } },
+        { "id": "town", "label": "market town", "purse": { "amount": 100, "unit": "shilling" } },
+        { "id": "city", "label": "city", "purse": { "amount": 400, "unit": "shilling" } }
       ],
+      "buyBack": 0.5,
       "sold": [
-        { "filter": { "rarity": "rare" }, "place": "town" },
+        { "filter": { "rarity": "rare" }, "place": "town", "limited": "1d2" },
         { "filter": { "category": "arm" }, "place": "village" }
       ],
       "sellers": [
@@ -456,7 +468,13 @@
           "label": "chandler",
           "sells": [{ "category": "coat" }, { "category": "tonic" }, { "category": "powder" }, { "category": "service" }]
         },
-        { "id": "smith", "label": "smith", "sells": [{ "category": "arm" }], "place": "village" },
+        {
+          "id": "smith",
+          "label": "smith",
+          "sells": [{ "category": "arm" }],
+          "place": "village",
+          "stock": { "table": "smiths_odd_lot" }
+        },
         {
           "id": "chapel",
           "label": "chapel of the Vigil",

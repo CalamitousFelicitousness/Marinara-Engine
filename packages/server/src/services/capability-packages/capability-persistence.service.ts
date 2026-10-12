@@ -16,6 +16,7 @@ import {
   type SpatialSnapshotSource,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
 import { and, desc, eq, inArray, ne, or } from "../../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../../db/file-backed-store.js";
 import { FileUniqueConstraintError } from "../../db/file-schema.js";
@@ -31,7 +32,17 @@ import {
   spatialContextSnapshots,
 } from "../../db/schema/index.js";
 import { withChatMetadataPatchQueue } from "../storage/chats.storage.js";
+import { createCharactersStorage } from "../storage/characters.storage.js";
 import { withNewGlobalGalleryCapabilityReferences } from "../image/global-gallery-capability-references.js";
+import { resolveChatUserIdentity } from "../chat-user-identity.js";
+import { parseExtra } from "../generation/prompt-attachments.js";
+import {
+  parseRoleplayUserCommands,
+  roleplayAgentsSeeWhispers,
+  roleplayAgentText,
+} from "../generation/roleplay-commands.js";
+import { resolveCharacterNameMap } from "../../routes/generate/generate-route-utils.js";
+import { conversationPromptHistoryContent } from "../../routes/generate/conversation-prompt-formatting.js";
 
 function parseStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
@@ -106,7 +117,20 @@ function mapChat(row: typeof chats.$inferSelect): CapabilityChatRecord {
   };
 }
 
-function mapMessage(row: typeof messages.$inferSelect): CapabilityMessageRecord {
+/**
+ * A Roleplay message as the generate route's agents read it: a user turn without leftover private tags, a reply with
+ * its documents, and each whisper at its place (roleplayAgentText).
+ */
+function roleplayAgentContent(row: typeof messages.$inferSelect, names: ReadonlyMap<string, string>): string {
+  const source = row.role === "user" ? { ...row, content: parseRoleplayUserCommands(row.content).content } : row;
+  return roleplayAgentText(conversationPromptHistoryContent(source, "roleplay"), source, names);
+}
+
+/** `names` gives each message its agent view (roleplayAgentContent); null leaves `agentContent` out. */
+function mapMessage(
+  row: typeof messages.$inferSelect,
+  names: ReadonlyMap<string, string> | null = null,
+): CapabilityMessageRecord {
   return {
     id: row.id,
     chatId: row.chatId,
@@ -116,7 +140,23 @@ function mapMessage(row: typeof messages.$inferSelect): CapabilityMessageRecord 
     activeSwipeIndex: row.activeSwipeIndex,
     extra: row.extra,
     createdAt: row.createdAt,
+    ...(names ? { agentContent: roleplayAgentContent(row, names) } : {}),
   };
+}
+
+/**
+ * Whisper recipients' names for agents reading this chat, as Engine-run agents get them (#7443), or null where
+ * agents do not read whispers (see roleplayAgentsSeeWhispers).
+ */
+async function agentWhisperNames(db: DB, chatId: string): Promise<ReadonlyMap<string, string> | null> {
+  const chat = (await db.select().from(chats).where(eq(chats.id, chatId)).limit(1))[0];
+  if (!chat || !roleplayAgentsSeeWhispers(chat.mode, parseExtra(chat.metadata))) return null;
+  const characters = createCharactersStorage(db);
+  const identity = await resolveChatUserIdentity(characters, chat);
+  return new Map([
+    ...(await resolveCharacterNameMap(parseStringArray(chat.characterIds), (id) => characters.getById(id))),
+    [identity?.id ?? "user", identity?.name ?? "User"],
+  ]);
 }
 
 function parsePresentCharacterIds(value: unknown): string[] {
@@ -417,7 +457,12 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
         .from(messages)
         .where(eq(messages.chatId, chatId))
         .orderBy(messages.createdAt, messages.id);
-      return rows.map(mapMessage);
+      // A failed name lookup costs the agent view, never the messages.
+      const names = await agentWhisperNames(db, chatId).catch((err) => {
+        logger.warn(err, "Agent whisper names unavailable for chat %s; listing messages without agentContent", chatId);
+        return null;
+      });
+      return rows.map((row) => mapMessage(row, names));
     },
     async getGameState(chatId) {
       assertPermission("chat-read");

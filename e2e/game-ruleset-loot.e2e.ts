@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import type { DirectedCombatView } from "@marinara-engine/shared";
+import { WORLD_STARTER_KITS, parseWorldKit, type DirectedCombatView } from "@marinara-engine/shared";
 import { openGame, savedInventory, seedFight, withImports } from "./game-ruleset-fight-fixture.js";
 
 /**
@@ -24,90 +24,107 @@ async function captureSent(page: Page): Promise<() => string | null> {
 const named = (loot: Array<{ name: string; quantity?: number }>) =>
   loot.map((drop) => (drop.quantity && drop.quantity > 1 ? `${drop.name} ×${drop.quantity}` : drop.name));
 
-test("a won fight without a ruleset drops Game Mode's loot into the player's bag", async ({
-  page,
-  request,
-}, testInfo) => {
-  test.setTimeout(120_000);
-  const created = await request.post("/api/game/create", {
-    data: {
-      name: "Native loot",
-      setupConfig: {
-        genre: "Fantasy",
-        setting: "Ruins",
-        tone: "Adventure",
-        difficulty: "normal",
-        playerGoals: "Hold",
-        gmMode: "standalone",
-        rating: "sfw",
-        partyCharacterIds: [],
-        combatStyle: "classic",
-        combatDirector: false,
-        gmBossControl: false,
-      },
-    },
-  });
-  expect(created.ok(), await created.text()).toBeTruthy();
-  const chatId = (await created.json()).sessionChat.id as string;
-  try {
-    const unit = (id: string, side: "player" | "enemy", hp: number) => ({
-      id,
-      name: id,
-      side,
-      hp,
-      maxHp: 30,
-      attack: 5,
-      defense: 5,
-      speed: 5,
-      level: 1,
-      skills: [],
-    });
-    const message = await request.post(`/api/chats/${chatId}/messages`, {
-      data: { role: "assistant", content: "The last guard staggers. [state: combat]" },
-    });
-    expect(message.ok()).toBeTruthy();
-    // The guard is already down, so the fight opens on its Victory.
-    const patched = await request.patch(`/api/chats/${chatId}/metadata`, {
+/** A starter kit, as a game stores it. */
+const starterKit = (id: string) => {
+  const parsed = parseWorldKit(WORLD_STARTER_KITS.find((kit) => kit.id === id)!);
+  if (!parsed.ok) throw new Error(parsed.issues.join("; "));
+  return parsed.kit;
+};
+
+// What drops belongs to the setting (worldgen W6a): a fantasy game's genre gives it high fantasy's
+// loot, and a kit's own loot wins over the genre, so a modern-day kit never drops a fantasy item.
+for (const { title, kit, worldKit } of [
+  { title: "a won fight without a ruleset drops Game Mode's loot into the player's bag", kit: "high_fantasy" },
+  {
+    title: "a won fight in a game with a setting kit drops the kit's own loot",
+    kit: "modern_day",
+    worldKit: starterKit("modern_day"),
+  },
+])
+  test(title, async ({ page, request }, testInfo) => {
+    test.setTimeout(120_000);
+    const words = new Set(Object.values(starterKit(kit).loot!).flat());
+    const created = await request.post("/api/game/create", {
       data: {
-        gameSessionStatus: "active",
-        gameIntroPresented: true,
-        gameActiveState: "combat",
-        gameImageAutoGenerationEnabled: false,
-        gameStoryboardAutoIllustrationsEnabled: false,
-        gameCombatStyle: "classic",
-        gameCombatState: {
-          party: [unit("Hero", "player", 30)],
-          enemies: [unit("Guard", "enemy", 0)],
-          itemEffects: [],
-          mechanics: [],
-          dialogueCues: [],
-          startMessageId: (await message.json()).id,
+        name: "Native loot",
+        setupConfig: {
+          ...(worldKit ? { worldKit } : {}),
+          genre: "Fantasy",
+          setting: "Ruins",
+          tone: "Adventure",
+          difficulty: "normal",
+          playerGoals: "Hold",
+          gmMode: "standalone",
+          rating: "sfw",
+          partyCharacterIds: [],
           combatStyle: "classic",
+          combatDirector: false,
+          gmBossControl: false,
         },
       },
     });
-    expect(patched.ok(), await patched.text()).toBeTruthy();
-    const sent = await captureSent(page);
-    await openGame(page, chatId);
-    const looted = page.waitForResponse((r) => r.url().endsWith("/api/game/inventory/loot"));
-    await page.getByRole("button", { name: "Continue", exact: true }).click({ timeout: 40_000 });
-    const answer = await looted;
-    expect(answer.ok(), await answer.text()).toBeTruthy();
-    const loot = ((await answer.json()) as { loot: Array<{ name: string; quantity: number }> }).loot;
-    expect(loot.length).toBeGreaterThan(0);
-    // The Game Master is told it is already in the bags, and the player sees it.
-    await expect.poll(sent).toContain("Loot (already in the party's bags): ");
-    for (const drop of named(loot)) expect(sent()).toContain(drop);
-    await expect(page.getByText(`Loot: ${named(loot).join(", ")}`, { exact: true })).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath("loot-native.png"), fullPage: true });
-    const held = await savedInventory(request, chatId);
-    expect(held.reduce((sum, stack) => sum + stack.quantity, 0)).toBe(
-      loot.reduce((sum, drop) => sum + drop.quantity, 0),
-    );
-  } finally {
-    await request.delete(`/api/chats/${chatId}`);
-  }
-});
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const chatId = (await created.json()).sessionChat.id as string;
+    try {
+      const unit = (id: string, side: "player" | "enemy", hp: number) => ({
+        id,
+        name: id,
+        side,
+        hp,
+        maxHp: 30,
+        attack: 5,
+        defense: 5,
+        speed: 5,
+        level: 1,
+        skills: [],
+      });
+      const message = await request.post(`/api/chats/${chatId}/messages`, {
+        data: { role: "assistant", content: "The last guard staggers. [state: combat]" },
+      });
+      expect(message.ok()).toBeTruthy();
+      // The guard is already down, so the fight opens on its Victory.
+      const patched = await request.patch(`/api/chats/${chatId}/metadata`, {
+        data: {
+          gameSessionStatus: "active",
+          gameIntroPresented: true,
+          gameActiveState: "combat",
+          gameImageAutoGenerationEnabled: false,
+          gameStoryboardAutoIllustrationsEnabled: false,
+          gameCombatStyle: "classic",
+          gameCombatState: {
+            party: [unit("Hero", "player", 30)],
+            enemies: [unit("Guard", "enemy", 0)],
+            itemEffects: [],
+            mechanics: [],
+            dialogueCues: [],
+            startMessageId: (await message.json()).id,
+            combatStyle: "classic",
+          },
+        },
+      });
+      expect(patched.ok(), await patched.text()).toBeTruthy();
+      const sent = await captureSent(page);
+      await openGame(page, chatId);
+      const looted = page.waitForResponse((r) => r.url().endsWith("/api/game/inventory/loot"));
+      await page.getByRole("button", { name: "Continue", exact: true }).click({ timeout: 40_000 });
+      const answer = await looted;
+      expect(answer.ok(), await answer.text()).toBeTruthy();
+      const loot = ((await answer.json()) as { loot: Array<{ name: string; quantity: number }> }).loot;
+      expect(loot.length).toBeGreaterThan(0);
+      for (const drop of loot) expect(words.has(drop.name), drop.name).toBe(true);
+      // The Game Master is told it is already in the bags, and the player sees it.
+      await expect.poll(sent).toContain("Loot (already in the party's bags): ");
+      for (const drop of named(loot)) expect(sent()).toContain(drop);
+      await expect(page.getByText(`Loot: ${named(loot).join(", ")}`, { exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`loot-native-${kit}.png`), fullPage: true });
+      const held = await savedInventory(request, chatId);
+      expect(held.reduce((sum, stack) => sum + stack.quantity, 0)).toBe(
+        loot.reduce((sum, drop) => sum + drop.quantity, 0),
+      );
+    } finally {
+      await request.delete(`/api/chats/${chatId}`);
+    }
+  });
 
 test("the recap reaches the chat the fight ended in, even after the player leaves it", async ({ page, request }) => {
   test.setTimeout(120_000);

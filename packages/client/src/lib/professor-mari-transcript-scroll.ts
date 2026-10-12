@@ -27,11 +27,16 @@ export function followTranscriptGrowth(
   isFollowing: () => boolean,
   onGrown?: (newerBelow: boolean) => void,
 ): () => void {
+  // A hidden window has no height and loses its scroll position, so the first layout after she is shown
+  // pins to the newest line for a reader who was following, whatever position the hidden scroll left.
+  let shown = scroller.clientHeight > 0;
   const observer = new ResizeObserver(() => {
+    const revealed = !shown && scroller.clientHeight > 0;
+    shown = scroller.clientHeight > 0;
     const following = isFollowing();
     const { scrollTo } = transcriptScrollAction({
       event: "grow",
-      nearBottom: isProfessorMariTranscriptNearBottom(scroller),
+      nearBottom: revealed || isProfessorMariTranscriptNearBottom(scroller),
       following,
     });
     if (scrollTo === "bottom") scrollProfessorMariTranscriptToBottom(scroller);

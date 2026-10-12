@@ -990,6 +990,9 @@ export function LorebooksPanel() {
           const folderItems = sorted.filter((item) => memberIds.has(item.id));
           if (folderFilterActive && folderItems.length === 0) return null;
           const isExpanded = (folderFilterActive && folderItems.length > 0) || expandedFolderId === folder.id;
+          // Use the visible list when complete; unloaded pages cannot establish a folder's full count.
+          const folderCount =
+            folderFilterActive || !lorebookPages.hasNextPage ? folderItems.length : folder.itemIds.length;
           return (
             <div
               key={folder.id}
@@ -1071,24 +1074,24 @@ export function LorebooksPanel() {
                     <div className="mari-chrome-text-muted truncate text-xs font-medium">{folder.name}</div>
                   )}
                 </div>
-                {(folderFilterActive ? folderItems.length : folder.itemIds.length) > 0 && (
+                {folderCount > 0 && (
                   <span
                     data-folder-item-count="inline"
                     className="shrink-0 text-[0.5625rem] text-[var(--muted-foreground)] max-md:hidden [@media(pointer:coarse)]:hidden"
                   >
-                    {folderFilterActive ? folderItems.length : folder.itemIds.length}
+                    {folderCount}
                   </span>
                 )}
                 <div
                   data-folder-actions
                   className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-[var(--border)] transition-opacity group-hover:opacity-100 [@media(pointer:fine)]:group-focus-within:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 group-hover:[&_button]:pointer-events-auto [@media(pointer:fine)]:group-focus-within:[&_button]:pointer-events-auto max-md:[&_button]:pointer-events-auto [@media(pointer:coarse)]:[&_button]:pointer-events-auto"
                 >
-                  {(folderFilterActive ? folderItems.length : folder.itemIds.length) > 0 && (
+                  {folderCount > 0 && (
                     <span
                       data-folder-item-count="actions"
                       className="hidden px-1 text-[0.5625rem] text-[var(--muted-foreground)] max-md:inline [@media(pointer:coarse)]:inline"
                     >
-                      {folderFilterActive ? folderItems.length : folder.itemIds.length}
+                      {folderCount}
                     </span>
                   )}
                   <button

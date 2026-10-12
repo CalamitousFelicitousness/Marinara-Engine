@@ -1909,10 +1909,11 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 
 /* R53: a split at 44rem gives each side 20rem, which is too narrow for a diff.
    The shell already animates its height when she takes over; this is the same
-   motion on the other axis, and it needs no state passed up from the panel. */
+   motion on the other axis, and it needs no state passed up from the panel.
+   The user's window width can only widen this split, never narrow it. */
 @media (min-width: 40rem) {
   .mari-workspace-shell:has([data-mari-panel="open"]) {
-    max-width: 68rem;
+    max-width: max(68rem, min(var(--mari-window-width, 68rem), 92vw));
   }
 }
 

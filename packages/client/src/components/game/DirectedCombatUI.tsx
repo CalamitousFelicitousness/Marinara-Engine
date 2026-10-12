@@ -1,7 +1,12 @@
 import { CombatAiControls } from "./CombatAiControls";
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { useEffect, useMemo, useRef, type ComponentProps } from "react";
-import type { CombatDecisionOption, RulesetDefinition, TacticalBattlefieldBrief } from "@marinara-engine/shared";
+import type {
+  CombatDecisionOption,
+  RulesetDefinition,
+  TacticalBattlefieldBrief,
+  TacticalTerrain,
+} from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import { useDirectedCombat } from "../../hooks/use-directed-combat";
 import { GameCombatUI } from "./GameCombatUI";
@@ -15,6 +20,11 @@ type Props = ComponentProps<typeof GameCombatUI> & {
   anchor: string;
   style: "classic" | "tactical" | "ruleset";
   environment?: string;
+  /** The battlefield the scene is laid out like (worldgen W6d), for the board's colours; the server is
+   *  sent the scene's own word and lays it out itself. */
+  environmentLike?: string;
+  /** The setting's own words for the board's tiles (worldgen W6d). */
+  tileWords?: Partial<Record<TacticalTerrain, string>>;
   formation?: string;
   battlefield?: TacticalBattlefieldBrief;
   /** The rules the game is pinned to, for a fight the ruleset resolves. It is what names budgets,
@@ -116,6 +126,7 @@ export function DirectedCombatUI(props: Props) {
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {s.style === "tactical" && s.tactical ? (
           <TacticalCombatUI
+            tileWords={props.tileWords}
             chatId={props.chatId}
             party={s.party}
             enemies={s.enemies}
@@ -146,7 +157,7 @@ export function DirectedCombatUI(props: Props) {
             units={[...s.party, ...s.enemies]}
             budgetLabel={budgetLabel}
             defenseLabel={defenseLabel}
-            environment={props.environment}
+            environment={props.environmentLike ?? props.environment}
             busy={busy}
             onChoose={choose}
             onFlee={() => send({ type: "flee" })}

@@ -4,7 +4,7 @@
 // Each target names a control by selector; the overlay skips any that are not
 // visible right now, so one list covers desktop, phones, and the Chat Settings
 // window being open or closed. Session, Volume, Assets, Game controls, the
-// connected chat, package toolbars and Beholder point at their windows' buttons
+// connected chat, the Lorebook Reader, package toolbars and Beholder point at their windows' buttons
 // (bubbles) on a computer. Phones keep them in the Chat tools menu, whose button
 // Help points at instead and whose detail lists them; the Tracker Panel has its
 // own bubble there.
@@ -19,6 +19,7 @@ export type ChatHelpTargetId =
   | "call"
   | "agent-controls"
   | "connected-chat"
+  | "lorebook-reader"
   | "chat-tools"
   | "settings"
   | "help"
@@ -71,6 +72,7 @@ const TARGETS = {
   call: chatHelpTarget("call", "call"),
   "agent-controls": chatHelpTarget("agent-controls", "agentControls"),
   "connected-chat": chatHelpTarget("connected-chat", "connectedChat"),
+  "lorebook-reader": chatHelpTarget("lorebook-reader", "lorebookReader"),
   // On a phone, the button whose menu holds the controls above.
   "chat-tools": chatHelpTarget("chat-tools", "chatTools"),
   // The Chat Settings button in the chat (at the top right unless moved).
@@ -155,6 +157,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS.identity,
     TARGETS["agent-controls"],
     TARGETS["connected-chat"],
+    TARGETS["lorebook-reader"],
     TARGETS["chat-tools"],
     TARGETS.call,
     ...CHAT_SETTINGS_TARGETS,
@@ -171,6 +174,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS["tracker-panel-bubble"],
     TARGETS["agent-controls"],
     TARGETS["connected-chat"],
+    TARGETS["lorebook-reader"],
     TARGETS["chat-tools"],
     ...CHAT_SETTINGS_TARGETS,
     TARGETS["agent-activity"],

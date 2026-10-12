@@ -1889,11 +1889,17 @@ try {
   calls.length = 0;
   summaryFinishReason = "error";
   await assert.rejects(memory.checkScenesAfterGeneration(partialChat.id), /summary model.*complete/u);
-  assert.deepEqual(
-    JSON.parse((await chats.getById(partialChat.id))!.metadata).summaryEntries,
-    [manual, maukieManual],
+  const afterFailure = JSON.parse((await chats.getById(partialChat.id))!.metadata).summaryEntries;
+  assert.deepEqual(afterFailure.slice(0, 2), [manual, maukieManual]);
+  // The scene's constant that needs no Helper call is saved first, so the failed re-summary of a partly
+  // covered copy doesn't hold it back.
+  assert.equal(afterFailure.length, 3, "Pantalone's constant is saved before the failed call");
+  assert.match(
+    afterFailure[2].content,
+    /^\{\{#if char == "Pantalone"\}\}/u,
     "a failed new-range summary is not added to Chat Summaries",
   );
+  assert.equal(afterFailure[2].rangeStartIndex, 1);
   summaryFinishReason = "stop";
   calls.length = 0;
   await memory.checkScenesAfterGeneration(partialChat.id);
@@ -2015,6 +2021,118 @@ try {
     /NIGHT_OF_WHISPER|WHISPERED_PLAN|Messages #1–#2/u,
     "Pantalone gets neither the hidden message's range and date nor Maukie's section",
   );
+
+  // #7454: a scene's one constant for every reader is still shortened when a reader leaves the chat, keeping
+  // their part for them, and when its shared part uses {{user}}, which reads the same for everyone.
+  const sharedSceneChat = async (name: string, shared: string) => {
+    const chat = await chats.create({
+      name,
+      mode: "roleplay",
+      characterIds: [character.id, privateA.id, privateB.id],
+      connectionId: connection.id,
+    });
+    assert(chat);
+    chatIds.push(chat.id);
+    await chats.patchMetadata(chat.id, {
+      enableAgents: false,
+      groupChatMode: "individual",
+      summaryMaxTokens: 1024,
+      advancedMemory: {
+        ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+        enabled: true,
+        maxContextTokens: 16_384,
+        summaryBudgetTokens: 3000,
+        narratorCharacterId: character.id,
+        knowledgeStarts: { [character.id]: null, [privateA.id]: null, [privateB.id]: null },
+      },
+    });
+    await chats.createMessage({ chatId: chat.id, role: "user", content: "A shared stroll." });
+    await chats.createMessage({
+      chatId: chat.id,
+      role: "user",
+      content: "Maukie whispers the plan.",
+      extra: { hiddenFromAICharacterIds: [privateB.id] },
+    });
+    await chats.createMessage({
+      chatId: chat.id,
+      role: "user",
+      content: "Pantalone counts the coins.",
+      extra: { hiddenFromAICharacterIds: [privateA.id] },
+    });
+    await chats.createMessage({
+      chatId: chat.id,
+      role: "user",
+      content: "SCENE_CHANGE present day",
+      extra: { isConversationStart: true },
+    });
+    summaryReply = () =>
+      `${shared} ${"FILL_S ".repeat(60)}{{#if char == "Maukie"}}${"FILL_M ".repeat(150)}MAUKIE_PLAN{{/if}}` +
+      `{{#if char == "Pantalone"}}${"FILL_P ".repeat(150)}PANTALONE_COINS{{/if}}`;
+    await memory.initialize(chat.id);
+    await memory.checkScenesAfterGeneration(chat.id, { blocking: false });
+    const entries = JSON.parse((await chats.getById(chat.id))!.metadata).summaryEntries as Array<{ content: string }>;
+    assert.equal(entries.length, 1, "the scene has one constant for every reader");
+    assert.match(entries[0]!.content, /PANTALONE_COINS/u);
+    summaryReply = (prompt) => (JSON.parse(prompt).at(-1).content as string).replace(/(?:FILL_\w+ )+/gu, "SHORT ");
+    await chats.patchMetadata(chat.id, {
+      advancedMemory: {
+        ...JSON.parse((await chats.getById(chat.id))!.metadata).advancedMemory,
+        summaryBudgetTokens: 200,
+      },
+    });
+    const source = await chats.listMessages(chat.id);
+    const view = async (id: string) =>
+      (
+        await memory.prepare({
+          chatId: chat.id,
+          messages: source,
+          audienceCharacterIds: [id],
+          budgetTokens: 50_000,
+          readOnly: true,
+        })
+      ).chatSummary ?? "";
+    return { chat, view };
+  };
+  const combineCalls = () =>
+    calls.filter((call) => /Condense the ordered summaries/u.test(JSON.stringify(call.messages)));
+  const departure = await sharedSceneChat("Reader leaves", "They took a SHARED_STROLL.");
+  await chats.update(departure.chat.id, { characterIds: [character.id, privateA.id] });
+  const maukieBefore = estimateChatSummaryTokens(await departure.view(privateA.id));
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(departure.chat.id, { blocking: false });
+  assert.equal(combineCalls().length, 1, "Maukie's share is shortened after Pantalone leaves");
+  assert.match(
+    JSON.stringify(combineCalls()[0]!.messages),
+    /\{\{#if char == \\"Pantalone\\"\}\}(?:FILL_P )+PANTALONE_COINS/u,
+    "Pantalone's part reaches the Helper with its own condition",
+  );
+  const departureEntry = (
+    JSON.parse((await chats.getById(departure.chat.id))!.metadata).summaryEntries as Array<{
+      enabled: boolean;
+      content: string;
+    }>
+  ).find((entry) => entry.enabled)!;
+  assert.match(departureEntry.content, /\{\{#if char == "Pantalone"\}\}SHORT PANTALONE_COINS\{\{\/if\}\}/u);
+  const maukieAfter = await departure.view(privateA.id);
+  assert(estimateChatSummaryTokens(maukieAfter) < maukieBefore);
+  assert.match(maukieAfter, /SHARED_STROLL[\s\S]*MAUKIE_PLAN/u);
+  assert.doesNotMatch(maukieAfter, /PANTALONE_COINS/u, "Maukie still never reads Pantalone's part");
+  await chats.update(departure.chat.id, { characterIds: [character.id, privateA.id, privateB.id] });
+  const pantaloneBack = await departure.view(privateB.id);
+  assert.match(pantaloneBack, /PANTALONE_COINS/u, "Pantalone's part is still his when he comes back");
+  assert.doesNotMatch(pantaloneBack, /MAUKIE_PLAN/u);
+
+  const userMacro = await sharedSceneChat("User macro", "{{user}} took a SHARED_STROLL.");
+  calls.length = 0;
+  await memory.checkScenesAfterGeneration(userMacro.chat.id, { blocking: false });
+  assert.equal(combineCalls().length, 1, "a shared part with {{user}} is shortened too");
+  const maukieUser = await userMacro.view(privateA.id);
+  const pantaloneUser = await userMacro.view(privateB.id);
+  assert.match(maukieUser, /SHARED_STROLL[\s\S]*SHORT MAUKIE_PLAN/u);
+  assert.doesNotMatch(maukieUser, /PANTALONE_COINS|\{\{user\}\}/u);
+  assert.match(pantaloneUser, /SHARED_STROLL[\s\S]*SHORT PANTALONE_COINS/u);
+  assert.doesNotMatch(pantaloneUser, /MAUKIE_PLAN/u);
+  summaryReply = undefined;
 
   // #7270: compaction combines Advanced Memory's own summaries with private character sections,
   // keeping each section for exactly the characters who knew it.

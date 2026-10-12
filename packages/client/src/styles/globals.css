@@ -6778,9 +6778,12 @@ strong {
   }
 
   /* Cover both the app and body-portal dialogs. Character/persona fields use
-     the same viewport contract as chat instead of falling back to fixed UI. */
+     the same viewport contract as chat instead of falling back to fixed UI.
+     A floating panel whose editor shell fills it (a package's full-screen
+     editor, such as World Maps) is a body-portal dialog too. */
   html[data-mari-ios-webkit] .mari-app,
-  html[data-mari-ios-webkit] .mari-modal {
+  html[data-mari-ios-webkit] .mari-modal,
+  html[data-mari-ios-webkit] body > [data-chat-floating-panel]:has(> .mari-editor-shell.flex-1) {
     position: absolute;
     top: var(--mari-visual-viewport-offset-top, 0px);
     bottom: auto;
@@ -6790,10 +6793,14 @@ strong {
 
   /* Body-portalled chat menus otherwise stay in layout-viewport coordinates
      while iPhone pans the visual viewport for its keyboard. Keep the focused
-     menu and its scroll shell inside the screen the user can actually see. */
+     menu and its scroll shell inside the screen the user can actually see.
+     Full-screen editors stay out: shrinking one to its content scrolled its
+     header and Save button out of reach on Android (#7452). */
   html[data-mari-software-keyboard-open]
     body
-    > [data-chat-floating-panel]:not(.mari-modal):not([data-component="ExpandedTextarea"]):focus-within {
+    > [data-chat-floating-panel]:not(.mari-modal):not([data-component="ExpandedTextarea"]):not(
+      :has(> .mari-editor-shell.flex-1)
+    ):focus-within {
     position: absolute !important;
     top: calc(var(--mari-visual-viewport-offset-top, 0px) + 0.5rem) !important;
     bottom: auto !important;

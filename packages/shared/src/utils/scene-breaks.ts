@@ -42,3 +42,14 @@ export function splitAtSceneBreaks(text: string): string[] {
   if (parts.length > 1 && !parts.at(-1)!.hasText) parts.at(-2)!.lines.push(...parts.pop()!.lines);
   return parts.length > 1 ? parts.map((part) => part.lines.join("\n").trim()) : [text];
 }
+
+/** The break lines a split part opens with, and the blank lines after them; "" when the part opens with text. */
+export function leadingSceneBreak(part: string): string {
+  let length = 0;
+  for (const line of part.split("\n")) {
+    const bare = line.replace(/\r$/, "");
+    if (bare.trim() && !SCENE_BREAK.test(bare)) return part.slice(0, length);
+    length += line.length + 1;
+  }
+  return "";
+}

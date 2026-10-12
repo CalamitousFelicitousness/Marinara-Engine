@@ -203,6 +203,8 @@ import {
   worldHistoryAnswerText,
   applyWorldTags,
   readWorldLedger,
+  worldKitItems,
+  gameWorldKitFromMetadata,
   worldPresent,
   worldAddedPlace,
   type WorldPresent,
@@ -268,7 +270,12 @@ import {
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
-import { gameMarketDayFor, gameRepliesBefore, loadGameMarket } from "../services/game/game-market.service.js";
+import {
+  gameMarketDayFor,
+  gameRepliesBefore,
+  loadGameKitMarket,
+  loadGameMarket,
+} from "../services/game/game-market.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -4790,14 +4797,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   },
                 ).start
               : normalizeGameInventoryStacks(chatMeta.gameInventory);
+          // A game with no ruleset buys, pays and earns in its setting kit's money (worldgen W6b).
+          const promptKitItems =
+            chatMeta.gameRuleset == null ? worldKitItems(gameWorldKitFromMetadata(chatMeta)) : undefined;
           // What each ruleset item the party holds is, for the Game Master: read when one is held, or
           // when the game has coins in use (its layers may hide them all), so an empty purse is said
           // too (never told one is empty, the Game Master narrates a buy the Engine then refuses).
+          const promptHeldItem = promptInventoryStacks.some((stack) => stack.item);
           const promptItemBook =
-            pinnedGameRuleset?.status === "ok" &&
-            (promptInventoryStacks.some((stack) => stack.item) ||
-              rulesetLayeredCurrencies(pinnedGameRuleset.definition, gameRulesetLayerOptions(pinnedGameRuleset))
-                .length > 0)
+            (pinnedGameRuleset?.status === "ok" &&
+              (promptHeldItem ||
+                rulesetLayeredCurrencies(pinnedGameRuleset.definition, gameRulesetLayerOptions(pinnedGameRuleset))
+                  .length > 0)) ||
+            (promptKitItems && promptHeldItem)
               ? await loadGameInventoryItemBook(
                   app.db,
                   { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
@@ -4872,7 +4884,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   gameRulesetLayerOptions(pinnedGameRuleset),
                   promptMarketDay.day,
                 )
-              : undefined;
+              : promptKitItems?.definition.items?.market
+                ? rulesetMarketPromptText(
+                    promptKitItems.definition,
+                    promptItemBook ??
+                      (await loadGameInventoryItemBook(
+                        app.db,
+                        { metadata: chatMeta, playerName: personaName || null },
+                        "game-master",
+                      )) ?? { entries: [], coins: [] },
+                    await promptPlace(),
+                  )
+                : undefined;
           // What each character carries, binds and wears against what they can, when the ruleset says.
           const promptBearers =
             promptItemBook?.bearer || promptItemBook?.slots
@@ -4937,6 +4960,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // the reminder renders the bytes it renders today.
               oneRequestDice: oneRequestDiceTurn,
               skillModifiers: gameSkillModifierView,
+              ...(promptKitItems ? { kitItems: promptKitItems.definition } : {}),
               ...(pinnedGameRuleset?.status === "ok"
                 ? {
                     ruleset: pinnedGameRuleset.definition,
@@ -9809,10 +9833,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // in. A name the world lists takes its size from the world (worldgen W1).
           let turnPlace: GamePlace | null = null;
           let turnPlaceBefore: GamePlace | null = null;
+          // A game with no ruleset has its setting kit's market (worldgen W6b).
+          const turnKitItems =
+            chatMode === "game" && !input.impersonate && chatMeta.gameRuleset == null
+              ? worldKitItems(gameWorldKitFromMetadata(chatMeta))
+              : undefined;
           const turnMarket =
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
-              : undefined;
+              : turnKitItems?.definition.items?.market;
           const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
           let turnPresent: WorldPresent | undefined;
           if (turnMarket || turnWorld) {
@@ -9927,24 +9956,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   : undefined;
               // A seller's `only` reads the turn's own live state, as the items this reply uses do.
               const marketDay =
-                rules && turnMarket
+                rules && turnMarket && !turnKitItems
                   ? await gameMarketDayFor(app.db, input.chatId, input.regenerateMessageId ?? null, requested, rules)
                   : undefined;
+              // A fresh market for each reading, as the ruleset's is: a market counts what the reply buys.
+              const kitMarket =
+                rules && turnMarket && turnKitItems ? loadGameKitMarket(turnKitItems, rules, turnPlace) : undefined;
               const market =
-                rules && marketDay
-                  ? await loadGameMarket(
-                      app.db,
-                      input.chatId,
-                      turnGameRuleset,
-                      rules,
-                      marketDay.place,
-                      rulesetSheetTurn?.live ?? {
-                        ...((await turnStartRulesetLive()) ?? {}),
-                        ...(checkSpendLive ?? {}),
-                      },
-                      marketDay.day,
-                    )
-                  : undefined;
+                kitMarket && rules && turnKitItems
+                  ? () => loadGameKitMarket(turnKitItems, rules, turnPlace) ?? kitMarket
+                  : rules && marketDay
+                    ? await loadGameMarket(
+                        app.db,
+                        input.chatId,
+                        turnGameRuleset,
+                        rules,
+                        marketDay.place,
+                        rulesetSheetTurn?.live ?? {
+                          ...((await turnStartRulesetLive()) ?? {}),
+                          ...(checkSpendLive ?? {}),
+                        },
+                        marketDay.day,
+                      )
+                    : undefined;
               const preview = tellsInventory
                 ? applyGameInventoryTags(
                     requested,

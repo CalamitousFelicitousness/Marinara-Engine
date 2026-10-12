@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
+import { WORLD_STARTER_KITS, parseWorldKit } from "@marinara-engine/shared";
 import { inventoryButton } from "./game-inventory-fixture.js";
 import { openGame, savedInventory, withImports } from "./game-ruleset-fight-fixture.js";
 
@@ -181,6 +182,109 @@ test("the Game Master buys at a market town: priced, paid with change, a service
       await expect(picker.getByRole("checkbox", { name: "A bed at the watch-house", exact: true })).toHaveCount(0);
     });
   } finally {
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    model.server.closeAllConnections();
+    await new Promise<void>((resolve) => model.server.close(() => resolve()));
+  }
+});
+
+// Money and markets without a ruleset (worldgen W6b): the setting kit's money and shop, through the same
+// buy, pay and earn the ruleset market uses.
+test("a game with no ruleset buys, pays and earns in its setting kit's money", async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const parsed = parseWorldKit(WORLD_STARTER_KITS.find((kit) => kit.id === "modern_day")!);
+  if (!parsed.ok) throw new Error(parsed.issues.join("; "));
+  const model = await fakeModel([
+    [
+      "I shop on Elm Street.",
+      'We reach Elm Street. [place: name="Elm Street" size="town"] ' +
+        '[inventory: action="buy" item="first-aid kit"] [inventory: action="buy" item="Bicycle"] ' +
+        '[inventory: action="earn" amount="5 dollars"] [inventory: action="buy" item="A haircut"]',
+    ],
+    ["I look in the shop windows.", "Shop windows glow along the street."],
+  ]);
+  let connectionId = "";
+  let chatId = "";
+  try {
+    const connection = await request.post("/api/connections", {
+      data: {
+        name: "Local kit market fixture",
+        provider: "custom",
+        baseUrl: model.baseUrl,
+        apiKey: "synthetic-test-key",
+        model: "kit-market-fixture",
+        maxContext: 32768,
+        treatAsLocalEndpoint: true,
+      },
+    });
+    connectionId = (await connection.json()).id;
+    const created = await request.post("/api/chats", {
+      data: { name: "Kit market", mode: "game", characterIds: [], connectionId },
+    });
+    chatId = ((await created.json()) as { id: string }).id;
+    const meta = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameId: `kit-market-${chatId}`,
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameImageAutoGenerationEnabled: false,
+        enableAgents: false,
+        enableTools: false,
+        gameWorldKit: parsed.kit,
+        gameInventory: [{ id: "st-dollars", name: "dollar", item: "coin:dollar", quantity: 60 }],
+      },
+    });
+    expect(meta.ok(), await meta.text()).toBeTruthy();
+    await request.post(`/api/chats/${chatId}/messages`, {
+      data: { role: "assistant", content: "The bus drops you at the edge of town." },
+    });
+    await openGame(page, chatId);
+    const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
+    await expect(narration).toContainText("The bus drops you at the edge of town.", { timeout: 30_000 });
+
+    const first = model.prompts.length;
+    await page.getByPlaceholder("What do you do?", { exact: true }).fill("I shop on Elm Street.");
+    await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+    await expect(narration).toContainText("We reach Elm Street.", { timeout: 30_000 });
+    // The Game Master was taught the setting's money and how to buy.
+    const taught = model.prompts.slice(first).find((body) => body.includes("I shop on Elm Street."))!;
+    expect(taught).toContain("in the setting's money (");
+    expect(taught).toContain('[inventory: action=\\"buy\\" item=\\"Name\\"');
+    // 60 dollars, 25 for the kit, 30 for the haircut (a service, only paid), 5 earned; no bicycle.
+    await expect
+      .poll(async () =>
+        (await savedInventory(request, chatId))
+          .map((stack) => `${stack.name} <${stack.item ?? ""}> ${stack.quantity}`)
+          .sort(),
+      )
+      .toEqual(["First-Aid Kit <shop/first-aid-kit> 1", "dollar <coin:dollar> 10"]);
+    const reply = (
+      (await (await request.get(`/api/chats/${chatId}/messages`)).json()) as Array<{
+        role: string;
+        content: string;
+      }>
+    )
+      .filter((message) => message.role === "assistant")
+      .at(-1)!.content;
+    expect(reply).toContain('item="First-Aid Kit" count="1" level="fair" result="ok"');
+    expect(reply).toContain('price="25 dollar"');
+    expect(reply).toContain('item="Bicycle" count="1" level="fair" result="refused" reason="cannot-afford"');
+    expect(reply).toContain('item="A haircut" count="1" level="fair" result="ok"');
+
+    // The next turn shows the Game Master what the town sells, in the setting's own money.
+    const before = model.prompts.length;
+    await page.getByPlaceholder("What do you do?", { exact: true }).fill("I look in the shop windows.");
+    await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+    await expect(narration).toContainText("Shop windows glow along the street.", { timeout: 30_000 });
+    const prompt = model.prompts.slice(before).find((body) => body.includes("I look in the shop windows."))!;
+    expect(prompt).toContain("MARKET: Elm Street, a town. Prices at fair, the default level");
+    expect(prompt).toContain("First-Aid Kit 25 dollar");
+    // The purse shows the setting's money.
+    await inventoryButton(page).click();
+    await expect(page.getByText("money: dollar x10 (worth 1000 cent)", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("kit-market.png") });
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
     if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
     model.server.closeAllConnections();
     await new Promise<void>((resolve) => model.server.close(() => resolve()));

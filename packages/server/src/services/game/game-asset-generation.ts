@@ -840,6 +840,8 @@ export interface BackgroundGenRequest {
   /** The game's genre/setting/tone for style guidance. */
   genre?: string;
   setting?: string;
+  /** The game's art family (worldgen W6f): a game with a setting kit files its backgrounds there. */
+  family?: string;
   /** Current tracked world-state location, used to keep generic scene prompts grounded. */
   currentLocation?: string | null;
   currentWeather?: string | null;
@@ -1282,7 +1284,7 @@ export async function generateBackground(req: BackgroundGenRequest): Promise<str
   const slug = safeGeneratedAssetSlug(req.locationSlug);
   if (!slug) return null;
 
-  const subcategory = genreToFolder(req.genre);
+  const subcategory = req.family ?? genreToFolder(req.genre);
   const targetDir = join(GAME_ASSETS_DIR, "backgrounds", subcategory);
 
   // Build asset tag: backgrounds:<category>:<slug>

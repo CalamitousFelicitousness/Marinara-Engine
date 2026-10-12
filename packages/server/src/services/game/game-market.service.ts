@@ -20,6 +20,7 @@ import {
   type RulesetItemBook,
   type RulesetLiveStates,
   type RulesetMarketDay,
+  type WorldKitItems,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { parseExtra } from "../generation/prompt-attachments.js";
@@ -164,4 +165,20 @@ export async function loadGameMarket(
   const at = place?.size ? (rulesetMarketPlace(market, place.size) ?? null) : null;
   const layerOptions = gameRulesetLayerOptions(resolved);
   return () => rulesetMarketQuoter(definition, book, at, meets, layerOptions, day);
+}
+
+/**
+ * The market of a game with no ruleset, from its setting kit's money and shop (worldgen W6b): the same
+ * quoter at the place in force, with no seller to ask anything of the buyer. Undefined when the kit
+ * has no market.
+ */
+export function loadGameKitMarket(
+  kitItems: WorldKitItems,
+  book: RulesetItemBook,
+  place: GamePlace | null,
+): GameInventoryMarket | undefined {
+  const market = kitItems.definition.items?.market;
+  if (!market) return undefined;
+  const at = place?.size ? (rulesetMarketPlace(market, place.size) ?? null) : null;
+  return rulesetMarketQuoter(kitItems.definition, book, at, () => true);
 }

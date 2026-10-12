@@ -6,9 +6,16 @@ import { useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { Sparkles } from "lucide-react";
 import {
+  TACTICAL_ENVIRONMENTS,
+  TACTICAL_TERRAINS,
   WORLD_CHANGE_KINDS,
+  WORLD_DEFAULT_BATTLEFIELDS,
+  WORLD_DEFAULT_ELEMENTS,
+  WORLD_LOOT_RARITIES,
   WORLD_PACES,
+  WORLD_ART_FAMILIES,
   WORLD_SCALES,
+  worldKitArtFamily,
   WORLD_STARTER_KITS,
   parseWorldKit,
   worldKitReworded,
@@ -36,6 +43,55 @@ const splitWords = (text: string) =>
     .split(",")
     .map((word) => word.trim())
     .filter(Boolean);
+
+/** A whole number of the kit's, typed freely: the field may be empty or partly typed while it is being
+ *  edited, and only a whole number of at least `min` is kept; leaving it shows the kept number again. */
+function NumberField({
+  value,
+  min,
+  max,
+  step,
+  label,
+  className,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  /** The largest number kept, and a decimal step for a number that need not be whole. */
+  max?: number;
+  step?: number;
+  label: string;
+  className: string;
+  onChange: (value: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  const [shown, setShown] = useState(value);
+  if (value !== shown) {
+    setShown(value);
+    setText(String(value));
+  }
+  return (
+    <input
+      type="number"
+      min={min}
+      {...(max !== undefined ? { max } : {})}
+      {...(step !== undefined ? { step } : {})}
+      value={text}
+      onChange={(event) => {
+        setText(event.target.value);
+        const next = Number(event.target.value);
+        const shaped = step === undefined ? Number.isInteger(next) : Number.isFinite(next);
+        if (event.target.value.trim() !== "" && shaped && next >= min && (max === undefined || next <= max)) {
+          setShown(next);
+          onChange(next);
+        }
+      }}
+      onBlur={() => setText(String(value))}
+      aria-label={label}
+      className={className}
+    />
+  );
+}
 
 /** A list of the kit's words, typed as one comma-separated line. The line is kept as typed, so a
  *  trailing comma survives the keystroke, and is reset only when the kit changes from outside. */
@@ -91,6 +147,8 @@ export function GameSetupWorldKitChooser({
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const checked = kit ? parseWorldKit(kit) : null;
+  // The family its art and music come from: its own, or a kit saved before families its starter's.
+  const family = worldKitArtFamily(kit);
   // The kit as last drawn, so a write that comes back late lands only on the kit it was asked for:
   // picking another kit, or changing a word, while it was out keeps what the player did.
   const latest = useRef(kit);
@@ -253,6 +311,34 @@ export function GameSetupWorldKitChooser({
                   onChange={(event) => edit((draft) => (draft.summary = event.target.value))}
                   className={INPUT}
                 />
+              </div>
+              <div>
+                <label htmlFor="world-kit-family" className={FIELD_LABEL}>
+                  {t("game.worldKit.setup.family")}
+                </label>
+                <select
+                  id="world-kit-family"
+                  value={family ?? ""}
+                  onChange={(event) =>
+                    edit((draft) => {
+                      if (event.target.value) draft.family = event.target.value;
+                      else delete draft.family;
+                    })
+                  }
+                  className={INPUT}
+                >
+                  {!family && <option value="">{t("game.worldKit.setup.families.none")}</option>}
+                  {[...WORLD_ART_FAMILIES, ...(!family || WORLD_ART_FAMILIES.includes(family) ? [] : [family])].map(
+                    (each) => (
+                      <option key={each} value={each}>
+                        {WORLD_ART_FAMILIES.includes(each) ? t(`game.worldKit.setup.families.${each}`) : each}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <p className="mt-1 text-[var(--muted-foreground)]">
+                  {family ? t("game.worldKit.setup.familyHelp", { family }) : t("game.worldKit.setup.familyNoneHelp")}
+                </p>
               </div>
 
               <WordsField
@@ -421,6 +507,501 @@ export function GameSetupWorldKitChooser({
                     ))}
                   </select>
                 </div>
+              </fieldset>
+
+              <fieldset className="space-y-1.5">
+                <legend className={FIELD_LABEL}>{t("game.worldKit.setup.loot")}</legend>
+                <p className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.lootHelp")}</p>
+                {WORLD_LOOT_RARITIES.map((rarity) => (
+                  <WordsField
+                    key={rarity}
+                    id={`world-kit-loot-${rarity}`}
+                    label={t(`game.worldKit.setup.rarities.${rarity}`)}
+                    words={kit.loot?.[rarity] ?? []}
+                    onChange={(words) =>
+                      edit((draft) => {
+                        const loot = {
+                          common: [],
+                          uncommon: [],
+                          rare: [],
+                          epic: [],
+                          legendary: [],
+                          ...draft.loot,
+                          [rarity]: words,
+                        };
+                        // With every list empty, the game drops what its genre usually has.
+                        if (Object.values(loot).some((each) => each.length > 0)) draft.loot = loot;
+                        else delete draft.loot;
+                      })
+                    }
+                  />
+                ))}
+              </fieldset>
+
+              <fieldset className="space-y-1.5">
+                <legend className={FIELD_LABEL}>{t("game.worldKit.setup.elements")}</legend>
+                <p className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.elementsHelp")}</p>
+                {kit.elements === undefined ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.elementsClassic")}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        edit((draft) => {
+                          // The classic six as this kit's own words, to change; their reactions come too,
+                          // as the extra damage they deal.
+                          const classic = WORLD_DEFAULT_ELEMENTS;
+                          const labelOf = (id: string) => classic.elements.find((each) => each.id === id)!.label;
+                          draft.elements = classic.elements.map((element) => ({
+                            label: element.label,
+                            emoji: element.emoji,
+                            color: element.color,
+                            ...(element.weather ? { weather: element.weather } : {}),
+                            beats: (classic.beats[element.id] ?? []).map(labelOf),
+                          }));
+                          draft.reactions = classic.reactions.map((reaction) => ({
+                            on: labelOf(reaction.trigger),
+                            with: labelOf(reaction.appliedWith),
+                            label: reaction.reaction,
+                            times: reaction.damageMultiplier,
+                            note: reaction.description,
+                          }));
+                        })
+                      }
+                      className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                    >
+                      {t("game.worldKit.setup.elementsChange")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        edit((draft) => {
+                          draft.elements = [];
+                          delete draft.reactions;
+                        })
+                      }
+                      className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                    >
+                      {t("game.worldKit.setup.elementsNone")}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {kit.elements.length === 0 && (
+                      <p className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.elementsEmpty")}</p>
+                    )}
+                    {kit.elements.map((element, index) => (
+                      <div key={`element-${index}`} className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={element.label}
+                          onChange={(event) =>
+                            edit((draft) => {
+                              // A renamed element is renamed wherever the kit names it: in what beats it
+                              // and in its reactions, a keystroke at a time.
+                              const was = draft.elements![index]!.label.trim().toLowerCase();
+                              const now = event.target.value;
+                              draft.elements![index]!.label = now;
+                              if (!was) return;
+                              const same = (word: string) => word.trim().toLowerCase() === was;
+                              for (const each of draft.elements!) {
+                                if (each.beats) each.beats = each.beats.map((word) => (same(word) ? now : word));
+                              }
+                              for (const reaction of draft.reactions ?? []) {
+                                if (same(reaction.on)) reaction.on = now;
+                                if (same(reaction.with)) reaction.with = now;
+                              }
+                            })
+                          }
+                          aria-label={t("game.worldKit.setup.elementName")}
+                          className={cn(INPUT, "min-w-32 flex-1")}
+                        />
+                        <input
+                          value={element.emoji ?? ""}
+                          onChange={(event) =>
+                            edit((draft) => {
+                              if (event.target.value.trim()) draft.elements![index]!.emoji = event.target.value.trim();
+                              else delete draft.elements![index]!.emoji;
+                            })
+                          }
+                          aria-label={t("game.worldKit.setup.elementSign", { name: element.label })}
+                          className={cn(INPUT, "w-14 shrink-0 text-center")}
+                        />
+                        <input
+                          type="color"
+                          value={element.color ?? "#888888"}
+                          onChange={(event) => edit((draft) => (draft.elements![index]!.color = event.target.value))}
+                          aria-label={t("game.worldKit.setup.elementColor", { name: element.label })}
+                          className="h-8 w-10 shrink-0 cursor-pointer rounded border border-[var(--border)] bg-transparent"
+                        />
+                        <select
+                          value={element.weather ?? ""}
+                          onChange={(event) =>
+                            edit((draft) => {
+                              const value = event.target.value;
+                              if (value === "hot" || value === "charged") draft.elements![index]!.weather = value;
+                              else delete draft.elements![index]!.weather;
+                            })
+                          }
+                          aria-label={t("game.worldKit.setup.elementWeather", { name: element.label })}
+                          className={cn(INPUT, "w-auto shrink-0")}
+                        >
+                          <option value="">{t("game.worldKit.setup.elementWeathers.none")}</option>
+                          <option value="hot">{t("game.worldKit.setup.elementWeathers.hot")}</option>
+                          <option value="charged">{t("game.worldKit.setup.elementWeathers.charged")}</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            edit((draft) => {
+                              const gone = draft.elements![index]!.label.trim().toLowerCase();
+                              draft.elements!.splice(index, 1);
+                              // What named it goes with it, so the kit still holds together.
+                              for (const each of draft.elements!) {
+                                if (each.beats)
+                                  each.beats = each.beats.filter((word) => word.trim().toLowerCase() !== gone);
+                              }
+                              if (draft.reactions) {
+                                draft.reactions = draft.reactions.filter(
+                                  (reaction) =>
+                                    reaction.on.trim().toLowerCase() !== gone &&
+                                    reaction.with.trim().toLowerCase() !== gone,
+                                );
+                              }
+                            })
+                          }
+                          className="shrink-0 rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                        >
+                          {t("game.worldKit.setup.removeElement")}
+                        </button>
+                        <div className="basis-full">
+                          <WordsField
+                            id={`world-kit-element-beats-${index}`}
+                            label={t("game.worldKit.setup.elementBeats", { name: element.label })}
+                            words={element.beats ?? []}
+                            onChange={(words) =>
+                              edit((draft) => {
+                                if (words.length) draft.elements![index]!.beats = words;
+                                else delete draft.elements![index]!.beats;
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    {kit.elements.length < 12 && (
+                      <button
+                        type="button"
+                        onClick={() => edit((draft) => draft.elements!.push({ label: "" }))}
+                        className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                      >
+                        {t("game.worldKit.setup.addElement")}
+                      </button>
+                    )}
+                    {(kit.reactions ?? []).map((reaction, index) => (
+                      <div key={`reaction-${index}`} className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={reaction.label}
+                          onChange={(event) => edit((draft) => (draft.reactions![index]!.label = event.target.value))}
+                          aria-label={t("game.worldKit.setup.reactionName")}
+                          className={cn(INPUT, "min-w-32 flex-1")}
+                        />
+                        {(["on", "with"] as const).map((key) => (
+                          <select
+                            key={key}
+                            value={reaction[key]}
+                            onChange={(event) => edit((draft) => (draft.reactions![index]![key] = event.target.value))}
+                            aria-label={t(`game.worldKit.setup.reaction${key === "on" ? "On" : "With"}`, {
+                              name: reaction.label,
+                            })}
+                            className={cn(INPUT, "w-auto shrink-0")}
+                          >
+                            {kit.elements!.map((element, at) => (
+                              <option key={`${element.label}-${at}`} value={element.label}>
+                                {element.label}
+                              </option>
+                            ))}
+                          </select>
+                        ))}
+                        <NumberField
+                          value={reaction.times}
+                          min={0.1}
+                          max={5}
+                          step={0.1}
+                          onChange={(value) => edit((draft) => (draft.reactions![index]!.times = value))}
+                          label={t("game.worldKit.setup.reactionTimes", { name: reaction.label })}
+                          className={cn(INPUT, "w-20 shrink-0")}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => edit((draft) => draft.reactions!.splice(index, 1))}
+                          className="shrink-0 rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                        >
+                          {t("game.worldKit.setup.removeReaction")}
+                        </button>
+                      </div>
+                    ))}
+                    {kit.elements.length >= 2 && (kit.reactions?.length ?? 0) < 24 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          edit((draft) => {
+                            const [first, second] = draft.elements!;
+                            draft.reactions = [
+                              ...(draft.reactions ?? []),
+                              { on: first!.label, with: second!.label, label: "", times: 1.5 },
+                            ];
+                          })
+                        }
+                        className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                      >
+                        {t("game.worldKit.setup.addReaction")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        edit((draft) => {
+                          delete draft.elements;
+                          delete draft.reactions;
+                        })
+                      }
+                      className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                    >
+                      {t("game.worldKit.setup.elementsBackToClassic")}
+                    </button>
+                  </>
+                )}
+              </fieldset>
+
+              <fieldset className="space-y-1.5">
+                <legend className={FIELD_LABEL}>{t("game.worldKit.setup.scenes")}</legend>
+                <p className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.scenesHelp")}</p>
+                {kit.scenes === undefined ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      edit((draft) => {
+                        draft.scenes = WORLD_DEFAULT_BATTLEFIELDS.scenes.map((scene) => ({ ...scene }));
+                      })
+                    }
+                    className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                  >
+                    {t("game.worldKit.setup.scenesOwn")}
+                  </button>
+                ) : (
+                  <>
+                    {kit.scenes.map((scene, index) => (
+                      <div key={`scene-${index}`} className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={scene.label}
+                          onChange={(event) => edit((draft) => (draft.scenes![index]!.label = event.target.value))}
+                          aria-label={t("game.worldKit.setup.sceneName")}
+                          className={cn(INPUT, "min-w-32 flex-1")}
+                        />
+                        <select
+                          value={scene.like}
+                          onChange={(event) =>
+                            edit(
+                              (draft) =>
+                                (draft.scenes![index]!.like = event.target
+                                  .value as (typeof TACTICAL_ENVIRONMENTS)[number]),
+                            )
+                          }
+                          aria-label={t("game.worldKit.setup.sceneLike", { name: scene.label })}
+                          className={cn(INPUT, "w-auto shrink-0")}
+                        >
+                          {TACTICAL_ENVIRONMENTS.map((like) => (
+                            <option key={like} value={like}>
+                              {t(`game.worldKit.setup.battlefields.${like}`)}
+                            </option>
+                          ))}
+                        </select>
+                        {kit.scenes!.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => edit((draft) => draft.scenes!.splice(index, 1))}
+                            className="shrink-0 rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                          >
+                            {t("game.worldKit.setup.removeScene")}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {kit.scenes.length < 24 && (
+                      <button
+                        type="button"
+                        onClick={() => edit((draft) => draft.scenes!.push({ label: "", like: "plains" }))}
+                        className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                      >
+                        {t("game.worldKit.setup.addScene")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => edit((draft) => delete draft.scenes)}
+                      className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                    >
+                      {t("game.worldKit.setup.scenesBack")}
+                    </button>
+                  </>
+                )}
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {TACTICAL_TERRAINS.map((terrain) => (
+                    <div key={terrain}>
+                      <label htmlFor={`world-kit-tile-${terrain}`} className={FIELD_LABEL}>
+                        {t(`game.worldKit.setup.tiles.${terrain}`)}
+                      </label>
+                      <input
+                        id={`world-kit-tile-${terrain}`}
+                        value={kit.tiles?.[terrain] ?? ""}
+                        placeholder={WORLD_DEFAULT_BATTLEFIELDS.tiles[terrain]}
+                        onChange={(event) =>
+                          edit((draft) => {
+                            const tiles = { ...draft.tiles };
+                            if (event.target.value.trim()) tiles[terrain] = event.target.value;
+                            else delete tiles[terrain];
+                            if (Object.keys(tiles).length) draft.tiles = tiles;
+                            else delete draft.tiles;
+                          })
+                        }
+                        className={INPUT}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="space-y-1.5">
+                <legend className={FIELD_LABEL}>{t("game.worldKit.setup.money")}</legend>
+                <p className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.moneyHelp")}</p>
+                {kit.money ? (
+                  <>
+                    <input
+                      value={kit.money.label}
+                      onChange={(event) => edit((draft) => (draft.money!.label = event.target.value))}
+                      aria-label={t("game.worldKit.setup.moneyName")}
+                      className={INPUT}
+                    />
+                    {kit.money.units.map((unit, index) => (
+                      <div key={`coin-${index}`} className="flex items-center gap-2">
+                        <input
+                          value={unit.label}
+                          onChange={(event) => edit((draft) => (draft.money!.units[index]!.label = event.target.value))}
+                          aria-label={t("game.worldKit.setup.coinName")}
+                          className={INPUT}
+                        />
+                        <NumberField
+                          value={unit.value}
+                          min={1}
+                          max={1_000_000}
+                          onChange={(value) => edit((draft) => (draft.money!.units[index]!.value = value))}
+                          label={t("game.worldKit.setup.coinWorth", { coin: unit.label })}
+                          className={cn(INPUT, "w-28 shrink-0")}
+                        />
+                        {kit.money!.units.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => edit((draft) => draft.money!.units.splice(index, 1))}
+                            className="shrink-0 rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                          >
+                            {t("game.worldKit.setup.removeCoin")}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {kit.money.units.length < 6 && (
+                      <button
+                        type="button"
+                        onClick={() => edit((draft) => draft.money!.units.push({ label: "", value: 1 }))}
+                        className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                      >
+                        {t("game.worldKit.setup.addCoin")}
+                      </button>
+                    )}
+                    {(kit.shop ?? []).map((thing, index) => (
+                      <div key={`shop-${index}`} className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={thing.name}
+                          onChange={(event) => edit((draft) => (draft.shop![index]!.name = event.target.value))}
+                          aria-label={t("game.worldKit.setup.shopName")}
+                          className={cn(INPUT, "min-w-40 flex-1")}
+                        />
+                        <NumberField
+                          value={thing.price}
+                          min={0}
+                          max={1_000_000_000}
+                          onChange={(value) => edit((draft) => (draft.shop![index]!.price = value))}
+                          label={t("game.worldKit.setup.shopPrice", { name: thing.name })}
+                          className={cn(INPUT, "w-28 shrink-0")}
+                        />
+                        <select
+                          value={Math.min(thing.from ?? 0, kit.sizes.length - 1)}
+                          onChange={(event) => edit((draft) => (draft.shop![index]!.from = Number(event.target.value)))}
+                          aria-label={t("game.worldKit.setup.shopFrom", { name: thing.name })}
+                          className={cn(INPUT, "w-auto shrink-0")}
+                        >
+                          {kit.sizes.map((size, rank) => (
+                            <option key={`${size.id}-${rank}`} value={rank}>
+                              {size.label}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="flex shrink-0 items-center gap-1 text-[var(--muted-foreground)]">
+                          <input
+                            type="checkbox"
+                            checked={thing.service === true}
+                            onChange={(event) =>
+                              edit((draft) => {
+                                if (event.target.checked) draft.shop![index]!.service = true;
+                                else delete draft.shop![index]!.service;
+                              })
+                            }
+                            className="size-4 accent-[var(--primary)]"
+                          />
+                          {t("game.worldKit.setup.shopService")}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => edit((draft) => draft.shop!.splice(index, 1))}
+                          className="shrink-0 rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                        >
+                          {t("game.worldKit.setup.removeShop")}
+                        </button>
+                      </div>
+                    ))}
+                    {(kit.shop?.length ?? 0) < 60 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          edit((draft) => (draft.shop = [...(draft.shop ?? []), { name: "", price: 1, from: 0 }]))
+                        }
+                        className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                      >
+                        {t("game.worldKit.setup.addShop")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        edit((draft) => {
+                          delete draft.money;
+                          delete draft.shop;
+                        })
+                      }
+                      className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                    >
+                      {t("game.worldKit.setup.noMoney")}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => edit((draft) => (draft.money = { label: "", units: [{ label: "", value: 1 }] }))}
+                    className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                  >
+                    {t("game.worldKit.setup.addMoney")}
+                  </button>
+                )}
               </fieldset>
 
               <fieldset className="space-y-2">

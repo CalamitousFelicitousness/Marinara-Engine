@@ -217,6 +217,14 @@ import {
   rulesetRefSchema,
   worldKitSchema,
   gameWorldKitFromMetadata,
+  gameWorldElementSet,
+  worldElementSetSchema,
+  WORLD_DEFAULT_BATTLEFIELDS,
+  gameWorldBattlefields,
+  worldSceneLike,
+  gameArtFamily,
+  WORLD_ART_FAMILIES,
+  worldAssetsForFamily,
   gameWorldSchema,
   gameWorldFromMetadata,
   worldBriefSchema,
@@ -885,16 +893,28 @@ function formatIllustrationAssetDebug(assets: IllustrationCharacterAssets): stri
     .join(", ");
 }
 
-function generatedBackgroundSlug(value: string): string {
+// A full tag such as backgrounds:wuxia:teahouse names an existing background: every art family's
+// folder, and the game's own family when its kit names one, is stripped like the folders before it,
+// so its slug is never doubled.
+const GENERATED_BACKGROUND_PREFIX = new RegExp(
+  `^(?:backgrounds|${WORLD_ART_FAMILIES.map((family) => family.replace(/_/g, "-")).join("|")}|user|generated|illustrations|q-[a-z0-9]{6,})-+`,
+);
+
+function generatedBackgroundSlug(value: string, family?: string): string {
+  const ownFamily = family
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   let slug = value
     .trim()
     .toLowerCase()
     .replace(/:/g, "-")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const prefixPattern = /^(?:backgrounds|fantasy|modern|scifi|user|generated|illustrations|q-[a-z0-9]{6,})-+/;
-  while (prefixPattern.test(slug)) {
-    slug = slug.replace(prefixPattern, "");
+  for (;;) {
+    if (GENERATED_BACKGROUND_PREFIX.test(slug)) slug = slug.replace(GENERATED_BACKGROUND_PREFIX, "");
+    else if (ownFamily && slug.startsWith(`${ownFamily}-`)) slug = slug.slice(ownFamily.length + 1);
+    else break;
   }
   return slug || "scene";
 }
@@ -9992,7 +10012,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const provider = await createGameMainProvider(connections, conn, baseUrl);
 
     const messages: ChatMessage[] = [
-      { role: "system", content: buildMapGenerationPrompt(locationType, mapContext) },
+      {
+        role: "system",
+        content: buildMapGenerationPrompt(locationType, mapContext, gameWorldBattlefields(parseMeta(chat.metadata))),
+      },
       { role: "user", content: "Generate the map." },
     ];
 
@@ -10352,7 +10375,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
     }
     const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);
-    const elementPreset = ((meta.gameSetupConfig as Record<string, unknown>)?.elementPreset as string) ?? "default";
+    // The setting's own elements (worldgen W6c), when its kit names them; else the classic preset.
+    const elementPreset =
+      gameWorldElementSet(meta) ??
+      ((meta.gameSetupConfig as Record<string, unknown>)?.elementPreset as string) ??
+      "default";
     const result = resolveCombatRound(
       combatants as (CombatantStats & { side?: "player" | "enemy" })[],
       round,
@@ -10435,6 +10462,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     .object({
       schemaVersion: z.literal(1),
       weather: combatWeatherSchema.optional(),
+      // The setting's elements (worldgen W6c): a state the client sends back is checked before it is read.
+      elements: worldElementSetSchema.optional(),
       grid: z
         .object({
           width: z.number().int().min(1).max(64),
@@ -10518,13 +10547,17 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         .status(400)
         .send({ error: `Invalid tactical battle request: ${field}${issue?.message ?? "invalid input"}` });
     }
-    const { chatId, party, enemies, seed, environment, formation, battlefield, weather } = parsed.data;
+    const { chatId, party, enemies, seed, formation, battlefield, weather } = parsed.data;
 
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
     const meta = parseMeta(chat.metadata);
+    // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
+    const environment =
+      worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, parsed.data.environment) ??
+      parsed.data.environment;
     const setupConfig = meta.gameSetupConfig as Record<string, unknown> | undefined;
     const difficulty = normalizeGameDifficulty(setupConfig?.difficulty);
     const preferences = resolveTacticalStartPreferences({
@@ -10549,6 +10582,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                 preferences.battlefield?.exposure,
               )),
         difficulty,
+        ...(gameWorldElementSet(meta) ? { elements: gameWorldElementSet(meta) } : {}),
         environment,
         formation,
         battlefield: preferences.battlefield,
@@ -12583,6 +12617,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           currentMusic: input.context.currentMusic,
           recentMusic: input.context.recentMusic,
           availableMusic: serverMusicTags,
+          family: gameArtFamily(meta),
         });
         if (scoredMusic) {
           parsed.music = scoredMusic;
@@ -14358,7 +14393,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     let resolvedIllustration: Pick<SceneIllustrationRequest, "prompt" | "characters"> | undefined;
 
     if (backgroundGenerationEnabled && input.backgroundTag) {
-      const slug = generatedBackgroundSlug(input.backgroundTag);
+      const slug = generatedBackgroundSlug(input.backgroundTag, gameArtFamily(meta));
       const backgroundDescription =
         input.backgroundDescription?.trim() || input.backgroundTag.replace(/:/g, " ").replace(/-/g, " ");
       const promptOverride = promptOverrideById.get(gameImagePromptReviewId("background", slug));
@@ -14772,7 +14807,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
       // ── Generate background ──
       if (!assetAbortSignal.aborted && backgroundGenerationEnabled && input.backgroundTag) {
-        const slug = generatedBackgroundSlug(input.backgroundTag);
+        const slug = generatedBackgroundSlug(input.backgroundTag, gameArtFamily(meta));
         const backgroundDescription =
           input.backgroundDescription?.trim() || input.backgroundTag.replace(/:/g, " ").replace(/-/g, " ");
         const promptOverride = promptOverrideById.get(gameImagePromptReviewId("background", slug));
@@ -14783,6 +14818,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           sceneDescription: backgroundDescription,
           genre,
           setting,
+          family: gameArtFamily(meta),
           currentLocation: latestImageState?.location ?? null,
           currentWeather: latestImageState?.weather ?? null,
           currentTimeOfDay: latestImageState?.time ?? null,
@@ -14812,7 +14848,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         if (tag) {
           generatedBackground = tag;
         } else {
-          fallbackBackground = pickFallbackBackgroundTag(input.backgroundTag, getAssetManifest().assets);
+          fallbackBackground = pickFallbackBackgroundTag(
+            input.backgroundTag,
+            worldAssetsForFamily(getAssetManifest().assets, gameArtFamily(meta)) ?? {},
+          );
           if (fallbackBackground) {
             logger.warn(
               '[game/generate-assets] background generation failed for "%s"; using fallback "%s"',

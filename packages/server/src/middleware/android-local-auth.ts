@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 const ANDROID_AUTH_PREFIX = "/api/android-auth";
 const ANDROID_LOGIN_PATH = "/android-login";
 const SESSION_COOKIE = "MarinaraAndroidSession";
+const SECRET_HEADER = "x-marinara-android-secret";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1_000;
 const CHALLENGE_TTL_MS = 60_000;
 const MAX_PENDING_CHALLENGES = 64;
@@ -138,7 +139,7 @@ function hasValidSession(request: FastifyRequest): boolean {
 }
 
 function hasValidSecretHeader(request: FastifyRequest, secret: string): boolean {
-  const raw = request.headers["x-marinara-android-secret"];
+  const raw = request.headers[SECRET_HEADER];
   const value = (Array.isArray(raw) ? raw[0] : raw)?.trim().toLowerCase() ?? "";
   return safeEqualHex(value, secret);
 }
@@ -186,6 +187,16 @@ export function isAndroidLocalAuthSatisfied(request: FastifyRequest): boolean {
   if (!isAndroidAuthConfigured() || !isDeviceLocalIp(request.ip)) return true;
   const secret = androidSecret();
   return !!secret && (hasValidSession(request) || hasValidSecretHeader(request, secret));
+}
+
+/**
+ * Headers for the server's own `app.inject()` calls. Those arrive from 127.0.0.1, so on an
+ * APK-managed install they need the same local secret the `mari` CLI sends. They stay in
+ * this process: never pass them to an outbound request or to package code.
+ */
+export function androidLocalAuthInjectHeaders(): Record<string, string> {
+  const secret = androidSecret();
+  return secret ? { [SECRET_HEADER]: secret } : {};
 }
 
 /**

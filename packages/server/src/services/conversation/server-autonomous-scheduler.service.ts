@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { logger } from "../../lib/logger.js";
 import { logRateLimited } from "../../lib/log-rate-limit.js";
+import { androidLocalAuthInjectHeaders } from "../../middleware/android-local-auth.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import {
   clearGenerationInProgress,
@@ -241,6 +242,7 @@ export function startServerAutonomousScheduler(app: FastifyInstance, multiplayer
     const response = await app.inject({
       method: "POST",
       url: "/api/generate",
+      headers: androidLocalAuthInjectHeaders(),
       payload: {
         chatId,
         connectionId: null,
@@ -353,6 +355,8 @@ export function startServerAutonomousScheduler(app: FastifyInstance, multiplayer
       const checkResponse = await app.inject({
         method: "POST",
         url: "/api/conversation/autonomous/check",
+        // Injected requests come from 127.0.0.1, which Android local auth does not trust on its own (#7475).
+        headers: androidLocalAuthInjectHeaders(),
         payload: {
           chatId: chat.id,
           userStatus: "idle",

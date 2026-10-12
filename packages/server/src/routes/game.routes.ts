@@ -223,6 +223,7 @@ import {
   gameWorldBattlefields,
   worldSceneLike,
   gameArtFamily,
+  WORLD_ART_FAMILIES,
   worldAssetsForFamily,
   gameWorldSchema,
   gameWorldFromMetadata,
@@ -892,6 +893,12 @@ function formatIllustrationAssetDebug(assets: IllustrationCharacterAssets): stri
     .join(", ");
 }
 
+// A full tag such as backgrounds:wuxia:teahouse names an existing background: every art family's
+// folder is stripped like the folders before it, so its slug is never doubled.
+const GENERATED_BACKGROUND_PREFIX = new RegExp(
+  `^(?:backgrounds|${WORLD_ART_FAMILIES.map((family) => family.replace(/_/g, "-")).join("|")}|user|generated|illustrations|q-[a-z0-9]{6,})-+`,
+);
+
 function generatedBackgroundSlug(value: string): string {
   let slug = value
     .trim()
@@ -899,9 +906,8 @@ function generatedBackgroundSlug(value: string): string {
     .replace(/:/g, "-")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const prefixPattern = /^(?:backgrounds|fantasy|modern|scifi|user|generated|illustrations|q-[a-z0-9]{6,})-+/;
-  while (prefixPattern.test(slug)) {
-    slug = slug.replace(prefixPattern, "");
+  while (GENERATED_BACKGROUND_PREFIX.test(slug)) {
+    slug = slug.replace(GENERATED_BACKGROUND_PREFIX, "");
   }
   return slug || "scene";
 }

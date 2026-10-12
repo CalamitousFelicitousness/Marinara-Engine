@@ -125,6 +125,18 @@ export function withUniqueOnboardingIds<T extends CharacterOnboarding>(onboardin
 /** A variable with this name supplies the created persona's name. */
 export const ONBOARDING_PLAYER_VARIABLE = "player";
 
+/**
+ * "A", "A and B", "A, B and C" — a name list that reads as a sentence, used by
+ * the onboarding window's opening line and its clash warning. Note the last pair
+ * is joined with "and" and there is no Oxford comma: the copy is written that
+ * way, so the join has to match it.
+ */
+export function listNames(names: readonly string[]): string {
+  const present = names.filter((name) => name.trim() !== "");
+  if (present.length <= 1) return present[0] ?? "";
+  return `${present.slice(0, -1).join(", ")} and ${present[present.length - 1]}`;
+}
+
 export const ONBOARDING_PERSONA_FIELDS = ["description", "personality", "backstory", "appearance", "scenario"] as const;
 export type OnboardingPersonaField = (typeof ONBOARDING_PERSONA_FIELDS)[number];
 
@@ -281,6 +293,51 @@ export function resolveOnboardingQuestions(
 }
 
 /**
+ * The CARD questions as the player sees them, by variable id.
+ *
+ * Separate from `resolveOnboardingQuestions` on purpose: the two lists resolve
+ * against different things. Card answers become chat variables and the card's
+ * own fields fill their `{{placeholders}}`, while the persona's answers fill its
+ * fields. One shared context would let a persona question read a card answer or
+ * vice versa, and `{{user}}`/`{{char}}` inside a card question would be blanked
+ * as though they were person variables.
+ */
+export function resolveCardQuestions(
+  onboarding: CharacterOnboarding,
+  answers: OnboardingAnswers,
+  characterName: string,
+  playerName?: string,
+): Map<string, string> {
+  const variables = onboarding.cardVariables ?? [];
+  if (variables.length === 0) return new Map();
+  // `{{user}}` is the player's name. It comes from an answer here, but when the
+  // player picked an EXISTING persona there is no name question to answer at
+  // all, so the caller passes the persona's name in instead. Without that the
+  // heading printed a bare `{{user}}` while a persona question beside it showed
+  // the resolved name — a mismatch the user caught in review.
+  const ctx = answerContextFor(variables, answers, { user: "{{user}}", char: characterName });
+  const answered = ownAnswer(answers, ONBOARDING_PLAYER_VARIABLE);
+  const resolvedPlayer = answered && "text" in answered ? answered.text.trim() : "";
+  // Falls back to the live tag, not an ellipsis: a card question may be drawn
+  // before any name is known, and `{{user}}` is a base macro the engine expands
+  // when the card is actually read. An ellipsis read as a broken question.
+  ctx.user = resolvedPlayer || playerName?.trim() || "{{user}}";
+  const names = new Set(variables.map((variable) => variable.variableName));
+  const questions = new Map<string, string>();
+  for (const variable of variables) {
+    if (!variable.question) continue;
+    // Blank only THIS list's names: a still-unresolved name would otherwise
+    // print its raw tag into a heading. `{{user}}`/`{{char}}` are not in the set,
+    // so they resolve to the player's and the card's name as intended.
+    questions.set(
+      variable.id,
+      blankOnboardingNames(names, resolveMacros(variable.question, ctx, { trimResult: false }), "…").trim(),
+    );
+  }
+  return questions;
+}
+
+/**
  * Variables the current answers make relevant, in card order: `player`, plus
  * every variable the engine reads while resolving the fields — in reachable text
  * or in a `{{#if}}` it evaluates. A question inside a branch that the answers
@@ -407,6 +464,21 @@ export function findUnresolvedCardVariableUses(
 export function hasOnboardingContent(onboarding: CharacterOnboarding): boolean {
   if (ONBOARDING_PERSONA_FIELDS.some((field) => (onboarding[field] ?? "").trim() !== "")) return true;
   return hasQuestion(onboarding.variables) || hasQuestion(onboarding.cardVariables);
+}
+
+/**
+ * Whether this card would actually PRODUCE a persona, which is a narrower
+ * question than `hasOnboardingContent`: a card that only declares card questions
+ * is still worth offering to the player (its fields read this chat's answers),
+ * but it has nothing to write into a persona, so offering it as a "Create your
+ * persona" template would build one from a bare name.
+ *
+ * A card with persona field text but no questions does qualify — it ships a
+ * ready-made persona, exactly like the answer path produces.
+ */
+export function canBuildPersona(onboarding: CharacterOnboarding): boolean {
+  if (ONBOARDING_PERSONA_FIELDS.some((field) => (onboarding[field] ?? "").trim() !== "")) return true;
+  return hasQuestion(onboarding.variables);
 }
 
 /** The card questions the answers make relevant, in card order. */

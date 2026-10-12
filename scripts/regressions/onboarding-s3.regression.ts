@@ -8,14 +8,17 @@
 import assert from "node:assert/strict";
 import {
   characterExtensionsSchema,
+  canBuildPersona,
   dropUnreadableOnboarding,
   findUnresolvedCardVariableUses,
   getNextCardVariable,
   getRelevantCardVariables,
   hasOnboardingContent,
+  listNames,
   MAX_CARD_VARIABLES,
   ONBOARDING_MAX_QUESTIONS,
   resolveCardVariables,
+  resolveCardQuestions,
   seedCardVariables,
   validateOnboarding,
   withUniqueOnboardingIds,
@@ -586,5 +589,184 @@ assert.deepEqual(
   { title: "a captain of the guard", rank: "a captain" },
   "declaration order does not change what can be resolved",
 );
+
+// ── The card's own fields live on `extensions` (#7434 review) ──────────────
+// A card field's `{{tag}}` is what MAKES its question relevant, so reading the
+// field from the wrong level hides the question completely: the wizard passed
+// `data.backstory`, which is undefined, and a question used only in the
+// backstory was never asked. Pin both levels so the mapping cannot drift back.
+const wiredCard = characterExtensionsSchema.parse({
+  description: "Reads {{relationshipToUser}}.",
+  extensions: { backstory: "Relationship to user: {{relationshipToUser}}." },
+  onboarding: {
+    enabled: true,
+    cardVariables: [{ id: "rel", variableName: "relationshipToUser", question: "Who are you to her?" }],
+  },
+});
+const wiredOnboarding = wiredCard.onboarding as CharacterOnboarding;
+const wiredFields = {
+  description: wiredCard.description,
+  personality: wiredCard.personality,
+  backstory: wiredCard.extensions.backstory,
+  appearance: wiredCard.extensions.appearance,
+  scenario: wiredCard.scenario,
+};
+assert.deepEqual(
+  names(getRelevantCardVariables(wiredOnboarding, wiredFields, answers({}))),
+  ["relationshipToUser"],
+  "a question used in the card's extensions.backstory is relevant",
+);
+// The old, wrong mapping read the top level. It must find nothing, which is the
+// regression this pins: the question silently vanishing from the window.
+assert.deepEqual(
+  names(
+    getRelevantCardVariables(
+      wiredOnboarding,
+      { ...wiredFields, backstory: undefined, description: undefined },
+      answers({}),
+    ),
+  ),
+  [],
+  "reading backstory from the top level finds nothing, which is the bug that was fixed",
+);
+
+// A card question resolves against the CARD's context. Resolving it with the
+// persona's helper blanks its names and renders an empty heading (the second
+// half of the same review), so pin that it does NOT come back blank.
+const cardQuestionText = resolveCardQuestions(
+  wiredOnboarding,
+  answers({ relationshipToUser: { optionIds: ["friend"] } }),
+  "Anastasia",
+);
+assert.equal(
+  cardQuestionText.get("rel"),
+  "Who are you to her?",
+  "a card question with no placeholders resolves to its own text",
+);
+const placeholderCard = characterExtensionsSchema.parse({
+  onboarding: {
+    enabled: true,
+    cardVariables: [{ id: "rel", variableName: "relationshipToUser", question: "What is {{char}} to you, {{user}}?" }],
+  },
+});
+const placeholderText = resolveCardQuestions(
+  placeholderCard.onboarding as CharacterOnboarding,
+  answers({}),
+  "Anastasia",
+);
+assert.equal(
+  placeholderText.get("rel"),
+  "What is Anastasia to you, {{user}}?",
+  "{{char}} resolves to the card's name and an unanswered {{user}} stays live",
+);
+
+// ── `{{user}}` stays live in a card question's heading ─────────────────────
+// A card question is asked BEFORE the player's name exists (and it may never
+// exist, when no persona is created). Substituting an ellipsis printed
+// "What is Raven's relationship to …", which the user reported as broken.
+const userQuestion = onboarding({
+  cardVariables: [
+    { id: "rel", variableName: "relationshipToUser", question: "What is Raven's relationship to {{user}}?" },
+  ],
+}) as CharacterOnboarding;
+assert.equal(
+  resolveCardQuestions(userQuestion, {}, "Raven").get("rel"),
+  "What is Raven's relationship to {{user}}?",
+  "an unanswered {{user}} stays live rather than printing an ellipsis",
+);
+assert.equal(
+  resolveCardQuestions(userQuestion, { player: { text: "Fel" } }, "Raven").get("rel"),
+  "What is Raven's relationship to Fel?",
+  "{{user}} resolves once the persona path supplied a name",
+);
+// A name from THIS card's own list is still blanked when unanswered: nothing
+// will ever resolve it, so a raw tag would reach the heading.
+assert.equal(
+  resolveCardQuestions(
+    onboarding({
+      cardVariables: [
+        { id: "a", variableName: "mood", question: "How is {{tone}} today?" },
+        { id: "b", variableName: "tone", question: "Tone?" },
+      ],
+    }) as CharacterOnboarding,
+    {},
+    "Raven",
+  ).get("a"),
+  "How is … today?",
+  "an unanswered question name is still blanked, not left as a tag",
+);
+
+// The user caught this one: with an EXISTING persona picked there is no name
+// question to answer, so `{{user}}` printed raw in card headings while a persona
+// question beside it resolved. The caller passes the known name in.
+assert.equal(
+  resolveCardQuestions(userQuestion, {}, "Raven", "Fel Lockheart").get("rel"),
+  "What is Raven's relationship to Fel Lockheart?",
+  "a pre-picked persona's name resolves {{user}} in a card heading",
+);
+// An explicit answer still wins over the passed-in name.
+assert.equal(
+  resolveCardQuestions(userQuestion, { player: { text: "Answered" } }, "Raven", "Ignored").get("rel"),
+  "What is Raven's relationship to Answered?",
+  "the in-window answer outranks the pre-picked persona name",
+);
+// Whitespace is not a name.
+assert.equal(
+  resolveCardQuestions(userQuestion, {}, "Raven", "   ").get("rel"),
+  "What is Raven's relationship to {{user}}?",
+  "a blank player name leaves the tag live rather than printing spaces",
+);
+
+// ── canBuildPersona: the persona template gate ────────────────────────────
+// The "Create your persona" template must be offered only when the card can
+// actually fill a persona in. The user's card had no persona questions and
+// empty persona fields, and was still offered one.
+assert.equal(
+  canBuildPersona(
+    onboarding({
+      cardVariables: [{ id: "rel", variableName: "relationshipToUser", question: "Who?" }],
+    }) as CharacterOnboarding,
+  ),
+  false,
+  "a card with only card questions is NOT offered as a persona template",
+);
+assert.equal(
+  canBuildPersona(
+    onboarding({ variables: [{ id: "v", variableName: "mood", question: "Mood?" }] }) as CharacterOnboarding,
+  ),
+  true,
+  "a card with persona questions IS offered",
+);
+assert.equal(
+  canBuildPersona(onboarding({ description: "Ready-made persona text." }) as CharacterOnboarding),
+  true,
+  "a card shipping persona field text with no questions is still offered",
+);
+assert.equal(
+  canBuildPersona(onboarding({}) as CharacterOnboarding),
+  false,
+  "an enabled but entirely empty block is not offered",
+);
+// The two predicates must stay distinct: the marker uses hasOnboardingContent,
+// which stays true for a card-questions-only card.
+assert.equal(
+  hasOnboardingContent(
+    onboarding({
+      cardVariables: [{ id: "rel", variableName: "relationshipToUser", question: "Who?" }],
+    }) as CharacterOnboarding,
+  ),
+  true,
+  "a card-questions-only card still counts as onboarding content",
+);
+
+// The user caught this: the opening line's name list was derived from the
+// card-QUESTION targets, so a participant without card questions vanished from
+// it — and with no card questions at all the sentence lost its subject entirely
+// ("  has a few questions"). The list is now every participant, independent of
+// who has questions. Pinned here as the join rule the heading depends on.
+assert.equal(listNames(["Raven"]), "Raven", "one participant is named plainly");
+assert.equal(listNames(["Jessica", "Raven"]), "Jessica and Raven", "two are joined with and");
+assert.equal(listNames(["A", "B", "C"]), "A, B and C", "three take the serial form without an Oxford comma");
+assert.equal(listNames([]), "", "an empty list yields no stray text");
 
 console.info("onboarding s3 (card variables) regressions passed.");

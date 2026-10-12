@@ -2,10 +2,11 @@
 // Character Onboarding Modal
 // Shown during chat setup when a chosen character's card ships interactive
 // onboarding: the player answers the card's questions and the answers become
-// a new persona. Questions appear and disappear as the answers change.
+// chat variables (and optionally a new persona). One section is rendered per
+// card, since each answer lands in that card's own field.
 // ──────────────────────────────────────────────
-import { useMemo, useRef, useState } from "react";
-import { PencilLine, CheckCircle2, Circle } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { AlertTriangle, PencilLine, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -13,9 +14,11 @@ import {
   getOnboardingVariables,
   getRelevantCardVariables,
   getRelevantOnboardingVariables,
+  listNames,
   ONBOARDING_PLAYER_VARIABLE,
   resolveCardVariables,
   resolveOnboardingPersona,
+  resolveCardQuestions,
   resolveOnboardingQuestions,
   type CharacterOnboarding,
   type CharacterOnboardingVariable,
@@ -32,6 +35,11 @@ const FIELD_CLASS =
   "w-full rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)]/60 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]";
 const ROW_CLASS = "flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left transition-all";
 const ROW_SELECTED_CLASS = "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30";
+
+/** The answer namespace for the persona's own questions, which belong to no card. */
+const PERSONA_ANSWER_SCOPE = "\u0000persona";
+/** Shared empty map, so an untouched card does not allocate per render. */
+const EMPTY_ANSWERS: OnboardingAnswers = Object.freeze({});
 
 /** Choices start on their first option; free text starts empty. */
 function defaultAnswer(variable: CharacterOnboardingVariable): OnboardingAnswer {
@@ -51,21 +59,47 @@ function answersFor(variables: CharacterOnboardingVariable[], overrides: Onboard
   return merged;
 }
 
+/** One card the window asks about: its name, its onboarding block, and its fields. */
+export interface OnboardingCardTarget {
+  characterId: string;
+  name: string;
+  onboarding: CharacterOnboarding;
+  cardFields: OnboardingCardFields;
+}
+
 export function CharacterOnboardingModal({
   open,
-  characterName,
-  onboarding,
-  cardFields,
+  cards,
+  participantNames,
+  persona,
+  playerName,
   withPersona,
   onBack,
   onCreated,
 }: {
   open: boolean;
-  characterName: string;
-  onboarding: CharacterOnboarding;
-  /** The card's own text, so its questions are the ones the card actually reads. */
-  cardFields: OnboardingCardFields;
-  /** False when the player asked for no new persona: only the card needs answers. */
+  /**
+   * Every selected card that has something to ask. One section is rendered per
+   * card: each answer belongs to a different card's field, so they cannot share
+   * one question list.
+   */
+  cards: OnboardingCardTarget[];
+  /**
+   * Every participating character's name, in wizard order. Deliberately NOT
+   * derived from `cards`: a character with no card questions still participates,
+   * and binding the intro to `cards` made its name vanish from the opening line
+   * (and an empty `cards` left the sentence with no subject at all).
+   */
+  participantNames: string[];
+  /** The card whose questions become a new persona, when one is being created. */
+  persona?: { characterName: string; onboarding: CharacterOnboarding } | null;
+  /**
+   * The player's name when it is already known — an existing persona's name.
+   * Card questions show `{{user}}` in a heading, and without this they would
+   * print the raw tag while a persona question beside them resolved.
+   */
+  playerName?: string;
+  /** False when the player asked for no new persona: only the cards need answers. */
   withPersona: boolean;
   /** Return to the persona picker without creating anything. */
   onBack: () => void;
@@ -74,38 +108,87 @@ export function CharacterOnboardingModal({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const createPersona = useCreatePersona();
-  const [overrides, setOverrides] = useState<OnboardingAnswers>({});
+  // Overrides are namespaced per card. Two cards may declare the SAME variable
+  // name (a chat has only one value for it), but while editing they are still
+  // two separate inputs, and one typing must not make the other's box jump.
+  const [overrides, setOverrides] = useState<Record<string, OnboardingAnswers>>({});
+  // Stable identity, so the memos below can list it as a dependency instead of
+  // closing over `overrides` invisibly.
+  const overridesFor = useCallback(
+    (characterId: string): OnboardingAnswers => overrides[characterId] ?? EMPTY_ANSWERS,
+    [overrides],
+  );
+  const setAnswer = (characterId: string, name: string, answer: OnboardingAnswer) =>
+    setOverrides((prev) => ({
+      ...prev,
+      [characterId]: { ...(prev[characterId] ?? EMPTY_ANSWERS), [name]: answer },
+    }));
 
-  const personaVariables = useMemo(() => getOnboardingVariables(onboarding), [onboarding]);
-  // The card's fields and the persona's fields are answered in one window, but
-  // they resolve different things, so each list keeps its own answers.
-  const cardAnswers = useMemo(() => answersFor(onboarding.cardVariables ?? [], overrides), [onboarding, overrides]);
-  const personaAnswers = useMemo(() => answersFor(personaVariables, overrides), [personaVariables, overrides]);
-
-  const cardQuestions = useMemo(
-    () => getRelevantCardVariables(onboarding, cardFields, cardAnswers),
-    [onboarding, cardFields, cardAnswers],
+  const personaOnboarding = persona?.onboarding;
+  const personaVariables = useMemo(
+    () => (personaOnboarding ? getOnboardingVariables(personaOnboarding) : []),
+    [personaOnboarding],
+  );
+  // Each card's questions are resolved against ITS own fields, and the persona's
+  // against the persona list: they resolve different things, so they keep
+  // separate answer maps.
+  const perCard = useMemo(
+    () =>
+      cards.map((card) => {
+        const cardAnswers = answersFor(card.onboarding.cardVariables ?? [], overridesFor(card.characterId));
+        return {
+          card,
+          cardAnswers,
+          questions: getRelevantCardVariables(card.onboarding, card.cardFields, cardAnswers),
+          questionTexts: resolveCardQuestions(card.onboarding, cardAnswers, card.name, playerName),
+        };
+      }),
+    [cards, overridesFor, playerName],
+  );
+  const personaAnswers = useMemo(
+    () => answersFor(personaVariables, overridesFor(PERSONA_ANSWER_SCOPE)),
+    [personaVariables, overridesFor],
   );
   const personaQuestions = useMemo(
-    () => (withPersona ? getRelevantOnboardingVariables(onboarding, personaAnswers) : []),
-    [withPersona, onboarding, personaAnswers],
+    () => (withPersona && personaOnboarding ? getRelevantOnboardingVariables(personaOnboarding, personaAnswers) : []),
+    [withPersona, personaOnboarding, personaAnswers],
   );
   const questionTexts = useMemo(
-    () => resolveOnboardingQuestions(onboarding, personaAnswers, characterName),
-    [onboarding, personaAnswers, characterName],
+    () =>
+      personaOnboarding
+        ? resolveOnboardingQuestions(personaOnboarding, personaAnswers, persona?.characterName ?? "")
+        : new Map<string, string>(),
+    [personaOnboarding, personaAnswers, persona],
   );
-  const setAnswer = (name: string, answer: OnboardingAnswer) => setOverrides((prev) => ({ ...prev, [name]: answer }));
+  // A variable name two selected cards both declare. A chat stores ONE value per
+  // name, so the last answer saved is what both cards end up reading — worth
+  // saying out loud rather than silently overwriting.
+  const clashes = useMemo(() => {
+    const owners = new Map<string, string[]>();
+    for (const card of cards) {
+      for (const variable of card.onboarding.cardVariables ?? []) {
+        const name = variable.variableName;
+        if (!name) continue;
+        const list = owners.get(name) ?? [];
+        list.push(card.name);
+        owners.set(name, list);
+      }
+    }
+    return [...owners.entries()]
+      .filter(([, names]) => names.length > 1)
+      .map(([name, names]) => ({ name, names: [...new Set(names)] }));
+  }, [cards]);
 
   // Card questions are OPTIONAL: a blank one simply writes no variable, and the
   // card keeps whatever it reads without it. The persona is not — it needs a
   // name and its fields are the persona's whole content.
   const personaComplete = useMemo(
-    () => !withPersona || getNextOnboardingVariable(onboarding, personaAnswers) === null,
-    [withPersona, onboarding, personaAnswers],
+    () => !withPersona || !personaOnboarding || getNextOnboardingVariable(personaOnboarding, personaAnswers) === null,
+    [withPersona, personaOnboarding, personaAnswers],
   );
   // Nothing to show at all: the wizard suppresses the modal for this case, so
   // this only guards a direct render.
-  const hasAnything = cardQuestions.length > 0 || personaQuestions.length > 0;
+  const hasAnything = perCard.some((entry) => entry.questions.length > 0) || personaQuestions.length > 0;
 
   // Set synchronously, so a double click can't create the persona twice before
   // the button re-renders as disabled.
@@ -118,11 +201,16 @@ export function CharacterOnboardingModal({
     creatingRef.current = true;
     setBusy(true);
     try {
-      const cardVariables = resolveCardVariables(onboarding, cardAnswers);
+      // Every card's answers merged into ONE map: they share the chat's
+      // variables, so a name two cards both declare is written once, by the card
+      // the clash warning named last.
+      const cardVariables: Record<string, string> = {};
+      for (const entry of perCard)
+        Object.assign(cardVariables, resolveCardVariables(entry.card.onboarding, entry.cardAnswers));
       let personaId: string | null = null;
-      if (withPersona) {
+      if (withPersona && personaOnboarding) {
         try {
-          personaId = (await createPersona.mutateAsync(resolveOnboardingPersona(onboarding, personaAnswers))).id;
+          personaId = (await createPersona.mutateAsync(resolveOnboardingPersona(personaOnboarding, personaAnswers))).id;
         } catch {
           toast.error(localizeUi("ui.characters.onboarding.createFailed"));
           return;
@@ -135,13 +223,22 @@ export function CharacterOnboardingModal({
     }
   };
 
-  const renderQuestion = (variable: CharacterOnboardingVariable, showName: boolean) => {
+  const renderQuestion = (
+    variable: CharacterOnboardingVariable,
+    scope: { answers: OnboardingAnswers; texts: Map<string, string>; characterId: string; showName: boolean },
+    setAnswerFor: (name: string, answer: OnboardingAnswer) => void,
+  ) => {
     const name = variable.variableName;
-    const answer = (showName ? personaAnswers : cardAnswers)[name];
+    const answer = scope.answers[name];
     const ownText = answer && "text" in answer ? answer.text : null;
-    const isPlayer = showName && name === ONBOARDING_PLAYER_VARIABLE;
+    const isPlayer = scope.showName && name === ONBOARDING_PLAYER_VARIABLE;
+    // Each list reads its own map; ids can collide across lists, which is why
+    // the map is chosen by list rather than by id alone. Falling back to the
+    // unresolved text keeps a heading (and its input's aria-label) populated
+    // even when nothing resolved it.
+    const resolved = scope.texts.get(variable.id);
     const question = variable.question
-      ? (questionTexts.get(variable.id) ?? "")
+      ? (resolved ?? variable.question)
       : isPlayer
         ? localizeUi("ui.characters.onboarding.nameQuestion")
         : name;
@@ -149,7 +246,7 @@ export function CharacterOnboardingModal({
       isPlayer ? (
         <input
           value={value}
-          onChange={(event) => setAnswer(name, { text: event.target.value })}
+          onChange={(event) => setAnswerFor(name, { text: event.target.value })}
           placeholder={localizeUi("ui.characters.onboarding.yourAnswer")}
           aria-label={question}
           className={FIELD_CLASS}
@@ -157,7 +254,7 @@ export function CharacterOnboardingModal({
       ) : (
         <textarea
           value={value}
-          onChange={(event) => setAnswer(name, { text: event.target.value })}
+          onChange={(event) => setAnswerFor(name, { text: event.target.value })}
           placeholder={localizeUi("ui.characters.onboarding.yourAnswer")}
           aria-label={question}
           rows={3}
@@ -186,7 +283,7 @@ export function CharacterOnboardingModal({
                   : undefined
               }
               optionKey={(option) => option.id}
-              onChange={(next) => setAnswer(name, { optionIds: Array.isArray(next) ? next : next ? [next] : [] })}
+              onChange={(next) => setAnswerFor(name, { optionIds: Array.isArray(next) ? next : next ? [next] : [] })}
               allowBooleanToggle={false}
               ariaLabel={question}
             />
@@ -195,7 +292,7 @@ export function CharacterOnboardingModal({
                 <button
                   type="button"
                   aria-pressed={ownText !== null}
-                  onClick={() => setAnswer(name, { text: ownText ?? "" })}
+                  onClick={() => setAnswerFor(name, { text: ownText ?? "" })}
                   className={cn(ROW_CLASS, ownText !== null ? ROW_SELECTED_CLASS : "hover:bg-[var(--accent)]")}
                 >
                   {ownText !== null ? (
@@ -226,42 +323,122 @@ export function CharacterOnboardingModal({
     <Modal
       open={open}
       onClose={onBack}
-      title={localizeUi("ui.characters.onboarding.modalTitle")}
+      title={localizeUi(
+        withPersona ? "ui.characters.onboarding.modalTitle" : "ui.characters.onboarding.modalTitleCardOnly",
+      )}
       width="max-w-lg"
       closeDisabled={busy}
     >
       <fieldset disabled={busy} className="min-w-0 space-y-4 p-4">
         <p className="text-xs text-[var(--muted-foreground)]">
-          {localizeUi("ui.characters.onboarding.modalIntro", { value1: characterName })}
+          {localizeUi(
+            participantNames.length > 1
+              ? "ui.characters.onboarding.modalIntroMany"
+              : "ui.characters.onboarding.modalIntro",
+            { value1: listNames(participantNames) },
+          )}
         </p>
 
-        {cardQuestions.length > 0 && (
-          <section className="space-y-3">
-            {/* The card's own questions lead: they are the card's, not the
-                persona's, and they are asked whether or not one is created. */}
-            <div className="space-y-1">
-              <h3 className="text-xs font-semibold text-[var(--foreground)]">
-                {localizeUi("ui.characters.onboarding.modalCardSection")}
-              </h3>
-              <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                {localizeUi("ui.characters.onboarding.modalCardHelp", { value1: characterName })}
-              </p>
-            </div>
-            {cardQuestions.map((variable) => renderQuestion(variable, false))}
-          </section>
+        {perCard.some((entry) => entry.questions.length > 0) && (
+          // One top-level heading for ALL card questions, so the voice hint below
+          // clearly belongs to them and not to the persona questions further down.
+          <div className="space-y-1 border-t border-[var(--border)] pt-3">
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">
+              {localizeUi("ui.characters.onboarding.cardQuestionsHeading")}
+            </h3>
+            {/* Always shown, not only on a clash: the answer is inserted into the
+                card's own field, so a first-person line reads as the character
+                talking about themselves ("Raven's relationship to Fel: I hate her").
+                Nothing else in the window says which voice to write in. */}
+            <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+              {localizeUi("ui.characters.onboarding.modalVoiceHint")}
+            </p>
+          </div>
+        )}
+
+        {clashes.map((clash) => (
+          <p
+            key={clash.name}
+            role="status"
+            className="flex items-start gap-1.5 text-[0.625rem] text-[var(--foreground)]"
+          >
+            <AlertTriangle
+              size="0.625rem"
+              className="mt-0.5 shrink-0 text-[var(--marinara-app-accent-static)]"
+              aria-hidden
+            />
+            {/* Wrapped in a span: as a bare text node it became its own flex item,
+                so the icon and the sentence wrapped onto separate lines. */}
+            <span>
+              {localizeUi("ui.characters.onboarding.modalClashWarning", {
+                value1: listNames(clash.names),
+                value2: clash.name,
+              })}
+            </span>
+          </p>
+        ))}
+
+        {perCard.map(({ card, cardAnswers, questions, questionTexts: texts }) =>
+          questions.length === 0 ? null : (
+            <section key={card.characterId} className="space-y-3">
+              {/* One section per card: each answer lands in THAT card's field, so
+                  two characters' questions can never share a list. */}
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold text-[var(--foreground)]">
+                  {localizeUi("ui.characters.onboarding.modalCardSectionNamed", { value1: card.name })}
+                </h4>
+                <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.characters.onboarding.modalCardHelp", { value1: card.name })}
+                </p>
+              </div>
+              {questions.map((variable) =>
+                renderQuestion(
+                  variable,
+                  { answers: cardAnswers, texts, characterId: card.characterId, showName: false },
+                  (name, answer) => setAnswer(card.characterId, name, answer),
+                ),
+              )}
+            </section>
+          ),
         )}
 
         {personaQuestions.length > 0 && (
           <section className="space-y-3">
-            <div className="space-y-1">
-              <h3 className="text-xs font-semibold text-[var(--foreground)]">
-                {localizeUi("ui.characters.onboarding.modalPersonaSection")}
-              </h3>
+            {/* Same weight as "Character questions", and separated by a rule:
+                the two halves of the window are easy to confuse otherwise. */}
+            <div className="space-y-1 border-t border-[var(--border)] pt-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">
+                  {localizeUi("ui.characters.onboarding.modalPersonaSection")}
+                </h3>
+                {/* Names the card these questions came from, right on the heading.
+                    The helper below said only "nothing here changes Raven", which
+                    states the negative without explaining WHY Raven is there — the
+                    feature's own author still had to ask which card this was. */}
+                {persona?.characterName && (
+                  <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
+                    {localizeUi("ui.characters.onboarding.modalPersonaSource", { value1: persona.characterName })}
+                  </span>
+                )}
+              </div>
               <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                {localizeUi("ui.characters.onboarding.modalPersonaHelp")}
+                {localizeUi("ui.characters.onboarding.modalPersonaHelp", {
+                  value1: persona?.characterName ?? "",
+                })}
               </p>
             </div>
-            {personaQuestions.map((variable) => renderQuestion(variable, true))}
+            {personaQuestions.map((variable) =>
+              renderQuestion(
+                variable,
+                {
+                  answers: personaAnswers,
+                  texts: questionTexts,
+                  characterId: PERSONA_ANSWER_SCOPE,
+                  showName: true,
+                },
+                (name, answer) => setAnswer(PERSONA_ANSWER_SCOPE, name, answer),
+              ),
+            )}
           </section>
         )}
 
@@ -281,7 +458,11 @@ export function CharacterOnboardingModal({
           >
             {busy
               ? localizeUi("chat.settings.inlineEditor.saving")
-              : localizeUi("ui.characters.onboarding.createPersona")}
+              : // Only promise a persona when one is actually written: a card
+                // that merely carries character questions saves answers alone.
+                localizeUi(
+                  withPersona ? "ui.characters.onboarding.createPersona" : "ui.characters.onboarding.saveAnswers",
+                )}
           </button>
         </div>
       </fieldset>

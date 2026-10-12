@@ -4957,7 +4957,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         app.db,
                         { metadata: chatMeta, playerName: personaName || null },
                         "game-master",
-                      )) ?? { entries: [] },
+                      )) ?? { entries: [], coins: [] },
                     await promptPlace(),
                   )
                 : undefined;

@@ -623,6 +623,7 @@ try {
     const started = performance.now();
     read("[story:".repeat(40000));
     read("[world:".repeat(40000));
+    read(`[story:${"a".repeat(40000)}]`);
     const took = performance.now() - started;
     assert.ok(took < 1000, `${name} read unclosed openers in ${Math.round(took)} ms`);
   }

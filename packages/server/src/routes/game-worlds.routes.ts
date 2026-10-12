@@ -29,6 +29,7 @@ import {
 } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
+import { GAME_WORLDS_RATE_LIMIT } from "../middleware/rate-limit.js";
 import {
   editsStoryRefusal,
   storyNamesOf,
@@ -101,11 +102,13 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
   };
 
   // ── GET /api/game-worlds ── the library.
-  app.get("/", async () => ({ worlds: (await store.list()).map(summary) }));
+  app.get("/", { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } }, async () => ({
+    worlds: (await store.list()).map(summary),
+  }));
 
   // ── POST /api/game-worlds {name, kit, seed?, grounding?} ── a world of the kit alone, its summary as the
   // premise, as a new game makes one with no brief written.
-  app.post("/", async (req, reply) => {
+  app.post("/", { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "World library save" })) return;
     const body = z
       .object({
@@ -142,20 +145,29 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
 
   // ── POST /api/game-worlds/import {text} ── a world file, read as a new game's setup reads one.
   // A share file's own cap, with room for the JSON escaping of its text, as the other imports allow.
-  app.post("/import", { bodyLimit: WORLD_SHARE_FILE_MAX_BYTES * 6 + 16_384 }, async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "World library import" })) return;
-    const text = z.object({ text: z.string() }).safeParse(req.body);
-    if (!text.success) return reply.status(400).send({ error: "Send the world file's text." });
-    const read = readWorldFile(text.data.text);
-    if (!read.ok)
-      return reply.status(400).send({ error: `The world file does not read: ${read.issues[0]}`, issues: read.issues });
-    const row = await store.create(read.name, fileOf(read.name, { kit: read.kit, ...read.world }, read.story ?? null));
-    logger.info("[game/worlds] %s: imported", row.id);
-    return { world: summary(row), notes: read.notes };
-  });
+  app.post(
+    "/import",
+    { bodyLimit: WORLD_SHARE_FILE_MAX_BYTES * 6 + 16_384, config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "World library import" })) return;
+      const text = z.object({ text: z.string() }).safeParse(req.body);
+      if (!text.success) return reply.status(400).send({ error: "Send the world file's text." });
+      const read = readWorldFile(text.data.text);
+      if (!read.ok)
+        return reply
+          .status(400)
+          .send({ error: `The world file does not read: ${read.issues[0]}`, issues: read.issues });
+      const row = await store.create(
+        read.name,
+        fileOf(read.name, { kit: read.kit, ...read.world }, read.story ?? null),
+      );
+      logger.info("[game/worlds] %s: imported", row.id);
+      return { world: summary(row), notes: read.notes };
+    },
+  );
 
   // ── PUT /api/game-worlds/:id {name} ──
-  app.put<{ Params: { id: string } }>("/:id", async (req, reply) => {
+  app.put<{ Params: { id: string } }>("/:id", { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "World library rename" })) return;
     const name = nameSchema.safeParse((req.body as { name?: unknown } | undefined)?.name);
     if (!name.success) return reply.status(400).send({ error: "A world needs a name." });
@@ -170,102 +182,138 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
   });
 
   // ── DELETE /api/game-worlds/:id ── games made from it keep their own copy.
-  app.delete<{ Params: { id: string } }>("/:id", async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "World library removal" })) return;
-    if (!(await store.remove(req.params.id))) return reply.status(404).send({ error: "No such world." });
-    logger.info("[game/worlds] %s: removed", req.params.id);
-    return { removed: true };
-  });
+  app.delete<{ Params: { id: string } }>(
+    "/:id",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "World library removal" })) return;
+      if (!(await store.remove(req.params.id))) return reply.status(404).send({ error: "No such world." });
+      logger.info("[game/worlds] %s: removed", req.params.id);
+      return { removed: true };
+    },
+  );
 
   // ── The editor's routes, as a game's world has them ──
 
-  app.get<{ Params: { id: string } }>("/:id/world/file", async (req, reply) => {
-    const world = await worldOr404(req.params.id, reply);
-    // The world as this Engine reads it (what its editor shows), not merely the text kept.
-    return world ? JSON.parse(fileOf(world.row.name, world.game, world.story)) : undefined;
-  });
+  app.get<{ Params: { id: string } }>(
+    "/:id/world/file",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      const world = await worldOr404(req.params.id, reply);
+      // The world as this Engine reads it (what its editor shows), not merely the text kept.
+      return world ? JSON.parse(fileOf(world.row.name, world.game, world.story)) : undefined;
+    },
+  );
 
-  app.get<{ Params: { id: string } }>("/:id/world/edit", async (req, reply) => {
-    const world = await worldOr404(req.params.id, reply);
-    if (!world) return;
-    return { world: worldForEditor(world.game), edits: world.game.edits ?? null, links: world.game.world.links };
-  });
+  app.get<{ Params: { id: string } }>(
+    "/:id/world/edit",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      const world = await worldOr404(req.params.id, reply);
+      if (!world) return;
+      return { world: worldForEditor(world.game), edits: world.game.edits ?? null, links: world.game.world.links };
+    },
+  );
 
-  app.get<{ Params: { id: string } }>("/:id/world/town", async (req, reply) => {
-    const { settlement } = z.object({ settlement: z.string().min(1).max(16) }).parse(req.query);
-    const world = await worldOr404(req.params.id, reply);
-    if (!world) return;
-    const found = worldTownForEditor(world.game, settlement);
-    return found ?? reply.status(404).send({ error: "No such settlement in this world." });
-  });
+  app.get<{ Params: { id: string } }>(
+    "/:id/world/town",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      const { settlement } = z.object({ settlement: z.string().min(1).max(16) }).parse(req.query);
+      const world = await worldOr404(req.params.id, reply);
+      if (!world) return;
+      const found = worldTownForEditor(world.game, settlement);
+      return found ?? reply.status(404).send({ error: "No such settlement in this world." });
+    },
+  );
 
-  app.get<{ Params: { id: string } }>("/:id/world/people", async (req, reply) => {
-    const { place } = z.object({ place: z.string().min(1).max(16) }).parse(req.query);
-    const world = await worldOr404(req.params.id, reply);
-    return world ? { people: worldPeopleOf(world.game, place) } : undefined;
-  });
+  app.get<{ Params: { id: string } }>(
+    "/:id/world/people",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      const { place } = z.object({ place: z.string().min(1).max(16) }).parse(req.query);
+      const world = await worldOr404(req.params.id, reply);
+      return world ? { people: worldPeopleOf(world.game, place) } : undefined;
+    },
+  );
 
   // PUT /:id/world/edits: the whole edit layer, checked against the world (and its story) as it is when
   // written; an empty one clears it.
-  app.put<{ Params: { id: string } }>("/:id/world/edits", async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "World library edit" })) return;
-    const parsed = worldEditsSchema.safeParse((req.body as { edits?: unknown } | undefined)?.edits);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
-    }
-    const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
-    const updated = await store.update(req.params.id, (row) => {
-      const read = readRow(row);
-      if (!read) return { refused: "This world no longer reads." };
-      const worldIssues = edits ? worldEditIssues(read.game, edits) : [];
-      const issues = worldIssues.length || !edits ? worldIssues : worldTownEditIssues(read.game, edits);
-      if (issues.length) return { refused: issues.join(" "), issues };
-      const storyRefusal = editsStoryRefusal(read.game, edits, read.story);
-      if (storyRefusal) return { refused: storyRefusal.error, issues: storyRefusal.issues };
-      const { edits: _old, world: _compiled, ...inputs } = read.game;
-      return { name: row.name, file: fileOf(row.name, { ...inputs, ...(edits ? { edits } : {}) }, read.story) };
-    });
-    if (!updated) return reply.status(404).send({ error: "No such world." });
-    if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
-    const game = readRow(updated.row)!.game;
-    return { edits: game.edits ?? null, links: game.world.links };
-  });
+  app.put<{ Params: { id: string } }>(
+    "/:id/world/edits",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "World library edit" })) return;
+      const parsed = worldEditsSchema.safeParse((req.body as { edits?: unknown } | undefined)?.edits);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
+      }
+      const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+      const updated = await store.update(req.params.id, (row) => {
+        const read = readRow(row);
+        if (!read) return { refused: "This world no longer reads." };
+        const worldIssues = edits ? worldEditIssues(read.game, edits) : [];
+        const issues = worldIssues.length || !edits ? worldIssues : worldTownEditIssues(read.game, edits);
+        if (issues.length) return { refused: issues.join(" "), issues };
+        const storyRefusal = editsStoryRefusal(read.game, edits, read.story);
+        if (storyRefusal) return { refused: storyRefusal.error, issues: storyRefusal.issues };
+        const { edits: _old, world: _compiled, ...inputs } = read.game;
+        return { name: row.name, file: fileOf(row.name, { ...inputs, ...(edits ? { edits } : {}) }, read.story) };
+      });
+      if (!updated) return reply.status(404).send({ error: "No such world." });
+      if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
+      const game = readRow(updated.row)!.game;
+      return { edits: game.edits ?? null, links: game.world.links };
+    },
+  );
 
   // ── Its story (worldgen W10): read, saved (checked against the world as it is when written), taken
   // away. A library world is not played, so it has no state yet. ──
 
-  app.get<{ Params: { id: string } }>("/:id/story", async (req, reply) => {
-    const world = await worldOr404(req.params.id, reply);
-    if (!world) return;
-    return { story: world.story, state: null, names: storyNamesOf(world.game) };
-  });
+  app.get<{ Params: { id: string } }>(
+    "/:id/story",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      const world = await worldOr404(req.params.id, reply);
+      if (!world) return;
+      return { story: world.story, state: null, names: storyNamesOf(world.game) };
+    },
+  );
 
-  app.put<{ Params: { id: string } }>("/:id/story", async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "World library story" })) return;
-    const input = (req.body as { story?: unknown } | undefined)?.story;
-    const updated = await store.update(req.params.id, (row) => {
-      const read = readRow(row);
-      if (!read) return { refused: "This world no longer reads." };
-      const checked = checkStoryScript(read.game, input);
-      if (!checked.ok)
-        return { refused: `The story does not fit this world: ${checked.issues[0]}`, issues: checked.issues };
-      return { name: row.name, file: fileOf(row.name, read.game, checked.story) };
-    });
-    if (!updated) return reply.status(404).send({ error: "No such world." });
-    if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
-    return { story: readRow(updated.row)!.story };
-  });
+  app.put<{ Params: { id: string } }>(
+    "/:id/story",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "World library story" })) return;
+      const input = (req.body as { story?: unknown } | undefined)?.story;
+      const updated = await store.update(req.params.id, (row) => {
+        const read = readRow(row);
+        if (!read) return { refused: "This world no longer reads." };
+        const checked = checkStoryScript(read.game, input);
+        if (!checked.ok)
+          return { refused: `The story does not fit this world: ${checked.issues[0]}`, issues: checked.issues };
+        return { name: row.name, file: fileOf(row.name, read.game, checked.story) };
+      });
+      if (!updated) return reply.status(404).send({ error: "No such world." });
+      if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
+      return { story: readRow(updated.row)!.story };
+    },
+  );
 
-  app.delete<{ Params: { id: string } }>("/:id/story", async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "World library story" })) return;
-    const updated = await store.update(req.params.id, (row) => {
-      const read = readRow(row);
-      if (!read) return { refused: "This world no longer reads." };
-      return { name: row.name, file: fileOf(row.name, read.game, null) };
-    });
-    if (!updated) return reply.status(404).send({ error: "No such world." });
-    if ("refused" in updated) return reply.status(409).send({ error: updated.refused });
-    return { story: null };
-  });
+  app.delete<{ Params: { id: string } }>(
+    "/:id/story",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "World library story" })) return;
+      const updated = await store.update(req.params.id, (row) => {
+        const read = readRow(row);
+        if (!read) return { refused: "This world no longer reads." };
+        return { name: row.name, file: fileOf(row.name, read.game, null) };
+      });
+      if (!updated) return reply.status(404).send({ error: "No such world." });
+      if ("refused" in updated) return reply.status(409).send({ error: updated.refused });
+      return { story: null };
+    },
+  );
 }

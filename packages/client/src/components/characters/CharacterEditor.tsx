@@ -1601,7 +1601,7 @@ function CharacterCardTab({
               key={name}
               onClick={() => insertVariable(field, name)}
               title={name}
-              aria-label={localizeUi("ui.characters.onboarding.insertCardVariable") + " {{" + name + "}}"}
+              aria-label={localizeUi("ui.characters.onboarding.insertCardVariable", { value1: `{{${name}}}` })}
               className={cn(
                 SETTINGS_BUTTON_CLASS,
                 "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",

@@ -1,7 +1,8 @@
-// The game's icons (Capability API 1.333) and portraits (1.334): a board pack of kind `icons` or
+// The game's icons and portraits (Capability API 1.333): a board pack of kind `icons` or
 // `portraits`, the library's or the built-in one the server resolves. How one is drawn is
 // `components/game/ArtIcon.tsx`; a thing the pack lacks keeps today's look.
-import { useQuery } from "@tanstack/react-query";
+import { useContext } from "react";
+import { QueryClient, QueryClientContext, useQuery } from "@tanstack/react-query";
 import {
   artPortraitNeutral,
   boardPackSchema,
@@ -12,21 +13,29 @@ import {
 } from "@marinara-engine/shared";
 import { api } from "./api-client";
 
+/** Stands in where nothing provides a client (a sheet drawn on its own); it never asks. */
+const idleClient = new QueryClient();
+
 /** The pack of a kind, or null: none stored, none built in, or a server that does not answer. */
 export function useArtPack(kind: ArtPackKind): BoardPack | null {
-  const { data } = useQuery({
-    queryKey: ["game", "art-pack", kind],
-    queryFn: async (): Promise<BoardPack | null> => {
-      try {
-        const answer = await api.get<{ pack: unknown }>(`/game-tile-packs/boards/art?kind=${kind}`);
-        const parsed = boardPackSchema.safeParse(answer.pack);
-        return parsed.success ? parsed.data : null;
-      } catch {
-        return null;
-      }
+  const client = useContext(QueryClientContext);
+  const { data } = useQuery(
+    {
+      queryKey: ["game", "art-pack", kind],
+      queryFn: async (): Promise<BoardPack | null> => {
+        try {
+          const answer = await api.get<{ pack: unknown }>(`/game-tile-packs/boards/art?kind=${kind}`);
+          const parsed = boardPackSchema.safeParse(answer.pack);
+          return parsed.success ? parsed.data : null;
+        } catch {
+          return null;
+        }
+      },
+      staleTime: 5 * 60_000,
+      enabled: client !== undefined,
     },
-    staleTime: 5 * 60_000,
-  });
+    client ?? idleClient,
+  );
   return data ?? null;
 }
 

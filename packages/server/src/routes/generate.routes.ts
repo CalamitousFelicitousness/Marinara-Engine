@@ -242,6 +242,7 @@ import {
   rulesetLayerOptionKey,
   rulesetLayeredCurrencies,
   rulesetPurseText,
+  leadingSceneBreak,
   splitAtSceneBreaks,
   type RoleplayCommandActivity,
   type RulesetDefinition,
@@ -7224,7 +7225,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let reasoningDurationMs: number | null = null;
         let receivedThinking = false;
         let allResponses: string[] = [];
-        let lastReplyWasSplit = false;
+        // The earlier parts of the last reply, when it was split at scene breaks; its last part is the last response.
+        let lastReplyEarlierParts: Array<{ message: any; content: string }> = [];
         const allResponseSegments: NonNullable<AgentContext["mainResponseSegments"]> = [];
         const roleplayResponseIndexes = new Map<string, number>();
         let continuedMessageRewriteSource: string | null = null;
@@ -11105,6 +11107,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               extraUpdate.advancedMemorySnapshot = advancedMemorySnapshot;
             const persistentAttachments = resolveUserRegenerationPersistentAttachments(regenMsg ?? {});
             if (persistentAttachments) extraUpdate.attachments = persistentAttachments;
+            // While a rewrite agent holds the reply, each saved message shows its placeholder until its rewrite arrives.
+            const heldForRewrite = (message: any) =>
+              holdForTextRewrite && !input.impersonate
+                ? {
+                    ...message,
+                    content: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
+                    extra: {
+                      ...parseExtra(message.extra),
+                      postProcessingPending: {
+                        agentType: textRewritePendingState?.agentType ?? "prose-guardian",
+                        message: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
+                      },
+                    },
+                  }
+                : message;
             if (replyParts) {
               // The reasoning and the memory preparation belong to the first part, whose prompt produced them.
               // Generation info, the prompt cache and everything that ends the turn stay with the last part.
@@ -11134,7 +11151,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 // rewrite agent holds the reply, the live reply stays empty until the rewrite arrives.
                 sendSseEvent(reply, {
                   type: "message_saved",
-                  data: savedPart ?? part.message,
+                  data: heldForRewrite(savedPart ?? part.message),
                   remainingContent: holdForTextRewrite
                     ? ""
                     : replyParts
@@ -11206,23 +11223,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               });
             }
 
-            const savedMessagePayload =
-              holdForTextRewrite && !input.impersonate
-                ? {
-                    ...(refreshedMsg ?? savedMsg),
-                    content: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
-                    extra: {
-                      ...parseExtra((refreshedMsg ?? savedMsg).extra),
-                      postProcessingPending: {
-                        agentType: textRewritePendingState?.agentType ?? "prose-guardian",
-                        message: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
-                      },
-                    },
-                  }
-                : (refreshedMsg ?? savedMsg);
             sendSseEvent(reply, {
               type: "message_saved",
-              data: savedMessagePayload,
+              data: heldForRewrite(refreshedMsg ?? savedMsg),
             });
 
             if (chatMode === "game" && !input.impersonate) {
@@ -11494,7 +11497,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             firstSavedMsg ??= replyParts[0]!.message;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
-            lastReplyWasSplit = replyParts.length > 1;
+            // Rewrite agents rewrite only the last reply, so an earlier responder's held parts show their text again.
+            if (holdForTextRewrite)
+              for (const part of lastReplyEarlierParts)
+                sendSseEvent(reply, {
+                  type: "text_rewrite",
+                  data: { messageId: part.message.id, editedText: part.content, changes: [], rewriteApplied: false },
+                });
+            lastReplyEarlierParts = genResult.earlierParts ?? [];
             currentIterationSavedMsg = genResult.savedMsg;
             for (const part of replyParts) {
               if (typeof part.message?.id === "string") {
@@ -11666,7 +11676,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 content: part.content,
               });
             }
-            lastReplyWasSplit = Boolean(genResult.earlierParts?.length);
+            lastReplyEarlierParts = genResult.earlierParts ?? [];
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
@@ -14324,165 +14334,179 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           // ── Text rewrite/editing agents: run after ALL other agents ──
-          // A split reply's earlier parts are messages of their own; rewrite agents edit its last part.
-          const originalResponseBeforeRewrite = lastReplyWasSplit ? allResponses.at(-1)! : completedResponse;
-          let textRewriteApplied = false;
-          // Rewrite agents edit the public text, so a reply without any is left alone.
-          const hasPublicReply = !!completedResponse.trim();
-          if (activatedTextRewriteRunAgents.length > 0 && messageId && hasPublicReply && !generationSignal.aborted) {
-            let currentResponseForRewrite = originalResponseBeforeRewrite;
+          // Each part of a reply split at scene breaks is a message of its own, so the agents rewrite every part on
+          // its own, in order. A part's break line stays on top of it, and a failed rewrite leaves its part as written.
+          const rewriteParts = lastReplyEarlierParts.length
+            ? [...lastReplyEarlierParts, { message: lastSavedMsg, content: allResponses.at(-1)! }].map((part) => ({
+                messageId: (part.message?.id as string | undefined) ?? "",
+                content: part.content,
+              }))
+            : [{ messageId, content: completedResponse }];
+          for (const { messageId, content: originalResponseBeforeRewrite } of rewriteParts) {
+            const sceneBreak = lastReplyEarlierParts.length ? leadingSceneBreak(originalResponseBeforeRewrite) : "";
+            let textRewriteApplied = false;
+            // Rewrite agents edit the public text, so a reply without any is left alone.
+            const hasPublicReply = !!originalResponseBeforeRewrite.slice(sceneBreak.length).trim();
+            if (activatedTextRewriteRunAgents.length > 0 && messageId && hasPublicReply && !generationSignal.aborted) {
+              let currentResponseForRewrite = originalResponseBeforeRewrite.slice(sceneBreak.length);
 
-            for (const textRewriteAgent of activatedTextRewriteRunAgents) {
-              if (generationSignal.aborted) break;
-              try {
-                // Collect all successful agent outputs as a summary for rewrite agents.
-                const agentSummary: Record<string, unknown> = {};
-                for (const result of postResults) {
-                  if (result.success && result.data) {
-                    agentSummary[result.agentType ?? result.type] = result.data;
-                  }
-                }
-
-                const editorContext: AgentContext = {
-                  ...agentContext,
-                  ...postReplyDecisionContext,
-                  mainResponse: currentResponseForRewrite,
-                  preGenInjections:
-                    textRewriteAgent.settings.includePreGenInjections === true ? contextInjections : undefined,
-                  parallelResults:
-                    textRewriteAgent.settings.includeParallelResults === true ? parallelResults : undefined,
-                  memory: { ...agentContext.memory, _agentResults: agentSummary },
-                };
-
-                const editorResult = await executeAgent(
-                  textRewriteAgent,
-                  editorContext,
-                  textRewriteAgent.provider,
-                  textRewriteAgent.model,
-                );
-                sendAgentEvent(editorResult);
-
+              for (const textRewriteAgent of activatedTextRewriteRunAgents) {
+                if (generationSignal.aborted) break;
                 try {
-                  await agentsStore.saveRun({
-                    agentConfigId: editorResult.agentId,
-                    chatId: input.chatId,
-                    messageId,
-                    result: editorResult,
-                  });
-                } catch {
-                  /* Non-critical */
-                }
+                  // Collect all successful agent outputs as a summary for rewrite agents.
+                  const agentSummary: Record<string, unknown> = {};
+                  for (const result of postResults) {
+                    if (result.success && result.data) {
+                      agentSummary[result.agentType ?? result.type] = result.data;
+                    }
+                  }
 
-                if (
-                  editorResult.success &&
-                  editorResult.type === "text_rewrite" &&
-                  editorResult.data &&
-                  customAgentCanApplyResult(editorResult, resolvedAgents, builtInAgentTypes, "edit_messages")
-                ) {
-                  const edData = editorResult.data as Record<string, unknown>;
-                  const editedText = typeof edData.editedText === "string" ? edData.editedText : "";
-                  let sanitizedEditedText = editedText;
+                  const editorContext: AgentContext = {
+                    ...agentContext,
+                    ...postReplyDecisionContext,
+                    mainResponse: currentResponseForRewrite,
+                    preGenInjections:
+                      textRewriteAgent.settings.includePreGenInjections === true ? contextInjections : undefined,
+                    parallelResults:
+                      textRewriteAgent.settings.includeParallelResults === true ? parallelResults : undefined,
+                    memory: { ...agentContext.memory, _agentResults: agentSummary },
+                  };
+
+                  const editorResult = await executeAgent(
+                    textRewriteAgent,
+                    editorContext,
+                    textRewriteAgent.provider,
+                    textRewriteAgent.model,
+                  );
+                  sendAgentEvent(editorResult);
+
+                  try {
+                    await agentsStore.saveRun({
+                      agentConfigId: editorResult.agentId,
+                      chatId: input.chatId,
+                      messageId,
+                      result: editorResult,
+                    });
+                  } catch {
+                    /* Non-critical */
+                  }
+
                   if (
-                    hierarchicalMapsEnabledForChat &&
-                    (requestChatMode === "roleplay" || requestChatMode === "game")
+                    editorResult.success &&
+                    editorResult.type === "text_rewrite" &&
+                    editorResult.data &&
+                    customAgentCanApplyResult(editorResult, resolvedAgents, builtInAgentTypes, "edit_messages")
                   ) {
-                    const parsedRewriteSpatial = extractAssistantSpatialDirective(editedText);
-                    if (parsedRewriteSpatial.matched) {
-                      sanitizedEditedText = parsedRewriteSpatial.cleanContent;
+                    const edData = editorResult.data as Record<string, unknown>;
+                    const editedText = typeof edData.editedText === "string" ? edData.editedText : "";
+                    let sanitizedEditedText = editedText;
+                    if (
+                      hierarchicalMapsEnabledForChat &&
+                      (requestChatMode === "roleplay" || requestChatMode === "game")
+                    ) {
+                      const parsedRewriteSpatial = extractAssistantSpatialDirective(editedText);
+                      if (parsedRewriteSpatial.matched) {
+                        sanitizedEditedText = parsedRewriteSpatial.cleanContent;
+                        logger.warn(
+                          "[text-rewrite] Stripped package-owned spatial directive from rewritten message %s",
+                          messageId,
+                        );
+                      }
+                    }
+                    const changes = Array.isArray(edData.changes)
+                      ? (edData.changes as Array<{ description: string }>)
+                      : [{ description: "Rewrote the assistant response." }];
+                    const editNeededValue = edData.editNeeded;
+                    const strictEditNeeded = isBuiltInTextRewriteAgentType(editorResult.agentType);
+                    const rewriteAllowed =
+                      editNeededValue === false
+                        ? false
+                        : strictEditNeeded
+                          ? explicitlyRequestsTextRewrite(editNeededValue)
+                          : true;
+                    const droppedProtectedMarkup =
+                      strictEditNeeded &&
+                      textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText);
+                    if (droppedProtectedMarkup) {
                       logger.warn(
-                        "[text-rewrite] Stripped package-owned spatial directive from rewritten message %s",
+                        "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",
+                        editorResult.agentType,
                         messageId,
                       );
                     }
-                  }
-                  const changes = Array.isArray(edData.changes)
-                    ? (edData.changes as Array<{ description: string }>)
-                    : [{ description: "Rewrote the assistant response." }];
-                  const editNeededValue = edData.editNeeded;
-                  const strictEditNeeded = isBuiltInTextRewriteAgentType(editorResult.agentType);
-                  const rewriteAllowed =
-                    editNeededValue === false
-                      ? false
-                      : strictEditNeeded
-                        ? explicitlyRequestsTextRewrite(editNeededValue)
-                        : true;
-                  const droppedProtectedMarkup =
-                    strictEditNeeded && textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText);
-                  if (droppedProtectedMarkup) {
-                    logger.warn(
-                      "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",
-                      editorResult.agentType,
-                      messageId,
-                    );
-                  }
-                  const rewriteCharacterId =
-                    typeof (lastSavedMsg as { characterId?: unknown } | null)?.characterId === "string"
-                      ? (lastSavedMsg as { characterId: string }).characterId
-                      : null;
-                  const repeatsPriorConversationResponse =
-                    rewriteAllowed &&
-                    !strictEditNeeded &&
-                    chatMode === "conversation" &&
-                    !input.impersonate &&
-                    !input.regenerateMessageId &&
-                    !input.continueMessageId &&
-                    sanitizedEditedText.trim().length > 0 &&
-                    isRepeatedConversationResponse(
-                      await chats.listMessages(input.chatId),
-                      rewriteCharacterId,
-                      sanitizedEditedText,
-                      { excludeMessageId: messageId },
-                    );
-                  if (repeatsPriorConversationResponse) {
-                    logger.warn(
-                      { chatId: input.chatId, characterId: rewriteCharacterId, messageId },
-                      "[text-rewrite] Skipping custom rewrite because it repeated a prior Conversation response",
-                    );
-                  }
-                  const changedMessage =
-                    rewriteAllowed &&
-                    !droppedProtectedMarkup &&
-                    !repeatsPriorConversationResponse &&
-                    sanitizedEditedText.trim().length > 0 &&
-                    sanitizedEditedText !== currentResponseForRewrite;
-                  if (changedMessage) {
-                    const originalText = strictEditNeeded ? originalResponseBeforeRewrite : null;
-                    currentResponseForRewrite = sanitizedEditedText;
-                    await chats.updateMessageContent(messageId, sanitizedEditedText);
-                    if (originalText) {
-                      await chats.updateMessageExtra(messageId, {
-                        proseGuardianOriginalText: originalText,
-                        proseGuardianRewrittenText: sanitizedEditedText,
-                        proseGuardianRewrittenAt: new Date().toISOString(),
+                    const rewriteCharacterId =
+                      typeof (lastSavedMsg as { characterId?: unknown } | null)?.characterId === "string"
+                        ? (lastSavedMsg as { characterId: string }).characterId
+                        : null;
+                    const repeatsPriorConversationResponse =
+                      rewriteAllowed &&
+                      !strictEditNeeded &&
+                      chatMode === "conversation" &&
+                      !input.impersonate &&
+                      !input.regenerateMessageId &&
+                      !input.continueMessageId &&
+                      sanitizedEditedText.trim().length > 0 &&
+                      isRepeatedConversationResponse(
+                        await chats.listMessages(input.chatId),
+                        rewriteCharacterId,
+                        sanitizedEditedText,
+                        { excludeMessageId: messageId },
+                      );
+                    if (repeatsPriorConversationResponse) {
+                      logger.warn(
+                        { chatId: input.chatId, characterId: rewriteCharacterId, messageId },
+                        "[text-rewrite] Skipping custom rewrite because it repeated a prior Conversation response",
+                      );
+                    }
+                    const changedMessage =
+                      rewriteAllowed &&
+                      !droppedProtectedMarkup &&
+                      !repeatsPriorConversationResponse &&
+                      sanitizedEditedText.trim().length > 0 &&
+                      sanitizedEditedText !== currentResponseForRewrite;
+                    if (changedMessage) {
+                      const originalText = strictEditNeeded ? originalResponseBeforeRewrite : null;
+                      currentResponseForRewrite = sanitizedEditedText;
+                      // A split part keeps its break line on top of the rewritten text.
+                      sanitizedEditedText = sceneBreak + sanitizedEditedText;
+                      await chats.updateMessageContent(messageId, sanitizedEditedText);
+                      if (originalText) {
+                        await chats.updateMessageExtra(messageId, {
+                          proseGuardianOriginalText: originalText,
+                          proseGuardianRewrittenText: sanitizedEditedText,
+                          proseGuardianRewrittenAt: new Date().toISOString(),
+                        });
+                      }
+                      textRewriteApplied = true;
+                      sendSseEvent(reply, {
+                        type: "text_rewrite",
+                        data: {
+                          messageId,
+                          editedText: sanitizedEditedText,
+                          changes,
+                          rewriteApplied: true,
+                          ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
+                        },
                       });
                     }
-                    textRewriteApplied = true;
-                    sendSseEvent(reply, {
-                      type: "text_rewrite",
-                      data: {
-                        editedText: sanitizedEditedText,
-                        changes,
-                        rewriteApplied: true,
-                        ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
-                      },
-                    });
                   }
+                } catch {
+                  // Non-critical — don't fail generation if a rewrite agent errors.
                 }
-              } catch {
-                // Non-critical — don't fail generation if a rewrite agent errors.
               }
             }
-          }
 
-          if (holdForTextRewrite && !textRewriteApplied && !generationSignal.aborted) {
-            sendSseEvent(reply, {
-              type: "text_rewrite",
-              data: {
-                editedText: originalResponseBeforeRewrite,
-                changes: [],
-                rewriteApplied: false,
-              },
-            });
+            if (holdForTextRewrite && !textRewriteApplied && !generationSignal.aborted) {
+              sendSseEvent(reply, {
+                type: "text_rewrite",
+                data: {
+                  messageId,
+                  editedText: originalResponseBeforeRewrite,
+                  changes: [],
+                  rewriteApplied: false,
+                },
+              });
+            }
           }
         }
 

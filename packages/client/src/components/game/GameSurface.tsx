@@ -31,6 +31,7 @@ import {
 // ──────────────────────────────────────────────
 // Game: Main Surface (rendered by ChatArea when mode === "game")
 // ──────────────────────────────────────────────
+import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import {
   useCallback,
   useEffect,
@@ -2243,6 +2244,14 @@ function GameSurfaceComponent({
   const overworldClockRef = useRef<WorldOverworldHandle | null>(null);
   // The setting's art family (worldgen W6f): another family's art, music and sounds are left out.
   const artFamily = worldKitArtFamily(gameKit);
+  // A game started with an Experience's map pack (worldgen W9e) draws with the pack's tiles while the
+  // Experience is installed; otherwise with its setting family's.
+  const mapPackId =
+    chatMeta.gameMapPack && typeof (chatMeta.gameMapPack as { packageId?: unknown }).packageId === "string"
+      ? (chatMeta.gameMapPack as { packageId: string }).packageId
+      : null;
+  const mapPackQuery = useExperienceMapPack(mapPackId);
+  const mapPackTiles = mapPackId && mapPackQuery.isLoading ? ("loading" as const) : (mapPackQuery.data?.tiles ?? null);
   const artFamilyRef = useRef(artFamily);
   artFamilyRef.current = artFamily;
   useEffect(() => {
@@ -12559,6 +12568,7 @@ function GameSurfaceComponent({
                       clockRunning: !isStreaming && narrationDone && sessionInteractive,
                       canWalk: !isStreaming && narrationDone && sessionInteractive,
                       family: artFamily,
+                      tilePack: mapPackTiles,
                       handleRef: overworldClockRef,
                     };
                     return (

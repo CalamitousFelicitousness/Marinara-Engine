@@ -13,6 +13,24 @@ import {
   combatWeatherSchema,
   readImageAppearanceOverride,
 } from "@marinara-engine/shared";
+import {
+  compileGameWorld,
+  worldCast,
+  worldEditsEmpty,
+  worldEditIssues,
+  worldEditsSchema,
+  worldFile,
+  worldKitFile,
+  readWorldKitFile,
+  parseWorldKit,
+  WORLD_STARTER_KITS,
+  WORLD_SHARE_FILE_MAX_BYTES,
+  worldGroundLooks,
+  worldPersonByHand,
+  worldKitArtFamily,
+  worldTerrainEntries,
+  type CompiledWorld,
+} from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
@@ -29,6 +47,7 @@ import { carryGameInventory, rulesetInventedItemRef } from "@marinara-engine/sha
 import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
+import { mapPackLockIssue, readMapPack, type MapPack } from "../services/game/map-pack.service.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
   buildWorldKitWritingPrompt,
@@ -6074,6 +6093,49 @@ export interface GameRouteOptions {
 
 export type CreateGameRequest = z.input<typeof createGameSchema>;
 export type SetupGameRequest = z.input<typeof setupSchema>;
+/** Why a sent edit layer does not fit a world, or nothing: it reads, and it fits. */
+function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): string[] {
+  const parsed = worldEditsSchema.safeParse(edits);
+  if (!parsed.success) return [parsed.error.issues[0]?.message ?? "The edits do not read."];
+  return worldEditIssues(game, parsed.data);
+}
+
+/** A game's world as compiled, in the shape a world editor draws: the ground and its classes (with the
+ *  look each is drawn as), the places, and the kit's words for layers, sizes and tags. */
+function worldForEditor(game: GameWorld) {
+  const compiled: CompiledWorld = compileGameWorld({ ...game, edits: undefined });
+  const looks = worldGroundLooks({ ...game, world: compiled });
+  const terrain = worldTerrainEntries(game.kit);
+  return {
+    width: compiled.width,
+    height: compiled.height,
+    ground: compiled.ground,
+    terrain: compiled.terrain.map((id, index) => {
+      const entry = terrain.find((each) => each.id === id);
+      return { id, label: entry?.label ?? id, kind: entry?.kind ?? "open", look: looks[index] };
+    }),
+    places: compiled.places.map((place) => ({
+      id: place.id,
+      name: place.name,
+      layer: place.layer,
+      depth: place.depth,
+      parentId: place.parentId,
+      at: place.at,
+      ...(place.size ? { size: place.size, rank: place.rank } : {}),
+      tags: place.tags,
+    })),
+    startId: compiled.startId,
+    layers: game.kit.layers.map((layer) => ({
+      id: layer.id,
+      label: layer.label,
+      settlements: Boolean(layer.settlements),
+    })),
+    sizes: game.kit.sizes.map((size) => ({ id: size.id, label: size.label })),
+    placeTags: game.kit.placeTags.map((tag) => ({ id: tag.id, label: tag.label })),
+    family: worldKitArtFamily(game.kit) ?? null,
+  };
+}
+
 export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions = {}) {
   registerSequentialGameTasks(app, [
     "/setup",
@@ -6676,7 +6738,41 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           code: "world_invalid",
         });
       }
+      // Hand edits (worldgen W9c) sent with a world are held to what a saved edit layer is.
+      const unfit = requestedWorld.edits
+        ? editIssues(
+            { kit, seed: requestedWorld.seed, grounding: requestedWorld.grounding, brief: checked.brief },
+            requestedWorld.edits,
+          )
+        : [];
+      if (unfit.length) {
+        return rejectGenerationOutput(reply, 400, {
+          error: `The world's hand edits do not fit it: ${unfit[0]}`,
+          code: "world_invalid",
+        });
+      }
       gameWorld = { ...requestedWorld, brief: checked.brief };
+    }
+    // An Experience's map pack (worldgen W9e) locks the game to its kit, and to one of its worlds when
+    // it ships any; a pack that does not read keeps the Experience from starting a game, with the reason.
+    let mapPack: MapPack | null = null;
+    const experienceId = parsedCreateGameInput.setupConfig.gameExperienceId;
+    if (experienceId) {
+      const read = await readMapPack(experienceId);
+      if (read && !read.ok) {
+        return rejectGenerationOutput(reply, 400, {
+          error: `Marinara could not read this Experience's map pack: ${read.reason}`,
+          code: "map_pack_invalid",
+        });
+      }
+      if (read?.ok) {
+        const issue = mapPackLockIssue(read.pack, {
+          worldKit: parsedCreateGameInput.setupConfig.worldKit,
+          world: gameWorld,
+        });
+        if (issue) return rejectGenerationOutput(reply, 400, { error: issue, code: "map_pack_locked" });
+        mapPack = read.pack;
+      }
     }
     const setupConfig: GameSetupConfig = {
       ...parsedCreateGameInput.setupConfig,
@@ -6831,6 +6927,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // The setting kit, likewise only when one was chosen, and the world made in its words.
       ...(setupConfig.worldKit ? { gameWorldKit: setupConfig.worldKit } : {}),
       ...(gameWorld ? { gameWorld } : {}),
+      // The game draws with its map pack's tiles while the Experience is installed.
+      ...(mapPack?.tiles ? { gameMapPack: { packageId: mapPack.packageId } } : {}),
       gameNpcs: [],
       enableAgents: setupConfig.enableAgents === true,
       activeAgentIds: setupActiveAgentIds,
@@ -11019,6 +11117,176 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       time: formatGameTime(time),
     });
     return { visit, at: to, minutes, time, formatted: formatGameTime(time) };
+  });
+
+  // ── The world editor (worldgen W9c): a game's world as compiled, its hand edits, a place's people ──
+  // The editor draws the compiled world with its edit layer on top and saves the whole layer; the
+  // Engine checks every layer against the world it edits.
+
+  // GET /game/worlds: the games with a world, for an editor to pick from.
+  app.get("/worlds", async () => {
+    const worlds: Array<{
+      chatId: string;
+      name: string;
+      updatedAt: string;
+      kit: string;
+      family: string | null;
+      edited: boolean;
+    }> = [];
+    for (const chat of await createChatsStorage(app.db).list()) {
+      if (chat.mode !== "game") continue;
+      const meta = parseMeta(chat.metadata);
+      if (meta.gameWorld == null) continue;
+      const kit = gameWorldKitFromMetadata(meta);
+      const stored = gameWorldSchema.safeParse(meta.gameWorld);
+      if (!kit || !stored.success || stored.data.generatorVersion !== WORLD_GENERATOR_VERSION) continue;
+      worlds.push({
+        chatId: chat.id,
+        name: chat.name,
+        updatedAt: chat.updatedAt,
+        kit: kit.label,
+        family: worldKitArtFamily(kit) ?? null,
+        edited: !worldEditsEmpty(stored.data.edits),
+      });
+    }
+    return { worlds };
+  });
+
+  // GET /game/:chatId/world/edit: the world as compiled (before any edit), in a shape an editor draws,
+  // the stored edit layer, and the ways as they run with it.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/edit", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    return { world: worldForEditor(game), edits: game.edits ?? null, links: game.world.links };
+  });
+
+  // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.
+  app.put<{ Params: { chatId: string } }>("/:chatId/world/edits", async (req, reply) => {
+    const { chatId } = req.params;
+    const parsed = worldEditsSchema.safeParse((req.body as { edits?: unknown } | undefined)?.edits);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
+    }
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    const issues = worldEditIssues(game, parsed.data);
+    if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
+    const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      // The world is the same one the edits were checked against: a world is written once, at creation.
+      if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
+        throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
+      }
+      const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
+      return { gameWorld: edits ? { ...stored, edits } : stored };
+    });
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    const world = compileGameWorld({ ...game, edits });
+    logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
+    return { edits: edits ?? null, links: world.links };
+  });
+
+  // ── Setting kits for a maker (worldgen W9d): the starter kits, the games' kits, and a kit checked and
+  // written as a file, so a kit editor (Pixelforge's) never writes one this Engine would refuse ──
+
+  // GET /game/world-kits: the starter kits, and each game's kit.
+  app.get("/world-kits", async () => {
+    const games: Array<{ chatId: string; name: string; label: string }> = [];
+    for (const chat of await createChatsStorage(app.db).list()) {
+      if (chat.mode !== "game") continue;
+      const kit = gameWorldKitFromMetadata(parseMeta(chat.metadata));
+      if (kit) games.push({ chatId: chat.id, name: chat.name, label: kit.label });
+    }
+    return {
+      starters: WORLD_STARTER_KITS.map((kit) => ({ id: kit.id, label: kit.label, summary: kit.summary })),
+      games,
+    };
+  });
+
+  // GET /game/world-kits/starter/:id: a starter kit, as a kit reads.
+  app.get<{ Params: { id: string } }>("/world-kits/starter/:id", async (req, reply) => {
+    const starter = WORLD_STARTER_KITS.find((kit) => kit.id === req.params.id);
+    const read = starter ? parseWorldKit(starter) : null;
+    if (!read?.ok) return reply.status(404).send({ error: "No such starter kit." });
+    return { kit: read.kit };
+  });
+
+  // GET /game/:chatId/world-kit: the kit a game keeps.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world-kit", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const kit = chat.mode === "game" ? gameWorldKitFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!kit) return reply.status(404).send({ error: "This game has no setting kit." });
+    return { kit };
+  });
+
+  // POST /game/world-kits/check {kit}: the kit as this Engine reads it, and as a kit file; or why not.
+  app.post("/world-kits/check", async (req, reply) => {
+    const read = parseWorldKit((req.body as { kit?: unknown } | undefined)?.kit);
+    if (!read.ok) {
+      return reply
+        .status(400)
+        .send({ error: `The kit does not read: ${read.issues[0]}`, issues: read.issues.slice(0, 20) });
+    }
+    return { kit: read.kit, file: worldKitFile(read.kit) };
+  });
+
+  // POST /game/world-kits/read {text}: a kit file, read; or why it cannot be.
+  app.post("/world-kits/read", { bodyLimit: WORLD_SHARE_FILE_MAX_BYTES * 6 + 16_384 }, async (req, reply) => {
+    const { text } = z.object({ text: z.string().min(1) }).parse(req.body);
+    const read = readWorldKitFile(text);
+    if (!read.ok) return reply.status(400).send({ error: read.issues[0], issues: read.issues });
+    return { kit: read.kit, notes: read.notes };
+  });
+
+  // GET /game/experience-map-pack/:packageId: an installed Experience's map pack (worldgen W9e), checked,
+  // for the setup wizard to lock to and a game to draw with; null when it ships none.
+  app.get<{ Params: { packageId: string } }>("/experience-map-pack/:packageId", async (req, reply) => {
+    const read = await readMapPack(req.params.packageId);
+    if (!read) return { mapPack: null };
+    if (!read.ok)
+      return reply.status(400).send({ error: `Marinara could not read this Experience's map pack: ${read.reason}` });
+    return { mapPack: read.pack };
+  });
+
+  // GET /game/:chatId/world/file: the game's world as a share file (worldgen W9d): its kit, and its world
+  // with the hand edits kept with it, to start a new game from.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/file", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    return worldFile(chat.name, game.kit, {
+      seed: game.seed,
+      generatorVersion: WORLD_GENERATOR_VERSION,
+      grounding: game.grounding,
+      brief: game.brief,
+      ...(game.edits ? { edits: game.edits } : {}),
+    });
+  });
+
+  // GET /game/:chatId/world/people?place=: a place's people as the game has them, edits applied.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/people", async (req, reply) => {
+    const { place } = z.object({ place: z.string().min(1).max(16) }).parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    return {
+      people: worldCast(game, place).map((person) => ({
+        id: person.id,
+        name: person.name,
+        named: person.named,
+        role: person.role,
+        byHand: worldPersonByHand(person.id),
+      })),
+    };
   });
 
   // ── GET /game/:chatId/overworld ──

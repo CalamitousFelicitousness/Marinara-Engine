@@ -14,6 +14,7 @@ import {
   worldTownMinutes,
   worldTownPeopleAt,
   type GameWorld,
+  type TilePack,
   type WorldPerson,
   type WorldTownBuilding,
 } from "@marinara-engine/shared";
@@ -36,6 +37,8 @@ interface TownViewProps {
   clockRunning: boolean;
   canWalk: boolean;
   family?: string;
+  /** The game's own tiles (an Experience's map pack), drawn before the setting family's. */
+  tilePack?: TilePack | null | "loading";
   handleRef?: MutableRefObject<OverworldClockHandle | null>;
   onLeave: () => void;
 }
@@ -66,13 +69,14 @@ export function TownView({
   clockRunning,
   canWalk,
   family,
+  tilePack,
   handleRef,
   onLeave,
 }: TownViewProps) {
   const { t } = useTranslation();
   const { data: town } = useTown(chatId, turnKey, true);
   const visitMutation = useTownVisit();
-  const drawTile = useOverworldAtlas(family);
+  const drawTile = useOverworldAtlas(family, tilePack);
   const walkingRef = useRef(false);
   const [walking, setWalking] = useState(false);
   const { pendingMinutes, flush } = useOverworldClock(chatId, clockRunning, () => walkingRef.current, handleRef);

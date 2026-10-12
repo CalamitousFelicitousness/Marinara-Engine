@@ -20,9 +20,11 @@ import {
   Wand2,
   Check,
   Globe2,
+  Download,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api-client";
+import { downloadJsonFile } from "../../lib/download-json";
 import { useWorldJournal } from "../../hooks/use-game";
 import { toast } from "sonner";
 import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/game-npc-avatar";
@@ -30,7 +32,7 @@ import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { AnimatedText } from "./AnimatedText";
 
-import type { GameNpc, WorldJournal } from "@marinara-engine/shared";
+import type { GameNpc, WorldFile, WorldJournal } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface JournalEntry {
@@ -757,6 +759,15 @@ function NpcsView({
 function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null }) {
   const { t: localizeUi } = useUiTranslation();
   const world = useWorldJournal(chatId, turnKey);
+  // The game's world as a share file (worldgen W9d): its kit, and its world with its hand edits.
+  const downloadWorld = async () => {
+    try {
+      const file = await api.get<WorldFile>(`/game/${chatId}/world/file`);
+      downloadJsonFile(file, `${file.name.replace(/[^\w.-]+/g, "_")}.world.json`);
+    } catch {
+      toast.error(localizeUi("ui.game.worldview.downloadFailed"));
+    }
+  };
   // Another game's or turn's world is never shown while this one's is read.
   const shown: WorldJournal | null | undefined = world.isError ? null : world.data;
   if (shown === undefined) {
@@ -853,6 +864,14 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
             ))
           : nothing,
       )}
+      <button
+        type="button"
+        onClick={() => void downloadWorld()}
+        className="inline-flex items-center gap-1.5 self-start rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+      >
+        <Download size={12} />
+        {localizeUi("ui.game.worldview.download")}
+      </button>
     </div>
   );
 }

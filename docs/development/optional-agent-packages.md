@@ -1054,6 +1054,47 @@ definition is older than the pinned version) is reported as unavailable and neve
 another ruleset. The pin is matched on the ruleset id and on the package that supplied it, so
 another package claiming the same id does not take over an existing game.
 
+### Capability API 1.72: an Experience's map pack
+
+A `game-surface` package that sets up through the Game wizard (`gameSurface.setup`, 1.18) can ship a
+map pack with schema version 2 and Capability API 1.72: its own setting kit, ready-made worlds built
+with that kit, and its own tile pack. Each is the share file Game Mode and Pixelforge already read and
+write (a `.worldkit.json`, `.world.json` files and a `.tilepack.json`), and each is also a declared,
+hash-pinned asset.
+
+```json
+{
+  "gameSurface": {
+    "setup": {},
+    "mapPack": {
+      "kit": "map/riverlands.worldkit.json",
+      "worlds": ["map/upriver.world.json", "map/downriver.world.json"],
+      "tiles": "map/riverlands.tilepack.json"
+    }
+  },
+  "assets": {
+    "paths": [
+      "map/riverlands.worldkit.json",
+      "map/upriver.world.json",
+      "map/downriver.world.json",
+      "map/riverlands.tilepack.json"
+    ]
+  }
+}
+```
+
+`worlds` (at most 32) and `tiles` are optional. With the Experience on, a new game is locked to the
+pack's kit; if the pack ships worlds, the player picks one of them and makes no other. Turning the
+Experience off gives the player's own choices back. `POST /api/game/create` holds a game to the same
+lock. The game keeps its kit and world like any game, so it plays on if the package is removed, and
+draws its overworld and towns with the pack's tiles while the package is installed.
+
+The Engine reads the files through the verified asset path (declared size at most 2 MB each, hash
+re-checked) and checks them as it checks share files. A pack is refused whole, with the reason, when a
+file does not read, when a world was made with another kit or does not fit it, or when its bytes are
+not the ones installed; the Experience then cannot start a game. A ruleset is never part of a map
+pack: an Experience that needs its own rules ships a separate ruleset package.
+
 ### Capability API 1.18: keep Experience setup in the Game wizard
 
 A `game-surface` package can declare `contributions.gameSurface.setup` with schema

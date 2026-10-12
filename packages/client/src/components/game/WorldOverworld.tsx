@@ -22,6 +22,7 @@ import {
   worldGroundLooks,
   worldRoute,
   type GameWorld,
+  type TilePack,
   type WorldPlace,
 } from "@marinara-engine/shared";
 import { useOverworld, useOverworldWalk } from "../../hooks/use-game";
@@ -59,6 +60,8 @@ interface WorldOverworldProps {
   canWalk: boolean;
   /** The setting's art family, whose tiles the overworld is drawn with when it has them. */
   family?: string;
+  /** The game's own tiles (an Experience's map pack), drawn before the setting family's. */
+  tilePack?: TilePack | null | "loading";
   /** Opens the town the party is in (worldgen W8b). */
   onEnterTown?: () => void;
   handleRef?: MutableRefObject<WorldOverworldHandle | null>;
@@ -88,6 +91,7 @@ export function WorldOverworld({
   clockRunning,
   canWalk,
   family,
+  tilePack,
   onEnterTown,
   handleRef,
 }: WorldOverworldProps) {
@@ -131,7 +135,7 @@ export function WorldOverworld({
   const lit = darkness > 0.25;
 
   // ── The family's tiles: drawn plain until (and unless) they load ──
-  const drawTile = useOverworldAtlas(family);
+  const drawTile = useOverworldAtlas(family, tilePack);
 
   // ── What is drawn once: the ground and its ways, then the settlements ──
   const ground = useMemo(() => {

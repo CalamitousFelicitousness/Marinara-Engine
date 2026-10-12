@@ -7,6 +7,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { worldStream, type WorldPlace } from "./compile.js";
+import { worldPersonByHand } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
@@ -140,9 +141,19 @@ export function worldTown(game: GameWorld, settlementId: string, present?: World
   };
 
   // ── Who is in town ──
-  const inside = world.places.filter((place) => place.parentId === settlementId);
-  const added = (present?.places ?? []).filter((place) => place.parentId === settlementId);
-  const people = [settlement, ...inside].flatMap((place) => worldCast(game, place.id));
+  const within = world.places.filter((place) => place.parentId === settlementId);
+  const inside = within.filter((place) => !place.byHand);
+  // Places the story added, then those added by hand (W9c): both go last, so the town never moves.
+  const added = [
+    ...(present?.places ?? []).filter((place) => place.parentId === settlementId),
+    ...within.filter((place) => place.byHand),
+  ];
+  // People added by hand come after everyone drawn, so nobody already in town moves house.
+  const cast = [settlement, ...within].flatMap((place) => worldCast(game, place.id));
+  const people = [
+    ...cast.filter((person) => !worldPersonByHand(person.id)),
+    ...cast.filter((person) => worldPersonByHand(person.id)),
+  ];
   const buildings: WorldTownBuilding[] = [];
   const homeOf: Record<string, string> = {};
   const workOf: Record<string, string> = {};
@@ -159,7 +170,8 @@ export function worldTown(game: GameWorld, settlementId: string, present?: World
     return building;
   };
 
-  // The places in town first: the world's own, then those the story added. Their people work there.
+  // The places in town first: the world's own (the story's and those added by hand come last, below).
+  // Their people work there.
   for (const place of inside) {
     const building = build("place", { placeId: place.id, name: place.name });
     if (!building) break;
@@ -168,6 +180,10 @@ export function worldTown(game: GameWorld, settlementId: string, present?: World
       building.people.push(person.id);
       workOf[person.id] = building.id;
     }
+  }
+  // The people of a place added by hand work there; its building comes last, below.
+  for (const person of people) {
+    if (within.some((place) => place.byHand && place.id === person.placeId)) workOf[person.id] = person.placeId;
   }
   // The landmark of a bigger place: where its keepers sit. Members of a group seated here work there.
   if (tier >= 2) {
@@ -214,10 +230,22 @@ export function worldTown(game: GameWorld, settlementId: string, present?: World
   // next free lot, or else the home furthest out that nobody named lives in. That home keeps its id, so a
   // party saved standing there is still somewhere in town.
   for (const place of added) {
-    if (build("place", { placeId: place.id, name: place.name })) continue;
-    const empty = [...buildings].reverse().find((building) => building.kind === "home" && building.people.length === 0);
-    if (!empty) break;
-    Object.assign(empty, { kind: "place" as const, placeId: place.id, name: place.name });
+    let building = build("place", { placeId: place.id, name: place.name });
+    if (!building) {
+      const empty = [...buildings].reverse().find((each) => each.kind === "home" && each.people.length === 0);
+      if (!empty) break;
+      building = Object.assign(empty, { kind: "place" as const, placeId: place.id, name: place.name });
+    }
+    // Its people work in it, by the building's own id (an empty home it took keeps that home's).
+    for (const person of people) {
+      if (person.placeId !== place.id) continue;
+      building.people.push(person.id);
+      workOf[person.id] = building.id;
+    }
+  }
+  // Someone whose workplace found no lot is in the square by day.
+  for (const [personId, at] of Object.entries(workOf)) {
+    if (!buildings.some((building) => building.id === at)) delete workOf[personId];
   }
   // Stalls along the square's edges, for a place known for trade.
   const stalls: WorldTown["stalls"] = [];

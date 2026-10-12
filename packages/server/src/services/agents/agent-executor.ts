@@ -41,7 +41,12 @@ import {
   findInvalidInventoryTrackerRow,
   type CustomAgentContextSources,
 } from "@marinara-engine/shared";
-import { getAgentCallTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../../config/runtime-config.js";
+import {
+  AGENT_MAX_TOOL_ROUNDS,
+  getAgentCallTimeoutMs,
+  getMaxToolRounds,
+  isDebugAgentsEnabled,
+} from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { failureLevel } from "../../lib/log-context.js";
 import { repairJsonText } from "../../lib/json-repair.js";
@@ -53,6 +58,7 @@ import { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
 import { completeAgentCall } from "./agent-progress.js";
 import { normalizeCyoaChoiceOutput } from "./cyoa-choice-normalization.js";
 import { getAssetManifest } from "../game/asset-manifest.service.js";
+import { toolRoundsAsText } from "../tools/tool-executor.js";
 import { normalizeBeholderProse } from "./beholder-normalizer.js";
 import {
   beholderDeltaLacksRemoval,
@@ -1176,7 +1182,13 @@ async function executeAgentWithTools(
   startTime: number,
   context: AgentContext,
 ): Promise<AgentResult> {
-  const maxToolRounds = getMaxToolRounds();
+  // An agent works with its tools, then answers: enough rounds for one that saves an entry per call on a
+  // backend that calls one tool a round, never the general limit, so a model that keeps calling tools
+  // (a proxy that loses the results) costs a bounded number of calls, not a hundred.
+  // A run that only saves (a lorebook backfill) may ask for more in its settings' `toolRounds`.
+  const asked = config.settings.toolRounds;
+  const agentRounds = typeof asked === "number" && Number.isInteger(asked) && asked > 0 ? asked : AGENT_MAX_TOOL_ROUNDS;
+  const maxToolRounds = Math.min(getMaxToolRounds(), agentRounds);
   const loopMessages = [...initialMessages];
   let totalTokens = 0;
   const debugAgentsEnabled = isDebugAgentsEnabled() && logger.isLevelEnabled("debug");
@@ -1285,8 +1297,14 @@ async function executeAgentWithTools(
     }
   }
 
-  // Exhausted tool rounds — make one final call without tools to get JSON response
-  const finalProviderMessages = prepareAgentProviderMessages(loopMessages);
+  // Said where support can see it: a run that ends here may have had more to do (a proxy that loses tool
+  // results, or more entries than rounds).
+  logger.warn("[agent] %s used all %d tool rounds; it answers now without tools", config.name, maxToolRounds);
+  // Exhausted tool rounds: one final call without tools for the answer, its tool exchange as text
+  // (a provider's plain path cannot carry tool calls or results; see toolRoundsAsText).
+  const finalProviderMessages = prepareAgentProviderMessages(
+    toolRoundsAsText(loopMessages, "No more tool calls: give your answer now, in the format you were asked for."),
+  );
   emitAgentDebug(context, {
     stage: "request",
     ...agentDebugBase(config, model, temperature, maxTokens),

@@ -250,7 +250,6 @@ export function useDeleteLorebook() {
       qc.removeQueries({ queryKey: lorebookKeys.detail(id) });
       qc.removeQueries({ queryKey: lorebookKeys.entries(id) });
       qc.invalidateQueries({ queryKey: lorebookKeys.all });
-      qc.invalidateQueries({ queryKey: libraryFolderKeys.list("lorebooks") });
       qc.invalidateQueries({ queryKey: ["chats"] });
       // The server clears `character_book` and the
       // `extensions.importMetadata.embeddedLorebook` pointer for any
@@ -260,6 +259,8 @@ export function useDeleteLorebook() {
       // missing this lets the character editor keep rendering stale
       // entries and a broken "Edit Embedded Lorebook" button.
       qc.invalidateQueries({ queryKey: characterKeys.all });
+      // The server also drops the deleted book from library folders.
+      qc.invalidateQueries({ queryKey: libraryFolderKeys.list("lorebooks") });
     },
   });
 }

@@ -228,10 +228,14 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   await startup.phase("seed.regex", () => seedDefaultRegexScripts(db));
   await startup.phase("migrate.agent-prompts", () => migrateLegacyDefaultAgentPrompts(db));
   await startup.phase("migrate.extended-descriptions", () => migrateCharacterExtendedDescriptionsToLorebooks(db));
-  const removedFolderIds = await startup.phase("migrate.lorebook-folder-references", () =>
-    createLibraryFoldersStorage(db).pruneMissingLorebookItemIds(),
-  );
-  if (removedFolderIds > 0) app.log.info("Removed %d missing lorebook ID(s) from library folders", removedFolderIds);
+  try {
+    const removedFolderIds = await startup.phase("migrate.lorebook-folder-references", () =>
+      createLibraryFoldersStorage(db).pruneMissingLorebookItemIds(),
+    );
+    if (removedFolderIds > 0) app.log.info("Removed %d missing lorebook ID(s) from library folders", removedFolderIds);
+  } catch (error) {
+    app.log.warn(error, "Lorebook folder cleanup did not complete; it will retry next startup");
+  }
   try {
     await startup.phase("migrate.tts-audio", () => migrateTtsSettingsToAudioConnection(db));
   } catch (error) {

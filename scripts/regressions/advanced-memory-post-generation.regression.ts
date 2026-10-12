@@ -55,6 +55,9 @@ let mainTextRoll = false;
 let mainFirstReplyPadding = "";
 // When set, the first main reply says this instead.
 let mainReply: string | undefined;
+// The text each rewrite agent call was given. A call given text containing rewriteFailsFor fails.
+const rewriteSources: string[] = [];
+let rewriteFailsFor: string | undefined;
 // Streamed main replies send usage only on their last chunk, after a pause, as OpenAI-compatible
 // providers do. Counts streams the client closed before that chunk.
 let mainStreamUsageLast = false;
@@ -113,13 +116,15 @@ const provider = createServer(async (req, res) => {
     })),
   ];
   const prompt = JSON.stringify(messages);
-  const kind = prompt.includes("TRACKER_SCENE_FIXTURE")
-    ? "tracker"
-    : prompt.includes("Identify scene transitions")
-      ? "scene"
-      : prompt.includes("Summarize only the supplied eligible source material")
-        ? "summary"
-        : "main";
+  const kind = prompt.includes("REWRITE_FIXTURE")
+    ? "rewrite"
+    : prompt.includes("TRACKER_SCENE_FIXTURE")
+      ? "tracker"
+      : prompt.includes("Identify scene transitions")
+        ? "scene"
+        : prompt.includes("Summarize only the supplied eligible source material")
+          ? "summary"
+          : "main";
   calls.push({
     kind,
     messages,
@@ -129,6 +134,18 @@ const provider = createServer(async (req, res) => {
     tools: body.tools,
   });
   if (kind === "summary" && summaryGate) await summaryGate;
+  const rewriteSource =
+    kind === "rewrite"
+      ? (/<assistant_response>\n([\s\S]*?)\n<\/assistant_response>/u.exec(
+          messages.map((message: { content: string }) => message.content).join("\n"),
+        )?.[1] ?? "")
+      : "";
+  if (kind === "rewrite") rewriteSources.push(rewriteSource);
+  if (kind === "rewrite" && rewriteFailsFor && rewriteSource.includes(rewriteFailsFor)) {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "The rewrite fixture refuses this part." } }));
+    return;
+  }
   // A tool round or roll follow-up resends the outgoing prompt with the first reply and the result.
   const followup =
     kind === "main" &&
@@ -177,7 +194,13 @@ const provider = createServer(async (req, res) => {
                 : (mainReply ?? "The character continues the silver compass journey."))
             : followup && mainTextRoll && resolvedRolls <= mainFollowupRolls
               ? 'The guard swings again. [roll: notation="1d1", reason="parry"]'
-              : "The character continues the silver compass journey.";
+              : kind === "rewrite"
+                ? JSON.stringify({
+                    editNeeded: true,
+                    editedText: `REWRITTEN ${rewriteSource}`,
+                    changes: [{ description: "Fixture rewrite" }],
+                  })
+                : "The character continues the silver compass journey.";
   const response = {
     id: "fixture",
     status: "completed",
@@ -521,6 +544,15 @@ try {
       phase: "post_processing",
       enabledByDefault: false,
       defaultPromptTemplate: "TRACKER_SCENE_FIXTURE Return JSON values.",
+    },
+    {
+      id: "prose-guardian",
+      name: "Prose Guardian",
+      description: "Local regression fixture",
+      category: "writer",
+      phase: "post_processing",
+      enabledByDefault: false,
+      defaultPromptTemplate: "REWRITE_FIXTURE",
     },
   ]);
   const tracker = await createAgentsStorage(db).create({
@@ -2902,7 +2934,10 @@ try {
   // message and audience, so its new version keeps only its own scene, and the commands written in it.
   assert.equal(extraOf(splitFirst).continuesAfterSceneBreak, true);
   assert.equal(extraOf(splitLast).continuesAfterSceneBreak, undefined);
-  await chats.patchMetadata(splitChat.id, { roleplayCommandsEnabled: true, roleplayCommandToggles: { document: true } });
+  await chats.patchMetadata(splitChat.id, {
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { document: true },
+  });
   mainReply = splitReply
     .replace("gate.", 'gate.[document title="Gate" content="FIRST_SCENE_DOCUMENT"]')
     .replace("rain.", 'rain.[document title="Cellar" content="LATER_SCENE_DOCUMENT"]');
@@ -2941,6 +2976,96 @@ try {
     (await chats.listMessages(conversationSplit.id)).map((message) => message.content),
     ["Hi.", splitReply],
     "other modes never split",
+  );
+
+  // Rewrite agents rewrite every part of a split reply on its own, one call per part, under the part's break line.
+  // With hold on, each part shows the placeholder until its rewrite arrives; without it, each saved part is updated
+  // in place. A failed rewrite leaves its part as written, and the next part is still rewritten.
+  await createAgentsStorage(db).create({
+    type: "prose-guardian",
+    name: "Prose Guardian",
+    phase: "post_processing",
+    connectionId: connection.id,
+    promptTemplate: "REWRITE_FIXTURE",
+    settings: {},
+  });
+  const player = await createCharactersStorage(db).createPersona("Mari", "The player.");
+  assert(player);
+  const rewriteChat = await chats.create({
+    name: "POV split rewrite",
+    mode: "roleplay",
+    characterIds: [character.id],
+    personaId: player.id,
+    connectionId: connection.id,
+  });
+  assert(rewriteChat);
+  chatIds.push(rewriteChat.id);
+  await chats.patchMetadata(rewriteChat.id, {
+    enableAgents: true,
+    activeAgentIds: ["prose-guardian"],
+    advancedMemory: splitMemory,
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { whisper: true },
+  });
+  await memory.initialize(rewriteChat.id);
+  const firstScene = "CYNO_ALONE waits by the gate.";
+  const laterScene = "MARI_AND_MAUKIE run through the rain.";
+  mainReply = splitReply;
+  for (const [hold, failFirst] of [
+    [true, false],
+    [false, false],
+    [true, true],
+  ] as const) {
+    const label = `${hold ? "held" : "not held"}${failFirst ? ", first part's rewrite failing" : ""}`;
+    await chats.patchMetadata(rewriteChat.id, { proseGuardianHoldForRewrite: hold });
+    await chats.createMessage({ chatId: rewriteChat.id, role: "user", content: "And then?" });
+    rewriteSources.length = 0;
+    rewriteFailsFor = failFirst ? "CYNO_ALONE" : undefined;
+    const events = await splitGenerate(rewriteChat.id);
+    const [first, last] = (await chats.listMessages(rewriteChat.id)).slice(-2);
+    assert(first && last);
+    assert.deepEqual(rewriteSources, [firstScene, laterScene], `${label}: one rewrite per part, without its break`);
+    assert.equal(first.content, failFirst ? firstScene : `REWRITTEN ${firstScene}`, label);
+    assert.equal(last.content, `***\n\nREWRITTEN ${laterScene}`, `${label}: the break line stays on top`);
+    const pending = "Prose Guardian is working!";
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "message_saved")
+        .map((event) => [event.data.id, event.data.content, Boolean(extraOf(event.data).postProcessingPending)]),
+      hold
+        ? [
+            [first.id, pending, true],
+            [last.id, pending, true],
+          ]
+        : [
+            [first.id, firstScene, false],
+            [last.id, `***\n\n${laterScene}`, false],
+          ],
+      `${label}: held parts show the placeholder`,
+    );
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "text_rewrite")
+        .map((event) => [event.data.messageId, event.data.editedText, event.data.rewriteApplied]),
+      [
+        [first.id, first.content, !failFirst],
+        [last.id, last.content, true],
+      ],
+      `${label}: each rewrite, or the held text a failed one releases, goes to its own part`,
+    );
+  }
+  rewriteFailsFor = undefined;
+  // A whisper written in a later part moves with that part's rewrite.
+  mainReply = splitReply.replace("run through", 'run [whisper: character="Mari" text="PART_SECRET"] through');
+  const whisperEvents = await splitGenerate(rewriteChat.id);
+  const whisperOffset = (message: { extra?: unknown }) => extraOf(message).roleplayCommandActivity?.[0]?.contentOffset;
+  const writtenWhisperPart = whisperEvents.filter((event) => event.type === "message_saved").at(-1)!.data;
+  const rewrittenWhisperPart = (await chats.listMessages(rewriteChat.id)).at(-1)!;
+  assert.equal(typeof whisperOffset(writtenWhisperPart), "number");
+  assert.equal(
+    whisperOffset(rewrittenWhisperPart),
+    whisperOffset(writtenWhisperPart) + "REWRITTEN ".length,
+    "the whisper keeps its place in its own part",
   );
   mainReply = undefined;
 } finally {

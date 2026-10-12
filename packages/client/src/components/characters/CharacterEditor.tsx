@@ -2844,6 +2844,7 @@ function MetadataTab({
                 }
               }}
               role="combobox"
+              aria-label={localizeUi("ui.characters.metadatatab.tags")}
               aria-autocomplete="list"
               aria-expanded={tagSuggestionsShown}
               aria-controls={tagSuggestionsShown ? tagListboxId : undefined}

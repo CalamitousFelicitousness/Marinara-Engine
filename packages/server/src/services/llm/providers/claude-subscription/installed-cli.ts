@@ -88,14 +88,16 @@ export async function findClaudeCodeInstall(
   const bundledRuns = platform !== "android";
   // Without the bundled version there is no safe floor, so keep the bundled build.
   if (!bundledVersion && bundledRuns) return null;
+  let fallback: ClaudeCodeInstall | null = null;
   for (const path of candidatePaths(env, home)) {
     const version = await probe(path);
     if (!version) continue;
-    // An older host install could lack options this SDK sends; keep looking, then use the bundled build.
-    if (bundledRuns && !(compareVersions(version, bundledVersion!) >= 0)) continue;
-    return { path, version };
+    if (bundledVersion && compareVersions(version, bundledVersion) >= 0) return { path, version };
+    // An older host install could lack options this SDK sends; keep looking, then use the bundled build,
+    // or on Android the first older install, since there is no bundled build to use.
+    if (!bundledRuns) fallback ??= { path, version };
   }
-  return null;
+  return fallback;
 }
 
 let cachedInstall: { at: number; value: Promise<ClaudeCodeInstall | null> } | null = null;

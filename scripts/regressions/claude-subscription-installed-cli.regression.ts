@@ -47,8 +47,18 @@ try {
     null,
     "env opt-out keeps bundled",
   );
-  versions.set(onPath, "2.1.100");
   const android = { env, home, probe, platform: "android" as const };
+  assert.deepEqual(
+    await findClaudeCodeInstall("2.1.282", android),
+    { path: onPath, version: "2.1.300" },
+    "Android still prefers a current install over an older one found first",
+  );
+  assert.equal(
+    await findClaudeCodeInstall("2.1.282", { ...android, env: optedOut }),
+    null,
+    "env opt-out holds on Android",
+  );
+  versions.set(onPath, "2.1.100");
   assert.deepEqual(
     await findClaudeCodeInstall("2.1.282", android),
     { path: native, version: "2.1.200" },

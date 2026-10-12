@@ -202,7 +202,7 @@ export interface CapabilityMessageRecord {
   extra: string;
   createdAt: string;
   /**
-   * The message as Engine agents read it (capability API 1.69): each live whisper at its saved place as
+   * The message as Engine agents read it (capability API 1.71): each live whisper at its saved place as
    * `[Private whisper to <name>: …]`, and a whisper-only message as its whispers alone. `listMessages` sets it in
    * Roleplay chats outside hosted multiplayer rooms; it is absent elsewhere and on older Engines, so read
    * `agentContent ?? content`.

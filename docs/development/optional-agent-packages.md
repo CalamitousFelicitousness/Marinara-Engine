@@ -1107,7 +1107,7 @@ Use the existing startup-readiness declaration independently when the world must
 be prepared before the opening turn. Declare API 1.18 as the package minimum;
 older hosts cannot interpret this setup declaration.
 
-### Capability API 1.69: read messages as agents read them
+### Capability API 1.71: read messages as agents read them
 
 In Roleplay, a message can carry whispers that are not part of its `content`. Every agent the Engine
 runs reads them, and a package that reads the chat itself can now read the same text. Each record
@@ -1125,7 +1125,7 @@ const history = messages.map((message) => message.agentContent ?? message.conten
 ```
 
 It is a soft seam: older Engines leave the field out, so a package that reads
-`agentContent ?? content` does not need to declare 1.69. It needs the `chat-read` permission, like
+`agentContent ?? content` does not need to declare 1.71. It needs the `chat-read` permission, like
 `listMessages`. Whispers are private: anything a package writes from them, such as a note or a memory,
 can reach characters the whisper was not for.
 

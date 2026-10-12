@@ -52,6 +52,9 @@ function manualChunks(id: string) {
   // invents, rather than weight on the game tag parser's chunk, which takes the rest of the shared code.
   if (/\/shared\/(?:dist|src)\/features\/rulesets\/(?:item-book|invented-items)\.(?:js|ts)$/u.test(id))
     return "ruleset-items";
+  // So is the world a game is set in (its kit, places, people, history and story), which grows with
+  // every part of worldgen, rather than weight on the game tag parser's chunk.
+  if (/\/shared\/(?:dist|src)\/features\/world\//u.test(id)) return "game-world";
   if (!id.includes("/node_modules/")) return undefined;
   // Ignore checkout names, but keep pnpm peer suffixes so React and its consumers stay together.
   // Removing those suffixes splits eager React imports across chunks and creates startup cycles.

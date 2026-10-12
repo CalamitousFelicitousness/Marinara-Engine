@@ -98,7 +98,7 @@ export interface ParsedGmTags {
   /** State transition command */
   stateChange: string | null;
   /** NPC reputation changes */
-  reputationActions: Array<{ npcName: string; action: string }>;
+  reputationActions: Array<{ npcName: string; action: string; id?: string }>;
   /** Combat encounter with enemy data */
   combatEncounter: CombatEncounterTag | null;
   /** Cinematic direction commands */
@@ -629,15 +629,8 @@ export function parseGmTags(content: string): ParsedGmTags {
   }
 
   // [reputation: npc="Name" action="helped"] — can appear multiple times
-  const repRegex = /\[reputation:\s*npc="([^"]+)"\s*action="([^"]+)"\]/gi;
-  let repMatch: RegExpExecArray | null;
-  while ((repMatch = repRegex.exec(text)) !== null) {
-    result.reputationActions.push({
-      npcName: repMatch[1]!.trim(),
-      action: repMatch[2]!.trim(),
-    });
-  }
-  text = text.replace(/\[reputation:\s*npc="[^"]+"\s*action="[^"]+"\]/gi, "");
+  result.reputationActions.push(...readReputationTags(text));
+  text = stripReputationTags(text);
 
   // The Engine resolves every sheet command and rewrites it with the outcome it actually
   // applied, so the bookkeeping is never narration.
@@ -914,4 +907,40 @@ export function resolveMessageWeatherAction(state: string, content: string): "tr
   const tags = parseGmTags(content);
   if (state === "combat" || tags.stateChange === "combat" || tags.combatEncounter) return null;
   return state === "travel_rest" ? "travel" : state === "exploration" ? "explore" : "turn";
+}
+
+// Unbounded in length, as the tag always was, so a long action is still read and stripped rather than
+// left in the narration; a body never holds "[", so "[reputation:" repeated without a "]" cannot make
+// every start scan to the end of the text.
+const REPUTATION_TAG = /\[reputation:([^[\]]*)\]/gi;
+
+/**
+ * Every `[reputation: npc="Name" action="helped"]` tag in a text, its attributes in any order. A
+ * world's person may also be named by `id="..."` (worldgen W2), which wins over the name when two
+ * tracked people share one. A tag without an action, or with neither a name nor an id, is skipped.
+ */
+export function readReputationTags(text: string): Array<{ npcName: string; action: string; id?: string }> {
+  const tags: Array<{ npcName: string; action: string; id?: string }> = [];
+  for (const match of text.matchAll(REPUTATION_TAG)) {
+    const values = new Map(
+      readGmTagAttributes(match[1] ?? "").map((attribute) => [
+        attribute.key.trim().toLowerCase(),
+        attribute.rawValue
+          .trim()
+          .replace(/^["']|["']$/g, "")
+          .trim(),
+      ]),
+    );
+    const npcName = values.get("npc") ?? "";
+    const id = values.get("id");
+    const action = values.get("action");
+    if (!action || (!npcName && !id)) continue;
+    tags.push({ npcName, action, ...(id ? { id } : {}) });
+  }
+  return tags;
+}
+
+/** The text without its reputation tags. */
+export function stripReputationTags(text: string): string {
+  return text.replace(REPUTATION_TAG, "");
 }

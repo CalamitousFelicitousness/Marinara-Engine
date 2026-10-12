@@ -15,8 +15,9 @@ export interface RulesetLootDrop {
   count: number;
 }
 
-/** A number written down, or dice rolled; never less than none. */
-function rolledAmount(value: number | string, roll: (sides: number) => number): number {
+/** A number written down, or dice rolled; never less than none. A market day's limits roll the same
+ *  way (#6934). */
+export function rulesetRolledAmount(value: number | string, roll: (sides: number) => number): number {
   if (typeof value === "number") return value;
   const dice = parseRulesetCombatDice(value);
   if (!dice) return 0;
@@ -40,7 +41,7 @@ export function rollRulesetLootTable(
   if (!table) return null;
   const total = table.entries.reduce((sum, entry) => sum + entry.weight, 0);
   const drops = new Map<string, RulesetLootDrop>();
-  const picks = rolledAmount(table.rolls, roll);
+  const picks = rulesetRolledAmount(table.rolls, roll);
   for (let pick = 0; pick < picks; pick++) {
     let face = roll(total);
     const line = table.entries.find((entry) => (face -= entry.weight) <= 0) ?? table.entries.at(-1)!;
@@ -61,7 +62,7 @@ export function rollRulesetLootTable(
       });
       if (matching.length > 0) found = matching[roll(matching.length) - 1];
     }
-    const count = rolledAmount(line.count, roll);
+    const count = rulesetRolledAmount(line.count, roll);
     if (!found || count < 1) continue;
     const before = drops.get(found.item)?.count ?? 0;
     drops.set(found.item, {

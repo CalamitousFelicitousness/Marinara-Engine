@@ -894,20 +894,27 @@ function formatIllustrationAssetDebug(assets: IllustrationCharacterAssets): stri
 }
 
 // A full tag such as backgrounds:wuxia:teahouse names an existing background: every art family's
-// folder is stripped like the folders before it, so its slug is never doubled.
+// folder, and the game's own family when its kit names one, is stripped like the folders before it,
+// so its slug is never doubled.
 const GENERATED_BACKGROUND_PREFIX = new RegExp(
   `^(?:backgrounds|${WORLD_ART_FAMILIES.map((family) => family.replace(/_/g, "-")).join("|")}|user|generated|illustrations|q-[a-z0-9]{6,})-+`,
 );
 
-function generatedBackgroundSlug(value: string): string {
+function generatedBackgroundSlug(value: string, family?: string): string {
+  const ownFamily = family
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   let slug = value
     .trim()
     .toLowerCase()
     .replace(/:/g, "-")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  while (GENERATED_BACKGROUND_PREFIX.test(slug)) {
-    slug = slug.replace(GENERATED_BACKGROUND_PREFIX, "");
+  for (;;) {
+    if (GENERATED_BACKGROUND_PREFIX.test(slug)) slug = slug.replace(GENERATED_BACKGROUND_PREFIX, "");
+    else if (ownFamily && slug.startsWith(`${ownFamily}-`)) slug = slug.slice(ownFamily.length + 1);
+    else break;
   }
   return slug || "scene";
 }
@@ -14386,7 +14393,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     let resolvedIllustration: Pick<SceneIllustrationRequest, "prompt" | "characters"> | undefined;
 
     if (backgroundGenerationEnabled && input.backgroundTag) {
-      const slug = generatedBackgroundSlug(input.backgroundTag);
+      const slug = generatedBackgroundSlug(input.backgroundTag, gameArtFamily(meta));
       const backgroundDescription =
         input.backgroundDescription?.trim() || input.backgroundTag.replace(/:/g, " ").replace(/-/g, " ");
       const promptOverride = promptOverrideById.get(gameImagePromptReviewId("background", slug));
@@ -14800,7 +14807,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
       // ── Generate background ──
       if (!assetAbortSignal.aborted && backgroundGenerationEnabled && input.backgroundTag) {
-        const slug = generatedBackgroundSlug(input.backgroundTag);
+        const slug = generatedBackgroundSlug(input.backgroundTag, gameArtFamily(meta));
         const backgroundDescription =
           input.backgroundDescription?.trim() || input.backgroundTag.replace(/:/g, " ").replace(/-/g, " ");
         const promptOverride = promptOverrideById.get(gameImagePromptReviewId("background", slug));

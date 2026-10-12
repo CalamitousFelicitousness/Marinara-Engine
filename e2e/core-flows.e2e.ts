@@ -21905,6 +21905,8 @@ test("phone keyboard keeps a full-screen package editor usable and full height a
     .toEqual({ layerTop: 0, layerBottom: keyboardViewportHeight, saveVisible: true, fieldVisible: true });
 
   // Closing the keyboard with the back gesture keeps the field focused; the editor fills the screen again.
+  // Regression guard only: staging also passes this half in emulation. The real-Android report of the
+  // editor staying compressed after the keyboard closes (#7452) was not reproduced here.
   await setVisibleHeight(fullViewport.height);
   await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
   await expect(field).toBeFocused();

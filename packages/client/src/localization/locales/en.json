@@ -6606,6 +6606,8 @@
   "ui.chat.chatsettingsdrawer.youtubeModeUsesTheMusicDjAgentSYoutube": "YouTube mode uses the Music DJ agent's YouTube connection and embedded player.",
   "ui.chat.chatsettingsloadingfallback.loadingSettings": "Loading settings...",
   "ui.chat.chattoolbarmenu.moreOptions": "More options",
+  "ui.chat.chatvideoattachment.generatedVideo": "Generated video",
+  "ui.chat.chatvideoattachment.removeVideoFromMessage": "Remove video from message",
   "ui.chat.chatvideolightbox.closeVideo": "Close video",
   "ui.chat.chatvideolightbox.videoPreview": "Video preview",
   "ui.chat.collapsibleblock.token": "token",

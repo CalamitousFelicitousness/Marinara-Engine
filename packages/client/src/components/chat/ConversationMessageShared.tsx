@@ -20,6 +20,7 @@ import { renderWithStickerBlocks } from "../../lib/sticker-render";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ImagePromptPanel } from "./ImagePromptPanel";
 import { ChatImagePreview } from "./ChatImagePreview";
+import { ChatVideoAttachment, isVideoAttachment } from "./ChatVideoAttachment";
 import { MessageActionButton } from "./MessageActionButton";
 import { SwipeJumpControl } from "./SwipeJumpControl";
 import { useUIStore } from "../../stores/ui.store";
@@ -564,7 +565,9 @@ export function ConversationMessageAttachments({
   return (
     <div className="mt-1.5 flex flex-col items-start gap-2">
       {attachments.map((att, i) =>
-        att.type === "image" || att.type?.startsWith("image/") ? (
+        isVideoAttachment(att) && att.url ? (
+          <ChatVideoAttachment key={i} src={att.url} prompt={att.prompt} onRemove={() => onRemove(i)} />
+        ) : att.type === "image" || att.type?.startsWith("image/") ? (
           <div key={i} className="group/att relative inline-block">
             <button
               type="button"

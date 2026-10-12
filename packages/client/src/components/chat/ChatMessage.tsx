@@ -35,6 +35,7 @@ import { useCharacterSummaries, useChatGalleryFilenameIndex } from "../../hooks/
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import { PendingTypingDots } from "./PendingTypingDots";
 import { ChatImagePreview } from "./ChatImagePreview";
+import { ChatVideoAttachment, isVideoAttachment } from "./ChatVideoAttachment";
 import { recordClientRuntimeEvent } from "../../lib/client-runtime-diagnostics";
 import { isDiceRollResult, readRoleplayDiceRolls } from "../../lib/dice-roll-result";
 import { DiceMessageContent, diceRollReplacesMessageContent } from "./ConversationMessageShared";
@@ -3415,7 +3416,18 @@ export const ChatMessage = memo(function ChatMessage({
     !IMAGE_URL_RE.test(message.content.trim()) && (
       <div className={hasVnMediaTarget ? "contents" : "mt-1.5 flex flex-col items-center gap-2 px-3 pb-2"}>
         {extra.attachments.map((att: any, i: number) =>
-          att.roleplaySound === true ? null : att.type === "image" || att.type?.startsWith("image/") ? (
+          att.roleplaySound === true ? null : isVideoAttachment(att) && att.url ? (
+            renderRoleplayImage(
+              <ChatVideoAttachment
+                key={i}
+                src={att.url}
+                prompt={att.prompt}
+                onRemove={hasVnMediaTarget ? undefined : () => handleRemoveAttachment(i)}
+                className={hasVnMediaTarget ? "pointer-events-auto" : undefined}
+              />,
+              i,
+            )
+          ) : att.type === "image" || att.type?.startsWith("image/") ? (
             renderRoleplayImage(
               <div
                 key={i}
@@ -4484,7 +4496,14 @@ export const ChatMessage = memo(function ChatMessage({
           {!editing && extra.attachments?.length > 0 && !IMAGE_URL_RE.test(message.content.trim()) && (
             <div className="mt-1.5 flex flex-col items-center gap-2 px-3 pb-2">
               {extra.attachments.map((att: any, i: number) =>
-                att.roleplaySound === true ? null : att.type === "image" || att.type?.startsWith("image/") ? (
+                att.roleplaySound === true ? null : isVideoAttachment(att) && att.url ? (
+                  <ChatVideoAttachment
+                    key={i}
+                    src={att.url}
+                    prompt={att.prompt}
+                    onRemove={() => handleRemoveAttachment(i)}
+                  />
+                ) : att.type === "image" || att.type?.startsWith("image/") ? (
                   <div key={i} className="group/att relative inline-block">
                     <button
                       type="button"

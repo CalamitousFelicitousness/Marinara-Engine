@@ -83,6 +83,11 @@ import {
 } from "../services/video/prompt-context.js";
 import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../services/video/scene-video-prompt-review.js";
 import {
+  attachVideoToMessage,
+  buildChatVideoAttachment,
+  resolveChatVideoAnchor,
+} from "../services/video/chat-video-messages.js";
+import {
   buildRoleplayVideoDirectionMessages,
   resolveRoleplayVideoDirection,
 } from "../services/video/roleplay-video-direction.js";
@@ -865,6 +870,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     return {
       videoConnectionId,
       galleryImage,
+      anchor: resolveChatVideoAnchor(messages, swipes, galleryImage.id),
       videoRuntime,
       durationSeconds,
       aspectRatio,
@@ -1119,8 +1125,16 @@ export async function galleryRoutes(app: FastifyInstance) {
       logDebugOverride(debugOverrideEnabled, message, ...args);
     };
     const sceneVideos = createGameSceneVideosStorage(app.db);
-    const { videoConnectionId, galleryImage, videoRuntime, durationSeconds, aspectRatio, prompt, videoFallback } =
-      prepared;
+    const {
+      videoConnectionId,
+      galleryImage,
+      anchor,
+      videoRuntime,
+      durationSeconds,
+      aspectRatio,
+      prompt,
+      videoFallback,
+    } = prepared;
     const {
       source,
       serviceHint,
@@ -1200,7 +1214,14 @@ export async function galleryRoutes(app: FastifyInstance) {
 
       await chats.patchMetadata(input.chatId, () => ({ sceneLastVideoId: row.id }));
       logger.info("[gallery/generate-scene-video] saved video %s for chat %s", row.id, input.chatId);
-      return { video: serializeSceneVideo(row) };
+      const video = serializeSceneVideo(row);
+      // Shown inline under the message the animated image belongs to; the video stays in the gallery either way.
+      if (anchor) {
+        await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video)).catch((attachErr) => {
+          logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", row.id);
+        });
+      }
+      return { video, messageId: anchor?.messageId ?? null };
     } catch (err) {
       if (savedFilePath && !metadataSaved) {
         await removeSavedVideoFromDisk(savedFilePath).catch((cleanupErr) => {

@@ -844,6 +844,10 @@ export interface MessageAttachment {
   galleryId?: string;
   /** Character who sent a Conversation selfie; older selfies lack it. */
   characterName?: string;
+  /** For `type: "video"`: the generated scene video row this attachment plays. */
+  videoId?: string;
+  durationSeconds?: number;
+  aspectRatio?: string;
 }
 
 /** A reaction on a Conversation message: an emoji token + who reacted. */

@@ -160,24 +160,29 @@ export function CharacterOnboardingModal({
         : new Map<string, string>(),
     [personaOnboarding, personaAnswers, persona],
   );
-  // A variable name two selected cards both declare. A chat stores ONE value per
-  // name, so the last answer saved is what both cards end up reading — worth
-  // saying out loud rather than silently overwriting.
+  // A variable name two shown questions share. A chat stores ONE value per name,
+  // so the last answer saved is what both cards end up reading — worth saying out
+  // loud rather than silently overwriting.
+  //
+  // Built from the questions ACTUALLY rendered (`perCard[].questions`), not every
+  // declared variable: a name the current answers ruled out of a `{{#if}}` is not
+  // on screen, and warning about a clash the player cannot see or resolve is
+  // noise. Relevance already accounts for the answers, so this stays in step.
   const clashes = useMemo(() => {
     const owners = new Map<string, string[]>();
-    for (const card of cards) {
-      for (const variable of card.onboarding.cardVariables ?? []) {
+    for (const entry of perCard) {
+      for (const variable of entry.questions) {
         const name = variable.variableName;
         if (!name) continue;
         const list = owners.get(name) ?? [];
-        list.push(card.name);
+        list.push(entry.card.name);
         owners.set(name, list);
       }
     }
     return [...owners.entries()]
       .filter(([, names]) => names.length > 1)
       .map(([name, names]) => ({ name, names: [...new Set(names)] }));
-  }, [cards]);
+  }, [perCard]);
 
   // Card questions are OPTIONAL: a blank one simply writes no variable, and the
   // card keeps whatever it reads without it. The persona is not — it needs a

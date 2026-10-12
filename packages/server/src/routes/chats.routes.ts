@@ -1399,6 +1399,11 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     }
     let roleplayTrackerCharacterIdsToSeed: string[] = [];
+    // Characters added to an existing chat need the same card-variable defaults
+    // as at creation, or a card that just joined carries a literal
+    // `{{relationshipToUser}}` into the prompt. Compared before/after like the
+    // tracker below so re-sending an unchanged roster writes nothing.
+    let cardVariableCharacterIdsToSeed: string[] = [];
     if (data.characterIds !== undefined) {
       const previousIds = resolveChatCharacterIds(existing.characterIds);
       const nextIds = data.characterIds;
@@ -1406,6 +1411,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       const previousSet = new Set(previousIds);
       const removedIds = previousIds.filter((id) => !nextSet.has(id));
       const addedIds = nextIds.filter((id) => !previousSet.has(id));
+
+      cardVariableCharacterIdsToSeed = addedIds;
 
       if (removedIds.length > 0 || addedIds.length > 0) {
         const existingMessages = await storage.listMessages(req.params.id);
@@ -1479,12 +1486,23 @@ export async function chatsRoutes(app: FastifyInstance) {
         }
       }
     }
-    const updated = await storage.update(req.params.id, data);
+    let updated = await storage.update(req.params.id, data);
     if (updated && roleplayTrackerCharacterIdsToSeed.length > 0) {
       try {
         await seedNewRoleplayChatTrackerDefaults(app, updated, roleplayTrackerCharacterIdsToSeed);
       } catch (err) {
         logger.warn(err, "Failed to seed Character Tracker defaults while setting up Roleplay chat");
+      }
+    }
+    // Seeded after the update, and its row returned: the client caches whatever
+    // this response carries, so answering with the pre-seed row would leave the
+    // added character's variables missing until the next fetch. Swallowed like
+    // the tracker above — an unseeded chat is the pre-existing behaviour.
+    if (updated && cardVariableCharacterIdsToSeed.length > 0) {
+      try {
+        updated = (await seedNewChatCardVariables(app, req.params.id, cardVariableCharacterIdsToSeed)) ?? updated;
+      } catch (err) {
+        logger.warn(err, "Failed to seed onboarding card variables for added chat characters");
       }
     }
     if (updated && identityChanged) {

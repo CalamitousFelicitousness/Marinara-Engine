@@ -54,6 +54,8 @@ let mainFirstReplyPadding = "";
 // providers do. Counts streams the client closed before that chunk.
 let mainStreamUsageLast = false;
 let mainStreamsCutBeforeUsage = 0;
+// How many roll follow-ups ask for another roll. Each later follow-up reports 100 more input tokens.
+let mainFollowupRolls = 0;
 const decisionRequests: Array<{ state: Record<string, any>; questions: Record<string, { instructions: string }> }> = [];
 const sceneDecision = (transcript: Array<{ messageNumber: number; content: string; alreadyChecked?: boolean }>) => ({
   ends: closeLatestScene
@@ -127,7 +129,10 @@ const provider = createServer(async (req, res) => {
     (messages.some((message: { role: string }) => message.role === "tool") ||
       prompt.includes("The engine resolved your roll request"));
   const firstMainReply = kind === "main" && !followup;
-  const inputTokens = followup ? (mainFollowupInputTokens ?? mainInputTokens) : mainInputTokens;
+  const resolvedRolls = prompt.split("The engine resolved your roll request").length - 1;
+  const inputTokens = followup
+    ? (mainFollowupInputTokens ?? mainInputTokens) + 100 * Math.max(0, resolvedRolls - 1)
+    : mainInputTokens;
   const bundledSceneCheck = messages.find((message: { content: string }) => message.content.includes("Transcript:\n"));
   const content =
     kind === "tracker"
@@ -164,7 +169,9 @@ const provider = createServer(async (req, res) => {
               (mainTextRoll
                 ? 'The guard lunges. [roll: notation="1d1", reason="dodge"]'
                 : "The character continues the silver compass journey.")
-            : "The character continues the silver compass journey.";
+            : followup && mainTextRoll && resolvedRolls <= mainFollowupRolls
+              ? 'The guard swings again. [roll: notation="1d1", reason="parry"]'
+              : "The character continues the silver compass journey.";
   const response = {
     id: "fixture",
     status: "completed",
@@ -1100,17 +1107,18 @@ try {
   const streamedRollSource = await chats.listMessages(streamedRollChat.id);
   mainStreamUsageLast = true;
   mainTextRoll = true;
-  const streamRoll = async (outgoingInput: number, followupInput: number) => {
+  const streamRoll = async (outgoingInput: number, followupInput: number, chat = streamedRollChat, rolls = 1) => {
     mainInputTokens = outgoingInput;
     mainFollowupInputTokens = followupInput;
+    mainFollowupRolls = rolls - 1;
     const before = calls.length;
     const cutBefore = mainStreamsCutBeforeUsage;
-    const result = await generateFollowup(streamedRollChat.id, true);
+    const result = await generateFollowup(chat.id, true);
     assert.equal(result.statusCode, 200, result.body);
     assert.ok(!result.body.includes('"type":"error"'), result.body);
-    assert.equal(sentFollowups(before), 1, "the streamed roll follow-up was sent");
-    assert.equal(mainStreamsCutBeforeUsage - cutBefore, 1, "the reply was cut at its roll before usage arrived");
-    return (await memory.status(streamedRollChat.id)).job.contextStarts?.map((start) => [
+    assert.equal(sentFollowups(before), rolls, "the streamed roll follow-up was sent");
+    assert.equal(mainStreamsCutBeforeUsage - cutBefore, rolls, "the reply was cut at its roll before usage arrived");
+    return (await memory.status(chat.id)).job.contextStarts?.map((start) => [
       start.messageId,
       start.audienceCharacterIds,
     ]);
@@ -1125,6 +1133,21 @@ try {
     [[streamedRollSource[4]!.id, []]],
     "a streamed roll whose outgoing prompt passed the cap still resets everyone to the latest scene",
   );
+  // A reply that rolls twice is cut at both rolls, so neither stream reports usage. The first
+  // request that does, less everything added since the outgoing prompt, still stands for it.
+  const twoRollChat = await createFollowupChat("Two streamed rolls cutoff");
+  const twoRollSource = await chats.listMessages(twoRollChat.id);
+  assert.equal(
+    await streamRoll(64_999, 65_099, twoRollChat, 2),
+    undefined,
+    "a reply cut at two rolls does not cut when what the follow-ups added explains the difference",
+  );
+  assert.deepEqual(
+    await streamRoll(66_000, 66_100, twoRollChat, 2),
+    [[twoRollSource[4]!.id, []]],
+    "a reply cut at two rolls whose outgoing prompt passed the cap still resets everyone to the latest scene",
+  );
+  mainFollowupRolls = 0;
   mainStreamUsageLast = false;
   mainTextRoll = false;
   mainFollowupInputTokens = undefined;

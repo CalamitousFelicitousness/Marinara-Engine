@@ -8214,8 +8214,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             tokensLastRequestInput = getRequestInputTokens(next, generationProviderOrigin.provider);
             // The first request carries the outgoing prompt; a follow-up never stands in for it.
             // When cutting a streamed reply at its roll lost that usage (OpenAI-compatible providers
-            // send it last), the first follow-up's input minus the bytes it added is a floor for it:
-            // every token covers at least one byte, so it never cuts early.
+            // send it last), the first later request that reports input, minus the bytes added since,
+            // is a floor for it: every token covers at least one byte, so it never cuts early.
             // ponytail: a prompt only just past the cap can cut a turn late. Upgrade: a
             // provider-reported count of the outgoing prompt.
             const outgoingInput =
@@ -8223,7 +8223,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? null
                 : requestCount === 1
                   ? tokensLastRequestInput
-                  : requestCount === 2 && addedToLostPrompt
+                  : addedToLostPrompt
                     ? tokensLastRequestInput - Buffer.byteLength(JSON.stringify(addedToLostPrompt))
                     : null;
             if (outgoingInput !== null)
@@ -8374,7 +8374,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const maxToolRounds = gameToolPlan ? 1 : getMaxToolRounds();
             let loopMessages: ChatMessage[] = [...initialProviderMessages];
             let rollRequestAbort: AbortController | null = null;
-            // Length of the outgoing prompt when cutting its stream at a roll lost its usage.
+            // Length of the outgoing prompt when cutting its stream at a roll lost its usage. It stays
+            // set while each later round is also cut at a roll without usage, since those rounds add
+            // only their text and roll results; the first request that finishes or reports usage ends it.
             let lostPromptLength: number | null = null;
             const addedToLostPrompt = () =>
               lostPromptLength === null ? undefined : loopMessages.slice(lostPromptLength);
@@ -8506,12 +8508,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // Accumulate usage across tool rounds
               if (!gameToolPlan) {
                 recordRequestUsage(result.usage, addedToLostPrompt());
-                if (
-                  round === 0 &&
+                const usageLostAtRoll =
                   rollRequestAbort?.signal.aborted &&
-                  getRequestInputTokens(result.usage, generationProviderOrigin.provider) === null
-                )
-                  lostPromptLength = loopMessages.length;
+                  getRequestInputTokens(result.usage, generationProviderOrigin.provider) === null;
+                if (!usageLostAtRoll) lostPromptLength = null;
+                else if (round === 0) lostPromptLength = loopMessages.length;
               }
               finishReason = result.finishReason;
 

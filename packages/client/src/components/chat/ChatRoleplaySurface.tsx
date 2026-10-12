@@ -65,17 +65,12 @@ import { useGameStateStore } from "../../stores/game-state.store";
 import { useChatComposerFocused, useChatKeyboardOpen } from "../../hooks/use-visual-viewport-chat-bottom";
 import { useActiveLorebookEntries, useLorebooks } from "../../hooks/use-lorebooks";
 import { usePresetFull, usePresets } from "../../hooks/use-presets";
-import {
-  partitionTrackerCapabilityPackages,
-  selectRoleplayTrackerPackages,
-  useInstalledCapabilityPackages,
-} from "../../hooks/use-capability-packages";
+import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
 import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "./ChatControlWindow";
-import { LorebookReaderWindow } from "./LorebookReaderWindow";
 import { TrackerPanelBubble } from "./TrackerPanelBubble";
 import { PHONE_BUBBLE_SIZE_PX, WINDOW_BUBBLE_SIZE_PX, WINDOW_MARGIN_PX } from "../../lib/floating-window-layout";
 import { useMatchMedia } from "../../hooks/use-match-media";
@@ -988,13 +983,6 @@ export function ChatRoleplaySurface({
     trackerPanelOpen &&
     (chatMeta.enableAgents === true || chatMeta.advancedMemory?.enabled === true);
   const phoneSlotOffset = phoneLayout && showTrackerPanelBubble ? 1 : 0;
-  // The Lorebook Reader's bubble follows the connected chat (slot 0), package toolbars and the Beholder
-  // windows that RoleplayTrackerWindow draws.
-  const beholderWindowCount = chatMeta.enableAgents
-    ? partitionTrackerCapabilityPackages(selectRoleplayTrackerPackages(installedCapabilities, enabledAgentTypes))
-        .beholder.length
-    : 0;
-  const lorebookReaderSlot = conversationToolbarPackages.length + 1 + beholderWindowCount;
   useRenderTimer("rp-surface"); // [#3104 diagnostic]
   const isMobileToolbarViewport = useIsMobileToolbarViewport();
   const streamedMessageId = useChatStore((s) => s.streamedMessageIds.get(activeChatId) ?? null);
@@ -2230,7 +2218,7 @@ export function ChatRoleplaySurface({
         </Suspense>
       </div>
 
-      {/* Package toolbars, Beholder, the connected chat and the Lorebook Reader are windows that minimize to bubbles. */}
+      {/* Package toolbars, Beholder and the connected chat are windows that minimize to bubbles. */}
       {showTrackerPanelBubble && <TrackerPanelBubble chatId={activeChatId} />}
       {conversationToolbarPackages.map((item, index) => (
         <ChatControlWindow
@@ -2259,17 +2247,6 @@ export function ChatRoleplaySurface({
           name={linkedChatName}
           onSwitch={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
           phoneSlot={phoneSlotOffset}
-        />
-      )}
-      {chat && isRoleplay && (
-        <LorebookReaderWindow
-          chat={chat}
-          chatMeta={chatMeta}
-          characterMap={characterMap}
-          chatCharIds={chatCharIds}
-          personaInfo={personaInfo}
-          slot={lorebookReaderSlot}
-          phoneSlot={phoneSlotOffset + lorebookReaderSlot}
         />
       )}
 

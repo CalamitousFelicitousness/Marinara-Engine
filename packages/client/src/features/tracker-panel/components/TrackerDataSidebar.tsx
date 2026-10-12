@@ -30,11 +30,10 @@ import { TrackerAgentActivitySection } from "./TrackerAgentActivitySection";
 import { Translation, useTranslation as useUiTranslation } from "react-i18next";
 import {
   partitionTrackerCapabilityPackages,
-  selectRoleplayTrackerPackages,
   useInstalledCapabilityPackages,
 } from "../../../hooks/use-capability-packages";
 import { CapabilityElement } from "../../../components/capabilities/CapabilityElement";
-import { RoleplayTrackerCapability } from "../../../components/chat/RoleplayHUD";
+import { RoleplayTrackerCapability, selectRoleplayTrackerPackages } from "../../../components/chat/RoleplayHUD";
 
 const TRACKER_PANEL_NEUTRAL_VARS =
   "[--accent:rgb(39_39_42)] [--accent-foreground:rgb(244_244_245)] [--background:rgb(18_18_21)] [--border:rgb(63_63_70)] [--card:rgb(24_24_27)] [--foreground:rgb(244_244_245)] [--input:rgb(63_63_70)] [--muted:rgb(39_39_42)] [--muted-foreground:rgb(161_161_170)] [--popover:rgb(24_24_27)] [--popover-foreground:rgb(244_244_245)] [--primary:rgb(212_212_216)] [--primary-foreground:rgb(18_18_21)] [--ring:rgb(161_161_170)] [--secondary:rgb(39_39_42)] [--tracker-panel-card-background:color-mix(in_srgb,var(--background)_22%,transparent)] [--tracker-panel-section-background:color-mix(in_srgb,var(--card)_6%,transparent)]";

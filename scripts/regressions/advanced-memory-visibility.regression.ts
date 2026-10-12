@@ -827,6 +827,29 @@ try {
   assert(!splitMains[1]!.prompt.includes("MAUKIE_ALONE"), "Pantalone never reads the part he was away for");
   assert(splitMains[1]!.prompt.includes("MAUKIE_WITH_PANTALONE"), "but reads the part he was there for");
   assert(splitMains[2]!.prompt.includes("MAUKIE_ALONE") && splitMains[2]!.prompt.includes("PANTALONE_LEAVES"));
+
+  // A reply with more parts than one visibility pass looks at is still decided whole.
+  const manyPartsChat = await createChat();
+  await memory.initialize(manyPartsChat);
+  await say(manyPartsChat, "user", "P waits for news.");
+  calls.length = 0;
+  mainReplies = [
+    Array.from({ length: 10 }, (_, index) => `MAUKIE_PART_${index + 1}_ALONE in the cellar.`).join("\n\n***\n\n"),
+    "PANTALONE_WAITS.",
+    "NARRATOR_MANY_PARTS",
+  ];
+  const manyPartsTurn = await app.inject({
+    method: "POST",
+    url: "/api/generate/",
+    payload: { chatId: manyPartsChat },
+  });
+  assert.equal(manyPartsTurn.statusCode, 200, manyPartsTurn.body);
+  const manyParts = (await chats.listMessages(manyPartsChat)).filter((message) => message.characterId === ids.maukie);
+  assert.equal(manyParts.length, 10);
+  for (const part of manyParts)
+    assert.deepEqual((await extraOf(part.id)).hiddenFromAICharacterIds, [ids.pantalone], part.content);
+  const manyPartsMains = calls.filter((call) => call.kind === "main");
+  assert(!manyPartsMains[1]!.prompt.includes("MAUKIE_PART_1_ALONE"), "Pantalone never reads the earliest parts");
 } finally {
   await app.close();
   provider.close();

@@ -2898,9 +2898,22 @@ try {
   await splitGenerate(splitChat.id, { regenerateMessageId: splitLast.id });
   assert.equal(await countOf(splitChat.id), 3, "a swipe never inserts messages");
   assert.equal((await chats.getMessage(splitLast.id))!.content, splitReply, "it is a new version of that message");
+  // The earlier part's prompt brings back the whole reply, but the scenes after its break already have their own
+  // message and audience, so its new version keeps only its own scene, and the commands written in it.
+  assert.equal(extraOf(splitFirst).continuesAfterSceneBreak, true);
+  assert.equal(extraOf(splitLast).continuesAfterSceneBreak, undefined);
+  await chats.patchMetadata(splitChat.id, { roleplayCommandsEnabled: true, roleplayCommandToggles: { document: true } });
+  mainReply = splitReply
+    .replace("gate.", 'gate.[document title="Gate" content="FIRST_SCENE_DOCUMENT"]')
+    .replace("rain.", 'rain.[document title="Cellar" content="LATER_SCENE_DOCUMENT"]');
   await splitGenerate(splitChat.id, { regenerateMessageId: splitFirst.id });
   assert.equal(await countOf(splitChat.id), 3);
-  assert.equal((await chats.getMessage(splitFirst.id))!.content, splitReply);
+  const regeneratedFirst = (await chats.getMessage(splitFirst.id))!;
+  assert.equal(regeneratedFirst.content, "CYNO_ALONE waits by the gate.");
+  assert.match(JSON.stringify(regeneratedFirst.extra), /FIRST_SCENE_DOCUMENT/u);
+  assert.doesNotMatch(JSON.stringify(regeneratedFirst.extra), /LATER_SCENE_DOCUMENT/u);
+  assert.equal(extraOf(regeneratedFirst).continuesAfterSceneBreak, true, "and it stays an earlier part");
+  mainReply = splitReply;
   mainReply = "\n\n***\n\nCONTINUED_SCENE";
   await splitGenerate(splitChat.id, { continueMessageId: splitLast.id });
   assert.equal(await countOf(splitChat.id), 3, "Continue extends the message");

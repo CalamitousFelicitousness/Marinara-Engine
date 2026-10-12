@@ -1299,7 +1299,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         ? [index]
         : [],
     );
-    const items = actual.slice(-VISIBILITY_WINDOW).flatMap((index): VisibilityItem[] => {
+    // A reply split at scene breaks (#7481) is decided whole, however many parts it has.
+    let windowStart = Math.max(0, actual.length - VISIBILITY_WINDOW);
+    while (windowStart > 0 && object(ctx.messages[actual[windowStart - 1]!]!.extra).continuesAfterSceneBreak === true)
+      windowStart--;
+    const items = actual.slice(windowStart).flatMap((index): VisibilityItem[] => {
       const message = ctx.messages[index]!;
       const extra = object(message.extra);
       if (visibilitySettled(extra)) return [];

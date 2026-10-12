@@ -1,15 +1,20 @@
 /** A Markdown thematic break on its own line: 3+ of one of `*`, `-`, `_`, spaced or not, indented up to 3 spaces. */
 const SCENE_BREAK = /^ {0,3}([*_-])(?:[ \t]*\1){2,}[ \t]*$/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+/** HTML tags that open or close an element; void elements and `/>` never stay open. */
+const HTML_TAG =
+  /<(\/?)(?!(?:area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)\b)([a-z][\w-]*)\b[^<>]*?(\/?)>/giu;
 
 /**
- * Split a reply at its scene or POV break lines (`***`, `---`, `___`, `* * *`), outside fenced code. Each break line
- * opens the part after it. A part never lacks text: a break before any text, after the last text or next to another
- * break joins the part that has text. Text without a break comes back unchanged as the only part.
+ * Split a reply at its scene or POV break lines (`***`, `---`, `___`, `* * *`), outside fenced code and open HTML
+ * elements such as a `<details>` status panel. Each break line opens the part after it. A part never lacks text: a
+ * break before any text, after the last text or next to another break joins the part that has text. Text without a
+ * break comes back unchanged as the only part.
  */
 export function splitAtSceneBreaks(text: string): string[] {
   const parts: Array<{ lines: string[]; hasText: boolean }> = [{ lines: [], hasText: false }];
   let fence: string | null = null;
+  let openElements = 0;
   for (const line of text.split("\n")) {
     const bare = line.replace(/\r$/, "");
     const current = parts.at(-1)!;
@@ -17,11 +22,14 @@ export function splitAtSceneBreaks(text: string): string[] {
       if (new RegExp(`^ {0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}[ \\t]*$`).test(bare)) fence = null;
     } else {
       fence = FENCE.exec(bare)?.[1] ?? null;
-      if (!fence && SCENE_BREAK.test(bare)) {
+      if (!fence && !openElements && SCENE_BREAK.test(bare)) {
         if (current.hasText) parts.push({ lines: [line], hasText: false });
         else current.lines.push(line);
         continue;
       }
+      if (!fence)
+        for (const [, closing, , selfClosing] of bare.matchAll(HTML_TAG))
+          if (!selfClosing) openElements = Math.max(0, openElements + (closing ? -1 : 1));
     }
     current.lines.push(line);
     if (bare.trim()) current.hasText = true;

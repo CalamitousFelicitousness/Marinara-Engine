@@ -1549,6 +1549,9 @@ export function useGenerate() {
       let typewriterBufferUntil = 0;
       let roleplayTypewriterCharsPerSecond: number | null = null;
       const persistedMessages = new Map<string, Message>();
+      // Earlier parts of a reply split at scene breaks (#7481), by its last part's ID, so autoplay reads every part.
+      let pendingSplitPartIds: string[] = [];
+      const splitPartIdsBefore = new Map<string, string[]>();
       let vnReplyPublished = false;
       const publishVnReply = (message: Message | null) => {
         if (
@@ -2675,7 +2678,10 @@ export function useGenerate() {
               const remainingContent = typeof event.remainingContent === "string" ? event.remainingContent : null;
               if (remainingContent !== null) {
                 await waitForTypewriterDrain();
+                pendingSplitPartIds.push(savedMessage.id);
               } else if (savedMessage.role === "assistant") {
+                if (pendingSplitPartIds.length) splitPartIdsBefore.set(savedMessage.id, pendingSplitPartIds);
+                pendingSplitPartIds = [];
                 completeQueuedResponse(params.chatId, savedMessage.characterId);
                 currentGroupTurnSavedMessage = savedMessage;
                 if (
@@ -2764,9 +2770,13 @@ export function useGenerate() {
             case "assistant_message_ready": {
               const message = event.data as TTSAutoplayMessage;
               if (!message?.id || !message.content?.trim()) break;
+              const earlierMessages = (splitPartIdsBefore.get(message.id) ?? []).flatMap((id) => {
+                const part = persistedMessages.get(id);
+                return part ? [part] : [];
+              });
               window.dispatchEvent(
                 new CustomEvent<TTSAutoplayMessageReadyDetail>(TTS_AUTOPLAY_MESSAGE_READY_EVENT, {
-                  detail: { chatId: params.chatId, message },
+                  detail: { chatId: params.chatId, message, earlierMessages },
                 }),
               );
               if (

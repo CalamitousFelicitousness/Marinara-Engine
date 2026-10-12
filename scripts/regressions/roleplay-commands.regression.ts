@@ -17,6 +17,7 @@ import {
   buildRoleplayCommandsReminder,
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
+  placeAfterPrefix,
   placeRoleplayActivityInParts,
   readRoleplayPersonalState,
   RoleplayCommandStreamFilter,
@@ -887,6 +888,18 @@ assert.deepEqual(
   "adjacent breaks open the part after them; a trailing one stays with the last part",
 );
 assert.deepEqual(splitAtSceneBreaks("A\r\n***\r\nB\r\n---\r\nC"), ["A", "***\r\nB", "---\r\nC"]);
+const statusPanel = "Cyno waits.\n\n<details>\n<summary>Status</summary>\nHP 10\n\n---\n\nMood tense\n</details>";
+assert.deepEqual(splitAtSceneBreaks(statusPanel), [statusPanel], "a break inside an open HTML element is its content");
+assert.deepEqual(
+  splitAtSceneBreaks(`${statusPanel}\n\n***\n\n<div class="x"/>Mari runs.<br>\n---\nOn.`),
+  [statusPanel, '***\n\n<div class="x"/>Mari runs.<br>', "---\nOn."],
+  "a closed element, a self-closing tag or a void element doesn't stop a split",
+);
+
+// A command is placed after the text before it, even when cleanup stripped a "Name:" from the reply's start.
+assert.equal(placeAfterPrefix("Maukie reads alone.\n\n***\n\nOn.", "Maukie reads alone."), 19);
+assert.equal(placeAfterPrefix("Maukie reads alone.\n\n***\n\nOn.", "Maukie Whiskers: Maukie reads alone."), 19);
+assert.equal(placeAfterPrefix("Maukie reads.\nMaukie reads.", "Maukie Whiskers: Maukie reads."), null, "never a guess");
 
 // Each command stays with the part its text was in, so it keeps that part's audience.
 {

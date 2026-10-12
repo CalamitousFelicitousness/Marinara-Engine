@@ -965,6 +965,22 @@ assert.match(
   /addEventListener\(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady\)/u,
   "TTS autoplay must listen for finalized text without waiting for the full agent stream to close",
 );
+// #7481: a reply split at scene breaks is read part by part, and a held rewrite keeps the live reply empty.
+assert.match(
+  generateHookSource,
+  /case "assistant_message_ready": \{[\s\S]{0,500}splitPartIdsBefore\.get\(message\.id\)[\s\S]{0,600}earlierMessages \}/u,
+  "the ready event must carry the earlier parts of a split reply",
+);
+assert.match(
+  chatAreaSource,
+  /for \(const message of \[\.\.\.earlierMessages, lastMsg\]\)[\s\S]{0,1200}ttsService\.speakSequence\(\s*parts\.flatMap/u,
+  "autoplay must read a split reply's earlier parts before its last part, as one sequence",
+);
+assert.match(
+  generateRouteSource,
+  /type: "message_saved",\s*data: savedPart \?\? part\.message,\s*remainingContent: holdForTextRewrite\s*\?\s*""/u,
+  "while a rewrite agent holds the reply, an earlier part must not type out the unrewritten rest",
+);
 const galleryCreateIndex = generateRouteSource.indexOf("const galleryEntry = await galleryStore.create");
 const illustrationMessageLookupIndex = generateRouteSource.indexOf(
   "const msgRow = await chats.getMessage(messageId)",

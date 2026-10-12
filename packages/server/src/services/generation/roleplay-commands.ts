@@ -512,6 +512,22 @@ export function roleplayAgentsSeeWhispers(chatMode: unknown, metadata: Record<st
 }
 
 /**
+ * Where a command sits in the saved `reply`, from `prefix`, the reply text before it when parsed: after the prefix,
+ * else after its longest ending (80 to 12 characters) found exactly once, since cleanup such as a stripped
+ * "Name:" can change the start. Null when neither is found.
+ */
+export function placeAfterPrefix(reply: string, prefix: string): number | null {
+  const start = reply.indexOf(prefix);
+  if (start >= 0) return start + prefix.length;
+  for (let length = Math.min(80, prefix.length); length >= 12; length--) {
+    const anchor = prefix.slice(-length);
+    const found = reply.indexOf(anchor);
+    if (found >= 0 && found === reply.lastIndexOf(anchor)) return found + length;
+  }
+  return null;
+}
+
+/**
  * Give each command of a reply split at scene breaks to the part its text was in, so a whisper or document keeps
  * that part's audience. `parts` say where each starts in the whole reply and `placeOf` where a command was in it.
  * Saved inline places move into their part. A command with no place goes to the last part, and so does an

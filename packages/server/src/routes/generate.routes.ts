@@ -225,6 +225,7 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
   parseRoleplayUserCommands,
+  placeAfterPrefix,
   placeRoleplayActivityInParts,
   roleplayAgentContinuation,
   roleplayAgentPrompt,
@@ -8023,6 +8024,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const roleplayInlinePrefixes = new Map<RoleplayCommandActivity, string>();
           // The reply text before each command, so a reply split at scene breaks keeps it with its part.
           const roleplayActivityPlaces = new Map<RoleplayCommandActivity, string>();
+          let roleplayParsedLength = 0;
           const responderToolDefs =
             chatMode === "roleplay"
               ? toolDefs
@@ -9015,11 +9017,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const parsed = parseRoleplayCommands(fullResponse);
             roleplayHadCommands = parsed.content !== fullResponse;
             fullResponse = parsed.content;
+            roleplayParsedLength = parsed.content.length;
+            // A swipe of a split reply's earlier part is a new version of that part alone (#7481). Its prompt is the
+            // whole reply's, but the scenes after its break already have their own message and audience.
+            let regeneratedPartEnd = Infinity;
+            if (input.regenerateMessageId && parseExtra(regenMsg?.extra).continuesAfterSceneBreak === true) {
+              const [firstPart] = splitAtSceneBreaks(fullResponse);
+              if (firstPart !== undefined && firstPart !== fullResponse) {
+                regeneratedPartEnd = fullResponse.indexOf(firstPart) + firstPart.length;
+                fullResponse = firstPart;
+              }
+            }
             if (!roleplayDmCommandsEnabled) fullResponse = parseDirectMessageCommands(fullResponse).cleanContent;
             contentReplaced = true;
             if (parsed.invalid) sendSseEvent(reply, { type: "roleplay_command_error", data: { invalid: true } });
             for (const activity of parsed.activity) {
               const { command } = activity;
+              if ((parsed.positions.get(activity) ?? 0) > regeneratedPartEnd) continue;
               if (
                 !roomRoleplayCommandAllowed(command.type) ||
                 !isRoleplayCommandAllowed(chatMeta, roleplayCommandKey(command), roleplayCallerId)
@@ -10611,17 +10625,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const previousExtra = input.continueMessageId
                 ? parseExtra((await chats.getMessage(savedMsg.id))?.extra)
                 : {};
-              const placeInReply = (rawPrefix: string) => {
-                const prefix = stripSpacesBeforeLineBreaks(rawPrefix).trim();
-                const anchor = prefix.slice(-80);
-                const prefixStart = fullResponse.indexOf(prefix);
-                const anchorStart = fullResponse.indexOf(anchor);
-                return prefixStart >= 0
-                  ? prefixStart + prefix.length
-                  : anchor && anchorStart >= 0 && anchorStart === fullResponse.lastIndexOf(anchor)
-                    ? anchorStart + anchor.length
-                    : null;
-              };
+              const placeInReply = (rawPrefix: string) =>
+                placeAfterPrefix(fullResponse, stripSpacesBeforeLineBreaks(rawPrefix).trim());
               // A split reply places its commands in the whole reply first, then in the part each one was in.
               const placedContent = replyParts ? fullResponse : savedMsg.content;
               for (const [activity, rawPrefix] of roleplayInlinePrefixes) {
@@ -10638,7 +10643,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const placed = placeRoleplayActivityInParts(replyParts, roleplayActivity, (item) => {
                   if (typeof item.contentOffset === "number") return item.contentOffset;
                   const place = roleplayActivityPlaces.get(item);
-                  return place === undefined ? null : placeInReply(place);
+                  if (place === undefined) return null;
+                  // Not found after cleanup: the same relative place, so the command still lands near its part.
+                  return (
+                    placeInReply(place) ??
+                    Math.round((place.length * fullResponse.length) / Math.max(1, roleplayParsedLength))
+                  );
                 });
                 for (const [index, part] of replyParts.entries()) part.activity = placed[index]!;
               }
@@ -10751,16 +10761,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ...(index === 0 ? pick(firstPartKeys) : {}),
                   roleplayCommandActivity: part.activity,
                   roleplayPrivateContext: extraUpdate.roleplayPrivateContext,
+                  // The reply goes on in the next message: its reasoning covers both, and a swipe keeps this part.
+                  continuesAfterSceneBreak: true,
                   ...(outputTranslationConfig ? { automaticTranslationSource: part.content } : {}),
                 });
-                // The live reply keeps showing the rest, so the part appears above it without a repeat.
+                // The live reply keeps showing the rest, so the part appears above it without a repeat. While a
+                // rewrite agent holds the reply, the live reply stays empty until the rewrite arrives.
                 sendSseEvent(reply, {
                   type: "message_saved",
                   data: savedPart ?? part.message,
-                  remainingContent: replyParts
-                    .slice(index + 1)
-                    .map((rest) => rest.content)
-                    .join("\n\n"),
+                  remainingContent: holdForTextRewrite
+                    ? ""
+                    : replyParts
+                        .slice(index + 1)
+                        .map((rest) => rest.content)
+                        .join("\n\n"),
                 });
               }
               for (const key of firstPartKeys) extraUpdate[key] = key === "startsNewAssistantBubble" ? false : null;

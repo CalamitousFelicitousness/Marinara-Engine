@@ -11,6 +11,8 @@ export const TTS_AUTOPLAY_MESSAGE_READY_EVENT = "marinara:tts-autoplay-message-r
 export type TTSAutoplayMessageReadyDetail = {
   chatId: string;
   message: TTSAutoplayMessage;
+  /** The parts before `message` of a reply split at scene breaks (#7481), read first and in order. */
+  earlierMessages?: TTSAutoplayMessage[];
 };
 
 export function findLatestTTSAutoplayMessage<T extends TTSAutoplayMessage>(messages: readonly T[]): T | undefined {

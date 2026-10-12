@@ -111,7 +111,7 @@ export function parseTilePack(input: unknown): TilePackRead {
     tiles[id] = variants;
   }
   if (issues.length) return { ok: false, issues: issues.slice(0, 20) };
-  return { ok: true, pack: { ...pack, tiles }, notes };
+  return { ok: true, pack: { ...pack, tiles }, notes: notes.slice(0, 20) };
 }
 
 /** A tile's pixels as RGBA, row by row. */

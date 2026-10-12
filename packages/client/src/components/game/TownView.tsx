@@ -367,7 +367,7 @@ export function TownView({
               onClick={() => setSelected(selected === spot.id ? null : spot.id)}
               className={cn(
                 "absolute rounded-sm outline-none transition-shadow hover:ring-2 hover:ring-white/50 focus-visible:ring-2 focus-visible:ring-white",
-                selected === spot.id && "ring-2 ring-amber-300",
+                selected === spot.id && "ring-2 ring-[var(--primary)]",
               )}
               style={{ left: spot.x * cell, top: spot.y * cell, width: spot.w * cell, height: spot.h * cell }}
               aria-label={

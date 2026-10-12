@@ -10997,8 +10997,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     let visit: WorldTownVisit | undefined;
     let time: GameTime | undefined;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
-      // A turn told the visit, or another visit landed, since the town was read.
-      if ((worldTownVisitFromMetadata(fresh)?.id ?? null) !== (found.pending?.id ?? null)) {
+      // A turn told the visit, another visit landed, or the party walked to another settlement, since the
+      // town was read.
+      if (
+        (worldTownVisitFromMetadata(fresh)?.id ?? null) !== (found.pending?.id ?? null) ||
+        (worldWalkFromMetadata(fresh)?.id ?? null) !== (worldWalkFromMetadata(meta)?.id ?? null)
+      ) {
         throw Object.assign(new Error("The party has moved since; try again."), { statusCode: 409 });
       }
       visit = {

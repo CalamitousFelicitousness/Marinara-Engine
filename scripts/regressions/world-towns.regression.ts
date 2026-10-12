@@ -131,11 +131,15 @@ try {
   present.places.push({ id: "x1", name: "The Gilded Gull", parentId: city.id } as never);
   const withInn = worldTown(game, city.id, present)!;
   assert.ok(withInn.buildings.some((building) => building.placeId === "x1" && building.name === "The Gilded Gull"));
-  // The town as the world laid it out does not move for it: every other building keeps its lot and id.
+  // The town as the world laid it out does not move for it: every building keeps its lot and id, and only
+  // an empty home gives way to it (keeping its id, so a party saved standing there is still in town).
   for (const building of town.buildings) {
     const same = withInn.buildings.find((each) => each.id === building.id);
-    if (same) assert.deepEqual([same.x, same.y, same.kind], [building.x, building.y, building.kind], building.id);
-    else assert.equal(building.kind, "home", "only an empty home gives way");
+    assert.ok(same, building.id);
+    assert.deepEqual([same.x, same.y], [building.x, building.y], building.id);
+    if (same.kind !== building.kind) {
+      assert.deepEqual([building.kind, building.people.length, same.placeId], ["home", 0, "x1"], building.id);
+    }
   }
   assert.equal(
     worldTownMinutes(town, town.buildings[0]!.id, town.buildings.at(-1)!.id),

@@ -82,6 +82,8 @@ export interface WorldPresent extends WorldEngineState {
   places: Array<{ id: string; name: string; parentId: string }>;
   /** What the story did at each place, oldest first. */
   done: Record<string, string[]>;
+  /** Every deed at a known place in the order it was done, across places. */
+  deeds: Array<{ placeId: string; text: string }>;
   /** How many deeds the party has done: with its holdings, how far its word reaches. */
   renown: number;
   /** The places the party took, and for which group. */
@@ -316,6 +318,7 @@ function foldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): Worl
     places: [],
     groups: [],
     done: {},
+    deeds: [],
     news: [],
     pending: [],
     raised: 0,
@@ -336,7 +339,9 @@ function foldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): Worl
   };
   const record = (name: string | undefined, line: string) => {
     const id = placeId(name);
-    if (id) present.done[id] = [...(present.done[id] ?? []), line];
+    if (!id) return;
+    present.done[id] = [...(present.done[id] ?? []), line];
+    present.deeds.push({ placeId: id, text: line });
   };
   const shift = (id: string, by: number) => {
     present.fortune[id] = Math.max(0, Math.min(100, (present.fortune[id] ?? 50) + by));

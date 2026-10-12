@@ -72,7 +72,8 @@ export function useOverworldClock(
   }, [running, flush]);
   useEffect(() => {
     const onHidden = () => {
-      if (document.visibilityState === "hidden") void flush();
+      // Kept alive too: the page may be unloading, and a later pagehide finds nothing left to send.
+      if (document.visibilityState === "hidden") void flush(true);
     };
     const onPageHide = () => void flush(true);
     document.addEventListener("visibilitychange", onHidden);

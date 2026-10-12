@@ -39,7 +39,7 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
+import type { Chat, WorldJournal, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -49,6 +49,7 @@ export const gameKeys = {
   sessions: (gameId: string) => [...gameKeys.all, "sessions", gameId] as const,
   overworld: (chatId: string) => [...gameKeys.all, "overworld", chatId] as const,
   town: (chatId: string) => [...gameKeys.all, "town", chatId] as const,
+  worldJournal: (chatId: string) => [...gameKeys.all, "world-journal", chatId] as const,
 };
 
 // ── Types ──
@@ -987,6 +988,17 @@ export interface OverworldState {
   here: string | null;
   walk: WorldWalk | null;
   ruined: string[];
+}
+
+/** The world as the party knows it (the Journal's World tab), read again after each turn (`turnKey`), so
+ *  a swipe or branch never shows another turn's world. */
+export function useWorldJournal(chatId: string, turnKey: string | null) {
+  return useQuery({
+    queryKey: [...gameKeys.worldJournal(chatId), turnKey],
+    queryFn: () => api.get<{ journal: WorldJournal | null }>(`/game/${chatId}/world-journal`),
+    select: (data) => data.journal,
+    enabled: !!chatId,
+  });
 }
 
 /** The overworld of a game with a world, read again after each turn (`turnKey`). */

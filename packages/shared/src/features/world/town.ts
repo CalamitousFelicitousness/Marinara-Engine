@@ -211,12 +211,13 @@ export function worldTown(game: GameWorld, settlementId: string, present?: World
   const open = ordered.filter(({ lot }) => free(lot.x, lot.y, lot.w, lot.h)).length;
   for (let left = Math.round(open * FILL[tier]!); left > 0; left--) if (!build("home", {})) break;
   // The places the story added, last, so the town as the world laid it out never moves: each takes the
-  // next free lot, or else the home furthest out that nobody named lives in.
+  // next free lot, or else the home furthest out that nobody named lives in. That home keeps its id, so a
+  // party saved standing there is still somewhere in town.
   for (const place of added) {
     if (build("place", { placeId: place.id, name: place.name })) continue;
     const empty = [...buildings].reverse().find((building) => building.kind === "home" && building.people.length === 0);
     if (!empty) break;
-    Object.assign(empty, { id: place.id, kind: "place" as const, placeId: place.id, name: place.name });
+    Object.assign(empty, { kind: "place" as const, placeId: place.id, name: place.name });
   }
   // Stalls along the square's edges, for a place known for trade.
   const stalls: WorldTown["stalls"] = [];

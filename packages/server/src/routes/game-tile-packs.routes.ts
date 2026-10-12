@@ -3,8 +3,8 @@
 //
 // The Engine's own packs, one per setting family (read only, shipped in src/assets/overworld-tiles),
 // and the packs made in Pixelforge or imported from a file, filed under `local/<id>` so none can take a
-// built-in family's id. Saving and importing are administrative acts behind `requirePrivilegedAccess`,
-// as ruleset imports are; which pack each family is drawn with is a preference.
+// built-in family's id. Saving, importing, removing, and choosing which pack each family is drawn with
+// change what every game draws, so all sit behind `requirePrivilegedAccess`, as ruleset imports do.
 // ──────────────────────────────────────────────
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -155,6 +155,7 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
 
   // ── PUT /api/game-tile-packs/selection ── the pack a family is drawn with; none for the built-in one.
   app.put("/selection", { config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } }, async (req, reply) => {
+    if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack selection" })) return;
     const { family, packId } = z
       .object({ family: familySchema, packId: z.string().min(1).max(80).nullable() })
       .parse(req.body);

@@ -8681,12 +8681,20 @@ function GameSurfaceComponent({
     (view: "overworld" | "scene" | "town") => updateChatMetadata.mutate({ id: activeChatId, gameWorldView: view }),
     [activeChatId, updateChatMetadata],
   );
-  // Back from the scene view to the side of the world the player left: the overworld or the town.
-  const worldSideRef = useRef<"overworld" | "town">("overworld");
-  if (overworldShown) worldSideRef.current = townShown ? "town" : "overworld";
+  // Back from the scene view to the side of the world the player left in this game: the overworld or the
+  // town. Another game's side is never carried over.
+  const worldSideRef = useRef<{ chatId: string; side: "overworld" | "town" } | null>(null);
+  if (overworldShown) worldSideRef.current = { chatId: activeChatId, side: townShown ? "town" : "overworld" };
   const handleToggleWorldView = useCallback(
-    () => setWorldView(overworldShown ? "scene" : worldSideRef.current),
-    [overworldShown, setWorldView],
+    () =>
+      setWorldView(
+        overworldShown
+          ? "scene"
+          : worldSideRef.current?.chatId === activeChatId
+            ? worldSideRef.current.side
+            : "overworld",
+      ),
+    [activeChatId, overworldShown, setWorldView],
   );
   // Effective combat style: active encounter pin ?? runtime metadata override
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic".

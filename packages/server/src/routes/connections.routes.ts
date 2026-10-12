@@ -61,6 +61,7 @@ import { describeEmptyModelResponse, sentOutputBudget } from "../services/genera
 import { isGlm53MandatoryReasoningModel } from "../services/llm/providers/glm-request-compat.js";
 import { fetchOpenAIChatGPTModels, getOpenAIChatGPTAuth } from "../services/llm/openai-chatgpt-auth.js";
 import { fetchGrokCliModels } from "../services/llm/providers/grok-subscription.provider.js";
+import { stopIfClaudeCodeExposesMcp } from "../services/llm/providers/claude-subscription.provider.js";
 import {
   buildGoogleVertexModelUrl,
   googleAuthHeadersForVertex,
@@ -1754,25 +1755,36 @@ export async function connectionsRoutes(app: FastifyInstance) {
       // strips the model's version awareness and every model falsely answers
       // "Sonnet" — see the chat provider for the full explanation. Passing the
       // preset gives a clean signal on the model's true identity.
+      // Same connector isolation as chat: no settings files or claude.ai connectors, and a hard stop
+      // if Claude Code loads MCP servers or tools anyway, since permission checks are off.
+      const abortController = new AbortController();
       const queryHandle = sdk.query({
         prompt:
           "[OOC, hold on for one second, and tell me which claude model you are, you don't need to give me the version, are you Opus, Sonnet, Or Haiku? Answer with only the 1 word model name.]",
         options: {
+          abortController,
           model: requestedModel,
           systemPrompt: { type: "preset", preset: "claude_code" },
           tools: [],
+          settingSources: [],
           permissionMode: "bypassPermissions",
           includePartialMessages: false,
           // A preset title skips the CLI's hidden session-naming request.
           title: "Title",
           settings: { fastMode },
           ...(await claudeCodeExecutableOption()),
-          ...(conn.apiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: conn.apiKey } } : {}),
+          env: {
+            ...process.env,
+            ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+            ...(conn.apiKey ? { ANTHROPIC_API_KEY: conn.apiKey } : {}),
+          },
         },
       });
 
       for await (const message of queryHandle) {
-        if (message.type === "assistant") {
+        if (message.type === "system" && message.subtype === "init") {
+          stopIfClaudeCodeExposesMcp(message, abortController);
+        } else if (message.type === "assistant") {
           const blocks = (message.message?.content ?? []) as Array<{ type: string; text?: string }>;
           for (const block of blocks) {
             if (block.type === "text" && block.text) responseText += block.text;

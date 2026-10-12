@@ -320,6 +320,10 @@ const CHARACTER_CARD_HELP =
 // It names the lists rather than saying "the questions above": Character
 // Questions render first, and their answers are the ones that never become a
 // persona, so a positional phrase here says the opposite of the truth.
+//
+// English, like the other fourteen CHARACTER_*_HELP constants. Localizing only
+// this one would leave two conventions for the same thing; the whole set is
+// tracked as its own follow-up, together with the Colors-tab help texts.
 const CHARACTER_ONBOARDING_HELP =
   "Persona Questions become a new persona. Character Questions are saved on the chat. The five fields below are the persona's starting text.";
 

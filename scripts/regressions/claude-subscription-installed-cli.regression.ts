@@ -20,20 +20,43 @@ try {
   const versions = new Map([[native, "2.1.294"]]);
   const probe = async (path: string) => versions.get(path) ?? null;
   const env = { PATH: join(home, "bin") };
-  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe }), { path: native, version: "2.1.294" });
+  const platform = "linux" as const; // the bundled build runs here; Android is covered below
+  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }), {
+    path: native,
+    version: "2.1.294",
+  });
   versions.set(native, "2.1.200");
-  assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe }), null, "never downgrade the bundled build");
+  assert.equal(
+    await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }),
+    null,
+    "never downgrade the bundled build",
+  );
   versions.set(onPath, "2.1.300");
-  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe }), { path: onPath, version: "2.1.300" });
-  assert.equal(await findClaudeCodeInstall(null, { env, home, probe }), null, "unknown bundled version keeps it");
+  assert.deepEqual(await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }), {
+    path: onPath,
+    version: "2.1.300",
+  });
+  assert.equal(
+    await findClaudeCodeInstall(null, { env, home, probe, platform }),
+    null,
+    "unknown bundled version keeps it",
+  );
   const optedOut = { ...env, CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI: "false" };
   assert.equal(
-    await findClaudeCodeInstall("2.1.282", { env: optedOut, home, probe }),
+    await findClaudeCodeInstall("2.1.282", { env: optedOut, home, probe, platform }),
     null,
     "env opt-out keeps bundled",
   );
+  versions.set(onPath, "2.1.100");
+  const android = { env, home, probe, platform: "android" as const };
+  assert.deepEqual(
+    await findClaudeCodeInstall("2.1.282", android),
+    { path: native, version: "2.1.200" },
+    "Android has no bundled build to fall back to",
+  );
+  assert.deepEqual(await findClaudeCodeInstall(null, android), { path: native, version: "2.1.200" });
   versions.clear();
-  assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe }), null);
+  assert.equal(await findClaudeCodeInstall("2.1.282", { env, home, probe, platform }), null);
 
   // Model catalog: only the signed-in organization's newest catalog, gated by CLI version.
   const org = "11111111-2222-3333-4444-555555555555";

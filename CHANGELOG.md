@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- **Claude (Subscription)** on Android (Termux) now uses the installed `claude` even when it is older than the copy bundled with Marinara. The bundled copy has no Android build, so such connections used to fail with "Native CLI binary for android-arm64 not found".
+
 - The rare Chibi Professor Mari scroll toast shows her painted chibi again, and she now comes in other looks too: mirrored, upside down, Dottore, Gold and a rare shiny silver chibi with sparkles.
 - Contributor workflow: changelog entries are now written last, from the final diff. When a change makes something stop working that worked before, the entry and the PR description say so in plain words, and agents give users a way back or ask a maintainer first (#7383).
 - In Conversation chats, a character now remembers the selfie they sent. Their later replies see a short note with what the photo shows, so they no longer answer "what photo?" when you react to it. When image captioning is on, the captioning model describes the selfies in the two newest messages that have one, once each, and the caption is saved; other selfies use a saved caption or the selfie's image prompt. In group chats the note names who sent new selfies. Illustrator images stay hidden from the character.

@@ -14467,12 +14467,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     if (changedMessage) {
                       const originalText = strictEditNeeded ? originalResponseBeforeRewrite : null;
                       currentResponseForRewrite = sanitizedEditedText;
-                      const rewrittenText = sceneBreak + sanitizedEditedText;
-                      await chats.updateMessageContent(messageId, rewrittenText);
+                      // A split part keeps its break line on top of the rewritten text.
+                      sanitizedEditedText = sceneBreak + sanitizedEditedText;
+                      await chats.updateMessageContent(messageId, sanitizedEditedText);
                       if (originalText) {
                         await chats.updateMessageExtra(messageId, {
                           proseGuardianOriginalText: originalText,
-                          proseGuardianRewrittenText: rewrittenText,
+                          proseGuardianRewrittenText: sanitizedEditedText,
                           proseGuardianRewrittenAt: new Date().toISOString(),
                         });
                       }
@@ -14481,7 +14482,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         type: "text_rewrite",
                         data: {
                           messageId,
-                          editedText: rewrittenText,
+                          editedText: sanitizedEditedText,
                           changes,
                           rewriteApplied: true,
                           ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),

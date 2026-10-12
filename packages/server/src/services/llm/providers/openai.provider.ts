@@ -158,7 +158,7 @@ function alternateWireMessageRoles(messages: ChatCompletionsWireMessage[]): Chat
   for (const message of messages) {
     const role = isSystem(message) && !result.every(isSystem) ? "user" : message.role;
     const previous = result.at(-1);
-    if (previous?.role === role && mergeable(previous) && mergeable(message)) {
+    if (previous && previous.role === role && mergeable(previous) && mergeable(message)) {
       result[result.length - 1] = {
         ...previous,
         ...message,

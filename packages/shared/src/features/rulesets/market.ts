@@ -131,7 +131,8 @@ export function rulesetMarketPrice(
  * What a market day saw before the reply (#6934): the day's name, which seeds what is rolled for it;
  * what was bought today of a place's own wares (by item name) and of a seller's stock (by seller and
  * item, `rulesetMarketStockKey`); and what the sellers here paid out today, by coin family, in its
- * smallest coin.
+ * smallest coin. The counts are keyed by display names (answered tags carry no item ref), so a ruleset update
+ * that renames an item or a seller mid-day starts its count again.
  */
 export interface RulesetMarketDay {
   key: string;

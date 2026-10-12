@@ -9927,14 +9927,23 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   app.post("/world-canon", async (req, reply) => {
     const input = worldCanonReadSchema.parse(req.body);
     const wanted = input.entryIds ? new Set(input.entryIds) : null;
-    const rows = (await createLorebooksStorage(app.db).listEntriesByLorebooks(input.lorebookIds)) as unknown as Array<{
+    const lorebooks = createLorebooksStorage(app.db);
+    const rows = (await lorebooks.listEntriesByLorebooks(input.lorebookIds)) as unknown as Array<{
       id: string;
       name?: string | null;
       content?: string | null;
-      enabled: boolean;
     }>;
+    // Only what play would read: an off lorebook, folder or entry states nothing.
+    const eligible = new Set(
+      (
+        await lorebooks.listEligibleEntriesByIds(
+          rows.map((entry) => entry.id),
+          { unlimited: true },
+        )
+      ).map((entry) => entry.id),
+    );
     const entries = rows
-      .filter((entry) => entry.enabled && (!wanted || wanted.has(entry.id)) && (entry.content ?? "").trim())
+      .filter((entry) => eligible.has(entry.id) && (!wanted || wanted.has(entry.id)) && (entry.content ?? "").trim())
       .map((entry) => ({ id: entry.id, name: entry.name ?? "", content: entry.content ?? "" }));
     if (entries.length === 0) {
       return reply.status(400).send({ error: "These lorebooks have no entries to read.", issues: [] });

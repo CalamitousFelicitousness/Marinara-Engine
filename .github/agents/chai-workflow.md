@@ -25,7 +25,7 @@ this additive overlay. No repository file overrides platform permission controls
 - Name the core claim being proven.
 - Verify the user-facing claim before saying the work is done.
 - If proof is missing, say exactly what was not verified.
-- Don't add or edit `CHANGELOG.md` entries in PRs; the changelog is compiled from merged PRs before each main release.
+- Don't add or edit `CHANGELOG.md` entries outside release PRs; the release PR compiles them from the PRs merged since the last release.
 - Write the PR description's "What changed" last, from the final diff, not from the issue. Read the diff as a user and describe what is different for them. Rewrite it after each review fix that changes behavior.
 - If the final diff makes something stop working that worked before, or does more than the linked issue asked:
   - Say so in plain user words as the first point under "What changed" in the PR description ("You can no longer …").

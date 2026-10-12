@@ -52,7 +52,7 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Run `pnpm check` as the baseline validation command.
 - Before pushing, follow the local validation and reporting requirements in `CONTRIBUTING.md § Validation`.
 - Run `pnpm version:check` when you touch release metadata, version-bearing files, or README release references.
-- Never add or edit `CHANGELOG.md` in a PR; release notes are compiled from merged PRs' "What changed" before each release. See `CONTRIBUTING.md § Pull Request Expectations`.
+- Never add or edit `CHANGELOG.md` outside a release PR (one that bumps the root `package.json` version); release notes are compiled from merged PRs' "What changed" before each release. See `CONTRIBUTING.md § Pull Request Expectations`.
 
 ## Temporary Tests
 

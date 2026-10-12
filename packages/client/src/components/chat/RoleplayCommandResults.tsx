@@ -62,17 +62,20 @@ export function RoleplayWhisper({
     if (!mutation.isPending) setEditing(false);
   };
   const save = async () => {
-    if (pending || !draft.trim() || draft.length > limit) return;
+    if (pending || draft.length > limit) return;
     setError("");
     try {
       await mutation.mutateAsync({
         messageId,
         swipeIndex,
         extra: {
-          roleplayCommandActivity: getRoleplayCommandActivity(extra).map((item, index) =>
-            index === activityIndex && item.command.type === "whisper"
-              ? { ...item, command: { ...item.command, text: draft } }
-              : item,
+          // Saving an empty whisper removes it from the message.
+          roleplayCommandActivity: getRoleplayCommandActivity(extra).flatMap((item, index) =>
+            index !== activityIndex || item.command.type !== "whisper"
+              ? [item]
+              : draft.trim()
+                ? [{ ...item, command: { ...item.command, text: draft } }]
+                : [],
           ),
         },
       });
@@ -143,6 +146,7 @@ export function RoleplayWhisper({
           title={t("roleplay.commands.whisper.edit")}
           value={draft}
           onChange={setDraft}
+          placeholder={t("roleplay.commands.whisper.emptyRemoves")}
           readOnly={mutation.isPending}
           closeLabel={t("roleplay.commands.activity.cancel")}
           footer={
@@ -163,7 +167,7 @@ export function RoleplayWhisper({
               <button
                 type="button"
                 className={actionClass}
-                disabled={pending || !draft.trim() || draft.length > limit}
+                disabled={pending || draft.length > limit}
                 onClick={() => void save()}
               >
                 {t("roleplay.commands.activity.save")}
@@ -289,7 +293,8 @@ function CommandNotice({
   restore: () => Promise<unknown>;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  // A private tag that failed has lost its place in the message, so show why and the original text right away.
+  const [open, setOpen] = useState(!!item.error && (item.command.type === "whisper" || item.command.type === "notes"));
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");

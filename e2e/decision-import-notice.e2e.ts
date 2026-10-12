@@ -3,15 +3,6 @@ import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-// The notice's words, from the English catalog: a reworded notice is still the right one here.
-const en = JSON.parse(
-  readFileSync(new URL("../packages/client/src/localization/locales/en.json", import.meta.url), "utf8"),
-) as Record<string, string>;
-const notices = {
-  noModel: en["ui.lib.decisionimportnotice.noModel"]!,
-  modelUnknown: en["ui.lib.decisionimportnotice.modelUnknown"]!,
-  usesDecisions: en["ui.lib.decisionimportnotice.usesDecisions"]!,
-};
 
 async function prepare(page: Page, selected: string | null | undefined) {
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
@@ -94,12 +85,14 @@ for (const selected of [null, "fixture-decision", undefined]) {
     await expect(notice).toHaveCount(1);
     await expect(notice).toHaveAttribute("data-type", selected === null ? "warning" : "info");
     if (selected === undefined) {
-      await expect(notice).toContainText(notices.modelUnknown);
-      await expect(notice).not.toContainText(notices.noModel);
+      await expect(notice).toContainText("couldn't check whether you've picked a Decision model");
+      await expect(notice).not.toContainText("you haven't picked a Decision model");
     } else if (selected === null) {
-      await expect(notice).toContainText(notices.noModel);
+      await expect(notice).toContainText("keywords and Trigger Cadence alone");
+      await expect(notice).toContainText("else part");
+      await expect(notice).toContainText("entries that need a decision won't activate");
     } else {
-      await expect(notice).toContainText(notices.usesDecisions);
+      await expect(notice).toContainText("these cost money");
     }
     for (const theme of ["dark", "light"]) {
       await page.evaluate(async (theme) => {
@@ -171,7 +164,9 @@ for (const bulk of [false, true]) {
     await catalog.getByRole("button", { name: bulk ? "Install All" : "Install", exact: true }).click();
     await expect(page.getByRole("button", { name: "Open guide", exact: true })).toHaveCount(1);
     await expect(
-      page.locator('[data-sonner-toast][data-type="warning"]').filter({ hasText: notices.noModel }),
+      page
+        .locator('[data-sonner-toast][data-type="warning"]')
+        .filter({ hasText: "you haven't picked a Decision model" }),
     ).toBeVisible();
   });
 }
@@ -197,5 +192,7 @@ test("existing lorebook imports warn once for successfully imported decision con
     { name: "plain.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ entries: {} })) },
   ]);
   await expect(page.getByRole("button", { name: "Open guide", exact: true })).toHaveCount(1);
-  await expect(page.locator('[data-sonner-toast][data-type="warning"]')).toContainText(notices.noModel);
+  await expect(page.locator('[data-sonner-toast][data-type="warning"]')).toContainText(
+    "you haven't picked a Decision model",
+  );
 });

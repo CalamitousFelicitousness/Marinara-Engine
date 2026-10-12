@@ -31,6 +31,7 @@ import {
   getDefaultAppAccentColor,
   getDefaultAppBackgroundColor,
   getDefaultChatChromeTextColor,
+  isMobileShellViewport,
   MOBILE_SHELL_MEDIA_QUERY,
   useUIStore,
 } from "./stores/ui.store";
@@ -476,6 +477,8 @@ export function App() {
   useRefreshLocalContext();
   const theme = useUIStore((s) => s.theme);
   const notificationPosition = useUIStore((s) => s.notificationPosition);
+  const omnibarOpen = useUIStore((s) => s.omnibarOpen);
+  const [isMobileShell, setIsMobileShell] = useState(isMobileShellViewport);
   const isLite = import.meta.env.VITE_MARINARA_LITE === "true";
   const fontSize = useUIStore((s) => s.fontSize);
   const language = useUIStore((s) => s.language);
@@ -484,9 +487,13 @@ export function App() {
   const chatWidgetPreset = useUIStore((s) => s.chatWidgetPreset);
   const chatWidgetFont = useUIStore((s) => s.chatWidgetFont);
   const chatWidgetShape = useUIStore((s) => s.chatWidgetShape);
+  const chatWidgetButtonSize = useUIStore((s) => s.chatWidgetButtonSize);
   const chatWidgetBorderColor = useUIStore((s) => s.chatWidgetBorderColor);
   const chatWidgetBackgroundColor = useUIStore((s) => s.chatWidgetBackgroundColor);
   const chatWidgetTextColor = useUIStore((s) => s.chatWidgetTextColor);
+  const chatWidgetApplyFont = useUIStore((s) => s.chatWidgetApplyFont);
+  const chatWidgetApplyShape = useUIStore((s) => s.chatWidgetApplyShape);
+  const chatWidgetApplyColors = useUIStore((s) => s.chatWidgetApplyColors);
   const appBackgroundColor = useUIStore((s) => s.appBackgroundColor);
   const appAccentColor = useUIStore((s) => s.appAccentColor);
   const appAccentPulseMode = useUIStore((s) => s.appAccentPulseMode);
@@ -532,6 +539,20 @@ export function App() {
   // [#3104 diagnostic] warn on long main-thread tasks (see lib/perf-diagnostics.ts)
   useEffect(() => {
     installLongTaskWarner();
+  }, []);
+
+  // While the omnibar is open the toast moves to bottom-right on desktop and to the top, under the
+  // omnibar header, on the mobile shell (N3, slice 46), so it covers neither the search field nor Mari's
+  // composer; same viewport check AppShell uses for layout decisions.
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_SHELL_MEDIA_QUERY);
+    const handler = () => setIsMobileShell(isMobileShellViewport());
+    mq.addEventListener("change", handler);
+    window.addEventListener("resize", handler);
+    return () => {
+      mq.removeEventListener("change", handler);
+      window.removeEventListener("resize", handler);
+    };
   }, []);
 
   // Hardware / gesture back dismisses the topmost overlay instead of exiting.
@@ -647,22 +668,28 @@ export function App() {
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 1;
       const context = canvas.getContext("2d");
+      // WebKit can refuse canvas reads under memory pressure (InvalidStateError);
+      // keep the unflattened color then instead of crashing the app shell.
       if (context) {
-        context.fillStyle = defaultBackground;
-        context.fillRect(0, 0, 1, 1);
-        context.fillStyle = literalBackground;
-        context.fillRect(0, 0, 1, 1);
-        const backgroundPixels = context.getImageData(0, 0, 1, 1);
-        context.fillStyle = computedStyle.getPropertyValue("--card").trim();
-        context.fillRect(0, 0, 1, 1);
-        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
-        const shellSurface = `rgb(${red}, ${green}, ${blue})`;
-        root.style.setProperty("--marinara-shell-surface", shellSurface);
-        context.putImageData(backgroundPixels, 0, 0);
-        context.fillStyle = computedStyle.getPropertyValue("--marinara-topbar-surface").trim();
-        context.fillRect(0, 0, 1, 1);
-        const [topbarRed, topbarGreen, topbarBlue] = context.getImageData(0, 0, 1, 1).data;
-        literalBackground = `rgb(${topbarRed}, ${topbarGreen}, ${topbarBlue})`;
+        try {
+          context.fillStyle = defaultBackground;
+          context.fillRect(0, 0, 1, 1);
+          context.fillStyle = literalBackground;
+          context.fillRect(0, 0, 1, 1);
+          const backgroundPixels = context.getImageData(0, 0, 1, 1);
+          context.fillStyle = computedStyle.getPropertyValue("--card").trim();
+          context.fillRect(0, 0, 1, 1);
+          const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+          const shellSurface = `rgb(${red}, ${green}, ${blue})`;
+          root.style.setProperty("--marinara-shell-surface", shellSurface);
+          context.putImageData(backgroundPixels, 0, 0);
+          context.fillStyle = computedStyle.getPropertyValue("--marinara-topbar-surface").trim();
+          context.fillRect(0, 0, 1, 1);
+          const [topbarRed, topbarGreen, topbarBlue] = context.getImageData(0, 0, 1, 1).data;
+          literalBackground = `rgb(${topbarRed}, ${topbarGreen}, ${topbarBlue})`;
+        } catch (error) {
+          console.warn("[theme] Could not read the canvas to flatten the page backing", error);
+        }
       }
       root.style.setProperty("--marinara-page-backing", literalBackground);
       root.style.setProperty("background-color", literalBackground, "important");
@@ -1066,6 +1093,17 @@ export function App() {
   }, [chatWidgetPreset, chatWidgetFont, chatWidgetShape]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    if (chatWidgetButtonSize === null) {
+      delete root.dataset.chatWidgetButtonSize;
+      root.style.removeProperty("--mari-window-bubble-size");
+    } else {
+      root.dataset.chatWidgetButtonSize = String(chatWidgetButtonSize);
+      root.style.setProperty("--mari-window-bubble-size", `${chatWidgetButtonSize}px`);
+    }
+  }, [chatWidgetButtonSize]);
+
+  useEffect(() => {
     const colors = getChatWidgetColorStyle({
       border: chatWidgetBorderColor,
       background: chatWidgetBackgroundColor,
@@ -1080,6 +1118,18 @@ export function App() {
       else document.documentElement.style.removeProperty(property);
     }
   }, [chatWidgetBorderColor, chatWidgetBackgroundColor, chatWidgetTextColor]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    for (const [attribute, enabled] of [
+      ["data-chat-widget-apply-font", chatWidgetApplyFont],
+      ["data-chat-widget-apply-shape", chatWidgetApplyShape],
+      ["data-chat-widget-apply-colors", chatWidgetApplyColors],
+    ] as const) {
+      if (enabled) root.setAttribute(attribute, "true");
+      else root.removeAttribute(attribute);
+    }
+  }, [chatWidgetApplyFont, chatWidgetApplyShape, chatWidgetApplyColors]);
 
   // Register custom font faces without forcing every shard to load at startup.
   const { data: customFonts } = useQuery<CustomFontFace[]>({
@@ -1193,9 +1243,28 @@ export function App() {
         }}
       >
         <Toaster
-          position={notificationPosition === "bottom" ? "bottom-center" : "top-center"}
-          swipeDirections={["left", "right", notificationPosition === "bottom" ? "bottom" : "top"]}
+          position={
+            omnibarOpen
+              ? isMobileShell
+                ? "top-center"
+                : "bottom-right"
+              : notificationPosition === "bottom"
+                ? "bottom-center"
+                : "top-center"
+          }
+          swipeDirections={[
+            "left",
+            "right",
+            omnibarOpen ? (isMobileShell ? "top" : "bottom") : notificationPosition === "bottom" ? "bottom" : "top",
+          ]}
           offset="4rem"
+          mobileOffset={{
+            // On the mobile omnibar the toast sits under the omnibar's own header
+            // (search field + status row) instead of the app's top bar, so it
+            // needs more clearance than the app-shell top offset below.
+            top: omnibarOpen ? "calc(env(safe-area-inset-top) + 5rem)" : "calc(env(safe-area-inset-top) + 3.5rem)",
+            bottom: "1rem",
+          }}
           theme={theme}
           closeButton
           duration={TOAST_DURATION_MS}

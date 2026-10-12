@@ -66,6 +66,8 @@ for (const theme of ["light", "dark"] as const) {
         { id: chat.id, version },
       );
       await page.goto("/");
+      // Phones begin at the Trackers button; computers open the selected panel on load.
+      if (isMobile) await page.locator('.mari-window-bubble[data-tracker-panel-toggle="bubble"]').click();
       const tracker = page.locator('[data-component="TrackerDataSidebar"]:visible');
       await expect(tracker).toBeVisible({ timeout: 30_000 });
       const temperature = page.getByRole("button", { name: /^Temperature: Warm/ });

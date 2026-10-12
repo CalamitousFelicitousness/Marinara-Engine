@@ -82,7 +82,11 @@ function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
   const enabled = status.data?.available === true && status.data.enabled;
   const guest = useMultiplayerGuest();
   const action = useMultiplayerParticipantAction(false);
-  const disconnect = useMultiplayerMutation<unknown, void>("/multiplayer/guest", "delete");
+  // Scoped to this chat: leaving an old joined chat must not end the session another chat owns.
+  const disconnect = useMultiplayerMutation<unknown, void>(
+    `/multiplayer/guest?chatId=${encodeURIComponent(chat.id)}`,
+    "delete",
+  );
   const mode = useUIStore((state) => state.theme);
   const accent = useUIStore((state) => state.appAccentColor);
   const [participantOpen, setParticipantOpen] = useState(false);
@@ -154,7 +158,13 @@ function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
         </div>
       ) : !enabled ? (
         <p role="status" className="p-4 text-sm">
-          {t(status.isLoading ? "multiplayer.loading" : "multiplayer.environmentDisabled")}
+          {t(
+            status.isLoading
+              ? "multiplayer.loading"
+              : status.data?.available
+                ? "multiplayer.settingDisabled"
+                : "multiplayer.environmentDisabled",
+          )}
         </p>
       ) : (
         <MultiplayerGuestFrame
@@ -271,7 +281,9 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
   if (!status.data?.available || !status.data.enabled)
     return (
       <div className="space-y-3 p-4">
-        <p className="text-sm">{t("multiplayer.environmentDisabled")}</p>
+        <p className="text-sm">
+          {t(status.data?.available ? "multiplayer.settingDisabled" : "multiplayer.environmentDisabled")}
+        </p>
         <button
           type="button"
           className={MULTIPLAYER_BUTTON_CLASS}
@@ -439,6 +451,7 @@ function MultiplayerHostReview({
   onHosted: () => void;
 }) {
   const { t } = useTranslation();
+  const status = useMultiplayerStatus();
   const { data: characters = [] } = useCharacters();
   const selectedIds = new Set([
     ...chat.characterIds,
@@ -580,7 +593,11 @@ function MultiplayerHostReview({
         </div>
         {host.isError && (
           <p role="alert" className="text-xs text-[var(--destructive)]">
-            {t("multiplayer.host.failed")}
+            {t(
+              multiplayerActionError(host.error) === "busy" && (status.data?.joined || status.data?.hosting)
+                ? "multiplayer.leaveCurrentFirst"
+                : "multiplayer.host.failed",
+            )}
           </p>
         )}
       </div>

@@ -5,7 +5,8 @@
 // a drawer: collapsed it shows the tracker's miniature display, expanded its full
 // box. Agent activity sits at the bottom. Closing the window minimizes it to a button.
 // The Chat Settings dice switches between this window and the Tracker Panel. Each drawer
-// can pop out into its own window, which stays while the Trackers window is closed.
+// can pop out into its own window, which stays while the Trackers window is closed. Minimized,
+// World State's window keeps its date, time and weather in view as a banner.
 // Beholder's launcher gets a control window of its own (a bubble), Tracker Panel or not.
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, type ReactNode } from "react";
@@ -29,7 +30,9 @@ import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neut
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
+import { withAgentActivityStatus } from "../agents/AgentActivityIcon";
 import { TrackerLockProvider } from "../../features/tracker-panel/components/TrackerLockContext";
+import { TrackerWindowCharacters } from "../../features/tracker-panel/components/TrackerWindowCharacters";
 import {
   partitionTrackerCapabilityPackages,
   useInstalledCapabilityPackages,
@@ -45,7 +48,6 @@ import { readChatWindowArea, readCssPixels } from "./chat-settings-window";
 import { CHAT_CONTROL_WINDOW_IDS, ChatControlWindow } from "./ChatControlWindow";
 import { AgentsRunningDot } from "../agents/AgentsRunningDot";
 import {
-  CharactersPanel,
   CombinedWorldPanel,
   CustomTrackerPanel,
   PersonaStatsPanel,
@@ -60,6 +62,7 @@ import {
   QuestsMiniature,
   RoleplayTrackerCapability,
   TRACKER_MINIATURE_TILE,
+  WorldStateBanner,
   WorldStateMiniature,
   getWorldMiniatureTileClass,
   getWorldTrackerDisplay,
@@ -125,7 +128,7 @@ export interface RoleplayTrackerWindowProps {
 }
 
 /**
- * Decides whether the Tracker window shows (never on phones or while the Tracker Panel shows), and gives
+ * Decides whether the Tracker window shows (never on phones or when the chat uses the Tracker Panel), and gives
  * each Beholder package its control window, with its bubble at `beholderSlot` (`beholderPhoneSlot`).
  */
 export function RoleplayTrackerWindow({
@@ -134,8 +137,8 @@ export function RoleplayTrackerWindow({
   ...props
 }: RoleplayTrackerWindowProps & { beholderSlot: number; beholderPhoneSlot: number }) {
   const phoneLayout = useMatchMedia("(max-width: 767px)");
-  // The Tracker Panel shows only while it is on (enabled) and open; otherwise this window holds the trackers.
-  const trackerPanelShown = useUIStore((s) => s.trackerPanelEnabled && s.trackerPanelOpen);
+  // Closing the selected panel keeps its launcher; switching it off restores this window.
+  const trackerPanelSelected = useUIStore((s) => s.trackerPanelEnabled && s.trackerPanelOpen);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(props.chatId));
   const gameStateRefreshing = useGameStateStore((s) => s.isRefreshing);
@@ -148,7 +151,7 @@ export function RoleplayTrackerWindow({
     BUILT_IN_TRACKER_TYPES.some((type) => props.enabledAgentTypes.has(type)) ||
     packages.memoryNag.length + packages.other.length > 0;
 
-  const showWindow = !phoneLayout && !trackerPanelShown && hasTrackers;
+  const showWindow = !phoneLayout && !trackerPanelSelected && hasTrackers;
   return (
     <>
       {packages.beholder.map((item, index) => (
@@ -191,6 +194,7 @@ function TrackerDrawer({
   title,
   icon,
   summary,
+  banner,
   defaultOpen = true,
   children,
 }: {
@@ -198,6 +202,7 @@ function TrackerDrawer({
   title: string;
   icon: ReactNode;
   summary?: ReactNode;
+  banner?: ReactNode;
   defaultOpen?: boolean;
   children: (collapse: () => void) => ReactNode;
 }) {
@@ -208,6 +213,7 @@ function TrackerDrawer({
       title={title}
       icon={icon}
       summary={summary}
+      banner={banner}
       open={open}
       onOpenChange={setOpen}
       bodyClassName="px-0 pb-1 pt-0"
@@ -278,6 +284,8 @@ function TrackerWindow({
   const { t } = useTranslation();
   const tracker = useRoleplayTrackerState(chatId, enabledAgentTypes, "tracker-window");
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
+  // Moving the chat changes the free gutter the default layout looks for.
+  const chatPosition = useUIStore((s) => s.roleplayChatPosition);
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(chatId));
   const gameStateRefreshing = useGameStateStore((s) => s.isRefreshing);
   const busy = isAgentProcessing || isStreaming || gameStateRefreshing;
@@ -334,6 +342,7 @@ function TrackerWindow({
         label: t("chat.trackerWindow.title"),
       }}
       getDefaultLayout={getTrackerWindowDefaultLayout}
+      defaultLayoutKey={chatPosition}
       minWidth={260}
       minHeight={160}
       autoFocus={false}
@@ -354,6 +363,7 @@ function TrackerWindow({
                   <WorldStateMiniature display={worldDisplay} />
                 </span>
               }
+              banner={worldDisplay.hasWorldState && <WorldStateBanner world={world} display={worldDisplay} />}
             >
               {(collapse) => (
                 <CombinedWorldPanel
@@ -414,10 +424,11 @@ function TrackerWindow({
               }
             >
               {() => (
-                <CharactersPanel
+                <TrackerWindowCharacters
                   characters={tracker.presentCharacters}
-                  onUpdate={(chars) => patchField("presentCharacters", chars)}
                   chatId={chatId}
+                  patchField={patchField}
+                  patchPlayerStats={patchPlayerStats}
                   onRerunSingleTracker={onRerunSingleTracker}
                   isTrackerRetryBusy={busy}
                 />
@@ -506,7 +517,7 @@ function TrackerWindow({
           <TrackerDrawer
             id="agent-activity"
             title={t("agents.activity.title")}
-            icon={<ListChecks size="0.75rem" />}
+            icon={withAgentActivityStatus(chatId, <ListChecks size="0.75rem" />)}
             defaultOpen={false}
           >
             {() => <AgentActivitySection chatId={chatId} messages={messages} />}

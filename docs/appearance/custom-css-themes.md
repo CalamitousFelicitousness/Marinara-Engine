@@ -4,7 +4,7 @@ This guide explains how to change the whole look of Marinara Engine with a custo
 
 ## Ready-made chat window styles
 
-For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls cyan instrument frames and cut corners. **Mari** adds rose-and-gold frames with Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
+For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls icy blue instrument frames, pale metal edges and cut corners. **Prof. Mari** adds gold-trimmed storybook frames, gemstone blues and Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
 
 The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style.
 
@@ -17,6 +17,14 @@ Below them are three color controls. Each has a color picker for a solid color a
 The color controls leave decorative crests in their original colors.
 
 Use **Reset color** beside a control to follow the preset's light or dark colors again. Choosing a preset resets **Font**, **Shape** and all three colors. **Default** brings back the original look. Your window positions stay as you arranged them.
+
+To carry the look into the rest of the chat, use the three switches below the color pickers:
+
+- **Apply preset font** uses the selected widget font for messages, input boxes and chat controls, including Game Mode's HUD widgets, map panel, side remarks and character sheets.
+- **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, side remarks, HUD widgets, map panel and character sheets, input boxes and controls. Conversation messages keep their own shape.
+- **Apply preset colors** uses the widget's border, background and text colors for those areas, including Conversation messages. Your custom colors and gradients apply too. Quoted dialogue keeps each Character's or Persona's own Dialogue Highlight Color.
+
+Each switch starts off and works independently. For example, you can use Professor Mari's lettering while keeping the chat's usual colors. Turning a switch off restores that part of the usual chat styling. Choosing another preset keeps your switch choices. Professor Mari can create custom themes for these areas too.
 
 Custom CSS themes can still override these presets. The public window and drawer variables below take precedence over the preset colors. Use `--mari-window-font-family` for window lettering, `--mari-drawer-radius` for section corners, and `--mari-window-ornament: none` to hide the title ornament. To remove all preset decoration, choose **Default** first.
 
@@ -114,7 +122,7 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 On a computer, **Chat Settings** opens as a movable window. Its collapsible sections are called **drawers**. A drawer can pop out into its own window, then minimize to a small movable button, called a **bubble**.
 
-Other chat tools use these windows and buttons too, including Game controls, Session, Volume, Game Assets, connected chats and package controls. On a phone, windows open as full-width panels, and the Tracker Panel has its own movable button.
+Other chat tools use these windows and buttons too, including Game controls, Session, Volume, Game Assets, connected chats and package controls. On a phone, most windows open as full-width panels; Echo Chamber stays a compact window that you can move and resize. Tools moved out of Chat Settings are listed in the movable **Chat tools** three-dot menu; tracker buttons stay separate.
 
 The classes, data attributes and variables below let a theme style these parts together. Your theme's rules override the defaults without `!important`.
 
@@ -138,6 +146,7 @@ The classes, data attributes and variables below let a theme style these parts t
 | Drawer arrow and content | `.mari-drawer__arrow`, `.mari-drawer__body` |
 | The preview that follows the pointer while a drawer is dragged out | `.mari-drawer-ghost` |
 | A minimized window's button (bubble) | `.mari-window-bubble` |
+| The live summary a bubble shows instead of its icon (World State's banner) | `.mari-window-bubble__banner` |
 | The line shown while a dragged bubble lines up with another | `.mari-window-snap-guide` |
 | The dot shown while agents run (Chat Settings button, Trackers window) | `.mari-agents-running-dot` |
 
@@ -156,7 +165,7 @@ The classes, data attributes and variables below let a theme style these parts t
 - `data-axis` is `"x"` on a snap guide that runs up and down, and `"y"` on one that runs across.
 - `data-detached` is `"true"` when a drawer is shown in its own window, on both that window and the drawer inside it. A popped-out drawer's window is named `data-window="drawer:<window>:<drawer>"`, for example `data-window="drawer:chat-settings:chat-name"`, and `data-drawer-host` names the window it came from.
 - `data-dragging` is `"true"` on a drawer while its title is dragged, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
-- A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat`, `control:package:<package>` and `control:beholder:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged.
+- A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat`, `control:package:<package>` and `control:beholder:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged. A bubble that shows a live summary instead of its icon, such as a minimized World State tracker, has `data-banner="true"` and grows as wide as the summary.
 - A locked bubble has `data-locked="true"`, including the Chat Settings button. It still opens its window, but cannot be moved until the window is unlocked. Use `.mari-window-bubble[data-locked="true"]` to give these buttons a distinct appearance.
 - On a phone, windows have `data-presentation="sheet"`, and so do their bubbles, which are slightly larger. The Tracker Panel's bubble is `.mari-window-bubble[data-tracker-panel-toggle="bubble"]`.
 - The Chat Settings button is a bubble too: `.mari-window-bubble[data-chat-settings-button]`, with `data-open="true"` while Chat Settings is open.
@@ -203,6 +212,44 @@ Set a variable in `:root` to change every window, or on a selector to change one
   --mari-drawer-border: transparent;
 }
 ```
+
+## Styling messages, input boxes and chat controls
+
+The three **Apply preset** switches also let a custom theme use the widget design in the rest of the chat. A theme can override each part with the variables below. Ask Professor Mari for a matching chat theme if you would rather not write CSS yourself.
+
+| Part | Class |
+| --- | --- |
+| Roleplay and Game message boxes, Game side remarks, HUD widgets, map panel and character sheets, and chat input boxes | `.mari-chat-style-surface` |
+| Conversation messages (font and colors only) | `.mari-chat-style-conversation` |
+| Unboxed Conversation message text | `.mari-chat-style-text` |
+| Chat controls, including Calls and Conversation group controls | `.mari-chat-style-control` |
+
+| Variable | What it controls |
+| --- | --- |
+| `--mari-chat-font-family` | Font for the matching chat areas |
+| `--mari-chat-bg` | Box background; accepts a color or gradient |
+| `--mari-chat-text` | Readable solid text color |
+| `--mari-chat-border` | Box outline; accepts a color or gradient |
+| `--mari-chat-border-color` | Solid border fallback |
+| `--mari-chat-radius` | Box rounding, except Conversation messages |
+| `--mari-chat-control-bg`, `--mari-chat-control-bg-hover` | Chat button backgrounds |
+| `--mari-chat-control-color`, `--mari-chat-control-radius` | Chat button icon color and rounding |
+| `--mari-chat-input-bg` | Background inside editable fields |
+
+For example, with **Apply preset font** and **Apply preset colors** on:
+
+```css
+:root {
+  --mari-chat-font-family: Georgia, serif;
+  --mari-chat-bg: #251e29;
+  --mari-chat-text: #f4e8dc;
+  --mari-chat-border: linear-gradient(100deg, #d6aa66, #dda0b2);
+}
+```
+
+Unset variables follow the widget settings and preset. The matching switch must be on for these variables to apply through the built-in styling. Conversation messages keep their own shape even when **Apply preset shape** is on. Custom themes can also target the classes directly; keep focus outlines, menus and message content outside any decorative clipping.
+
+On phones, the three-dot menu expands into round buttons. Its trigger is `[data-chat-tools-menu-button]`, the open stack is `[data-chat-tools-menu]`, and each list item has `data-chat-tools-menu-item` set to its window ID. Tool buttons use `.mari-window-bubble.mari-chat-tools-button` and `data-chat-tools-menu-tool` with that same ID. The stack has no window frame; its buttons follow widget colors and button size, independently of the three switches for the rest of the chat, while keeping their round shape.
 
 ## Size and name limits
 

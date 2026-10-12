@@ -27,7 +27,7 @@ A profile stores how the chat talks to the AI:
 - Whether the layout tips in Chat Settings are hidden. Applying **Default**, or an older profile without this choice, shows the tips again.
 - Other reusable chat options
 
-A profile does not replace chat-owned content such as characters, persona, lorebooks, sprites, summary, tags, or scene prompt. It also does not contain the conversation history.
+A profile does not replace chat-owned content such as characters, persona, lorebooks, sprites, summary, tags, or scene prompt. It also does not contain the conversation history, or a chat's running state such as its macro variables, the characters you turned off in it, or its multiplayer room.
 
 ## Applying a profile
 
@@ -54,6 +54,36 @@ The icon row below the dropdown contains these actions:
 | Delete | **Delete profile** | Permanently removes the selected profile |
 
 To create your first profile, configure a chat and choose **Save current chat settings as a new profile**. To update it later, apply the profile, change the chat, then choose **Save current chat settings into this profile**.
+
+### Updating other chats that use the profile
+
+Each chat keeps its own copy of the profile's settings, so saving a profile does not change other chats by itself. When other chats of the same mode use the profile, saving asks what to do:
+
+- **Save to this profile only** saves the profile and leaves the other chats as they are.
+- **Save and update** followed by the number of chats, such as **Save and update 3 other chats**, also copies the profile's Chat Settings into those chats. Their own changes to those settings are replaced, and a setting you left at its default in the chat you save from goes back to its default in them.
+
+**Save and update** copies:
+
+- Generation and context options
+- Group chat options
+- Feature and command switches
+- Agents and their options
+- Memory and summary settings
+- Translation
+- The window layout
+
+Everything else stays as each chat has it, including:
+
+- Its connection, prompt preset and custom prompt
+- Its story and characters
+- Its lorebooks and background
+- Its notes and its progress
+- Which Roleplay commands only its narrator may use
+- Whether Noodle may use its messages
+
+Advanced Parameters and image captioning (on or off, and which connection describes images) change only in chats that use the profile's connection, because they are set for that connection. Character schedules change only if they were turned on or off in the chat you save from; otherwise each chat keeps its own choice. Knowledge Retrieval, Knowledge Router, Lorebook Keeper and Expression Engine stay on or off, with their prompt templates, as each chat has them. Each chat picks their sources, lorebook or sprites itself.
+
+Multiplayer rooms are never updated this way. When no other chat uses the profile, **Save** works without asking.
 
 ## Choosing the default profile
 

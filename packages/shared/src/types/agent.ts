@@ -7,7 +7,7 @@ import type { BuiltInAgentManifest } from "../features/agents/agent-manifest.typ
 import type { AgentToolConfig, ToolDefinition } from "../features/function-calls/tool-definitions.js";
 import type { ChatMode } from "./chat.js";
 import type { WrapFormat } from "./prompt.js";
-import type { MacroDecisionAnswers } from "../utils/macro-engine.js";
+import type { LorebookIncludeSource, MacroDecisionAnswers } from "../utils/macro-engine.js";
 
 /** When in the generation pipeline an agent runs. */
 export type AgentPhase =
@@ -456,6 +456,8 @@ export interface AgentContext {
   }>;
   /** Per-lorebook total entry counts (for {{lorebooksize::ID}} macro in agent prompts). */
   lorebookEntryCounts?: Record<string, number>;
+  /** Lorebooks `{{include::...}}` reads in agent prompts; set only when one uses it (#7212). */
+  lorebookIncludes?: LorebookIncludeSource;
   /**
    * Semantic source material resolved for custom agents that opt into vector access.
    * The runtime keeps this out of ordinary agent prompts and injects it only for

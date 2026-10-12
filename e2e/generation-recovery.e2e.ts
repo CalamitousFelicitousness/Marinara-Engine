@@ -108,6 +108,12 @@ test("idle chats do not poll and navigating away stops orphan recovery", async (
     reads.idle += 1;
     return route.fulfill({ json: { active: false } });
   });
+  // An uncached chat mounts a fresh chat view (#6850). In development, StrictMode remounts it at once and React Query
+  // cancels that first status read before it is answered, so count only the reads that completed.
+  let completedIdleReads = 0;
+  page.on("requestfinished", (finished) => {
+    if (new URL(finished.url()).pathname === `/api/generate/status/${second.chatId}`) completedIdleReads += 1;
+  });
   try {
     await openFreshChat(page, first.chatId);
     await expect.poll(() => reads.active).toBeGreaterThanOrEqual(2);
@@ -116,10 +122,11 @@ test("idle chats do not poll and navigating away stops orphan recovery", async (
       useChatStore.getState().setActiveChatId(chatId);
     }, second.chatId);
     await expect(page.locator(`[data-message-id="${second.messageId}"]`)).toBeVisible();
-    await expect.poll(() => reads.idle).toBe(1);
+    await expect.poll(() => completedIdleReads).toBe(1);
     const afterNavigation = { ...reads };
     await page.waitForTimeout(2_200);
     expect(reads).toEqual(afterNavigation);
+    expect(completedIdleReads).toBe(1);
   } finally {
     await request.delete(`/api/chats/${first.chatId}`);
     await request.delete(`/api/chats/${second.chatId}`);

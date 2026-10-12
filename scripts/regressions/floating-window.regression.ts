@@ -20,7 +20,9 @@ import {
   serializeWindowLayoutSnapshot,
   toWindowLayoutSnapshot,
   clampWindowBubble,
+  dropWindowBubble,
   placeWindowBubbles,
+  getBannerPoint,
   getBubbleRowSlot,
   getTopRightBubblePoint,
   getPhoneBubbleSlot,
@@ -442,8 +444,126 @@ assert.equal(
   snapBubble({ ...bubbleSize, x: 205, y: 400 }, [anchorBubble, { x: 203, y: 100, width: 32, height: 32 }]).x,
   203,
 );
+// Dropping a bubble (what a drag does) snaps it as above...
+for (const [raw, expected] of [
+  [
+    { x: 134, y: 104 },
+    { x: 140, y: 100 },
+  ],
+  [
+    { x: 103, y: 135 },
+    { x: 100, y: 140 },
+  ],
+] as const) {
+  const dropped = dropWindowBubble(raw, [anchorBubble], bounds, 32);
+  assert.deepEqual(dropped.point, expected);
+  assert.ok(dropped.guides.length > 0, "a snapped drop shows its guides");
+}
+assert.deepEqual(dropWindowBubble({ x: 300, y: 300 }, [anchorBubble], bounds, 32), {
+  point: { x: 300, y: 300 },
+  guides: [],
+});
+// ...but never onto another bubble, which would hide one under the other. Dropped over one, it lands
+// beside it, a gap away and lined up, on the side nearest the drop.
+const sessionBubble = { x: 900, y: 64, width: 32, height: 32 };
+for (const [raw, expected] of [
+  [
+    { x: 905, y: 60 },
+    { x: 940, y: 64 },
+  ],
+  [
+    { x: 892, y: 70 },
+    { x: 860, y: 64 },
+  ],
+  [
+    { x: 903, y: 85 },
+    { x: 900, y: 104 },
+  ],
+] as const) {
+  const dropped = dropWindowBubble(raw, [sessionBubble], bounds, 32);
+  assert.deepEqual(dropped.point, expected, `a bubble dropped at ${raw.x},${raw.y} lands beside the other`);
+  assert.ok(dropped.guides.length > 0, "the guides show the line it keeps there");
+}
+// It also stays off a third bubble and inside the chat: with the right-hand spot taken and no room above
+// the top row, it goes below instead.
+assert.deepEqual(
+  dropWindowBubble({ x: 905, y: 60 }, [sessionBubble, { x: 940, y: 64, width: 32, height: 32 }], bounds, 32).point,
+  { x: 900, y: 104 },
+);
+// No drop near a row of bubbles ever leaves two stacked or overlapping.
+const row = [sessionBubble, { x: 940, y: 64, width: 32, height: 32 }, { x: 900, y: 104, width: 32, height: 32 }];
+for (let x = 850; x <= 1000; x += 3) {
+  for (let y = 56; y <= 160; y += 3) {
+    const { point } = dropWindowBubble({ x, y }, row, bounds, 32);
+    for (const other of row) {
+      assert.ok(
+        point.x + 32 <= other.x ||
+          point.x >= other.x + other.width ||
+          point.y + 32 <= other.y ||
+          point.y >= other.y + other.height,
+        `a bubble dropped at ${x},${y} does not overlap the one at ${other.x},${other.y}`,
+      );
+    }
+  }
+}
 // Bubbles stay on screen; a window opens below its bubble, or above it near the bottom.
 assert.deepEqual(clampWindowBubble({ x: -50, y: 5000 }, bounds), { x: 8, y: 860 });
+
+// #7320: a minimized World State window shows a banner wider than a bubble. It stays in the chat by its own
+// width, a drop never lands it on another bubble, and when it grows into a neighbour it is the one that moves.
+const banner = { width: 120, height: 32 };
+const bannerClear = (point: { x: number; y: number }, other: { x: number; y: number; width: number; height: number }) =>
+  point.x + banner.width <= other.x ||
+  point.x >= other.x + other.width ||
+  point.y + banner.height <= other.y ||
+  point.y >= other.y + other.height;
+assert.deepEqual(clampWindowBubble({ x: 9000, y: 9000 }, bounds, banner), { x: 1312, y: 860 });
+for (let x = 760; x <= 1000; x += 4) {
+  for (let y = 56; y <= 160; y += 4) {
+    const { point } = dropWindowBubble({ x, y }, row, bounds, banner);
+    for (const other of row) assert.ok(bannerClear(point, other), `a banner dropped at ${x},${y} stays clear`);
+  }
+}
+const grownBanner = placeWindowBubbles(
+  new Map([
+    ["square", { point: { x: 900, y: 64 }, bounds, size: 32 }],
+    ["banner", { point: { x: 820, y: 64, automatic: true as const }, bounds, size: banner }],
+  ]),
+);
+assert.deepEqual(grownBanner.get("square"), { x: 900, y: 64 }, "the bubble a banner grew into keeps its place");
+assert.ok(bannerClear(grownBanner.get("banner")!, { x: 900, y: 64, width: 32, height: 32 }), "the banner moves aside");
+// On a phone the banner's automatic place is a square slot in the top row. It grows left from that slot, so it
+// stays in the row beside the other buttons instead of dropping below them onto the chat. A chosen place stays put.
+const bannerPhoneBounds = { left: 8, top: 59, right: 382, bottom: 780 };
+const phoneBanner = { width: 141, height: PHONE_BUBBLE_SIZE_PX };
+const worldSlot = { ...getPhoneBubbleSlot(bannerPhoneBounds, 1), automatic: true as const };
+const phoneRow = placeWindowBubbles(
+  new Map([
+    [
+      "chat-settings",
+      {
+        point: getTopRightBubblePoint(bannerPhoneBounds, PHONE_BUBBLE_SIZE_PX),
+        bounds: bannerPhoneBounds,
+        size: PHONE_BUBBLE_SIZE_PX,
+      },
+    ],
+    [
+      "player",
+      {
+        point: { ...getPhoneBubbleSlot(bannerPhoneBounds, 0), automatic: true as const },
+        bounds: bannerPhoneBounds,
+        size: PHONE_BUBBLE_SIZE_PX,
+      },
+    ],
+    ["world", { point: getBannerPoint(worldSlot, phoneBanner), bounds: bannerPhoneBounds, size: phoneBanner }],
+  ]),
+);
+assert.deepEqual(
+  phoneRow.get("world"),
+  { x: worldSlot.x + PHONE_BUBBLE_SIZE_PX - phoneBanner.width, y: bannerPhoneBounds.top },
+  "a phone banner stays in the top row, growing left from its slot",
+);
+assert.deepEqual(getBannerPoint({ x: 40, y: 240 }, phoneBanner), { x: 40, y: 240 }, "a chosen place stays put");
 
 // Sidebars squeeze a row of saved buttons into distinct visible places without changing the saved row.
 const savedButtons = new Map(
@@ -687,6 +807,8 @@ assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZ
 // Settings owns the first top-right slot; other controls wrap without overlapping it or the map.
 assert.deepEqual(getTopRightBubblePoint(phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 346, y: 64 });
 assert.deepEqual(getTopRightBubblePoint(bounds, 32), { x: 1400, y: 56 });
+// #7188: a Tracker Panel docked on the right moves the default left of it, never under its buttons.
+assert.deepEqual(getTopRightBubblePoint(bounds, 32, 1432 - 345), { x: 1432 - 345 - 32, y: 56 });
 assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 3), { x: 382 - PHONE_BUBBLE_SIZE_PX - 44, y: 64 + 44 });
 assert.deepEqual(getBubbleRowSlot(bounds, 4, { size: 32, gap: 4 }), { x: 1432 - 32 - 5 * 36, y: 56 });
 // A phone bubble is larger, so it clamps further from the far edges.
@@ -740,11 +862,74 @@ useFloatingWindowStore.getState().resetView();
 assert.deepEqual(useFloatingWindowStore.getState().phoneBubbles, {}, "Reset View puts phone bubbles back too");
 assert.deepEqual(useFloatingWindowStore.getState().bubbles, {}, "Reset View puts the Chat Settings button back");
 
+// Phone menu preferences round-trip without discarding old individual or desktop placements.
+const menuSnapshot = parseWindowLayoutSnapshot({
+  ...withPhoneBubbles,
+  windows: { "control:volume": valid },
+  bubbles: { "control:volume": { x: 80, y: 90 } },
+  phoneMenu: { locked: true, order: ["control:volume", "future:tool", "control:volume", null, "", "x".repeat(1000)] },
+});
+assert.deepEqual(menuSnapshot.phoneMenu, { locked: true, order: ["control:volume", "future:tool"] });
+store.getState().hydrate(menuSnapshot);
+store.getState().savePhoneMenuOrder(["future:tool", "control:volume"]);
+assert.deepEqual(
+  selectWindowLayoutSnapshot(store.getState()),
+  menuSnapshot,
+  "locking blocks reordering without changing any positions",
+);
+store.getState().setPhoneMenuLocked(false);
+store.getState().savePhoneMenuOrder(["control:session", "control:volume"]);
+store.getState().savePhoneBubble("chat-tools-menu", { x: 70, y: 120 });
+const reorderedMenuSnapshot = selectWindowLayoutSnapshot(store.getState());
+assert.deepEqual(reorderedMenuSnapshot.phoneMenu, {
+  locked: false,
+  order: ["control:session", "control:volume", "future:tool"],
+});
+assert.deepEqual(reorderedMenuSnapshot.windows, menuSnapshot.windows);
+assert.deepEqual(reorderedMenuSnapshot.bubbles, menuSnapshot.bubbles);
+assert.deepEqual(reorderedMenuSnapshot.phoneBubbles, {
+  ...menuSnapshot.phoneBubbles,
+  "chat-tools-menu": { x: 70, y: 120 },
+});
+store.getState().hydrate(JSON.parse(serializeWindowLayoutSnapshot(reorderedMenuSnapshot)));
+assert.deepEqual(
+  selectWindowLayoutSnapshot(store.getState()),
+  reorderedMenuSnapshot,
+  "chat/profile hydration preserves menu preferences",
+);
+assert.equal(
+  parseWindowLayoutSnapshot({ version: 1, windows: {}, phoneMenu: { locked: "false", order: "invalid" } }).phoneMenu,
+  undefined,
+);
+assert.equal(
+  parseWindowLayoutSnapshot({
+    version: 1,
+    windows: {},
+    phoneMenu: { order: Array.from({ length: 300 }, (_, index) => `future:${index}`) },
+  }).phoneMenu?.order.length,
+  256,
+);
+store.getState().resetView();
+assert.equal(store.getState().phoneMenu, undefined, "Reset View clears the menu's order and lock");
+assert.equal(isEmptyWindowLayoutSnapshot(selectWindowLayoutSnapshot(store.getState())), true);
+
 // The bubble draws with its theming hooks; the window keeps the header controls in order.
 const floatingWindowSource = read("packages/client/src/components/ui/FloatingWindow.tsx");
 const windowBubbleSource = read("packages/client/src/components/ui/WindowBubble.tsx");
 assert.match(windowBubbleSource, /className="mari-window-bubble fixed"/u);
 assert.match(windowBubbleSource, /data-minimized="true"/u);
+// A banner registers as movable, so placement moves it rather than a neighbour it grew into.
+assert.match(windowBubbleSource, /automatic: hasBanner \|\| point\.automatic \? true : undefined/u);
+assert.match(windowBubbleSource, /const origin = hasBanner \? getBannerPoint\(point, renderedSize\) : point;/u);
+// World State's popped-out window (computer) and its button (phone) show the banner once there is world state.
+assert.match(
+  read("packages/client/src/components/chat/RoleplayTrackerWindow.tsx"),
+  /banner=\{worldDisplay\.hasWorldState && <WorldStateBanner world=\{world\} display=\{worldDisplay\} \/>\}/u,
+);
+assert.match(
+  read("packages/client/src/components/chat/RoleplayHUD.tsx"),
+  /banner=\{display\.hasWorldState && <WorldStateBanner world=\{world\} display=\{display\} \/>\}/u,
+);
 // A tap is never read as a drag: touch needs a longer move before the bubble follows it.
 assert.match(windowBubbleSource, /DRAG_START_PX = \{ mouse: 4, touch: 10 \}/u);
 assert.match(floatingWindowSource, /<WindowBubble[\s\S]*data-presentation": "sheet"/u);

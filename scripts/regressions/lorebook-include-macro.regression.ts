@@ -1,7 +1,8 @@
 /**
  * `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` (#6912): a lorebook entry's text,
  * found by ID first, then by name. The short form looks in an entry's own lorebook, or in
- * the chat's lorebooks elsewhere; an include that loops back reads as empty.
+ * the chat's lorebooks elsewhere; an include that loops back reads as empty. Agent prompts
+ * read the same lorebooks as the chat (#7212).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -22,6 +23,7 @@ const { resolveMacros, createLorebookSchema, createLorebookEntrySchema } =
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createLorebooksStorage } = await import("../../packages/server/src/services/storage/lorebooks.storage.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { processLorebooks } = await import("../../packages/server/src/services/lorebook/index.js");
 const { buildPromptMacroContext } = await import("../../packages/server/src/services/prompt/macro-context.js");
 const { assemblePrompt } = await import("../../packages/server/src/services/prompt/assembler.js");
@@ -270,6 +272,94 @@ try {
     });
     assert.equal(response.statusCode, 200, response.body);
     assert.match(sent.at(-1) ?? "", /Note: SHARED_RULES for /u, "an author's note includes an entry");
+
+    // Agent prompts (#7212): each place the route runs an agent from reads the chat's lorebooks too.
+    const agents = createAgentsStorage(db);
+    const agentFixtures = [
+      ["include-pre-fixture", "pre_generation", { resultType: "context_injection" }],
+      [
+        "include-activity-fixture",
+        "pre_generation",
+        { resultType: "character_activity_update", customCapabilities: { manage_chat_characters: true } },
+      ],
+      ["include-post-fixture", "post_processing", { resultType: "context_injection" }],
+    ] as const;
+    for (const [type, phase, settings] of agentFixtures) {
+      await agents.create({
+        type,
+        name: type,
+        phase,
+        connectionId: null,
+        promptTemplate: `AGENT ${type}: {{include::Shared rules}} | {{include::Vault::Secret}} | [{{include::Secret}}]`,
+        settings,
+      } as never);
+    }
+    // Only its author's note uses the macro, so a retry must load lorebooks for the note alone.
+    await agents.create({
+      type: "include-note-fixture",
+      name: "include-note-fixture",
+      phase: "post_processing",
+      connectionId: null,
+      promptTemplate: "AGENT include-note-fixture: no include here",
+      settings: { resultType: "context_injection", contextSources: { chatHistory: true, authorNotes: true } },
+    } as never);
+    const agentChat = await chats.create({
+      name: "Include agents",
+      mode: "roleplay",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: preset.id,
+    } as never);
+    assert(agentChat);
+    await chats.patchMetadata(agentChat.id, {
+      activeLorebookIds: [world.id],
+      enableAgents: true,
+      activeAgentIds: [...agentFixtures.map(([type]) => type), "include-note-fixture"],
+      enableMemoryRecall: false,
+    });
+    // The short form stays in the chat's lorebooks, and no raw include reaches the provider.
+    const assertAgentIncludes = (type: string, requests: string[], message: string) => {
+      const request = requests.find((body) => body.includes(`AGENT ${type}:`));
+      assert.ok(request, `${type} ran`);
+      assert.ok(request.includes(`AGENT ${type}: SHARED_RULES for User | VAULT_SECRET | []`), message);
+      assert.doesNotMatch(request, /\{\{\s*include::/iu, `${type} sends no raw include`);
+    };
+    const before = sent.length;
+    const agentTurn = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: agentChat.id, userMessage: "Hello." },
+    });
+    assert.equal(agentTurn.statusCode, 200, agentTurn.body);
+    for (const [type] of agentFixtures) {
+      assertAgentIncludes(
+        type,
+        sent.slice(before),
+        `${type} includes an entry by name from the chat's lorebooks only, and by lorebook name`,
+      );
+    }
+    const beforeRetry = sent.length;
+    const retried = await app.inject({
+      method: "POST",
+      url: "/api/generate/retry-agents",
+      payload: { chatId: agentChat.id, agentTypes: ["include-post-fixture"] },
+    });
+    assert.equal(retried.statusCode, 200, retried.body);
+    assertAgentIncludes("include-post-fixture", sent.slice(beforeRetry), "a retried agent includes entries too");
+    // Added only now, so nothing but agent prompts triggered the loads above.
+    await chats.patchMetadata(agentChat.id, { authorNotes: "AGENT_NOTE {{include::Shared rules}}" });
+    const beforeNoteRetry = sent.length;
+    const noteRetried = await app.inject({
+      method: "POST",
+      url: "/api/generate/retry-agents",
+      payload: { chatId: agentChat.id, agentTypes: ["include-note-fixture"] },
+    });
+    assert.equal(noteRetried.statusCode, 200, noteRetried.body);
+    assert.match(
+      sent.slice(beforeNoteRetry).find((body) => body.includes("AGENT include-note-fixture:")) ?? "",
+      /AGENT_NOTE SHARED_RULES for User/u,
+      "a retried agent reads the author's note with its include filled in",
+    );
   } finally {
     await app.close();
     await new Promise<void>((done) => provider.close(() => done()));

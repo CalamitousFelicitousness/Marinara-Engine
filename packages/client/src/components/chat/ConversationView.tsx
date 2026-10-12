@@ -13,6 +13,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { Loader2, ChevronUp, Puzzle } from "lucide-react";
@@ -50,6 +51,7 @@ import {
   stripLeadingMessageTimestamps,
   type InstalledCapabilityPackage,
   type Message,
+  type ScenePackageOrigin,
 } from "@marinara-engine/shared";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
@@ -84,6 +86,12 @@ interface ConversationViewProps {
   onDelete: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void;
+  failedReplyMessageId?: string | null;
+  failedReplyReason?: string;
+  onRetryFailedReply?: () => void;
+  /** R2: the reply that gets the checkup's quiet line, and the line itself. */
+  replyCheckupMessageId?: string | null;
+  replyCheckup?: ReactNode;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleHiddenFromAI: (messageId: string, current: boolean) => void;
   onPeekPrompt: (messageId?: string) => void;
@@ -100,7 +108,9 @@ interface ConversationViewProps {
     variant: "origin" | "scene";
     sceneChatId?: string;
     sceneChatName?: string;
+    repliesAllowed?: boolean;
     originChatId?: string;
+    packageOrigin?: ScenePackageOrigin | null;
     description?: string;
   };
   onConcludeScene?: (sceneChatId: string) => void;
@@ -381,6 +391,11 @@ export function ConversationView({
   onDelete,
   onRegenerate,
   onEdit,
+  failedReplyMessageId,
+  failedReplyReason,
+  onRetryFailedReply,
+  replyCheckupMessageId,
+  replyCheckup,
   onSetActiveSwipe,
   onToggleHiddenFromAI,
   onPeekPrompt,
@@ -1412,6 +1427,10 @@ export function ConversationView({
                 onDelete={onDelete}
                 onRegenerate={onRegenerate}
                 onEdit={onEdit}
+                failedReply={msg.id === failedReplyMessageId}
+                failedReplyReason={failedReplyReason}
+                onRetryFailedReply={onRetryFailedReply}
+                replyCheckup={msg.id === replyCheckupMessageId ? replyCheckup : undefined}
                 onSetActiveSwipe={onSetActiveSwipe}
                 onToggleHiddenFromAI={onToggleHiddenFromAI}
                 onPeekPrompt={() => onPeekPrompt(msg.id)}
@@ -1541,7 +1560,12 @@ export function ConversationView({
 
         {/* Scene banner — inline at bottom of messages (origin variant only); hidden during a turn-game */}
         {sceneInfo?.variant === "origin" && (
-          <SceneBanner variant="origin" sceneChatId={sceneInfo.sceneChatId} sceneChatName={sceneInfo.sceneChatName} />
+          <SceneBanner
+            variant="origin"
+            sceneChatId={sceneInfo.sceneChatId}
+            sceneChatName={sceneInfo.sceneChatName}
+            repliesAllowed={sceneInfo.repliesAllowed}
+          />
         )}
 
         <div ref={messagesEndRef} className="h-1" />
@@ -1566,6 +1590,7 @@ export function ConversationView({
         <EndSceneBar
           sceneChatId={sceneInfo.sceneChatId}
           originChatId={sceneInfo.originChatId}
+          packageOrigin={sceneInfo.packageOrigin}
           onConclude={onConcludeScene}
           onAbandon={onAbandonScene}
         />

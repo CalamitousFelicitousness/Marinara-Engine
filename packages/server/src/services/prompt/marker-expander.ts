@@ -35,6 +35,7 @@ import { cardPromptText } from "./card-text.js";
 import { wrapContent } from "./format-engine.js";
 import { advancedMemoryMarkerContent, type AdvancedMemoryPromptParts } from "./advanced-memory-prompt.js";
 import { sanitizeExampleDialoguePromptLeaf, sanitizePromptLeaf } from "./prompt-escaping.js";
+import { resolveChatSummaryMacros } from "./macro-context.js";
 
 /** World-info positions a lorebook marker can place: position 0 (before) and position 1 (after). */
 export type LorebookMarkerPosition = "before" | "after";
@@ -62,6 +63,8 @@ export interface MarkerContext {
   /** Optional scan-only messages for lorebook matching. */
   lorebookScanMessages?: ChatMLMessage[];
   chatSummary: string | null;
+  /** Characters a merged group reply may voice; the Chat Summary marks who knows what (#7252). */
+  chatSummaryReaders?: readonly CharacterMacroProfile[];
   advancedMemory?: AdvancedMemoryPromptParts;
   wrapFormat: WrapFormat;
   /** When false, agent_data markers expand to empty strings */
@@ -582,7 +585,8 @@ async function expandDialogueExamples(_config: MarkerConfig, ctx: MarkerContext)
 // ── Chat Summary ───────────────────────────────
 
 function expandChatSummary(ctx: MarkerContext, macroOptions?: ResolveMacroOptions): ExpandedMarker {
-  return { content: resolveSanitizedPromptLeaf(ctx.chatSummary ?? "", ctx, ctx.macroCtx, macroOptions) };
+  const summary = resolveChatSummaryMacros(ctx.chatSummary ?? "", ctx.macroCtx, macroOptions, ctx.chatSummaryReaders);
+  return { content: sanitizePromptLeaf(summary, ctx.wrapFormat) };
 }
 
 // ── Agent Data ─────────────────────────────────

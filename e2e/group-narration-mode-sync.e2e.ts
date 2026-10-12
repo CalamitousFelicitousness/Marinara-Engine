@@ -92,7 +92,7 @@ test("a reply waits for the narration mode it was sent under", async ({ page, re
     await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
     const drawer = page.locator(".mari-chat-settings-drawer");
     const section = drawer.locator('[data-chat-settings-section="roleplay-group-chat"]');
-    const header = section.locator(':scope > [role="button"]');
+    const header = section.locator(":scope > .mari-drawer__header [data-drawer-toggle]");
     if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
     await section.getByRole("button", { name: "Individual", exact: true }).click();
     await expect.poll(() => modeSaves).toBe(1);

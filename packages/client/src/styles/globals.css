@@ -2,6 +2,7 @@
 @source "./capability-package-safelist.html";
 @import "./themes/sillytavern.css";
 @import "./themes/chat-widgets.css";
+@import "./themes/chat-widget-surfaces.css";
 
 /* World state & tracker widgets: equal flex sizing on mobile */
 @media (max-width: 767px) {
@@ -36,6 +37,7 @@
     2.  Dark Theme Variables .............. colors, palette, fonts
     3.  Light Theme Variables ............. light-mode overrides
     4.  Light Theme Component Overrides ... glass, grid, scrollbar tweaks
+    4a1. Professor Mari ................. @import ./mari.css (kept in place for the cascade)
     4a2. Floating Windows & Drawers ..... .mari-window, .mari-drawer, --mari-window-*
     5.  Base Reset & Body ................. border reset, body defaults
     6.  Custom Cursors .................... Y2K SVG cursors
@@ -196,8 +198,8 @@
   --muted-foreground: #a1a1aa;
   --accent: #2a1a3e;
   --accent-foreground: #f0e8ff;
-  --destructive: var(--primary);
-  --destructive-foreground: var(--primary-foreground);
+  --destructive: #ff6b9d;
+  --destructive-foreground: #0a0a0a;
   --border: color-mix(in srgb, var(--primary) 20%, transparent);
   --input: var(--border);
   --ring: var(--primary);
@@ -459,8 +461,8 @@
   --muted-foreground: #65656f;
   --accent: #ede4f7;
   --accent-foreground: #1a1025;
-  --destructive: var(--primary);
-  --destructive-foreground: var(--primary-foreground);
+  --destructive: #c44040;
+  --destructive-foreground: #ffffff;
   --border: color-mix(in srgb, var(--primary) 27%, transparent);
   --input: var(--border);
   --ring: var(--primary);
@@ -652,6 +654,8 @@
   border-radius: 0.5rem;
 }
 
+@import "./mari.css";
+
 /* ─────────────────────────────────────────────
    4a2. FLOATING WINDOWS AND DRAWERS
    Every chat window (Chat Settings, the Trackers window, popped-out drawers)
@@ -667,7 +671,9 @@
                 .mari-drawer__popout, .mari-drawer__arrow, .mari-drawer__body;
                 .mari-drawer-ghost (the preview while a drawer is dragged out);
                 .mari-window-bubble (a minimized window's button, and every
-                phone bubble: [data-presentation="sheet"]) and
+                phone bubble: [data-presentation="sheet"]), .mari-window-bubble__banner
+                (a bubble's live summary, World State's date and time, on
+                [data-banner="true"]) and
                 .mari-window-snap-guide (the line shown while a bubble snaps)
    Attributes:  [data-window="<id>"], [data-drawer="<id>"], [data-pinned],
                 [data-locked], [data-detached], [data-presentation="window|sheet"],
@@ -754,8 +760,8 @@
       --mari-window-shadow,
       var(--mari-widget-shadow, var(--mari-widget-frame-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4)))
     );
-    -webkit-backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
-    backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
+    -webkit-backdrop-filter: var(--mari-widget-shell-backdrop-filter, var(--mari-window-backdrop-filter, blur(12px)));
+    backdrop-filter: var(--mari-widget-shell-backdrop-filter, var(--mari-window-backdrop-filter, blur(12px)));
   }
 
   .mari-window__header {
@@ -905,10 +911,57 @@
     visibility: hidden;
   }
 
+  /* Narrow or touch layouts lay panels, editors and the Tracker Panel over a chat that stays open
+     (AppShell marks it). The chat's windows sit above those layers, so they wait until it shows again. */
+  [data-chat-covered="true"] :is(.mari-window, .mari-window-bubble, [data-chat-settings-move-tip]) {
+    visibility: hidden;
+  }
+
+  .mari-window-bubble__icon {
+    display: contents;
+  }
+
+  /* An explicit pixel size also grows SVG icons and character portraits, independent of Display Size. */
+  :root[data-chat-widget-button-size] .mari-window-bubble__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(var(--mari-window-bubble-size) * 0.5);
+    height: calc(var(--mari-window-bubble-size) * 0.5);
+    font-size: calc(var(--mari-window-bubble-size) * 0.3125);
+    line-height: 1;
+  }
+
+  :root[data-chat-widget-button-size] .mari-window-bubble__icon > * {
+    width: 100% !important;
+    height: 100% !important;
+    font-size: inherit !important;
+  }
+
+  /* Agent activity's status wraps the drawer's own icon, which grows the same way. */
+  :root[data-chat-widget-button-size] .mari-window-bubble__icon > .mari-agent-activity-icon > svg {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
   /* Phones draw bubbles like their toolbar buttons, in pixels so their default row lines up. */
   .mari-window-bubble[data-presentation="sheet"] {
     width: var(--mari-window-bubble-size, 36px);
     height: var(--mari-window-bubble-size, 36px);
+  }
+
+  /* A bubble showing a live summary (World State's date, time and weather) is as wide as the summary. */
+  .mari-window-bubble[data-banner="true"] {
+    width: auto;
+    padding-inline: 0.5rem;
+  }
+
+  .mari-window-bubble__banner {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
   }
 
   /* Touch gets a 44px tap area around every bubble, centred on it, without changing its look. */
@@ -1012,10 +1065,11 @@
     height: 1.5rem;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-border));
+    border: 1px solid
+      var(--mari-widget-custom-border-solid, var(--mari-widget-border, var(--marinara-chat-chrome-button-border)));
     border-radius: calc(var(--radius) - 0.125rem);
-    background: var(--mari-widget-custom-background, var(--marinara-chat-chrome-button-bg));
-    color: var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-text));
+    background: var(--mari-widget-custom-background, var(--mari-widget-bg, var(--marinara-chat-chrome-button-bg)));
+    color: var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-button-text)));
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.2);
     opacity: 0;
     pointer-events: none;
@@ -1036,9 +1090,18 @@
   }
 
   .mari-window__resize-handle:is(:hover, :focus-visible) .mari-window__resize-grip {
-    border-color: var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-border-hover));
-    background: var(--mari-widget-custom-background, var(--marinara-chat-chrome-button-bg-hover));
-    color: var(--mari-widget-custom-border-solid, var(--marinara-chat-chrome-button-text-hover));
+    border-color: var(
+      --mari-widget-custom-border-solid,
+      var(--mari-widget-accent, var(--marinara-chat-chrome-button-border-hover))
+    );
+    background: var(
+      --mari-widget-custom-background,
+      var(--mari-widget-soft, var(--marinara-chat-chrome-button-bg-hover))
+    );
+    color: var(
+      --mari-widget-custom-border-solid,
+      var(--mari-widget-text, var(--marinara-chat-chrome-button-text-hover))
+    );
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1229,6 +1292,37 @@
   font-weight: 400;
 }
 
+/* Inline token chip, such as a prompt variable: tighter sides so several fit on one row.
+   Pair with --small. */
+.mari-chrome-control--chip {
+  gap: 0.25rem;
+  padding-inline: 0.375rem;
+}
+
+/* Square icon-only button; pair with --small so the height matches. */
+.mari-chrome-control--icon {
+  width: 1.75rem;
+  padding: 0;
+}
+
+/* One-of-N choice card: title, description and optional preview stacked on the left.
+   Idle titles keep the body text colour so they stay readable; hover and aria-pressed tint them. */
+.mari-chrome-control--card {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  color: var(--foreground);
+  font-weight: 400;
+  text-align: left;
+}
+
+.mari-chrome-control--card > span {
+  overflow: visible;
+  white-space: normal;
+}
+
 .mari-character-row-action {
   height: 1.75rem;
   min-height: 1.75rem;
@@ -1243,11 +1337,32 @@
 }
 
 .mari-chrome-control--selected,
+.mari-chrome-control[aria-current="page"],
 .mari-chrome-control[aria-pressed="true"] {
   border-color: var(--marinara-chat-chrome-button-border-active);
   background: var(--marinara-chat-chrome-button-bg-active);
   color: var(--marinara-chat-chrome-button-text-active);
   box-shadow: 0 0 0 1px var(--marinara-chat-chrome-focus-ring);
+}
+
+/* A selected choice card gets a solid 2px accent ring so the pick reads at a glance. It is a
+   box-shadow because the gradient-accent rules below own the selected border colour. */
+.mari-chrome-control--card[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--marinara-chat-chrome-accent);
+}
+
+.mari-chrome-control--card[aria-pressed="true"]:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--marinara-chat-chrome-accent),
+    0 0 0 4px var(--marinara-chat-chrome-focus-ring);
+}
+
+/* Accent Pulse animates --primary, and --destructive defaults to it. Delete buttons hold the
+   steady accent instead, like the editor shells in 4c.
+   ponytail: a theme that sets its own --destructive shows the steady accent while Accent Pulse
+   runs; a dedicated --marinara-danger-* theme hook is the upgrade path. */
+[data-marinara-accent-animation] .mari-chrome-control--danger {
+  --destructive: var(--marinara-app-accent-static);
 }
 
 .mari-chrome-control--danger {
@@ -1489,12 +1604,11 @@
   --mari-suggestion-chips-fade-right: 0px;
 
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   gap: 0.375rem;
   align-items: center;
-  overflow-x: auto;
   margin-bottom: 0.375rem;
-  padding-bottom: 0.1875rem;
   /* Keeps a chip reached by Tab from landing underneath its own edge fade. */
   scroll-padding-inline: var(--mari-suggestion-chips-fade);
 }
@@ -1553,7 +1667,7 @@
   gap: 0.3125rem;
   min-height: 2rem;
   padding: 0.375rem 0.6875rem;
-  border-radius: 999px;
+  border-radius: 0.75rem;
   /* Neutral tints are derived colors; mixing them with the derived --border can abort WebKit. */
   border: 1px solid color-mix(in srgb, var(--chip-tint) 24%, transparent);
   background: color-mix(in srgb, var(--chip-tint) 7%, var(--card) 93%);
@@ -1596,29 +1710,37 @@
 .mari-suggestion-chips--compact .mari-suggestion-chip {
   min-height: 1.75rem;
   padding: 0.3125rem 0.5625rem;
+  border-radius: 0.625rem;
   font-size: 0.6875rem;
 }
 
-@media (max-width: 767px) {
+.mari-suggestion-turn > :last-child:not(.mari-suggestion-question-turn) {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.mari-suggestion-turn .mari-suggestion-chips {
+  margin-top: 0.125rem;
+}
+
+@media (max-width: 39.99rem) {
   .mari-suggestion-chips {
     flex-wrap: nowrap;
     overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x proximity;
+    /* G8: room for the focus ring, pulled back so the first chip starts on L0. */
+    margin-inline-start: -0.125rem;
+    padding-inline: 0.125rem 0.75rem;
+    scroll-padding-inline: 0.125rem;
     scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
-    touch-action: pan-x;
   }
 
   .mari-suggestion-chips::-webkit-scrollbar {
     display: none;
   }
 
-  .mari-suggestion-chip {
+  .mari-suggestion-chips > * {
     flex: 0 0 auto;
-    max-width: calc(100% - 1rem);
-    scroll-snap-align: start;
   }
 }
 
@@ -2184,6 +2306,11 @@
   transition:
     opacity 180ms linear,
     transform 180ms linear;
+}
+
+/* Same specificity as the rule above and later, so delete icons keep their button's steady colour. */
+[data-marinara-accent-animation] .mari-chrome-control--danger svg {
+  color: inherit;
 }
 
 .mari-topbar-active-underline {
@@ -3674,34 +3801,13 @@ body {
   background: var(--card);
 }
 
-.mari-home-professor-widget .mari-professor-pixel-scene [data-part="sprite"] {
-  width: 68%;
-}
-
-/* Mari stands about 1.04 scene-widths tall. Rather than crop her head, she may rise past the
-   card's top border (#7032): the height cap lets her pass the art column's top by at most
-   1.125rem, so she clears the card's padding by under 0.5rem and stays inside the 0.65rem
-   minimum grid gap instead of covering a neighbour. */
-.mari-home-professor-widget [data-home-professor-art] {
-  container-type: size;
-}
-
-.mari-home-professor-widget [data-home-professor-scene] {
-  width: min(100%, 11rem, calc((100cqh + 1.125rem) / 1.04));
-}
-
 .mari-home-widget--achievements header > div > p:last-child {
   font-size: 0.6875rem;
   line-height: 1.375;
 }
 
-.mari-home-professor-widget .mari-professor-pixel-scene [data-part="laptop"] {
-  width: 76%;
-}
-
 @container (max-width: 19rem) {
   .mari-home-professor-widget {
-    grid-template-columns: minmax(0, 1fr) minmax(4.5rem, 34%);
     /* The card's padding; its text column reaches into it by the same amount. */
     --mari-home-professor-pad: 0.65rem;
   }
@@ -3740,6 +3846,25 @@ body {
   .mari-home-widget--learn .mari-home-widget-shortcut-list,
   .mari-home-widget--community .mari-home-widget-shortcut-list {
     gap: 0.125rem;
+  }
+}
+
+/* Slice 85: the Home Mari widget blinks on a 5.6 s loop. The blink frame sits on top of the idle frame. */
+.mari-home-professor-blink {
+  opacity: 0;
+  animation: mari-home-professor-blink 5.6s steps(1, end) infinite;
+}
+
+@keyframes mari-home-professor-blink {
+  0%,
+  72%,
+  76%,
+  100% {
+    opacity: 0;
+  }
+  73%,
+  75% {
+    opacity: 1;
   }
 }
 
@@ -3937,147 +4062,6 @@ html.mari-home-widget-drag-active * {
   transform: translate3d(-50%, -50%, 0) rotate(45deg) scale(0.6);
 }
 
-.mari-home-professor-popup {
-  transform-origin: bottom right;
-}
-
-.mari-home-professor-popup__sprite {
-  animation: mari-home-professor-arrive 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: bottom center;
-}
-
-.mari-home-professor-popup__bubble {
-  animation: mari-home-professor-bubble-arrive 650ms 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  transition: opacity 120ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.mari-home-professor-popup__bubble::before,
-.mari-home-professor-popup__bubble::after {
-  content: none;
-  display: none;
-}
-
-.mari-home-professor-popup__bubble-tail {
-  display: block;
-  position: absolute;
-  left: -0.82rem;
-  bottom: 1.1rem;
-  width: 0.9rem;
-  height: 1.25rem;
-  z-index: -1;
-  transform-origin: center;
-}
-
-.mari-home-professor-popup__bubble-tail::before,
-.mari-home-professor-popup__bubble-tail::after {
-  content: "";
-  position: absolute;
-  clip-path: polygon(0 50%, 100% 0, 100% 100%);
-}
-
-.mari-home-professor-popup__bubble-tail::before {
-  inset: 0;
-  background: color-mix(in srgb, var(--marinara-chat-chrome-accent) 48%, var(--border));
-}
-
-.mari-home-professor-popup__bubble-tail::after {
-  left: 0.2rem;
-  bottom: 0.09rem;
-  width: 0.72rem;
-  height: 1.05rem;
-  background: color-mix(in srgb, var(--marinara-chat-chrome-accent) 8%, var(--card));
-}
-
-.mari-home-professor-popup__bubble[data-tail-side="right"] .mari-home-professor-popup__bubble-tail {
-  right: -0.82rem;
-  left: auto;
-  transform: scaleX(-1);
-}
-
-.mari-home-professor-popup__arrival-frame {
-  background-position: 0% 0;
-  animation: mari-home-professor-frame-cycle 1.45s steps(3, end) 80ms both;
-  will-change: background-position;
-}
-
-.mari-home-professor-popup__drag-frame {
-  left: 45%;
-  top: 9%;
-  width: 120%;
-  height: 114%;
-  background-position: 3.1% 0;
-  animation:
-    mari-home-professor-drag-frame-cycle 680ms steps(1, end) infinite,
-    mari-home-professor-dangle-sway 680ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  animation-play-state: paused;
-  backface-visibility: hidden;
-  contain: paint;
-  filter: brightness(0.97) saturate(0.66) hue-rotate(1deg) contrast(1.1);
-  image-rendering: pixelated;
-  opacity: 0;
-  transform-origin: 45% 12.2%;
-  transform: translate3d(-45%, -12.2%, 0);
-  visibility: hidden;
-  will-change: background-position, transform;
-}
-
-.mari-home-professor-popup[data-dragging="true"] .mari-home-professor-popup__drag-frame {
-  animation-play-state: running;
-  opacity: 1;
-  visibility: visible;
-}
-
-.mari-home-professor-popup[data-dragging="true"] .mari-home-professor-popup__rest-frame {
-  visibility: hidden;
-}
-
-.mari-home-professor-popup[data-dragging="true"] .mari-home-professor-popup__bubble {
-  pointer-events: none;
-}
-
-html.mari-home-professor-drag-active,
-html.mari-home-professor-drag-active * {
-  cursor: grabbing !important;
-  user-select: none !important;
-}
-
-.mari-home-professor-popup__idle-stage {
-  animation: mari-home-professor-idle 5.6s ease-in-out infinite;
-  animation-play-state: paused;
-  transform-origin: bottom center;
-}
-
-.mari-home-professor-popup__idle-stage--active {
-  animation-play-state: running;
-}
-
-.mari-home-professor-popup__idle {
-  opacity: 1;
-}
-
-.mari-home-professor-popup__blink {
-  opacity: 0;
-  animation: mari-home-professor-blink 5.6s steps(1, end) infinite;
-  animation-play-state: paused;
-}
-
-.mari-home-professor-popup__idle-stage--active .mari-home-professor-popup__blink {
-  animation-play-state: running;
-}
-
-.mari-home-professor-popup__state-image {
-  transform-origin: bottom center;
-  will-change: transform, opacity;
-}
-
-.mari-home-professor-popup__state-image--map {
-  animation: mari-home-professor-map 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.mari-home-professor-popup__state-image--shrug {
-  animation: mari-home-professor-shrug 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
 .mari-home-discovery-card {
   animation: mari-home-discovery-swap 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -4095,119 +4079,6 @@ html.mari-home-professor-drag-active * {
   62% {
     opacity: 0.3;
     transform: translate3d(-50%, -50%, 0) scale(0.86);
-  }
-}
-
-@keyframes mari-home-professor-drag-frame-cycle {
-  0%,
-  24.99% {
-    background-position: 3.1% 0;
-  }
-  25%,
-  49.99% {
-    background-position: 34.48% 0;
-  }
-  50%,
-  74.99% {
-    background-position: 66.12% 0;
-  }
-  75%,
-  100% {
-    background-position: 98.15% 0;
-  }
-}
-
-@keyframes mari-home-professor-dangle-sway {
-  0%,
-  100% {
-    transform: translate3d(-45%, -12.2%, 0) rotate(-0.7deg);
-  }
-  50% {
-    transform: translate3d(-45%, -12.2%, 0) rotate(0.7deg);
-  }
-}
-
-@keyframes mari-home-professor-arrive {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 4.5rem, 0) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes mari-home-professor-bubble-arrive {
-  from {
-    opacity: 0;
-    transform: translate3d(0.75rem, 0.5rem, 0) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes mari-home-professor-frame-cycle {
-  from {
-    background-position: 0% 0;
-  }
-  to {
-    background-position: 100% 0;
-  }
-}
-
-@keyframes mari-home-professor-idle {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scaleY(1);
-  }
-  50% {
-    transform: translate3d(0, -0.12rem, 0) scaleY(1.006);
-  }
-}
-
-@keyframes mari-home-professor-blink {
-  0%,
-  72%,
-  76%,
-  100% {
-    opacity: 0;
-  }
-  73%,
-  75% {
-    opacity: 1;
-  }
-}
-
-@keyframes mari-home-professor-map {
-  0% {
-    opacity: 1;
-    transform: translate3d(0, 0.5rem, 0) scale(0.9, 0.96);
-  }
-  72% {
-    opacity: 1;
-    transform: translate3d(0, -0.12rem, 0) scale(1.018, 1.01);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes mari-home-professor-shrug {
-  0% {
-    opacity: 1;
-    transform: translate3d(0, 0.4rem, 0) scale(0.94);
-  }
-  62% {
-    opacity: 1;
-    transform: translate3d(0, -0.16rem, 0) scale(1.015);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -4240,23 +4111,8 @@ html.mari-home-professor-drag-active * {
     opacity: 0.24;
   }
 
-  .mari-home-professor-popup {
-    animation: none;
-  }
-
-  .mari-home-professor-popup__sprite,
-  .mari-home-professor-popup__bubble,
-  .mari-home-professor-popup__arrival-frame,
-  .mari-home-professor-popup__drag-frame,
-  .mari-home-professor-popup__idle-stage,
-  .mari-home-professor-popup__blink,
-  .mari-home-professor-popup__state-image,
   .mari-home-discovery-card {
     animation: none;
-  }
-
-  .mari-home-professor-popup__arrival-frame {
-    background-position: 100% 0;
   }
 }
 
@@ -4280,34 +4136,13 @@ html[data-marinara-effects-paused="true"] .mari-home-widget > :not(.mari-home-wi
   transition: none;
 }
 
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup {
-  animation: none;
-}
-
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__sprite,
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__bubble,
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__arrival-frame,
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__drag-frame,
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__idle-stage,
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__blink,
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__state-image,
 html[data-marinara-reduced-effects="true"] .mari-home-discovery-card {
   animation: none;
 }
 
-html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__arrival-frame {
-  background-position: 100% 0;
-}
-
 /* Preserve the current Mari frame while the browser tab/window is inactive.
    App.tsx owns the single visibility/focus listener; Home only consumes it. */
-html[data-marinara-effects-paused="true"] .mari-home-professor-popup__sprite,
-html[data-marinara-effects-paused="true"] .mari-home-professor-popup__bubble,
-html[data-marinara-effects-paused="true"] .mari-home-professor-popup__arrival-frame,
-html[data-marinara-effects-paused="true"] .mari-home-professor-popup__drag-frame,
-html[data-marinara-effects-paused="true"] .mari-home-professor-popup__idle-stage,
-html[data-marinara-effects-paused="true"] .mari-home-professor-popup__blink,
-html[data-marinara-effects-paused="true"] .mari-home-professor-popup__state-image,
+html[data-marinara-effects-paused="true"] .mari-home-professor-blink,
 html[data-marinara-effects-paused="true"] .mari-professor-pixel-scene [data-part="sprite"],
 html[data-marinara-effects-paused="true"] .mari-professor-pixel-scene [data-part="screen"] span,
 html[data-marinara-effects-paused="true"] .mari-professor-pixel-scene [data-part="base"] i {
@@ -4344,9 +4179,12 @@ html[data-marinara-reduced-effects="true"] .game-expression-reaction__bubble,
 html[data-marinara-reduced-effects="true"] .game-expression-reaction__drop,
 html[data-marinara-reduced-effects="true"] [class^="anim-text-"],
 html[data-marinara-reduced-effects="true"] [class*=" anim-text-"],
+html[data-marinara-reduced-effects="true"] .mari-home-professor-blink,
 html[data-marinara-reduced-effects="true"] .mari-professor-pixel-scene [data-part="sprite"],
 html[data-marinara-reduced-effects="true"] .mari-professor-pixel-scene [data-part="screen"] span,
-html[data-marinara-reduced-effects="true"] .mari-professor-pixel-scene [data-part="base"] i {
+html[data-marinara-reduced-effects="true"] .mari-professor-pixel-scene [data-part="base"] i,
+html[data-marinara-reduced-effects="true"] .mari-workspace-glow-band::before,
+html[data-marinara-reduced-effects="true"] .mari-workspace-glow-band::after {
   animation: none !important;
 }
 
@@ -4452,11 +4290,11 @@ strong {
 .mari-message-content .mari-md-inline-code {
   font-family: "Consolas", "Monaco", "Courier New", monospace;
   font-size: 0.85em;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0.1em 0.35em;
-  color: #e8e6e3;
+  color: var(--foreground);
   overflow-wrap: anywhere;
   word-break: break-word;
   /* Code is LTR syntax whatever surrounds it. The direction must live in CSS,
@@ -5101,7 +4939,8 @@ strong {
   }
 
   [data-chat-mode="roleplay"] .marinara-chat-input-shell {
-    background: linear-gradient(var(--card), var(--card)), var(--background) !important;
+    --mari-chat-existing-bg: linear-gradient(var(--card), var(--card)), var(--background);
+    background: var(--mari-chat-surface-paint, var(--mari-chat-existing-bg)) !important;
     contain: layout paint;
     isolation: isolate;
   }
@@ -5965,6 +5804,8 @@ strong {
   animation: fade-in-up 0.25s ease-out;
 }
 
+@import "./omnibar.css";
+
 @keyframes scale-in {
   from {
     opacity: 0;
@@ -6285,15 +6126,38 @@ strong {
 }
 
 [data-chat-mode="roleplay"] {
-  --mari-roleplay-message-column-width: 58rem;
+  /* 100cqw is the chat pane (CenterContent is a container). A docked Tracker Panel needs room on each
+     side of the column (AppShell sets it), so a pane too narrow for both narrows the column instead of
+     squeezing the panel to a sliver. */
+  --mari-roleplay-message-column-width: min(58rem, 100cqw - 2 * var(--tracker-panel-column-room, 0px));
+  --mari-roleplay-row-gutter: clamp(0.25rem, 1.5vw, 1.5rem);
+}
+
+/* The transcript's side padding on a wide chat pane (a narrow pane uses 0.75rem). */
+@media (min-width: 768px) {
+  [data-chat-mode="roleplay"] {
+    --mari-roleplay-transcript-gutter: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-chat-mode="roleplay"] {
+    --mari-roleplay-transcript-gutter: 2.5rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  [data-chat-mode="roleplay"] {
+    --mari-roleplay-transcript-gutter: 3rem;
+  }
 }
 
 [data-chat-mode="roleplay"] .rpg-narrator-msg,
 [data-chat-mode="roleplay"] .mari-roleplay-message-row {
   justify-content: center;
   width: 100%;
-  padding-left: clamp(0.25rem, 1.5vw, 1.5rem);
-  padding-right: clamp(0.25rem, 1.5vw, 1.5rem);
+  padding-left: var(--mari-roleplay-row-gutter);
+  padding-right: var(--mari-roleplay-row-gutter);
 }
 
 [data-chat-mode="roleplay"] .rpg-narrator-msg {
@@ -6333,7 +6197,9 @@ strong {
   width: min(100%, var(--mari-roleplay-message-column-width));
 }
 
-[data-chat-mode="roleplay"] .mari-scrollable-roleplay-avatar {
+/* R14: Mari beside her newest reply stays on screen while it scrolls, like the scrollable avatars. */
+[data-chat-mode="roleplay"] .mari-scrollable-roleplay-avatar,
+.mari-answer__sprite > * {
   position: sticky;
   top: var(--mari-roleplay-scrollable-avatar-top, max(0.75rem, env(safe-area-inset-top)));
   align-self: flex-start;
@@ -6396,6 +6262,76 @@ strong {
 
   [data-chat-mode="roleplay"] .mari-roleplay-message-body--editing {
     width: 100%;
+  }
+}
+
+/* Chat position Left / Right (Center has no attribute and keeps the layout above). The transcript's
+   children share one box: the column plus, on each side, a row gutter and an avatar slot with its two
+   gaps, so every row type keeps its column exactly where the composer is. The box sits against the
+   chosen edge of the visible chat area, the composer follows its column, and both fall back to the
+   centred layout when the area has no width to spare. */
+@media (min-width: 768px) {
+  [data-chat-mode="roleplay"][data-chat-position] {
+    --mari-chat-position-avatar-space: calc(2.5rem * var(--roleplay-avatar-scale, 1) + 1.5rem);
+    --mari-chat-position-unit: calc(
+      var(--mari-roleplay-message-column-width) + 2 *
+        (var(--mari-roleplay-row-gutter) + var(--mari-chat-position-avatar-space))
+    );
+    --mari-chat-position-composer-width: min(
+      100% - var(--mari-chat-position-clearance, 0px),
+      var(--mari-roleplay-message-column-width)
+    );
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position][data-roleplay-avatar-style="rectangles"] {
+    --mari-chat-position-avatar-space: calc(2.75rem * var(--roleplay-avatar-scale, 1) + 1.5rem);
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position][data-roleplay-avatar-style="none"] {
+    --mari-chat-position-avatar-space: 0rem;
+  }
+
+  /* The box already keeps choices clear of the Tracker Panel. */
+  [data-chat-mode="roleplay"][data-roleplay-presentation="classic"][data-chat-position] [data-chat-scroll] {
+    --tracker-panel-overlay-clearance: 0px;
+  }
+
+  [data-chat-mode="roleplay"][data-roleplay-presentation="classic"][data-chat-position] [data-chat-scroll] > * {
+    width: min(var(--mari-chat-position-unit), 100% - var(--mari-chat-position-clearance, 0px));
+    margin-left: var(--mari-chat-position-clearance, 0px);
+    margin-right: auto;
+  }
+
+  /* 100cqw is the chat pane (CenterContent is a size container), so the right edge ignores the
+     transcript's scrollbar, as the composer does. */
+  [data-chat-mode="roleplay"][data-roleplay-presentation="classic"][data-chat-position="right"] [data-chat-scroll] > * {
+    margin-left: max(
+      0px,
+      100cqw - 2 * var(--mari-roleplay-transcript-gutter) - var(--mari-chat-position-clearance, 0px) -
+        var(--mari-chat-position-unit)
+    );
+  }
+
+  /* The composer, and the Visual Novel history above it. */
+  [data-chat-mode="roleplay"][data-chat-position] .mari-roleplay-input-column {
+    width: var(--mari-chat-position-composer-width);
+    margin-right: auto;
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position="left"] .mari-roleplay-input-column {
+    margin-left: min(
+      (100% - var(--mari-chat-position-composer-width) + var(--mari-chat-position-clearance, 0px)) / 2,
+      var(--mari-roleplay-transcript-gutter) + var(--mari-chat-position-clearance, 0px) +
+        (var(--mari-chat-position-unit) - var(--mari-chat-position-composer-width)) / 2
+    );
+  }
+
+  [data-chat-mode="roleplay"][data-chat-position="right"] .mari-roleplay-input-column {
+    margin-left: max(
+      (100% - var(--mari-chat-position-composer-width) - var(--mari-chat-position-clearance, 0px)) / 2,
+      100% - var(--mari-roleplay-transcript-gutter) - var(--mari-chat-position-clearance, 0px) -
+        (var(--mari-chat-position-unit) + var(--mari-chat-position-composer-width)) / 2
+    );
   }
 }
 
@@ -6785,6 +6721,11 @@ strong {
     background-color: var(--marinara-page-backing, var(--marinara-topbar-surface)) !important;
   }
 
+  /* Home's browser chrome continues the TopBar, so it and its address row shade the same backing. */
+  .mari-home-browser-chrome {
+    --marinara-topbar-surface: var(--marinara-page-backing, var(--card));
+  }
+
   /*
    * WKWebView native backing color is set by the literal background-color in
    * index.html <style> (inline critical CSS — not cached by SW, always fresh).
@@ -7172,7 +7113,7 @@ strong {
     white-space: nowrap;
   }
 
-  .chat-input-container .marinara-chat-input-shell {
+  :root:not([data-chat-widget-apply-shape="true"]) .chat-input-container .marinara-chat-input-shell {
     border-radius: 1em !important;
   }
 }
@@ -7185,7 +7126,8 @@ strong {
   .mari-topbar-action {
     flex: 0 0 auto;
     width: 3.5rem !important;
-    height: 2.25rem !important;
+    /* UX-16: 2.6rem is 44 px at the 17 px root, the minimum touch target. */
+    height: 2.6rem !important;
     padding: 0 !important;
   }
 }
@@ -7218,7 +7160,9 @@ strong {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    /* 0s, not a tiny duration: every element's initial transition-property is `all`, so any
+       nonzero duration here made a theme or accent change transition every property of every element. */
+    transition-duration: 0s !important;
   }
 }
 
@@ -8258,6 +8202,7 @@ html[data-marinara-reduced-effects="true"] .mari-window {
   position: absolute;
   bottom: var(--mari-professor-sprite-bottom, 15%);
   width: clamp(8.25rem, 37%, 11rem);
+  height: auto;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   filter: drop-shadow(0.45rem 0.55rem 0 rgba(0, 0, 0, 0.2));
@@ -8447,6 +8392,8 @@ html[data-marinara-reduced-effects="true"] .mari-window {
   }
 }
 
+@import "./omnibar-settings.css";
+
 /* Short landscape screens need the chat list to share the sidebar's scroll. */
 @media (max-height: 500px) and (orientation: landscape) {
   .mari-chat-sidebar {
@@ -8469,4 +8416,74 @@ html[data-marinara-reduced-effects="true"] .mari-window {
     min-height: 12rem;
     overflow-y: visible;
   }
+}
+
+/* Items gathered by a second-finger tap remain visible in their list. */
+[data-drag-stacked="true"] {
+  opacity: 0.5;
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* Make before/after insertion different from dropping into a folder. */
+[data-drag-insert] {
+  position: relative;
+  overflow: visible;
+  transition: margin 150ms ease;
+}
+[data-drag-insert="before"] {
+  margin-block-start: 24px;
+}
+[data-drag-insert="after"] {
+  margin-block-end: 24px;
+}
+[data-drag-insert]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 6px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--primary);
+  pointer-events: none;
+}
+[data-drag-insert="before"]::after {
+  top: -14px;
+}
+[data-drag-insert="after"]::after {
+  bottom: -14px;
+}
+[data-drag-target="inside"] {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  background-color: var(--sidebar-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-drag-insert] {
+    transition: none;
+  }
+}
+[data-drag-insert-axis="x"] {
+  margin-block: 0;
+}
+[data-drag-insert-axis="x"][data-drag-insert="before"] {
+  margin-inline-start: 24px;
+}
+[data-drag-insert-axis="x"][data-drag-insert="after"] {
+  margin-inline-end: 24px;
+}
+[data-drag-insert-axis="x"]::after {
+  inset-block: 6px;
+  width: 4px;
+  height: auto;
+}
+[data-drag-insert-axis="x"][data-drag-insert="before"]::after {
+  left: -14px;
+  right: auto;
+}
+[data-drag-insert-axis="x"][data-drag-insert="after"]::after {
+  right: -14px;
+  left: auto;
+}
+[data-drag-source="true"] {
+  opacity: 0.5;
 }

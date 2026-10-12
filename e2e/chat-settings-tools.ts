@@ -25,8 +25,13 @@ export async function openChatSettings(page: Page): Promise<Locator> {
   return settings;
 }
 
+/** The open/close toggle in a drawer's own header (not one of a nested drawer). */
+export function drawerToggle(drawer: Locator) {
+  return drawer.locator(":scope > .mari-drawer__header [data-drawer-toggle]");
+}
+
 async function expand(drawer: Locator) {
-  const header = drawer.locator(":scope > .mari-drawer__header [data-drawer-toggle]");
+  const header = drawerToggle(drawer);
   await expect(header).toBeVisible();
   if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
   await expect(header).toHaveAttribute("aria-expanded", "true");
@@ -68,4 +73,20 @@ export async function closeChatSettings(page: Page) {
   if (!(await settings.isVisible())) return;
   await settings.locator('[data-window-control="close"]').click();
   await expect(settings).toHaveCount(0);
+}
+
+/** Opens a standalone control or detached drawer through the phone menu when present. */
+export async function openChatTool(page: Page, id: string): Promise<Locator> {
+  const menuButton = page.locator("[data-chat-tools-menu-button]");
+  if (await page.evaluate(() => matchMedia("(max-width: 767px)").matches)) {
+    await expect(menuButton).toBeVisible();
+    const menu = page.locator("[data-chat-tools-menu]");
+    if (!(await menu.isVisible())) await menuButton.click();
+    await menu.locator(`[data-chat-tools-menu-tool="${id}"]`).click();
+  } else {
+    await page.locator(`.mari-window-bubble[data-window="${id}"]`).click();
+  }
+  const window = page.locator(`.mari-window[data-window="${id}"]`);
+  await expect(window).toBeVisible();
+  return window;
 }

@@ -50,6 +50,7 @@ import { CHAT_VISUAL_VIEWPORT_CHANGE_EVENT } from "../../hooks/use-visual-viewpo
 import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { DrawerHostContext, type DrawerHost } from "./drawer-host";
 import { WindowBubble } from "./WindowBubble";
+import { useChatToolsMenuStore } from "../../stores/chat-tools-menu.store";
 import {
   FLOATING_WINDOW_Z_BASE,
   PHONE_BUBBLE_Z_INDEX,
@@ -102,9 +103,13 @@ export interface FloatingWindowProps {
    */
   minimizable?: {
     icon: ReactNode;
+    /** A live summary the bubble shows instead of `icon`, as wide as it needs (World State's date and time). */
+    banner?: ReactNode;
     label: string;
     getPhoneBubble?: (bounds: WindowBounds, bubbleSize: number) => WindowPoint;
     bubbleBadge?: ReactNode;
+    /** Collect this phone launcher in Chat tools; the window and its contents stay here. */
+    phoneMenu?: boolean;
   };
   className?: string;
   sheetClassName?: string;
@@ -155,7 +160,7 @@ export function findFreeBubble(
       const saved = placements[element.dataset.window ?? ""];
       if (!saved) return rect;
       // Earlier siblings may have reserved a slot in this layout effect before React paints it.
-      const point = clampWindowBubble(saved, bounds, Math.max(rect.width, rect.height));
+      const point = clampWindowBubble(saved, bounds, { width: rect.width, height: rect.height });
       return { left: point.x, top: point.y, right: point.x + rect.width, bottom: point.y + rect.height };
     });
   const free = (x: number, y: number) =>
@@ -419,7 +424,10 @@ export function FloatingWindow({
   const stackIndex = useFloatingWindowStore((state) => state.stack.indexOf(id));
   const saveLayout = useFloatingWindowStore((state) => state.saveLayout);
   const bringToFront = useFloatingWindowStore((state) => state.bringToFront);
-  const [bounds, setBounds] = useState(readFloatingWindowBounds);
+  const bounds = useLiveBounds(
+    () => (window.innerWidth < 768 ? readPhoneBubbleBounds() : readFloatingWindowBounds()),
+    !sheet,
+  );
   const [liveGeometry, setLiveGeometry] = useState<WindowGeometry | null>(null);
   const pointerSessionRef = useRef<PointerSession | null>(null);
   const frameRef = useRef(0);
@@ -436,10 +444,23 @@ export function FloatingWindow({
   const focusBubbleRef = useRef(false);
   // A phone shows a minimizable window as its bubble, and as a sheet while it is open.
   const phoneBubble = sheet && !!minimizable;
+  const phoneMenu = phoneBubble && minimizable?.phoneMenu === true;
   const openInStore = useFloatingWindowStore((state) => state.open[id] === true);
   const savedPhoneBubble = useFloatingWindowStore((state) => state.phoneBubbles[id]);
   const phoneBounds = usePhoneBubbleBounds(phoneBubble);
   const [bubbleSize, setBubbleSize] = useState(phoneBubble ? PHONE_BUBBLE_SIZE_PX : WINDOW_BUBBLE_SIZE_PX);
+  const menuIcon = minimizable?.icon;
+  const menuLabel = minimizable?.label;
+  const menuBadge = minimizable?.bubbleBadge;
+  // The Help target the window stands for travels with its menu entry, since a phone shows no bubble for it.
+  const helpTarget = rootAttributes?.["data-chat-help"];
+  const menuHelpTarget = typeof helpTarget === "string" ? helpTarget : undefined;
+  useLayoutEffect(() => {
+    if (!phoneMenu || hidden || !menuLabel) return;
+    return useChatToolsMenuStore
+      .getState()
+      .register({ id, label: menuLabel, icon: menuIcon, badge: menuBadge, helpTarget: menuHelpTarget });
+  }, [hidden, id, menuBadge, menuHelpTarget, menuIcon, menuLabel, phoneMenu]);
 
   const limits = useMemo(() => ({ minWidth, minHeight }), [minHeight, minWidth]);
   // On a phone a popped-out drawer becomes a bubble, so sheets host drawers too.
@@ -470,13 +491,15 @@ export function FloatingWindow({
       titleClassName,
     ],
   );
-  // Bumped after a defaultLayoutKey change has rendered, so the default reads the updated page.
+  // Bumped a frame after a defaultLayoutKey change has rendered, so the default reads the updated page,
+  // including bubbles that move with the same change (they settle in a follow-up render, #7188).
   const [defaultRevision, setDefaultRevision] = useState(0);
   const defaultLayoutKeyRef = useRef(defaultLayoutKey);
   useEffect(() => {
     if (defaultLayoutKeyRef.current === defaultLayoutKey) return;
     defaultLayoutKeyRef.current = defaultLayoutKey;
-    setDefaultRevision((revision) => revision + 1);
+    const frame = window.requestAnimationFrame(() => setDefaultRevision((revision) => revision + 1));
+    return () => window.cancelAnimationFrame(frame);
   }, [defaultLayoutKey]);
   // The default follows the viewport and Reset View until the user changes the window.
   const defaultLayout = useMemo(
@@ -497,7 +520,8 @@ export function FloatingWindow({
     };
 
   // A phone bubble with no saved place and no default (a popped-out drawer) takes the first free spot.
-  const needsPhonePlace = phoneBubble && minimized && !hidden && !savedPhoneBubble && !minimizable?.getPhoneBubble;
+  const needsPhonePlace =
+    phoneBubble && !phoneMenu && minimized && !hidden && !savedPhoneBubble && !minimizable?.getPhoneBubble;
   useLayoutEffect(() => {
     if (!needsPhonePlace) return;
     useFloatingWindowStore.getState().savePhoneBubble(id, {
@@ -514,27 +538,6 @@ export function FloatingWindow({
       .getState()
       .saveBubble(id, { ...findFreeBubble(bounds, { size: bubbleSize, except: id }), automatic: true });
   }, [bounds, bubbleSize, id, needsDesktopPlace]);
-
-  // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.
-  useEffect(() => {
-    if (sheet) return;
-    const update = () =>
-      setBounds((current) => {
-        const next = readFloatingWindowBounds();
-        return current.left === next.left &&
-          current.top === next.top &&
-          current.right === next.right &&
-          current.bottom === next.bottom
-          ? current
-          : next;
-      });
-    window.addEventListener("resize", update);
-    const stopObserving = observeWindowBounds(update);
-    return () => {
-      window.removeEventListener("resize", update);
-      stopObserving();
-    };
-  }, [sheet]);
 
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -596,7 +599,9 @@ export function FloatingWindow({
     restoreFocusOnUnmountRef.current = false;
     const requested = takeFloatingWindowFocusRequest(id);
     const focusIsFree = !document.activeElement || document.activeElement === document.body;
-    if (!sheet && (requested || (autoFocus && focusIsFree))) rootRef.current?.focus({ preventScroll: true });
+    if ((requested && (!sheet || phoneMenu)) || (!sheet && autoFocus && focusIsFree)) {
+      rootRef.current?.focus({ preventScroll: true });
+    }
     return () => {
       // A placeholder swapped for the real window unmounts without a close request and keeps the opener.
       if (!restoreFocusOnUnmountRef.current) return;
@@ -617,8 +622,9 @@ export function FloatingWindow({
     }
     if (!focusBubbleRef.current) return;
     focusBubbleRef.current = false;
-    bubbleRef.current?.focus({ preventScroll: true });
-  }, [canMinimize, hidden, id, minimized, phoneBubble]);
+    if (phoneMenu) focusWindowOpener(id);
+    else bubbleRef.current?.focus({ preventScroll: true });
+  }, [canMinimize, hidden, id, minimized, phoneBubble, phoneMenu]);
 
   // An unpinned window closes when the user presses anywhere else.
   useEffect(() => {
@@ -733,7 +739,7 @@ export function FloatingWindow({
   };
 
   const minimizedBubble =
-    minimized && minimizable && !hidden ? (
+    minimized && minimizable && !hidden && !phoneMenu ? (
       phoneBubble ? (
         <WindowBubble
           buttonRef={bubbleRef}
@@ -749,6 +755,7 @@ export function FloatingWindow({
           size={PHONE_BUBBLE_SIZE_PX}
           onSizeChange={setBubbleSize}
           icon={minimizable.icon}
+          banner={minimizable.banner}
           label={minimizable.label}
           locked={layout.locked}
           zIndex={PHONE_BUBBLE_Z_INDEX}
@@ -766,6 +773,7 @@ export function FloatingWindow({
           bounds={bounds}
           onSizeChange={setBubbleSize}
           icon={minimizable.icon}
+          banner={minimizable.banner}
           label={minimizable.label}
           locked={layout.locked}
           zIndex={FLOATING_WINDOW_Z_BASE}
@@ -777,7 +785,7 @@ export function FloatingWindow({
         </WindowBubble>
       )
     ) : null;
-  if (minimizedBubble && !drawerHost) return minimizedBubble;
+  if (minimized && minimizable && !hidden && !drawerHost) return minimizedBubble;
 
   const rootStyle: CSSProperties | undefined = sheet
     ? sheetStyle

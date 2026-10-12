@@ -15,7 +15,7 @@ ${StrTrimNewLines}
 
 ; ── App metadata ──
 !define APP_NAME "Marinara Engine"
-!define APP_VERSION "2.4.6"
+!define APP_VERSION "2.5.0"
 !define APP_PUBLISHER "Pasta-Devs"
 !define APP_URL "https://github.com/Pasta-Devs/Marinara-Engine"
 !define REPO_URL "https://github.com/Pasta-Devs/Marinara-Engine.git"
@@ -30,7 +30,7 @@ ${StrTrimNewLines}
 !define NODE_DOWNLOAD_URL "https://nodejs.org/dist/v24.21.0/node-v24.21.0-x64.msi"
 !define GIT_SHA256 "2b96e7854f0520f0f6b709c21041d9801b1be44d5e1a0d9fa621b2fbc40f1983"
 !define NODE_SHA256 "bb0eaee134f9357f22aea915ee793343e627aefc1e66488164bac6915bce2cac"
-!define RELEASE_TAG "v2.4.6"
+!define RELEASE_TAG "v2.5.0"
 !ifndef RELEASE_COMMIT
 !error "RELEASE_COMMIT must pin the exact release commit"
 !endif

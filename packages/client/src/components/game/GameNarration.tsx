@@ -65,6 +65,7 @@ import { useGameModeStore } from "../../stores/game-mode.store";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { parseChatMetadata } from "../../lib/chat-display";
+import { CHARACTER_COLOR_CLASS } from "../../lib/chat-widget-colors";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
 import { isVisibleGameMessage } from "../../lib/chat-message-visibility";
 import { readDiceRollResults } from "../../lib/dice-roll-result";
@@ -1207,6 +1208,11 @@ export function GameNarration({
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const personaDialogueColor =
     personaInfo?.dialogueColor || fallbackDialogueColor || personaInfo?.nameColor || "#a5b4fc";
+  // Speaker colors are a card's own dialogue color or the fallback. Only an own color outranks
+  // Apply preset colors (chat-widget-surfaces.css); the fallback follows the preset text.
+  // ponytail: an own color identical to the fallback follows the preset too; track own colors per speaker if that matters.
+  const dialogueColorClass = (color?: string) =>
+    color && color !== fallbackDialogueColor ? CHARACTER_COLOR_CLASS : undefined;
   const useStackedLogDisplay = gameDialogueDisplayMode === "stacked";
   const showLogsButton = !useStackedLogDisplay;
   const [editingContent, setEditingContent] = useState<string | null>(null);
@@ -1358,6 +1364,9 @@ export function GameNarration({
     }
     return byName;
   }, [activeCharacterEntries, personaInfo, speakerAvatarMap]);
+  // Name colors fall back to the line's dialogue color; only a speaker's own color outranks Apply preset colors.
+  const nameColorClass = (speaker?: string | null) =>
+    speaker && findNamedMapValue(speakerNameColors, speaker) ? CHARACTER_COLOR_CLASS : undefined;
 
   const gameNpcs = useGameModeStore((s) => s.npcs);
   const sourceMessagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
@@ -3191,7 +3200,10 @@ export function GameNarration({
   const gameAvatarScale = useUIStore((s) => s.gameAvatarScale);
   const narrationFontStyle = useMemo<CSSProperties>(() => ({ fontSize: `${chatFontSize}px` }), [chatFontSize]);
   const narrationStyle = useMemo<CSSProperties>(
-    () => (chatFontColor ? { ...narrationFontStyle, color: chatFontColor } : narrationFontStyle),
+    () =>
+      chatFontColor
+        ? { ...narrationFontStyle, color: `var(--mari-chat-resolved-text, ${chatFontColor})` }
+        : narrationFontStyle,
     [chatFontColor, narrationFontStyle],
   );
   const gameAvatarScaleStyle = useMemo<CSSProperties>(
@@ -3894,15 +3906,15 @@ export function GameNarration({
   }, [gameNarrationCollapsed, requestsCollapsedNarration, setGameNarrationCollapsed]);
 
   const NARRATION_ACTION_BTN =
-    "flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white";
+    "mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white";
   const NARRATION_META_BTN =
-    "flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10";
+    "mari-chat-style-control mari-game-meta flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10";
   const NARRATION_COUNT_BADGE =
     "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 dark:bg-white/90 dark:text-black dark:ring-black/20";
   const ACTIVE_SEGMENT_ACTION_BTN =
-    "inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
+    "mari-chat-style-control mari-game-active-action inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
   const LOG_SEGMENT_ACTION_BTN =
-    "rounded p-1 text-[var(--foreground)]/45 opacity-100 transition-all hover:bg-[var(--muted)]/35 hover:text-[var(--foreground)]/70 md:opacity-0 md:group-hover/logseg:opacity-100 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white/70";
+    "mari-chat-style-control mari-game-log-action rounded p-1 text-[var(--foreground)]/45 opacity-100 transition-all hover:bg-[var(--muted)]/35 hover:text-[var(--foreground)]/70 md:opacity-0 md:group-hover/logseg:opacity-100 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white/70";
   const LOG_DELETE_ACTION_BTN =
     "text-[var(--marinara-chat-message-action-text)] hover:bg-[var(--marinara-chat-message-action-bg-hover)] hover:text-[var(--marinara-chat-message-action-text-hover)] dark:text-[var(--marinara-chat-message-action-text)] dark:hover:bg-[var(--marinara-chat-message-action-bg-hover)] dark:hover:text-[var(--marinara-chat-message-action-text-hover)]";
   const combatMetaButton = onRequestCombatStart ? (
@@ -4155,7 +4167,7 @@ export function GameNarration({
         {showInterruptControls && !interruptCommitted && (
           <button
             onClick={handleInterrupt}
-            className="flex h-full w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"
+            className="mari-chat-style-control mari-game-nav flex h-full w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"
             title={localizeUi("ui.game.gamenarration.pauseTheGmSoYouCanWriteBackNothing")}
             aria-label={localizeUi("ui.game.gamenarration.interrupt")}
           >
@@ -4165,7 +4177,7 @@ export function GameNarration({
         {showInterruptControls && interruptCommitted && (
           <button
             onClick={handleResume}
-            className="flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
+            className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
             title={localizeUi("ui.game.gamenarration.resumeNarrationYourInterruptHasNotBeenCommitted")}
             aria-label={localizeUi("ui.game.gamenarration.resume")}
           >
@@ -4178,8 +4190,9 @@ export function GameNarration({
             {!reviewingPast && (
               <button
                 onClick={() => setAutoPlay((v) => !v)}
+                aria-pressed={autoPlay}
                 className={cn(
-                  "flex items-center justify-center self-stretch rounded-lg border px-2 text-xs transition-colors",
+                  "mari-chat-style-control mari-game-nav mari-game-autoplay-control flex items-center justify-center self-stretch rounded-lg border px-2 text-xs transition-colors",
                   autoPlay
                     ? "border-[var(--primary)]/40 bg-[var(--primary)]/20 text-[var(--primary)]"
                     : "border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/70 hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10",
@@ -4196,7 +4209,7 @@ export function GameNarration({
             {reviewingPast && onJumpToLatest && (
               <button
                 onClick={onJumpToLatest}
-                className="flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
+                className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
                 title={localizeUi("ui.game.gamenarration.jumpBackToThePresent")}
                 aria-label={localizeUi("ui.game.gamenarration.returnToPresent")}
               >
@@ -4206,7 +4219,7 @@ export function GameNarration({
             )}
             <button
               onClick={nextSegment}
-              className="flex items-center justify-center self-stretch rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 text-xs font-semibold text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10"
+              className="mari-chat-style-control mari-game-nav flex items-center justify-center self-stretch rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 text-xs font-semibold text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10"
             >
               {!doneTyping ? localizeUi("ui.game.gamenarration.reveal") : localizeUi("onboarding.actions.next")}
             </button>
@@ -4226,7 +4239,7 @@ export function GameNarration({
       data-game-skip-bg-nav="true"
       data-component="GameNarration.CollapsedHandle"
       aria-expanded={false}
-      className="flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 px-3 py-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70 shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)] dark:border-white/15 dark:bg-black/40 dark:text-white/70 dark:hover:bg-black/60 dark:hover:text-white"
+      className="mari-chat-style-control mari-game-collapsed-handle flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 px-3 py-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70 shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)] dark:border-white/15 dark:bg-black/40 dark:text-white/70 dark:hover:bg-black/60 dark:hover:text-white"
       title={localizeUi("ui.game.gamenarration.expandNarration")}
       aria-label={
         narrationNeedsAttention
@@ -4804,7 +4817,7 @@ export function GameNarration({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center">
               <span
-                className="min-w-0 truncate text-[0.6875rem] font-bold"
+                className={cn("min-w-0 truncate text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                 style={
                   nameColorStyle(findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color) ?? {
                     color: "rgb(186 230 253)",
@@ -4826,6 +4839,7 @@ export function GameNarration({
                 className={cn(
                   "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                   seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                  dialogueColorClass(seg.color),
                 )}
                 style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                 dangerouslySetInnerHTML={{
@@ -4946,7 +4960,7 @@ export function GameNarration({
             (stackedLogEntries.length > 0 || stackedLogHeldHeight !== null) && (
               <div
                 ref={stackedLogShellRef}
-                className="mb-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-2 shadow-[0_16px_38px_rgba(0,0,0,0.35)] backdrop-blur-md [overflow-anchor:none] dark:border-white/10 dark:bg-black/40"
+                className="mari-chat-style-surface mari-game-narration-surface mari-game-stacked-log mb-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-2 shadow-[0_16px_38px_rgba(0,0,0,0.35)] backdrop-blur-md [overflow-anchor:none] dark:border-white/10 dark:bg-black/40"
                 style={stackedLogHeldHeight !== null ? { minHeight: `${stackedLogHeldHeight}px` } : undefined}
                 data-game-skip-bg-nav="true"
               >
@@ -5076,6 +5090,7 @@ export function GameNarration({
                       line={displayedLine}
                       avatar={charAvatar}
                       color={charColor}
+                      colorClassName={dialogueColorClass(charColor)}
                       nameColor={charNameColor}
                       voiceControl={voiceControl}
                       translation={translationPanel}
@@ -5120,7 +5135,7 @@ export function GameNarration({
             ref={activePanelRef}
             data-game-skip-bg-nav="true"
             data-component="GameNarration.ActivePanel"
-            className="shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
+            className="mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
           >
             {/* Scene preparation gate: wait for effects before showing narration */}
             {scenePreparing && (
@@ -5177,7 +5192,7 @@ export function GameNarration({
                 <span className="text-sm text-red-300/80">{localizeUi("ui.game.gamenarration.generationFailed")}</span>
                 <button
                   onClick={onRetryGeneration}
-                  className="flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white"
+                  className="mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white"
                 >
                   <RefreshCw size={12} />
                   {localizeUi("ui.game.gamesurfacecomponent.retry")}
@@ -5286,7 +5301,10 @@ export function GameNarration({
                             {/* Inert theming hook. The inner span lets a skewed name plate counter-skew its
                               text; unstyled it collapses to plain inline text. */}
                             <span
-                              className="experience-dialogue-speaker text-sm font-bold"
+                              className={cn(
+                                "experience-dialogue-speaker text-sm font-bold",
+                                nameColorClass(active.speaker),
+                              )}
                               style={
                                 nameColorStyle(
                                   findNamedMapValue(speakerNameColors, active.speaker ?? "") ?? active.color,
@@ -5348,6 +5366,7 @@ export function GameNarration({
                                 className={cn(
                                   "text-sm leading-relaxed",
                                   active.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                  dialogueColorClass(active.color),
                                   doneTyping
                                     ? ""
                                     : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle dark:after:bg-white/60",
@@ -6221,7 +6240,7 @@ export function GameNarration({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center">
                                 <span
-                                  className="text-[0.6875rem] font-bold"
+                                  className={cn("text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                                   style={
                                     nameColorStyle(
                                       findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color,
@@ -6243,6 +6262,7 @@ export function GameNarration({
                                   className={cn(
                                     "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                                     seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                    dialogueColorClass(seg.color),
                                   )}
                                   style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                                   dangerouslySetInnerHTML={{

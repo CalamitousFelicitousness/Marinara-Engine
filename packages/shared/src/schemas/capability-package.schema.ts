@@ -18,6 +18,7 @@ export const capabilityPermissionSchema = z.enum([
   "network",
   "prompt-context",
   "routes",
+  "scenes",
   "storage",
   "tools",
   "ui",
@@ -549,7 +550,18 @@ const capabilityPackageManifestBaseSchema = z
 //        says where the party is with `[place:]`. Not a soft seam, for the same reason as 1.20 through
 //        1.64: an Engine that cannot read these refuses the whole ruleset or catalog file, so a package
 //        that ships any of them declares 1.65. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 65 } as const);
+// 1.66: `api.registerSceneOrigin` lets a package thread (a direct-message thread, for example) be the
+//        origin of a roleplay scene, the way a Conversation is: the package supplies the planning
+//        context, holds the lock while the scene runs and receives the recap when it ends. The browser
+//        view gets `startScene`, `openChat`, `focusSceneOriginId` and `onFocusSceneOriginHandled`. Requires
+//        the `scenes` permission.
+// 1.67: the browser view gets `openCharacter(characterId, { tab })`, which opens the character editor,
+//        on that tab when given. Soft seam: a package checks that the function exists, so it does not
+//        need to declare 1.67. No permission.
+// 1.68: `embeddings.embed(texts, signal, inputType)` takes `"query"` or `"document"` (the default), so a
+//        model with query and document prefixes embeds a search query as a query. Soft seam: an older
+//        Engine ignores the third argument, so a package does not need to declare 1.68. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 68 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -632,6 +644,17 @@ export const capabilityPackageManifestSchema = z
           code: z.ZodIssueCode.custom,
           path: ["permissions"],
           message: 'The "mari-actions" permission requires schemaVersion 2 and capabilityApi 1.50 or newer',
+        });
+      }
+    }
+    // Same reason as `tools`: `registerSceneOrigin` only exists on an Engine this new.
+    if (manifest.permissions.includes("scenes")) {
+      const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 66)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["permissions"],
+          message: 'The "scenes" permission requires schemaVersion 2 and capabilityApi 1.66 or newer',
         });
       }
     }

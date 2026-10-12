@@ -249,7 +249,28 @@ export function appendRoundGeminiParts(
   return saved ? [...saved, ...replayable] : replayable;
 }
 
-/** Whether the connection uses the OpenAI-style message shape that can carry a partial reasoning prefill. */
+/**
+ * Whether the connection uses the OpenAI-style message shape that can carry a partial reasoning prefill. Mistral is
+ * left out: its messages have no reasoning_content or partial field.
+ *
+ * DeepSeek is left out too, and for a different reason: it only accepts a reasoning prefill through chat prefix
+ * completion, which requires the `/beta` base URL and a `prefix: true` flag on the final assistant message. The
+ * default `/v1` endpoint we ship has neither, so a prefill built here would be sent in a format DeepSeek rejects.
+ * Adding it back is a real option — DeepSeek's own docs cover it — but it means the beta endpoint and the flag,
+ * not just this allowlist.
+ */
 export function supportsAssistantReasoningPrefill(provider: string): boolean {
-  return ["openai", "openrouter", "nanogpt", "xai", "mistral", "cohere", "arli", "zai", "custom"].includes(provider);
+  return ["openai", "openrouter", "nanogpt", "xai", "cohere", "arli", "zai", "custom"].includes(provider);
+}
+
+/**
+ * Codex (ChatGPT login) follows the reasoning effort only once the connection or the chat picks a level (Default is
+ * not one). Until then it sends none, so Codex chats keep the model's own level and plan usage instead of the preset's,
+ * the built-in Maximum or the one scenes force.
+ */
+export function keepsCodexDefaultEffort(
+  provider: string | null | undefined,
+  ...layers: Array<{ reasoningEffort?: unknown } | null | undefined>
+): boolean {
+  return provider?.toLowerCase() === "openai_chatgpt" && layers.every((layer) => layer?.reasoningEffort == null);
 }

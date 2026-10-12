@@ -1,10 +1,210 @@
 import { expect, test, type APIRequestContext, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { createChatSummaryEntry } from "@marinara-engine/shared";
+import {
+  combineChatSummaryEntryHistory,
+  compileChatSummaryEntries,
+  createChatSummaryEntry,
+  type ChatSummaryEntry,
+} from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
 import { chatSettingsWindow, openChatSettingsTool } from "./chat-settings-tools.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+
+function summaryRow(panel: Locator, entryId: string) {
+  return panel.locator(`[data-summary-entry-id="${entryId}"]`);
+}
+
+async function expectSummarySelection(panel: Locator, ids: string[]) {
+  await expect
+    .poll(() =>
+      panel
+        .locator("[data-summary-entry-id]")
+        .evaluateAll((rows) =>
+          rows
+            .filter((row) => row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked)
+            .map((row) => row.getAttribute("data-summary-entry-id")!),
+        ),
+    )
+    .toEqual(ids);
+}
+
+async function openSummaryFixture(page: Page, request: APIRequestContext) {
+  // Duplicate titles and descending source numbers cannot identify this persisted order.
+  const entries = ["memory-z", "memory-a", "memory-q", "memory-b", "memory-y", "memory-c"].map((id, index) =>
+    createChatSummaryEntry({
+      id,
+      title: "Unnumbered memory",
+      content: `Fact ${id}.`,
+      enabled: index % 2 === 0,
+      rangeStartIndex: 100 - index,
+      rangeEndIndex: 100 - index,
+    }),
+  );
+  const created = await request.post("/api/chats", { data: { name: "Summary selection", mode: "roleplay" } });
+  expect(created.ok()).toBeTruthy();
+  const { id } = await created.json();
+  expect((await request.patch(`/api/chats/${id}/metadata`, { data: { summaryEntries: entries } })).ok()).toBeTruthy();
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+  await seedUIState(page, {
+    hasCompletedOnboarding: true,
+    sidebarOpen: false,
+    rightPanelOpen: false,
+    chatHelpSeenModes: ["conversation", "roleplay", "game"],
+  });
+  await page.addInitScript(
+    ({ id, version }) => {
+      localStorage.setItem("marinara-active-chat-id", id);
+      localStorage.setItem("marinara:whats-new:seen-version", version);
+    },
+    { id, version },
+  );
+  await page.goto("/");
+  const panel = await openChatSettingsTool(page, "chat-summary");
+  await panel.getByRole("button", { name: "Show Inactive", exact: true }).click();
+  return { id: id as string, panel, entries };
+}
+
+test("summary Shift selection follows visible order and preserves selections outside the range", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(info.project.name !== "desktop-chromium", "Shift selection is a desktop interaction.");
+  const { id, panel, entries } = await openSummaryFixture(page, request);
+  const ids = entries.map((entry) => entry.id);
+  const checkbox = (index: number) => summaryRow(panel, ids[index]!).getByRole("checkbox");
+  try {
+    await checkbox(5).click();
+    await checkbox(1).click();
+    await checkbox(3).click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, [...ids.slice(1, 4), ids[5]!]);
+    // A selected target removes the interval; repeated Shift-clicks keep the ordinary anchor.
+    await checkbox(2).click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, [ids[3]!, ids[5]!]);
+    await checkbox(4).click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, ids.slice(1));
+    await checkbox(3).click();
+    await checkbox(0).click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, ids);
+    await checkbox(4).click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, [...ids.slice(0, 3), ids[5]!]);
+    await panel.getByRole("button", { name: "Select all", exact: true }).click();
+    await expectSummarySelection(panel, ids);
+    await panel.getByRole("button", { name: "Clear selection", exact: true }).click();
+    await checkbox(2).click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, [ids[2]!]);
+  } finally {
+    await request.delete(`/api/chats/${id}?force=true`);
+  }
+});
+
+test("summary selected actions save only changed IDs and preserve Combine, Select all and Delete", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(info.project.name === "mobile-webkit", "One mobile check covers ordinary tap selection and bulk actions.");
+  const { id, panel, entries } = await openSummaryFixture(page, request);
+  const selectedIds = entries.slice(1, 3).map((entry) => entry.id);
+  const saves: Array<{ operation: string; entryIds: string[]; enabled?: boolean }> = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/api/chats/${id}/summary-entries`, async (route) => {
+    saves.push(route.request().postDataJSON());
+    if (saves.length === 1) {
+      await gate;
+      await route.fulfill({ status: 500, json: { error: "Synthetic save rejection" } });
+    } else await route.continue();
+  });
+  try {
+    for (const entryId of selectedIds) {
+      const checkbox = summaryRow(panel, entryId).getByRole("checkbox");
+      if (info.project.name.startsWith("mobile")) await checkbox.tap();
+      else await checkbox.click();
+    }
+    await expectSummarySelection(panel, selectedIds);
+    const enable = panel.getByRole("button", { name: "Enable selected", exact: true });
+    const disable = panel.getByRole("button", { name: "Disable selected", exact: true });
+    await enable.click();
+    await expect.poll(() => saves.length).toBe(1);
+    await expect(enable).toBeDisabled();
+    await expect(disable).toBeDisabled();
+    const affected = summaryRow(panel, selectedIds[0]!);
+    await expect(affected.getByRole("button", { name: "Enable summary", exact: true })).toBeDisabled();
+    await expect(affected.getByRole("checkbox")).toBeDisabled();
+    await expect(affected.getByRole("button", { name: "Edit summary entry", exact: true })).toBeDisabled();
+    await expect(affected.getByRole("button", { name: "Expand summary entry", exact: true })).toBeEnabled();
+    release();
+    await expect(page.getByText("Could not update summary entries.", { exact: true })).toBeVisible();
+    await expectSummarySelection(panel, selectedIds);
+    expect((await (await request.get(`/api/chats/${id}`)).json()).metadata.summaryEntries).toEqual(entries);
+    await enable.click();
+    await expect(enable).toHaveCount(0);
+    await expect(disable).toBeEnabled();
+    await disable.click();
+    await expect(disable).toHaveCount(0);
+    await expect(enable).toBeEnabled();
+    expect(saves).toEqual([
+      { operation: "toggle", entryIds: [selectedIds[0]], enabled: true },
+      { operation: "toggle", entryIds: [selectedIds[0]], enabled: true },
+      { operation: "toggle", entryIds: selectedIds, enabled: false },
+    ]);
+    const metadata = (await (await request.get(`/api/chats/${id}`)).json()).metadata;
+    expect(metadata.summaryEntries.map((entry: ChatSummaryEntry) => [entry.id, entry.enabled])).toEqual(
+      entries.map((entry) => [entry.id, selectedIds.includes(entry.id) ? false : entry.enabled]),
+    );
+    // Exercise the existing Combine interaction with a synthetic response, without contacting a provider.
+    const combined = createChatSummaryEntry({
+      id: "combined-memory",
+      title: "Combined memory",
+      content: "Combined.",
+      enabled: false,
+    });
+    const combinedEntries = combineChatSummaryEntryHistory(
+      metadata.summaryEntries,
+      new Set(selectedIds),
+      combined,
+      new Date().toISOString(),
+    );
+    await page.route(`**/api/chats/${id}/generate-summary`, async (route) => {
+      expect(route.request().postDataJSON().summaryEntryIds).toEqual(selectedIds);
+      const summary = compileChatSummaryEntries(combinedEntries);
+      expect(
+        (await request.patch(`/api/chats/${id}/metadata`, { data: { summaryEntries: combinedEntries, summary } })).ok(),
+      ).toBeTruthy();
+      await route.fulfill({
+        json: { entry: combined, entries: combinedEntries, summary, messageIds: [], hideMessageIds: [] },
+      });
+    });
+    await panel.getByRole("button", { name: "Combine 2 selected summaries", exact: true }).click();
+    await expect(summaryRow(panel, combined.id)).toBeVisible();
+    await expectSummarySelection(panel, []);
+    // Combine clears the anchor too, so Shift-click starts a fresh selection.
+    const retainedSource = summaryRow(panel, selectedIds[0]!).getByRole("checkbox");
+    if (info.project.name.startsWith("mobile")) await retainedSource.tap();
+    else await retainedSource.click({ modifiers: ["Shift"] });
+    await expectSummarySelection(panel, [selectedIds[0]!]);
+    await panel.getByRole("button", { name: "Select all", exact: true }).click();
+    const allIds = combinedEntries.map((entry: ChatSummaryEntry) => entry.id);
+    await expectSummarySelection(panel, allIds);
+    const deleteSelected = panel.getByRole("button", { name: "Delete selected (7)", exact: true });
+    await deleteSelected.click();
+    const confirmation = page.getByRole("dialog", { name: "Delete selected summaries?", exact: true });
+    await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expectSummarySelection(panel, allIds);
+    expect(saves).toHaveLength(3);
+    await deleteSelected.click();
+    await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(panel.locator("[data-summary-entry-id]")).toHaveCount(0);
+    expect(saves).toHaveLength(4);
+    expect(saves[3]).toEqual({ operation: "delete", entryIds: allIds });
+    expect((await (await request.get(`/api/chats/${id}`)).json()).metadata.summaryEntries).toEqual([]);
+  } finally {
+    release();
+    await request.delete(`/api/chats/${id}?force=true`);
+  }
+});
 
 test("summary toggles keep other entries usable and toggle all in one save", async ({ page, request }, info) => {
   const created = await request.post("/api/chats", { data: { name: "Summary controls", mode: "roleplay" } });

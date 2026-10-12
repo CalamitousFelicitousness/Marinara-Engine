@@ -135,8 +135,8 @@ export async function multiplayerRoutes(app: FastifyInstance, options: { service
   app.post("/guest/action", { bodyLimit: 16_384 }, async (request) =>
     service.guestAction(multiplayerActionSchema.parse(request.body)),
   );
-  app.delete("/guest", async () => {
-    await service.leaveGuest();
+  app.delete("/guest", async (request) => {
+    await service.leaveGuest(z.object({ chatId: id.optional() }).strict().parse(request.query).chatId);
     return { left: true };
   });
   app.get("/guest-view", { config: { rateLimit: MULTIPLAYER_GUEST_VIEW_RATE_LIMIT } }, async (request, reply) => {

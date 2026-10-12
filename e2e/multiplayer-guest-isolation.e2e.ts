@@ -682,3 +682,52 @@ test("direct guest navigation stays opaque and cannot bootstrap itself", async (
   ).toBe(true);
   await expect(page.locator("#multiplayer-root")).toBeEmpty();
 });
+
+test("only the real host's messages carry the Host badge, whatever the persona name", async ({ page }) => {
+  const guest = await openGuest(page);
+  await page.evaluate((state) => {
+    const snapshot = state.snapshot!;
+    (window as any).proof.setState({
+      ...state,
+      snapshot: {
+        ...snapshot,
+        revision: 2,
+        players: [
+          ...snapshot.players,
+          {
+            id: "other_123456",
+            displayName: "Other",
+            personaName: "Mari",
+            isHost: false,
+            connected: true,
+            ready: false,
+            joinsNextRound: false,
+          },
+        ],
+        messages: [
+          {
+            id: "message_host_1",
+            actorId: "host_123456",
+            actorName: "Mari",
+            kind: "user",
+            text: "Sent by the host.",
+            createdAt: "2026-09-29T10:01:00.000Z",
+          },
+          {
+            id: "message_other_1",
+            actorId: "other_123456",
+            actorName: "Mari",
+            kind: "user",
+            text: "Sent by a look-alike.",
+            createdAt: "2026-09-29T10:02:00.000Z",
+          },
+        ],
+      },
+    });
+  }, initialState);
+  const fromHost = guest.locator("article").filter({ hasText: "Sent by the host." });
+  await expect(fromHost.getByText("Host", { exact: true })).toBeVisible();
+  const lookalike = guest.locator("article").filter({ hasText: "Sent by a look-alike." });
+  await expect(lookalike).toBeVisible();
+  await expect(lookalike.getByText("Host", { exact: true })).toHaveCount(0);
+});

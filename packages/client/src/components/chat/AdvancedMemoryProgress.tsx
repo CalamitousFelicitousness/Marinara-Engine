@@ -22,6 +22,7 @@ export function AdvancedMemoryProgress({
   const action = useAdvancedMemoryAction(chatId);
   const { job } = status;
   const running = job.status === "running";
+  const resumable = job.status === "cancelled" || job.status === "error";
   const panelRef = useRef<HTMLElement>(null);
   const shownJobRef = useRef<string | null>(null);
   useEffect(() => {
@@ -57,7 +58,7 @@ export function AdvancedMemoryProgress({
       <p id={progressLabel} role="status" aria-live="polite" className="text-xs font-medium">
         {pending ? t("chat.advancedMemory.starting") : running ? stage : t(`chat.advancedMemory.status.${job.status}`)}
       </p>
-      {running && job.total > 0 && (
+      {(running || resumable) && job.total > 0 && (
         <>
           <progress
             value={Math.min(job.completed, job.total)}
@@ -82,21 +83,21 @@ export function AdvancedMemoryProgress({
           disabled={action.isPending}
           onClick={() => action.mutate({ action: "cancel" })}
         >
-          {t("chat.advancedMemory.cancel")}
+          {t("chat.advancedMemory.pause")}
         </button>
       )}
-      {(job.status === "cancelled" || job.status === "error") && (
-        <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-          {t("chat.advancedMemory.resumeHelp")}{" "}
+      {resumable && (
+        <>
+          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("chat.advancedMemory.resumeHelp")}</p>
           <button
             type="button"
-            className="font-medium underline disabled:cursor-wait disabled:opacity-50"
-            disabled={pending}
+            className="mari-chrome-control min-h-9 w-full rounded-lg px-3 py-2 text-xs disabled:cursor-wait disabled:opacity-50"
+            disabled={pending || action.isPending}
             onClick={onResume}
           >
             {t("chat.advancedMemory.resume")}
           </button>
-        </p>
+        </>
       )}
     </section>
   );

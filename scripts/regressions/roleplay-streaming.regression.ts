@@ -455,16 +455,26 @@ const reducedAmbientEffectsHookSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-reduced-ambient-effects.ts", import.meta.url),
   "utf8",
 );
+// Slice 82: the send loop and the settle helper moved into components/chat/mari/.
+const professorMariRunSource = readSourceText(
+  new URL("../../packages/client/src/components/chat/mari/use-mari-workspace-run.ts", import.meta.url),
+  "utf8",
+);
+const professorMariHelpersSource = readSourceText(
+  new URL("../../packages/client/src/components/chat/mari/mari-chat-helpers.tsx", import.meta.url),
+  "utf8",
+);
 const professorMariTokenBranch =
-  professorMariHomeSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
+  professorMariRunSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
 const roleplayTrackerSettingsBranch =
   chatSettingsDrawerSource.match(
     /activeInCat\.map\(\(agent\) => \{[\s\S]*?\{\/\* Available agents to add \*\//u,
   )?.[0] ?? "";
 assert.match(professorMariHomeSource, /rafThrottle<void>\(appendPendingWorkspaceText\)/u);
+assert.ok(professorMariTokenBranch, "the token branch must exist for the check below");
 assert.doesNotMatch(professorMariTokenBranch, /setWorkspaceTimeline/u);
 assert.match(professorMariHomeSource, /void refreshAfterWorkspaceRun\(chat\.id, runId\)/u);
-assert.match(professorMariHomeSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
+assert.match(professorMariHelpersSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
 assert.doesNotMatch(personalExtensionsHookSource, /refetchInterval/u);
 assert.match(chatSettingsDrawerSource, /active && agent\.id !== "illustrator"[\s\S]*?<AgentPromptTemplateSelect/u);
 assert.match(
@@ -1104,8 +1114,8 @@ assert.match(
 );
 assert.match(
   firefoxSupportsSource,
-  /(?:^|\})\s*\[data-chat-mode="roleplay"\] \.marinara-chat-input-shell\s*\{[^{}]*background:\s*linear-gradient\(var\(--card\), var\(--card\)\),\s*var\(--background\) !important;[^{}]*\}/u,
-  "Firefox should use an opaque Roleplay composer surface after disabling backdrop blur",
+  /(?:^|\})\s*\[data-chat-mode="roleplay"\] \.marinara-chat-input-shell\s*\{[^{}]*--mari-chat-existing-bg:\s*linear-gradient\(var\(--card\), var\(--card\)\),\s*var\(--background\);[^{}]*background:\s*var\(--mari-chat-surface-paint,\s*var\(--mari-chat-existing-bg\)\) !important;[^{}]*\}/u,
+  "Firefox should retain the opaque Roleplay composer fallback while allowing the selected chat surface paint",
 );
 assert.doesNotMatch(
   chatInputSource,

@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
+import { EXPORT_FAILED_TOAST_ID } from "../lib/file-download";
 import { translate } from "../localization/i18n";
 import { useChatStore } from "../stores/chat.store";
 import { useAgentStore } from "../stores/agent.store";
@@ -26,7 +27,9 @@ import { isMessageHidden } from "../lib/message-visibility";
 import { copyLocalSpriteVisualSettings } from "../components/chat/local-sprite-visual-settings";
 import { lorebookKeys } from "./use-lorebooks";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
+import { normalizeAdvancedMemorySettings } from "@marinara-engine/shared";
 import type {
+  AdvancedMemoryStatus,
   Chat,
   ChatMemoryChunk,
   ChatMemoryRecallExportPayload,
@@ -56,6 +59,8 @@ export const chatKeys = {
   messageCount: (chatId: string) => [...chatKeys.all, "messageCount", chatId] as const,
   trash: (chatId: string) => [...chatKeys.all, "trash", chatId] as const,
   messagePeek: (chatId: string) => [...chatKeys.all, "messagePeek", chatId] as const,
+  messageSearch: (chatId: string) => [...chatKeys.all, "messageSearch", chatId] as const,
+  professorMari: () => [...chatKeys.all, "professorMari"] as const,
   personaAttributions: (chatId: string) => [...chatKeys.all, "personaAttributions", chatId] as const,
   memories: (chatId: string) => [...chatKeys.all, "memories", chatId] as const,
   notes: (chatId: string) => [...chatKeys.all, "notes", chatId] as const,
@@ -427,6 +432,36 @@ export function useChatMessagePeek(chatId: string | null, limit = 4, enabled = f
         .then((messages) => messages.map(normalizeHydratedMessage)),
     enabled: !!chatId && enabled,
     staleTime: 15_000,
+  });
+}
+
+/**
+ * Every message of one chat, for searching inside it. The key is shared with the
+ * in-chat search panel, so opening either one warms the other.
+ */
+export function useChatMessageSearchSource(chatId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: chatKeys.messageSearch(chatId ?? ""),
+    queryFn: ({ signal }) =>
+      api
+        .get<Message[]>(`/chats/${chatId}/messages`, { signal })
+        .then((messages) => messages.map(normalizeHydratedMessage)),
+    enabled: !!chatId && enabled,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Professor Mari's own conversations. They are ordinary chats behind an internal
+ * marker, so they are absent from the normal chat list and need their own read.
+ */
+export function useProfessorMariChats(enabled: boolean) {
+  return useQuery({
+    queryKey: chatKeys.professorMari(),
+    queryFn: ({ signal }) => api.get<Chat[]>("/chats/internal/professor-mari/chats", { signal }),
+    enabled,
+    staleTime: 30_000,
   });
 }
 
@@ -924,9 +959,27 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
     onMutate: async ({ id, ...metadata }) => {
       await qc.cancelQueries({ queryKey: chatKeys.detail(id) });
       await qc.cancelQueries({ queryKey: chatKeys.list() });
+      const enablesBasicRecall =
+        metadata.enableMemoryRecall === true && !normalizeAdvancedMemorySettings(metadata.advancedMemory).enabled;
+      if (enablesBasicRecall) await qc.cancelQueries({ queryKey: ["advanced-memory", id] });
       const previous = qc.getQueryData<Chat>(chatKeys.detail(id));
       const fallback = useChatStore.getState().activeChat?.id === id ? useChatStore.getState().activeChat : null;
       const base = previous ?? fallback;
+      const previousAdvancedStatus = enablesBasicRecall
+        ? qc.getQueryData<AdvancedMemoryStatus>(["advanced-memory", id])
+        : undefined;
+      let optimisticAdvancedStatus: AdvancedMemoryStatus | undefined;
+      if (enablesBasicRecall) {
+        metadata.advancedMemory = {
+          ...normalizeAdvancedMemorySettings(
+            metadata.advancedMemory ?? normalizeChatMetadataValue(base?.metadata).advancedMemory,
+          ),
+          enabled: false,
+        };
+        optimisticAdvancedStatus = qc.setQueryData<AdvancedMemoryStatus>(["advanced-memory", id], (status) =>
+          status ? { ...status, settings: { ...status.settings, enabled: false } } : status,
+        );
+      }
       const changedKeys = Object.keys(metadata);
       const viewOnly =
         changedKeys.length > 0 &&
@@ -942,7 +995,15 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
           updatedAt: viewOnly ? base.updatedAt : new Date().toISOString(),
         });
       }
-      return { previous, version, changedKeys, viewOnly };
+      return {
+        previous,
+        version,
+        changedKeys,
+        viewOnly,
+        enablesBasicRecall,
+        previousAdvancedStatus,
+        optimisticAdvancedStatus,
+      };
     },
     onError: (_error, variables, context) => {
       if (context?.previous) {
@@ -958,6 +1019,17 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
           ),
           updatedAt: context.viewOnly ? current.updatedAt : context.previous.updatedAt,
         });
+      }
+      if (context?.enablesBasicRecall) {
+        if (
+          context.optimisticAdvancedStatus &&
+          qc.getQueryData(["advanced-memory", variables.id]) === context.optimisticAdvancedStatus &&
+          shouldAcceptMetadataField(variables.id, "enableMemoryRecall", context.version)
+        ) {
+          qc.setQueryData(["advanced-memory", variables.id], context.previousAdvancedStatus);
+        }
+        qc.invalidateQueries({ queryKey: ["advanced-memory", variables.id] });
+        qc.invalidateQueries({ queryKey: chatKeys.detail(variables.id) });
       }
       if (options?.serialize || Object.hasOwn(variables, "background")) {
         // A later failed save may have captured an earlier optimistic value.
@@ -987,6 +1059,9 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: [...chatKeys.all, "group"] });
       qc.invalidateQueries({ queryKey: lorebookKeys.active(vars.id) });
+      if (Object.hasOwn(vars, "enableMemoryRecall") || Object.hasOwn(vars, "advancedMemory")) {
+        qc.invalidateQueries({ queryKey: ["advanced-memory", vars.id] });
+      }
     },
   });
 }
@@ -1071,9 +1146,9 @@ function useSummaryEntryMutation() {
       }
       // The PATCH returns the updated chat; syncCachedChat already refreshes its list entry.
       qc.invalidateQueries({ queryKey: lorebookKeys.active(vars.chatId) });
-      // Only delete changes message visibility (it unhides server-side), so scope
-      // the message-list refetch to that operation rather than every summary edit.
-      if (vars.operation === "delete") {
+      // Only delete (unhides) and a new range entry (may hide) change message visibility
+      // server-side, so scope the message-list refetch to those rather than every summary edit.
+      if (vars.operation === "delete" || (vars.operation === "replace" && vars.entry.sourceMode === "range")) {
         qc.invalidateQueries({ queryKey: chatKeys.messages(vars.chatId) });
       }
     },
@@ -1653,6 +1728,8 @@ export function usePeekPrompt() {
         parameters: unknown;
         source?: "cached" | "live_preview" | "raw_messages";
         exact?: boolean;
+        /** The character whose saved prompt this is. */
+        characterId?: string | null;
         generationInfo: {
           model?: string;
           provider?: string;
@@ -1704,7 +1781,9 @@ export function useExportChat() {
       );
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? `Export failed: ${error.message}` : "Export failed.");
+      toast.error(error instanceof Error ? `Export failed: ${error.message}` : "Export failed.", {
+        id: EXPORT_FAILED_TOAST_ID,
+      });
     },
   });
 }

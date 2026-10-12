@@ -2,13 +2,16 @@ import { DEFAULT_GENERATION_PARAMS, type AgentContext } from "@marinara-engine/s
 import { NOVELAI_V5_MAX_CHARACTER_PROMPTS } from "../image/character-prompts.js";
 import { logger } from "../../lib/logger.js";
 import {
-  applyAgentMaxTokensCaps,
+  agentRequestOptions,
+  gateAgentTemperature,
   normalizeAgentContextSize,
   renderAgentPromptTemplate,
+  resolveAgentCallMaxTokens,
 } from "../agents/agent-executor.js";
 import type { ResolvedAgent } from "../agents/agent-pipeline.js";
 import { measureContextBudget, type ChatCompletionResult, type ChatMessage } from "../llm/base-provider.js";
 import { normalizeAgentMaxTokens, normalizeMaxContext } from "./generation-parameters.js";
+import { appendImagePromptInstructions } from "./image-prompt-instructions.js";
 
 const DEFAULT_MANUAL_ILLUSTRATION_MAX_TOKENS = 1_800;
 const MANUAL_ILLUSTRATION_SYSTEM_PROMPT = [
@@ -185,12 +188,9 @@ export function buildManualIllustratorPromptMessages(args: {
       : "No selected Illustrator prompt mode supplied; use one coherent scene illustration.",
     MANUAL_ILLUSTRATION_SYSTEM_PROMPT,
     args.styleInstruction
-      ? `Additional Image Style instruction for the image prompt you write: ${args.styleInstruction}\nCombine it with the selected Illustrator prompt mode. It may refine rendering and visual treatment, but it must not replace or weaken the selected format, layout, framing, or text requirements.`
+      ? `Additional Image Style instruction for the image prompt you write: ${args.styleInstruction}\nCombine it with the selected Illustrator prompt mode. It may refine rendering and visual treatment, but it must not replace or weaken the selected format, layout, framing, or text requirements. Express it as words for the image model; never copy its sentences into the JSON fields.`
       : "No visual style profile is selected. Infer only the visual treatment supported by the scene context.",
     args.characterPromptInstruction?.trim() ?? "",
-    args.imagePromptInstructions
-      ? `<image_prompting_instructions>\nApply these image-backend instructions when writing the provider-ready prompt. They are instructions, not text to copy into the prompt:\n${args.imagePromptInstructions}\n</image_prompting_instructions>`
-      : "",
     buildCharacterPersonaContext(args.context),
   ].join("\n\n");
   const messages: ChatMessage[] = [
@@ -204,12 +204,17 @@ export function buildManualIllustratorPromptMessages(args: {
   for (const message of recentMessages) {
     appendConversationMessage(messages, message.role === "assistant" ? "assistant" : "user", message.content);
   }
-  const instruction = [
-    "<manual_gallery_illustration_request>",
-    "Write the image-model prompt now for the current scene. The Illustration button has already selected the output type.",
-    ...(args.request ? [`Depict this explicit request: ${args.request}`] : []),
-    "</manual_gallery_illustration_request>",
-  ].join("\n");
+  // The image connection's instructions sit next to the request, as in the automatic
+  // Illustrator call, so the writer follows them instead of losing them above the chat (#7357).
+  const instruction = appendImagePromptInstructions(
+    [
+      "<manual_gallery_illustration_request>",
+      "Write the image-model prompt now for the current scene. The Illustration button has already selected the output type.",
+      ...(args.request ? [`Depict this explicit request: ${args.request}`] : []),
+      "</manual_gallery_illustration_request>",
+    ].join("\n"),
+    args.imagePromptInstructions,
+  );
   const last = messages.at(-1);
   if (last?.role === "user") {
     last.content = `${last.content}\n\n${instruction}`;
@@ -217,14 +222,6 @@ export function buildManualIllustratorPromptMessages(args: {
     messages.push({ role: "user", content: instruction, contextKind: "prompt" });
   }
   return messages;
-}
-
-function resolveManualIllustratorMaxTokens(agent: ResolvedAgent): number {
-  return applyAgentMaxTokensCaps(
-    agent.provider,
-    normalizeAgentMaxTokens(agent.settings.maxTokens, DEFAULT_MANUAL_ILLUSTRATION_MAX_TOKENS),
-    agent.maxOutputTokens,
-  );
 }
 
 export async function writeManualIllustratorPromptPlan(args: {
@@ -257,10 +254,16 @@ export async function writeManualIllustratorPromptPlan(args: {
     messages.map((message) => `${message.role}:\n${message.content}`).join("\n\n"),
   );
 
-  const maxTokens = resolveManualIllustratorMaxTokens(args.illustratorAgent);
   const maxContext =
     normalizeMaxContext(args.illustratorAgent.provider.maxContextValue) ?? DEFAULT_GENERATION_PARAMS.maxContext;
   const callPromptWriter = async (requestMessages: ChatMessage[]): Promise<ChatCompletionResult> => {
+    // Thinking room only takes what the window leaves free; the writer's own budget must still fit (#7131).
+    const maxTokens = resolveAgentCallMaxTokens(
+      args.illustratorAgent.provider,
+      args.illustratorAgent,
+      normalizeAgentMaxTokens(args.illustratorAgent.settings.maxTokens, DEFAULT_MANUAL_ILLUSTRATION_MAX_TOKENS),
+      { messages: requestMessages, maxContext },
+    );
     if (!measureContextBudget(requestMessages, { maxContext, maxTokens }).fits) {
       throw new Error(
         "Manual Illustrator request exceeds the connection context limit. Shorten the selected prompt or reduce Illustrator context size, or increase the connection context limit.",
@@ -268,14 +271,15 @@ export async function writeManualIllustratorPromptPlan(args: {
     }
     return args.illustratorAgent.provider.chatComplete(requestMessages, {
       model: args.illustratorAgent.model,
-      temperature: 0.55,
+      // The prompt writer keeps its own temperature; the connection decides whether one is sent (#7131).
+      temperature: gateAgentTemperature(args.illustratorAgent, 0.55),
       maxTokens,
       maxContext,
       preserveContext: true,
       enableCaching: args.illustratorAgent.enableCaching,
       anthropicExtendedCacheTtl: args.illustratorAgent.anthropicExtendedCacheTtl,
       cachingAtDepth: args.illustratorAgent.cachingAtDepth,
-      customParameters: args.illustratorAgent.customParameters,
+      ...agentRequestOptions(args.illustratorAgent, false),
       signal: args.signal,
     });
   };

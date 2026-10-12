@@ -11,6 +11,7 @@ import {
   useMemo,
   type ChangeEvent,
   type ReactNode,
+  type Ref,
   type SyntheticEvent,
 } from "react";
 import { toast } from "sonner";
@@ -30,6 +31,7 @@ import {
   useCharacterGalleryImages,
   useCharacterGalleryClips,
   useUploadCharacterGalleryImage,
+  useBakeCharacterGalleryImages,
   useDeleteCharacterGalleryImage,
   useSetCharacterGalleryImageAsAvatar,
   useDeleteCharacterGalleryClip,
@@ -62,7 +64,7 @@ import { CharacterScheduleEditorModal } from "../chat/CharacterScheduleEditorMod
 import { useUIStore } from "../../stores/ui.store";
 import { lorebookKeys, useLorebook, useUpdateLorebook } from "../../hooks/use-lorebooks";
 import { useConnections } from "../../hooks/use-connections";
-import { isCapabilityPackageAvailable, useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { RulesetSheetsSection } from "../rulesets/RulesetSheetsSection";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
@@ -112,16 +114,29 @@ import {
   Eraser,
   Wand2,
   UserPlus,
+  Code2,
   History,
   RotateCcw,
   Scissors,
+  MessageCircleQuestion,
   MessageCircle,
   Pencil,
   Check,
   Volume2,
+  Sparkles,
 } from "lucide-react";
+import { PresetVariablesEditor } from "../presets/PresetVariablesEditor";
+import { requestProfessorMariOpen } from "../../lib/professor-mari-open";
+import { MariContextChip } from "../chat/MariContextChip";
 import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../../lib/utils";
-import { normalizeAvatarCrop, type WeekSchedule } from "@marinara-engine/shared";
+import {
+  applyBakedGreetingImages,
+  findGreetingImageUrls,
+  normalizeAvatarCrop,
+  readBakedGreetingImages,
+  restoreBakedGreetingImages,
+  type WeekSchedule,
+} from "@marinara-engine/shared";
 import { extractColorsFromImage } from "../../lib/avatar-color-extraction";
 import { buildCardAssetMarkdown } from "../../lib/card-asset-links";
 import { HelpTooltip } from "../ui/HelpTooltip";
@@ -143,14 +158,29 @@ import { useEditorLeaveSave } from "../../hooks/use-editor-leave-save";
 import { LazyEditorSection } from "../ui/LazyEditorSection";
 import { leaveWithoutSaving } from "../../lib/editor-leave";
 import { EditorSectionAnchor, EditorSectionJumps } from "../ui/EditorSectionJumps";
-import { SettingsSwitch } from "../panels/settings/SettingControls";
+import { SETTINGS_BUTTON_CLASS, SettingsSwitch } from "../panels/settings/SettingControls";
 import {
+  characterOnboardingSchema,
   createDefaultRpgStatPools,
+  getOnboardingVariables,
+  getRelevantOnboardingVariables,
   normalizeSpriteExpressionLabel,
   normalizeRpgStatPools,
+  ONBOARDING_MAX_QUESTIONS,
+  ONBOARDING_PERSONA_FIELDS,
+  ONBOARDING_PLAYER_VARIABLE,
+  resolveOnboardingPersona,
+  resolveOnboardingQuestions,
   syncRpgHpFromPools,
+  withUniqueOnboardingIds,
+  validateOnboarding,
   type CharacterCardVersion,
   type CharacterData,
+  type CharacterOnboarding,
+  type CharacterOnboardingVariable,
+  type OnboardingAnswers,
+  type OnboardingIssue,
+  type OnboardingPersonaField,
   type CharacterTrackerCustomFieldDefault,
   type ConversationCallCharacterVideoClipKind,
   type ConvoBehaviorConfig,
@@ -172,6 +202,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 const TABS = [
   { id: "metadata", label: "Metadata", icon: User },
   { id: "card", label: "Card", icon: IdCard },
+  { id: "onboarding", label: "Onboarding", icon: UserPlus },
   { id: "convo", label: "Convo", icon: MessageCircle },
   { id: "lorebook", label: "Lorebook", icon: Library },
   { id: "sprites", label: "Sprites", icon: Image },
@@ -193,6 +224,65 @@ const CHARACTER_CARD_SECTIONS = [
   { id: "character-card-scenario", label: "Scenario" },
   { id: "character-card-dialogue", label: "Dialogue" },
 ] as const;
+
+const CHARACTER_ONBOARDING_SECTIONS = [
+  { id: "character-onboarding-questions", label: "Onboarding Questions" },
+  { id: "character-onboarding-description", label: "Description" },
+  { id: "character-onboarding-personality", label: "Personality" },
+  { id: "character-onboarding-backstory", label: "Backstory" },
+  { id: "character-onboarding-appearance", label: "Appearance" },
+  { id: "character-onboarding-scenario", label: "Scenario" },
+  { id: "character-onboarding-preview", label: "Rendered preview" },
+] as const;
+
+/**
+ * The onboarding fields reuse the persona editor's Card copy: what the author
+ * writes here becomes the player's persona, not part of this character.
+ */
+const ONBOARDING_FIELD_COPY: Record<
+  OnboardingPersonaField,
+  { title: string; subtitle: string; placeholder: string; rows: number }
+> = {
+  description: {
+    title: "chat.settings.inlineEditor.fields.description",
+    subtitle: "ui.personas.descriptiontab.yourGeneralDescriptionThisIsSentInEveryPrompt",
+    placeholder: "ui.personas.descriptiontab.describeWhoYouAreYourRoleInTheStory",
+    rows: 12,
+  },
+  personality: {
+    title: "chat.settings.inlineEditor.fields.personality",
+    subtitle: "ui.personas.personacardtab.yourPersonalityTraitsTemperamentAndBehavioralPatterns",
+    placeholder: "ui.personas.personacardtab.calmAndAnalyticalButQuickToActWhenSomeone",
+    rows: 8,
+  },
+  backstory: {
+    title: "chat.settings.inlineEditor.fields.backstory",
+    subtitle: "ui.personas.personacardtab.yourCharacterSHistoryOriginStoryAndFormativeLife",
+    placeholder: "ui.personas.personacardtab.grewUpInAFrontierTownApprenticedUnderA",
+    rows: 12,
+  },
+  appearance: {
+    title: "chat.settings.inlineEditor.fields.appearance",
+    subtitle: "ui.personas.personacardtab.physicalDescriptionHeightBuildHairEyesClothingDistinguishingFeatures",
+    placeholder: "ui.personas.personacardtab.averageHeightDarkHairWornLoosePrefersPracticalClothing",
+    rows: 8,
+  },
+  scenario: {
+    title: "chat.settings.inlineEditor.fields.scenario",
+    subtitle: "ui.personas.personacardtab.yourDefaultSituationOrContextWithinRoleplays",
+    placeholder: "ui.personas.personacardtab.aWanderingAdventurerSeekingAnswersAboutAMysteriousArtifact",
+    rows: 8,
+  },
+};
+
+const ONBOARDING_ISSUE_KEYS: Record<Exclude<OnboardingIssue["code"], "plainIf" | "unknownName">, string> = {
+  emptyName: "ui.characters.onboarding.issueEmptyName",
+  invalidName: "ui.characters.onboarding.issueInvalidName",
+  reservedName: "ui.characters.onboarding.issueReservedName",
+  duplicateName: "ui.characters.onboarding.issueDuplicateName",
+  unused: "ui.characters.onboarding.issueUnused",
+  unknownOptionName: "ui.characters.onboarding.issueUnknownOptionName",
+};
 
 const CHARACTER_METADATA_HELP =
   "Use metadata for identity, sharing, and library organization. The avatar identifies the character throughout Marinara, name is used as {{char}}, creator/version help track authorship and revisions, tags make the card searchable, talkativeness affects group chat response frequency, and creator notes stay private.";
@@ -322,6 +412,13 @@ export function CharacterEditor() {
     () => (useUIStore.getState().characterDetailInitialTab as TabId | null) ?? "metadata",
   );
   const [formData, setFormData] = useState<CharacterData | null>(null);
+  // Same rule as the Onboarding tab: only a missing block is empty, so a block
+  // the schema can't read blocks saving until the author starts over.
+  const storedOnboarding = formData?.extensions?.onboarding;
+  const unreadableOnboarding = useMemo(
+    () => storedOnboarding !== undefined && !characterOnboardingSchema.safeParse(storedOnboarding).success,
+    [storedOnboarding],
+  );
   const { contentRef, scrollToSection } = useEditorSections(
     characterId,
     !!formData,
@@ -337,6 +434,18 @@ export function CharacterEditor() {
   const dirtyRef = useRef(false);
   const editRevisionRef = useRef(0);
   const setEditorDirty = useUIStore((s) => s.setEditorDirty);
+  // Report the focused field to the omnibar so "make this warmer" knows the target.
+  const setActiveEditorField = useUIStore((s) => s.setActiveEditorField);
+  useEffect(() => {
+    const field =
+      activeTab === "card"
+        ? { id: "description", label: "Description" }
+        : activeTab === "convo"
+          ? { id: "first_mes", label: "Greeting" }
+          : null;
+    setActiveEditorField(field);
+    return () => setActiveEditorField(null);
+  }, [activeTab, setActiveEditorField]);
   const lorebookEmbedInFlightRef = useRef(false);
   const [lorebookEmbedding, setLorebookEmbedding] = useState(false);
   const setDirtyState = useCallback((nextDirty: boolean) => {
@@ -416,6 +525,15 @@ export function CharacterEditor() {
       markDirty();
     },
     [formatQuotes, markDirty],
+  );
+
+  // Applies an edit to the latest form state, e.g. once greeting images finish downloading.
+  const updateFormData = useCallback(
+    (update: (data: CharacterData) => CharacterData) => {
+      setFormData((prev) => (prev ? update(prev) : prev));
+      markDirty();
+    },
+    [markDirty],
   );
 
   const updateCharacterComment = useCallback(
@@ -533,6 +651,12 @@ export function CharacterEditor() {
 
   const handleSave = async () => {
     if (!characterId || !formData) return false;
+    // The server would reject the whole card; say why instead (the Onboarding
+    // tab offers Start over). Also covers the leave-page save, which stays put.
+    if (unreadableOnboarding) {
+      toast.error(localizeUi("ui.characters.onboarding.unreadable"));
+      return false;
+    }
     if (avatarUploadInFlightRef.current) {
       toast.error(localizeUi("ui.characters.charactereditor.waitForTheCurrentAvatarUploadToFinishBefore"));
       return false;
@@ -918,8 +1042,16 @@ export function CharacterEditor() {
     );
   }
 
+  // Primary prose field for the current tab; drives the contextual Mari chip.
+  const mariChipField: { field: string; value: string } | null =
+    activeTab === "card"
+      ? { field: "description", value: formData.description ?? "" }
+      : activeTab === "convo"
+        ? { field: "first_mes", value: formData.first_mes ?? "" }
+        : null;
+
   const headerActionButtonClass = "mari-editor-action inline-flex";
-  const saveDisabled = !dirty || saving || avatarUploading || lorebookEmbedding;
+  const saveDisabled = !dirty || unreadableOnboarding || saving || avatarUploading || lorebookEmbedding;
   const saveLabel = avatarUploading
     ? localizeUi("editor.save.uploading")
     : lorebookEmbedding
@@ -934,6 +1066,27 @@ export function CharacterEditor() {
 
   const headerActions = (
     <>
+      <button
+        type="button"
+        onClick={() => {
+          if (!characterId) return;
+          requestProfessorMariOpen({
+            destination: "omnibar",
+            draft: localizeUi("professorMari.handoff.explainResourceDraft"),
+            context: {
+              source: "character-editor",
+              capability: "explain",
+              resource: { kind: "character", id: characterId, label: formData.name },
+            },
+          });
+        }}
+        className={headerActionButtonClass}
+        title={localizeUi("professorMari.handoff.ask")}
+        aria-label={localizeUi("professorMari.handoff.ask")}
+      >
+        <MessageCircleQuestion size="1rem" />
+      </button>
+
       <button
         type="button"
         onClick={() => updateExtension("fav", !formData.extensions.fav)}
@@ -1033,9 +1186,10 @@ export function CharacterEditor() {
         open={avatarGeneratorOpen}
         title={localizeUi("ui.characters.charactereditor.generateCharacterAvatar")}
         entityName={formData.name}
-        defaultAppearance={
-          ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
-        }
+        defaultAppearance={imageAppearanceGeneratorSeed(
+          formData.extensions,
+          (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
+        )}
         defaultAvatarUrl={avatarPreview}
         onClose={() => setAvatarGeneratorOpen(false)}
         onUseAvatar={handleGeneratedAvatar}
@@ -1045,9 +1199,10 @@ export function CharacterEditor() {
         mode="character-sheet"
         title={localizeUi("ui.characters.charactersheet.createTitle")}
         entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
-        defaultAppearance={
-          ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
-        }
+        defaultAppearance={imageAppearanceGeneratorSeed(
+          formData.extensions,
+          (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
+        )}
         defaultAvatarUrl={avatarPreview}
         neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
         onClose={() => setCharacterSheetGeneratorOpen(false)}
@@ -1072,23 +1227,38 @@ export function CharacterEditor() {
               "mari-editor-avatar-tile group relative",
               !avatarPreview && "mari-avatar-placeholder mari-avatar-placeholder--character",
             )}
-            onClick={() => fileInputRef.current?.click()}
           >
-            {avatarPreview ? (
-              <img
-                src={avatarPreview}
-                alt={formData.name}
-                className="pointer-events-none h-full w-full object-cover"
-                style={getAvatarCropStyle(normalizeAvatarCrop(formData.extensions.avatarCrop))}
-              />
-            ) : (
-              <User size="1.375rem" className="text-white" />
-            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute inset-0 overflow-hidden rounded-[inherit]"
+              aria-label={localizeUi("editor.avatar.upload")}
+            >
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt={formData.name}
+                  className="pointer-events-none h-full w-full object-cover"
+                  style={getAvatarCropStyle(normalizeAvatarCrop(formData.extensions.avatarCrop))}
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center">
+                  <User size="1.375rem" className="text-white" />
+                </span>
+              )}
+            </button>
             <EditorAvatarTileActions
               generationAvailable={imageGenerationAvailable}
               onGenerate={() => setAvatarGeneratorOpen(true)}
             />
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              tabIndex={-1}
+              onChange={handleAvatarUpload}
+            />
           </div>
 
           <div className="min-w-0 flex-1">
@@ -1159,6 +1329,18 @@ export function CharacterEditor() {
         {/* Tab Content */}
         <div ref={contentRef} className="mari-editor-content @max-5xl:p-4">
           <div className="mari-editor-content-inner">
+            {characterId && mariChipField && (
+              <div className="mb-3 flex justify-end">
+                <MariContextChip
+                  entryPoint="character-editor"
+                  surface="character-editor"
+                  resource={{ kind: "character", id: characterId, label: formData.name }}
+                  field={mariChipField.field}
+                  value={mariChipField.value}
+                  subject={formData.name}
+                />
+              </div>
+            )}
             <section data-editor-section="metadata">
               <MetadataTab
                 characterId={characterId}
@@ -1183,7 +1365,15 @@ export function CharacterEditor() {
               />
             </section>
             <section data-editor-section="card">
-              <CharacterCardTab formData={formData} updateField={updateField} updateExtension={updateExtension} />
+              <CharacterCardTab
+                formData={formData}
+                updateField={updateField}
+                updateExtension={updateExtension}
+                updateFormData={updateFormData}
+              />
+            </section>
+            <section data-editor-section="onboarding">
+              <OnboardingTab formData={formData} updateExtension={updateExtension} />
             </section>
             <section data-editor-section="convo">
               <ConvoTab
@@ -1209,7 +1399,10 @@ export function CharacterEditor() {
                 <SpritesTab
                   characterId={characterId}
                   characterName={formData.name}
-                  defaultAppearance={(formData.extensions.appearance as string) ?? formData.description}
+                  defaultAppearance={imageAppearanceGeneratorSeed(
+                    formData.extensions,
+                    (formData.extensions.appearance as string) ?? formData.description,
+                  )}
                   defaultAvatarUrl={avatarPreview}
                   characterSheetImageId={
                     typeof formData.extensions.characterSheetImageId === "string"
@@ -1292,10 +1485,12 @@ function CharacterCardTab({
   formData,
   updateField,
   updateExtension,
+  updateFormData,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   updateExtension: (key: string, value: unknown) => void;
+  updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   return (
@@ -1349,6 +1544,32 @@ function CharacterCardTab({
             placeholder={localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears")}
             rows={8}
           />
+          <div className="mt-3">
+            <SettingsSwitch
+              label={
+                <span className="font-medium">
+                  {localizeUi("ui.characters.charactercardtab.imageAppearanceToggle")}
+                </span>
+              }
+              description={localizeUi("ui.characters.charactercardtab.imageAppearanceToggleHelp")}
+              checked={formData.extensions.imageAppearanceEnabled === true}
+              onChange={(enabled) => updateExtension("imageAppearanceEnabled", enabled)}
+              labelPosition="start"
+              className="justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+            />
+          </div>
+          {formData.extensions.imageAppearanceEnabled === true && (
+            <div className="mt-3">
+              <TextareaTab
+                title={localizeUi("ui.characters.charactercardtab.imageAppearanceToggle")}
+                subtitle={localizeUi("ui.characters.charactercardtab.imageAppearanceSubtitle")}
+                value={(formData.extensions.imageAppearance as string) ?? ""}
+                onChange={(v) => updateExtension("imageAppearance", v)}
+                placeholder={localizeUi("ui.characters.charactercardtab.imageAppearancePlaceholder")}
+                rows={6}
+              />
+            </div>
+          )}
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-scenario">
           <TextareaTab
@@ -1364,9 +1585,345 @@ function CharacterCardTab({
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-dialogue">
-          <DialogueTab formData={formData} updateField={updateField} />
+          <DialogueTab formData={formData} updateField={updateField} updateFormData={updateFormData} />
         </EditorSectionAnchor>
       </div>
+    </div>
+  );
+}
+
+/** A new onboarding question: free text until the author adds options. */
+function createOnboardingVariable(existing: CharacterOnboardingVariable[]): CharacterOnboardingVariable {
+  const names = new Set(existing.map((variable) => variable.variableName));
+  let index = existing.length + 1;
+  while (names.has(`question_${index}`)) index++;
+  return {
+    id: generateClientId(),
+    variableName: `question_${index}`,
+    question: "",
+    options: [],
+    allowCustom: false,
+    multiSelect: false,
+    separator: ", ",
+    displayMode: "auto",
+    optionSort: "manual",
+  };
+}
+
+/**
+ * The card's skeleton persona: the persona Card fields, the questions players
+ * answer, and a preview resolved with example answers. Turning it off keeps
+ * everything written here; only `enabled` changes.
+ */
+function OnboardingTab({
+  formData,
+  updateExtension,
+}: {
+  formData: CharacterData;
+  updateExtension: (key: string, value: unknown) => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const parsedOnboarding = useMemo(
+    // Only a missing block means "empty"; a stored `null` is unreadable like any other bad value.
+    () =>
+      characterOnboardingSchema.safeParse(
+        formData.extensions.onboarding === undefined ? {} : formData.extensions.onboarding,
+      ),
+    [formData.extensions.onboarding],
+  );
+  // A block the schema can't read is never shown as empty defaults: any edit
+  // would then replace the author's data. It stays untouched until the author
+  // explicitly starts over.
+  const unreadable = !parsedOnboarding.success;
+  const onboarding = useMemo(
+    () =>
+      // Unique ids: edits, deletes and reorders go by id (a hand-edited card may repeat one).
+      (parsedOnboarding.success
+        ? withUniqueOnboardingIds(parsedOnboarding.data as CharacterOnboarding)
+        : characterOnboardingSchema.parse({})) as CharacterOnboarding,
+    [parsedOnboarding],
+  );
+  // Edits can land in the same tick (e.g. two debounced option inputs), so each
+  // one merges onto the latest value instead of this render's snapshot.
+  const latestRef = useRef(onboarding);
+  useEffect(() => {
+    latestRef.current = onboarding;
+  }, [onboarding]);
+  const update = (
+    patch: Partial<CharacterOnboarding> | ((latest: CharacterOnboarding) => Partial<CharacterOnboarding>),
+  ) => {
+    if (unreadable) return;
+    const latest = latestRef.current;
+    const next = { ...latest, ...(typeof patch === "function" ? patch(latest) : patch) };
+    latestRef.current = next;
+    updateExtension("onboarding", next);
+  };
+  const setVariables = (change: (variables: CharacterOnboardingVariable[]) => CharacterOnboardingVariable[]) =>
+    update((latest) => ({ variables: change(latest.variables) }));
+
+  const issues = useMemo(() => validateOnboarding(onboarding), [onboarding]);
+  const variableIssues: Record<string, string> = {};
+  const plainIfFields = new Set<OnboardingPersonaField>();
+  const unknownNames: Partial<Record<OnboardingPersonaField, string[]>> = {};
+  // One message per question, and a real problem wins over the "unused" warning.
+  const byPriority = [...issues].sort((a, b) => Number(a.code === "unused") - Number(b.code === "unused"));
+  for (const issue of byPriority) {
+    if (issue.code === "plainIf") plainIfFields.add(issue.field);
+    else if (issue.code === "unknownName") (unknownNames[issue.field] ??= []).push(issue.name);
+    else variableIssues[issue.variableId] ??= localizeUi(ONBOARDING_ISSUE_KEYS[issue.code], { value1: issue.name });
+  }
+
+  // Example answers, like the prompt-override preview: the first option of a
+  // choice, the variable's own name for free text.
+  const preview = useMemo(() => {
+    // No prototype, so a question named `__proto__` or `toString` is just a key.
+    const answers: OnboardingAnswers = Object.create(null);
+    answers[ONBOARDING_PLAYER_VARIABLE] = { text: `‹${ONBOARDING_PLAYER_VARIABLE}›` };
+    for (const variable of onboarding.variables) {
+      const first = variable.options[0];
+      answers[variable.variableName] = first ? { optionIds: [first.id] } : { text: `‹${variable.variableName}›` };
+    }
+    return {
+      answers,
+      persona: resolveOnboardingPersona(onboarding, answers),
+      asked: getRelevantOnboardingVariables(onboarding, answers),
+    };
+  }, [onboarding]);
+  const previewQuestions = useMemo(
+    () => resolveOnboardingQuestions(onboarding, preview.answers, formData.name),
+    [onboarding, preview.answers, formData.name],
+  );
+  const previewText = ONBOARDING_PERSONA_FIELDS.filter((field) => preview.persona[field])
+    .map((field) => `${localizeUi(ONBOARDING_FIELD_COPY[field].title)}:\n${preview.persona[field]}`)
+    .join("\n\n");
+  const codeClass = "mari-editor-chip mari-editor-chip--accent rounded px-1 font-mono text-[0.625rem]";
+
+  // Variable chips (like the prompt-override editor) show under the field last
+  // focused; clicking one inserts it at the caret.
+  const [activeField, setActiveField] = useState<OnboardingPersonaField | null>(null);
+  const fieldRefs = useRef<Partial<Record<OnboardingPersonaField, HTMLTextAreaElement | null>>>({});
+  const variableNames = [
+    ...new Set(
+      getOnboardingVariables(onboarding)
+        .map((variable) => variable.variableName.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const insertVariable = (field: OnboardingPersonaField, name: string) => {
+    const token = "{{" + name + "}}";
+    const textarea = fieldRefs.current[field];
+    const current = latestRef.current[field];
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? current.length;
+    update({ [field]: current.slice(0, start) + token + current.slice(end) });
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
+  return (
+    <div>
+      <SectionHeader
+        title={localizeUi("editor.tabs.onboarding")}
+        subtitle={localizeUi("ui.characters.onboarding.subtitle")}
+      />
+      {unreadable && (
+        <div
+          role="status"
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-xs"
+        >
+          <AlertTriangle size="0.875rem" className="shrink-0 text-[var(--marinara-app-accent-static)]" aria-hidden />
+          <span className="min-w-0 flex-1">{localizeUi("ui.characters.onboarding.unreadable")}</span>
+          <button
+            type="button"
+            onClick={() => updateExtension("onboarding", characterOnboardingSchema.parse({}))}
+            className="mari-editor-action mari-editor-action--compact px-2 py-1 text-[0.625rem]"
+          >
+            {localizeUi("ui.characters.onboarding.startOver")}
+          </button>
+        </div>
+      )}
+      <SettingsSwitch
+        label={<span className="font-medium">{localizeUi("ui.characters.onboarding.enable")}</span>}
+        description={localizeUi("ui.characters.onboarding.enableHelp")}
+        checked={onboarding.enabled}
+        disabled={unreadable}
+        onChange={(enabled) => update({ enabled })}
+        labelPosition="start"
+        className="justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+      />
+      {onboarding.enabled && (
+        <>
+          <div className="mari-editor-panel mt-4 space-y-2 p-3 text-xs">
+            <p className="flex items-center gap-1.5 font-semibold">
+              <Sparkles size="0.875rem" className="mari-chrome-accent-icon mari-accent-animated" />
+              {localizeUi("ui.characters.onboarding.tutorialTitle")}
+            </p>
+            <ol className="list-decimal space-y-1.5 pl-5 text-[var(--muted-foreground)]">
+              <li>
+                {localizeUi("ui.characters.onboarding.tutorialQuestionsBefore")}{" "}
+                <code className={codeClass}>faction</code>
+                {localizeUi("ui.characters.onboarding.tutorialQuestionsMiddle")}{" "}
+                <code className={codeClass}>{"{{faction}}"}</code>{" "}
+                {localizeUi("ui.characters.onboarding.tutorialQuestionsAfter")}
+              </li>
+              <li>{localizeUi("ui.characters.onboarding.tutorialFields")}</li>
+              <li>
+                {localizeUi("ui.characters.onboarding.tutorialPlayerBefore")}{" "}
+                <code className={codeClass}>{ONBOARDING_PLAYER_VARIABLE}</code>{" "}
+                {localizeUi("ui.characters.onboarding.tutorialPlayerAfter")}
+              </li>
+              <li>
+                {localizeUi("ui.characters.onboarding.tutorialIfBefore")}{" "}
+                <code className={codeClass}>{"{{#if met == yes}}…{{/if}}"}</code>{" "}
+                {localizeUi("ui.characters.onboarding.tutorialIfAfter")}
+              </li>
+            </ol>
+            <p className="text-[var(--muted-foreground)]">{localizeUi("ui.characters.onboarding.tutorialResult")}</p>
+          </div>
+          <div className="mt-4">
+            <EditorSectionJumps items={CHARACTER_ONBOARDING_SECTIONS} />
+          </div>
+          <div className="space-y-10">
+            <EditorSectionAnchor id="character-onboarding-questions">
+              <PresetVariablesEditor
+                variant="onboarding"
+                variables={onboarding.variables}
+                issues={variableIssues}
+                maxCount={ONBOARDING_MAX_QUESTIONS}
+                onCreate={() =>
+                  setVariables((variables) =>
+                    variables.length >= ONBOARDING_MAX_QUESTIONS
+                      ? variables
+                      : [...variables, createOnboardingVariable(variables)],
+                  )
+                }
+                onUpdate={(variableId, patch) =>
+                  setVariables((variables) =>
+                    variables.map((variable) => (variable.id === variableId ? { ...variable, ...patch } : variable)),
+                  )
+                }
+                onDelete={(variableId) =>
+                  setVariables((variables) => variables.filter((variable) => variable.id !== variableId))
+                }
+                onReorder={(variableIds) =>
+                  // Each question is taken once, so a reorder can never grow the list.
+                  setVariables((variables) => {
+                    const pool = new Map(variables.map((variable) => [variable.id, variable]));
+                    const ordered = variableIds.flatMap((id) => {
+                      const variable = pool.get(id);
+                      pool.delete(id);
+                      return variable ? [variable] : [];
+                    });
+                    return [...ordered, ...pool.values()];
+                  })
+                }
+              />
+            </EditorSectionAnchor>
+            {ONBOARDING_PERSONA_FIELDS.map((field) => {
+              const copy = ONBOARDING_FIELD_COPY[field];
+              return (
+                <EditorSectionAnchor key={field} id={`character-onboarding-${field}`}>
+                  <TextareaTab
+                    title={localizeUi(copy.title)}
+                    subtitle={localizeUi(copy.subtitle)}
+                    value={onboarding[field]}
+                    onChange={(value) => update({ [field]: value })}
+                    placeholder={localizeUi(copy.placeholder)}
+                    rows={copy.rows}
+                    textareaRef={(element) => {
+                      fieldRefs.current[field] = element;
+                    }}
+                    onFocus={() => setActiveField(field)}
+                    footer={
+                      activeField === field && variableNames.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+                            {localizeUi("ui.panels.promptoverrideseditorbody.availableVariables")}
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {variableNames.map((name) => (
+                              <button
+                                type="button"
+                                key={name}
+                                onClick={() => insertVariable(field, name)}
+                                className={cn(
+                                  SETTINGS_BUTTON_CLASS,
+                                  "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",
+                                )}
+                              >
+                                <Code2 size="0.625rem" />
+                                {"{{" + name + "}}"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : undefined
+                    }
+                  />
+                  {plainIfFields.has(field) && (
+                    <p
+                      role="status"
+                      className="mt-1.5 flex flex-wrap items-center gap-1 text-[0.625rem] text-[var(--foreground)]"
+                    >
+                      <AlertTriangle
+                        size="0.625rem"
+                        className="shrink-0 text-[var(--marinara-app-accent-static)]"
+                        aria-hidden
+                      />
+                      {localizeUi("ui.characters.onboarding.plainIfBefore")}{" "}
+                      <code className={codeClass}>{"{{#if …}}"}</code>{" "}
+                      {localizeUi("ui.characters.onboarding.plainIfAfter")}
+                    </p>
+                  )}
+                  {unknownNames[field] && (
+                    <p
+                      role="status"
+                      className="mt-1.5 flex flex-wrap items-center gap-1 text-[0.625rem] text-[var(--foreground)]"
+                    >
+                      <AlertTriangle
+                        size="0.625rem"
+                        className="shrink-0 text-[var(--marinara-app-accent-static)]"
+                        aria-hidden
+                      />
+                      {localizeUi("ui.characters.onboarding.unknownNames", {
+                        value1: unknownNames[field].join(", "),
+                      })}
+                    </p>
+                  )}
+                </EditorSectionAnchor>
+              );
+            })}
+            <EditorSectionAnchor id="character-onboarding-preview">
+              <div className="mari-editor-panel space-y-2 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">
+                    {localizeUi("ui.panels.promptoverrideseditorbody.renderedPreview")}
+                  </span>
+                  <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                    {localizeUi("ui.panels.promptoverrideseditorbody.exampleValues")}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
+                  <span>{localizeUi("ui.characters.onboarding.questionsAsked")}</span>
+                  {preview.asked.map((variable) => (
+                    <span key={variable.id} className="mari-editor-chip px-1.5 py-0.5">
+                      {previewQuestions.get(variable.id) ||
+                        (variable.variableName === ONBOARDING_PLAYER_VARIABLE
+                          ? localizeUi("ui.characters.onboarding.nameQuestion")
+                          : variable.variableName)}
+                    </span>
+                  ))}
+                </div>
+                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--secondary)]/70 p-2 font-mono text-[0.6875rem] leading-relaxed text-[var(--foreground)]">
+                  {previewText || localizeUi("ui.panels.promptoverrideseditorbody.nothingToPreview")}
+                </pre>
+              </div>
+            </EditorSectionAnchor>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1486,6 +2043,9 @@ function TextareaTab({
   placeholder,
   rows = 8,
   helpText,
+  textareaRef,
+  onFocus,
+  footer,
 }: {
   title: string;
   subtitle: string;
@@ -1494,12 +2054,18 @@ function TextareaTab({
   onChange: (v: string) => void;
   placeholder: string;
   rows?: number;
+  textareaRef?: Ref<HTMLTextAreaElement>;
+  onFocus?: () => void;
+  /** Shown under the textarea, inside the panel. */
+  footer?: ReactNode;
 }) {
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   return (
     <div className="mari-editor-panel space-y-3 p-3">
       <SectionHeader title={title} subtitle={subtitle} helpText={helpText} />
       <MacroTextarea
+        textareaRef={textareaRef}
+        onFocus={onFocus}
         showTokenCount
         value={value}
         onChange={onChange}
@@ -1510,6 +2076,7 @@ function TextareaTab({
         selfCharacterId={selfCharacterId}
         className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
       />
+      {footer}
     </div>
   );
 }
@@ -1529,8 +2096,6 @@ function ConvoTab({
   const ext = formData.extensions;
   const { t: localizeUi } = useUiTranslation();
   const generateCharacterConvoProfile = useGenerateCharacterConvoProfile();
-  const { data: installedCapabilities = [] } = useInstalledCapabilityPackages(kind === "character");
-  const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
   const currentCharacterIdRef = useRef(characterId);
   currentCharacterIdRef.current = characterId;
   const currentConvoProfileDraft = {
@@ -1605,10 +2170,6 @@ function ConvoTab({
         }
         imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
         onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
-        applyImageInstructionsToNoodle={ext.applyConversationImageInstructionsToNoodle === true}
-        onApplyImageInstructionsToNoodleChange={
-          noodleInstalled ? (value) => updateExtension("applyConversationImageInstructionsToNoodle", value) : undefined
-        }
         schedule={schedule}
         onEditSchedule={kind === "character" && characterId ? () => setScheduleOpen(true) : undefined}
       />
@@ -1933,15 +2494,35 @@ const VERSION_COMPARE_FIELDS: Array<{ key: string; label: string }> = [
   { key: "mes_example", label: "Example Dialogue" },
   { key: "extensions.backstory", label: "Backstory" },
   { key: "extensions.appearance", label: "Appearance" },
+  { key: "extensions.imageAppearance", label: "Image Appearance Override" },
+  { key: "extensions.imageAppearanceEnabled", label: "Use Image Appearance Override" },
   { key: "creator_notes", label: "Creator Notes" },
   { key: "system_prompt", label: "System Prompt" },
   { key: "post_history_instructions", label: "Post-History Instructions" },
 ];
 
+/**
+ * #7053: the avatar / character-sheet generator seeds its editable prompt with
+ * the card appearance. It must seed the image override instead when one is on
+ * and filled, or the generated portrait ignores the very tags the user wrote
+ * for image models. Mirrors `readImageAppearanceOverride` in shared, but the
+ * editor holds a draft `extensions` object rather than a stored card.
+ */
+function imageAppearanceGeneratorSeed(extensions: Record<string, unknown>, fallback: string | undefined): string {
+  const enabled = extensions.imageAppearanceEnabled === true;
+  const override = typeof extensions.imageAppearance === "string" ? extensions.imageAppearance.trim() : "";
+  if (enabled && override) return override;
+  return fallback ?? "";
+}
+
 function getVersionFieldValue(data: CharacterData, key: string): string {
-  if (key === "extensions.backstory" || key === "extensions.appearance") {
+  if (key.startsWith("extensions.")) {
     const extensionKey = key.split(".")[1] ?? "";
     const value = data.extensions?.[extensionKey];
+    // #7053: the image-appearance switch is a boolean. Render it as On/Off so a
+    // comparison shows the toggle change that decides which text image prompts
+    // use, instead of collapsing to "" and hiding it.
+    if (typeof value === "boolean") return value ? "On" : "Off";
     return typeof value === "string" ? value : "";
   }
   const value = data[key as keyof CharacterData];
@@ -2292,13 +2873,47 @@ function CharacterVersionHistoryPanel({
 function DialogueTab({
   formData,
   updateField,
+  updateFormData,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
+  updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   const greetingKeysRef = useRef<string[]>([]);
+  const bakeImages = useBakeCharacterGalleryImages(selfCharacterId ?? "");
+  const greetingImageUrls = findGreetingImageUrls(formData);
+  const hasBakedImages = readBakedGreetingImages(formData.extensions).length > 0;
+
+  // Only on this explicit click: download the greetings' web images into the
+  // gallery, then point the greetings at the saved copies (#7221).
+  const saveGreetingImages = async () => {
+    const characterId = selfCharacterId;
+    if (!characterId || greetingImageUrls.length === 0 || bakeImages.isPending) return;
+    const results = await bakeImages.mutateAsync(greetingImageUrls);
+    if (useUIStore.getState().characterDetailId !== characterId) return;
+    const saved = results.flatMap((result) => (result.file ? [{ file: result.file, url: result.url }] : []));
+    const failed = results.filter((result) => !result.file);
+    if (saved.length > 0) {
+      updateFormData((data) => applyBakedGreetingImages(data, saved));
+      toast.success(localizeUi("ui.characters.dialoguetab.greetingImagesSaved", { count: saved.length }));
+    }
+    if (failed.length > 0) {
+      console.warn("[CharacterEditor] Some greeting images could not be saved:", failed);
+      toast.error(
+        localizeUi("ui.characters.dialoguetab.greetingImagesFailed", {
+          count: failed.length,
+          reason: failed[0]?.error ?? "",
+        }),
+      );
+    }
+  };
+
+  const restoreGreetingImages = () => {
+    updateFormData(restoreBakedGreetingImages);
+    toast.success(localizeUi("ui.characters.dialoguetab.greetingImagesRestored"));
+  };
 
   while (greetingKeysRef.current.length < formData.alternate_greetings.length) {
     greetingKeysRef.current.push(generateClientId());
@@ -2353,12 +2968,54 @@ function DialogueTab({
         helpText={CHARACTER_DIALOGUE_HELP}
       />
 
+      {(greetingImageUrls.length > 0 || hasBakedImages) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {greetingImageUrls.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void saveGreetingImages()}
+                disabled={bakeImages.isPending}
+                className="mari-editor-action mari-editor-action--compact inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {bakeImages.isPending ? (
+                  <Loader2 size="0.75rem" className="animate-spin" />
+                ) : (
+                  <ImageDown size="0.75rem" />
+                )}
+                {bakeImages.isPending
+                  ? localizeUi("ui.characters.dialoguetab.savingGreetingImages")
+                  : localizeUi("ui.characters.dialoguetab.saveGreetingImages")}
+              </button>
+              <HelpTooltip text={localizeUi("ui.characters.dialoguetab.saveGreetingImagesHelp")} />
+            </span>
+          )}
+          {hasBakedImages && (
+            <span className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={restoreGreetingImages}
+                disabled={bakeImages.isPending}
+                className="mari-editor-action mari-editor-action--compact inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RotateCcw size="0.75rem" />
+                {localizeUi("ui.characters.dialoguetab.restoreGreetingImages")}
+              </button>
+              <HelpTooltip text={localizeUi("ui.characters.dialoguetab.restoreGreetingImagesHelp")} />
+            </span>
+          )}
+        </div>
+      )}
+
       {/* First Message */}
       <div className="block space-y-1.5">
         <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
           {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")} />
         </span>
+        <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
+          {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
+        </p>
         <MacroTextarea
           showTokenCount
           value={formData.first_mes}
@@ -2390,6 +3047,9 @@ function DialogueTab({
             {localizeUi("ui.characters.dialoguetab.add")}
           </button>
         </div>
+        <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
+          {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
+        </p>
         {formData.alternate_greetings.map((g, i) => (
           <div
             key={greetingKeysRef.current[i] ?? i}
@@ -4404,26 +5064,27 @@ function SpritesTab({
         const scopeLabel =
           modeLabel === "all" ? "sprites" : category === "full-body" ? "full-body-sprites" : "expressions";
         const folderName = sanitizeSpriteExportFolderName(`${characterName || "character"}-${scopeLabel}`, "sprites");
-        await exportSprites.mutateAsync({
+        const saveStatus = await exportSprites.mutateAsync({
           characterId,
           expressions: spritesToExport.map((sprite) => sprite.expression),
           folderName,
         });
-        toast.success(
-          modeLabel === "all"
-            ? localizeUi("ui.characters.spritestab.exportedValue1SpriteValue2AsAFolder", {
-                value1: spritesToExport.length,
-                value2: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
-              })
-            : localizeUi("ui.characters.spritestab.exportedValue1Value2SpriteValue3AsAFolder", {
-                value1: spritesToExport.length,
-                value2:
-                  category === "full-body"
-                    ? localizeUi("ui.characters.spritestab.fullBody_0fbbc4a")
-                    : localizeUi("ui.characters.spritestab.expression"),
-                value3: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
-              }),
-        );
+        if (saveStatus === "saved")
+          toast.success(
+            modeLabel === "all"
+              ? localizeUi("ui.characters.spritestab.exportedValue1SpriteValue2AsAFolder", {
+                  value1: spritesToExport.length,
+                  value2: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
+                })
+              : localizeUi("ui.characters.spritestab.exportedValue1Value2SpriteValue3AsAFolder", {
+                  value1: spritesToExport.length,
+                  value2:
+                    category === "full-body"
+                      ? localizeUi("ui.characters.spritestab.fullBody_0fbbc4a")
+                      : localizeUi("ui.characters.spritestab.expression"),
+                  value3: spritesToExport.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
+                }),
+          );
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -5483,9 +6144,7 @@ function ColorsTab({
         value={dialogueColor}
         onChange={(v) => updateExtension("dialogueColor", v)}
         label={localizeUi("ui.characters.colorstab.dialogueHighlightColor")}
-        helpText={
-          'Text inside dialogue quotation marks ("", “”, «», 「」, 『』) will be automatically colored with this, and can also be bolded from Settings.'
-        }
+        helpText={`Text inside dialogue quotation marks ("", “”, «», 「」, 『』) will be automatically colored with this, and can also be bolded from Settings. ${localizeUi("ui.characters.colorstab.notUsedInConversation")}`}
       />
 
       {/* Box Color */}
@@ -5493,7 +6152,7 @@ function ColorsTab({
         value={boxColor}
         onChange={(v) => updateExtension("boxColor", v)}
         label={localizeUi("ui.characters.colorstab.messageBoxColor")}
-        helpText="Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba)."
+        helpText={`Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba). ${localizeUi("ui.characters.colorstab.roleplayOnly")}`}
       />
       {/* Name Aliases */}
       <NameAliasesSection

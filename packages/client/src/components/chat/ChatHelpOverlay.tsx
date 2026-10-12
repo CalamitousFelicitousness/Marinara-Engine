@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { ChatMode } from "@marinara-engine/shared";
 import {
@@ -38,6 +38,8 @@ import {
   requestChatHelp,
 } from "../../lib/chat-help-events";
 import { getChatHelpTargets, type ChatHelpTargetDefinition, type ChatHelpTargetId } from "../../lib/chat-help-targets";
+import { orderChatTools, useChatToolsMenuStore } from "../../stores/chat-tools-menu.store";
+import { useFloatingWindowStore } from "../../stores/floating-window.store";
 import { useUIStore } from "../../stores/ui.store";
 import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
@@ -228,10 +230,10 @@ function isCoveredAtCenter(element: Element, rect: Rect): boolean {
 }
 
 /** Open windows and the bubbles of minimized ones: large callouts stop short of both. */
-function visibleFloatingWindowRects(): Rect[] {
+function visibleFloatingWindows(): { element: Element; rect: Rect }[] {
   return Array.from(document.querySelectorAll(`${FLOATING_WINDOW_SELECTOR}, .mari-window-bubble`))
-    .map((element) => rectFromDomRect(element.getBoundingClientRect()))
-    .filter((rect) => rect.width > 1 && rect.height > 1);
+    .map((element) => ({ element, rect: rectFromDomRect(element.getBoundingClientRect()) }))
+    .filter(({ rect }) => rect.width > 1 && rect.height > 1);
 }
 
 /** The largest part of `rect` that `cut` leaves uncovered, or null when too little is left to point at. */
@@ -401,16 +403,20 @@ function measureTargets(mode: ChatMode) {
   const viewportHeight = window.innerHeight;
   const rootRect = clipRect(rectFromDomRect(root.getBoundingClientRect()), viewportWidth, viewportHeight);
   const highlightPadding = window.innerWidth < 768 ? 0 : TARGET_PADDING;
-  const windowRects = visibleFloatingWindowRects();
+  const windows = visibleFloatingWindows();
   let targets = getChatHelpTargets(mode).flatMap((definition) => {
     const measured = findTargetRect(definition, root, mode);
     let rect = measured ? clipRect(measured, viewportWidth, viewportHeight) : null;
     if (rect && PADDED_TARGET_IDS.has(definition.id)) {
-      // Leave room for the highlight padding, so a large region stops at a window's edge.
-      rect = windowRects.reduce<Rect | null>(
-        (visible, windowRect) => visible && subtractRect(visible, inflateRect(windowRect, highlightPadding)),
-        rect,
-      );
+      // Leave room for the highlight padding, so a large region stops at a window's edge. A window or
+      // bubble that is the target itself (a phone's map or party button) is not in its way.
+      rect = windows
+        .filter(({ element }) => !definition.selector || !element.matches(definition.selector))
+        .reduce<Rect | null>(
+          (visible, { rect: windowRect }) =>
+            visible && subtractRect(visible, inflateRect(windowRect, highlightPadding)),
+          rect,
+        );
     }
     return rect ? [{ ...definition, rect }] : [];
   });
@@ -456,7 +462,7 @@ function measureTargets(mode: ChatMode) {
   return {
     rootRect,
     // The overlay dims the chat and any open window around the labelled controls.
-    surfaces: [rootRect, ...windowRects.flatMap((rect) => clipRect(rect, viewportWidth, viewportHeight) ?? [])],
+    surfaces: [rootRect, ...windows.flatMap(({ rect }) => clipRect(rect, viewportWidth, viewportHeight) ?? [])],
     targets: separated.map((target) => ({
       ...target,
       rect: fixedMobileToolbarRects.get(target.id) ?? target.rect,
@@ -580,6 +586,51 @@ function SettingsActionLegend({ mode }: { mode: ChatMode }) {
             <span>{t(labelKey)}</span>
           </li>
         ))}
+      </ul>
+    </section>
+  );
+}
+
+/** On a phone, what the Chat tools menu holds, in its order, with each tool's Help sentence when it has one. */
+function ChatToolsLegend({ mode }: { mode: ChatMode }) {
+  const { t } = useTranslation();
+  const entries = useChatToolsMenuStore((state) => state.entries);
+  const savedOrder = useFloatingWindowStore((state) => state.phoneMenu?.order);
+  const points = useFloatingWindowStore((state) => state.phoneBubbles);
+  const ids = orderChatTools(Object.keys(entries), savedOrder ?? [], points);
+  if (ids.length === 0) return null;
+  const targets = getChatHelpTargets(mode);
+  return (
+    <section
+      data-chat-help-tools-legend
+      className="border-t border-[var(--marinara-chat-chrome-panel-divider)] px-3 py-2.5"
+    >
+      <h3 className="mb-2 text-xs font-semibold text-[var(--marinara-chat-chrome-panel-title)]">
+        {t("chat.help.chatTools.listTitle")}
+      </h3>
+      <ul className="space-y-2">
+        {ids.map((id) => {
+          const entry = entries[id]!;
+          const help = targets.find((target) => target.id === entry.helpTarget);
+          return (
+            <li
+              key={id}
+              data-chat-help-tool={id}
+              className="flex min-w-0 items-start gap-2 text-xs leading-4 text-[var(--marinara-chat-chrome-panel-muted)]"
+            >
+              <span
+                aria-hidden="true"
+                className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-[var(--marinara-chat-chrome-button-text-active)] [&_svg]:size-3.5"
+              >
+                {entry.icon}
+              </span>
+              <span className="min-w-0">
+                <strong className="font-semibold text-[var(--marinara-chat-chrome-panel-title)]">{entry.label}</strong>
+                {help && <>: {t(help.bodyKey)}</>}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -770,6 +821,27 @@ export function ChatHelpOverlay({
     setHoverPoint(null);
   }, [open]);
 
+  // A phone's instructions start at the top of the chat, where its buttons sit in a row; they move below
+  // any control callout they would cover, so every callout stays tappable.
+  const instructionsRef = useRef<HTMLDivElement>(null);
+  const [instructionsTop, setInstructionsTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const instructions = instructionsRef.current;
+    if (!instructions || !rootRect) return;
+    const { left, width, height } = instructions.getBoundingClientRect();
+    let top = rootRect.top + 10;
+    for (const { id, rect } of [...targets].sort((first, second) => first.rect.top - second.rect.top)) {
+      if (PADDED_TARGET_IDS.has(id)) continue;
+      const covered =
+        rect.left < left + width &&
+        rect.left + rect.width > left &&
+        rect.top < top + height &&
+        rect.top + rect.height > top;
+      if (covered) top = rect.top + rect.height + HIGHLIGHT_GAP;
+    }
+    setInstructionsTop(top);
+  }, [mobile, open, rootRect, targets]);
+
   if (!open || !rootRect || typeof document === "undefined") return null;
   const hideHelpButtonControl = (
     <button
@@ -902,9 +974,10 @@ export function ChatHelpOverlay({
 
       {mobile && (
         <div
+          ref={instructionsRef}
           className="pointer-events-none fixed flex max-w-[calc(100vw-1.5rem)] flex-col items-center gap-1.5"
           style={{
-            top: rootRect.top + 10,
+            top: instructionsTop ?? rootRect.top + 10,
             left: Math.max(rootRect.left + 12, rootRect.left + rootRect.width / 2),
             transform: "translateX(-50%)",
           }}
@@ -985,6 +1058,7 @@ export function ChatHelpOverlay({
             </p>
           </div>
           {selectedTarget.id === "settings" && <SettingsActionLegend mode={mode} />}
+          {selectedTarget.id === "chat-tools" && <ChatToolsLegend mode={mode} />}
           {targetIncludesActionLegend(mode, selectedTarget.id) && <MessageActionLegend mode={mode} />}
         </div>
       )}

@@ -6,10 +6,8 @@ test.use({ actionTimeout: 10000 });
 
 const readMetadata = (chat: any) => (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata);
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-async function fixture(request: APIRequestContext, mode: "conversation" | "roleplay" | "game") {
-  const character = await (
-    await request.post("/api/characters", { data: { data: { name: "Dottore", first_mes: "" } } })
-  ).json();
+async function fixture(request: APIRequestContext, mode: "conversation" | "roleplay" | "game", name = "Dottore") {
+  const character = await (await request.post("/api/characters", { data: { data: { name, first_mes: "" } } })).json();
   const chat = await (
     await request.post("/api/chats", { data: { name: "The experiment", mode, characterIds: [character.id] } })
   ).json();
@@ -361,7 +359,9 @@ test("4K maximum display and chat font keep the composer and scrolling usable", 
 });
 
 test("Game setup offers library cards in both the GM and party pickers", async ({ page, request }, info) => {
-  const data = await fixture(request, "game");
+  // A name of its own: the pickers list the whole library, which may hold another spec's leftover Dottore.
+  const name = `Dottore ${Date.now()}`;
+  const data = await fixture(request, "game", name);
   try {
     // A new game deliberately starts with no active party.
     expect((await request.patch(`/api/chats/${data.chat.id}`, { data: { characterIds: [] } })).ok()).toBeTruthy();
@@ -369,7 +369,7 @@ test("Game setup offers library cards in both the GM and party pickers", async (
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: /Character GM/ }).click();
-    const choices = page.getByRole("button", { name: /Dottore$/ });
+    const choices = page.getByRole("button", { name: new RegExp(`${name}$`) });
     await expect(choices).toHaveCount(2);
     await choices.last().click();
     await expect(page.getByText("Party Members (1 selected)", { exact: true })).toBeVisible();

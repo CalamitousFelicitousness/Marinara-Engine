@@ -71,7 +71,7 @@ The chat's tools are sections of **Chat Settings**. Open it with the sliders but
 - **Author's Notes**. A free-text note added to the prompt every turn. See below.
 - **Gallery**. The chat's images and videos, where you can generate an illustration or background.
 
-You can pop out any of these sections, including Search, to keep it in a separate window or open it from its own button on a phone. Older chats keep their familiar tool icons as movable buttons; open one and choose **Put back in Chat Settings** to move it inside. See [Chat Settings Overview](../chats/chat-settings.md).
+You can pop out any of these sections, including Search, to keep it in a separate window. On a phone, open popped-out sections from the **Chat tools** three-dot menu; tracker buttons stay separate. Older chats keep their familiar tools outside Chat Settings. Open one and choose **Put back in Chat Settings** to move it inside. See [Chat Settings Overview](../chats/chat-settings.md).
 
 ### Author's Notes
 
@@ -89,6 +89,8 @@ Author's Notes also works the same way in Game Mode and Conversation Mode. This 
 
 Its **Activity** tab lists agent outputs, called thought bubbles. You can dismiss each one or use **Clear all**. Custom agent outputs also appear here.
 
+While agents work, the **Agent activity** icon turns into a spinner. When an agent fails, a dot appears on the icon until you open **Agent activity**.
+
 If an agent failed on the last turn, a failed list appears with a retry button. You can also stop running agents, re-run all tracker agents, and use **Clear Trackers** from here. For a plain-language tour of the whole agent system, see [Agents: AI Helpers for Your Chats](../agents/agents-overview.md).
 
 An **Injections** tab appears only when **Debug mode** is on. Turn it on in **Settings**, under **Advanced**. This tab shows the prompt snippets that writer-style agents saved before the last reply. Writer-style agents include **Prose Guardian**, which rewrites replies to match your style rules, and the **Narrative Director**, which steers the plot.
@@ -101,11 +103,15 @@ The Narrative Director has a **Push Story** button above the chat box. It arms t
 
 In **Chat Settings → Agents → Roleplay Commands**, enable **Whisper** to allow private asides, secrets, or visions inside a reply. It starts off. Choose whether **All** characters or only the appointed **Narrator** can use it. Like Personal Notes, it requires a solo chat or **Individual** group generation.
 
-The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret. Shared agents do not receive whispers.
+The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Of the characters, only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret.
 
-A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden or falls outside the selected history.
+Agents read whispers too, including Echo Chamber, trackers, Lorebook Keeper, Long-Term Memory and, in group chats, **Smart** response order, so a whisper to a character can make that character the one who replies. Each whisper is marked as private and names its recipient. Even so, what an agent writes, such as a lorebook entry, a tracker note or a rewritten reply, can reach characters the whisper wasn't meant for. In a hosted multiplayer room, agents and **Smart** response order get no whispers, because everyone in the room sees what agents write. Relationship Tracker and Memory Nag read the chat themselves and don't see whispers yet.
 
-Once a whisper is visible, choose **Edit whisper**, change the text, then **Save**. The correction stays with that message's swipe and is used in later prompts for its original recipient and the narrator. **Cancel** leaves it unchanged.
+A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden from everyone or falls outside the selected history.
+
+A whisper always reaches its recipient. If you use **Hide from AI** to hide a message only from some characters, the recipient still gets its whisper at that point in the story, but none of the rest of the message. Other characters who cannot see the message get nothing from it.
+
+Once a whisper is visible, choose **Edit whisper**, change the text, then **Save**. The correction stays with that message's swipe and is used in later prompts for its original recipient and the narrator. To take a whisper back, clear its text and choose **Save**: the whisper is removed from the message. **Cancel** leaves it unchanged.
 
 You can also write `[whisper: character="name" text="the secret"]` in your own Roleplay message to whisper to one chat character. Your own whispers are visible to you immediately. This works in ordinary chats without enabling multiplayer.
 
@@ -129,11 +135,11 @@ Open the reply's command information and choose **Restore original message** to 
 
 ## Echo Chamber
 
-**Echo Chamber** is an optional agent that adds a live audience reacting to your scene. It works like a streaming chat that posts a new reaction on a timer. Turn it on in **Chat Settings**, under **Agents**, on the **Echo Chamber** card. On a computer, drag its title bar to move it, resize it from an edge, or pin it to keep it open. **X** closes it to a movable button. On a phone, Echo keeps a compact view above the messages; **X** closes it to a movable button there too. Echo follows your **Chat widget style** in **Settings → Appearance → App**, and each chat remembers its layout.
+**Echo Chamber** is an optional agent that adds a live audience reacting to your scene. It works like a streaming chat that posts a new reaction on a timer. Turn it on in **Chat Settings**, under **Agents**, on the **Echo Chamber** card. On a computer, drag its title bar to move it, resize it from an edge, or pin it to keep it open. **X** closes it to a movable button. On a phone, Echo starts as a compact window above the messages. Drag its title bar to move it, or drag an edge or corner to resize it. Pin it to keep it open when you tap elsewhere, or lock it to prevent accidental moves. **X** closes it to a movable button there too. Echo follows your **Chat widget style** in **Settings → Appearance → App**, and each chat remembers its layout.
 
 ## CYOA choices
 
-**CYOA** stands for Choose Your Own Adventure. The **CYOA Choices** agent is off by default. When on, it adds clickable choice buttons after a reply. Clicking a choice sends it as your next message. It works only in Roleplay Mode.
+**CYOA** stands for Choose Your Own Adventure. The **CYOA Choices** agent is off by default. When on, it adds clickable choice buttons after a reply. Clicking a choice sends it as your next message. To combine choices or edit one before sending, turn on **Add CYOA choices to the message box instead of sending them** in **Settings** > **General** > **Input & Editing**: clicking a choice then adds its text to your message box without sending. It works only in Roleplay Mode.
 
 ## Combat encounters
 

@@ -12,6 +12,7 @@ import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { HomeCustomWidgetCatalog } from "@marinara-engine/shared";
+import { downloadExport } from "./export-save.js";
 import { forceColorValueEnablesColor } from "./playwright-color-environment.js";
 import { mockUILanguagePacks } from "./ui-language-fixtures.js";
 import { seedUIState } from "./ui-state-fixture.js";
@@ -3013,7 +3014,8 @@ test("connection model fetch errors inherit the configured editor accent", async
   let fetchCount = 0;
 
   try {
-    await page.route(`**/api/connections/${connection.id}/models`, async (route) => {
+    // Fetch Models asks for a fresh list (?refresh=true), so match the query string too.
+    await page.route(`**/api/connections/${connection.id}/models*`, async (route) => {
       const message = fetchCount === 0 ? networkError : internalServerError;
       fetchCount += 1;
       await route.fulfill({
@@ -3179,7 +3181,12 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     await editor.locator('input[type="file"][accept*="image/png"]').setInputFiles({
       name: "style-plate.png",
       mimeType: "image/png",
-      buffer: readFileSync(new URL("../packages/client/public/sprites/mari/Mari_wave.png", import.meta.url)),
+      buffer: readFileSync(
+        new URL(
+          "../packages/client/assets/imagegen/mari-generated-originals/professor-mari-assistant-map-source.png",
+          import.meta.url,
+        ),
+      ),
     });
 
     await expect(editor).toBeVisible();
@@ -3565,7 +3572,7 @@ test("mobile connection drag previews preserve configured Chroma text", async ({
     const expectedColor = await readScopedCssVariableColor(source, "--muted-foreground");
     await expect(sourceMetadata).toHaveCSS("color", expectedColor);
 
-    const dragHandle = source.getByTitle("Drag connection", { exact: true });
+    const dragHandle = source;
     const handleBounds = await dragHandle.boundingBox();
     expect(handleBounds).not.toBeNull();
     const point = {
@@ -5674,9 +5681,9 @@ test("character schedules export the live draft and import safely", async ({ pag
     expect((await storedSchedule())!.autonomousDailyCapOverride).toBeNull();
     await dialog.getByRole("spinbutton", { name: /^Daily safety limit/i }).fill("1000");
 
-    const downloadPromise = page.waitForEvent("download");
-    await dialog.getByRole("button", { name: "Export schedule", exact: true }).click();
-    const download = await downloadPromise;
+    const download = await downloadExport(page, () =>
+      dialog.getByRole("button", { name: "Export schedule", exact: true }).click(),
+    );
     expect(download.suggestedFilename()).toBe(`${characterName.replaceAll(" ", "_")}.marinara-schedule.json`);
     const downloadPath = await download.path();
     expect(downloadPath).not.toBeNull();
@@ -6899,6 +6906,58 @@ test("goto keeps stale CYOA choices out of the chat tail", async ({ page, reques
   }
 });
 
+test("CYOA choices go to the message box when the add-to-message setting is on", async ({ page, request }) => {
+  const firstChoice = `Take the bridge ${Date.now()}`;
+  const secondChoice = `Wave at the guard ${Date.now()}`;
+  const transcript = [
+    JSON.stringify({ user_name: "You", character_name: "Guide", chat_metadata: {} }),
+    JSON.stringify({
+      name: "Guide",
+      is_user: false,
+      mes: "The road splits at the river.",
+      extra: {
+        cyoaChoices: [
+          { label: "Bridge", text: firstChoice },
+          { label: "Guard", text: secondChoice },
+        ],
+      },
+    }),
+  ].join("\n");
+  const importResponse = await request.post("/api/import/st-chat", {
+    multipart: {
+      file: { name: `cyoa-add-${Date.now()}.jsonl`, mimeType: "application/jsonl", buffer: Buffer.from(transcript) },
+      mode: "roleplay",
+    },
+  });
+  expect(importResponse.ok(), await importResponse.text()).toBeTruthy();
+  const imported = (await importResponse.json()) as { chatId: string };
+
+  try {
+    await seedUIState(page, {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      addCyoaChoicesToMessage: true,
+    });
+    await page.addInitScript((chatId) => {
+      localStorage.setItem("marinara-active-chat-id", chatId);
+    }, imported.chatId);
+    await page.goto("/");
+
+    const composer = page.locator("textarea.mari-chat-input-textarea");
+    await page.getByText(firstChoice, { exact: true }).click();
+    await page.getByText(secondChoice, { exact: true }).click();
+
+    await expect(composer).toHaveValue(`${firstChoice}\n\n${secondChoice}`);
+    await expect(composer).toBeFocused();
+    await expect(page.getByText(firstChoice, { exact: true })).toBeVisible();
+    const messages = await (await request.get(`/api/chats/${imported.chatId}/messages`)).json();
+    expect(Array.isArray(messages) ? messages : messages.messages).toHaveLength(1);
+  } finally {
+    await request.delete(`/api/chats/${imported.chatId}?force=true`).catch(() => undefined);
+  }
+});
+
 test("typographic quotes do not pull the Roleplay caret behind later text", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Roleplay quote caret behavior is covered on desktop.");
 
@@ -8037,7 +8096,7 @@ test("Roleplay Tracker preserves named characters with missing or malformed card
     characterId = (await characterResponse.json()).id;
     const avatarResponse = await request.post(`/api/characters/${characterId}/avatar`, {
       data: {
-        avatar: `data:image/png;base64,${readFileSync(new URL("../packages/client/public/sprites/mari/Mari_wave.png", import.meta.url)).toString("base64")}`,
+        avatar: `data:image/png;base64,${readFileSync(new URL("../packages/client/assets/imagegen/mari-generated-originals/professor-mari-assistant-map-source.png", import.meta.url)).toString("base64")}`,
         filename: "tracker-fixture.png",
       },
     });
@@ -8385,7 +8444,9 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     await page.reload();
     await expect(reloadedTracker).toBeHidden();
   } finally {
-    await page.request.delete(`/api/chats/${chat.id}`);
+    // Best-effort, so a step that hangs until the test timeout keeps its own error
+    // instead of being replaced by this cleanup timing out after it.
+    await bestEffortDelete(page.request, `/api/chats/${chat.id}`);
   }
 });
 
@@ -9542,8 +9603,12 @@ test("chat Help overlay responds to viewport changes with unchanged target geome
     const { ChatHelpOverlay } = (await import("/src/components/chat/ChatHelpOverlay.tsx" as string)) as {
       ChatHelpOverlay: unknown;
     };
-    const { ChatHelpButton } = (await import("/src/components/chat/ChatHelpButton.tsx" as string)) as {
-      ChatHelpButton: unknown;
+    // The real trigger: Chat Settings' Help button is a help tip that asks the overlay to open.
+    const { HelpTooltip } = (await import("/src/components/ui/HelpTooltip.tsx" as string)) as {
+      HelpTooltip: unknown;
+    };
+    const { requestChatHelp } = (await import("/src/lib/chat-help-events.ts" as string)) as {
+      requestChatHelp: (mode: "conversation") => void;
     };
     const runtime = globalThis as typeof globalThis & {
       React: {
@@ -9576,7 +9641,13 @@ test("chat Help overlay responds to viewport changes with unchanged target geome
           isFirstChat: false,
           autoOpenBlocked: true,
         }),
-        ready ? runtime.React.createElement(ChatHelpButton, { mode: "conversation" }) : null,
+        ready
+          ? runtime.React.createElement(HelpTooltip, {
+              text: "Show what each part of this chat does.",
+              ariaLabel: "Help",
+              onActivate: () => requestChatHelp("conversation"),
+            })
+          : null,
       );
     }
     runtime.ReactDOM.createRoot(mount).render(runtime.React.createElement(HelpFixture, null));
@@ -9770,9 +9841,12 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await expect(overlay.locator('[data-chat-help-highlight="messages"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="composer"]')).toBeVisible();
       } else {
-        // Retry lives in the Game controls window, pointed at through its button (a bubble on phones too).
-        await expect(overlay.locator('[data-chat-help-highlight="game-controls"]')).toBeVisible();
-        await expect(overlay.locator('[data-chat-help-highlight="session"]')).toBeVisible();
+        // Retry lives in the Game controls window, pointed at through its button. Phones keep that button,
+        // Session and the other game tools in the Chat tools menu, whose button Help points at instead.
+        for (const target of mobile ? ["chat-tools"] : ["game-controls", "session"]) {
+          await expect(overlay.locator(`[data-chat-help-highlight="${target}"]`)).toBeVisible();
+        }
+        if (!mobile) await expect(overlay.locator('[data-chat-help-highlight="chat-tools"]')).toHaveCount(0);
         await expect(overlay.locator('[data-chat-help-highlight="dialogue"]')).toBeVisible();
       }
 
@@ -9807,7 +9881,29 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await keyboardTarget.focus();
         await page.keyboard.press("Enter");
         await expect(overlay.locator('[data-chat-help-mobile-detail="settings"]')).toBeVisible();
-        await overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`).click();
+        if (chat.mode === "game") {
+          // The Chat tools callout lists what its menu holds, each with its own sentence.
+          await overlay.locator('[data-chat-help-highlight="chat-tools"]').click();
+          const toolsDetail = overlay.locator('[data-chat-help-mobile-detail="chat-tools"]');
+          await expect(toolsDetail).toContainText("Open more tools for this chat. Drag the button to move it.");
+          await expect(toolsDetail.locator("[data-chat-help-tools-legend] [data-chat-help-tool]")).toHaveCount(4);
+          await expect(toolsDetail.locator('[data-chat-help-tool="control:session"]')).toHaveText(
+            "Session: Open session history, journal, and session controls.",
+          );
+          await expect(toolsDetail.locator('[data-chat-help-tool="control:game"]')).toHaveText(
+            "Game controls: Retry a turn and control the storyboard.",
+          );
+        }
+        // On a short phone the open detail covers the lower part of a large callout; tap the part above it.
+        const messageHighlight = overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`);
+        const messageBox = (await messageHighlight.boundingBox())!;
+        const openDetailBox = (await overlay.locator("[data-chat-help-mobile-detail]").boundingBox())!;
+        const visibleBottom = Math.min(messageBox.y + messageBox.height, openDetailBox.y);
+        expect(
+          visibleBottom - messageBox.y,
+          `${messageTarget} callout stays tappable above the detail`,
+        ).toBeGreaterThan(24);
+        await messageHighlight.click({ position: { x: messageBox.width / 2, y: (visibleBottom - messageBox.y) / 2 } });
         const detail = overlay.locator(`[data-chat-help-mobile-detail="${messageTarget}"]`);
         await expect(detail).toBeVisible();
         await expect(detail.locator(`[data-chat-help-action-legend="${chat.mode}"]`)).toBeVisible();
@@ -10137,11 +10233,16 @@ test("preset import and save-export feedback follow the active accent", async ({
     // read BEFORE the save is triggered: a round trip spent here would come
     // straight out of the window the visibility assertion has to catch it in.
     const expectedEditorAccent = await readScopedCssVariableColor(editor, "--marinara-editor-accent");
-    await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
-
     const savedFeedback = editor.getByText("Changes saved", { exact: true });
-    await expect(savedFeedback).toBeVisible();
-    await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    const saveAndExport = async () => {
+      await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
+      await expect(savedFeedback).toBeVisible();
+      await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
+    };
+    // Without a share sheet, an iPhone export waits behind a "Your file is ready." toast over the editor
+    // header (#7115). Linux WebKit has no share sheet while macOS WebKit does, so pin that path and save.
+    if (testInfo.project.name === "mobile-webkit") await downloadExport(page, saveAndExport);
+    else await saveAndExport();
     await testInfo.attach(`preset-save-export-accent-${testInfo.project.name}.png`, {
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png",
@@ -11364,7 +11465,7 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
   expect(result.invalidEnemyHp).toBe(9);
 });
 
-test("Game character sheet Retry remains a draft until Save", async ({ page, request }, testInfo) => {
+test("Game character sheet Retry remains a draft until Save", async ({ page, request }) => {
   const suffix = Date.now().toString(36);
   const characterName = `Retry Sheet Character ${suffix}`;
   const personaName = `Retry Sheet Persona ${suffix}`;
@@ -11434,6 +11535,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
   let characterId: string | undefined;
   let personaId: string | undefined;
   let chatId: string | undefined;
+  let releaseLayoutResponse = () => {};
 
   try {
     const providerAddress = providerServer.address();
@@ -11539,10 +11641,34 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
       return (metadata.gameCharacterCards as Array<Record<string, unknown>>)[0];
     };
 
+    // Keep the launcher's real layout response in flight until a regenerated draft exists.
+    // An unrelated metadata refresh must not discard that in-progress sheet edit.
+    let layoutResponseHeld = false;
+    let layoutResponseReady = false;
+    const layoutResponseGate = new Promise<void>((resolve) => {
+      releaseLayoutResponse = resolve;
+    });
+    const metadataUrl = `/api/chats/${chat.id}/metadata`;
+    await page.route(`**${metadataUrl}`, async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown> | null;
+      if (
+        !layoutResponseHeld &&
+        route.request().method() === "PATCH" &&
+        body &&
+        Object.keys(body).length === 1 &&
+        Object.hasOwn(body, "windowLayout")
+      ) {
+        layoutResponseHeld = true;
+        const response = await route.fetch();
+        layoutResponseReady = true;
+        await layoutResponseGate;
+        await route.fulfill({ response });
+      } else await route.continue();
+    });
     await page.goto("/");
-    if (testInfo.project.name.includes("mobile")) {
-      await page.getByTitle("Open party members").click();
-    }
+    await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
+    await page.locator('.mari-window[data-window="control:character-profiles"] [data-window-control="lock"]').click();
+    await expect.poll(() => layoutResponseReady).toBe(true);
     await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
     const sheet = page.locator('[data-component="GameCharacterSheet"]');
     await expect(sheet).toBeVisible();
@@ -11553,8 +11679,17 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await sheet.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(classInput).toHaveValue("Chronomancer");
     expect((await readStoredCard())?.class).toBe("Scout");
+    const layoutApplied = page.waitForResponse((response) => {
+      if (!response.url().endsWith(metadataUrl) || response.request().method() !== "PATCH") return false;
+      const body = response.request().postDataJSON() as Record<string, unknown> | null;
+      return body !== null && Object.keys(body).length === 1 && Object.hasOwn(body, "windowLayout");
+    });
+    releaseLayoutResponse();
+    expect((await layoutApplied).ok()).toBeTruthy();
     await page.mouse.move(0, 0);
     await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+    await expect(classInput).toHaveValue("Chronomancer");
+    await expect(sheet.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
 
     await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
     await sheet.getByRole("button", { name: "Edit sheet" }).click();
@@ -11568,6 +11703,15 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await expect(page.getByRole("heading", { name: characterName })).toHaveCount(0);
     await expect.poll(async () => (await readStoredCard())?.class).toBe("Chronomancer");
     expect((await readStoredCard())?.rpgStats).toEqual(originalCard.rpgStats);
+    // The "sheet updated." toast can cover the mobile top bar, and a pointer resting on it pauses auto-dismiss.
+    await page.mouse.move(0, 0);
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+    await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
+    await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
+    await sheet.getByRole("button", { name: "Edit sheet" }).click();
+    await expect(classInput).toHaveValue("Chronomancer");
+    await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+    await sheet.getByRole("button", { name: "Close character sheet", exact: true }).click();
 
     const personaRetryResponse = await request.post("/api/game/character-sheet/regenerate", {
       data: {
@@ -11599,6 +11743,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     expect(personaPrompt).toContain("A memory-weaver who maps the drowned city's forgotten roads.");
     expect(personaPrompt).toContain(`Regenerate only ${personaName}'s character sheet now.`);
   } finally {
+    releaseLayoutResponse();
     await Promise.all([
       chatId ? request.delete(`/api/chats/${chatId}`).catch(() => undefined) : Promise.resolve(),
       personaId ? request.delete(`/api/characters/personas/${personaId}`).catch(() => undefined) : Promise.resolve(),
@@ -12270,12 +12415,14 @@ test(
     }));
     expect(chromeSurfaces.home).toBe(chromeSurfaces.app);
     const surfaceLightness = (value: string) => {
+      // Phones flatten the chrome to an rgb() backing while its color-mix() rows serialize as color(srgb 0–1).
+      const scale = value.startsWith("color(") ? 255 : 1;
       const channels =
         value
           .match(/[\d.]+/g)
           ?.slice(0, 3)
           .map(Number) ?? [];
-      return channels.reduce((total, channel) => total + channel, 0);
+      return channels.reduce((total, channel) => total + channel * scale, 0);
     };
     const darkAddressSurfaces = await page.evaluate(() => ({
       chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
@@ -12892,112 +13039,6 @@ test("new Professor Mari Home widgets receive a movable layout slot immediately"
   }
 });
 
-test("Professor Mari visibly arrives on Home and navigates without AI", async ({ page }, testInfo) => {
-  test.setTimeout(45_000);
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
-
-  const assistant = page.locator('aside[aria-label="Professor Mari assistant"]');
-  await expect(assistant).toBeVisible({ timeout: 6_000 });
-  const navigationInput = assistant.getByRole("textbox");
-  await expect(navigationInput).toBeVisible();
-  await expect(navigationInput).toHaveAttribute(
-    "placeholder",
-    testInfo.project.name.includes("mobile") ? "Looking for…?" : "What are you looking for?",
-  );
-  await expect(navigationInput).not.toBeFocused();
-  await expect(assistant.getByRole("button", { name: "Help Me Navigate", exact: true })).toHaveCount(0);
-  await navigationInput.fill("unfinished destination");
-  await navigationInput.press("Escape");
-  await expect(navigationInput).toBeVisible();
-  await expect(navigationInput).toHaveValue("");
-  await expect(
-    assistant.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__idle")).toHaveAttribute(
-    "src",
-    "/sprites/mari/generated/professor-mari-assistant-idle.png",
-  );
-  await expect(assistant.locator(".mari-home-professor-popup__blink")).toHaveAttribute(
-    "src",
-    "/sprites/mari/generated/professor-mari-assistant-blink-v3.png",
-  );
-  await assistant.getByRole("button", { name: "Minimize Professor Mari navigation", exact: true }).click();
-  await expect(assistant).toBeHidden();
-  const recallButton = page.getByRole("button", { name: "Help Me Navigate", exact: true });
-  await expect(recallButton).toBeVisible();
-  const recallSprite = recallButton.locator("img");
-  await expect(recallSprite).toHaveAttribute("src", "/sprites/mari/generated/professor-mari-assistant-idle.png");
-  await expect(recallSprite).toHaveCSS("object-position", "calc(50% + 1.5px) 100%");
-  const [recallBounds, viewportWidth] = await Promise.all([
-    recallButton.boundingBox(),
-    page.evaluate(() => window.innerWidth),
-  ]);
-  expect(recallBounds).not.toBeNull();
-  expect(Math.abs(recallBounds!.width - recallBounds!.height)).toBeLessThanOrEqual(1);
-  if (testInfo.project.name.includes("mobile")) {
-    expect(viewportWidth - (recallBounds!.x + recallBounds!.width)).toBeLessThanOrEqual(16);
-  } else {
-    expect(viewportWidth - (recallBounds!.x + recallBounds!.width)).toBeLessThanOrEqual(20);
-  }
-  await recallButton.click();
-  await expect(assistant).toBeVisible();
-  await expect(navigationInput).toBeFocused();
-  await navigationInput.fill("quantum spaghetti cupboard");
-  await navigationInput.press("Enter");
-  await expect(assistant.getByText("Couldn't find it, sorry!", { exact: true })).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__state-image--shrug")).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__idle-stage")).toHaveCSS("opacity", "0");
-  await assistant.getByRole("button", { name: "Back to search", exact: true }).click();
-  await expect(navigationInput).toBeFocused();
-  await navigationInput.fill("Could I talk to Professor Mari?");
-  await navigationInput.press("Enter");
-  await expect(assistant.getByText("Here, found it!", { exact: true })).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__state-image--map")).toHaveAttribute(
-    "src",
-    "/sprites/mari/generated/professor-mari-assistant-map.png",
-  );
-  await expect(assistant.locator(".mari-home-professor-popup__idle-stage")).toHaveCSS("opacity", "0");
-  await expect(page.locator('[data-component="HomeProfessorMariChat.Window"]')).toBeVisible();
-  await expect(
-    page.locator('[data-component="HomeProfessorMariChat.Window"]').getByRole("button", { name: "Close", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
-  await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
-
-  await page.getByRole("tab", { name: "Home", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible();
-  await expect(assistant).toBeVisible({ timeout: 1_000 });
-  await expect(navigationInput).toBeVisible();
-
-  const chatResponse = await page.request.post("/api/chats", {
-    data: {
-      name: `Professor navigator return ${Date.now()}`,
-      mode: "conversation",
-      characterIds: [],
-    },
-  });
-  expect(chatResponse.ok()).toBeTruthy();
-  const chat = (await chatResponse.json()) as { id: string };
-  try {
-    await page.evaluate(async (chatId) => {
-      const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
-      module.useChatStore.getState().setActiveChatId(chatId);
-    }, chat.id);
-    await expect(page.locator('[data-component="HomeBrowserHub"]')).toHaveCount(0);
-    await page.locator('[data-component="TopBar"] button[title="Home"]').click();
-    await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeVisible({ timeout: 6_000 });
-  } finally {
-    await page.request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
-  }
-});
-
 test("Professor Mari opens a named character directly in its editor", async ({ page }) => {
   const resourceName = `Maukie Navigator ${Date.now()}`;
   const characterResponse = await page.request.post("/api/characters", {
@@ -13088,47 +13129,13 @@ test("Professor Mari replaces the Noodle tour with highlighted Home guidance", a
 
   await next.click();
   await expect(page.locator("h3").filter({ hasText: /^Ask Me Where Things Are$/ })).toBeVisible();
-  const navigationTarget = page.locator('[data-tour="home-navigation"]');
-  await expect(navigationTarget).toBeVisible({ timeout: 6_000 });
+  const addressTarget = page.locator('[data-tour="home-address"]');
+  await expect(addressTarget).toBeVisible({ timeout: 6_000 });
   await expect(
-    page.locator('[data-component="OnboardingTutorial.Spotlight"][data-tour-target="home-navigation"]'),
+    page.locator('[data-component="OnboardingTutorial.Spotlight"][data-tour-target="home-address"]'),
   ).toBeVisible();
   await expect(page.locator('[data-component="OnboardingTutorial.Spotlight"]')).toHaveCount(1);
-  const tutorialCard = page.locator('[data-component="OnboardingTutorial.Card"]');
-  const centeredStage = page.locator('[data-component="OnboardingTutorial.CenteredStage"]');
-  await expect
-    .poll(async () => {
-      const [cardBounds, stageBounds] = await Promise.all([tutorialCard.boundingBox(), centeredStage.boundingBox()]);
-      if (!cardBounds || !stageBounds) return Number.POSITIVE_INFINITY;
-      return Math.abs(cardBounds.y + cardBounds.height / 2 - (stageBounds.y + stageBounds.height / 2));
-    })
-    .toBeLessThanOrEqual(2);
-  const [cardMetrics, centeredStageBounds, navigationBounds] = await Promise.all([
-    tutorialCard.evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return {
-        centerX: bounds.left + bounds.width / 2,
-        centerY: bounds.top + bounds.height / 2,
-        clientHeight: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-      };
-    }),
-    centeredStage.boundingBox(),
-    navigationTarget.boundingBox(),
-  ]);
-  const viewport = page.viewportSize();
-  expect(centeredStageBounds).not.toBeNull();
-  expect(viewport).not.toBeNull();
-  expect(Math.abs(cardMetrics.centerX - (centeredStageBounds!.x + centeredStageBounds!.width / 2))).toBeLessThanOrEqual(
-    2,
-  );
-  expect(
-    Math.abs(cardMetrics.centerY - (centeredStageBounds!.y + centeredStageBounds!.height / 2)),
-  ).toBeLessThanOrEqual(2);
-  expect(cardMetrics.scrollHeight).toBeLessThanOrEqual(cardMetrics.clientHeight);
-  expect(navigationBounds).not.toBeNull();
-  expect(navigationBounds!.width).toBeLessThan(viewport!.width / 2);
-  expect(navigationBounds!.height).toBeLessThan(viewport!.height / 2);
+  await expect(page.locator('[data-component="OnboardingTutorial.Card"]')).toBeVisible();
 
   await next.click();
   await expect(page.locator("h3").filter({ hasText: /^Guides and Home Controls$/ })).toBeVisible();
@@ -17851,7 +17858,7 @@ test("Professor Mari chat fills the mobile home viewport and keeps its composer 
 
   const topBar = page.locator('[data-component="TopBar"]');
   const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-  const composer = window.getByPlaceholder("Ask Professor Mari");
+  const composer = window.getByPlaceholder("Ask Professor Mari to check or change something");
   await expect(window).toBeVisible();
   await expect(composer).toBeVisible();
   await expect
@@ -17872,6 +17879,38 @@ test("Professor Mari chat fills the mobile home viewport and keeps its composer 
     .toBe(true);
   await expect(window.locator(".mari-suggestion-chips")).toHaveCSS("opacity", "1");
   await page.screenshot({ path: testInfo.outputPath("professor-chat-mobile.png") });
+});
+
+test("character editor hands an editable resource context to floating Professor Mari", async ({ page, request }) => {
+  const name = `Mari handoff character ${Date.now()}`;
+  const response = await request.post("/api/characters", { data: { data: { name } } });
+  expect(response.ok()).toBeTruthy();
+  const character = (await response.json()) as { id: string };
+
+  try {
+    await page.goto("/");
+    await page.evaluate(async (characterId) => {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      useUIStore.getState().openCharacterDetail(characterId);
+    }, character.id);
+
+    await page.getByRole("button", { name: "Ask Professor Mari" }).click();
+    const composer = page.getByPlaceholder("Ask Professor Mari");
+    // The handoff is a context chip in the composer's context row (floating window removed in 5bb03f918).
+    const context = page.locator(".mari-workspace-composer__context");
+    await expect(composer).toHaveValue("Explain this resource and suggest useful improvements.");
+    await expect(context).toContainText(name);
+
+    await composer.fill("Explain only the character's scenario.");
+    await expect(composer).toHaveValue("Explain only the character's scenario.");
+    await context
+      .getByRole("button", { name: /^Remove / })
+      .first()
+      .click();
+    await expect(context).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/characters/${character.id}`);
+  }
 });
 
 test("Professor Mari follows an open conversation across chats and mobile navigation", async ({ page }, testInfo) => {
@@ -17932,7 +17971,7 @@ test("Professor Mari follows an open conversation across chats and mobile naviga
   }
 });
 
-test("Professor Mari suggestions stay visible after chat history loads", async ({ page }) => {
+test("Professor Mari starter suggestions stay confined to an empty chat", async ({ page }) => {
   const chatResponse = await page.request.get("/api/chats/internal/professor-mari");
   expect(chatResponse.ok()).toBeTruthy();
   const chat = (await chatResponse.json()) as { id: string };
@@ -17979,9 +18018,7 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
     const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
     await expect(window.getByText(messageContent, { exact: true })).toBeVisible();
 
-    const suggestions = window.getByRole("group", { name: "Suggested replies" });
-    await expect(suggestions).toBeVisible();
-    await expect(suggestions.getByRole("button", { name: "Create a character" })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Create a character" })).toHaveCount(0);
     // The store write propagates to the inline CSS variable asynchronously;
     // poll instead of sampling once.
     await expect
@@ -17991,11 +18028,58 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
       .toBe("#14b8a6");
     const chromeMutedColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-muted");
     await expect(window.getByText("You", { exact: true }).last()).toHaveCSS("color", chromeMutedColor);
-    await expect(window.getByRole("button", { name: "Edit Message" }).last()).toHaveCSS("color", chromeMutedColor);
-    await expect(window.getByText("Suggestions only. Pick one, or type your own.", { exact: true })).toHaveCSS(
-      "color",
-      chromeMutedColor,
+    await expect(window.getByRole("button", { name: "Edit message" }).last()).toHaveCSS("color", chromeMutedColor);
+  } finally {
+    await Promise.all(
+      createdMessageIds.map((id) => bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${id}`)),
     );
+  }
+});
+
+test("Professor Mari transcript preserves server message order after reload", async ({ page }) => {
+  const chatResponse = await page.request.get("/api/chats/internal/professor-mari");
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+  const nonce = Date.now();
+  const turns = [
+    { role: "user", content: `Mari order user A ${nonce}` },
+    { role: "assistant", characterId: "__professor_mari__", content: `Mari order assistant A ${nonce}` },
+    { role: "user", content: `Mari order user B ${nonce}` },
+    { role: "assistant", characterId: "__professor_mari__", content: `Mari order assistant B ${nonce}` },
+  ] as const;
+  const createdMessageIds: string[] = [];
+
+  const assertTurnOrder = async () => {
+    const transcript = page.locator('[data-component="HomeProfessorMariChat.Transcript"]');
+    const offsets = await Promise.all(
+      turns.map(async ({ content }) => {
+        const message = transcript.getByText(content, { exact: true });
+        await expect(message).toBeVisible();
+        return message.evaluate((node) => {
+          let index = 0;
+          let cursor: Node | null = node;
+          while ((cursor = cursor.previousSibling)) index += 1;
+          return node.getBoundingClientRect().top + index / 1_000;
+        });
+      }),
+    );
+    expect(offsets).toEqual([...offsets].sort((left, right) => left - right));
+  };
+
+  try {
+    for (const turn of turns) {
+      const response = await page.request.post(`/api/chats/${chat.id}/messages`, { data: turn });
+      expect(response.ok()).toBeTruthy();
+      const message = (await response.json()) as { id: string };
+      createdMessageIds.push(message.id);
+    }
+
+    await page.goto("/");
+    await page.getByRole("tab", { name: "Professor", exact: true }).click();
+    await assertTurnOrder();
+    await page.reload();
+    await page.getByRole("tab", { name: "Professor", exact: true }).click();
+    await assertTurnOrder();
   } finally {
     await Promise.all(
       createdMessageIds.map((id) => bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${id}`)),
@@ -18080,20 +18164,19 @@ test("Professor Mari shows the latest context budget when token usage is enabled
     await page.getByRole("tab", { name: "Professor", exact: true }).click();
 
     const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-    await window.getByRole("button", { name: "Select connection" }).click();
-    const budget = window.locator('[data-component="ContextBudget"]');
-    const configuredChromeTextColor = await page.evaluate(() =>
-      document.documentElement.style.getPropertyValue("--marinara-chat-chrome-text").trim(),
-    );
-    const chromeMutedColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-muted");
-    const chromeTextColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-text");
-    expect(configuredChromeTextColor).toBe("#14b8a6");
-    await expect(budget).toContainText("Context");
-    await expect(budget).toContainText("12.3k / 128k tokens");
-    await expect(budget.getByText("Context", { exact: true })).toHaveCSS("color", chromeMutedColor);
-    await expect(budget.getByText("12.3k / 128k tokens", { exact: true })).toHaveCSS("color", chromeTextColor);
-    await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12345");
-    await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "128000");
+    // M7: the trust strip became the "How she works" group of Aware of.
+    await page.locator('[data-destination="context"]').click();
+    const howSheWorks = window.locator('[data-component="HomeProfessorMariChat.WhatMariSees"] [data-group="how"]');
+    await expect(howSheWorks).toContainText("Budget connection");
+    await expect(howSheWorks).toContainText("Sandbox ready");
+    await expect(howSheWorks).toContainText("12.3k / 128k tokens");
+    // The store write propagates to the inline CSS variable asynchronously;
+    // poll instead of sampling once.
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.style.getPropertyValue("--marinara-chat-chrome-text").trim()),
+      )
+      .toBe("#14b8a6");
   } finally {
     await bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${message.id}`);
   }
@@ -18244,14 +18327,18 @@ test("Professor Mari dependency and sensitive-file reviews stay explicit across 
   await page.getByRole("button", { name: "Ask Professor Mari", exact: true }).click();
 
   const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-  await expect(window.getByText("Install this dependency?")).toBeVisible();
-  await expect(window.getByText("nanoid@5.1.11")).toBeVisible();
-  await expect(window.getByRole("button", { name: "Install" })).toBeVisible();
-  await expect(window.getByRole("button", { name: "Not now" })).toBeVisible();
-  await expect(window.getByText("Apply sensitive file change?")).toBeVisible();
-  await expect(window.getByText("package.json", { exact: true })).toBeVisible();
-  await expect(window.getByRole("button", { name: "Apply change" })).toBeVisible();
-  await expect(window.getByRole("button", { name: "Discard" })).toBeVisible();
+  const install = window.locator(".mari-card").filter({ hasText: "Install nanoid" });
+  await expect(install.getByRole("button", { name: "Install" })).toBeVisible();
+  await expect(install.getByRole("button", { name: "Not now" })).toBeVisible();
+  await expect(install.getByText("nanoid@5.1.11")).toBeHidden();
+  await install.getByText("Technical details").click();
+  await expect(install.getByText("nanoid@5.1.11")).toBeVisible();
+  await expect(install.getByText("sha512-regression-integrity")).toBeVisible();
+  const file = window.locator(".mari-card").filter({ hasText: "Change package.json" });
+  await expect(file.getByRole("button", { name: "Apply change" })).toBeVisible();
+  await expect(file.getByRole("button", { name: "Not now" })).toBeVisible();
+  await file.getByText("Technical details").click();
+  await expect(file.getByText("package.json", { exact: true })).toBeVisible();
   await expect.poll(() => window.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
 });
 
@@ -19745,7 +19832,6 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   await page.evaluate(async () => {
     const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setHasCompletedOnboarding(true);
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
   });
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
 
@@ -19909,11 +19995,7 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
       localStorage.setItem("marinara:home:widget-visibility:v2", JSON.stringify(["character"]));
       localStorage.removeItem("marinara:home:widget-layout:v2");
       localStorage.removeItem("marinara:home:widget-order:v1");
-      // The floating Professor Mari assistant popup overlaps the widget's
-      // action row on the iPhone-profile viewport and intercepts the "View
-      // character" click. It is unrelated to the layout under test.
     });
-    await seedUIState(page, { professorMariNavigationEnabled: false }, "merge");
     await page.goto("/");
 
     const characterWidget = page.locator('[data-home-widget-id="character"]');
@@ -19991,7 +20073,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await expect(page.getByRole("heading", { name: "Character of the Day", exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Feeling a little lost? It's not a skill issue yet, I am here to help! Ask me about the app, your setup, or what to do next. I can also create characters, lorebooks, agents, and extensions for you!",
+      "Feeling a little lost? It's not a skill issue yet, I am here to help! Ask me about the app, your setup, or what to do next. I can also create characters, lorebooks, agents, and extensions for you! Looking for a page? Press Ctrl+K and type it.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -20020,6 +20102,23 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   const faqWindow = page.getByRole("dialog", { name: "Professor Mari's FAQ" });
   await expect(faqWindow).toBeVisible();
   await expect(faqWindow.getByRole("searchbox", { name: "Search FAQ" })).toBeVisible();
+  await faqWindow.getByRole("button", { name: /How do I connect Marinara to a model/ }).click();
+  await faqWindow.getByRole("button", { name: "Ask Prof. Mari about this" }).click();
+  await expect(faqWindow).toBeHidden();
+  // "Ask Prof. Mari about this" hands off to the omnibar (there is no "Professor" Home tab).
+  await expect(page.locator('[data-component="HomeProfessorMariChat.Window"]')).toBeVisible();
+  await expect(
+    page.locator('textarea[placeholder="Ask Professor Mari to check or change something"]:visible'),
+  ).toContainText("How do I connect Marinara to a model?");
+  // Mari's omnibar pane covers the bookmark bar, so close it first.
+  const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+  await omnibar
+    .getByRole("button", { name: /^Close/ })
+    .first()
+    .click();
+  await expect(omnibar).toBeHidden();
+  await openHomeBookmark(page, "FAQ");
+  await expect(faqWindow).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(faqWindow).toBeHidden();
 
@@ -20148,60 +20247,43 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   }
 
   if (!mobile) {
-    const professorWidget = page.locator(".mari-home-widget--professor");
-    const professorDesk = page.locator('.mari-home-widget--professor [data-part="desk"]');
-    const professorLaptop = page.locator('.mari-home-widget--professor [data-part="laptop"]');
-    const professorSceneFit = await Promise.all([
-      professorWidget.boundingBox(),
-      professorDesk.boundingBox(),
-      professorLaptop.boundingBox(),
-    ]);
-    expect(professorSceneFit[0]).not.toBeNull();
-    expect(professorSceneFit[1]).not.toBeNull();
-    expect(professorSceneFit[2]).not.toBeNull();
-    const widgetBottom = professorSceneFit[0]!.y + professorSceneFit[0]!.height;
-    expect(professorSceneFit[1]!.y + professorSceneFit[1]!.height).toBeLessThanOrEqual(widgetBottom);
-    expect(professorSceneFit[2]!.y + professorSceneFit[2]!.height).toBeLessThanOrEqual(widgetBottom);
+    // Slice 85: her idle portrait stands inside the card at 192 px tall (the navigator's art, approved), unrotated.
+    const professorSprite = page.locator('.mari-home-widget--professor [data-part="sprite"]');
+    const professorSpriteFit = () =>
+      professorSprite.evaluate((sprite: HTMLImageElement) => {
+        const box = sprite.getBoundingClientRect();
+        const card = sprite.closest(".mari-home-widget--professor")!.getBoundingClientRect();
+        return {
+          height: Math.round(box.height),
+          transform: getComputedStyle(sprite).transform,
+          inside: box.top >= card.top && box.bottom <= card.bottom && box.right <= card.right,
+        };
+      });
+    await expect.poll(professorSpriteFit).toEqual({ height: 192, transform: "none", inside: true });
 
     await page.setViewportSize({ width: 2560, height: 1440 });
-    await page.evaluate(async () => {
-      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-      module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
-    });
-    await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeHidden();
-    await page.reload();
-    await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible();
-    await page.waitForTimeout(1_300);
-    await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeHidden();
-    await page.evaluate(async () => {
-      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-      module.useUIStore.getState().setReduceAmbientEffects(true);
-      module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
-    });
-    const restoredAssistant = page.locator('aside[aria-label="Professor Mari assistant"]');
-    await expect(restoredAssistant).toBeVisible({ timeout: 1_000 });
-    await expect(restoredAssistant.locator(".mari-home-professor-popup__idle-stage--active")).toBeVisible();
-    await expect(restoredAssistant.locator(".mari-home-professor-popup__arrival-frame")).toHaveCSS("opacity", "0");
     await page.evaluate(async () => {
       const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(false);
     });
     await clickTopbarPanel(page, "settings");
-    const suggestionsToggle = page.getByRole("checkbox", { name: "Professor Mari suggestions" });
-    const navigationToggle = page.getByRole("checkbox", { name: "Professor Mari navigation" });
+    // Slice 57 moved these two toggles into the omnibar's own settings page; they are
+    // `role="switch"` there, reached via the main panel's "Open" row.
+    await page.getByRole("button", { name: "Open Search and Professor Mari settings", exact: true }).click();
+    const omnibarSettingsDialog = page.locator('[data-component="GlobalOmnibar"]');
+    const suggestionsToggle = omnibarSettingsDialog.getByRole("switch", { name: "Reply chips" });
     await expect(suggestionsToggle).toBeVisible();
-    await expect(navigationToggle).toBeChecked();
-    const [suggestionsBounds, navigationBounds, settingsSearchBounds, addressRowBounds] = await Promise.all([
-      suggestionsToggle.boundingBox(),
-      navigationToggle.boundingBox(),
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().setOmnibarOpen(false);
+    });
+    await expect(omnibarSettingsDialog).toBeHidden();
+    const [settingsSearchBounds, addressRowBounds] = await Promise.all([
       page.locator(".mari-settings-search-header").boundingBox(),
       page.locator('[data-component="HomeBrowserHub.AddressRow"]').boundingBox(),
     ]);
-    expect(suggestionsBounds).not.toBeNull();
-    expect(navigationBounds).not.toBeNull();
     expect(settingsSearchBounds).not.toBeNull();
     expect(addressRowBounds).not.toBeNull();
-    expect(navigationBounds!.y).toBeGreaterThan(suggestionsBounds!.y);
     expect(
       Math.abs(
         settingsSearchBounds!.y + settingsSearchBounds!.height - (addressRowBounds!.y + addressRowBounds!.height / 2),
@@ -20242,8 +20324,15 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     }).toPass({ timeout: 10_000 });
     await expect(feed.locator("[data-home-empty-slot]")).toHaveCount(0);
 
+    // The Professor tab opens Mari's omnibar pane; it does not move the Home address.
     await page.getByRole("tab", { name: "Professor", exact: true }).click();
-    await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
+    await expect(page.locator('[data-component="GlobalOmnibar"]')).toBeVisible();
+    await page
+      .locator('[data-component="GlobalOmnibar"]')
+      .getByRole("button", { name: /^Close/ })
+      .first()
+      .click();
+    await expect(page.locator('[data-component="GlobalOmnibar"]')).toBeHidden();
     await page.getByRole("tab", { name: "Home", exact: true }).click();
     await expect(feed).toHaveAttribute("data-home-grid-columns", "4");
     expect(await content.evaluate((element) => element.scrollHeight <= element.clientHeight + 2)).toBeTruthy();
@@ -20298,207 +20387,6 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   if (mobile) await expect(dragHandles.first()).toHaveCSS("opacity", "1");
 
   expect(errors).toEqual([]);
-});
-
-test("Professor Mari navigation can be repositioned within Home on desktop", async ({ page }, testInfo) => {
-  const mobile = testInfo.project.name.includes("mobile");
-  await page.addInitScript(() => {
-    if (sessionStorage.getItem("marinara:e2e:professor-position-cleared") === "true") return;
-    localStorage.removeItem("marinara:home:professor-position:v1");
-    sessionStorage.setItem("marinara:e2e:professor-position-cleared", "true");
-  });
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setHasCompletedOnboarding(true);
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
-  });
-
-  const handle = page.locator('[data-component="HomeBrowserHub.ProfessorDragHandle"]');
-  if (mobile) {
-    await expect(handle).toHaveCount(0);
-    return;
-  }
-
-  const assistant = page.locator('aside[aria-label="Professor Mari assistant"]');
-  const content = page.locator('[data-component="HomeBrowserHub.Content"]');
-  const sprite = page.locator('[data-component="HomeBrowserHub.ProfessorAssistantSprite"]');
-  const bubble = page.locator('[data-component="HomeBrowserHub.ProfessorAssistantBubble"]');
-  const bubbleTail = page.locator('[data-component="HomeBrowserHub.ProfessorAssistantBubbleTail"]');
-  const dragAnimation = page.locator('[data-component="HomeBrowserHub.ProfessorDragAnimation"]');
-  await expect(assistant).toBeVisible({ timeout: 6_000 });
-  await expect(sprite).toBeVisible();
-  await expect(bubbleTail).toHaveCount(1);
-  expect(
-    await bubble.evaluate((element) => ({
-      after: getComputedStyle(element, "::after").display,
-      before: getComputedStyle(element, "::before").display,
-    })),
-  ).toEqual({ after: "none", before: "none" });
-  await sprite.hover();
-  await expect(handle).toBeVisible();
-  await expect(handle).toHaveCSS("opacity", "1");
-  await expect(dragAnimation).toBeHidden();
-
-  const [handleBounds, initialSpriteBounds, contentBounds] = await Promise.all([
-    handle.boundingBox(),
-    sprite.boundingBox(),
-    content.boundingBox(),
-  ]);
-  expect(handleBounds).not.toBeNull();
-  expect(initialSpriteBounds).not.toBeNull();
-  expect(contentBounds).not.toBeNull();
-  await page.mouse.move(handleBounds!.x + handleBounds!.width / 2, handleBounds!.y + handleBounds!.height / 2);
-  await page.mouse.down();
-  await expect(assistant).toHaveAttribute("data-dragging", "true");
-  await expect(dragAnimation).toBeVisible();
-  await expect(bubble).toContainText("W-What are you doing? Put me down! (˶>⩊<˶)");
-  await page.waitForTimeout(80);
-  const firstDragTimeline = await dragAnimation.evaluate((element) => ({
-    currentTime: Number(element.getAnimations()[0]?.currentTime ?? 0),
-    frame: getComputedStyle(element).backgroundPositionX,
-  }));
-  expect(["3.1%", "34.48%", "66.12%", "98.15%"]).toContain(firstDragTimeline.frame);
-  const dragAnimationBounds = await dragAnimation.boundingBox();
-  expect(dragAnimationBounds).not.toBeNull();
-  const dragScaleX = dragAnimationBounds!.width / initialSpriteBounds!.width;
-  const dragScaleY = dragAnimationBounds!.height / initialSpriteBounds!.height;
-  expect(dragScaleX).toBeGreaterThan(1.16);
-  expect(dragScaleY).toBeGreaterThan(1.1);
-  expect(dragScaleX / dragScaleY).toBeGreaterThan(1.03);
-  expect(dragScaleX / dragScaleY).toBeLessThan(1.08);
-
-  const rightEdgeGrabX = contentBounds!.x + contentBounds!.width - 16 - initialSpriteBounds!.width * (1 - 0.45);
-  await page.mouse.move(rightEdgeGrabX, contentBounds!.y + 220, { steps: 6 });
-  await expect(bubble).toHaveAttribute("data-tail-side", "right");
-  const movedDragTimeline = await dragAnimation.evaluate((element) => ({
-    currentTime: Number(element.getAnimations()[0]?.currentTime ?? 0),
-    frame: getComputedStyle(element).backgroundPositionX,
-  }));
-  expect(movedDragTimeline.currentTime).toBeGreaterThan(firstDragTimeline.currentTime);
-  expect(["3.1%", "34.48%", "66.12%", "98.15%"]).toContain(movedDragTimeline.frame);
-  const rightTailStyle = await bubbleTail.evaluate((element) => {
-    const tail = getComputedStyle(element);
-    const outerTail = getComputedStyle(element, "::before");
-    return {
-      clipPath: outerTail.clipPath,
-      height: tail.height,
-      overlap: Number.parseFloat(tail.width) + Number.parseFloat(tail.right),
-      right: Number.parseFloat(tail.right),
-      transform: tail.transform,
-      width: tail.width,
-    };
-  });
-  expect(rightTailStyle.right).toBeLessThan(0);
-  expect(rightTailStyle.overlap).toBeGreaterThan(1);
-  expect(rightTailStyle.transform).toBe("matrix(-1, 0, 0, 1, 0, 0)");
-  await page.mouse.up();
-  await expect(assistant).toHaveAttribute("data-dragging", "false");
-  await expect(dragAnimation).toBeHidden();
-  await expect(bubble).toHaveAttribute("data-tail-side", "right");
-
-  await sprite.hover();
-  const repositionedHandleBounds = await handle.boundingBox();
-  expect(repositionedHandleBounds).not.toBeNull();
-  await page.mouse.move(
-    repositionedHandleBounds!.x + repositionedHandleBounds!.width / 2,
-    repositionedHandleBounds!.y + repositionedHandleBounds!.height / 2,
-  );
-  await page.mouse.down();
-  await expect(assistant).toHaveAttribute("data-dragging", "true");
-  await expect(dragAnimation).toBeVisible();
-  expect(
-    await dragAnimation.evaluate((element) =>
-      Number(element.getAnimations()[0]?.currentTime ?? Number.POSITIVE_INFINITY),
-    ),
-  ).toBeLessThan(150);
-
-  const dragTarget = {
-    x: contentBounds!.x + contentBounds!.width * 0.35,
-    y: contentBounds!.y + Math.min(220, contentBounds!.height * 0.35),
-  };
-  await page.mouse.move(dragTarget.x, dragTarget.y, { steps: 10 });
-  await expect(bubble).toHaveAttribute("data-tail-side", "left");
-  const leftTailStyle = await bubbleTail.evaluate((element) => {
-    const tail = getComputedStyle(element);
-    const outerTail = getComputedStyle(element, "::before");
-    return {
-      clipPath: outerTail.clipPath,
-      height: tail.height,
-      overlap: Number.parseFloat(tail.width) + Number.parseFloat(tail.left),
-      left: Number.parseFloat(tail.left),
-      transform: tail.transform,
-      width: tail.width,
-    };
-  });
-  expect(leftTailStyle.left).toBeLessThan(0);
-  expect(leftTailStyle.overlap).toBeGreaterThan(1);
-  expect(leftTailStyle.transform).toBe("none");
-  expect(rightTailStyle.clipPath).toBe(leftTailStyle.clipPath);
-  expect(rightTailStyle.width).toBe(leftTailStyle.width);
-  expect(rightTailStyle.height).toBe(leftTailStyle.height);
-  const movedSpriteBounds = await sprite.boundingBox();
-  expect(movedSpriteBounds).not.toBeNull();
-  expect(Math.abs(movedSpriteBounds!.x - initialSpriteBounds!.x)).toBeGreaterThan(100);
-  expect(Math.abs(movedSpriteBounds!.x + movedSpriteBounds!.width * 0.45 - dragTarget.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(movedSpriteBounds!.y + movedSpriteBounds!.height * 0.09 - dragTarget.y)).toBeLessThanOrEqual(1);
-  expect(movedSpriteBounds!.x).toBeGreaterThanOrEqual(contentBounds!.x + 15);
-  expect(movedSpriteBounds!.y).toBeGreaterThanOrEqual(contentBounds!.y + 27);
-  expect(movedSpriteBounds!.x + movedSpriteBounds!.width).toBeLessThanOrEqual(
-    contentBounds!.x + contentBounds!.width - 15,
-  );
-  expect(movedSpriteBounds!.y + movedSpriteBounds!.height).toBeLessThanOrEqual(
-    contentBounds!.y + contentBounds!.height - 15,
-  );
-  await page.mouse.up();
-  await expect(assistant).toHaveAttribute("data-dragging", "false");
-  await expect(dragAnimation).toBeHidden();
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const position = JSON.parse(localStorage.getItem("marinara:home:professor-position:v1") ?? "null") as {
-          x?: number;
-          y?: number;
-        } | null;
-        return Boolean(position && position.x! >= 0 && position.x! <= 1 && position.y! >= 0 && position.y! <= 1);
-      }),
-    )
-    .toBe(true);
-
-  const droppedPosition = await sprite.boundingBox();
-  await page.reload();
-  await expect(sprite).toBeVisible({ timeout: 6_000 });
-  await expect(sprite.locator(".mari-home-professor-popup__idle-stage--active")).toBeVisible({ timeout: 3_000 });
-  const restoredPosition = await sprite.boundingBox();
-  expect(droppedPosition).not.toBeNull();
-  expect(restoredPosition).not.toBeNull();
-  expect(Math.abs(restoredPosition!.x - droppedPosition!.x)).toBeLessThanOrEqual(8);
-  expect(Math.abs(restoredPosition!.y - droppedPosition!.y)).toBeLessThanOrEqual(8);
-
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
-  });
-  await expect(sprite).toBeHidden();
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
-  });
-  await expect(sprite).toBeVisible({ timeout: 1_000 });
-  await expect(
-    page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true }),
-  ).toBeVisible();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1"))).toBeNull();
-  const resetPosition = await sprite.boundingBox();
-  expect(resetPosition).not.toBeNull();
-  expect(resetPosition!.x).toBeLessThan(contentBounds!.x + contentBounds!.width / 2);
-  await expect
-    .poll(async () => {
-      const position = await sprite.boundingBox();
-      return position ? position.y + position.height : Number.POSITIVE_INFINITY;
-    })
-    .toBeLessThanOrEqual(contentBounds!.y + contentBounds!.height);
 });
 
 test("Home widgets lift and brighten on fine-pointer hover", async ({ page }, testInfo) => {
@@ -22462,7 +22350,13 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       store.closeBotBrowser();
       store.setTrackerPanelEnabled(true);
       store.setTrackerPanelOpen(true, chatId);
+      // The chat's Trackers button now shows and hides the selected panel (8d79bd182); open it the way it does.
+      const { TRACKER_PANEL_BUBBLE_ID, useFloatingWindowStore } = await import(
+        "/src/stores/floating-window.store.ts" as string
+      );
+      useFloatingWindowStore.getState().openWindow(TRACKER_PANEL_BUBBLE_ID, null, { focus: false });
     }, chat.id);
+    await expect(page.locator('[data-component="TrackerDataSidebarMobile"]')).toBeVisible();
     await expect(shell).not.toHaveAttribute("data-chat-surface-active");
     await expect.poll(() => shell.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
 
@@ -22493,6 +22387,29 @@ test("mobile chat composer follows the visual viewport above the software keyboa
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }
+});
+
+test("page backing keeps the app running when the browser refuses canvas reads", async ({ page }) => {
+  // WebKit throws InvalidStateError from getImageData under memory pressure (#7241).
+  await page.addInitScript(() => {
+    CanvasRenderingContext2D.prototype.getImageData = () => {
+      throw new DOMException("Unable to get image data from canvas", "InvalidStateError");
+    };
+  });
+  await page.goto("/");
+  await expect(page.locator('[data-component="AppShell"]')).toBeVisible();
+  await page.evaluate(async () => {
+    const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+    useUIStore.getState().setAppBackgroundColor("#234567");
+  });
+  await expect(page.getByText("Marinara hit a recoverable UI error.")).toHaveCount(0);
+  // Without the canvas, the backing keeps the theme's own background color, unflattened.
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#234567");
+  await expect
+    .poll(() => page.locator("html").evaluate((element) => element.style.getPropertyValue("--marinara-page-backing")))
+    .toBe("#234567");
 });
 
 test("mobile Roleplay releases its inactive background after a crossfade", async ({ page }, testInfo) => {
@@ -23176,12 +23093,13 @@ for (const theme of ["dark", "light"] as const) {
 
     const panel = page.locator('[data-component="RightPanel"]');
     const newButton = panel.getByTitle("New", { exact: true });
-    for (const surface of [
-      page.locator('[data-component="CharactersTopbarUnderline"]'),
-      panel.locator('[data-component="RightPanelHeaderIcon"]'),
-      newButton,
-    ]) {
-      await expect(surface).toBeVisible();
+    const underline = page.locator('[data-component="CharactersTopbarUnderline"]');
+    // Phones move the panel buttons into the topbar More menu (fdd0df0ce), so the underline stays on its hidden button.
+    const phoneTopbar = testInfo.project.name.startsWith("mobile");
+    if (phoneTopbar) await expect(page.locator('[data-tour="panel-characters"]')).toBeHidden();
+    for (const surface of [underline, panel.locator('[data-component="RightPanelHeaderIcon"]'), newButton]) {
+      if (phoneTopbar && surface === underline) await expect(surface).toHaveCount(1);
+      else await expect(surface).toBeVisible();
       await expect(surface).toHaveCSS(
         "background-image",
         /linear-gradient\(135deg, rgb\(244, 114, 182\), rgb\(244, 63, 94\)\)/,
@@ -23449,8 +23367,8 @@ test("mobile Game keeps CYOA usable above four HUD widgets", async ({ page, requ
 
     const viewport = { width: 390, height: 700 };
     await page.setViewportSize(viewport);
-    await expect(page.locator('.mari-window-bubble[data-window="control:game"]')).toBeVisible();
-    await expect(page.locator('[data-tour="game-map"]').getByRole("button", { name: "Open map" })).toBeVisible();
+    await expect(page.locator("[data-chat-tools-menu-button]")).toBeVisible();
+    await expect(page.locator('.mari-window-bubble[data-window="control:map"]')).toBeVisible();
 
     await expect
       .poll(async () => {
@@ -23607,11 +23525,16 @@ test("Game HUD compacts on tablet widths when its surface mounts after the widge
     // survive being measured with nothing to measure and still compact once the
     // surface arrives. Holding here pins that ordering rather than leaving it to
     // runner timing.
+    //
+    // Every page request waits on the same hold, not only the first one: the chat
+    // view now mounts only once the chat itself has loaded (#6850), so the dev
+    // build's StrictMode remount cancels the transcript's first fetch and a retry
+    // carries the page that actually renders. Releasing that retry at once let the
+    // messages land before the lazy GameSurface chunk, skipping the branch.
     let sawMessagesLoadingBranch = false;
-    let messagesPageHeld = false;
+    let messagesPageHold: Promise<void> | null = null;
     await page.route("**/api/chats/*/messages**", async (route) => {
-      if (!messagesPageHeld) {
-        messagesPageHeld = true;
+      messagesPageHold ??= (async () => {
         await page
           .waitForFunction(
             () => document.querySelector('[data-component="GameSurface.MessagesLoading"]') !== null,
@@ -23653,7 +23576,8 @@ test("Game HUD compacts on tablet widths when its surface mounts after the widge
               }),
           )
           .catch(() => undefined);
-      }
+      })();
+      await messagesPageHold;
       await route.continue();
     });
 
@@ -24054,7 +23978,7 @@ test("Background library organization works with desktop drag and touch drag", a
     const folder = page.locator(`[data-background-folder-id="${folderId}"]`);
     await expect(folder).toBeVisible();
     if (testInfo.project.name.includes("mobile")) {
-      const dragHandle = backgroundRow.getByTitle(/^Drag /);
+      const dragHandle = backgroundRow.locator("[data-drag-surface]");
       const startRect = await dragHandle.boundingBox();
       expect(startRect).not.toBeNull();
       const start = {

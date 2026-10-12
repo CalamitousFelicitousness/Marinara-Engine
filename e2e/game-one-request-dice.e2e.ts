@@ -4,10 +4,6 @@ import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-// The settings' explanations, from the English catalog: reworded help is still the right help here.
-const en = JSON.parse(
-  readFileSync(new URL("../packages/client/src/localization/locales/en.json", import.meta.url), "utf8"),
-) as Record<string, string>;
 
 // The two halves of the branch block. Exactly one of them survives the turn, and which
 // one is genuinely random, so every assertion below is written about "one and not the
@@ -188,7 +184,9 @@ test("Game finishes a rolled turn in one request, and leaves the shipped two-req
     const oneRequest = () => section.getByLabel("Finish rolled turns in one request", { exact: true });
     const narrateOutcomes = () => section.getByLabel("Narrate dice outcomes immediately", { exact: true });
     await expect(oneRequest()).not.toBeChecked();
-    await expect(section).toContainText(en["chat.settings.tools.oneRequestDiceHelp"]!);
+    await expect(section).toContainText(
+      "the Game Master can't steer the result because it never sees the number first",
+    );
     await expect(narrateOutcomes()).toBeEnabled();
     await expect(narrateOutcomes()).toBeChecked();
     await expect(section).not.toContainText("Not used while one-request dice is on");
@@ -481,7 +479,7 @@ test("Game spends the sighted pool in order and leaves an overflowed check for t
     let section = await openTools();
     const dicePool = () => section.getByLabel("Let the Game Master see one die of each size", { exact: true });
     await expect(dicePool()).not.toBeChecked();
-    await expect(section).toContainText(en["chat.settings.tools.dicePoolHelp"]!);
+    await expect(section).toContainText("it can steer the outcome more than the other options allow");
     await section
       .locator("label")
       .filter({ has: page.getByLabel("Let the Game Master see one die of each size", { exact: true }) })

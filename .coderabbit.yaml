@@ -88,7 +88,7 @@ reviews:
         mode: "warning"
         instructions: |
           Pass if the PR doesn't change CHANGELOG.md, or if it bumps the version in the root package.json (a release PR).
-          Fail if any other PR adds, edits or removes CHANGELOG.md entries: the changelog is compiled from merged PRs at release time, and per-PR entries make every open PR conflict.
+          Fail if any other PR changes CHANGELOG.md in any way: the changelog is compiled from merged PRs at release time, and per-PR edits make every open PR conflict.
       - name: "Existing tests not weakened"
         mode: "warning"
         instructions: |

@@ -52,8 +52,7 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Run `pnpm check` as the baseline validation command.
 - Before pushing, follow the local validation and reporting requirements in `CONTRIBUTING.md § Validation`.
 - Run `pnpm version:check` when you touch release metadata, version-bearing files, or README release references.
-- Do not add or edit `CHANGELOG.md` entries in feature or fix PRs. When every PR added a line under `[Unreleased]`, each merge made the other open PRs conflict on that file, and resolving the conflict reran all their checks. The changelog is now compiled from the PRs merged to `staging` before each main release (see `CONTRIBUTING.md § Standard release flow`), so the PR description's "What changed" is what release notes are written from.
-- Write the PR description's "What changed" from the final diff, not from the issue, and say plainly when something that worked before no longer does. See `.github/agents/chai-workflow.md § Universal Operating Rules`.
+- Never add or edit `CHANGELOG.md` in a PR; release notes are compiled from merged PRs' "What changed" before each release. See `CONTRIBUTING.md § Pull Request Expectations`.
 
 ## Temporary Tests
 

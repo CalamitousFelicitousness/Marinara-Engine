@@ -497,6 +497,32 @@ export function getRelevantCardVariables(
   return variables.filter((variable) => used.has(variable.variableName));
 }
 
+/**
+ * The names the Card tab offers as insertable chips, in card order.
+ *
+ * Lives here, not in the editor, so the rule can be pinned by a regression
+ * instead of a test that restates it — a copy of the rule would keep passing
+ * after the editor's changed.
+ *
+ * The gate is the user's: nothing at all unless onboarding is enabled and the
+ * card actually declares questions. Every declared name is then offered, whether
+ * or not a field reads it yet. A usage filter would invert the workflow, because
+ * a name is unused precisely until the author inserts it — the chip would only
+ * appear after the tag had been typed by hand. The unused warning reports the
+ * "nothing reads this" case instead, and one answer may belong in several fields.
+ */
+export function getCardVariableChipNames(onboarding: CharacterOnboarding | null | undefined): string[] {
+  if (!onboarding?.enabled) return [];
+  const names = new Set<string>();
+  for (const variable of onboarding.cardVariables ?? []) {
+    const name = variable.variableName.trim();
+    // A blank name would render an unusable `{{}}`; the validator already
+    // reports it separately.
+    if (name) names.add(name);
+  }
+  return [...names];
+}
+
 /** The next card question without an answer, or null when they are all answered. */
 export function getNextCardVariable(
   onboarding: CharacterOnboarding,
@@ -554,9 +580,13 @@ export function resolveCardVariables(
     if (!isAnswered(ownAnswer(answers, name))) continue;
     taken.add(name);
     const value = blankOnboardingNames(names, ctx.variables[name] ?? "").trim();
-    // An unresolved leftover means the answer is not usable yet; writing it
-    // would put a literal `{{tag}}` in the prompt.
-    if (!value || /\{\{\w+\}\}/.test(value)) continue;
+    // A leftover tag is only usable when something still resolves it. The engine
+    // runs its built-in passes before the `{{name}}` catch-all, so `{{user}}` /
+    // `{{char}}` stay live and are filled in when the prompt is built — dropping
+    // them would lose an answer like `"{{user}}'s old friend"`. Any OTHER
+    // leftover names a question, which nothing resolves once this map is
+    // written, so the prompt would show it raw and the answer is not stored.
+    if (!value || unresolvedNonMacroName(value) !== null) continue;
     entries.push([name, value]);
     stored += 1;
   }

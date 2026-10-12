@@ -132,6 +132,7 @@ import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../..
 import {
   applyBakedGreetingImages,
   findGreetingImageUrls,
+  getCardVariableChipNames,
   normalizeAvatarCrop,
   readBakedGreetingImages,
   restoreBakedGreetingImages,
@@ -1539,16 +1540,12 @@ function CharacterCardTab({
     [formData.extensions.onboarding],
   );
   const onboarding = parsedOnboarding.success ? parsedOnboarding.data : null;
-  // Same list the Onboarding tab's chips offer, and the same "used or not" rule:
-  // a question may legitimately be inserted in more than one field, and the
-  // unused warning already says so on the Onboarding tab. Offering every
-  // declared name is what makes a freshly written question insertable at all.
-  const chipNames = useMemo(() => {
-    if (!onboarding?.enabled) return [];
-    return [
-      ...new Set((onboarding.cardVariables ?? []).map((variable) => variable.variableName.trim()).filter(Boolean)),
-    ];
-  }, [onboarding]);
+  // Shared with the regression, so the "which names are offered" rule has one
+  // home: a question may legitimately be inserted in more than one field, and the
+  // unused warning already reports the "nothing reads this" case on the
+  // Onboarding tab. Offering every declared name is what makes a freshly written
+  // question insertable at all.
+  const chipNames = useMemo(() => getCardVariableChipNames(onboarding), [onboarding]);
   // Which field last had the caret, so its chips are the ones on screen — the
   // Onboarding tab's fields behave this way, and the Card tab should not differ.
   const [activeField, setActiveField] = useState<CardVariableField | null>(null);
@@ -1564,8 +1561,12 @@ function CharacterCardTab({
     const start = textarea?.selectionStart ?? current.length;
     const end = textarea?.selectionEnd ?? current.length;
     const next = current.slice(0, start) + token + current.slice(end);
+    // Written WITHOUT quote normalisation: `description`, `personality` and
+    // `scenario` normalise through `updateField`, and `backstory` / `appearance`
+    // through the extension setter, so both paths would otherwise rewrite every
+    // quote already in the author's text as a side effect of inserting one tag.
     if (field === "backstory" || field === "appearance") updateExtensionVerbatim(field, next);
-    else updateField(field, next);
+    else updateFormData((data) => ({ ...data, [field]: next }));
     requestAnimationFrame(() => {
       textarea?.focus();
       textarea?.setSelectionRange(start + token.length, start + token.length);

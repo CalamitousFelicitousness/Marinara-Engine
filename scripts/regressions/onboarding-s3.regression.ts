@@ -12,6 +12,7 @@ import {
   dropUnreadableOnboarding,
   findUnresolvedCardVariableUses,
   formatTextQuotes,
+  getCardVariableChipNames,
   getNextCardVariable,
   getRelevantCardVariables,
   hasOnboardingContent,
@@ -113,8 +114,8 @@ assert.deepEqual(
   "unanswered questions are omitted entirely",
 );
 
-// A value that still holds a bare tag is dropped, never stored: storing it would
-// put a literal `{{...}}` into every prompt from then on.
+// A value still holding a tag nothing will resolve is dropped, never stored:
+// storing it would put a literal `{{...}}` into every prompt from then on.
 assert.deepEqual(
   resolveCardVariables(
     onboarding({
@@ -124,6 +125,48 @@ assert.deepEqual(
   ),
   {},
   "an answer that does not resolve is dropped, never stored as a raw tag",
+);
+
+// A BASE macro is different, and this is the distinction review caught: the
+// engine runs its built-in passes before the `{{name}}` catch-all, so `{{user}}`
+// and `{{char}}` stay live and are filled in when the prompt is built. Treating
+// every `{{tag}}` as unusable silently dropped a perfectly good answer like
+// "{{user}}'s old friend" — the same rule the seeding path already applies.
+assert.deepEqual(
+  resolveCardVariables(
+    onboarding({
+      cardVariables: [
+        { id: "u", variableName: "bond", question: "?", options: [option("o", "{{user}}'s old friend")] },
+      ],
+    }),
+    answers({ bond: { optionIds: ["o"] } }),
+  ),
+  { bond: "{{user}}'s old friend" },
+  "a base macro in an answer is kept, so it resolves per user when the prompt is built",
+);
+assert.deepEqual(
+  resolveCardVariables(
+    onboarding({
+      cardVariables: [{ id: "c", variableName: "tie", question: "?", options: [option("o", "{{char}}'s rival")] }],
+    }),
+    answers({ tie: { optionIds: ["o"] } }),
+  ),
+  { tie: "{{char}}'s rival" },
+  "{{char}} is a base macro too, and survives the same way",
+);
+// But a base macro mixed with a name nothing resolves still drops the answer:
+// the unresolved half would reach the model raw.
+assert.deepEqual(
+  resolveCardVariables(
+    onboarding({
+      cardVariables: [
+        { id: "m", variableName: "mixed", question: "?", options: [option("o", "{{user}} of {{nowhere}}")] },
+      ],
+    }),
+    answers({ mixed: { optionIds: ["o"] } }),
+  ),
+  {},
+  "a base macro does not excuse a second, unresolvable tag in the same value",
 );
 
 // The server rejects a whole `macroVariables` patch over one bad name, which
@@ -772,15 +815,15 @@ assert.equal(listNames([]), "", "an empty list yields no stray text");
 
 // ── Card-tab chips (#7434, S4) ──
 // The Card tab offers the same "Available variables" chips the Onboarding tab
-// does, so an author can insert a card question without leaving the tab. The
-// rule is the Onboarding tab's: EVERY declared name is offered, used or not,
-// because one answer may legitimately be inserted into several fields — and a
-// freshly written question must be insertable before it is used anywhere. The
-// unused warning already covers the "you have not used this" case, so a usage
-// filter here would only hide the chip exactly when the author needs it.
-const chipNamesFor = (block: CharacterOnboarding, on: boolean): string[] =>
-  on ? [...new Set((block.cardVariables ?? []).map((variable) => variable.variableName.trim()).filter(Boolean))] : [];
-
+// does, so an author can insert a card question without leaving the tab. The rule
+// lives in `getCardVariableChipNames`, which the editor itself calls — an inline
+// copy here would keep passing after the editor's version changed.
+//
+// EVERY declared name is offered, used or not: an answer may legitimately be
+// inserted into several fields, and a freshly written question must be
+// insertable before it is used anywhere. A usage filter would hide the chip
+// exactly when the author needs it, and the unused warning already covers the
+// "nothing reads this" case.
 const chipBlock = onboarding({
   cardVariables: [
     { id: "a", variableName: "relationshipToUser", question: "Who?" },
@@ -790,58 +833,60 @@ const chipBlock = onboarding({
 }) as CharacterOnboarding;
 
 assert.deepEqual(
-  chipNamesFor(chipBlock, true),
+  getCardVariableChipNames(chipBlock),
   ["relationshipToUser", "tone", "unusedAnywhere"],
   "every declared card question is offered, including one used in no field yet",
 );
+// The disabled block is the whole point of the user's first gate: an off toggle
+// means nothing is read, so nothing is offered even though names are declared.
 assert.deepEqual(
-  chipNamesFor(chipBlock, false),
+  getCardVariableChipNames({ ...chipBlock, enabled: false }),
   [],
   "the onboarding toggle being off offers no chips, so a disabled block is not read",
 );
+assert.deepEqual(getCardVariableChipNames(null), [], "a card with no onboarding block at all offers no chips");
 assert.deepEqual(
-  chipNamesFor(onboarding({ cardVariables: [] }) as CharacterOnboarding, true),
+  getCardVariableChipNames(onboarding({ cardVariables: [] }) as CharacterOnboarding),
   [],
   "an enabled block with no card questions offers no chips",
 );
 // A blank name would render an unusable `{{}}` chip, and the validator already
 // reports the empty name separately.
 assert.deepEqual(
-  chipNamesFor(
+  getCardVariableChipNames(
     onboarding({
       cardVariables: [
         { id: "a", variableName: "  ", question: "Blank" },
         { id: "b", variableName: "kept", question: "Kept" },
       ],
     }) as CharacterOnboarding,
-    true,
   ),
   ["kept"],
   "a blank name is not offered as a chip",
 );
 // One name declared twice must produce one chip, not two identical buttons.
 assert.deepEqual(
-  chipNamesFor(
+  getCardVariableChipNames(
     onboarding({
       cardVariables: [
         { id: "a", variableName: "tone", question: "One" },
         { id: "b", variableName: "tone", question: "Two" },
       ],
     }) as CharacterOnboarding,
-    true,
   ),
   ["tone"],
   "a duplicated name yields a single chip",
 );
 
-// ── A chip click must not re-format the author's text (#7434, S4) ──
-// A card-variable chip writes into a card field. `backstory` and `appearance`
-// live under extensions, whose setter normalises quotes to the user's preferred
-// style — correct while typing, surprising for a chip, because inserting one tag
-// also rewrote every quote already in the field. Probed directly:
-// `formatTextQuotes` maps a field ONTO the active format, so the change lands
-// whenever the text and the setting disagree. That is why it is easy to miss by
-// hand: it is invisible when the text already matches the setting.
+// ── Why a chip click must not re-format the author's text (#7434, S4) ──
+// This pins the LIBRARY behaviour that made the bug possible, since that is the
+// part a regression can reach: `formatTextQuotes` maps a field ONTO the active
+// format, so it rewrites text whenever the two disagree. All five Card fields go
+// through a setter that calls it, which is why inserting one tag used to rewrite
+// every quote already in the field. The editor's own bypass is pinned by
+// inspection, not here — it is a call-site choice, not a pure function.
+// The consequence worth remembering: the bug is INVISIBLE when the field's text
+// already matches the setting, which is why a hand test found nothing.
 const straight = '- She said "hi" once';
 const curly = "- She said \u201chi\u201d once";
 const possessive = "her mother's life";
@@ -865,13 +910,6 @@ assert.equal(
   formatTextQuotes(straight, "straight"),
   straight,
   "matching style is a no-op, which is why a hand test on matching text shows nothing",
-);
-// The chip's own insert is a plain splice; nothing in it touches quotes.
-const spliced = (text: string, start: number, token: string) => text.slice(0, start) + token + text.slice(start);
-assert.equal(
-  spliced(possessive, possessive.length, " {{relationshipToUser}}"),
-  possessive + " {{relationshipToUser}}",
-  "the chip's splice leaves the existing text byte-identical",
 );
 
 console.info("onboarding s3 (card variables) regressions passed.");

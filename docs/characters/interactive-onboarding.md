@@ -44,7 +44,7 @@ Lower down the same tab there is a second list, **Card Questions**. Its question
 {{char}} treats {{relationshipToUser}} with open warmth.
 ```
 
-**Description**, **Personality**, **Backstory**, **Appearance**, and **Scenario** are the fields the model reads, so those are the ones a character answer can reach. Both **Backstory** and **Appearance** live under the card's `extensions` block, which the editor and the questions window both handle for you.
+**Description**, **Personality**, **Backstory**, **Appearance**, and **Scenario** are the fields the model reads, so those are the ones a character answer can reach.
 
 The answers are stored as chat variables, so the card reads a different value in every chat and never has to be edited. A card question is asked whenever the card is in the chat, whether or not the player creates a persona — the window shows an **About you** section only when one is being made.
 

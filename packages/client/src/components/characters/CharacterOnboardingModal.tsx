@@ -129,6 +129,19 @@ export function CharacterOnboardingModal({
     () => (personaOnboarding ? getOnboardingVariables(personaOnboarding) : []),
     [personaOnboarding],
   );
+  const personaAnswers = useMemo(
+    () => answersFor(personaVariables, overridesFor(PERSONA_ANSWER_SCOPE)),
+    [personaVariables, overridesFor],
+  );
+  // The name the player is typing RIGHT NOW wins over a persona picked earlier:
+  // a persona question heading names the persona being built, and a card question
+  // heading names the player. Both read this one value, so a card question cannot
+  // show `{{user}}` while the persona question beside it shows the typed name.
+  const typedPlayerName = (() => {
+    const answer = personaAnswers[ONBOARDING_PLAYER_VARIABLE];
+    return answer && "text" in answer ? answer.text.trim() : "";
+  })();
+  const questionPlayerName = typedPlayerName || playerName;
   // Each card's questions are resolved against ITS own fields, and the persona's
   // against the persona list: they resolve different things, so they keep
   // separate answer maps.
@@ -140,14 +153,10 @@ export function CharacterOnboardingModal({
           card,
           cardAnswers,
           questions: getRelevantCardVariables(card.onboarding, card.cardFields, cardAnswers),
-          questionTexts: resolveCardQuestions(card.onboarding, cardAnswers, card.name, playerName),
+          questionTexts: resolveCardQuestions(card.onboarding, cardAnswers, card.name, questionPlayerName),
         };
       }),
-    [cards, overridesFor, playerName],
-  );
-  const personaAnswers = useMemo(
-    () => answersFor(personaVariables, overridesFor(PERSONA_ANSWER_SCOPE)),
-    [personaVariables, overridesFor],
+    [cards, overridesFor, questionPlayerName],
   );
   const personaQuestions = useMemo(
     () => (withPersona && personaOnboarding ? getRelevantOnboardingVariables(personaOnboarding, personaAnswers) : []),

@@ -19,6 +19,7 @@ import { resolveMessageReasoningDisplay } from "../../packages/client/src/lib/me
 import { shouldFormatTextareaQuotes } from "../../packages/client/src/lib/textarea-quotes.js";
 import {
   findLatestTTSAutoplayMessage,
+  findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
 } from "../../packages/client/src/lib/tts-autoplay.js";
@@ -981,6 +982,30 @@ assert.match(
   /type: "message_saved",\s*data: savedPart \?\? part\.message,\s*remainingContent: holdForTextRewrite\s*\?\s*""/u,
   "while a rewrite agent holds the reply, an earlier part must not type out the unrewritten rest",
 );
+{
+  const part = (id: string, characterId: string, extra: unknown) => ({
+    id,
+    role: "assistant",
+    content: id,
+    characterId,
+    extra,
+  });
+  const history = [
+    part("other", "cyno", { continuesAfterSceneBreak: true }),
+    part("first", "mari", { continuesAfterSceneBreak: true }),
+    part("second", "mari", JSON.stringify({ continuesAfterSceneBreak: true })),
+    part("last", "mari", {}),
+  ];
+  assert.deepEqual(
+    findSplitReplyEarlierParts(history, history[3]!).map((message) => message.id),
+    ["first", "second"],
+    "stream-end autoplay must find a split reply's earlier parts from the saved rows",
+  );
+  assert.match(
+    chatAreaSource,
+    /speakTTSAutoplayMessage\(lastMsg, activeChatId, generation, findSplitReplyEarlierParts\(msgs, lastMsg\)\)/u,
+  );
+}
 const galleryCreateIndex = generateRouteSource.indexOf("const galleryEntry = await galleryStore.create");
 const illustrationMessageLookupIndex = generateRouteSource.indexOf(
   "const msgRow = await chats.getMessage(messageId)",

@@ -109,6 +109,7 @@ import {
 } from "../../lib/tts-roleplay-speaker-extractor";
 import {
   findLatestTTSAutoplayMessage,
+  findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
   TTS_AUTOPLAY_MESSAGE_READY_EVENT,
@@ -3140,7 +3141,7 @@ const LocalChatArea = memo(function LocalChatArea({
       })
     )
       return;
-    void speakTTSAutoplayMessage(lastMsg, activeChatId, generation);
+    void speakTTSAutoplayMessage(lastMsg, activeChatId, generation, findSplitReplyEarlierParts(msgs, lastMsg));
   }, [activeChatId, isStreaming, speakTTSAutoplayMessage]);
 
   const newestMsgId = msgData?.pages[0]?.[msgData.pages[0].length - 1]?.id;

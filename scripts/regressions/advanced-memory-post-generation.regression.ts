@@ -2913,7 +2913,6 @@ try {
   assert.match(JSON.stringify(regeneratedFirst.extra), /FIRST_SCENE_DOCUMENT/u);
   assert.doesNotMatch(JSON.stringify(regeneratedFirst.extra), /LATER_SCENE_DOCUMENT/u);
   assert.equal(extraOf(regeneratedFirst).continuesAfterSceneBreak, true, "and it stays an earlier part");
-  mainReply = splitReply;
   mainReply = "\n\n***\n\nCONTINUED_SCENE";
   await splitGenerate(splitChat.id, { continueMessageId: splitLast.id });
   assert.equal(await countOf(splitChat.id), 3, "Continue extends the message");

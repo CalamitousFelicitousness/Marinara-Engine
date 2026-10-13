@@ -2090,10 +2090,9 @@ export function visibleTextAsksApplyPermission(text: string): boolean {
 export function workspaceTextClaimsHeldChange(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/g, " ");
   return (
-    /\b(held|staged|queued)\b.{0,20}\bfor (your|the user'?s?) (review|approval|accept\w*)/.test(normalized) ||
+    /\b(held|staged|queued)\b.{0,20}\bfor (your |the user'?s? )?(review|approval|accept\w*)/.test(normalized) ||
     /\bchange cards? (is|are) (ready|staged|waiting|held)\b/.test(normalized) ||
     /\bchanges? (is|are)? ?(ready|staged|waiting|held)\b.{0,60}\b(review|accept|approv\w*)/.test(normalized) ||
-    /\b(awaiting|waiting for) your (approval|accept\w*|review)\b/.test(normalized) ||
     /\bnothing was applied yet\b/.test(normalized)
   );
 }

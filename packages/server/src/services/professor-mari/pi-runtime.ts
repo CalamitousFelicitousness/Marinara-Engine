@@ -392,7 +392,12 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       return "done" as const;
     }
     // A final answer that says a change is held, when nothing was held, is false: one repair, then an honest line.
-    if (!hasWorkspaceCalls && !state.endedWithDeferral && workspaceTextClaimsHeldChange(current.text)) {
+    // Not after an applied change: a summary of real work must not be replaced by "nothing changed".
+    const appliedAny = input.commandResults.some(
+      (result) =>
+        result.success && isMutatingWorkspaceCommand({ id: result.id, name: result.name, arguments: result.input }),
+    );
+    if (!hasWorkspaceCalls && !state.endedWithDeferral && !appliedAny && workspaceTextClaimsHeldChange(current.text)) {
       if (!heldClaimRepaired) {
         heldClaimRepaired = true;
         return {

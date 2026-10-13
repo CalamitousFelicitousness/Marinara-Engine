@@ -372,12 +372,14 @@ try {
       "I have changes ready. Review them below and accept to apply them; nothing was applied yet.",
       "Held for your review — the change card is ready.",
       "The change is staged and waiting for your approval.",
+      "The rename is held for review.",
     ])
       assert.equal(workspaceTextClaimsHeldChange(text), true, text);
     for (const text of [
       "The character card has a tag field you can edit.",
       "I read the card and the lorebook; here is what they say.",
       "Want me to make that change?",
+      "I'm waiting for your approval to continue.",
     ])
       assert.equal(workspaceTextClaimsHeldChange(text), false, text);
     const readCall = (id: string) => ({ id, name: "read", args: { path: "hello.txt" } });
@@ -392,6 +394,16 @@ try {
     const stored = await lastAssistant(chat.id);
     assert.equal(stored?.content, "I read the file; no change was made.");
     assert.doesNotMatch(stored?.content ?? "", /Held for your review/u);
+
+    // The model repeats the claim after the repair: the honest line replaces it, with no further request.
+    const repeated = await start("pi held claim repeated", [
+      reply("", [readCall("held-r2")]),
+      reply("Held for your review — the change card is ready."),
+      reply("Held for your review — the change card is ready."),
+    ]);
+    await repeated.done;
+    assert.equal(requests.length, 3);
+    assert.match((await lastAssistant(repeated.chat.id))?.content ?? "", /did not make or hold any change/u);
   }
 
   // (d) Abort stops the run immediately: no tool starts, no further request.

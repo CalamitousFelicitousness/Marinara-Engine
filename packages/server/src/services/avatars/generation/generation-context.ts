@@ -292,7 +292,6 @@ export function avatarImageRequestSize(
 }
 
 export interface AvatarImageEditRequest {
-  db: DB;
   image: AvatarImageConnection;
   prompt: string;
   negativePrompt?: string;

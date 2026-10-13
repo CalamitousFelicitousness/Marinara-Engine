@@ -321,7 +321,6 @@ assert.equal(
   try {
     const address = server.address() as { port: number };
     const edited = await drawAvatarImageEdit({
-      db: {} as never,
       image: {
         conn: {
           id: "image-fixture",

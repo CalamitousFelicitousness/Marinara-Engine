@@ -26,6 +26,7 @@ import {
 } from "@marinara-engine/shared";
 import type { DB } from "../../../db/connection.js";
 import { isAllowedImageBuffer } from "../../../utils/security.js";
+import { resolveReviewedImagePromptSubmission } from "../../image/image-prompt-review.js";
 import { getSharp } from "../../image/sharp-runtime.js";
 import { readAvatarConfig, readAvatarFile, saveExtractedAvatar } from "../storage.js";
 import {
@@ -186,16 +187,19 @@ export async function avatarVariantPrompt(
   variant: AvatarPngtuberVariant,
   override?: AvatarPromptOverride,
 ): Promise<{ prompt: string; negativePrompt: string }> {
-  if (override?.prompt.trim()) {
-    return { prompt: override.prompt.trim(), negativePrompt: override.negativePrompt?.trim() ?? "" };
-  }
   const id = VARIANT_TEMPLATE_IDS[variant];
   const rendered = renderAvatarPromptTemplate(context.template(id), id, {
     characterName: context.name || "the character",
     appearance: context.appearance,
     expression: label.replace(/[_-]+/gu, " "),
   });
-  return compileAvatarImagePrompt(db, image, rendered);
+  const compiled = await compileAvatarImagePrompt(db, image, rendered);
+  return resolveReviewedImagePromptSubmission({
+    generatedPrompt: compiled.prompt,
+    generatedNegativePrompt: compiled.negativePrompt,
+    promptOverride: override?.prompt,
+    negativePromptOverride: override?.negativePrompt,
+  });
 }
 
 function requestedLabels(request: AvatarPngtuberVariantsRequest, setupLabels: string[]): string[] {
@@ -273,7 +277,6 @@ export async function generatePngtuberVariants(
             overrides.get(variantPromptId(label, variant)),
           );
           const png = await drawAvatarImageEdit({
-            db,
             image,
             ...prompt,
             source,

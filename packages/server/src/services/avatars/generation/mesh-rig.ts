@@ -312,7 +312,6 @@ export async function generateMeshRig(
             overrides.get(variantPromptId(request.sourceLabel, variant)),
           );
           const picture = await drawAvatarImageEdit({
-            db,
             image,
             ...prompt,
             source,

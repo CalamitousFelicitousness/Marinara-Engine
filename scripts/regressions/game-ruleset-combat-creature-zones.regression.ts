@@ -1,5 +1,5 @@
 /**
- * A creature's action that leaves an area standing or changes the ground (Capability API 1.319).
+ * A creature's action that leaves an area standing or changes the ground (Capability API 1.323).
  *
  *   - `zone` on a creature's action, aimed by its `area`: The Owed's Freezing Fog, heavy fog that
  *     lasts `untilLair`, until the next lair action; Scatter Flour's cube of flour; The Ground
@@ -237,7 +237,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.319 or newer";
+      "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.323 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -260,8 +260,8 @@ try {
     };
     for (const action of [flour, gutter, fog]) {
       const doc = withAction(structuredClone(action));
-      assert.equal(getCapabilityPackageInstallIssue(manifest(318) as never, doc), gate, action.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(319) as never, doc), gate, action.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(322) as never, doc), gate, action.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(323) as never, doc), gate, action.id);
     }
     // An area anywhere that lasts until the next lair action.
     const lingering = JSON.parse(fiveEText);
@@ -275,8 +275,8 @@ try {
       zone: { rounds: 10, untilLair: true, triggers: ["turn-start"] },
     };
     assert.ok(parseRulesetDefinition(lingering).ok);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(318) as never, lingering), gate, "untilLair");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(318) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(322) as never, lingering), gate, "untilLair");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(322) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

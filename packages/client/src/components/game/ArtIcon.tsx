@@ -1,4 +1,4 @@
-// One icon (Capability API 1.333) or portrait (1.334) from the game's art packs: the first of `ids` the
+// One icon (Capability API 1.337) or portrait (1.338) from the game's art packs: the first of `ids` the
 // pack has, drawn filling the box; without one, `fallback` (today's letter, text or picture).
 import type { ReactNode } from "react";
 import type { ArtPackKind } from "@marinara-engine/shared";

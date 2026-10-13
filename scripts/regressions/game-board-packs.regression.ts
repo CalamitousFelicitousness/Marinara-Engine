@@ -1,5 +1,5 @@
 /**
- * Fight-board art slots (Capability API 1.328):
+ * Fight-board art slots (Capability API 1.332):
  *
  *   - A board pack is read strictly: every sheet a PNG of the size it says, every tile inside its sheet,
  *     an edge block four cells by four; tiles a board does not draw are left out and noted.
@@ -343,7 +343,7 @@ try {
   badZone.catalogs.at(-1).entries[0].mechanics.zone.art = "fog";
   assert.equal(parseRulesetDefinition(badZone).ok, false);
   const gate =
-    "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.328 or newer";
+    "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.332 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -357,9 +357,9 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(327) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(328) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(327) as never, document(false)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(331) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(332) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(331) as never, document(false)), gate);
 
   console.log(
     "Board packs: read strictly, kept in the library, chosen by the board or its place, and drawn a cell at a time: ground, edges, overlays, props and lasting areas.",

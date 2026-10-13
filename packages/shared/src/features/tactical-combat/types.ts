@@ -71,7 +71,7 @@ export interface TacticalMadeBattlefield {
   /** The battlefield it looks like: its colours, and the weather's reach. */
   scene: TacticalEnvironment;
   grid: TacticalGrid;
-  /** What stands on it that may be broken (Capability API 1.311), as painted. */
+  /** What stands on it that may be broken (Capability API 1.315), as painted. */
   props?: Array<{
     id: string;
     label: string;
@@ -84,12 +84,12 @@ export interface TacticalMadeBattlefield {
     blocks?: { move?: boolean; sight?: boolean };
     fragile?: boolean;
     relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget?: string };
-    /** Its sprite in the board's pack (1.328). */
+    /** Its sprite in the board's pack (1.332). */
     art?: string;
   }>;
-  /** The board pack it is drawn with (1.328), by id; none for its scene's. */
+  /** The board pack it is drawn with (1.332), by id; none for its scene's. */
   pack?: string;
-  /** What it does on its own each round (Capability API 1.313), as painted. */
+  /** What it does on its own each round (Capability API 1.317), as painted. */
   events?: Array<{
     id: string;
     label?: string;
@@ -115,11 +115,11 @@ export interface TacticalMadeBattlefield {
       tell?: string;
     };
   }>;
-  /** The cells growth lies on from the start (1.313), as painted. */
+  /** The cells growth lies on from the start (1.317), as painted. */
   growth?: Array<{ x: number; y: number }>;
-  /** The season on each cell, by "x,y" (shared with the season work of 1.359). */
+  /** The season on each cell, by "x,y" (shared with the season work of 1.363). */
   seasons?: Record<string, string>;
-  /** What standing in some light does here (Capability API 1.314): Noonfield's bright light. */
+  /** What standing in some light does here (Capability API 1.318): Noonfield's bright light. */
   lightRule?: {
     label?: string;
     in?: Array<"sunlight" | "bright" | "dim" | "dark">;
@@ -127,7 +127,7 @@ export interface TacticalMadeBattlefield {
     tracks?: Array<{ track: string; by: number; upTo?: number }>;
     applies?: string[];
     spares?: { types?: string[]; tags?: string[] };
-    /** A save that escapes it this time (1.316). */
+    /** A save that escapes it this time (1.320). */
     save?: { save: string; difficulty: number; against?: { conditions?: string[]; damage?: string[] } };
   };
 }
@@ -187,12 +187,12 @@ export interface TacticalGrid {
   /** Cells a standing wall closes (Capability API 1.176), by "x,y": 1 nobody moves into, 2 nobody
    *  sees through, 3 both. Only a ruleset fight's zones set it, and they take it away as they end. */
   walls?: Record<string, number>;
-  /** What lies on each cell over its terrain (Capability API 1.313), by "x,y": growth (hard going,
+  /** What lies on each cell over its terrain (Capability API 1.317), by "x,y": growth (hard going,
    *  lightly obscuring), its own light, a fog, a season. Only a ruleset fight sets it. */
   ground?: Record<string, TacticalGroundCell>;
 }
 
-/** What lies on one cell over its terrain (1.313). */
+/** What lies on one cell over its terrain (1.317). */
 export interface TacticalGroundCell {
   growth?: true;
   light?: "bright" | "dim" | "dark" | "sunlight";

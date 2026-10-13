@@ -1,4 +1,4 @@
-// Which packs a fight's board is drawn with (fight-board art slots, Capability API 1.328): the board pack
+// Which packs a fight's board is drawn with (fight-board art slots, Capability API 1.332): the board pack
 // and the props pack the server resolves for it. How a cell draws from them is `board-art-cells.ts`.
 import { useQuery } from "@tanstack/react-query";
 import { boardPackSchema } from "@marinara-engine/shared";

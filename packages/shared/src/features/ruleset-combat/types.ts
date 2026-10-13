@@ -125,7 +125,7 @@ export interface RulesetCombatApplies {
   kind?: string;
   duration:
     "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source"; untilLair?: true };
-  /** Its source holds no more than this many with it at once (1.315). */
+  /** Its source holds no more than this many with it at once (1.319). */
   heldAtMost?: number;
   saveEnds?: RulesetCombatSaveEnds;
   endsAfter?: RulesetConditionEnding;
@@ -368,20 +368,20 @@ export interface RulesetStatBlockAction {
   search?: true;
   /** The light it sheds from now on, or "out" (1.295), in the ruleset's distance. */
   sheds?: RulesetLightRadius | "out";
-  /** An area that stays where its area is aimed (1.319), as a catalog entry's. */
+  /** An area that stays where its area is aimed (1.323), as a catalog entry's. */
   zone?: RulesetCatalogZone;
-  /** What it does to the ground its area covers, for good (1.319). */
+  /** What it does to the ground its area covers, for good (1.323). */
   ground?: RulesetCreatureGround;
-  /** Whoever it lands on walks toward it on their own budget (1.321): Whisper a Name. */
+  /** Whoever it lands on walks toward it on their own budget (1.325): Whisper a Name. */
   draws?: { spends: string };
-  /** Only at somebody who has taken their turn this round (1.322): the Hour Bell. */
+  /** Only at somebody who has taken their turn this round (1.326): the Hour Bell. */
   actedOnly?: true;
-  /** Its concentration broken, this lair action is its next (1.322): the Litany of Keeping. One of a
-   *  list, its runner picking (1.331). */
+  /** Its concentration broken, this lair action is its next (1.326): the Litany of Keeping. One of a
+   *  list, its runner picking (1.335). */
   brokenNextLair?: string | string[];
-  /** Creatures it calls into the fight (1.320), by bestiary entry, `count` of them. */
+  /** Creatures it calls into the fight (1.324), by bestiary entry, `count` of them. */
   calls?: { creature: string; count: RulesetCombatAmount; initiative?: "roll" | "after" };
-  /** A permission (1.286): these standard actions taken with this action's budget, only while it
+  /** A permission (1.290): these standard actions taken with this action's budget, only while it
    *  stands obscured where it says so. 5e's Nimble Escape, Cunning Action, Shadow Stealth. */
   standard?: { actions: string[]; while?: "obscured" };
   /** The ability its attack is made with (1.188), so changes narrowed to an ability reach it. */
@@ -415,7 +415,7 @@ export interface RulesetStatBlockAction {
   dyingOnly?: true;
   slaysOnFailedSave?: true;
   healsOnSlay?: RulesetCombatAmount;
-  /** Who it fells on Held Ground is reaped (1.318). */
+  /** Who it fells on Held Ground is reaped (1.322). */
   reaps?: true;
   targetCount?: number;
   reach?: number;
@@ -437,7 +437,7 @@ export interface RulesetStatBlockAction {
   sequence?: Array<{ action: string; times: number }>;
   /** Bought out of the block's own `signaturePoints` instead of a budget. */
   signature?: { cost: number };
-  /** A lair action (1.310), taken on the block's `lairInitiative` while it fights in its lair. */
+  /** A lair action (1.314), taken on the block's `lairInitiative` while it fights in its lair. */
   lair?: true;
   /** Taken at a moment rather than on a turn, as a catalog entry's reaction is. */
   reaction?: {
@@ -541,14 +541,14 @@ export interface RulesetStatBlock {
   traits?: Array<{ name: string; text: string }>;
   /** Points given back at the start of its own turn, spent on `signature` actions. */
   signaturePoints?: number;
-  /** The count its lair actions are taken on (1.310), losing ties; 20 when left out. */
+  /** The count its lair actions are taken on (1.314), losing ties; 20 when left out. */
   lairInitiative?: number;
-  /** How many failed saves it may turn into successes (1.312): 5e's Legendary Resistance (3/Day). */
+  /** How many failed saves it may turn into successes (1.316): 5e's Legendary Resistance (3/Day). */
   legendaryResistance?: number;
-  /** Dropping to 0, it is left at 1 instead this many times (1.315), with a turn straight after where
+  /** Dropping to 0, it is left at 1 instead this many times (1.319), with a turn straight after where
    *  it says: the Miller's Hourglass. */
   hangsOn?: { uses: number; extraTurn?: true; label?: string };
-  /** It does not move while any of its cells is in one of these lights (1.314): Lantern-Shy. */
+  /** It does not move while any of its cells is in one of these lights (1.318): Lantern-Shy. */
   stillIn?: RulesetBoardLight[];
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
   riders?: RulesetCombatRider[];
@@ -686,9 +686,9 @@ export interface RulesetCombatAction {
   endsCondition?: string;
   /** Used only while its user stands in one of these lights (1.302). */
   usableIn?: { light: RulesetBoardLight[] };
-  /** Only within `within` cells of a standing prop named `prop` by id or label (1.327). */
+  /** Only within `within` cells of a standing prop named `prop` by id or label (1.331). */
   usableNear?: { prop: string; within: number };
-  /** Whoever it lands on leaves the fight (1.231): for good, or only while they hold `while`, put on
+  /** Whoever it lands on leaves the fight (1.235): for good, or only while they hold `while`, put on
    *  by the same use; with `gone`, one that is that stays gone if `while` ran its whole time. */
   dismisses?: true | { while: string; gone?: RulesetTargetIs; turns?: true };
   /** It steadies a dying target: no more dying rolls (1.175). */
@@ -735,9 +735,9 @@ export interface RulesetCombatAction {
   /** A failed save kills its target, and its user regains this for each one (1.310): Consume Life. */
   slaysOnFailedSave?: true;
   healsOnSlay?: RulesetCombatAmount;
-  /** Who it fells on Held Ground is reaped there and then (1.318): a Reaping Hook. */
+  /** Who it fells on Held Ground is reaped there and then (1.322): a Reaping Hook. */
   reaps?: true;
-  /** Offered only once the attack action has been taken this turn (1.237): Flurry of Blows. */
+  /** Offered only once the attack action has been taken this turn (1.241): Flurry of Blows. */
   afterAttack?: RulesetAfterAttack;
   /** Offered only on its holder's own turn before they have attacked in it (1.246): Reckless Attack. */
   beforeAttack?: true;
@@ -748,9 +748,9 @@ export interface RulesetCombatAction {
   /** Pointed only at a creature no bigger than this size (1.313): Resilient Sphere's "Large or
    *  smaller". */
   targetsUpTo?: string;
-  /** Takes growth off the cells its area covers (1.313). */
+  /** Takes growth off the cells its area covers (1.317). */
   clears?: "growth";
-  /** Puts a weapon in its user's hand, the one its mode names (1.301): Pact of the Blade. What each
+  /** Puts a weapon in its user's hand, the one its mode names (1.305): Pact of the Blade. What each
    *  mode makes is the combatant's `conjurable`. */
   conjures?: true;
   /** Not used on the same creature again until its user takes this rest (1.303): Chains of Carceri. */
@@ -812,7 +812,7 @@ export interface RulesetCombatAction {
   sequence?: RulesetCombatSequenceStep[];
   /** Bought with the actor's own points at the end of somebody else's turn, not with a budget. */
   signature?: { cost: number };
-  /** A lair action (1.310): on its maker's lair count, once a round, while it fights in its lair. */
+  /** A lair action (1.314): on its maker's lair count, once a round, while it fights in its lair. */
   lair?: true;
   /** Taken at a MOMENT rather than on a turn: which moment, whom it may be aimed at, and whether
    *  taking it stops what opened the window. On no turn's menu, ever. */
@@ -883,16 +883,16 @@ export interface RulesetCombatAction {
   search?: true;
   /** The light its user sheds from now on, or "out" (1.295), and nothing else: a magmin ablaze. */
   sheds?: RulesetLightRadius | "out";
-  /** What it does to the ground its area covers, for good (1.319): a bonfire guttering, ice cracking. */
+  /** What it does to the ground its area covers, for good (1.323): a bonfire guttering, ice cracking. */
   ground?: RulesetCreatureGround;
-  /** Whoever it lands on spends `spends` to walk up to their speed toward its user (1.321). */
+  /** Whoever it lands on spends `spends` to walk up to their speed toward its user (1.325). */
   draws?: { spends: string };
-  /** Only at somebody who has taken their turn this round (1.322). */
+  /** Only at somebody who has taken their turn this round (1.326). */
   actedOnly?: true;
-  /** Its concentration broken, this lair action of its user's is the next they take (1.322), or one of
-   *  a list (1.331). */
+  /** Its concentration broken, this lair action of its user's is the next they take (1.326), or one of
+   *  a list (1.335). */
   brokenNextLair?: string | string[];
-  /** Creatures it calls into the fight on its user's side (1.320), their block found as the fight
+  /** Creatures it calls into the fight on its user's side (1.324), their block found as the fight
    *  began: Jars Burst's zombies. */
   calls?: {
     block: RulesetStatBlock;
@@ -902,7 +902,7 @@ export interface RulesetCombatAction {
     count: RulesetCombatAmount;
     after?: true;
   };
-  /** A burst centred on its user, never aimed (1.277): everybody within `size` cells of them is
+  /** A burst centred on its user, never aimed (1.281): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
    *  `friendlyFire: false`. Off a board, everybody. */
   around?: { size: number; throughWalls?: true; friendlyFire?: false };
@@ -1097,7 +1097,7 @@ export interface RulesetCombatArea {
   /** Cells it grows by for each step of a higher cost it is paid with (1.266): Confusion. */
   sizePerCostStep?: number;
   friendlyFire?: boolean;
-  /** Around the standing props with this label instead of where it is aimed (1.326). */
+  /** Around the standing props with this label instead of where it is aimed (1.330). */
   aroundProp?: string;
 }
 
@@ -1153,13 +1153,13 @@ export interface RulesetTrackedCondition {
   fails?: number;
   /** Who applied it, and whether their concentration is what holds it. */
   source?: string;
-  /** Off as whoever put it on next comes to their lair's count (1.322): the Hour Bell's. */
+  /** Off as whoever put it on next comes to their lair's count (1.326): the Hour Bell's. */
   untilLair?: true;
-  /** Spread by this combatant's aura (1.258): on while they are near, off as they part. */
+  /** Spread by this combatant's aura (1.262): on while they are near, off as they part. */
   aura?: string;
-  /** Left on by an aura that lingers (1.315) after its holder parted: off as their next turn starts. */
+  /** Left on by an aura that lingers (1.319) after its holder parted: off as their next turn starts. */
   lingering?: true;
-  /** The aura (`<holder id>/<condition>`) its holder is kept clear of once this ends (1.264). */
+  /** The aura (`<holder id>/<condition>`) its holder is kept clear of once this ends (1.268). */
   auraSafeOnEnd?: string;
   /** The creature type named as it was put on (1.269): an aura with `chosenKind` reaches only it. */
   kind?: string;
@@ -1224,21 +1224,21 @@ export interface RulesetCombatant {
   oncePerTurn?: { at: string; keys: string[] };
   /** The points a signature action is bought with, when this combatant has any. */
   signature?: { points: number; max: number };
-  /** It fights in its lair (1.310): its lair actions are taken, on `lairAt`, losing ties. */
+  /** It fights in its lair (1.314): its lair actions are taken, on `lairAt`, losing ties. */
   lair?: {
     at: number;
     last?: { round: number; id: string };
-    /** The lair action it must take next (1.322): its Litany broken. A list is one of those (1.331). */
+    /** The lair action it must take next (1.326): its Litany broken. A list is one of those (1.335). */
     next?: string | string[];
   };
-  /** How many of its block's legendary resistances it has spent (1.312). */
+  /** How many of its block's legendary resistances it has spent (1.316). */
   legendaryResisted?: number;
-  /** How many times it has hung on at 1 instead of dropping (1.315). */
+  /** How many times it has hung on at 1 instead of dropping (1.319). */
   hungOn?: number;
-  /** Felled on Held Ground (1.318): out of the fight, never dying, up again later unless `reaped`. */
+  /** Felled on Held Ground (1.322): out of the fight, never dying, up again later unless `reaped`. */
   felled?: true;
   reaped?: true;
-  /** Who called it into the fight (1.320). */
+  /** Who called it into the fight (1.324). */
   calledBy?: string;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
@@ -1329,7 +1329,7 @@ export interface RulesetCombatant {
   surpriseOut?: string[];
   /** Auras whose save they made and are now proof against for the fight (1.264), as
    *  `<holder>/<condition>`. */
-  /** How many times each of its auras has grown (1.315), by the condition that spreads it. */
+  /** How many times each of its auras has grown (1.319), by the condition that spreads it. */
   auraGrown?: Record<string, number>;
   auraSafe?: string[];
   /** Whose gaze they keep their eyes from (1.267): they skip its save and cannot see them. */
@@ -1477,7 +1477,7 @@ export interface RulesetEncounterState {
   round: number;
   /** Where in `order` the turn is. */
   turn: number;
-  /** Where in `order` a turn put in after another stands (1.315), taken out once it is over. */
+  /** Where in `order` a turn put in after another stands (1.319), taken out once it is over. */
   interjected?: number;
   order: string[];
   combatants: RulesetCombatant[];
@@ -1496,15 +1496,15 @@ export interface RulesetEncounterState {
   windows?: number;
   /** Remaining uses shared by a coven, keyed by coven id and spell entry (1.122). */
   covenUses?: Record<string, number>;
-  /** Held Ground (1.318): nobody here dies at no health; they are felled. */
+  /** Held Ground (1.322): nobody here dies at no health; they are felled. */
   heldGround?: RulesetHeldGround;
-  /** Who has begun a turn this round (1.322), the one going on included. */
+  /** Who has begun a turn this round (1.326), the one going on included. */
   acted?: string[];
-  /** How many creatures have been called into the fight (1.320), for their ids. */
+  /** How many creatures have been called into the fight (1.324), for their ids. */
   called?: number;
 }
 
-/** A place where death is held (1.318), the showcase's valley: whoever reaches no health is felled
+/** A place where death is held (1.322), the showcase's valley: whoever reaches no health is felled
  *  instead, out of the fight but never dying and never dead, and gets up again later unless it was
  *  reaped. `condition` goes on the felled, and each one with a sheet moves its `marks` tracks: a
  *  mark of Owing. */
@@ -1549,7 +1549,7 @@ export type RulesetWindowTrigger =
   /** A walk left this one's reach. `from` and `to` are the step that did it, not the whole walk. */
   | { kind: "leaves-reach"; moverId: string; from: RulesetCombatCell; to: RulesetCombatCell }
   /** One turn has ended and the next has not begun. */
-  /** `opening` (1.310): before the fight's very first turn, which has already been handed out. */
+  /** `opening` (1.314): before the fight's very first turn, which has already been handed out. */
   | { kind: "between-turns"; nextActorId: string; opening?: true }
   /** Something is ABOUT to land on the ones being asked. It is already paid for and is held here
    *  until they have answered, and an answer that cancels stops it from happening at all.
@@ -1806,24 +1806,24 @@ export interface RulesetWalkResume {
 /** The light a fight is fought in (1.290): sunlight is bright light that is also the sun's. */
 export type RulesetBoardLight = "sunlight" | "bright" | "dim" | "dark";
 
-/** What standing in some light does on a board (1.314): every `rounds` round ends a creature spends
- *  wholly in one of these lights, its tracks move and these conditions go on it. Shade (1.314) is dim
+/** What standing in some light does on a board (1.318): every `rounds` round ends a creature spends
+ *  wholly in one of these lights, its tracks move and these conditions go on it. Shade (1.318) is dim
  *  light, so a Lantern of Dusk keeps it off whoever stands in its shade. */
 export interface RulesetBoardLightRule {
   label?: string;
   in: RulesetBoardLight[];
   rounds: number;
-  /** `upTo` is as far as it moves the track (1.316): Noonfield's exhaustion, 3 at most. */
+  /** `upTo` is as far as it moves the track (1.320): Noonfield's exhaustion, 3 at most. */
   tracks?: Array<{ track: string; by: number; upTo?: number }>;
   applies?: string[];
   /** Who it never touches: Noonfield's own creatures. */
   spares?: RulesetTargetIs;
-  /** A save that escapes it this time (1.316): Noonfield's DC 12 Constitution save. `against` is what
+  /** A save that escapes it this time (1.320): Noonfield's DC 12 Constitution save. `against` is what
    *  it counts as being against, for a save modifier's `against`: a straw hat's advantage. */
   save?: { save: string; difficulty: number; against?: { conditions?: string[]; damage?: string[] } };
 }
 
-/** Ways of hiding and of finding the hidden that are its holder's own (1.287). Distances are in
+/** Ways of hiding and of finding the hidden that are its holder's own (1.291). Distances are in
  *  the ruleset's own unit where a ruleset writes them, and in cells on a combatant's action. */
 export interface RulesetHidingTraits {
   /** It may hide behind somebody at least one size larger than it: a halfling's Naturally Stealthy. */
@@ -1864,7 +1864,7 @@ export interface RulesetCheckModeRule {
 export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills">;
 
 /**
- * A thing standing on the board that may be broken (Capability API 1.311): a jar, a lantern, a
+ * A thing standing on the board that may be broken (Capability API 1.315): a jar, a lantern, a
  * barrel, a door. Struck as a wall's section is, or caught in an area; `fragile`, anything that hits
  * it breaks it. While it stands it closes its cells as `blocks` says. Broken, its `label` is what the
  * fight's summary tells the story.
@@ -1881,14 +1881,14 @@ export interface RulesetBoardProp {
   immune?: string[];
   blocks?: { move?: true; sight?: true };
   fragile?: true;
-  /** It may be lit again (1.327): somebody beside it spends `budget` and every cell within `squares`
+  /** It may be lit again (1.331): somebody beside it spends `budget` and every cell within `squares`
    *  of it is `light` once more. The Owed's bonfire after Bonfire Gutters. */
   relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget: string };
-  /** Its sprite in the board's pack (1.328): `bp_<name>`, and `bp_<name>_broken` once broken. */
+  /** Its sprite in the board's pack (1.332): `bp_<name>`, and `bp_<name>_broken` once broken. */
   art?: string;
 }
 
-/** Where a board event happens (1.313): listed cells, a block, a ring widening from a cell, a line
+/** Where a board event happens (1.317): listed cells, a block, a ring widening from a cell, a line
  *  sweeping from an edge (both by `step` cells each time it happens, `filled` for everything inside
  *  rather than the newest band), or every cell beside growth. */
 export type RulesetBoardEventWhere =
@@ -1898,10 +1898,10 @@ export type RulesetBoardEventWhere =
   | { sweep: { from: "north" | "south" | "east" | "west"; start: number; step: number; filled?: true } }
   | { spread: "growth" };
 
-/** An edge of the board, the way a board event carries things (1.324). */
+/** An edge of the board, the way a board event carries things (1.328). */
 export type RulesetBoardEdge = "north" | "south" | "east" | "west";
 
-/** What a board event does to its cells (1.313). `rotate` turns a square block a quarter turn
+/** What a board event does to its cells (1.317). `rotate` turns a square block a quarter turn
  *  clockwise that many times, with whoever and whatever stands wholly in it. */
 export interface RulesetBoardEventChange {
   terrain?: TacticalTerrain;
@@ -1911,17 +1911,17 @@ export interface RulesetBoardEventChange {
   growth?: boolean;
   season?: string | null;
   rotate?: 1 | 2 | 3;
-  /** Whoever stands on its cells, on the ground, is carried `squares` toward that edge (1.324), a
+  /** Whoever stands on its cells, on the ground, is carried `squares` toward that edge (1.328), a
    *  cell at a time until something stops them: the millrace. */
   push?: { toward: RulesetBoardEdge; squares: number };
-  /** What obscures its cells is blown `squares` toward that edge (1.324), coming back in at the far
+  /** What obscures its cells is blown `squares` toward that edge (1.328), coming back in at the far
    *  side of its block, or of the board for any other `where`: the Leaffall's drifts. */
   drift?: { toward: RulesetBoardEdge; squares: number };
   /** A line the log and the Game Master are told. */
   tell?: string;
 }
 
-/** Something the board does on its own each round (1.313): at the start of round `from` (2 when not
+/** Something the board does on its own each round (1.317): at the start of round `from` (2 when not
  *  said, the first round's start being the board as set) or the end of round `from` (1), then every
  *  `every` rounds, through `until`. */
 export interface RulesetBoardEvent {
@@ -1939,25 +1939,25 @@ export interface RulesetBoardEvent {
 
 export interface RulesetCombatBoard {
   grid: TacticalGrid;
-  /** What the board does on its own each round (1.313), and how many times each has happened. */
+  /** What the board does on its own each round (1.317), and how many times each has happened. */
   events?: RulesetBoardEvent[];
   happened?: Record<string, number>;
-  /** What burns growth away and what cuts it back (1.313): fire, and slashing, when not said. */
+  /** What burns growth away and what cuts it back (1.317): fire, and slashing, when not said. */
   growth?: { burnedBy: string[]; cutBy: string[] };
-  /** What standing in some light does here (1.314): Noonfield's bright light, a level of exhaustion
+  /** What standing in some light does here (1.318): Noonfield's bright light, a level of exhaustion
    *  for every `rounds` round ends spent in it; and how many each has spent in it so far. */
   lightRule?: RulesetBoardLightRule;
   exposed?: Record<string, number>;
-  /** What stands on it that may be broken (1.311), broken ones at 0. */
+  /** What stands on it that may be broken (1.315), broken ones at 0. */
   props?: RulesetBoardProp[];
-  /** The labels of what has been broken (1.311), in the order it broke. */
+  /** The labels of what has been broken (1.315), in the order it broke. */
   broken?: string[];
-  /** The light the fight is fought in (1.286), all over the board; obscuring zones dim it where
+  /** The light the fight is fought in (1.290), all over the board; obscuring zones dim it where
    *  they stand. Bright light when it is not said. */
   light?: RulesetBoardLight;
   /** The kind of place it is (1.290), as the tactical generator names it: snow, cave, mountains. */
   environment?: string;
-  /** The board pack it is drawn with (1.328), by library id. */
+  /** The board pack it is drawn with (1.332), by library id. */
   pack?: string;
   battlefield?: TacticalBattlefieldProvenance;
   /** Cells a shot carries further down from higher ground (combat C6b), as the ruleset said when the
@@ -2185,9 +2185,9 @@ export type RulesetCombatEvent =
         | "aura"
         /** Gone because its holder is out of the aura that spread it, or it stopped (1.262). */
         | "parted"
-        /** Its spell's light put out by magical darkness (1.294). */
+        /** Its spell's light put out by magical darkness (1.298). */
         | "dispelled"
-        /** Not put on: its source holds as many with it as it may (1.315). */
+        /** Not put on: its source holds as many with it as it may (1.319). */
         | "full";
       stacks?: number;
     }
@@ -2270,7 +2270,7 @@ export type RulesetCombatEvent =
       back: boolean;
     }
   | { type: "signature"; actorId: string; optionId: string; label: string; cost: number; left: number }
-  /** A prop struck, caught in an area, or broken (1.311): `dealt` of it, `health` left. */
+  /** A prop struck, caught in an area, or broken (1.315): `dealt` of it, `health` left. */
   | {
       type: "prop";
       actorId: string;
@@ -2281,7 +2281,7 @@ export type RulesetCombatEvent =
       health: number;
       broken?: true;
     }
-  /** A board event happening (1.313): on how many cells, what it says, and who it moved. */
+  /** A board event happening (1.317): on how many cells, what it says, and who it moved. */
   | {
       type: "boardEvent";
       id: string;
@@ -2289,16 +2289,16 @@ export type RulesetCombatEvent =
       tell?: string;
       cells: number;
       moved?: Array<{ id: string; to: RulesetCombatCell }>;
-      /** Who it carried and where to (1.324). */
+      /** Who it carried and where to (1.328). */
       pushed?: Array<{ id: string; from: RulesetCombatCell; to: RulesetCombatCell }>;
     }
-  /** Left at 1 instead of dropping to 0 (1.315), and how many more times it may. */
+  /** Left at 1 instead of dropping to 0 (1.319), and how many more times it may. */
   | { type: "hangsOn"; actorId: string; label?: string; left: number }
-  /** A prop lit again (1.327): who lit it, and how many cells it lights. */
+  /** A prop lit again (1.331): who lit it, and how many cells it lights. */
   | { type: "relit"; actorId: string; propId: string; label: string; cells: number }
-  /** Held Ground let go mid-fight (1.325): who died of it, and who went down instead. */
+  /** Held Ground let go mid-fight (1.329): who died of it, and who went down instead. */
   | { type: "heldGroundReleased"; label?: string; died: string[]; down?: string[] }
-  /** Marks come due as Held Ground lets go (1.325): one dying save a mark, `bonus` on each. */
+  /** Marks come due as Held Ground lets go (1.329): one dying save a mark, `bonus` on each. */
   | {
       type: "owing";
       actorId: string;
@@ -2308,11 +2308,11 @@ export type RulesetCombatEvent =
       failures: number;
       result: "dead" | "safe";
     }
-  /** Felled on Held Ground instead of dying or going down (1.318). */
+  /** Felled on Held Ground instead of dying or going down (1.322). */
   | { type: "felled"; actorId: string; label?: string }
-  /** Reaped as it was felled, by a blow that reaps (1.318): it stays down. */
+  /** Reaped as it was felled, by a blow that reaps (1.322): it stays down. */
   | { type: "reaped"; actorId: string; sourceId?: string }
-  /** Somebody drawn toward whoever spoke to them (1.321), on their own budget: Whisper a Name. */
+  /** Somebody drawn toward whoever spoke to them (1.325), on their own budget: Whisper a Name. */
   | {
       type: "drawn";
       actorId: string;
@@ -2321,25 +2321,25 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       path: RulesetCombatCell[];
     }
-  /** Creatures called into the fight (1.320), by whom and with what. */
+  /** Creatures called into the fight (1.324), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[] }
-  /** An aura grown as its holder's turn starts (1.315), and how far it reaches now. */
+  /** An aura grown as its holder's turn starts (1.319), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
-  /** A board's light rule catching somebody (1.314), after this many round ends in its light. */
+  /** A board's light rule catching somebody (1.318), after this many round ends in its light. */
   | {
       type: "lightRule";
       actorId: string;
       label?: string;
       light: RulesetBoardLight;
       rounds: number;
-      /** The save it allows (1.316), as it went: its total, and whether it was made. */
+      /** The save it allows (1.320), as it went: its total, and whether it was made. */
       save?: { total: number; saved: boolean };
     }
-  /** Growth taken off cells (1.313): cut back, burnt, or cleared by something made for it. */
+  /** Growth taken off cells (1.317): cut back, burnt, or cleared by something made for it. */
   | { type: "growth"; actorId?: string; label?: string; cells: number; by: "cut" | "burnt" | "cleared" }
-  /** A failed save turned into a success by a legendary resistance (1.312), and how many are left. */
+  /** A failed save turned into a success by a legendary resistance (1.316), and how many are left. */
   | { type: "legendaryResistance"; actorId: string; save: string; left: number }
-  /** A lair action taken on its lair's count (1.310); what it does follows. */
+  /** A lair action taken on its lair's count (1.314); what it does follows. */
   | { type: "lair"; actorId: string; optionId: string; label: string }
   /** A spend that bought several strikes, and what is left of it after this one. */
   | { type: "strikes"; actorId: string; optionId: string; label: string; left: number }
@@ -2386,12 +2386,12 @@ export type RulesetCombatEvent =
       found: string[];
       apart?: RulesetSearchApart[];
     }
-  /** Somebody hiding given away to these opponents (1.282): by attacking, by noise, or seen clearly. */
+  /** Somebody hiding given away to these opponents (1.286): by attacking, by noise, or seen clearly. */
   | {
       type: "revealed";
       actorId: string;
       byIds: string[];
-      /** `alerted`: they moved near something that gives the unseen away (1.314), `alertedBy`'s. */
+      /** `alerted`: they moved near something that gives the unseen away (1.318), `alertedBy`'s. */
       reason: "attack" | "noise" | "seen" | "moved" | "alerted";
       alertedBy?: string;
     }
@@ -2732,16 +2732,16 @@ export interface RulesetCombatOption {
   rollsSealed?: { condition: string; label: string };
   /** Picking up somebody shut in a sphere (1.313), or putting them down (`down`). */
   lifts?: { holderId: string; name: string; down?: true };
-  /** The prop this lights again (1.327). */
+  /** The prop this lights again (1.331). */
   relights?: { propId: string; label: string };
-  /** The holder and condition named by an ally's shake-off option (1.120). */
+  /** The holder and condition named by an ally's shake-off option (1.124). */
   shakeOff?: { holderId: string; condition: string; name: string; label: string };
   /** The condition its holder spends this on a save against (1.263). */
   resave?: { condition: string; label: string };
   /** A check that ends a condition its actor holds (1.312): Maze's way out. */
   checkEnds?: { condition: string; label: string };
   id: string;
-  /** The icons it may be drawn with, best first (1.333): its catalog entry's. Absent for none. */
+  /** The icons it may be drawn with, best first (1.337): its catalog entry's. Absent for none. */
   icons?: string[];
   /** `move` is the one a positioned fight adds: walking, and getting back up. `reload` fills a
    *  weapon's clip. */
@@ -2781,9 +2781,9 @@ export interface RulesetCombatOption {
   /** A spell a legendary cast offers (1.283): the cast bought, and the option of its maker's own it
    *  casts, as it would be on its turn. */
   castOf?: { actionId: string; optionId: string };
-  /** A lair action (1.310): the option of its maker's own it takes, as it would be on its turn. */
+  /** A lair action (1.314): the option of its maker's own it takes, as it would be on its turn. */
   lairOf?: string;
-  /** Readying another option (1.283): which, and what it waits for. */
+  /** Readying another option (1.287): which, and what it waits for. */
   ready?: { optionId: string; label: string; on: RulesetReadyOn };
   /** What its holder readied, offered when it happens (1.287). */
   readied?: true;
@@ -2936,23 +2936,23 @@ export interface RulesetEncounterSummary {
     left?: true;
   }>;
   enemies: Array<{ id: string; name: string; health: number; maxHealth: number; defeated: boolean; left?: true }>;
-  /** What was broken on the board (1.311), by label, in the order it broke. */
+  /** What was broken on the board (1.315), by label, in the order it broke. */
   broken?: string[];
 }
 
 /** How a lasting area behaves (1.171), as the catalog entry said it. */
 export interface RulesetCombatZoneRule {
-  /** How it looks on the board (1.328): a `bz_` tile of the board's pack. */
+  /** How it looks on the board (1.332): a `bz_` tile of the board's pack. */
   art?: string;
-  /** The light it sheds over its own cells, in CELLS from its middle (1.292). */
+  /** The light it sheds over its own cells, in CELLS from its middle (1.296). */
   lights?: { bright: number; dim: number; reveals?: true; sunlight?: true; shade?: true };
-  /** Spell light of this level or lower it puts out where they meet (1.294): 5e's Darkness. */
+  /** Spell light of this level or lower it puts out where they meet (1.298): 5e's Darkness. */
   dispelsLight?: { upTo: number };
   /** Magical darkness of this level or lower ends where it meets it (1.296), within this many CELLS
    *  of its middle where it says (1.298). */
   dispelsDark?: { upTo: number; within?: number };
   rounds: number;
-  /** It ends as its maker's lair count next comes round (1.319). */
+  /** It ends as its maker's lair count next comes round (1.323). */
   untilLair?: true;
   anchor: "point" | "caster";
   /** Put on a cell somebody stands on, carried with them (1.300): only its caster (`own`), or anybody. */
@@ -3071,7 +3071,7 @@ export interface RulesetCombatZone {
   sections?: Array<{ cells: RulesetCombatCell[]; health: number }>;
   /** Set alight, and burning away (1.182). */
   burning?: boolean;
-  /** Until its maker's next lair count (1.319). */
+  /** Until its maker's next lair count (1.323). */
   untilLair?: true;
 }
 

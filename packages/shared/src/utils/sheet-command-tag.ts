@@ -145,11 +145,11 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   }
   const rest = values.get("rest")?.trim();
   if (!rest) return parsed;
-  // Dice spent to heal on it (1.330): a count, or the tag does not say what it means.
+  // Dice spent to heal on it (1.334): a count, or the tag does not say what it means.
   const rawDice = values.get("dice");
   const dice = rawDice === undefined ? null : readInteger(rawDice);
   if (rawDice !== undefined && (dice === null || dice < 0)) return parsed;
-  // From one pool of several (1.332): 5e's d8 hit dice.
+  // From one pool of several (1.336): 5e's d8 hit dice.
   const pool = dice ? values.get("pool")?.trim() : undefined;
   return { ...parsed, op: { op: "rest", rest, ...(dice ? { dice } : {}), ...(pool ? { pool } : {}) } };
 }

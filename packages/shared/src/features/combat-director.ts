@@ -201,12 +201,12 @@ export interface DirectedRulesetView {
     elevation?: number[][];
     /** Cells standing walls close (1.176), by "x,y": 1 movement, 2 sight, 3 both. */
     walls?: Record<string, number>;
-    /** Growth and seasons on its cells (1.313), by "x,y". */
+    /** Growth and seasons on its cells (1.317), by "x,y". */
     ground?: Record<string, { growth?: true; season?: string }>;
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
     scene?: TacticalEnvironment;
-    /** The board pack it is drawn with (1.328), by library id, and the environment whose pack it falls
+    /** The board pack it is drawn with (1.332), by library id, and the environment whose pack it falls
      *  back to. */
     pack?: string;
     environment?: string;
@@ -230,10 +230,10 @@ export interface DirectedRulesetView {
     side?: Array<{ x: number; y: number }>;
     /** A wall's sections (1.199): their cells and the health each has left; one at 0 is broken. */
     sections?: Array<{ cells: Array<{ x: number; y: number }>; health: number; max: number }>;
-    /** How it looks (1.328): a `bz_` tile of the board's pack. */
+    /** How it looks (1.332): a `bz_` tile of the board's pack. */
     art?: string;
   }>;
-  /** What stands on the board that may be broken (1.311): its cells, and what it has left of what;
+  /** What stands on the board that may be broken (1.315): its cells, and what it has left of what;
    *  one at 0 is broken. */
   props?: Array<{
     id: string;
@@ -241,7 +241,7 @@ export interface DirectedRulesetView {
     cells: Array<{ x: number; y: number }>;
     health: number;
     max: number;
-    /** Its sprite in the board's pack (1.328). */
+    /** Its sprite in the board's pack (1.332). */
     art?: string;
   }>;
   /** The legal menu, present only while a human controls the one being asked: the actor whose turn

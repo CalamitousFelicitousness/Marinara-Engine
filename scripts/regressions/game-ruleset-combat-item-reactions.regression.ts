@@ -1,5 +1,5 @@
 /**
- * An item's use taken as a reaction (Capability API 1.317).
+ * An item's use taken as a reaction (Capability API 1.321).
  *
  *   - Liesl's Coffin: once a day, as a creature within 5 feet of its bearer is hit, +5 AC on them until
  *     the start of the bearer's next turn, against that hit too.
@@ -289,7 +289,7 @@ try {
         refusedTrue.issues.join("; "),
       );
     const message =
-      "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.317 or newer";
+      "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.321 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },

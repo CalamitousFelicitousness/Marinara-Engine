@@ -32,7 +32,7 @@ export const WORLD_BATTLEFIELD_PROPS_MAX = 24;
 
 const damageWords = z.array(z.string().trim().min(1).max(40)).max(16).optional();
 
-/** A thing standing on a painted board that may be broken (1.311), on the tiles it fills. Broken in a
+/** A thing standing on a painted board that may be broken (1.315), on the tiles it fills. Broken in a
  *  fight, its label is told to the story as what was broken. */
 export const worldBattlefieldPropSchema = z
   .object({
@@ -56,7 +56,7 @@ export const worldBattlefieldPropSchema = z
     blocks: z.object({ move: z.boolean().optional(), sight: z.boolean().optional() }).strict().optional(),
     /** Anything that hits it breaks it. */
     fragile: z.boolean().optional(),
-    /** Somebody beside it may light it again (1.327): `light` within `squares` of it. */
+    /** Somebody beside it may light it again (1.331): `light` within `squares` of it. */
     relight: z
       .object({
         light: z.enum(["bright", "dim", "sunlight"]),
@@ -65,7 +65,7 @@ export const worldBattlefieldPropSchema = z
       })
       .strict()
       .optional(),
-    /** Its sprite in the board's pack (1.328): `bp_<name>`, and `bp_<name>_broken` once broken. */
+    /** Its sprite in the board's pack (1.332): `bp_<name>`, and `bp_<name>_broken` once broken. */
     art: z.string().max(60).regex(BOARD_PROP_ART, "A prop's art is bp_ then lowercase words joined by _").optional(),
   })
   .strict();
@@ -77,7 +77,7 @@ const boardCarry = z
   .object({ toward: z.enum(["north", "south", "east", "west"]), squares: z.number().int().min(1).max(6) })
   .strict();
 
-/** Something a painted board does on its own each round (Capability API 1.313): growth spreading,
+/** Something a painted board does on its own each round (Capability API 1.317): growth spreading,
  *  ice cracking, a wheel turning, the ground freezing in rings. */
 export const worldBattlefieldEventSchema = z
   .object({
@@ -138,7 +138,7 @@ export const worldBattlefieldEventSchema = z
         growth: z.boolean().optional(),
         season: z.union([z.string().trim().min(1).max(40), z.null()]).optional(),
         rotate: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
-        /** Carries whoever stands there, or what obscures it, toward an edge (1.324). */
+        /** Carries whoever stands there, or what obscures it, toward an edge (1.328). */
         push: boardCarry.optional(),
         drift: boardCarry.optional(),
         tell: promptSafeText(200).optional(),
@@ -163,7 +163,7 @@ export const worldBattlefieldMapSchema = z
     size: z.enum(["small", "medium", "large"]),
     /** The battlefield it looks like: its colours, and the weather's reach. */
     scene: z.enum(TACTICAL_ENVIRONMENTS),
-    /** The board pack it is drawn with (Capability API 1.328), by its library id; none for its
+    /** The board pack it is drawn with (Capability API 1.332), by its library id; none for its
      *  scene's own (the library's pack for that environment, then the built-in one). */
     pack: z
       .string()
@@ -185,18 +185,18 @@ export const worldBattlefieldMapSchema = z
       .min(1)
       .max(10)
       .optional(),
-    /** What stands on it that may be broken (Capability API 1.311): a jar, a lantern, a door. */
+    /** What stands on it that may be broken (Capability API 1.315): a jar, a lantern, a door. */
     props: z.array(worldBattlefieldPropSchema).max(WORLD_BATTLEFIELD_PROPS_MAX).optional(),
-    /** Growth on its tiles from the start (Capability API 1.313), a row of characters each, the same
+    /** Growth on its tiles from the start (Capability API 1.317), a row of characters each, the same
      *  shape as `rows`: g growth, . none. */
     growth: z
       .array(z.string().regex(/^[g.]{1,14}$/, "A battlefield's growth row is g or . per tile"))
       .min(1)
       .max(10)
       .optional(),
-    /** What it does on its own each round (Capability API 1.313). */
+    /** What it does on its own each round (Capability API 1.317). */
     events: z.array(worldBattlefieldEventSchema).max(16).optional(),
-    /** What standing in some light does on it (Capability API 1.314): every `rounds` round ends
+    /** What standing in some light does on it (Capability API 1.318): every `rounds` round ends
      *  wholly in one of these lights (bright light and sunlight when not said), its tracks move and
      *  these conditions go on, except on whoever `spares` names. Noonfield's exhaustion. */
     lightRule: z
@@ -214,7 +214,7 @@ export const worldBattlefieldMapSchema = z
               .object({
                 track: z.string().trim().min(1).max(40),
                 by: z.number().int().min(-10).max(10),
-                /** As far as it moves the track (Capability API 1.316): exhaustion 3 at most. */
+                /** As far as it moves the track (Capability API 1.320): exhaustion 3 at most. */
                 upTo: z.number().int().min(-1000).max(1000).optional(),
               })
               .strict(),
@@ -223,7 +223,7 @@ export const worldBattlefieldMapSchema = z
           .max(4)
           .optional(),
         applies: z.array(z.string().trim().min(1).max(40)).min(1).max(4).optional(),
-        /** A save that escapes it this time (Capability API 1.316), and what it counts as being
+        /** A save that escapes it this time (Capability API 1.320), and what it counts as being
          *  against for a save modifier's `against`: a straw hat's advantage on Noonfield's. */
         save: z
           .object({
@@ -273,7 +273,7 @@ export function worldBattlefieldGrid(map: Pick<WorldBattlefieldMap, "rows" | "he
 export function worldBattlefieldIssues(map: WorldBattlefieldMap): string[] {
   const grid = worldBattlefieldGrid(map);
   const issues = tacticalMadeBoardIssues(map.size, grid);
-  // Each prop on the board (1.311), and no two with one id.
+  // Each prop on the board (1.315), and no two with one id.
   const ids = new Set<string>();
   if (
     map.growth &&
@@ -309,7 +309,7 @@ export function worldEditsFightable<T extends { battlefields?: WorldBattlefieldM
   return { edits: (kept.length ? { ...rest, battlefields: kept } : rest) as T, dropped: unfit.map((map) => map.name) };
 }
 
-/** Painted growth rows as the cells it lies on (1.313). */
+/** Painted growth rows as the cells it lies on (1.317). */
 function worldBattlefieldGrowth(rows: string[]): { growth?: Array<{ x: number; y: number }> } {
   const growth = rows.flatMap((row, y) => [...row].flatMap((char, x) => (char === "g" ? [{ x, y }] : [])));
   return growth.length ? { growth } : {};

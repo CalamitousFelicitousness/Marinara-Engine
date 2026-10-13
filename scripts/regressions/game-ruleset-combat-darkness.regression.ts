@@ -154,7 +154,7 @@ try {
 
   // ── Who sheds light ──
   {
-    // At night: nobody lights a torch in daylight (1.314 fix).
+    // At night: nobody lights a torch in daylight (1.318 fix).
     const state = give(
       fight(
         [

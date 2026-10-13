@@ -939,7 +939,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["revealed", say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "attack" })],
     // Ready (1.287).
     ["ready", say({ type: "ready", actorId: "brenna", label: "Sword", on: "comes", outcome: "readied" })],
-    // Held Ground let go mid-fight, and a debt coming due (1.325).
+    // Held Ground let go mid-fight, and a debt coming due (1.329).
     ["heldGroundReleased", say({ type: "heldGroundReleased", label: "The Wheel", died: ["lurker"], down: ["brenna"] })],
     [
       "owing",
@@ -953,7 +953,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         result: "safe",
       }),
     ],
-    // A prop lit again (1.327).
+    // A prop lit again (1.331).
     ["relit", say({ type: "relit", actorId: "brenna", propId: "p1", label: "Bonfire", cells: 9 })],
   ];
   const printed = new Map(table);

@@ -508,7 +508,7 @@ export function TacticalCombatUI({
     () => TERRAIN_PALETTES[activeEnvironment ?? "default"] ?? TERRAIN_PALETTES.default,
     [activeEnvironment],
   );
-  // Board art (1.333 on Classic, as on the ruleset board since 1.328): its environment's board pack draws
+  // Board art (1.337 on Classic, as on the ruleset board since 1.332): its environment's board pack draws
   // the ground, edges and raised rims; without one, the painted textures below.
   const boardArt = useBoardArt(undefined, activeEnvironment);
   // Stronger palette tint over the painted textures when a themed environment applies.

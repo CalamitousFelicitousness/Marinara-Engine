@@ -476,7 +476,7 @@ export function rulesetCombatEventLine(
     }
     // Hiding given away (1.286).
     case "revealed":
-      // Given away by a chime (1.314).
+      // Given away by a chime (1.318).
       if (event.reason === "alerted") {
         return key("revealedAlerted", {
           actor: names.combatant(event.actorId),
@@ -665,10 +665,10 @@ export function rulesetCombatEventLine(
         dealt: event.dealt,
         health: event.health,
       });
-    // A prop lit again (1.327).
+    // A prop lit again (1.331).
     case "relit":
       return key("relit", { actor: names.combatant(event.actorId), label: event.label });
-    // Held Ground let go mid-fight (1.325), and the marks coming due.
+    // Held Ground let go mid-fight (1.329), and the marks coming due.
     case "heldGroundReleased": {
       const line = key(event.label ? "heldGroundReleasedNamed" : "heldGroundReleased", { label: event.label ?? "" });
       const died = event.died.map((id) => names.combatant(id)).join(", ");
@@ -687,7 +687,7 @@ export function rulesetCombatEventLine(
         count: event.rolls.length,
         rolls: event.rolls.map((roll) => roll + event.bonus).join(", "),
       });
-    // Felled on Held Ground, and reaped (1.318).
+    // Felled on Held Ground, and reaped (1.322).
     case "felled":
       return key(event.label ? "felledNamed" : "felled", {
         actor: names.combatant(event.actorId),
@@ -698,33 +698,33 @@ export function rulesetCombatEventLine(
         actor: names.combatant(event.actorId),
         source: event.sourceId ? names.combatant(event.sourceId) : "",
       });
-    // Drawn toward whoever spoke to them (1.321): Whisper a Name.
+    // Drawn toward whoever spoke to them (1.325): Whisper a Name.
     case "drawn":
       return key("drawn", { actor: names.combatant(event.actorId), target: names.combatant(event.targetId) });
-    // Creatures called into the fight (1.320): Jars Burst.
+    // Creatures called into the fight (1.324): Jars Burst.
     case "called":
       return key(event.ids.length ? "called" : "calledNone", {
         actor: names.combatant(event.actorId),
         label: event.label,
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
-    // Hanging on at 1 (1.315): the Hourglass.
+    // Hanging on at 1 (1.319): the Hourglass.
     case "hangsOn":
       return key(event.label ? "hangsOnNamed" : "hangsOn", {
         actor: names.combatant(event.actorId),
         label: event.label ?? "",
         left: event.left,
       });
-    // An aura grown (1.315).
+    // An aura grown (1.319).
     case "auraGrows":
       return key("auraGrows", {
         actor: names.combatant(event.actorId),
         condition: names.condition(event.condition),
         distance: event.distance,
       });
-    // A board's light rule catching somebody (1.314).
+    // A board's light rule catching somebody (1.318).
     case "lightRule": {
-      // With its save (1.316), whether it was made.
+      // With its save (1.320), whether it was made.
       const named = !!event.label;
       const name = !event.save
         ? named
@@ -744,12 +744,12 @@ export function rulesetCombatEventLine(
         total: event.save?.total ?? 0,
       });
     }
-    // The board doing something on its own (1.313), and growth taken off it.
+    // The board doing something on its own (1.317), and growth taken off it.
     case "boardEvent": {
       const line = event.tell
         ? key("boardEventTell", { tell: event.tell })
         : key("boardEvent", { label: event.label ?? event.id, cells: event.cells });
-      // Who it carried (1.324).
+      // Who it carried (1.328).
       if (!event.pushed?.length) return line;
       const carried = event.pushed.map((one) => names.combatant(one.id)).join(", ");
       return `${line} ${key("boardEventCarried", { names: carried })}`;
@@ -760,7 +760,7 @@ export function rulesetCombatEventLine(
         label: event.label ?? "",
         count: event.cells,
       });
-    // A prop struck or caught in an area (1.311).
+    // A prop struck or caught in an area (1.315).
     case "prop":
       return key(
         event.outcome === "miss"
@@ -948,7 +948,7 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText({ ...event, modifier: 0, total: event.kept }, t),
         from: event.from,
       });
-    // A failed save turned into a success (1.312).
+    // A failed save turned into a success (1.316).
     case "legendaryResistance":
       return key("legendaryResistance", {
         actor: names.combatant(event.actorId),

@@ -1560,13 +1560,13 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
 }
 
 /** An aura that grows, lingers or harms on its targets' turns, a holder who tears free, a hold with a
- *  most, or a creature that hangs on at 1 (1.315). */
+ *  most, or a creature that hangs on at 1 (1.319). */
 function carriesBossAsks(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBossAsks(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
-  // An aura's own `grows`, not a delayed blast's (1.178).
+  // An aura's own `grows`, not a delayed blast's (1.182).
   if ((record.grows !== undefined && record.side !== undefined) || record.lingers !== undefined) return true;
   if (record.heldAtMost !== undefined) return true;
   if (record.hangsOn !== undefined) return true;
@@ -1574,8 +1574,8 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
-/** A use only beside a prop, or a ground change whose occupants stay in it (1.327). */
-/** An item's use that gives its user more of the turn (1.329): the Time-Flour Loaf. */
+/** A use only beside a prop, or a ground change whose occupants stay in it (1.331). */
+/** An item's use that gives its user more of the turn (1.333): the Time-Flour Loaf. */
 function carriesItemGives(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemGives(one, depth + 1));
@@ -1586,7 +1586,7 @@ function carriesItemGives(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesItemGives(one, depth + 1));
 }
 
-/** A lasting area with a look of its own on a fight's board (1.328). */
+/** A lasting area with a look of its own on a fight's board (1.332). */
 function carriesBoardArt(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBoardArt(one, depth + 1));
@@ -1606,7 +1606,7 @@ function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesNearUseOrFall(one, depth + 1));
 }
 
-/** Props and felling in a condition or a creature action (1.326): a condition held only near a
+/** Props and felling in a condition or a creature action (1.330): a condition held only near a
  *  prop, an aura that feeds, an area around props. */
 function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -1618,7 +1618,7 @@ function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesPropsAndFeeding(one, depth + 1));
 }
 
-/** A condition that moves the difficulty of the saves its holder calls for (1.323). */
+/** A condition that moves the difficulty of the saves its holder calls for (1.327). */
 function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSaveDifficulty(one, depth + 1));
@@ -1628,7 +1628,7 @@ function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesSaveDifficulty(one, depth + 1));
 }
 
-/** Whether a catalog entry or a condition names its icon (1.333). */
+/** Whether a catalog entry or a condition names its icon (1.337). */
 function carriesArtIcon(value: unknown, depth = 0): boolean {
   if (depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesArtIcon(one, depth + 1));
@@ -1638,7 +1638,7 @@ function carriesArtIcon(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesArtIcon(one, depth + 1));
 }
 
-/** Whether anything names a list of lair actions for a broken concentration to pick from (1.331). */
+/** Whether anything names a list of lair actions for a broken concentration to pick from (1.335). */
 function carriesBrokenLairList(value: unknown, depth = 0): boolean {
   if (depth > 8) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBrokenLairList(one, depth + 1));
@@ -1648,7 +1648,7 @@ function carriesBrokenLairList(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBrokenLairList(one, depth + 1));
 }
 
-/** Lair timing (1.322): a creature action only at whoever has acted this round, one whose broken
+/** Lair timing (1.326): a creature action only at whoever has acted this round, one whose broken
  *  concentration picks the next lair action, or a condition lasting until the next lair action. */
 function carriesLairTiming(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -1668,7 +1668,7 @@ function carriesLairTiming(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesLairTiming(one, depth + 1));
 }
 
-/** A creature's action that draws whoever it lands on toward it (1.321). */
+/** A creature's action that draws whoever it lands on toward it (1.325). */
 function carriesDraws(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDraws(one, depth + 1));
@@ -1680,7 +1680,7 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesDraws(one, depth + 1));
 }
 
-/** A creature's action that calls creatures into the fight (1.320). */
+/** A creature's action that calls creatures into the fight (1.324). */
 function carriesCalls(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCalls(one, depth + 1));
@@ -1693,7 +1693,7 @@ function carriesCalls(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action that leaves an area standing or changes the ground, or an area that lasts
- *  until the next lair action (1.319). */
+ *  until the next lair action (1.323). */
 function carriesCreatureZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCreatureZones(one, depth + 1));
@@ -1712,7 +1712,7 @@ function carriesCreatureZones(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCreatureZones(one, depth + 1));
 }
 
-/** A blow that reaps what it fells on Held Ground (1.318): the Reaping Hook. */
+/** A blow that reaps what it fells on Held Ground (1.322): the Reaping Hook. */
 function carriesReaps(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesReaps(one, depth + 1));
@@ -1722,7 +1722,7 @@ function carriesReaps(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesReaps(one, depth + 1));
 }
 
-/** An item's use taken as a reaction (1.317): Liesl's Coffin, the Straw Proxy. */
+/** An item's use taken as a reaction (1.321): Liesl's Coffin, the Straw Proxy. */
 function carriesItemReactions(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemReactions(one, depth + 1));
@@ -1735,7 +1735,7 @@ function carriesItemReactions(value: unknown, depth = 0): boolean {
 }
 
 /** A light that sheds shade, something that gives the unseen away, or a creature light holds still
- *  (1.314). */
+ *  (1.318). */
 function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesShadeOrAlerts(one, depth + 1));
@@ -1745,7 +1745,7 @@ function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesShadeOrAlerts(one, depth + 1));
 }
 
-/** An entry or an item's use that clears growth (1.313). */
+/** An entry or an item's use that clears growth (1.317). */
 function carriesClears(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesClears(one, depth + 1));
@@ -1755,14 +1755,14 @@ function carriesClears(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesClears(one, depth + 1));
 }
 
-/** A creature's legendary resistances, and an item's use no bigger than it reaches (1.312). */
+/** A creature's legendary resistances, and an item's use no bigger than it reaches (1.316). */
 function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLegendaryResistance(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.legendaryResistance !== undefined) return true;
-  // An item's use no bigger than it reaches (1.312); an entry's own came with 1.309.
+  // An item's use no bigger than it reaches (1.316); an entry's own came with 1.313.
   const use = plainRecord(record.use);
   if (use?.targetsUpTo !== undefined) return true;
   if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.targetsUpTo !== undefined))
@@ -1770,7 +1770,7 @@ function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesLegendaryResistance(one, depth + 1));
 }
 
-/** Lair actions and a lair's count (1.310). */
+/** Lair actions and a lair's count (1.314). */
 function carriesLair(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLair(one, depth + 1));
@@ -1780,7 +1780,7 @@ function carriesLair(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesLair(one, depth + 1));
 }
 
-/** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.309). */
+/** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.313). */
 function carriesSphere(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSphere(one, depth + 1));
@@ -4467,152 +4467,152 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.181 or newer";
   }
-  // Creature zones and ground, and areas until the next lair action, 1.319.
+  // Creature zones and ground, and areas until the next lair action, 1.323.
   if (
-    !declaresApi(319) &&
+    !declaresApi(323) &&
     (carriesCreatureZones(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureZones(document)))
   ) {
-    return "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.319 or newer";
+    return "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.323 or newer";
   }
-  // Creatures called into the fight, 1.320.
+  // Creatures called into the fight, 1.324.
   if (
-    !declaresApi(320) &&
+    !declaresApi(324) &&
     (carriesCalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls(document)))
   ) {
-    return "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.320 or newer";
+    return "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.324 or newer";
   }
-  // Drawn toward a creature, 1.321.
+  // Drawn toward a creature, 1.325.
   if (
-    !declaresApi(321) &&
+    !declaresApi(325) &&
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
-    return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+    return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.325 or newer";
   }
-  // Icons named by a catalog entry or a condition, 1.333.
-  if (!declaresApi(333) && carriesArtIcon(ruleset)) {
-    return "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.333 or newer";
+  // Icons named by a catalog entry or a condition, 1.337.
+  if (!declaresApi(337) && carriesArtIcon(ruleset)) {
+    return "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.337 or newer";
   }
-  // Rest dice over several pools, 1.332.
+  // Rest dice over several pools, 1.336.
   if (
-    !declaresApi(332) &&
+    !declaresApi(336) &&
     Array.isArray(plainRecord(ruleset)?.rests) &&
     (plainRecord(ruleset)!.rests as unknown[]).some((rest) => Array.isArray(plainRecord(rest)?.dice))
   ) {
-    return "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.332 or newer";
+    return "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.336 or newer";
   }
-  // A broken concentration that picks one of a list of lair actions, 1.331.
-  if (!declaresApi(331) && carriesBrokenLairList(ruleset)) {
-    return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.331 or newer";
+  // A broken concentration that picks one of a list of lair actions, 1.335.
+  if (!declaresApi(335) && carriesBrokenLairList(ruleset)) {
+    return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.335 or newer";
   }
-  // Dice a rest spends to heal, 1.330.
+  // Dice a rest spends to heal, 1.334.
   if (
-    !declaresApi(330) &&
+    !declaresApi(334) &&
     Array.isArray(plainRecord(ruleset)?.rests) &&
     (plainRecord(ruleset)!.rests as unknown[]).some((rest) => plainRecord(rest)?.dice !== undefined)
   ) {
-    return "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.330 or newer";
+    return "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.334 or newer";
   }
-  // An item use that gives more of the turn, 1.329.
+  // An item use that gives more of the turn, 1.333.
   if (
-    !declaresApi(329) &&
+    !declaresApi(333) &&
     (carriesItemGives(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemGives(document)))
   ) {
-    return "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.329 or newer";
+    return "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.333 or newer";
   }
-  // A lasting area with its own art on the board, 1.328.
+  // A lasting area with its own art on the board, 1.332.
   if (
-    !declaresApi(328) &&
+    !declaresApi(332) &&
     (carriesBoardArt(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBoardArt(document)))
   ) {
-    return "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.328 or newer";
+    return "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.332 or newer";
   }
-  // A use only beside a prop, or occupants that stay, 1.327.
+  // A use only beside a prop, or occupants that stay, 1.331.
   if (
-    !declaresApi(327) &&
+    !declaresApi(331) &&
     (carriesNearUseOrFall(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesNearUseOrFall(document)))
   ) {
-    return "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.327 or newer";
+    return "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.331 or newer";
   }
-  // Near a prop, around props, an aura that feeds, 1.326.
+  // Near a prop, around props, an aura that feeds, 1.330.
   if (
-    !declaresApi(326) &&
+    !declaresApi(330) &&
     (carriesPropsAndFeeding(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPropsAndFeeding(document)))
   ) {
-    return "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.326 or newer";
+    return "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.330 or newer";
   }
-  // Save difficulty moved by a condition, 1.323.
+  // Save difficulty moved by a condition, 1.327.
   if (
-    !declaresApi(323) &&
+    !declaresApi(327) &&
     (carriesSaveDifficulty(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveDifficulty(document)))
   ) {
-    return "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.323 or newer";
+    return "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.327 or newer";
   }
-  // Lair timing, 1.322.
+  // Lair timing, 1.326.
   if (
-    !declaresApi(322) &&
+    !declaresApi(326) &&
     (carriesLairTiming(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLairTiming(document)))
   ) {
-    return "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.322 or newer";
+    return "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.326 or newer";
   }
-  // Blows that reap, 1.318.
+  // Blows that reap, 1.322.
   if (
-    !declaresApi(318) &&
+    !declaresApi(322) &&
     (carriesReaps(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesReaps(document)))
   ) {
-    return "A ruleset with a blow that reaps requires schemaVersion 2 and capabilityApi 1.318 or newer";
+    return "A ruleset with a blow that reaps requires schemaVersion 2 and capabilityApi 1.322 or newer";
   }
-  // Item uses taken as reactions, 1.317.
+  // Item uses taken as reactions, 1.321.
   if (
-    !declaresApi(317) &&
+    !declaresApi(321) &&
     (carriesItemReactions(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemReactions(document)))
   ) {
-    return "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.317 or newer";
+    return "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.321 or newer";
   }
-  // Growing auras, holds with a most, tearing free and hanging on, 1.315.
+  // Growing auras, holds with a most, tearing free and hanging on, 1.319.
   if (
-    !declaresApi(315) &&
+    !declaresApi(319) &&
     (carriesBossAsks(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBossAsks(document)))
   ) {
-    return "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.315 or newer";
+    return "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.319 or newer";
   }
-  // Shade and chimes, 1.314.
+  // Shade and chimes, 1.318.
   if (
-    !declaresApi(314) &&
+    !declaresApi(318) &&
     (carriesShadeOrAlerts(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesShadeOrAlerts(document)))
   ) {
-    return "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.314 or newer";
+    return "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.318 or newer";
   }
-  // Clearing growth, 1.313.
+  // Clearing growth, 1.317.
   if (
     !declaresApi(313) &&
     (carriesClears(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesClears(document)))
   ) {
-    return "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.313 or newer";
+    return "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.317 or newer";
   }
-  // Legendary Resistance, 1.312.
+  // Legendary Resistance, 1.316.
   if (
     !declaresApi(312) &&
     (carriesLegendaryResistance(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryResistance(document)))
   ) {
-    return "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.312 or newer";
+    return "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.316 or newer";
   }
-  // Lair actions, 1.310.
+  // Lair actions, 1.314.
   if (
     !declaresApi(310) &&
     (carriesLair(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesLair(document)))
   ) {
-    return "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.310 or newer";
+    return "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.314 or newer";
   }
-  // Resilient Sphere, 1.309.
+  // Resilient Sphere, 1.313.
   if (
     !declaresApi(313) &&
     (carriesSphere(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSphere(document)))

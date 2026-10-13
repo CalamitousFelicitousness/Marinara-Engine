@@ -1364,14 +1364,14 @@ interface InventorySlotProps {
   holderName?: string;
   /** The ruleset's word for bound, said of a bound stack. */
   bindingLabel?: string;
-  /** The icons it may be drawn with, best first (1.333); its first letter when the pack has none. */
+  /** The icons it may be drawn with, best first (1.337); its first letter when the pack has none. */
   icons?: ReadonlyArray<string | null>;
   selected: boolean;
   reorderEnabled: boolean;
   onClick: () => void;
 }
 
-/** The icons a stack may be drawn with, best first (1.333): its ruleset item's own, the one named by its
+/** The icons a stack may be drawn with, best first (1.337): its ruleset item's own, the one named by its
  *  entry, then the one named by its own name. */
 function stackIcons(stack: InventoryItem, itemBook: RulesetItemBook | undefined): Array<string | null> {
   const cut = stack.item?.indexOf("/") ?? -1;

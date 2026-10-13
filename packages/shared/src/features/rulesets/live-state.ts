@@ -873,7 +873,7 @@ export type RulesetSheetOp =
   /** Sets a live state to one of its values, named by the value or its label. */
   | { op: "state"; state: string; value: string }
   | { op: "note"; field: string; value: string }
-  /** `dice` (1.330): spend that many of the rest's dice to heal first, as its `dice` says. `extra` is the
+  /** `dice` (1.334): spend that many of the rest's dice to heal first, as its `dice` says. `extra` is the
    *  party's best extra die for it (Song of Rest), worked out where the party is known; without it, the
    *  sheet's own. */
   | { op: "rest"; rest: string; dice?: number; pool?: string; extra?: { sides: number; add: number } }
@@ -980,7 +980,7 @@ export function applyRulesetSheetOp(
   /** What a rest rolls for a condition that lowers health's maximum (1.259). Without one, each die
    *  counts its average, rounded down over them all. */
   roll?: (sides: number) => number,
-  /** The items the character carries, which a rest's dice read for an `itemStat` (1.332). */
+  /** The items the character carries, which a rest's dice read for an `itemStat` (1.336). */
   items?: ReadonlyArray<RulesetSheetItem>,
 ): RulesetSheetOpResult {
   // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
@@ -1219,7 +1219,7 @@ export function applyRulesetSheetOp(
   if (op.op !== "rest") return { ok: false, reason: "malformed" };
   const rest = definition.rests.find((entry) => sameName(entry.id, op.rest) || sameName(entry.label, op.rest));
   if (!rest) return { ok: false, reason: "unknown-rest" };
-  // Dice spent to heal first (1.330), then the rest itself.
+  // Dice spent to heal first (1.334), then the rest itself.
   if (op.dice !== undefined && op.dice !== 0) {
     if (!rest.dice || !isAmount(op.dice)) return { ok: false, reason: "bad-amount" };
     const spent = rulesetSpendRestDice(
@@ -1653,12 +1653,12 @@ export function planRulesetUse(
 type RestDiceList = NonNullable<RulesetDefinition["rests"][number]["dice"]>;
 type RestDice = Extract<RestDiceList, { pool: string }>;
 
-/** A rest's dice as a list (1.332), one entry a pool. */
+/** A rest's dice as a list (1.336), one entry a pool. */
 export function rulesetRestDiceEntries(dice: RestDiceList | undefined): RestDice[] {
   return dice === undefined ? [] : Array.isArray(dice) ? dice : [dice];
 }
 
-/** A die's sides read off the sheet (1.330): a number, or an enum field's value written "d8". */
+/** A die's sides read off the sheet (1.334): a number, or an enum field's value written "d8". */
 export function rulesetRestDieSides(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -1674,13 +1674,13 @@ export function rulesetRestDieSides(
   return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.trunc(value))) : 0;
 }
 
-/** The extra die a sheet gives a rest's dice (1.330), Song of Rest: its sides and what is added to it;
+/** The extra die a sheet gives a rest's dice (1.334), Song of Rest: its sides and what is added to it;
  *  null where it gives none. */
 export function rulesetRestExtraDie(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
   restId: string,
-  /** What the character carries, for an `itemStat` in it (1.332): Pell's Teapot. */
+  /** What the character carries, for an `itemStat` in it (1.336): Pell's Teapot. */
   items?: ReadonlyArray<RulesetSheetItem>,
   stored?: unknown,
 ): { sides: number; add: number } | null {
@@ -1695,9 +1695,9 @@ export function rulesetRestExtraDie(
   return { sides, add: Number.isFinite(add) ? Math.trunc(add) : 0 };
 }
 
-/** Spend `count` of a rest's dice to heal (1.330): each die rolled plus `add`, never below 0, and the
+/** Spend `count` of a rest's dice to heal (1.334): each die rolled plus `add`, never below 0, and the
  *  extra die once, all given back to `heals` as a heal that is not magical. Without a roller each die
- *  counts its average, rounded down. Over several pools (1.332) they come from `pool` when it is
+ *  counts its average, rounded down. Over several pools (1.336) they come from `pool` when it is
  *  named, else from the first listed pool that has any, then the next. */
 function rulesetSpendRestDice(
   definition: RulesetDefinition,

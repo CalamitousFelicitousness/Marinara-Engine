@@ -1,4 +1,4 @@
-// How one cell of a fight's board is drawn from its packs (fight-board art slots, Capability API 1.328):
+// How one cell of a fight's board is drawn from its packs (fight-board art slots, Capability API 1.332):
 // which tile, overlay and piece of a prop each part takes, and the CSS that shows one rect of a sheet
 // filling an element. Pure, so the regressions can read it without a server.
 import {

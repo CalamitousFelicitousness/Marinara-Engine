@@ -1,5 +1,5 @@
 /**
- * Lair actions (Capability API 1.310).
+ * Lair actions (Capability API 1.314).
  *
  *   - `lair` on a creature's action and `lairInitiative` on the creature: while it fights in its
  *     lair (`inLair`), one lair action a round as the count passes its lair's number, losing ties,
@@ -555,16 +555,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.310 or newer";
+    const gate = "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.314 or newer";
     const doc = (creature: Record<string, unknown>) =>
       fiveE((doc) => doc.catalogs.push({ id: "x", label: "X", entries: [{ id: "a", label: "A", creature }] }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(309) as never, doc({ actions: [cQuake] })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(313) as never, doc({ actions: [cQuake] })), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(309) as never, doc({ lairInitiative: 20, actions: [cClaw] })),
+      getCapabilityPackageInstallIssue(manifest(313) as never, doc({ lairInitiative: 20, actions: [cClaw] })),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(310) as never, doc({ actions: [cQuake] })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(309) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(314) as never, doc({ actions: [cQuake] })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(313) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

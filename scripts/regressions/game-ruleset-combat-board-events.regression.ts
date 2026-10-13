@@ -1,5 +1,5 @@
 /**
- * The board doing things on its own each round (Capability API 1.313), and growth.
+ * The board doing things on its own each round (Capability API 1.317), and growth.
  *
  *   - `board.events`: checked as handed (where, what, when); the cells a ring, a sweep, a block, a
  *     list or a spread of growth reaches each time; when each happens.
@@ -405,7 +405,7 @@ try {
     assert.deepEqual([rulesetCombatant(turned.state, "mage")!.x, rulesetCombatant(turned.state, "mage")!.y], [1, 1]);
   }
 
-  // ── The millrace carries, the drifts blow (1.324) ──
+  // ── The millrace carries, the drifts blow (1.328) ──
   {
     assert.ok(supportedCapabilityApi.minor >= 324);
     // Checked as handed: a way and at most 6 squares; anything else is left out.
@@ -631,11 +631,11 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.313 or newer";
+      "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.317 or newer";
     const doc = shears({ range: 5, area: { shape: "box", size: 15 }, clears: "growth" });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(312) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(313) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(312) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(316) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(316) as never, fiveE()), gate);
   }
 
   // ── Painted on a world's battlefield: the director's fight and its view, drawn and said ──
@@ -683,7 +683,7 @@ try {
           change: { growth: true },
         },
       ],
-      // What standing in its light does (1.314) is carried along too.
+      // What standing in its light does (1.318) is carried along too.
       lightRule: { rounds: 2, tracks: [{ track: "exhaustion", by: 1 }] },
     });
     assert.deepEqual(worldBattlefieldIssues(map), []);

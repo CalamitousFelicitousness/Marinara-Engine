@@ -106,7 +106,7 @@ const directedCombatantFields = z.object({
   side: z.enum(["player", "enemy"]),
   /** Caught unaware as the fight begins (1.236): read by a ruleset fight only. */
   surprised: z.boolean().optional(),
-  /** Fights in its own lair (1.310): read by a ruleset fight only. */
+  /** Fights in its own lair (1.314): read by a ruleset fight only. */
   inLair: z.boolean().optional(),
   hp: num,
   maxHp: num.min(1),
@@ -712,7 +712,7 @@ export async function combatDirectorRoutes(
         environment: z.string().max(80).optional(),
         formation: z.string().max(80).optional(),
         battlefield: z.unknown().optional(),
-        /** The board pack a ruleset fight is drawn with (1.328), by library id. */
+        /** The board pack a ruleset fight is drawn with (1.332), by library id. */
         boardPack: z.string().max(80).optional(),
         /** Whether a ruleset fight is fought on a board, which is what the game's Tactical combat
          *  preference asks for. The ruleset still has to say what a cell is worth. */
@@ -911,9 +911,9 @@ export async function combatDirectorRoutes(
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
             // Who the scene caught unaware (1.236).
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
-            // Who fights in its own lair (1.310).
+            // Who fights in its own lair (1.314).
             inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
-            // The scene's time of day, for the light it is fought in (1.286).
+            // The scene's time of day, for the light it is fought in (1.290).
             time: (await visibleLiveRow(input.chatId)).row?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });

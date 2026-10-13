@@ -1,5 +1,5 @@
 /**
- * Relighting, falling through ice, and a use only beside a prop (Capability API 1.327).
+ * Relighting, falling through ice, and a use only beside a prop (Capability API 1.331).
  *
  *   - A board prop's `relight {light, squares, budget?}`: somebody beside it may spend the budget to
  *     light every cell within `squares` of it again, offered only while one of them is not so lit.
@@ -205,7 +205,7 @@ try {
         bad.issues.join("; "),
       );
     const gate =
-      "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.327 or newer";
+      "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.331 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -219,9 +219,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(326) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(327) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(326) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(330) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(331) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(330) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

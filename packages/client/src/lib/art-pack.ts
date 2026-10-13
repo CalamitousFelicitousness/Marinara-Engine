@@ -1,4 +1,4 @@
-// The game's icons and portraits (Capability API 1.333): a board pack of kind `icons` or
+// The game's icons and portraits (Capability API 1.337): a board pack of kind `icons` or
 // `portraits`, the library's or the built-in one the server resolves. How one is drawn is
 // `components/game/ArtIcon.tsx`; a thing the pack lacks keeps today's look.
 import { useContext } from "react";

@@ -103,7 +103,7 @@ function magicalDarkness(state: RulesetEncounterState): Set<string> {
 
 /** The cells obscuring zones cover now, each with the senses that see through it. */
 function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pierced: string[]; light?: true }> {
-  // What lies on the ground (1.313): growth lightly obscures, and a fog of its own as it says.
+  // What lies on the ground (1.317): growth lightly obscures, and a fog of its own as it says.
   const lightly = new Set<string>();
   const heavily = new Set<string>();
   for (const [at, here] of Object.entries(state.board?.grid.ground ?? {})) {
@@ -167,7 +167,7 @@ interface LightSource {
   sunlight?: number;
   /** How far its magical light reaches (1.298), the only light in magical darkness. */
   magic?: { bright: number; edge: number };
-  /** It sheds shade (1.314): dim light out to `edge`, however bright it is there. */
+  /** It sheds shade (1.318): dim light out to `edge`, however bright it is there. */
   shade?: true;
 }
 
@@ -187,7 +187,7 @@ export function rulesetLightOf(
   sunlight?: number;
   /** The part of it that is magical (1.298), which alone lights magical darkness. */
   magic?: { bright: number; dim: number };
-  /** How far the shade it sheds reaches (1.314), in cells. */
+  /** How far the shade it sheds reaches (1.318), in cells. */
   shade?: { reach: number };
 } | null {
   const combat = definition.combat;
@@ -202,14 +202,14 @@ export function rulesetLightOf(
   const all = [...(hidden ? [] : ownLight(who)), ...spelled, ...itemLights(who)];
   if (darkness.carried && !who.doused && !daylit(who, state) && rulesetCarriesLight(definition, who, state))
     all.push(darkness.carried);
-  // Shade (1.314) is its own: it darkens what the rest lights.
+  // Shade (1.318) is its own: it darkens what the rest lights.
   const shades = all.filter((one) => one.shade);
   const shade = shades.length
     ? { reach: Math.max(...shades.map((one) => rulesetInCells(one.dim, perCell))) }
     : undefined;
   const radii = all.filter((one) => !one.shade);
   if (radii.length === 0) return shade ? { bright: 0, dim: 0, shade } : null;
-  // No bright light at all is none, not the one cell a distance rounds up to (1.291).
+  // No bright light at all is none, not the one cell a distance rounds up to (1.295).
   const bright = Math.max(...radii.map((one) => (one.bright > 0 ? rulesetInCells(one.bright, perCell) : 0)));
   const edge = Math.max(...radii.map((one) => rulesetInCells(one.bright + one.dim, perCell)));
   // Its bright light showing the invisible (1.296): a lantern of revealing's own reach.
@@ -248,8 +248,8 @@ function daylit(who: RulesetCombatant, state: RulesetEncounterState | undefined)
   return own === "bright" || own === "sunlight" || (own === "dim" && ambient === "sunlight");
 }
 
-/** A creature's own light (1.289): as its block says, out while it begins `unlit`, and as its own
- *  actions last lit or put it out (1.291). */
+/** A creature's own light (1.293): as its block says, out while it begins `unlit`, and as its own
+ *  actions last lit or put it out (1.295). */
 function ownLight(who: RulesetCombatant): RulesetLightRadius[] {
   const now = who.shedding ?? (who.block?.unlit ? "out" : who.block?.light);
   return now && now !== "out" ? [now] : [];
@@ -331,7 +331,7 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
         ...(lights.reveals && lights.bright > 0 ? { reveals: lights.bright } : {}),
         ...(lights.sunlight && lights.bright > 0 ? { sunlight: lights.bright } : {}),
         ...(lights.shade ? { shade: true as const } : {}),
-        // A spell's light is magical (1.294).
+        // A spell's light is magical (1.298).
         magic: { bright: lights.bright, edge: lights.bright + lights.dim },
       },
     ];
@@ -384,7 +384,7 @@ function lightFrom(
   return light;
 }
 
-/** The light on a cell where shade reaches it (1.314): dim, however bright or dark it was. Magical
+/** The light on a cell where shade reaches it (1.318): dim, however bright or dark it was. Magical
  *  darkness it never reaches. */
 function shadedLight(
   sources: LightSource[],
@@ -415,16 +415,16 @@ export function rulesetLightAt(
   cell: RulesetCombatCell,
 ): RulesetBoardLight {
   const grid = state.board?.grid;
-  // A cell with its own light (1.313) is in it, whatever the board's.
+  // A cell with its own light (1.317) is in it, whatever the board's.
   const base = grid?.ground?.[`${cell.x},${cell.y}`]?.light ?? state.board?.light ?? "bright";
   if (!definition.combat?.sight?.darkness || !grid) return base;
   const sources = lightSources(definition, state);
-  // Magical darkness (1.294): dark whatever the fight is fought in, lit only by magical light.
+  // Magical darkness (1.298): dark whatever the fight is fought in, lit only by magical light.
   if (magicalDarkness(state).has(`${cell.x},${cell.y}`)) {
     return lightFrom(sources, grid, cell, "dark", true);
   }
   if (base === "sunlight") return shadedLight(sources, grid, cell, base);
-  // Bright light already: only a light that is sunlight changes it (1.293).
+  // Bright light already: only a light that is sunlight changes it (1.297).
   if (base === "bright") {
     const sunlit = sources.filter((source) => source.sunlight !== undefined);
     return shadedLight(sources, grid, cell, sunlit.length ? lightFrom(sunlit, grid, cell, base) : base);
@@ -454,7 +454,7 @@ export function rulesetBoardShading(
     for (let x = 0; x < grid.width; x += 1) {
       const key = `${x},${y}`;
       const cell = { x, y };
-      // A cell's own light (1.313), as rulesetLightAt reads it.
+      // A cell's own light (1.317), as rulesetLightAt reads it.
       const own = grid.ground?.[key]?.light ?? base;
       let here: RulesetBoardLight = own;
       if (real) {
@@ -705,7 +705,7 @@ function sees(
   // a sense that sees in the dark (one step brighter) or whatever the light, within its range.
   const darkness = combat.sight?.darkness;
   const base = state.board?.light ?? "bright";
-  // A cell's own light (1.313) and shade (1.314) may make a bright board dark or dim somewhere.
+  // A cell's own light (1.317) and shade (1.318) may make a bright board dark or dim somewhere.
   const sources = darkness && !sightless ? lightSources(definition, state) : [];
   const ground = grid.ground ?? {};
   const darkens =

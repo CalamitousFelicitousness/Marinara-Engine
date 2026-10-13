@@ -1,5 +1,5 @@
 /**
- * The showcase bosses' asks (Capability API 1.315).
+ * The showcase bosses' asks (Capability API 1.319).
  *
  *   - An aura that `grows` as its holder's turns start, to its most: The Owed's Frost Debt, 20 feet
  *     growing by 10 to 40; that `harms` as each turn of whoever it reaches starts (`on`); and whose
@@ -470,7 +470,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.315 or newer";
+      "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.319 or newer";
     const only = (edit: (doc: Record<string, any>) => void) => {
       const doc = JSON.parse(fiveEText);
       doc.sheet.live.conditions.push({ id: "x", label: "X" }, { id: "y", label: "Y" });
@@ -534,11 +534,11 @@ try {
     ];
     for (const [name, doc] of cases) {
       parsed(doc);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(314) as never, doc), gate, name);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(315) as never, doc), gate, name);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(318) as never, doc), gate, name);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(319) as never, doc), gate, name);
     }
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(314) as never, JSON.parse(fiveEText)),
+      getCapabilityPackageInstallIssue(manifest(318) as never, JSON.parse(fiveEText)),
       gate,
       "the plain 5e example",
     );

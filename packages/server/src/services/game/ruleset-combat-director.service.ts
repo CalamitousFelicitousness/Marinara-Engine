@@ -209,7 +209,7 @@ export interface RulesetFightSeed {
   battlefield?: TacticalBattlefieldBrief;
   /** A board painted for the fight's place (worldgen W9g), fought on as painted: the brief is not used. */
   made?: TacticalMadeBattlefield;
-  /** The board pack it is drawn with (1.328), by library id: this one, else the painted board's. */
+  /** The board pack it is drawn with (1.332), by library id: this one, else the painted board's. */
   pack?: string;
   /** The chat's own party cards, which is where a sheet build lives. */
   cards: unknown;
@@ -224,12 +224,12 @@ export interface RulesetFightSeed {
   bestiary: RulesetCatalogEntriesById;
   /** Who is caught unaware as it begins (1.236), by id, as the Game Master set the scene. */
   surprised?: string[];
-  /** Who fights in its own lair (1.310), by id: its lair actions are taken on its lair's count. */
+  /** Who fights in its own lair (1.314), by id: its lair actions are taken on its lair's count. */
   inLair?: string[];
-  /** Held Ground (1.318): whoever reaches no health in this fight is felled instead. The story's
+  /** Held Ground (1.322): whoever reaches no health in this fight is felled instead. The story's
    *  region rule decides it; the fight only keeps it. */
   heldGround?: RulesetHeldGround;
-  /** The scene's time of day as the game tracks it (1.286), which sets the light outdoors. */
+  /** The scene's time of day as the game tracks it (1.290), which sets the light outdoors. */
   time?: string | null;
 }
 
@@ -404,7 +404,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     if (!built) continue;
     for (const line of holdRulesetCombatant(definition, built, tier)) adjustments.push(`${built.name}: ${line}`);
   }
-  // A lair whose count comes before everybody's acts before the first turn (1.310).
+  // A lair whose count comes before everybody's acts before the first turn (1.314).
   encounter = rulesetOpenLairWindow(definition, encounter);
   const fight: RulesetFightState = {
     encounter,
@@ -492,19 +492,19 @@ function buildRulesetBoard(
     battlefield: generated.battlefield,
     ...(light ? { light } : {}),
     ...(environment ? { environment } : {}),
-    // The art it is drawn with (1.328).
+    // The art it is drawn with (1.332).
     ...((input.pack ?? input.made?.pack) ? { pack: (input.pack ?? input.made?.pack)! } : {}),
-    // What its painter stood on it that may be broken (1.311).
+    // What its painter stood on it that may be broken (1.315).
     ...(input.made?.props?.length ? { props: input.made.props } : {}),
-    // What it does each round, and the growth and seasons on its cells (1.313).
+    // What it does each round, and the growth and seasons on its cells (1.317).
     ...(input.made?.events?.length ? { events: input.made.events } : {}),
     ...(madeGround(input.made) ? { ground: madeGround(input.made)! } : {}),
-    // What standing in its light does (1.314).
+    // What standing in its light does (1.318).
     ...(input.made?.lightRule ? { lightRule: input.made.lightRule } : {}),
   };
 }
 
-/** The growth and seasons a painted board's cells start with (1.313), or null. */
+/** The growth and seasons a painted board's cells start with (1.317), or null. */
 function madeGround(
   made: TacticalMadeBattlefield | undefined,
 ): Record<string, { growth?: true; season?: string }> | null {
@@ -568,7 +568,7 @@ export function rulesetController(
 ): "manual" | "ai" | "gm" {
   if (!combatant) return "ai";
   // A party member is the player's to play unless they handed them over. Whoever was called to the
-  // party's side (1.320) is the Engine's unless the player took them.
+  // party's side (1.324) is the Engine's unless the player took them.
   if (combatant.side === "party") {
     const chosen = fight.controllers[combatant.id];
     return chosen === "ai" || (combatant.calledBy && chosen !== "manual") ? "ai" : "manual";
@@ -812,7 +812,7 @@ export function directedRulesetView(
             tiles: grid.tiles.map((row) => [...row]),
             ...(grid.elevation ? { elevation: grid.elevation.map((row) => [...row]) } : {}),
             ...(grid.walls ? { walls: { ...grid.walls } } : {}),
-            // Growth and seasons on its cells (1.313); light and fog come with the shading.
+            // Growth and seasons on its cells (1.317); light and fog come with the shading.
             ...(grid.ground && Object.values(grid.ground).some((here) => here.growth || here.season)
               ? {
                   ground: Object.fromEntries(
@@ -834,7 +834,7 @@ export function directedRulesetView(
               : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
-            // The board pack it is drawn with (1.328), and its environment's when it names none.
+            // The board pack it is drawn with (1.332), and its environment's when it names none.
             ...(encounter.board?.pack ? { pack: encounter.board.pack } : {}),
             ...(encounter.board?.environment ? { environment: encounter.board.environment } : {}),
             ...shaded,
@@ -846,7 +846,7 @@ export function directedRulesetView(
     combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
     // The areas spells left standing (1.171), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
-    // What stands on the board that may be broken (1.311), broken ones too.
+    // What stands on the board that may be broken (1.315), broken ones too.
     ...(grid && distance && encounter.board?.props?.length
       ? {
           props: encounter.board.props.map((prop) => ({
@@ -1920,7 +1920,7 @@ function pickRulesetChoice(
 }
 
 /**
- * A concentration broken into one of a list of lair actions (1.331): the one taken is whichever would
+ * A concentration broken into one of a list of lair actions (1.335): the one taken is whichever would
  * catch the most foes, the shelves leaning onto the side of the room the party stands in. The others
  * leave the menu; equal ones, and letting the moment go, stay for the usual picker to weigh.
  */
@@ -2353,7 +2353,7 @@ function continueBossTurn(
 }
 
 /**
- * Held Ground let go in a running fight (1.325), as the story says the year has turned: the felled
+ * Held Ground let go in a running fight (1.329), as the story says the year has turned: the felled
  * die (or go down), the marks come due, and the log tells the Game Master. Refused when the battle
  * is not a ruleset's, is over, or is not on Held Ground.
  */

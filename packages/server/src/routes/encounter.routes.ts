@@ -332,7 +332,7 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.236); a ruleset fight reads it.
           surprised: z.boolean().optional().catch(undefined),
-          // Fights in its own lair (1.310); a ruleset fight reads it.
+          // Fights in its own lair (1.314); a ruleset fight reads it.
           inLair: z.boolean().optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           boss: combatBossSchema.optional(),

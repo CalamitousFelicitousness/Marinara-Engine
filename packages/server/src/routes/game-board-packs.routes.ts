@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// Routes: board packs (fight-board art slots, Capability API 1.328)
+// Routes: board packs (fight-board art slots, Capability API 1.332)
 //
 // The art fights' boards are drawn with, made in Pixelforge or imported from a file, filed under
 // `local/<id>` as creature packs are. A board reads the pack it names, else the library's pack for its
 // environment, else the Engine's built-in `board/<environment>` (shipped in src/assets/board-packs, when
 // there is one), else none and today's drawing; its props also read the library's props pack, else the
-// built-in `board/props`. Icons (1.333) and portraits (1.334) are packs of their own kind, read the same
+// built-in `board/props`. Icons (1.337) and portraits (1.338) are packs of their own kind, read the same
 // way: the library's `icons` or `portraits` pack, else the built-in one. Saving, importing and removing are administrative acts behind
 // `requirePrivilegedAccess`.
 // ──────────────────────────────────────────────
@@ -118,8 +118,8 @@ export async function gameBoardPacksRoutes(app: FastifyInstance) {
     return { board, props };
   });
 
-  // ── GET /api/game-tile-packs/boards/art?kind=icons|portraits ── the game's icons (1.333) or portraits
-  // (1.334): the library's pack of that kind, else the built-in `board/<kind>`; none draws as today.
+  // ── GET /api/game-tile-packs/boards/art?kind=icons|portraits ── the game's icons (1.337) or portraits
+  // (1.338): the library's pack of that kind, else the built-in `board/<kind>`; none draws as today.
   app.get("/art", async (req) => {
     const { kind } = z.object({ kind: z.enum(ART_PACK_KINDS) }).parse(req.query);
     return { pack: await forEnvironment(kind) };

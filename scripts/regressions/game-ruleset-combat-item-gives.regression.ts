@@ -1,5 +1,5 @@
 /**
- * An item's use that hands its user more of the turn (Capability API 1.329): `gives` on an item use, as
+ * An item's use that hands its user more of the turn (Capability API 1.333): `gives` on an item use, as
  * a catalog entry's (Action Surge). The Time-Flour Loaf, eaten for a bonus action, gives one more action
  * now; capped where it lands, so nothing is saved up. The install gate.
  */
@@ -108,7 +108,7 @@ try {
   // ── Refused, and the gate ──
   assert.equal(parseRulesetDefinition(document({ ...loafUse, gives: [{ budget: "action", count: 0 }] })).ok, false);
   const gate =
-    "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.329 or newer";
+    "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.333 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -122,10 +122,10 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(328) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(329) as never, document()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(332) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(333) as never, document()), gate);
   const { gives: _gives, ...plain } = loafUse;
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(328) as never, document(plain)), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(332) as never, document(plain)), gate);
 
   console.log("Item gives: the Time-Flour Loaf, eaten for a bonus action, gives one more action now.");
 } finally {

@@ -30,7 +30,7 @@ import {
 export interface SheetCommandCard {
   name: string;
   build: RulesetSheetBuild;
-  /** What they carry, which a rest's dice read for an `itemStat` (1.332): Pell's Teapot. */
+  /** What they carry, which a rest's dice read for an `itemStat` (1.336): Pell's Teapot. */
   items?: ReadonlyArray<RulesetSheetItem>;
 }
 
@@ -170,7 +170,7 @@ export function applySheetCommandTags(
     const key = normalizeCharacterLookupName(card.name);
     try {
       if (op.op === "use") return useOn(card, key, op);
-      // Dice spent on a rest (1.330) take the party's best extra die (Song of Rest), whoever has it.
+      // Dice spent on a rest (1.334) take the party's best extra die (Song of Rest), whoever has it.
       const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
       const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
       if (result.ok) store(key, result.live);

@@ -22,16 +22,22 @@ import {
   type MariSuggestionChip,
   type MariWorkspaceActionResult,
   type MariWorkspaceTraceItem,
+  supportsNativeToolCalls,
 } from "@marinara-engine/shared";
+import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
 import {
   appendTraceStatus,
   appendVisibleText,
+  appliedMutationReadBackMismatched,
+  auditWorkspaceCompletionClaim,
   chunkText,
   describeHeldCommands,
   emitRoundText,
   formatCommandResultForPrompt,
   isLengthFinishReason,
+  isLocalSidecarConnection,
   isMutatingWorkspaceCommand,
+  isStagedSensitiveMutation,
   sanitizePlanSteps,
   sanitizeSuggestionChips,
   answerEndsWithQuestion,
@@ -91,6 +97,11 @@ export type PiRunInput = {
   /** Tool rounds allowed in one run; defaults to MAX_PI_TOOL_ROUNDS. Injected only by the regression. */
   maxToolRounds?: number;
   /** Called once the session exists, with the tools it really has active. The regression inspects the boundary here. */
+  /** #5740: the understood-request record. `record` runs once per round with mutating calls; `settle` after they ran. */
+  understood?: {
+    record: (text: string | null, mutating: WorkspaceCommandCall[], held: boolean) => void;
+    settle: (failed: boolean, staged: boolean) => void;
+  };
   onSession?: (session: AgentSession, tools: ToolDefinition[]) => void;
 };
 
@@ -146,6 +157,22 @@ const UI_TOOL_SCHEMAS: Record<(typeof UI_TOOLS)[number], { description: string; 
     },
   };
 
+// The one call format parseTextualToolCalls reads best; used on connections without native tool calls.
+const TEXT_CALL_RE = /<tool_call>[\s\S]*?(?:<\/tool_call>|$)/gi;
+const textCall = (name: string, args: unknown) => `<tool_call>${JSON.stringify({ name, arguments: args })}</tool_call>`;
+
+function textualToolPrompt(tools: readonly ToolDefinition[]) {
+  const docs = tools
+    .map((tool) => `- ${tool.name}: ${tool.description}\n  JSON arguments: ${JSON.stringify(tool.parameters)}`)
+    .join("\n");
+  return `<text_tool_calls>
+This connection has no native tool calls. Wherever the rules above say to call a tool, write the call as text instead: one \`<tool_call>{"name":"TOOL","arguments":{...}}</tool_call>\` tag per call, with valid JSON inside. You may write several tags in one reply, after your words. Marinara runs them and answers in the next user message with the results. Never write a tag you do not want to run.
+Example: ${textCall("ls", { path: "." })}
+Tools:
+${docs}
+</text_tool_calls>`;
+}
+
 function textOf(content: string | readonly { type: string; text?: string }[]): string {
   if (typeof content === "string") return content;
   return content.map((part) => (part.type === "text" ? (part.text ?? "") : "")).join("");
@@ -159,6 +186,9 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     await import("@earendil-works/pi-ai");
 
   const reviewState = newRoundReviewState();
+  // Decided once per connection: only these connections ever parse text as tool calls.
+  const textualTools =
+    isLocalSidecarConnection(input.connection) || !supportsNativeToolCalls(input.connection.provider);
   const systemPrompt = input.messages
     .filter((message) => message.role === "system")
     .map((message) => message.content)
@@ -182,6 +212,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   let chipRepair: "unused" | "pending" | "used" = "unused";
   let planShown = false;
   let toolRounds = 0;
+  let limitReached = false;
   let round: Round | null = null;
   let session: AgentSession | null = null;
   const maxToolRounds = input.maxToolRounds ?? MAX_PI_TOOL_ROUNDS;
@@ -195,11 +226,15 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     for (const chunk of chunkText(content)) onEvent({ type: "token", data: chunk });
   };
 
+  const withToolFormat = (prompt: string) => (textualTools ? `${prompt}\n\n${textualToolPrompt(tools)}` : prompt);
+
   const toChatMessages = (context: TranscriptContext): ChatMessage[] => {
     const out: ChatMessage[] = [];
     const prompt = getCurrentSystemPrompt(context.messages);
-    if (prompt) out.push({ role: "system", content: prompt, contextKind: "prompt" });
+    if (prompt) out.push({ role: "system", content: withToolFormat(prompt), contextKind: "prompt" });
+    let lastResult: ChatMessage | null = null;
     for (const message of context.messages as Message[]) {
+      if (message.role !== "toolResult") lastResult = null;
       if (message.role === "user") {
         const content = textOf(message.content as never);
         out.push({ role: "user", content, contextKind: "history", ...attachmentsByText.get(content) });
@@ -215,6 +250,18 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
               ]
             : [],
         );
+        if (textualTools) {
+          // No tool_calls field for a provider without native calls: the calls are replayed as text.
+          const written = message.content.flatMap((part) =>
+            part.type === "toolCall" ? [textCall(part.name, part.arguments)] : [],
+          );
+          out.push({
+            role: "assistant",
+            content: [textOf(message.content as never), ...written].filter(Boolean).join("\n"),
+            contextKind: "history",
+          });
+          continue;
+        }
         const providerMetadata = toolCalls[0] ? metadataByCallId.get(toolCalls[0].id) : undefined;
         out.push({
           role: "assistant",
@@ -223,6 +270,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
           ...(providerMetadata ? { providerMetadata } : {}),
         });
+      } else if (message.role === "toolResult" && textualTools) {
+        // Results come back as user messages; several results of one turn share one.
+        const previous = out[out.length - 1];
+        if (previous && previous === lastResult) previous.content += `\n\n${textOf(message.content)}`;
+        else out.push((lastResult = { role: "user", content: textOf(message.content), contextKind: "history" }));
       } else if (message.role === "toolResult") {
         out.push({
           role: "tool",
@@ -277,11 +329,14 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
             parameters: JSON.parse(JSON.stringify(tool.parameters)),
           },
         }));
-        const result = await input.complete(toChatMessages(context), toolDefs);
+        // A textual connection gets no tools in the request: the calls are in the prompt and in the reply text.
+        const result = await input.complete(toChatMessages(context), textualTools ? [] : toolDefs);
         const truncated = isLengthFinishReason(result.finishReason);
-        const text = result.content?.trim() ? result.content : "";
+        const reply = textualTools ? textualReply(result.content) : null;
+        const shown = reply ? reply.text : (result.content ?? "");
+        const text = shown.trim() ? shown : "";
         // A truncated frame never runs: its tool calls may be cut off mid-argument.
-        const calls = truncated ? [] : result.toolCalls;
+        const calls = truncated ? [] : (reply?.calls ?? result.toolCalls);
         if (result.usage) {
           message.usage = {
             ...message.usage,
@@ -342,6 +397,17 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     return stream;
   };
 
+  const textualReply = (content: string | null) => ({
+    calls: parseTextualToolCalls(
+      content,
+      tools.map((tool) => ({
+        type: "function",
+        function: { name: tool.name, description: tool.description, parameters: tool.parameters as never },
+      })),
+    ),
+    text: (content ?? "").replace(TEXT_CALL_RE, "").trim(),
+  });
+
   /**
    * Review one finished model turn (pi's `turn_end`, so it runs whatever happened to the turn's calls): claim audit,
    * then its words, then the repeated-failure stop and the round cap. A repair is returned for the caller to queue.
@@ -370,6 +436,16 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         input.commandResults.push(result);
         current.results.push(result);
       }
+    }
+    const mutating = workspaceCalls.filter(isMutatingWorkspaceCommand);
+    if (!current.deferred && mutating.length > 0) {
+      const ids = new Set(mutating.map((call) => call.id));
+      input.understood?.settle(
+        current.results.some(
+          (result) => ids.has(result.id) && (!result.success || appliedMutationReadBackMismatched(result)),
+        ),
+        current.results.some(isStagedSensitiveMutation),
+      );
     }
     const action = {
       visibleText: current.text,
@@ -466,14 +542,55 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       addNote(repeatedFailure, "retry", "warning");
       stopRequested = true;
     } else if (toolRounds >= maxToolRounds) {
-      addNote(
-        "Tool round limit reached for this run. Ask Professor Mari to continue and she can pick up from here.",
-        "info",
-        "warning",
-      );
+      // The final summary and the note follow once pi's loop has ended.
+      limitReached = true;
       stopRequested = true;
     }
     return "done" as const;
+  };
+
+  /** Same as classic at its round limit: one last answer with no tools, audited like any completion claim. */
+  const summarizeAtLimit = async (finished: AgentSession) => {
+    const messages: ChatMessage[] = [
+      { role: "system", content: withToolFormat(systemPrompt), contextKind: "prompt" },
+      ...toChatMessages({ messages: finished.messages } as never).filter((message) => message.role !== "system"),
+      {
+        role: "user",
+        content:
+          "You reached the tool round limit. Do not call more tools. Summarize what you learned or what remains blocked.",
+        contextKind: "history",
+      },
+    ];
+    const result = await input.complete(messages, []);
+    // Calls in this turn never run; they only decide which line the user reads.
+    const reply = textualTools ? textualReply(result.content) : null;
+    const text = (reply ? reply.text : (result.content ?? "")).trim();
+    const tried = (reply?.calls ?? result.toolCalls).length > 0;
+    const issue = auditWorkspaceCompletionClaim({ visibleText: text, commands: [], stop: true }, input.commandResults, {
+      auditFrom: reviewState.claimAuditWatermark,
+      hadPassedClaimAudit: reviewState.hadPassedClaimAudit,
+    }).issue;
+    if (issue) {
+      addNote(
+        "Professor Mari reached the tool round limit without verification, so I stopped before showing an unsupported completion claim. Ask her to continue from the saved trace.",
+        "retry",
+        "warning",
+      );
+    } else if (text) {
+      state.assistantText = text;
+      emitRoundText(trace, text, onEvent);
+    } else if (tried) {
+      addNote(
+        "Professor Mari tried to call more tools after the round limit, so I stopped the loop. Ask her to continue if you want her to keep working from the saved trace.",
+        "info",
+        "warning",
+      );
+    }
+    addNote(
+      "Tool round limit reached for this run. Ask Professor Mari to continue and she can pick up from here.",
+      "info",
+      "warning",
+    );
   };
 
   const runTool = async (name: string, toolCallId: string, params: Record<string, unknown>) => {
@@ -515,6 +632,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
             parsedAction: { visibleText: current.text, awaitingAuthorization: false, commands: mutating },
             runAskedForApproval,
           });
+      if (mutating.length > 0)
+        input.understood?.record(current.text.trim().slice(0, 2000) || null, mutating, current.deferred);
       if (current.deferred) {
         state.endedWithDeferral = true;
         state.heldChanges = describeHeldCommands(mutating);
@@ -709,6 +828,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     await session.prompt(last.content, { expandPromptTemplates: false });
     if (providerError) throw providerError;
     if (signal.aborted) throw new Error("aborted");
+    if (limitReached) await summarizeAtLimit(session);
   } finally {
     signal.removeEventListener("abort", onAbort);
     session.dispose();

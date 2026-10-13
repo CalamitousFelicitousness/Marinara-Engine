@@ -65,7 +65,6 @@ import {
   MARI_RUNTIME_SETTINGS_KEY,
   DEFAULT_MARI_RUNTIME,
   isMariRuntime,
-  supportsNativeToolCalls,
   type MariRuntime,
   MODEL_LISTS,
   buildMariChangeExcerpts,
@@ -2242,26 +2241,12 @@ export async function readStoredMariRuntime(storage: {
   }
 }
 
-/** The runtime a run on this connection really uses. "pi" needs native tool calls through the provider layer. */
+/** The runtime a run on this connection really uses. Pi runs everywhere a connection exists; classic is the no-connection default. */
 export function resolveMariRuntime(
   selected: MariRuntime,
   connection: WorkspaceConnection | null,
 ): { selected: MariRuntime; active: MariRuntime; note: string | null } {
   if (selected !== "pi" || !connection) return { selected, active: "classic", note: null };
-  if (isLocalSidecarConnection(connection)) {
-    return {
-      selected,
-      active: "classic",
-      note: "The pi runtime does not support the local model yet, so Professor Mari uses the classic runtime on this connection.",
-    };
-  }
-  if (!supportsNativeToolCalls(connection.provider)) {
-    return {
-      selected,
-      active: "classic",
-      note: "This connection cannot make native tool calls, so Professor Mari uses the classic runtime.",
-    };
-  }
   return { selected, active: "pi", note: null };
 }
 
@@ -2337,7 +2322,7 @@ function bashEngineRegion(output: string): string {
   return markers.length > 0 ? output.slice(0, Math.min(...markers)) : output;
 }
 
-function isStagedSensitiveMutation(result: WorkspaceCommandResult): boolean {
+export function isStagedSensitiveMutation(result: WorkspaceCommandResult): boolean {
   if (!result.success) return false;
   if ((result.name === "write" || result.name === "edit") && result.output.startsWith(STAGED_SENSITIVE_CHANGE_PREFIX)) {
     return true;
@@ -3412,6 +3397,40 @@ export class ProfessorMariWorkspaceService {
     // update below checks identity against this reference first - a run may
     // only ever stamp or restate its own record, never another run's.
     let runUnderstoodRequest: MariUnderstoodRequest | null = null;
+    // Shared by the classic and pi loops. `text` is what Mari reported acting on; the outcome starts as "held" or
+    // "interrupted" and is upgraded by settleUnderstood AFTER the batch reports.
+    const recordUnderstood = (
+      text: string | null,
+      permissionsMode: MariPermissionsMode,
+      mutating: WorkspaceCommandCall[],
+      held: boolean,
+    ) => {
+      runUnderstoodRequest = {
+        text,
+        chatId: args.chatId,
+        messageId: null,
+        permissionsMode,
+        outcome: held ? "held" : "interrupted",
+        commands: mutating.slice(0, 8).map((command) => {
+          const label =
+            command.name === "app_data"
+              ? `app_data ${stringArg(command.arguments, "action")}`
+              : command.name === "package_service"
+                ? `package_service ${stringArg(command.arguments, "package")} ${stringArg(command.arguments, "action")}`
+                : command.name;
+          // The app_data action string is model-authored and the record
+          // feeds a line-oriented diagnostics report - flatten and cap.
+          return label.replace(/\s+/gu, " ").trim().slice(0, 80);
+        }),
+        recordedAt: new Date().toISOString(),
+      };
+      this.latestUnderstoodRequest = runUnderstoodRequest;
+    };
+    const settleUnderstood = (failed: boolean, staged: boolean) => {
+      if (runUnderstoodRequest === null || this.latestUnderstoodRequest !== runUnderstoodRequest) return;
+      runUnderstoodRequest = { ...runUnderstoodRequest, outcome: failed ? "failed" : staged ? "held" : "applied" };
+      this.latestUnderstoodRequest = runUnderstoodRequest;
+    };
     // Slice 70: the chips her last answer offered, saved on the message so they survive a reload; and the one
     // chips-only round a question-shaped answer without chips may get (see askedWithoutChips below).
     let runSuggestions: MariSuggestionChip[] = [];
@@ -3482,12 +3501,6 @@ export class ProfessorMariWorkspaceService {
       const provider = createProviderForConnection(connection);
       const runtime = await this.readRuntime(connection);
       const usePi = runtime.active === "pi";
-      if (usePi) {
-        // The pi runtime writes no #5740 record, so an older run's record must not reach this run's prompt (built
-        // below). Die BEFORE the shared write: a superseded run must never clear a newer run's record.
-        controller.signal.throwIfAborted();
-        this.latestUnderstoodRequest = null;
-      }
       if (runtime.note) {
         appendTraceStatus(workspaceTrace, runtime.note);
         args.onEvent({ type: "status", data: { content: runtime.note, kind: "info", level: "info" } });
@@ -3649,12 +3662,21 @@ export class ProfessorMariWorkspaceService {
             actionResults: workspaceActionResults,
             commandResults: commandResultsForContinuity,
             onEvent: args.onEvent,
+            understood: {
+              record: (text, mutating, held) => {
+                // Same superseded-run guard as the other shared writes.
+                controller.signal.throwIfAborted();
+                recordUnderstood(text, permissionsMode, mutating, held);
+              },
+              settle: settleUnderstood,
+            },
             complete: async (piMessages, tools) => {
               debugLog?.("[debug/professor-mari] pi tools: %s", tools.map((tool) => tool.function.name).join(", "));
               const result = await this.chatCompleteWorkspace(
                 provider,
                 piMessages,
-                { ...baseOptions, tools, toolChoice: "auto" },
+                // A connection without native tool calls gets none: pi writes them into the prompt (textual mode).
+                tools.length > 0 ? { ...baseOptions, tools, toolChoice: "auto" } : baseOptions,
                 undefined,
                 debugLog,
               );
@@ -3767,29 +3789,12 @@ export class ProfessorMariWorkspaceService {
         // never asserted up front (a Plan-floor refusal must not read as an
         // execution in a pasted diagnostics report).
         if (parsedAction.commands.some(isMutatingWorkspaceCommand)) {
-          runUnderstoodRequest = {
-            text: parsedAction.understoodRequest,
-            chatId: args.chatId,
-            messageId: null,
+          recordUnderstood(
+            parsedAction.understoodRequest,
             permissionsMode,
-            outcome: shouldDeferMutations ? "held" : "interrupted",
-            commands: parsedAction.commands
-              .filter(isMutatingWorkspaceCommand)
-              .slice(0, 8)
-              .map((command) => {
-                const label =
-                  command.name === "app_data"
-                    ? `app_data ${stringArg(command.arguments, "action")}`
-                    : command.name === "package_service"
-                      ? `package_service ${stringArg(command.arguments, "package")} ${stringArg(command.arguments, "action")}`
-                      : command.name;
-                // The app_data action string is model-authored and the record
-                // feeds a line-oriented diagnostics report - flatten and cap.
-                return label.replace(/\s+/gu, " ").trim().slice(0, 80);
-              }),
-            recordedAt: new Date().toISOString(),
-          };
-          this.latestUnderstoodRequest = runUnderstoodRequest;
+            parsedAction.commands.filter(isMutatingWorkspaceCommand),
+            shouldDeferMutations,
+          );
         }
         if (shouldDeferMutations) {
           runEndedWithDeferral = true;
@@ -3863,28 +3868,21 @@ export class ProfessorMariWorkspaceService {
           // reported (results align 1:1 with the commands). Gated on this round
           // carrying mutating commands so a later read-only round can never
           // relabel an earlier round's failure as applied.
-          if (
-            runUnderstoodRequest !== null &&
-            this.latestUnderstoodRequest === runUnderstoodRequest &&
-            action.commands.some(isMutatingWorkspaceCommand)
-          ) {
+          if (action.commands.some(isMutatingWorkspaceCommand)) {
             // A store read-back mismatch is a persistence failure: the record
             // must never say "applied" while the same result tells Mari not to
             // claim success (the diagnostics line is the surface users paste).
-            const anyMutatingFailed = commandResults.some(
-              (commandResult, index) =>
-                isMutatingWorkspaceCommand(action.commands[index]!) &&
-                (!commandResult.success || appliedMutationReadBackMismatched(commandResult)),
-            );
             // #5756: a round that staged a sensitive change applied nothing for
             // it - report "held" so diagnostics never corroborate a completion
             // claim the verification guard would refuse.
-            const anyStaged = commandResults.some(isStagedSensitiveMutation);
-            runUnderstoodRequest = {
-              ...runUnderstoodRequest,
-              outcome: anyMutatingFailed ? "failed" : anyStaged ? "held" : "applied",
-            };
-            this.latestUnderstoodRequest = runUnderstoodRequest;
+            settleUnderstood(
+              commandResults.some(
+                (commandResult, index) =>
+                  isMutatingWorkspaceCommand(action.commands[index]!) &&
+                  (!commandResult.success || appliedMutationReadBackMismatched(commandResult)),
+              ),
+              commandResults.some(isStagedSensitiveMutation),
+            );
           }
         }
         const claimDecision = reviewRoundClaim(reviewState, {

@@ -487,7 +487,7 @@ try {
     mode = "auto";
     maxToolRounds = 2;
     const chips = [{ label: "Yes", prompt: "Yes, go on." }];
-    const { events, done } = await start("pi cap", [
+    const { chat, events, done } = await start("pi cap", [
       reply("", [
         { id: "cap-1a", name: "suggestions", args: { chips } },
         { id: "cap-1b", name: "bad_one", args: {} },
@@ -496,11 +496,17 @@ try {
         { id: "cap-2a", name: "suggestions", args: { chips } },
         { id: "cap-2b", name: "bad_two", args: {} },
       ]),
-      reply("This reply must never be requested."),
+      // The final summary turn: no tools offered, and a call in it never runs.
+      reply("Here is what I found.", [
+        { id: "cap-3", name: "write", args: { path: "cap.txt", content: "x", reason: "t" } },
+      ]),
     ]);
     await done;
     maxToolRounds = undefined;
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
+    assert.equal(requests[2]!.options.tools, undefined);
+    assert.equal(existsSync(join(workspaceDir, "cap.txt")), false);
+    assert.match((await lastAssistant(chat.id))?.content ?? "", /^Here is what I found\./u);
     assert.ok(statusTexts(events).some((text) => /Tool round limit reached/u.test(text)));
   }
 
@@ -567,19 +573,79 @@ try {
     assert.equal(requests[0]!.options.tools, undefined);
   }
 
-  // Fallback: pi selected on a connection without native tool calls runs classic with one plain status event.
+  // Textual mode: a connection without native tool calls runs pi with the calls written as text.
   {
+    const call = (name: string, args: Record<string, unknown>) =>
+      `<tool_call>${JSON.stringify({ name, arguments: args })}</tool_call>`;
     mode = "auto";
     provider = "claude_subscription";
-    const { events, done } = await start("fallback", [
-      reply(JSON.stringify({ say: "Classic fallback answer.", commands: [], stop: true })),
+    const read = await start("textual read", [
+      reply(`Reading it.\n${call("read", { path: "hello.txt" })}`),
+      reply("The file says hi."),
     ]);
-    await done;
-    provider = "custom";
-    assert.equal(piEntered, 0, "pi must not be constructed without native tool calls");
-    assert.deepEqual(runtimeSeen, ["classic"]);
+    await read.done;
+    assert.equal(piEntered, 1, "pi runs on a connection without native tool calls");
+    assert.deepEqual(runtimeSeen, ["pi"]);
+    assert.equal(requests.length, 2);
     assert.equal(requests[0]!.options.tools, undefined);
-    assert.equal(statusTexts(events).filter((text) => /classic runtime/u.test(text)).length, 1);
+    assert.equal(requests[0]!.options.toolChoice, undefined);
+    const system = requests[0]!.messages.find((message) => message.role === "system")?.content ?? "";
+    assert.match(system, /<text_tool_calls>/u);
+    assert.match(system, /"name":"ls"/u);
+    assert.match(system, /- suggestions:/u);
+    for (const request of requests) {
+      assert.ok(!request.messages.some((message) => message.role === "tool" || message.tool_calls));
+    }
+    const replayed = requests[1]!.messages.filter((message) => message.role !== "system");
+    assert.deepEqual(
+      replayed.map((message) => message.role),
+      ["user", "assistant", "user"],
+    );
+    assert.match(replayed[1]!.content, /<tool_call>\{"name":"read"/u);
+    assert.match(replayed[2]!.content, /workspace_command_result name="read" success="true"/u);
+    assert.match(replayed[2]!.content, /hi from the workspace file/u);
+    assert.equal((await lastAssistant(read.chat.id))?.content, "The file says hi.");
+    assert.ok(!JSON.stringify(read.events).includes("tool_call"), "the call text never reaches the user");
+
+    // Understood request (#5740) on pi: the round's words, the mutating command, then the observed outcome.
+    const write = await start("textual write", [
+      reply(`Creating it.\n${call("write", { path: "textual.txt", content: "x", reason: "t" })}`),
+      reply("Created textual.txt."),
+    ]);
+    await write.done;
+    assert.equal(existsSync(join(workspaceDir, "textual.txt")), true);
+    const record = (service as unknown as { latestUnderstoodRequest: Record<string, unknown> }).latestUnderstoodRequest;
+    assert.equal(record.text, "Creating it.");
+    assert.deepEqual(record.commands, ["write"]);
+    assert.equal(record.outcome, "applied");
+    assert.ok(record.messageId, "the record is bound to the saved message");
+
+    mode = "manual";
+    const held = await start("textual manual", [
+      reply(
+        `I will create it. Shall I go ahead?\n${call("write", { path: "textual-held.txt", content: "x", reason: "t" })}`,
+      ),
+      reply("This reply must never be requested."),
+    ]);
+    await held.done;
+    assert.equal(existsSync(join(workspaceDir, "textual-held.txt")), false, "a held textual call must not run");
+    assert.equal(requests.length, 1);
+    assert.equal((await lastAssistant(held.chat.id))?.extra.mariDeferredMutations, true);
+    assert.equal(
+      (service as unknown as { latestUnderstoodRequest: Record<string, unknown> }).latestUnderstoodRequest.outcome,
+      "held",
+    );
+    provider = "custom";
+    mode = "auto";
+
+    // A native connection never reads calls from prose.
+    const quoted = await start("native quoted", [
+      reply(`Here is the format: ${call("write", { path: "quoted.txt", content: "x", reason: "t" })}`),
+    ]);
+    await quoted.done;
+    assert.equal(existsSync(join(workspaceDir, "quoted.txt")), false);
+    assert.equal(requests.length, 1);
+    assert.match((await lastAssistant(quoted.chat.id))?.content ?? "", /Here is the format/u);
   }
 
   // The status reports the selected and the active runtime.

@@ -377,9 +377,11 @@ async function dotCentre(png: Buffer) {
     .png()
     .toBuffer();
   const requests: Array<{ url: string; contentType: string; body: Buffer }> = [];
-  // "echo" answers with the picture it was sent, filled into the canvas size asked for (as Draw Things
-  // does with its init picture): an edit that keeps everything in place.
+  // "echo" answers with the picture it was sent, filled into the canvas the test expects the provider to
+  // be asked for (as Draw Things does with its init picture): an edit that keeps everything in place. The
+  // size is the test's own, never read from the request (CodeQL js/resource-exhaustion).
   let mode: "opaque" | "echo" = "opaque";
+  let echoCanvas = { width: 1024, height: 1024 };
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -389,8 +391,7 @@ async function dotCentre(png: Buffer) {
     if (mode === "echo") {
       const start = body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
       const sent = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
-      const [width, height] = /name="size"\r\n\r\n(\d+)x(\d+)/u.exec(body.toString("latin1"))!.slice(1).map(Number);
-      picture = await sharp(sent).resize(width, height, { fit: "cover" }).png().toBuffer();
+      picture = await sharp(sent).resize(echoCanvas.width, echoCanvas.height, { fit: "cover" }).png().toBuffer();
     }
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ data: [{ b64_json: picture.toString("base64") }] }));
@@ -436,12 +437,14 @@ async function dotCentre(png: Buffer) {
       "the image prompt reaches the debug log",
     );
 
-    // Canvases of another shape: a fixed 2:3 canvas for 600x720, a rounded 512x896 one for 300x900.
+    // Canvases of another shape: GPT Image 1's fixed 2:3 canvas for 600x720, and for 300x900 a GPT Image 2
+    // canvas its size rules keep (one under 1024x1024 pixels would be grown to another shape).
     mode = "echo";
-    for (const [model, width, height, x, y] of [
-      ["gpt-image-1", 600, 720, 200, 300],
-      ["gpt-image-2", 300, 900, 100, 150],
+    for (const [model, width, height, x, y, canvas] of [
+      ["gpt-image-1", 600, 720, 200, 300, { width: 1024, height: 1536 }],
+      ["gpt-image-2", 300, 900, 100, 150, { width: 608, height: 1792 }],
     ] as const) {
+      echoCanvas = canvas;
       const png = await dotSprite(width, height, x, y);
       const sprite = { label: "dot", png, width, height, transparent: true, hash: "" };
       const [before, after] = [
@@ -456,6 +459,10 @@ async function dotCentre(png: Buffer) {
           }),
         ),
       ];
+      assert.ok(
+        requests.at(-1)!.body.includes(`name="size"\r\n\r\n${canvas.width}x${canvas.height}\r\n`),
+        `${model} is asked for the ${canvas.width}x${canvas.height} canvas the sprite was placed on`,
+      );
       assert.ok(
         Math.abs(before[0]! - after[0]!) < 1.5 && Math.abs(before[1]! - after[1]!) < 1.5,
         `an edit that keeps the picture lines up with a ${width}x${height} sprite on ${model}: ${before} -> ${after}`,

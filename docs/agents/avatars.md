@@ -68,7 +68,7 @@ Image models that edit pictures work best, because they get your sprite as a ref
 
 A generated mesh avatar moves its head, eyes, brows and mouth, and blinks and talks with its own eyelids and mouth. Its hair moves with the head; hands, single hair strands and hanging accessories are not rigged. When the face fills most of a large sprite, the avatar is built from a smaller copy so making it stays quick.
 
-Your sprite is sent to the image connection for blink and talk pictures, and to the chat connection for a mesh avatar. The prompts come with the 2D Avatars agent. With **Expose media prompts before sending** on, you can read and change each picture's prompt before it is sent. With debug mode on, every prompt is written to the server log.
+Your sprite is sent to the image connection for blink and talk pictures (and to that connection's fallback image connection if it fails and one is set), and to the chat connection for a mesh avatar. The prompts come with the 2D Avatars agent. With **Expose media prompts before sending** on, you can read and change each picture's prompt before it is sent. With debug mode on, every prompt is written to the server log.
 
 ## Performance and devices
 

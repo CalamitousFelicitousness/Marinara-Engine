@@ -67,11 +67,12 @@ const pngtuberSaveBodySchema = z
 
 const meshSaveBodySchema = z.object({ owner: avatarOwnerRefSchema, archive: z.string().min(1) }).strict();
 
-/** Aborted when the browser goes away (Cancel, a closed tab) before the reply is sent. */
+/** Aborted when the browser goes away (Cancel, a closed tab) before the reply is sent. The reason is an
+ *  AbortError, so the failure is logged as a cancellation, not an error. */
 function abortOnClose(reply: FastifyReply): AbortSignal {
   const controller = new AbortController();
   reply.raw.on("close", () => {
-    if (!reply.raw.writableFinished) controller.abort(new Error("The request was cancelled."));
+    if (!reply.raw.writableFinished) controller.abort(new DOMException("The request was cancelled.", "AbortError"));
   });
   return controller.signal;
 }

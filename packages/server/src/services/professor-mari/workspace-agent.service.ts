@@ -115,10 +115,11 @@ import {
   reviewRoundClaim,
   shouldDeferRoundMutations,
 } from "./workspace-round-review.js";
+import type { PiRunInput } from "./pi-runtime.js";
 import { quickEditFingerprint, validateQuickEditProposal, QuickEditConflictError } from "./quick-edit-proposal.js";
 
 type DbConnectionWithKey = typeof apiConnections.$inferSelect & { apiKey: string };
-type WorkspaceConnection = Pick<
+export type WorkspaceConnection = Pick<
   DbConnectionWithKey,
   | "id"
   | "name"
@@ -279,7 +280,7 @@ export function buildMariFailedActionResult(
   };
 }
 
-type WorkspaceToolDefinition = {
+export type WorkspaceToolDefinition = {
   name: MariWorkspaceToolName;
   description: string;
   parameters: Record<string, unknown>;
@@ -456,7 +457,7 @@ function sumChars(messages: ChatMessage[], kind: string): number {
   );
 }
 
-const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
+export const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
   {
     name: "docs_search",
     description:
@@ -920,6 +921,18 @@ ${MARI_DECISION_AUTHORING_PROMPT}
 `;
 }
 
+/** The pi runtime's workspace rules: the shared knowledge block plus a note that maps the JSON-frame words to native calls. */
+export function piRuntimePrompt() {
+  return `<workspace_tools>
+You work through native tool calls. Wherever the rules below say \`say\`, write ordinary assistant text; wherever they say \`commands\`, call the tools. There is no JSON frame, no \`stop\` and no \`awaitingAuthorization\` field.
+- To ask the user to approve a change, write the change and your question as text in the SAME turn as the mutating tool calls; Marinara holds those calls behind an Accept action and ends the run.
+- Call the \`suggestions\` tool for quick-reply chips (at most 5; each has label and prompt) and the \`plan\` tool for a guided plan. Both only show UI; they change nothing.
+- Finish by answering in text with no tool call.
+
+${workspaceCommandKnowledgePrompt()}
+</workspace_tools>`;
+}
+
 export function workspaceCommandProtocolPrompt() {
   const toolDocs = WORKSPACE_TOOL_DEFINITIONS.map(
     (tool) => `- ${tool.name}: ${tool.description}\n  JSON arguments: ${JSON.stringify(tool.parameters)}`,
@@ -1243,7 +1256,7 @@ function appendTraceThinking(trace: MariWorkspaceTraceItem[], delta: string) {
   trace.push({ type: "thinking", content: delta, startedAt: now, updatedAt: now });
 }
 
-function appendTraceStatus(trace: MariWorkspaceTraceItem[], content: string) {
+export function appendTraceStatus(trace: MariWorkspaceTraceItem[], content: string) {
   const trimmed = content.trim();
   if (!trimmed) return;
   const last = trace[trace.length - 1];
@@ -1302,7 +1315,7 @@ function normalizeCatalogProvider(provider: string): APIProvider | null {
   return normalized in MODEL_LISTS ? (normalized as APIProvider) : null;
 }
 
-function isLocalSidecarConnection(connection: WorkspaceConnection): boolean {
+export function isLocalSidecarConnection(connection: WorkspaceConnection): boolean {
   return connection.isLocalSidecar === true || connection.id === LOCAL_SIDECAR_CONNECTION_ID;
 }
 
@@ -1317,7 +1330,7 @@ function resolveMariMaxOutputTokens(connection: WorkspaceConnection) {
   return 8192;
 }
 
-function isLengthFinishReason(reason: string | undefined | null) {
+export function isLengthFinishReason(reason: string | undefined | null) {
   const normalized = String(reason ?? "").toLowerCase();
   return normalized === "length" || normalized === "max_tokens" || normalized === "max_output_tokens";
 }
@@ -1770,7 +1783,7 @@ function isEmptyCompletedAction(action: AssistantWorkspaceAction): boolean {
   );
 }
 
-function sanitizeSuggestionChips(raw: unknown): MariSuggestionChip[] {
+export function sanitizeSuggestionChips(raw: unknown): MariSuggestionChip[] {
   const chips = sanitizeMariSuggestionChips(raw, { maxChips: 6 });
   if (Array.isArray(raw) && raw.length > 0 && chips.length === 0) {
     logger.debug("[Professor Mari] Dropped invalid workspace suggestion chips");
@@ -1778,7 +1791,7 @@ function sanitizeSuggestionChips(raw: unknown): MariSuggestionChip[] {
   return chips;
 }
 
-function sanitizePlanSteps(raw: unknown): MariGuidedPlanStep[] {
+export function sanitizePlanSteps(raw: unknown): MariGuidedPlanStep[] {
   const steps = sanitizeMariGuidedPlan(raw, { maxSteps: 8, maxChipsPerStep: 5 });
   if (Array.isArray(raw) && raw.length > 0 && steps.length === 0) {
     logger.debug("[Professor Mari] Dropped invalid workspace guided plan");
@@ -1796,7 +1809,7 @@ function escapeWorkspaceXml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function formatCommandResultForPrompt(results: WorkspaceCommandResult[]): string {
+export function formatCommandResultForPrompt(results: WorkspaceCommandResult[]): string {
   const blocks = results.map((result) => {
     const input = escapeWorkspaceXml(JSON.stringify(result.input, null, 2));
     const output = escapeWorkspaceXml(result.output);
@@ -1892,7 +1905,7 @@ ${entries.join("\n\n")}
 </workspace_continuity>`;
 }
 
-function chunkText(value: string, chunkSize = 1200): string[] {
+export function chunkText(value: string, chunkSize = 1200): string[] {
   const chunks: string[] = [];
   for (let index = 0; index < value.length; index += chunkSize) chunks.push(value.slice(index, index + chunkSize));
   return chunks;
@@ -3441,18 +3454,30 @@ export class ProfessorMariWorkspaceService {
       this.activeRunPermissionsMode = permissionsMode;
       this.activeDecisionContext = { db: this.app.db, chatId: args.chatId, userMessageId: userMessage.id };
       const provider = createProviderForConnection(connection);
+      const runtime = await this.readRuntime(connection);
+      const usePi = runtime.active === "pi";
+      if (runtime.note) {
+        appendTraceStatus(workspaceTrace, runtime.note);
+        args.onEvent({ type: "status", data: { content: runtime.note, kind: "info", level: "info" } });
+      }
       const { messages, manualApprovalArmed } = await this.buildPromptMessages(
         args.chatId,
         connection,
         permissionsMode,
         handoffContextPrompt,
+        runtime.active,
       );
       const baseOptions: ChatOptions = {
-        ...this.baseChatOptions(connection, controller.signal, (delta) => {
-          thinkingText += delta;
-          appendTraceThinking(workspaceTrace, delta);
-          args.onEvent({ type: "thinking", data: delta });
-        }),
+        ...this.baseChatOptions(
+          connection,
+          controller.signal,
+          (delta) => {
+            thinkingText += delta;
+            appendTraceThinking(workspaceTrace, delta);
+            args.onEvent({ type: "thinking", data: delta });
+          },
+          runtime.active,
+        ),
         onRateLimitPause: ({ delayMs, reason }) => {
           const seconds = Math.max(1, Math.round(delayMs / 1000));
           const content =
@@ -3496,14 +3521,76 @@ export class ProfessorMariWorkspaceService {
           workspaceActionResults,
         );
         commandResultsForContinuity.push(...checkupResults);
-        messages.push({
-          role: "assistant",
-          content: assistantHistoryContentForAction({ visibleText: "", commands: [checkup], stop: false }),
-        });
-        messages.push({ role: "user", content: formatCommandResultForPrompt(checkupResults), contextKind: "history" });
+        if (usePi) {
+          // No JSON frame to replay: the result joins the context the pi run reads.
+          messages.push({ role: "system", content: formatCommandResultForPrompt(checkupResults), contextKind: "injection" });
+        } else {
+          messages.push({
+            role: "assistant",
+            content: assistantHistoryContentForAction({ visibleText: "", commands: [checkup], stop: false }),
+          });
+          messages.push({
+            role: "user",
+            content: formatCommandResultForPrompt(checkupResults),
+            contextKind: "history",
+          });
+        }
       }
 
-      for (let round = 0; round < MAX_COMMAND_ROUNDS; round += 1) {
+      if (usePi) {
+        const piState = {
+          assistantText,
+          endedWithDeferral: runEndedWithDeferral,
+          heldChanges: runHeldChanges,
+          suggestions: runSuggestions,
+        };
+        try {
+          await this.runPiRuntime({
+            signal: controller.signal,
+            state: piState,
+            messages,
+            connection,
+            permissionsMode,
+            manualApprovalArmed,
+            trace: workspaceTrace,
+            actionResults: workspaceActionResults,
+            commandResults: commandResultsForContinuity,
+            onEvent: args.onEvent,
+            complete: async (piMessages, tools) => {
+              debugLog?.("[debug/professor-mari] pi tools: %s", tools.map((tool) => tool.function.name).join(", "));
+              const result = await this.chatCompleteWorkspace(
+                provider,
+                piMessages,
+                { ...baseOptions, tools, toolChoice: "auto" },
+                undefined,
+                debugLog,
+              );
+              latestUsage = result.usage;
+              latestFinishReason = result.finishReason ?? null;
+              const usage = mapUsage(result.usage);
+              totalUsage = {
+                promptTokens: totalUsage.promptTokens + usage.promptTokens,
+                completionTokens: totalUsage.completionTokens + usage.completionTokens,
+                totalTokens: totalUsage.totalTokens + usage.totalTokens,
+              };
+              return result;
+            },
+            setRoundFlags: (flags) => {
+              // Same superseded-run guard as the classic round-scoped shared writes.
+              controller.signal.throwIfAborted();
+              this.activeRoundManualSilentMutationBlocked = flags.manualSilentMutationBlocked;
+              this.activeRoundAskLatchSilentMutationBlocked = flags.askLatchSilentMutationBlocked;
+            },
+          });
+        } finally {
+          assistantText = piState.assistantText;
+          runEndedWithDeferral = piState.endedWithDeferral;
+          runHeldChanges = piState.heldChanges;
+          runSuggestions = piState.suggestions;
+        }
+      }
+
+      for (let round = 0; !usePi && round < MAX_COMMAND_ROUNDS; round += 1) {
         if (controller.signal.aborted) throw new Error("aborted");
         let result: ChatCompletionResult;
         try {
@@ -3999,11 +4086,18 @@ export class ProfessorMariWorkspaceService {
     }
   }
 
+  private async runPiRuntime(args: PiRunInput) {
+    // Loaded on demand: the pi SDK is heavy and classic runs never need it.
+    const { runPiLoop } = await import("./pi-runtime.js");
+    await runPiLoop({ ...args, commands: this.commands });
+  }
+
   private async buildPromptMessages(
     chatId: string,
     connection: WorkspaceConnection,
     permissionsMode: MariPermissionsMode,
     handoffContextPrompt: string | null,
+    runtime: MariRuntime = "classic",
   ): Promise<{ messages: ChatMessage[]; manualApprovalArmed: boolean }> {
     const chatStorage = createChatsStorage(this.app.db);
     const history = (await chatStorage.listMessages(chatId)).slice(-MAX_HISTORY_MESSAGES);
@@ -4043,7 +4137,11 @@ export class ProfessorMariWorkspaceService {
     ].join("\n");
     const messages: ChatMessage[] = [
       { role: "system", content: MARI_SYSTEM_PROMPT, contextKind: "prompt" },
-      { role: "system", content: workspaceCommandProtocolPrompt(), contextKind: "prompt" },
+      {
+        role: "system",
+        content: runtime === "pi" ? piRuntimePrompt() : workspaceCommandProtocolPrompt(),
+        contextKind: "prompt",
+      },
       { role: "system", content: workspaceInfo, contextKind: "prompt" },
     ];
     if (skillsPrompt) messages.push({ role: "system", content: skillsPrompt, contextKind: "prompt" });
@@ -4092,7 +4190,7 @@ export class ProfessorMariWorkspaceService {
       messages.push({
         role,
         content:
-          role === "assistant"
+          role === "assistant" && runtime === "classic"
             ? assistantHistoryContentFromVisibleText(content)
             : appendProfessorMariAttachmentNames(content, attachments),
         contextKind: "history",
@@ -4242,6 +4340,7 @@ export class ProfessorMariWorkspaceService {
     connection: WorkspaceConnection,
     signal: AbortSignal,
     onThinking: (delta: string) => void,
+    runtime: MariRuntime = "classic",
   ): ChatOptions {
     const defaultParameters = parseJsonObject(connection.defaultParameters);
     const customParameters = isRecord(defaultParameters?.customParameters) ? defaultParameters.customParameters : {};
@@ -4259,7 +4358,9 @@ export class ProfessorMariWorkspaceService {
     // chat_template_kwargs.enable_thinking=false from the provider layer.
     // Escape hatch for a local endpoint that still chokes: disable the
     // reasoning-effort parameter on the connection (enabledParameters).
+    // The pi runtime uses native tool calls, not a JSON frame, so reasoning follows the connection's own settings.
     const disableHiddenReasoning =
+      runtime === "classic" &&
       enabledParameters?.reasoningEffort !== false &&
       (isLocalSidecarConnection(connection) ||
         connection.provider.toLowerCase() !== "custom" ||
@@ -4275,7 +4376,7 @@ export class ProfessorMariWorkspaceService {
       cachingAtDepth: connection.cachingAtDepth ?? 5,
       serviceTier: normalizeServiceTier(defaultParameters?.serviceTier),
       openrouterProvider: connection.openrouterProvider,
-      responseFormat: professorMariWorkspaceResponseFormat(connection.provider),
+      responseFormat: runtime === "classic" ? professorMariWorkspaceResponseFormat(connection.provider) : undefined,
       customParameters: mergeCustomParameters(customParameters, null),
       enabledParameters: !disableHiddenReasoning
         ? enabledParameters
@@ -4392,7 +4493,7 @@ export class ProfessorMariWorkspaceService {
   }
 }
 
-function appendVisibleText(current: string, next: string): string {
+export function appendVisibleText(current: string, next: string): string {
   if (!current.trim()) return next.trimEnd();
   if (!next.trim()) return current;
   return `${current.trimEnd()}\n\n${next.trim()}`;

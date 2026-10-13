@@ -39,7 +39,7 @@ export function newRoundReviewState(): RoundReviewState {
  */
 export function shouldDeferRoundMutations(args: {
   permissionsMode: MariPermissionsMode;
-  parsedAction: AssistantWorkspaceAction;
+  parsedAction: Pick<AssistantWorkspaceAction, "visibleText" | "awaitingAuthorization" | "commands">;
   runAskedForApproval: boolean;
 }): boolean {
   return Boolean(
@@ -78,7 +78,7 @@ export type RoundClaimDecision =
 export function reviewRoundClaim(
   state: RoundReviewState,
   args: {
-    action: AssistantWorkspaceAction;
+    action: Pick<AssistantWorkspaceAction, "visibleText" | "commands" | "stop" | "protocolValid">;
     commandResultsForContinuity: WorkspaceCommandResult[];
     truncated: boolean;
   },

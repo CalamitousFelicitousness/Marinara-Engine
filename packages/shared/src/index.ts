@@ -224,6 +224,7 @@ export * from "./utils/chat-stats.js";
 export * from "./utils/character-cast.js";
 export * from "./utils/speaker-segments.js";
 export * from "./utils/sprite-labels.js";
+export * from "./utils/expression-keywords.js";
 export * from "./utils/managed-generation-parameters.js";
 export * from "./utils/conversation-presence.js";
 export * from "./utils/avatar-crop.js";

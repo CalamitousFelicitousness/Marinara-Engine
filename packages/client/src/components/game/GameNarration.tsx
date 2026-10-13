@@ -95,6 +95,7 @@ import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
 import { MESSAGE_SELECTION_SURFACE_CLASS } from "../chat/message-selection-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { formatNarration } from "./game-narration-format";
+import { publishAvatarGameLine } from "../../features/avatars/director/game-line-feed";
 import {
   CroppedAvatar,
   ExpressionReaction,
@@ -3183,6 +3184,9 @@ export function GameNarration({
     lastReportedSpeakerRef.current = nextKey;
     onActiveSpeakerChange(next);
   }, [active, speakerAvatarInfos, spriteMap, onActiveSpeakerChange]);
+
+  // Avatars show the line on screen with the Game Master's expression for it.
+  useEffect(() => publishAvatarGameLine(latestAssistant?.chatId ?? null, active), [active, latestAssistant?.chatId]);
 
   // How many segments are prepended before the actual GM narration segments
   const playerSegmentOffset = latestUserMessage?.content && latestAssistant ? 1 : 0;

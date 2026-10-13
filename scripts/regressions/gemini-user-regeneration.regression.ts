@@ -164,7 +164,8 @@ try {
   console.log("Gemini user-message regeneration regression passed.");
 } finally {
   await app.close();
-  provider.close();
-  closeDB();
+  provider.closeAllConnections();
+  await new Promise<void>((done) => provider.close(() => done()));
+  await closeDB();
   rmSync(dir, { recursive: true, force: true });
 }

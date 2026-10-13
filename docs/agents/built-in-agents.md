@@ -335,7 +335,7 @@ Shows your characters and personas as animated 2D avatars that blink, talk, and 
 - **Integration**: Agent package; the Engine runs it and draws the avatars. It sends no extra requests to your AI connections while you chat.
 - **Where it works**: Roleplay and Game, for characters and personas.
 - **Availability**: **In development**. It is not in **Download Agents** yet.
-- **Key settings**: set up each avatar on the agent's page in **Agents**. That page also holds the prompts for making blink and talk pictures and a mesh avatar from one of your sprites.
+- **Key settings**: set up each avatar on the agent's page in **Agents**. The agent also carries the prompts used to make blink and talk pictures and a mesh avatar from one of your sprites.
 - **Compatibility**: Engine `2.5.0` through before `4.0.0`, with Capability API 1.73. The package uses `agent-runtime`, `chat-read`, `storage`, and `ui` permissions and does not require a restart.
 - **Full guide**: [2D and 3D Avatars](avatars.md).
 

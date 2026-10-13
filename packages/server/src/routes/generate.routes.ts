@@ -5077,7 +5077,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ]),
               )
             : undefined;
-          // A fake's facts are what it truly is, which only the Game Master reads (1.78).
+          // A fake's facts are what it truly is, which only the Game Master reads (1.79).
           const promptItemFacts = promptItemBook
             ? Object.fromEntries(
                 promptInventoryStacks.flatMap((stack) =>

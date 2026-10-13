@@ -1,4 +1,4 @@
-// Starting gear (Capability API 1.77): what a ruleset lets a character take into their bag at the
+// Starting gear (Capability API 1.78): what a ruleset lets a character take into their bag at the
 // start, never on its own. Resolving a choice is shared by the server, which adds what it resolves to,
 // and the client, which shows it: one reading of the gear, so what the player saw is what is added.
 //

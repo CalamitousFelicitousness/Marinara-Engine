@@ -1388,7 +1388,7 @@ export function applyRulesetCombatChoice(
     noteOutcome(ctx);
     return finish();
   }
-  // A fake, spent, is found out (1.78); one whose true item has no use did nothing.
+  // A fake, spent, is found out (1.79); one whose true item has no use did nothing.
   const fake = action.itemUse?.fake;
   if (fake) {
     ctx.events.push({
@@ -2090,7 +2090,7 @@ function openAimed(
 function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   const found = actor?.actions.find((entry) => entry.id === resume.optionId);
-  // A fake does what it truly does (1.78).
+  // A fake does what it truly does (1.79).
   const own = found && rulesetActionAsUsed(found);
   // Picked up in the mode it was made in.
   const action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;

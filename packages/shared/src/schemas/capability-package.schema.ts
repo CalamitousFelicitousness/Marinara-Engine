@@ -611,39 +611,39 @@ const capabilityPackageManifestBaseSchema = z
 //        owns their storage, import, lazy renderers, setup on the Agent editor page, stream director,
 //        classifier and generation routes, and merges the 2D agent's `avatarGenerationTemplates`. No new
 //        manifest field; an avatar package declares 1.73 so an Engine without these surfaces refuses it.
-// 1.73: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
+// 1.74: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
 //        creatures in the way (`creatures`), and a save (an entry's, a creature action's or an item use's)
 //        may ignore cover (`ignoresCover`); cover is read from the attacker's position by corner lines
 //        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.72: an Engine that cannot
 //        read these refuses the whole ruleset or catalog file, so a package that ships any of them
-//        declares 1.73. No permission.
-// 1.74: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
+//        declares 1.74. No permission.
+// 1.75: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
 //        is, what higher ground gives an attack and a shot, and what a fall does (combat C6b). Boards
 //        may have height whatever a ruleset says. Not a soft seam, for the same reason as 1.20 through
-//        1.73: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
-//        declares 1.74. No permission.
-// 1.75: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
+//        1.74: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
+//        declares 1.75. No permission.
+// 1.76: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
 //        `budgets`, `grants`, `exclusive`, `attacksPerTurn` and `onEnd`, and a budget may have a count of
-//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.74: an
+//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.75: an
 //        Engine that cannot read these refuses the whole ruleset file, so a package that ships any of
-//        them declares 1.75. No permission.
-// 1.76: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
+//        them declares 1.76. No permission.
+// 1.77: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
 //        (C6e-0): fields, abilities, skills and saves renamed, one field routed by another's text, and
 //        a live pool or track routed to the one the migrated sheet shows. A rest's poolGroup restore
 //        may also be `shared` (C6e): its fraction worked out on the whole group. Not a soft seam, for
-//        the same reason as 1.20 through 1.75: an Engine that cannot read it refuses the whole ruleset
-//        file, so a package that ships it declares 1.76. No permission.
-// 1.77: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
+//        the same reason as 1.20 through 1.76: an Engine that cannot read it refuses the whole ruleset
+//        file, so a package that ships it declares 1.77. No permission.
+// 1.78: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
 //        never on its own, with choices and lists to pick from. Not a soft seam, for the same reason as
-//        1.20 through 1.76: an Engine that cannot read it refuses the whole ruleset file, so a package
-//        that ships it declares 1.77. No permission.
-// 1.78: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
+//        1.20 through 1.77: an Engine that cannot read it refuses the whole ruleset file, so a package
+//        that ships it declares 1.78. No permission.
+// 1.79: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
 //        that `passesFor` another item, and a market seller may be `honest: false`. A fake bought from
 //        a dishonest seller is a stack that shows as what it passes for and keeps what it truly is.
-//        Not a soft seam, for the same reason as 1.20 through 1.77: an Engine that cannot read these
-//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.78.
+//        Not a soft seam, for the same reason as 1.20 through 1.78: an Engine that cannot read these
+//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.79.
 //        No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 78 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 79 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

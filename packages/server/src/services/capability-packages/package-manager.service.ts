@@ -1058,10 +1058,10 @@ function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } |
 }
 
 const COVER_ISSUE =
-  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.73 or newer";
+  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.74 or newer";
 
 /** A save that ignores cover, on an entry's mechanics, a creature's action or an item's use, which is
- *  1.73: a new key on the strict save. */
+ *  1.74: a new key on the strict save. */
 function entriesCarryCoverlessSaves(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1124,9 +1124,9 @@ function rulesetCarriesMarketDay169(ruleset: { items?: unknown } | undefined): b
 }
 
 const HONESTY_ISSUE =
-  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.78 or newer";
+  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.79 or newer";
 
-/** Seller honesty's item keys (1.78): `risky` and `passesFor`, new keys on the strict item. */
+/** Seller honesty's item keys (1.79): `risky` and `passesFor`, new keys on the strict item. */
 function entriesCarryHonesty(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1674,15 +1674,15 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
   if (!declaresApi(69) && (carriesMarketDay || rulesetCarriesMarketDay169(ruleset))) return MARKET_DAY_ISSUE;
-  // Cover by degrees, 1.73: new keys on the strict cover object and the strict save.
+  // Cover by degrees, 1.74: new keys on the strict cover object and the strict save.
   const cover = plainRecord(plainRecord(ruleset?.combat)?.cover);
   const graded = ["threeQuarters", "saves", "creatures"].some((key) => cover?.[key] !== undefined);
-  if (!declaresApi(73) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
-  // Height, 1.74 (combat C6b): a new key on the strict combat block.
-  if (!declaresApi(74) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
-    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.74 or newer";
+  if (!declaresApi(74) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
+  // Height, 1.75 (combat C6b): a new key on the strict combat block.
+  if (!declaresApi(75) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
+    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.75 or newer";
   }
-  // The action economy conditions change, 1.75 (combat C6d): new keys on the strict condition, and a
+  // The action economy conditions change, 1.76 (combat C6d): new keys on the strict condition, and a
   // budget of no count, which an older Engine refuses.
   const combatBlock = plainRecord(ruleset?.combat);
   const economy = Array.isArray(combatBlock?.conditions)
@@ -1694,31 +1694,31 @@ export function getCapabilityPackageInstallIssue(
     : false;
   const budgets = plainRecord(combatBlock?.economy)?.budgets;
   const emptyBudget = Array.isArray(budgets) && budgets.some((budget) => plainRecord(budget)?.count === 0);
-  if (!declaresApi(75) && (economy || emptyBudget)) {
-    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.75 or newer";
+  if (!declaresApi(76) && (economy || emptyBudget)) {
+    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.76 or newer";
   }
-  // Sheet migrations, 1.76 (C6e-0): a new key on the strict sheet.
-  if (!declaresApi(76) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
-    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.76 or newer";
+  // Sheet migrations, 1.77 (C6e-0): a new key on the strict sheet.
+  if (!declaresApi(77) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
+    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.77 or newer";
   }
-  // A rest that shares a pool group's fraction, 1.76 (C6e): a new key on the strict restore step.
+  // A rest that shares a pool group's fraction, 1.77 (C6e): a new key on the strict restore step.
   const sharedRest = Array.isArray(ruleset?.rests)
     ? ruleset.rests.some((rest) => {
         const restore = plainRecord(rest)?.restore;
         return Array.isArray(restore) && restore.some((step) => plainRecord(step)?.shared !== undefined);
       })
     : false;
-  if (!declaresApi(76) && sharedRest) {
-    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.76 or newer";
+  if (!declaresApi(77) && sharedRest) {
+    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.77 or newer";
   }
-  // Starting gear, 1.77 (P1-6): a new key on the strict items block.
-  if (!declaresApi(77) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
-    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.77 or newer";
+  // Starting gear, 1.78 (P1-6): a new key on the strict items block.
+  if (!declaresApi(78) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
+    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.78 or newer";
   }
-  // Seller honesty, 1.78 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
+  // Seller honesty, 1.79 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
   const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
   const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
-  if (!declaresApi(78) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
+  if (!declaresApi(79) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
   return null;
 }
 

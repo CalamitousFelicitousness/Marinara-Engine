@@ -80,7 +80,7 @@ export function copyRulesetSheetForGame(definition: RulesetDefinition, stored: u
   return { v: read.v, build: structuredClone(read.build) };
 }
 
-// ── Migrations (Capability API 1.76) ──
+// ── Migrations (Capability API 1.77) ──
 //
 // A ruleset that moves a sheet's values to new ids says how in `sheet.migrations`, and every read of a
 // stored sheet applies them here: a pure function, so nothing is written by reading and a rewind, a
@@ -211,7 +211,7 @@ export interface RulesetSheetItem {
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */
   charges?: number;
-  /** A fake (Capability API 1.78): what it truly is, which `item` passes for. The sheet reads it as
+  /** A fake (Capability API 1.79): what it truly is, which `item` passes for. The sheet reads it as
    *  what it seems; a fight's use of it does what this one does. */
   truly?: { item: RulesetCatalogItem; name: string };
 }
@@ -223,7 +223,7 @@ export function rulesetReadsItems(definition: RulesetDefinition): boolean {
   return definition.items !== undefined;
 }
 
-/** The item whose effects and stats a held item brings to the sheet: a fake's true item (1.78, the
+/** The item whose effects and stats a held item brings to the sheet: a fake's true item (1.79, the
  *  user's ruling: a worn or carried fake does what it truly does), else the item itself. */
 export function rulesetHeldItemDoes(held: RulesetSheetItem): RulesetSheetItem["item"] {
   return held.truly?.item ?? held.item;
@@ -1072,7 +1072,7 @@ export function rulesetLadderTargetFor(definition: RulesetDefinition, successes:
 }
 
 /**
- * Which of a character's held fakes the sheet shows for what they are (1.78): one whose true item,
+ * Which of a character's held fakes the sheet shows for what they are (1.79): one whose true item,
  * worn or carried as it is, makes any of the sheet's numbers other than the item it passes for would,
  * or changes what a check or save adds. The item's place in `items` for each, so a caller can find it
  * out. `sources` is how a check reads items (`rulesetItemSources`), passed in to keep this module free

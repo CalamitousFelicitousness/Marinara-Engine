@@ -101,7 +101,7 @@ export function rulesetItemSources(
   const seen = new Set<unknown>();
   for (const held of items ?? []) {
     const name = held.name ?? held.item.category;
-    // A fake does what it truly does (1.78), under the name it is shown by.
+    // A fake does what it truly does (1.79), under the name it is shown by.
     const does = rulesetHeldItemDoes(held);
     const effect = held.worn ? does.worn : does.carried;
     if (effect && !seen.has(effect)) {

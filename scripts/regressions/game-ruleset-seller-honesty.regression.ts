@@ -1,8 +1,8 @@
 /**
- * Honest and dishonest sellers (P1-7, Capability API 1.78).
+ * Honest and dishonest sellers (P1-7, Capability API 1.79).
  *
  *   - Schema: an item's `risky` and `passesFor`, a seller's `honest: false`; a fake's target is a real,
- *     sellable item of the same kind, worn the same way. Gated at 1.78, catalog files read at install.
+ *     sellable item of the same kind, worn the same way. Gated at 1.79, catalog files read at install.
  *   - Market: a cursed item or a fake is never among anybody's wares nor in an honest seller's stock; a
  *     dishonest seller's stock offers a fake as what it passes for, and only a buy naming that seller
  *     gets it. Honest sellers warn about risky wares in the MARKET block.
@@ -168,7 +168,7 @@ try {
     }
   }
 
-  // ── The 1.78 gate ──
+  // ── The 1.79 gate ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -186,12 +186,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /risky items, fakes or a dishonest seller.*capabilityApi 1\.78/;
+    const gate = /risky items, fakes or a dishonest seller.*capabilityApi 1\.79/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-    assert.match(issue(77, honesty()) ?? "", gate);
-    assert.equal(issue(78, honesty()), null);
-    // Each key alone is 1.78's: a dishonest seller, a risky item, a fake.
+    assert.match(issue(78, honesty()) ?? "", gate);
+    assert.equal(issue(79, honesty()), null);
+    // Each key alone is 1.79's: a dishonest seller, a risky item, a fake.
     const without = (doc: Record<string, any>) => {
       const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
       kit.entries = kit.entries.filter(
@@ -200,7 +200,7 @@ try {
       doc.items.lootTables = doc.items.lootTables.filter((table: { id: string }) => table.id !== "fences_lot");
       doc.items.market.sellers = doc.items.market.sellers.filter((seller: { id: string }) => seller.id !== "fence");
     };
-    assert.equal(issue(77, honesty(without)), null);
+    assert.equal(issue(78, honesty(without)), null);
     assert.match(
       issue(
         73,
@@ -222,7 +222,7 @@ try {
     });
     const files = new Map([["catalogs/kit.json", { entries: kitEntries }]]);
     const filedManifest = {
-      ...manifest(78),
+      ...manifest(79),
       contributions: { assets: { paths: ["ruleset.json", "catalogs/kit.json"] } },
     };
     assert.match(

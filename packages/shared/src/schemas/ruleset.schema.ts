@@ -801,7 +801,7 @@ const liveSchema = z
   .strict();
 
 /**
- * One step of a sheet migration (Capability API 1.76): how a sheet stored on an older layout reads on
+ * One step of a sheet migration (Capability API 1.77): how a sheet stored on an older layout reads on
  * this one. Every step COPIES: what it read from stays where it was, so a sheet read by an older
  * version of the ruleset still reads as it did.
  * - `rename`: an ability, skill, save (with its bonus) or field that has a new id.
@@ -849,7 +849,7 @@ export const rulesetSheetSchema = z
   .object({
     /** Bumped by the author when the sheet's shape changes. Stored sheets record it as `v`. */
     version: z.number().int().min(1),
-    /** How a sheet stored on an older layout reads on this one (Capability API 1.76). A version that
+    /** How a sheet stored on an older layout reads on this one (Capability API 1.77). A version that
      *  only adds needs none. Never removed once shipped: a sheet stored long ago still needs them. */
     migrations: z.array(sheetMigrationSchema).min(1).max(32).optional(),
     sections: z
@@ -916,7 +916,7 @@ const restRestoreSchema = z
     /** A live state, put back with `to`: `"default"` or one of its values. */
     state: sheetId.optional(),
     /** A pool group's fraction worked out on the group's whole maximum and shared out over its pools
-     *  in the order the sheet lists them, rather than on each pool alone (Capability API 1.76): 5e's
+     *  in the order the sheet lists them, rather than on each pool alone (Capability API 1.77): 5e's
      *  "half of the character's total number of" hit dice, kept in one pool per die. */
     shared: z.literal(true).optional(),
     ...restAmountShape,
@@ -1282,7 +1282,7 @@ const catalogMechanicsObject = z
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
     attackRoll: z.boolean().optional(),
-    /** `ignoresCover` (Capability API 1.73): the target gains nothing from cover on this save, as a
+    /** `ignoresCover` (Capability API 1.74): the target gains nothing from cover on this save, as a
      *  spell whose text says so (5e's Sacred Flame). */
     save: z
       .object({
@@ -1545,7 +1545,7 @@ const creatureSaveSchema = z
     save: sheetId,
     difficulty: z.number().int().min(0).max(1000),
     onSuccess: z.enum(["none", "half", "negates"]),
-    /** The target gains nothing from cover on this save (Capability API 1.73). */
+    /** The target gains nothing from cover on this save (Capability API 1.74). */
     ignoresCover: z.literal(true).optional(),
   })
   .strict();
@@ -2016,7 +2016,7 @@ const rulesetItemRefSchema = z
   .max(81)
   .regex(/^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/, "An item is named as <catalog>/<entry>");
 
-/** One line of starting gear (Capability API 1.77): one of the ruleset's items, coins, one item the
+/** One line of starting gear (Capability API 1.78): one of the ruleset's items, coins, one item the
  *  player picks from a fixed list, or a plain item the ruleset's catalogs do not have. */
 const startingGearLineSchema = z
   .object({
@@ -2047,7 +2047,7 @@ const startingGearLineSchema = z
     }
   });
 
-/** Gear a character may take into their bag at the start (Capability API 1.77), never on their own:
+/** Gear a character may take into their bag at the start (Capability API 1.78), never on their own:
  *  the player asks for it, once for each `group` (a class's gear beside a background's). `fits` says
  *  which characters it is for, read off the sheet; it orders the list and refuses nobody. */
 const startingGearSchema = z
@@ -2171,7 +2171,7 @@ const marketSchema = z
             /** One of the ruleset's loot tables, rolled once a market day for what this seller has in
              *  stock on top of what they sell (#6934). */
             stock: z.object({ table: sheetId }).strict().optional(),
-            /** A dishonest seller (Capability API 1.78) passes fakes off as what they pass for, from
+            /** A dishonest seller (Capability API 1.79) passes fakes off as what they pass for, from
              *  their stock, and buys a fake as what it seems. Sellers are honest unless they say so. */
             honest: z.literal(false).optional(),
             only: z
@@ -2231,7 +2231,7 @@ const itemsSchema = z
     /** What an item the player types in becomes: a plain item, or nothing at all. */
     freeform: z.enum(["plain", "refuse"]).default("plain"),
     market: marketSchema.optional(),
-    /** Gear a character may take at the start, never given on its own (Capability API 1.77). */
+    /** Gear a character may take at the start, never given on its own (Capability API 1.78). */
     startingGear: z.array(startingGearSchema).min(1).max(40).optional(),
   })
   .strict();
@@ -2445,9 +2445,9 @@ const catalogItemSchema = z
     /** Lodging, passage, a blessing: bought like an item, never carried. Buying it only pays. */
     service: z.literal(true).optional(),
     /** What an honest seller warns of before selling it, for an item whose chance can turn on the
-     *  buyer (Capability API 1.78). */
+     *  buyer (Capability API 1.79). */
     risky: promptSafeText(160).optional(),
-    /** A fake (Capability API 1.78): the ruleset item it passes for, "<catalog>/<entry>". A dishonest
+    /** A fake (Capability API 1.79): the ruleset item it passes for, "<catalog>/<entry>". A dishonest
      *  seller sells it as that item, at that item's price; an honest one never sells it. */
     passesFor: rulesetItemRefSchema.optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
@@ -2680,7 +2680,7 @@ const combatBudgetSchema = z
     label,
     /** `turn` refills at the start of the holder's own turn; `round` when a new round begins. */
     per: z.enum(["turn", "round"]),
-    /** How many a turn (or round) hands out. 0 (Capability API 1.75) is a budget only a condition's
+    /** How many a turn (or round) hands out. 0 (Capability API 1.76) is a budget only a condition's
      *  `budgets` fills, as Haste's extra action is. */
     count: z.number().int().min(0).max(10).default(1),
   })
@@ -2977,7 +2977,7 @@ const combatConditionSchema = z
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /**
-     * The action economy while it holds (Capability API 1.75, combat C6d), as Haste and Slow change it:
+     * The action economy while it holds (Capability API 1.76, combat C6d), as Haste and Slow change it:
      * - `budgets`: how many of a turn budget its holder gets, more or fewer, never below none;
      * - `grants`: what a budget (often one declared with a count of 0, which only this fills) may be
      *   spent on: the standard actions it names, an attack of one strike (`attacks`), an item's use
@@ -3384,7 +3384,7 @@ const combatSchema = z
       .optional(),
     /**
      * What standing behind something adds to the defense an attack is rolled against (Capability API
-     * 1.73 for everything past `bonus`). Cover is graded by corner lines from the attacker (combat
+     * 1.74 for everything past `bonus`). Cover is graded by corner lines from the attacker (combat
      * C6a-2): `bonus` is half cover's, and `threeQuarters` the bigger one when the ruleset has it. A
      * target out of sight is total cover and cannot be aimed at, so it needs no number. `saves` names
      * the saves cover helps too, against an action's own save, from where the action comes; `creatures`
@@ -3400,7 +3400,7 @@ const combatSchema = z
       .strict()
       .optional(),
     /**
-     * What this system makes of a board's height (Capability API 1.74, combat C6b). Height is always
+     * What this system makes of a board's height (Capability API 1.75, combat C6b). Height is always
      * walked and seen by, whatever this says: climbing a level costs one more cell, nobody walks a step
      * of two levels or more, and ground higher than both ends blocks sight. This says what the system
      * adds: how high one level is in its own distance (`levelHeight`), what striking down from higher
@@ -3931,7 +3931,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   unique(def.rests, ["rests"], "rest");
   const poolGroups = new Set(sheet.live.pools.map((pool) => pool.group).filter((group): group is string => !!group));
 
-  // Sheet migrations (1.76). Each hop once and below this version. What a step writes to is on this
+  // Sheet migrations (1.77). Each hop once and below this version. What a step writes to is on this
   // sheet, and what it reads from is not: an id moved away is never used again, which is what makes
   // every step safe to run again. A rename is followed through the renames after it to where it ends.
   if (sheet.migrations) {
@@ -4701,7 +4701,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       });
     });
-    // Starting gear (1.77): every item one of the ruleset's (a catalog kept in its own file is checked
+    // Starting gear (1.78): every item one of the ruleset's (a catalog kept in its own file is checked
     // when the gear is taken), never a service, and few enough stacks to fit a bag; coins it declares;
     // a plain item only where items may be plain; `fits` read off the sheet without the live state,
     // as carrying is.
@@ -5260,7 +5260,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, path, issue);
-      // The action economy it changes (1.75) is the ruleset's own: budgets it declares, conditions it has.
+      // The action economy it changes (1.76) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
         const where = [...path, "budgets", changeIndex, "budget"];
         checkBudget(change.budget, where);
@@ -6149,7 +6149,7 @@ function effectNameIssues(
   });
 }
 
-/** Why a fake cannot pass for its target (Capability API 1.78), or null when it can: the target is
+/** Why a fake cannot pass for its target (Capability API 1.79), or null when it can: the target is
  *  another real, sellable item of the same kind, worn the same way. `target` undefined is an item the
  *  ruleset does not have. Read at import (inline and same-file targets), at install (every catalog
  *  file) and when a market offers the fake (a target a layer hides is never offered). */

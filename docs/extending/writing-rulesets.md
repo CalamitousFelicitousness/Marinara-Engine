@@ -423,7 +423,7 @@ The result says what the sheet added (`adjust="-2"` on the record, and a line on
 
 ### Rests
 
-A rest is a list of restore steps and things to clear. Each step names one target (`pool`, `poolGroup`, `listPools`, `track`, or `state`) and either sets it (`"to": "max"`, `"to": "min"`, or a number) or changes it (`"by": { "const": 1 }`, or `"by": { "fractionOfMax": 0.5 }`). A step naming a wound track can only heal it, so its `by` is negative; see above. A step naming a live state only sets it, to `"default"` or one of its values. A `poolGroup` step with a `fractionOfMax` changes each pool of the group by its own fraction; add `"shared": true` (Capability API 1.76) to work the fraction out on the whole group's maximum instead and hand it to the group's pools in the order the sheet lists them, each up to what it is missing. 5e's long rest, "half of the character's total number of" hit dice kept in one pool per die, is `{ "poolGroup": "hit_dice", "by": { "fractionOfMax": 0.5, "round": "down", "min": 1 }, "shared": true }`.
+A rest is a list of restore steps and things to clear. Each step names one target (`pool`, `poolGroup`, `listPools`, `track`, or `state`) and either sets it (`"to": "max"`, `"to": "min"`, or a number) or changes it (`"by": { "const": 1 }`, or `"by": { "fractionOfMax": 0.5 }`). A step naming a wound track can only heal it, so its `by` is negative; see above. A step naming a live state only sets it, to `"default"` or one of its values. A `poolGroup` step with a `fractionOfMax` changes each pool of the group by its own fraction; add `"shared": true` (Capability API 1.77) to work the fraction out on the whole group's maximum instead and hand it to the group's pools in the order the sheet lists them, each up to what it is missing. 5e's long rest, "half of the character's total number of" hit dice kept in one pool per die, is `{ "poolGroup": "hit_dice", "by": { "fractionOfMax": 0.5, "round": "down", "min": 1 }, "shared": true }`.
 
 ### Game Master text
 
@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.69, a rider that fires on held weapons (`weapons`) needs 1.70, starting gear (`startingGear`) needs 1.77, and a risky item, a fake or a dishonest seller needs 1.78.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.69, a rider that fires on held weapons (`weapons`) needs 1.70, starting gear (`startingGear`) needs 1.78, and a risky item, a fake or a dishonest seller needs 1.79.
 
 ### The items block
 
@@ -1060,7 +1060,7 @@ Your `currencies` are the party's money. A coin is an item in the bags, a stack 
 
 ### Starting gear
 
-`items.startingGear` (Capability API 1.77) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the player's bag or a party member's. Gear the character's sheet `fits` is listed first, then gear without `fits` (for any character, such as a background's); every gear is offered, because a character's concept is the player's and the Game Master's to agree.
+`items.startingGear` (Capability API 1.78) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the player's bag or a party member's. Gear the character's sheet `fits` is listed first, then gear without `fits` (for any character, such as a background's); every gear is offered, because a character's concept is the player's and the Game Master's to agree.
 
 ```json
 "startingGear": [
@@ -1169,7 +1169,7 @@ A market day (Capability API 1.69) makes a place's shelves change and run out, a
 
 #### Honest and dishonest sellers
 
-Capability API 1.78 lets an item be risky or a fake, and a seller be dishonest.
+Capability API 1.79 lets an item be risky or a fake, and a seller be dishonest.
 
 ```json
 "items": { "market": { "sellers": [
@@ -1467,7 +1467,7 @@ same keys for a d20 system:
     can see it needs. Naming an effect the condition does not have is refused. Without a board there
     is no line to break, so everything counts either way.
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
-  - The action economy (Capability API 1.75), as Haste and Slow change it:
+  - The action economy (Capability API 1.76), as Haste and Slow change it:
     - `budgets`: `[{ "budget": "haste", "flat": 1 }]` gives its holder that many more (or fewer) of a
       turn budget each turn, never below none. Only a budget that refills `per` turn can be changed
       this way. A budget may be declared with `"count": 0` for one only a condition fills, and the
@@ -2218,21 +2218,21 @@ only by what lies between it and the effect.
 
 - `cover.bonus` is what half cover adds to the defense an attack is rolled against, and the log says
   so.
-- `cover.threeQuarters` (Capability API 1.73) is what three-quarters adds; without it, `bonus`
+- `cover.threeQuarters` (Capability API 1.74) is what three-quarters adds; without it, `bonus`
   serves for both.
-- `cover.saves` (1.73) names the saves cover helps too, against an action's own save (never a save
+- `cover.saves` (1.74) names the saves cover helps too, against an action's own save (never a save
   that ends a condition or keeps concentration): from where a burst lands, and from its maker for
   anything else. The log says that too.
-- `cover.creatures` (1.73) makes anybody standing in the way half cover, friend or foe.
+- `cover.creatures` (1.74) makes anybody standing in the way half cover, friend or foe.
 - A save whose text says the target gains nothing from cover (5e's Sacred Flame) says
-  `"ignoresCover": true` (1.73), on an entry's `mechanics.save`, a creature action's `save` or an
+  `"ignoresCover": true` (1.74), on an entry's `mechanics.save`, a creature action's `save` or an
   item use's `save`.
 
 **Height.** A board can have height, up to three levels, and every positioned fight walks and sees by
 it whatever the ruleset says: climbing a level costs one more cell, coming down costs nothing, a step
 of two levels or more is a cliff nobody walks (and nobody is shoved up), and ground higher than both
 ends blocks sight. Shooting down from higher ground, low cover between hides nothing. A ruleset says
-what its system adds with `elevation` (Capability API 1.74, and it needs `distance`):
+what its system adds with `elevation` (Capability API 1.75, and it needs `distance`):
 
 ```json
 "elevation": {
@@ -2642,7 +2642,7 @@ If you change the shape of the sheet (add, remove, or rename things), raise `she
 
 ### Moving values to new ids: `sheet.migrations`
 
-Adding things needs nothing more. When a new layout moves a value somewhere else (a renamed field, one level that becomes a level per class, one pool of hit dice that becomes one per die), say how in `sheet.migrations` (Capability API 1.76), so every character made on the old layout keeps its numbers: in the library, in games, in old saves, branches and checkpoints, and in imported cards.
+Adding things needs nothing more. When a new layout moves a value somewhere else (a renamed field, one level that becomes a level per class, one pool of hit dice that becomes one per die), say how in `sheet.migrations` (Capability API 1.77), so every character made on the old layout keeps its numbers: in the library, in games, in old saves, branches and checkpoints, and in imported cards.
 
 ```json
 "migrations": [

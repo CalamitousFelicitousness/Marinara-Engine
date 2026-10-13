@@ -158,7 +158,7 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   assert.deepEqual(choice.type === "attack" ? choice.to : choice, { x: 3, y: 0 }, JSON.stringify(choice));
 }
 
-// ── Install gate: 1.73 ──
+// ── Install gate: 1.74 ──
 {
   const dataDir = mkdtempSync(join(tmpdir(), "marinara-cover-"));
   process.env.DATA_DIR = dataDir;
@@ -193,7 +193,7 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
     };
     const issue = (minor: number, document: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document);
-    const gate = /grades cover .* or has a save that ignores cover requires .*capabilityApi 1\.73/;
+    const gate = /grades cover .* or has a save that ignores cover requires .*capabilityApi 1\.74/;
     assert.equal(
       issue(
         68,
@@ -207,7 +207,7 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
         (d) => (d.combat.cover[key] = { threeQuarters: 5, saves: ["dex_save"], creatures: true }[key]),
       );
       assert.match(issue(72, graded) ?? "", gate, key);
-      assert.equal(issue(73, graded), null, key);
+      assert.equal(issue(74, graded), null, key);
     }
     // A creature's action whose save ignores cover (the example's creatures carry two such saves).
     const coverless = doc((d) => {
@@ -218,7 +218,7 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
       action.save.ignoresCover = true;
     });
     assert.match(issue(72, coverless) ?? "", gate, "a save that ignores cover");
-    assert.equal(issue(73, coverless), null);
+    assert.equal(issue(74, coverless), null);
     // And an entry's own save, as a spell's.
     const spell = doc((d) => {
       const feat = d.catalogs.find((catalog: { id: string }) => catalog.id === "feats").entries[0];
@@ -231,31 +231,31 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
       feat.item = { use: { save: { save: "dex_save", onSuccess: "negates", ignoresCover: true } } };
     });
     assert.match(issue(72, scroll) ?? "", gate, "an item use's save that ignores cover");
-    // And height, 1.74 (combat C6b).
+    // And height, 1.75 (combat C6b).
     const high = doc((d) => (d.combat.elevation = { levelHeight: 5 }));
-    assert.match(issue(73, high) ?? "", /what a board's height does requires .*capabilityApi 1\.74/);
-    assert.equal(issue(74, high), null);
-    // And the action economy conditions change, 1.75 (combat C6d): any of the new condition keys, or a
+    assert.match(issue(74, high) ?? "", /what a board's height does requires .*capabilityApi 1\.75/);
+    assert.equal(issue(75, high), null);
+    // And the action economy conditions change, 1.76 (combat C6d): any of the new condition keys, or a
     // budget of no count.
-    const economyGate = /change the action economy, or with a budget of no count, requires .*capabilityApi 1\.75/;
+    const economyGate = /change the action economy, or with a budget of no count, requires .*capabilityApi 1\.76/;
     const slowed = doc((d) => d.combat.conditions.push({ condition: "prone", attacksPerTurn: 1 }));
-    assert.match(issue(74, slowed) ?? "", economyGate);
-    assert.equal(issue(75, slowed), null);
+    assert.match(issue(75, slowed) ?? "", economyGate);
+    assert.equal(issue(76, slowed), null);
     const spare = doc((d) => d.combat.economy.budgets.push({ id: "spare", label: "Spare", per: "turn", count: 0 }));
-    assert.match(issue(74, spare) ?? "", economyGate);
-    // And sheet migrations, 1.76 (C6e-0).
+    assert.match(issue(75, spare) ?? "", economyGate);
+    // And sheet migrations, 1.77 (C6e-0).
     const migrating = doc((d) => {
       d.sheet.version = 2;
       d.sheet.migrations = [{ from: 1, steps: [{ rename: "field", from: "experience", to: "xp" }] }];
     });
-    assert.match(issue(75, migrating) ?? "", /says how older sheets read on it requires .*capabilityApi 1\.76/);
-    assert.equal(issue(76, migrating), null);
-    // And a rest that shares a pool group's fraction, 1.76 (C6e).
+    assert.match(issue(76, migrating) ?? "", /says how older sheets read on it requires .*capabilityApi 1\.77/);
+    assert.equal(issue(77, migrating), null);
+    // And a rest that shares a pool group's fraction, 1.77 (C6e).
     const sharing = doc((d) => {
       d.rests[0].restore.push({ poolGroup: "slots", by: { fractionOfMax: 0.5 }, shared: true });
     });
-    assert.match(issue(75, sharing) ?? "", /shares a pool group's fraction requires .*capabilityApi 1\.76/);
-    assert.equal(issue(76, sharing), null);
+    assert.match(issue(76, sharing) ?? "", /shares a pool group's fraction requires .*capabilityApi 1\.77/);
+    assert.equal(issue(77, sharing), null);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }

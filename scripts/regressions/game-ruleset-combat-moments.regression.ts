@@ -323,7 +323,7 @@ try {
     );
   }
 
-  // ── A fake held while it is answered (Capability API 1.78) ──
+  // ── A fake held while it is answered (Capability API 1.79) ──
   {
     // Juno presses a fake poultice on herself (a balm that heals by a flat 3, not the poultice's dice);
     // the Kindler's Backfire answers the use first, and once the window closes the use goes on as what

@@ -758,7 +758,7 @@ function itemUseActions(
       pooled,
     );
     if (!action) return;
-    // A fake (1.78) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
+    // A fake (1.79) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
     // the menu tells them apart; what it does is what it truly does. One whose true item does nothing a
     // fight can use is spent for nothing.
     const real = held.truly ? fakeUseAction(definition, held.truly.item, build, evaluated, perCell, pooled) : null;
@@ -798,7 +798,7 @@ function itemUseActions(
   return actions;
 }
 
-/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.78). */
+/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.79). */
 export const RULESET_FAKE_EFFECT_KEYS = [
   "toHit",
   "target",
@@ -813,7 +813,7 @@ export const RULESET_FAKE_EFFECT_KEYS = [
   "concentration",
 ] as const satisfies ReadonlyArray<keyof RulesetCombatAction>;
 
-/** The action a use resolves as: for a fake (1.78), the one offered with what it truly does in place
+/** The action a use resolves as: for a fake (1.79), the one offered with what it truly does in place
  *  of what it seemed to, so the menu, the forecast and the aim stay what the real thing's are. */
 export function rulesetActionAsUsed(action: RulesetCombatAction): RulesetCombatAction {
   const does = action.itemUse?.fake?.does;

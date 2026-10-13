@@ -4,7 +4,7 @@ import { parseRulesetDefinition, readRulesetSheetEnvelope } from "@marinara-engi
 import { seedUIState } from "./ui-state-fixture.js";
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 
-// A ruleset that moved on a layout (C6e-0, Capability API 1.76): one level becomes a level per class,
+// A ruleset that moved on a layout (C6e-0, Capability API 1.77): one level becomes a level per class,
 // one pool of hit dice one per die. A character stored on the old layout opens in the sheet editor
 // with its level on its class, and in the game's sheet with its spent die on the right pool, and what
 // either stores next is the new layout.

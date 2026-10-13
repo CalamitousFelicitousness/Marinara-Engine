@@ -5,7 +5,7 @@ import { inventoryButton } from "./game-inventory-fixture.js";
 import { openGame, savedInventory, withImports } from "./game-ruleset-fight-fixture.js";
 
 /**
- * Honest and dishonest sellers (P1-7, Capability API 1.78), on real turns. The Game Master buys a
+ * Honest and dishonest sellers (P1-7, Capability API 1.79), on real turns. The Game Master buys a
  * warming tonic from a fence whose stock is a fake one: the bag, the notification and the narration
  * show a warming tonic and never the bitter tonic it truly is, while the next prompt tells the Game
  * Master the truth. Sold to the honest chandler, it is seen through: the notification says what it

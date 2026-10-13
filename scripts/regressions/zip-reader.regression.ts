@@ -476,6 +476,17 @@ sys.stdout.write(json.dumps(out))
     /more than one end record/,
     "two end records that are both followed only by padding",
   );
+  const innerToEnd = edited(innerEnd, (copy) => copy.writeUInt16LE(256, 20));
+  assertRefused(
+    Buffer.concat([
+      edited(Buffer.concat([base.bytes, innerToEnd]), (copy) =>
+        copy.writeUInt16LE(innerToEnd.length, base.endOffset + 20),
+      ),
+      Buffer.alloc(256),
+    ]),
+    /more than one end record/,
+    "an end record that closes the file and another followed only by padding",
+  );
   assertRefused(
     Buffer.concat([base.bytes, Buffer.from("trailing"), Buffer.alloc(64)]),
     /not a readable ZIP archive/,

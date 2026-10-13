@@ -34,7 +34,6 @@ const END_RECORD_DAMAGED = "The ZIP archive's end record is damaged";
 const SPLIT_ARCHIVE = "Split or multi-part ZIP archives are not supported";
 const FILE_LIST_DAMAGED = "The ZIP archive's file list is damaged";
 const OVERLAPPING_FILES = "Files inside the ZIP archive overlap";
-const MORE_THAN_ONE_END_RECORD = "The ZIP archive has more than one end record";
 
 /** A refusal whose message is plain enough to show the person who supplied the file. */
 export class ZipArchiveError extends Error {
@@ -82,31 +81,23 @@ function isPadding(byte: number): boolean {
   return byte === 0x00 || byte === 0x0a || byte === 0x0d;
 }
 
-/** The one end record that closes the file: exactly, or else followed only by padding. Two records
- *  that could close it, or other bytes after it, leave the archive without a single meaning. */
+/** The one end record that closes the file, with nothing or only padding after its comment. Two
+ *  records that could close it, or other bytes after it, leave the archive without a single meaning. */
 function findEndRecord(buffer: Buffer): number {
   const last = buffer.length - END_SIZE;
   const first = Math.max(0, last - MAX_COMMENT_LENGTH);
   let paddingStart = buffer.length;
   while (paddingStart > first && isPadding(buffer[paddingStart - 1]!)) paddingStart -= 1;
-  let exact = -1;
-  let padded = -1;
-  let paddedCount = 0;
+  let found = -1;
   for (let offset = last; offset >= first; offset -= 1) {
     if (buffer[offset] !== 0x50 || buffer.readUInt32LE(offset) !== END_SIGNATURE) continue;
     const recordEnd = offset + END_SIZE + buffer.readUInt16LE(offset + 20);
-    if (recordEnd === buffer.length) {
-      if (exact !== -1) refuse(MORE_THAN_ONE_END_RECORD);
-      exact = offset;
-    } else if (recordEnd < buffer.length && recordEnd >= paddingStart) {
-      padded = offset;
-      paddedCount += 1;
-    }
+    if (recordEnd > buffer.length || recordEnd < paddingStart) continue;
+    if (found !== -1) refuse("The ZIP archive has more than one end record");
+    found = offset;
   }
-  if (exact !== -1) return exact;
-  if (paddedCount > 1) refuse(MORE_THAN_ONE_END_RECORD);
-  if (padded === -1) refuse(NOT_A_ZIP);
-  return padded;
+  if (found === -1) refuse(NOT_A_ZIP);
+  return found;
 }
 
 /** A classic end-record field holds its value, or all ones when the ZIP64 record carries it. */

@@ -2,9 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
-// #7537 (base lane): the 2D Avatars agent page sets up a PNGTuber avatar from a character's sprites, the
-// faces can be changed by hand, and a Roleplay chat with the agent on mounts the lazy avatar stage for it.
-// On phones the chat stays mounted under the agent's page, and its avatars stop drawing while covered.
+// #7537 (base lane): a character with expression sprites already has a PNGTuber avatar in a Roleplay chat
+// with 2D Avatars on, before anything is saved. The 2D Avatars agent page shows one set of controls (the
+// base switches above the 2D lane's PNGTuber panel), saves the sprites with `_talk` sprites as open mouths,
+// and the faces can be changed by hand. On phones the chat stays mounted under the agent's page, and its
+// avatars stop drawing while covered.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -50,9 +52,15 @@ const AGENT = {
 async function preparePage(page: Page, characterId: string, ui: Record<string, unknown>, chatId?: string) {
   await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [PACKAGE] }));
   await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [AGENT] }));
+  // The real list, without avatars other workers save on the same server (the setup page would open on one).
+  await page.route("**/api/avatar-models", async (route) => {
+    const response = await route.fetch();
+    const owners = (await response.json()) as Array<{ owner: { ownerId: string } }>;
+    await route.fulfill({ response, json: owners.filter((summary) => summary.owner.ownerId === characterId) });
+  });
   await page.route(`**/api/sprites/${characterId}`, (route) =>
     route.fulfill({
-      json: ["neutral", "happy", "crying", "full_idle"].map((expression) => ({
+      json: ["neutral", "neutral_talk", "happy", "happy_talk", "crying", "full_idle"].map((expression) => ({
         expression,
         filename: `${expression}.png`,
         url: "/sprites/avatar-demo/base.png",
@@ -77,7 +85,7 @@ async function preparePage(page: Page, characterId: string, ui: Record<string, u
   );
 }
 
-test("2D Avatars builds a PNGTuber from sprites and a chat with the agent on shows the avatar", async ({
+test("2D Avatars shows a character's sprites as its avatar and saves them as a PNGTuber", async ({
   page,
   request,
 }, info) => {
@@ -98,6 +106,17 @@ test("2D Avatars builds a PNGTuber from sprites and a chat with the agent on sho
   ).toBeTruthy();
 
   try {
+    // ── With nothing saved, the chat already shows the character's sprites as its avatar ──
+    const chatPage = await page.context().newPage();
+    await preparePage(chatPage, character.id, {}, chat.id);
+    await chatPage.goto("/");
+    const avatar = chatPage.locator(`[data-avatar-stage] [data-avatar-owner="${character.id}"]`);
+    await expect(avatar).toHaveAttribute("data-avatar-kind", "pngtuber", { timeout: FIRST_LOAD_TIMEOUT_MS });
+    await expect(avatar.getByRole("img", { name: "Avatar fixture's avatar" })).toBeVisible();
+    await expect(chatPage.locator("[data-avatar-stage]")).not.toHaveAttribute("data-avatar-paused", "true");
+    expect((await request.get(`/api/avatar-models/character/${character.id}`)).status()).toBe(404);
+    await chatPage.close();
+
     // ── The setup on the agent's page (on phones it covers the chat, which stays mounted under it) ──
     await preparePage(page, character.id, { agentDetailId: "2d-avatars" }, chat.id);
     await page.goto("/");
@@ -106,18 +125,19 @@ test("2D Avatars builds a PNGTuber from sprites and a chat with the agent on sho
     await expect(setup).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
     await expect(setup.getByText("Choose a character or persona to set up its avatar.")).toBeVisible();
     await setup.getByLabel("Character or persona").selectOption(`character:${character.id}`);
-    await expect(setup.getByText("An example avatar. Set one up to see yours.")).toBeVisible();
-    await page.screenshot({ path: info.outputPath("avatar-setup-empty.png"), animations: "disabled" });
-    await setup.getByRole("button", { name: "Use my sprites" }).click();
+    // Wait for the lazy PNGTuber panel, then check the page has one set of controls.
+    await expect(setup.locator("[data-avatar-pngtuber-status]")).toHaveText(
+      "Shows your expression sprites until you change something here.",
+      { timeout: FIRST_LOAD_TIMEOUT_MS },
+    );
+    await expect(setup.getByRole("button", { name: "Use my sprites", exact: true })).toHaveCount(1);
+    await expect(setup.getByRole("button", { name: "Import PNGTuber Plus save", exact: true })).toHaveCount(1);
+    await expect(setup.getByRole("button", { name: "Remove", exact: true })).toHaveCount(0);
     await expect(setup.getByText("Shown in chats")).toBeVisible();
-    await expect(setup.getByLabel("Sad", { exact: true })).toHaveValue("crying");
-    await expect(setup.getByLabel("Angry", { exact: true })).toHaveValue("");
-    await setup.getByLabel("Angry", { exact: true }).selectOption("happy");
-    await expect(setup.getByText("Your choice")).toBeVisible();
-    await expect(setup.getByLabel("Angry", { exact: true })).toHaveAccessibleDescription("Your choice");
-    await expect(setup.getByLabel("Sad", { exact: true })).toHaveAccessibleDescription("Found");
+    await expect(setup.getByText("An example avatar. Set one up to see yours.")).toHaveCount(0);
     await expect(setup.getByRole("img", { name: "Preview" })).toBeVisible();
-    await page.screenshot({ path: info.outputPath("avatar-setup.png"), animations: "disabled", fullPage: true });
+    await expect(setup.getByRole("checkbox", { name: /Show this avatar in chats/u })).toBeChecked();
+    await page.screenshot({ path: info.outputPath("avatar-setup-sprites.png"), animations: "disabled" });
     if (info.project.name.startsWith("mobile")) {
       // Only the preview draws: the covered chat's avatars stop.
       await expect(page.locator(`[data-avatar-stage]:has([data-avatar-owner="${character.id}"])`)).toHaveAttribute(
@@ -127,24 +147,42 @@ test("2D Avatars builds a PNGTuber from sprites and a chat with the agent on sho
       );
     }
 
+    await setup.getByRole("button", { name: "Use my sprites", exact: true }).click();
+    await expect(setup.locator("[data-avatar-pngtuber-status]")).not.toHaveText(
+      "Shows your expression sprites until you change something here.",
+    );
+    await expect(setup.getByRole("button", { name: "Remove", exact: true })).toHaveCount(1);
+    await expect(setup.locator('[data-avatar-feeling="sad"]')).toHaveValue("crying");
+    await expect(setup.locator('[data-avatar-feeling="angry"]')).toHaveValue("");
+    await setup.locator('[data-avatar-feeling="angry"]').selectOption("happy");
+    await expect
+      .poll(async () => {
+        const saved = (await (await request.get(`/api/avatar-models/character/${character.id}`)).json()) as {
+          kinds: { pngtuber: { expressionMap: Record<string, unknown> } };
+        };
+        return saved.kinds.pngtuber.expressionMap.angry;
+      })
+      .toEqual({ target: "happy", source: "user", confidence: 1 });
+    await page.screenshot({ path: info.outputPath("avatar-setup.png"), animations: "disabled", fullPage: true });
+
     const saved = (await (await request.get(`/api/avatar-models/character/${character.id}`)).json()) as {
       activeKind: string;
-      kinds: { pngtuber: { layers: Record<string, unknown>; expressionMap: Record<string, unknown> } };
+      kinds: { pngtuber: { layers: Record<string, { mouthOpen?: unknown }> } };
     };
     expect(saved.activeKind).toBe("pngtuber");
-    expect(Object.keys(saved.kinds.pngtuber.layers)).toEqual(["neutral", "happy", "crying"]);
-    expect(saved.kinds.pngtuber.expressionMap.angry).toEqual({ target: "happy", source: "user", confidence: 1 });
+    expect(Object.keys(saved.kinds.pngtuber.layers).sort()).toEqual(["crying", "happy", "neutral"]);
+    expect(saved.kinds.pngtuber.layers.happy?.mouthOpen).toEqual({ source: "sprite", label: "happy_talk" });
 
-    // ── The chat shows it ──
-    const chatPage = await page.context().newPage();
-    await preparePage(chatPage, character.id, {}, chat.id);
-    await chatPage.goto("/");
-    const avatar = chatPage.locator(`[data-avatar-stage] [data-avatar-owner="${character.id}"]`);
-    await expect(avatar).toHaveAttribute("data-avatar-kind", "pngtuber", { timeout: FIRST_LOAD_TIMEOUT_MS });
-    await expect(avatar.getByRole("img", { name: "Avatar fixture's avatar" })).toBeVisible();
-    await chatPage.bringToFront();
-    await expect(chatPage.locator("[data-avatar-stage]")).not.toHaveAttribute("data-avatar-paused", "true");
-    await chatPage.close();
+    // ── The chat shows the saved avatar ──
+    const savedChatPage = await page.context().newPage();
+    await preparePage(savedChatPage, character.id, {}, chat.id);
+    await savedChatPage.goto("/");
+    const savedAvatar = savedChatPage.locator(`[data-avatar-stage] [data-avatar-owner="${character.id}"]`);
+    await expect(savedAvatar).toHaveAttribute("data-avatar-kind", "pngtuber", { timeout: FIRST_LOAD_TIMEOUT_MS });
+    await expect(savedAvatar.getByRole("img", { name: "Avatar fixture's avatar" })).toBeVisible();
+    await savedChatPage.bringToFront();
+    await expect(savedChatPage.locator("[data-avatar-stage]")).not.toHaveAttribute("data-avatar-paused", "true");
+    await savedChatPage.close();
 
     // ── Removing the character removes its avatar ──
     expect((await request.delete(`/api/characters/${character.id}`)).status()).toBe(204);

@@ -4,8 +4,11 @@
  *   - phones show at most 2 avatars and desktops 4, with the budget's frame rates and pixel-ratio caps;
  *   - the owner's lip sync, blink and idle-motion switches (and reduced motion) shape every frame;
  *   - PNGTuber pictures resolve to stored files or the owner's sprites, expression sprites first;
- *   - "Use my sprites" builds a valid PNGTuber setup and keeps an existing setup's layers and choices;
- *   - the chat surfaces load the stage lazily, and only for avatar agents the chat turned on.
+ *   - with 2D Avatars on, an owner's expression sprites are a PNGTuber avatar until one is saved (built by
+ *     the 2D lane's rule, so `_talk`/`_blink` sprites are mouth and eye variants), and turning it off hides it;
+ *   - the setup page leaves importing, removing, sprites and faces to the kind panels;
+ *   - the chat surfaces load the stage lazily, only for avatar agents the chat turned on, and create the
+ *     director only once an avatar shows.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -24,13 +27,10 @@ import {
   pickAvatarKind,
   resolveAvatarImage,
   selectStageAvatars,
+  withSpriteAvatar,
 } from "../../packages/client/src/features/avatars/stage/avatar-stage-logic.ts";
-import {
-  avatarAgentKinds,
-  avatarBindingTargets,
-  buildPngtuberFromSprites,
-  withBindingOverride,
-} from "../../packages/client/src/features/avatars/setup/avatar-setup-logic.ts";
+import { avatarAgentKinds } from "../../packages/client/src/features/avatars/setup/avatar-setup-logic.ts";
+import { buildPngtuberLayersFromSprites } from "../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.ts";
 
 // ── Which kind shows ──
 assert.equal(pickAvatarKind({ activeKind: "vrm", kinds: ["pngtuber", "vrm"] }, ["2d-avatars", "3d-avatars"]), "vrm");
@@ -92,6 +92,41 @@ assert.deepEqual(
   "an owner shows once",
 );
 
+// ── Expression sprites are a PNGTuber avatar until one is saved ──
+const spriteOwners = new Set(["character:s", "character:off", "character:b"]);
+const withSprites = [...participants, { owner: { ownerType: "character" as const, ownerId: "s" }, name: "S" }];
+assert.deepEqual(
+  selectStageAvatars(withSprites, summaries, ["2d-avatars"], 8, spriteOwners).map((avatar) => [
+    avatar.participant.owner.ownerId,
+    avatar.kind,
+    avatar.saved,
+  ]),
+  [
+    ["a", "pngtuber", true],
+    ["b", "pngtuber", true],
+    ["c", "mesh-avatar", true],
+    ["d", "pngtuber", true],
+    ["e", "pngtuber", true],
+    ["s", "pngtuber", false],
+  ],
+  "sprites show with nothing saved; a VRM whose agent is off falls back to its sprites; a turned-off one stays hidden",
+);
+assert.deepEqual(
+  selectStageAvatars(withSprites, summaries, ["3d-avatars"], 8, spriteOwners).map((a) => a.participant.owner.ownerId),
+  ["b"],
+  "sprites need 2D Avatars",
+);
+assert.deepEqual(
+  selectStageAvatars(withSprites, undefined, ["2d-avatars"], 8, spriteOwners),
+  [],
+  "nothing shows before the saved avatars are known, so a turned-off one never flashes in",
+);
+assert.deepEqual(
+  selectStageAvatars(withSprites, [], ["2d-avatars"], 8, spriteOwners).map((a) => a.participant.owner.ownerId),
+  ["b", "off", "s"],
+  "with no avatar saved at all, every owner with sprites shows",
+);
+
 // ── Budget ──
 assert.equal(avatarTargetFps({ talking: true, phone: true, underLoad: true }), 30);
 assert.equal(avatarTargetFps({ talking: false, phone: false, underLoad: false }), 30);
@@ -137,50 +172,27 @@ assert.equal(
   "/api/avatar-models/persona/p1/files/pngtuber/a.png?v=2026-10-13T00%3A00%3A00.000Z",
 );
 
-// ── Use my sprites ──
+// ── The setup page and the stage share the 2D lane's sprite rule ──
 assert.deepEqual(avatarAgentKinds("2d-avatars"), ["pngtuber", "mesh-avatar"]);
 assert.deepEqual(avatarAgentKinds("3d-avatars"), ["vrm"]);
-const built = buildPngtuberFromSprites(["neutral", "Happy", "full_happy", "crying", "smirk", "happy"]);
-assert.ok(built);
-assert.deepEqual(Object.keys(built.layers), ["neutral", "happy", "crying", "smirk"], "full-body sprites are left out");
-assert.deepEqual(built.layers.happy, { base: { source: "sprite", label: "happy" } });
-assert.equal(built.expressionMap.sad?.target, "crying");
-assert.equal(built.expressionMap.angry?.source, "missing");
-const config = {
-  ...createAvatarConfig(owner, "2026-10-13T00:00:00.000Z"),
-  activeKind: "pngtuber",
-  kinds: { pngtuber: built },
-};
-assert.ok(avatarConfigSchema.safeParse(config).success, "the built setup is a valid avatar.json");
-assert.equal(buildPngtuberFromSprites(["full_idle"]), null, "no expression sprites, nothing to build");
-
-const edited = withBindingOverride<"pngtuber">(
-  {
-    ...built,
-    layers: {
-      ...built.layers,
-      smirk: { ...built.layers.smirk!, mouthOpen: { source: "file", path: "pngtuber/s.png" } },
-    },
-  },
-  "happy",
-  "smirk",
+const fromSprites = buildPngtuberLayersFromSprites(
+  ["neutral", "neutral_talk", "happy", "happy_talk", "crying", "full_idle"].map((expression) => ({ expression })),
 );
-assert.deepEqual(edited.expressionMap.happy, { target: "smirk", source: "user", confidence: 1 });
-const rebuilt = buildPngtuberFromSprites(["neutral", "angry"], edited);
-assert.ok(rebuilt);
-assert.equal(rebuilt.expressionMap.happy?.target, "smirk", "the user's choice stays");
-assert.equal(rebuilt.expressionMap.angry?.target, "angry", "a new sprite fills a missing feeling");
-assert.deepEqual(rebuilt.layers.smirk?.mouthOpen, { source: "file", path: "pngtuber/s.png" }, "variants stay");
-assert.deepEqual(avatarBindingTargets("pngtuber", rebuilt), ["angry", "crying", "happy", "neutral", "smirk"]);
-assert.ok(
-  avatarBindingTargets("vrm", {
-    file: "vrm/m.vrm",
-    specVersion: "0.x",
-    expressionMap: { happy: { target: "Joy", source: "name-match", confidence: 0.9 } },
-  }).includes("Joy") &&
-    avatarBindingTargets("vrm", { file: "vrm/m.vrm", specVersion: "1.0", expressionMap: {} }).includes("happy"),
-  "models offer their found names and the preset names",
-);
+assert.ok(fromSprites);
+assert.deepEqual(Object.keys(fromSprites.layers).sort(), ["crying", "happy", "neutral"], "talk sprites are no face");
+assert.deepEqual(fromSprites.layers.happy?.mouthOpen, { source: "sprite", label: "happy_talk" }, "they open the mouth");
+assert.equal(fromSprites.expressionMap.sad?.target, "crying");
+const spriteAvatar = withSpriteAvatar(owner, null, fromSprites);
+assert.ok(spriteAvatar);
+assert.deepEqual([spriteAvatar.enabled, spriteAvatar.activeKind], [true, null]);
+assert.equal(spriteAvatar.kinds.pngtuber, fromSprites);
+assert.ok(avatarConfigSchema.safeParse(spriteAvatar).success, "the sprite avatar is a valid avatar.json");
+assert.equal(withSpriteAvatar(owner, spriteAvatar, fromSprites), spriteAvatar, "the same object, so nothing remounts");
+const turnedOff = { ...createAvatarConfig(owner, "2026-10-13T00:00:00.000Z"), enabled: false };
+assert.equal(withSpriteAvatar(owner, turnedOff, fromSprites)?.enabled, false, "turning it off still applies");
+const otherSprites = buildPngtuberLayersFromSprites([{ expression: "sad" }]);
+assert.equal(withSpriteAvatar(owner, spriteAvatar, otherSprites), spriteAvatar, "a saved PNGTuber setup wins");
+assert.equal(withSpriteAvatar(owner, null, null), null, "no sprites, no avatar");
 
 // ── Chat surfaces ──
 const characterMap = new Map([
@@ -227,6 +239,19 @@ for (const surface of ["components/chat/ChatRoleplaySurface.tsx", "components/ga
     /avatarAgentIds\.length > 0 && avatarParticipants\.length > 0/u,
     `${surface} mounts it only when on`,
   );
+}
+assert.match(
+  client("features/avatars/stage/AvatarStage.tsx"),
+  /useEffect\(\(\) => \{\n {4}if \(!showsAvatars\) return;\n {4}const created = createAvatarDirector\(/u,
+  "the director (and its classifier model) starts only once an avatar shows",
+);
+const setupPage = client("features/avatars/setup/AvatarAgentSetup.tsx");
+for (const [pattern, what] of [
+  [/type="file"/u, "import pickers"],
+  [/avatars\.setup\.(?:useSprites|remove)|\/kinds\//u, "building from sprites and removing"],
+  [/expressionMap/u, "the face editor"],
+] as const) {
+  assert.doesNotMatch(setupPage, pattern, `the setup page leaves ${what} to the kind panels`);
 }
 assert.match(
   client("components/agents/AgentEditor.tsx"),

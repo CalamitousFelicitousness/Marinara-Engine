@@ -7,8 +7,6 @@ import {
   avatarModelPath,
   type AvatarConfig,
   type AvatarConfigUpdate,
-  type AvatarImportResult,
-  type AvatarKind,
   type AvatarOwnerRef,
   type AvatarOwnerSummary,
 } from "@marinara-engine/shared";
@@ -42,32 +40,12 @@ export function useAvatarModel(owner: AvatarOwnerRef | null) {
   });
 }
 
-function useAvatarModelMutation<TVariables, TResult>(mutationFn: (variables: TVariables) => Promise<TResult>) {
+/** Owner-wide settings (on/off, shown kind, movement switches). The kind setup panels import and remove. */
+export function useUpdateAvatarModel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn,
+    mutationFn: ({ owner, update }: { owner: AvatarOwnerRef; update: AvatarConfigUpdate }) =>
+      api.put<AvatarConfig>(avatarModelPath(owner), update),
     onSuccess: () => qc.invalidateQueries({ queryKey: avatarModelKeys.all }),
   });
-}
-
-export function useUpdateAvatarModel() {
-  return useAvatarModelMutation(({ owner, update }: { owner: AvatarOwnerRef; update: AvatarConfigUpdate }) =>
-    api.put<AvatarConfig>(avatarModelPath(owner), update),
-  );
-}
-
-export function useImportAvatarModel() {
-  return useAvatarModelMutation(({ owner, file, kind }: { owner: AvatarOwnerRef; file: File; kind?: AvatarKind }) => {
-    const form = new FormData();
-    // Fields before the file, so the server reads them with the file.
-    if (kind) form.append("kind", kind);
-    form.append("file", file);
-    return api.upload<AvatarImportResult>(`${avatarModelPath(owner)}/import`, form);
-  });
-}
-
-export function useDeleteAvatarKind() {
-  return useAvatarModelMutation(({ owner, kind }: { owner: AvatarOwnerRef; kind: AvatarKind }) =>
-    api.delete<AvatarConfig | null>(`${avatarModelPath(owner)}/kinds/${kind}`),
-  );
 }

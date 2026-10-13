@@ -11,7 +11,7 @@ import {
   type AvatarImageRef,
   type AvatarOwnerRef,
 } from "@marinara-engine/shared";
-import { DEFAULT_PNGTUBER_MOTION } from "./avatar-setup-logic";
+import { PNGTUBER_DEFAULT_MOTION } from "../renderers/pngtuber/pngtuber-layers";
 
 const DEMO_ROOT = "/sprites/avatar-demo";
 const DEMO_FILES: Readonly<Record<string, string>> = {
@@ -44,7 +44,7 @@ export const DEMO_AVATAR_CONFIG: AvatarConfig = {
       expressionMap: Object.fromEntries(
         AVATAR_EMOTIONS.map((emotion) => [emotion, { target: "demo", source: "preset", confidence: 1 }]),
       ) as AvatarExpressionMap,
-      motion: { ...DEFAULT_PNGTUBER_MOTION },
+      motion: { ...PNGTUBER_DEFAULT_MOTION },
       source: "generated",
     },
   },

@@ -36,7 +36,7 @@ import { WORLD_SHARE_FILE_MAX_BYTES } from "@marinara-engine/shared";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { safeFetch } from "../../utils/security.js";
 import { logger } from "../../lib/logger.js";
-import { openZipArchive, type ZipArchive, type ZipEntry } from "../../lib/zip-reader.js";
+import { openZipArchive, type ZipArchive, type ZipEntry, type ZipEntryBudget } from "../../lib/zip-reader.js";
 import { getBuildBranch } from "../../config/build-info.js";
 import { sidecarSpeechService } from "../sidecar/sidecar-speech.service.js";
 
@@ -261,9 +261,15 @@ function isSymlink(entry: ZipEntry): boolean {
   return ((entry.attr >>> 16) & 0o170000) === 0o120000;
 }
 
+/** The archive entry limit, for `openZipArchive` to check before it reads the file list. */
+export const PACKAGE_ARCHIVE_BUDGET: ZipEntryBudget = {
+  maxEntries: MAX_ARCHIVE_ENTRIES,
+  tooManyEntries: "Package contains too many files",
+};
+
 export function validatePackageArchiveEntries(zip: ZipArchive, maximumExpandedBytes = MAX_EXPANDED_BYTES) {
   const archiveEntries = zip.getEntries();
-  if (archiveEntries.length > MAX_ARCHIVE_ENTRIES) throw new Error("Package contains too many files");
+  if (archiveEntries.length > MAX_ARCHIVE_ENTRIES) throw new Error(PACKAGE_ARCHIVE_BUDGET.tooManyEntries);
   const entries = archiveEntries.filter((item) => !item.isDirectory);
   const names = new Set<string>();
   let expandedBytes = 0;
@@ -1821,7 +1827,7 @@ async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDu
   const digest = createHash("sha256").update(archive).digest("hex");
   if (digest !== artifact.sha256) throw new Error("Downloaded package checksum does not match the catalog");
 
-  const zip = openZipArchive(archive);
+  const zip = openZipArchive(archive, PACKAGE_ARCHIVE_BUDGET);
   const entries = validatePackageArchiveEntries(zip);
   const manifestEntry = entries.find((item) => item.entryName === "manifest.json");
   if (!manifestEntry || manifestEntry.size > MAX_MANIFEST_BYTES) {

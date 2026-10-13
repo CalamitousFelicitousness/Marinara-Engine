@@ -4,7 +4,7 @@ import { useDecisionCalibration, useHasDecisionModel } from "../../hooks/use-dec
 // Full-Page Agent Editor
 // Click an agent → opens this editor
 // ──────────────────────────────────────────────
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useUIStore } from "../../stores/ui.store";
@@ -55,6 +55,7 @@ import {
   ImageIcon,
   Shield,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { useDeleteAgent } from "../../hooks/use-agents";
 import { useLorebooks, useEntriesAcrossLorebooks } from "../../hooks/use-lorebooks";
@@ -101,6 +102,7 @@ import {
   getDefaultBuiltInAgentSettings,
   getDefaultAgentPrompt,
   isAgentConfigDeleted,
+  isAvatarAgentId,
   mergeBuiltInAgentSettings,
   normalizeAgentPhaseForType,
   normalizeCustomAgentCapabilities,
@@ -129,6 +131,11 @@ import { CUSTOM_AGENT_RESULT_EXAMPLES, type CustomAgentResultType } from "../../
 import { downloadZipFile } from "../../lib/download-zip";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { Trans, useTranslation as useUiTranslation } from "react-i18next";
+
+// The 2D and 3D Avatars setup loads only on those agents' pages.
+const AvatarAgentSetup = lazy(() =>
+  import("../../features/avatars/setup/AvatarAgentSetup").then((module) => ({ default: module.AvatarAgentSetup })),
+);
 
 function parseActivationKeywordsText(value: string): string[] {
   const seen = new Set<string>();
@@ -795,6 +802,7 @@ export function AgentEditor() {
   const [localIncludeParallelResults, setLocalIncludeParallelResults] = useState(false);
   const [localEnabledTools, setLocalEnabledTools] = useState<string[]>([]);
   const [toolsSectionOpen, setToolsSectionOpen] = useState(false);
+  const [avatarSetupOpen, setAvatarSetupOpen] = useState(true);
   const [localLorebookWriteEnabled, setLocalLorebookWriteEnabled] = useState(false);
   const [localWritableLorebookId, setLocalWritableLorebookId] = useState("");
   const [localLorebookReadBehindMessages, setLocalLorebookReadBehindMessages] = useState(0);
@@ -2232,6 +2240,22 @@ export function AgentEditor() {
               </label>
             </div>
           </FieldGroup>
+
+          {/* ── 2D and 3D Avatars: the avatar setup ── */}
+          {isAvatarAgentId(currentAgentType) && (
+            <FieldGroup
+              label={localizeUi("avatars.setup.title")}
+              icon={<UserRound size="0.875rem" className="text-[var(--primary)]" />}
+              help={localizeUi("avatars.setup.help")}
+              collapsible
+              expanded={avatarSetupOpen}
+              onExpandedChange={setAvatarSetupOpen}
+            >
+              <Suspense fallback={<Loader2 size="1rem" className="animate-spin text-[var(--muted-foreground)]" />}>
+                <AvatarAgentSetup agentId={currentAgentType} />
+              </Suspense>
+            </FieldGroup>
+          )}
 
           {/* Agent Pipeline Phase */}
           <FieldGroup

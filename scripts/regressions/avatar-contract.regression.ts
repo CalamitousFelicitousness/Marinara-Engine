@@ -171,9 +171,11 @@ await app.register(avatarModelsRoutes, { prefix: "/api/avatar-models" });
 await app.register(avatarClassifyRoutes, { prefix: "/api/avatar-classify" });
 await app.register(avatarGenerationRoutes, { prefix: "/api/avatar-generation" });
 await app.ready();
-for (const url of ["/api/avatar-models", "/api/avatar-classify", "/api/avatar-generation/mesh-rig"]) {
+for (const url of ["/api/avatar-classify", "/api/avatar-generation/mesh-rig"]) {
   assert.equal((await app.inject({ method: "GET", url })).statusCode, 404, `${url} is not served yet`);
 }
+// The base lane serves avatar models (scripts/regressions/avatar-models.regression.ts covers the routes).
+assert.equal((await app.inject({ method: "GET", url: "/api/avatar-models" })).statusCode, 200);
 await app.close();
 
 // ── Renderer libraries only in the lazy renderer modules ──

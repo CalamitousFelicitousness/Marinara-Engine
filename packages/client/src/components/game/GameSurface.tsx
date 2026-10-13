@@ -1547,6 +1547,12 @@ const SpriteOverlay = lazy(async () => {
   return { default: module.SpriteOverlay };
 });
 
+// 2D and 3D Avatars: loads only in games where an avatar agent is on.
+const AvatarStage = lazy(async () => {
+  const module = await import("../../features/avatars/stage/AvatarStage");
+  return { default: module.AvatarStage };
+});
+
 const GameSessionHistory = lazy(async () => {
   const module = await import("./GameSessionHistory");
   return { default: module.GameSessionHistory };
@@ -1612,6 +1618,8 @@ import type {
   CombatStyleNotes,
 } from "@marinara-engine/shared";
 import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
+import { chatAvatarParticipants } from "../../features/avatars/stage/avatar-stage-logic";
+import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-avatar-agents";
 
 /** Typewriter component for the intro screen — reveals text character-by-character. */
 function IntroTypewriter({ text, onComplete }: { text: string; onComplete?: () => void }) {
@@ -3859,6 +3867,13 @@ function GameSurfaceComponent({
   useEffect(() => {
     if (spriteVisible) prevSpriteIdsRef.current = activeSpriteIds;
   }, [spriteVisible, activeSpriteIds]);
+
+  // Avatars of the game's characters and the player; the Game Master's lines drive their faces.
+  const avatarAgentIds = useChatAvatarAgentIds(chatMeta);
+  const avatarParticipants = useMemo(
+    () => chatAvatarParticipants(gameCharacterIds, characterMap, personaInfo),
+    [characterMap, gameCharacterIds, personaInfo],
+  );
 
   // New game mechanics hooks
   const _advanceTime = useAdvanceTime();
@@ -12552,6 +12567,18 @@ function GameSurfaceComponent({
               </Suspense>
             )}
           </div>
+          {avatarAgentIds.length > 0 && avatarParticipants.length > 0 && !overworldShown && (
+            <Suspense fallback={null}>
+              <AvatarStage
+                chatId={activeChatId}
+                mode="game"
+                participants={avatarParticipants}
+                enabledAgentIds={avatarAgentIds}
+                side="center"
+                scale={gameFullBodySpriteScale}
+              />
+            </Suspense>
+          )}
 
           <div className="relative flex min-w-0 h-full flex-col overflow-hidden">
             {/* Fade in all UI chrome after intro cinematic finishes */}

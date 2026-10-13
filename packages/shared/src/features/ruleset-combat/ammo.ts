@@ -207,7 +207,7 @@ export interface RulesetFightItemChange {
   charges?: number;
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
-  /** A fake's true name (1.74): what a use of it is written as. */
+  /** A fake's true name (1.78): what a use of it is written as. */
   truly?: string;
 }
 
@@ -265,7 +265,7 @@ export function applyRulesetFightItemChanges(
   const journal: GameInventoryJournalEntry[] = [];
   for (const change of changes) {
     const at = next.findIndex((stack) => stack.id === change.stack.id);
-    // A fake used is found out (1.74): written by its true name. What is left of it stays as it is, since
+    // A fake used is found out (1.78): written by its true name. What is left of it stays as it is, since
     // the fight still holds it by what it passes for.
     if (change.taken > 0) {
       const name = change.truly && !change.broke ? change.truly : change.name;

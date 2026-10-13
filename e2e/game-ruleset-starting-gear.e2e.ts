@@ -6,7 +6,7 @@ import { inventoryButton } from "./game-inventory-fixture.js";
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 /**
- * Starting gear (P1-6, Capability API 1.73): a ruleset's gear taken into a bag from the inventory, on
+ * Starting gear (P1-6, Capability API 1.77): a ruleset's gear taken into a bag from the inventory, on
  * the player's word only. The dialog lists the gear, asks each choice and each pick, says what it
  * weighs against what the bearer can carry, and takes it whole; each kind of gear once. Each run
  * imports Ember Roads under its own id and removes it afterwards.

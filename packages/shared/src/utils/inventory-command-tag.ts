@@ -34,7 +34,7 @@ export type InventoryTagAction =
   | "earn"
   | "buy"
   | "sell"
-  /** A fake shown for what it truly is (Capability API 1.74). */
+  /** A fake shown for what it truly is (Capability API 1.78). */
   | "reveal";
 
 const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
@@ -319,7 +319,7 @@ export interface ResolvedInventoryTag {
   /** A buy's seller, and whether it came out of their stock today (#6934). */
   seller?: string;
   stock?: boolean;
-  /** A fake's true name, once it is shown for what it is (1.74). */
+  /** A fake's true name, once it is shown for what it is (1.78). */
   revealed?: string;
 }
 

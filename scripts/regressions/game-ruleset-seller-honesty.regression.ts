@@ -1,8 +1,8 @@
 /**
- * Honest and dishonest sellers (P1-7, Capability API 1.74).
+ * Honest and dishonest sellers (P1-7, Capability API 1.78).
  *
  *   - Schema: an item's `risky` and `passesFor`, a seller's `honest: false`; a fake's target is a real,
- *     sellable item of the same kind, worn the same way. Gated at 1.74, catalog files read at install.
+ *     sellable item of the same kind, worn the same way. Gated at 1.78, catalog files read at install.
  *   - Market: a cursed item or a fake is never among anybody's wares nor in an honest seller's stock; a
  *     dishonest seller's stock offers a fake as what it passes for, and only a buy naming that seller
  *     gets it. Honest sellers warn about risky wares in the MARKET block.
@@ -168,7 +168,7 @@ try {
     }
   }
 
-  // ── The 1.74 gate ──
+  // ── The 1.78 gate ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -191,7 +191,7 @@ try {
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     assert.match(issue(73, honesty()) ?? "", gate);
     assert.equal(issue(74, honesty()), null);
-    // Each key alone is 1.74's: a dishonest seller, a risky item, a fake.
+    // Each key alone is 1.78's: a dishonest seller, a risky item, a fake.
     const without = (doc: Record<string, any>) => {
       const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
       kit.entries = kit.entries.filter(

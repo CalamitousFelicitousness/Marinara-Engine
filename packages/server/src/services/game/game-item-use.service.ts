@@ -38,7 +38,7 @@ export type GameItemUseResult =
       said: RulesetItemUseSaid;
       /** What happened, in one line for the Game Master. */
       line: string;
-      /** A fake used was shown for what it truly is first (1.74): its true name. */
+      /** A fake used was shown for what it truly is first (1.78): its true name. */
       revealed?: string;
       playerStats?: unknown;
     }
@@ -113,7 +113,7 @@ function useForCarrier(
     : ((context.playerName ? named(context.playerName) : undefined) ?? context.cards[0]);
   const name = holder ?? card?.name ?? context.playerName ?? "The player";
   const key = normalizeCharacterLookupName(name);
-  // A fake used is shown for what it truly is first (1.74), and what it truly does is what happens.
+  // A fake used is shown for what it truly is first (1.78), and what it truly does is what happens.
   const revealed = stack?.truly ? (itemOf(stack.truly)?.name ?? stack.truly) : undefined;
   const working = stack?.truly ? revealGameInventoryFake([...stacks], stackId, { itemOf }) : [...stacks];
   const outcome = useRulesetItemOutsideFight({

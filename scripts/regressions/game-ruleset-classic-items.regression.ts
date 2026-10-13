@@ -1065,7 +1065,7 @@ try {
     );
 
     // A fake bell (truly a grave spade, which a fight cannot use) holds charges as the bell it passes for:
-    // the round's use comes out of it and does nothing, and spending its charge names it truly (1.74).
+    // the round's use comes out of it and does nothing, and spending its charge names it truly (1.78).
     {
       const fakeBell = await graveGame(gravePin, 3);
       // A real bell rung empty comes first: the charge is the fake's, the one with a charge left.
@@ -1234,7 +1234,7 @@ try {
     );
   }
 
-  // ── A fake in the Engine's own battles (Capability API 1.74) ──
+  // ── A fake in the Engine's own battles (Capability API 1.78) ──
   {
     // A waystone that passes for a poultice, held before two real ones: the battle lists one Poultice
     // line of three, and the use that comes out of the fake does nothing a battle can use, and says so.

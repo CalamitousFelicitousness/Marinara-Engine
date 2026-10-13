@@ -1050,10 +1050,10 @@ function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } |
 }
 
 const COVER_ISSUE =
-  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.69 or newer";
+  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.73 or newer";
 
 /** A save that ignores cover, on an entry's mechanics, a creature's action or an item's use, which is
- *  1.69: a new key on the strict save. */
+ *  1.73: a new key on the strict save. */
 function entriesCarryCoverlessSaves(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1116,9 +1116,9 @@ function rulesetCarriesMarketDay169(ruleset: { items?: unknown } | undefined): b
 }
 
 const HONESTY_ISSUE =
-  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.74 or newer";
+  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.78 or newer";
 
-/** Seller honesty's item keys (1.74): `risky` and `passesFor`, new keys on the strict item. */
+/** Seller honesty's item keys (1.78): `risky` and `passesFor`, new keys on the strict item. */
 function entriesCarryHonesty(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&

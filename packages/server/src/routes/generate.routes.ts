@@ -237,7 +237,6 @@ import {
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
-  type GamePlace,
   createInventoryTagRegex,
   gameInventoryBags,
   gameInventoryTellingStart,
@@ -5076,7 +5075,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ]),
               )
             : undefined;
-          // A fake's facts are what it truly is, which only the Game Master reads (1.74).
+          // A fake's facts are what it truly is, which only the Game Master reads (1.78).
           const promptItemFacts = promptItemBook
             ? Object.fromEntries(
                 promptInventoryStacks.flatMap((stack) =>

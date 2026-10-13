@@ -1,9 +1,9 @@
 /**
- * Starting gear (P1-6, Capability API 1.73): gear a character may take into their bag at the start,
+ * Starting gear (P1-6, Capability API 1.77): gear a character may take into their bag at the start,
  * never on its own.
  *
  *   - The schema: lines of the ruleset's items, coins, one of a list, or a plain item; choices of
- *     options; `fits` read off the sheet; every item, coin and word checked at import; the 1.73 gate.
+ *     options; `fits` read off the sheet; every item, coin and word checked at import; the 1.77 gate.
  *   - The resolver: every choice needs an option, every list a pick that is one of it and one of the
  *     game's own items; lines merge by item; what a layer took out of the game is left out and named.
  *   - The route: into one bag, all of it or none of it, once for each group unless asked again, armor
@@ -157,7 +157,7 @@ try {
     ] as const) {
       assert.match(refusal(withGear(edit)), message);
     }
-    // The gate: starting gear is 1.73's.
+    // The gate: starting gear is 1.77's.
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },

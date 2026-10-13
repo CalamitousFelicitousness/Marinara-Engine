@@ -39,7 +39,15 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat, GameWorld, WorldJournal, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
+import type {
+  Chat,
+  GameWorld,
+  WorldJournal,
+  WorldRoute,
+  WorldTown,
+  WorldTownVisit,
+  WorldWalk,
+} from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──

@@ -1,5 +1,5 @@
 // The inventory's "Starting gear": a ruleset's gear a character may take into their bag at the start
-// (Capability API 1.73). Never given on its own: the player picks a gear, an option for each of its
+// (Capability API 1.77). Never given on its own: the player picks a gear, an option for each of its
 // choices and an item from each list, and takes it. Gear the character's sheet fits is listed first;
 // every gear is offered, because a character's concept is the player's and the Game Master's to agree.
 //

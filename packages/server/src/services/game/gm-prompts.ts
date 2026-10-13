@@ -137,7 +137,7 @@ export interface GmPromptContext {
   /** What each ruleset item held is, by item id, as one line (`rulesetItemPromptFacts`); for a fake,
    *  what it truly is. */
   inventoryItemFacts?: Record<string, string>;
-  /** The true name of each fake held, by its true item id (Capability API 1.74). */
+  /** The true name of each fake held, by its true item id (Capability API 1.78). */
   inventoryFakeNames?: Record<string, string>;
   /** What each character carries, binds and wears against what they can, by bag key
    *  (`gameInventoryBagKey`, the player's is ""), in a game whose ruleset says so. */

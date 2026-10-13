@@ -10579,7 +10579,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         ...Object.entries(partyActions ?? {}).map(([id, action]) => ({ action, user: id as string | undefined })),
         ...(playerAction && !twice ? [{ action: playerAction, user: leader }] : []),
       ].filter(({ action }) => action.type === "item");
-      // A use that comes out of a fake does what the fake truly does (1.74): the round's uses of a line
+      // A use that comes out of a fake does what the fake truly does (1.78): the round's uses of a line
       // come out of its stacks one after another, as the screen spends them.
       const uses = await loadGameFightUseEffects(app.db, meta);
       const spent = new Map<string, number>();

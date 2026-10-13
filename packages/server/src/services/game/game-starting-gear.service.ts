@@ -1,4 +1,4 @@
-// Starting gear (Capability API 1.73): the player takes a ruleset's gear into one character's bag,
+// Starting gear (Capability API 1.77): the player takes a ruleset's gear into one character's bag,
 // never on its own, once for each of the gear's groups (a class's gear beside a background's), or
 // again when they say so. What the gear adds is worked out by the shared resolver from the ruleset
 // and the game's item book, never from what the screen sent: a pick must be one of its line's list.

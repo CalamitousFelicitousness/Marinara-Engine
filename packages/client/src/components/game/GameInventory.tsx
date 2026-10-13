@@ -125,7 +125,7 @@ interface GameInventoryProps {
   onSwapItems?: (firstId: string, secondId: string) => void | Promise<void>;
   /** Whether the player can interact (input phase) */
   canInteract?: boolean;
-  /** The ruleset's starting gear (Capability API 1.73): what each bag has taken, each character's
+  /** The ruleset's starting gear (Capability API 1.77): what each bag has taken, each character's
    *  sheet, the game's layers, whose bags it may go into (by bag key: the party members with a card),
    *  and how to take some. With it, a row offers the gear while a bag has some kind left. */
   startingGear?: {

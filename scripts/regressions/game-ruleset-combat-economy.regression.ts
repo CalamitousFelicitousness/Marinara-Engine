@@ -8,7 +8,7 @@
  *   - `exclusive`: of two budgets a turn spends only one; spending either empties the other.
  *   - `attacksPerTurn`: no attack past the cap, whatever strikes an action would give.
  *   - `onEnd`: what a condition leaves behind when it ends for good, as Haste's lethargy is.
- *   - The 1.71 gate is the install gate's (combat-cover pins its neighbours); the schema refuses
+ *   - The 1.75 gate is the install gate's (combat-cover pins its neighbours); the schema refuses
  *     budgets and conditions the ruleset does not declare.
  */
 import assert from "node:assert/strict";

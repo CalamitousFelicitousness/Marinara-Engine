@@ -158,7 +158,7 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   assert.deepEqual(choice.type === "attack" ? choice.to : choice, { x: 3, y: 0 }, JSON.stringify(choice));
 }
 
-// ── Install gate: 1.69 ──
+// ── Install gate: 1.73 ──
 {
   const dataDir = mkdtempSync(join(tmpdir(), "marinara-cover-"));
   process.env.DATA_DIR = dataDir;
@@ -231,11 +231,11 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
       feat.item = { use: { save: { save: "dex_save", onSuccess: "negates", ignoresCover: true } } };
     });
     assert.match(issue(68, scroll) ?? "", gate, "an item use's save that ignores cover");
-    // And height, 1.70 (combat C6b).
+    // And height, 1.74 (combat C6b).
     const high = doc((d) => (d.combat.elevation = { levelHeight: 5 }));
     assert.match(issue(69, high) ?? "", /what a board's height does requires .*capabilityApi 1\.70/);
     assert.equal(issue(70, high), null);
-    // And the action economy conditions change, 1.71 (combat C6d): any of the new condition keys, or a
+    // And the action economy conditions change, 1.75 (combat C6d): any of the new condition keys, or a
     // budget of no count.
     const economyGate = /change the action economy, or with a budget of no count, requires .*capabilityApi 1\.71/;
     const slowed = doc((d) => d.combat.conditions.push({ condition: "prone", attacksPerTurn: 1 }));
@@ -243,14 +243,14 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
     assert.equal(issue(71, slowed), null);
     const spare = doc((d) => d.combat.economy.budgets.push({ id: "spare", label: "Spare", per: "turn", count: 0 }));
     assert.match(issue(70, spare) ?? "", economyGate);
-    // And sheet migrations, 1.72 (C6e-0).
+    // And sheet migrations, 1.76 (C6e-0).
     const migrating = doc((d) => {
       d.sheet.version = 2;
       d.sheet.migrations = [{ from: 1, steps: [{ rename: "field", from: "experience", to: "xp" }] }];
     });
     assert.match(issue(71, migrating) ?? "", /says how older sheets read on it requires .*capabilityApi 1\.72/);
     assert.equal(issue(72, migrating), null);
-    // And a rest that shares a pool group's fraction, 1.72 (C6e).
+    // And a rest that shares a pool group's fraction, 1.76 (C6e).
     const sharing = doc((d) => {
       d.rests[0].restore.push({ poolGroup: "slots", by: { fractionOfMax: 0.5 }, shared: true });
     });

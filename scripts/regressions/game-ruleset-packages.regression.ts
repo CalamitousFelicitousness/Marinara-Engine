@@ -154,7 +154,7 @@ function packageEntries(docs: Docs, manifestEdit?: (manifest: Manifest) => void,
     files: files.map((file) => ({ path: file.name, sha256: sha256(file.data!), bytes: file.data!.length })),
     permissions: [],
     restartRequired: false,
-    capabilityApi: { major: 1, minor: 74 },
+    capabilityApi: { major: 1, minor: 78 },
     builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
   };
   manifestEdit?.(manifest);

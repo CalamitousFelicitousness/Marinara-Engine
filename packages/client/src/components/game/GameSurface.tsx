@@ -3454,7 +3454,7 @@ function GameSurfaceComponent({
   const announceInventoryUpdates = useCallback(
     (updates: InventoryTag[]) => {
       const describe = (update: InventoryTag, item: string) => {
-        // A fake found out (Capability API 1.74): by a reveal or a use, or by an honest buyer.
+        // A fake found out (Capability API 1.78): by a reveal or a use, or by an honest buyer.
         if (update.revealed) {
           const truly = update.revealed;
           if (update.action === "sell") {
@@ -7757,7 +7757,7 @@ function GameSurfaceComponent({
           foundOut?: string[];
         }>("/game/inventory", { chatId, ops }),
       );
-      // A fake the sheet now shows for what it is was found out with this change (1.74).
+      // A fake the sheet now shows for what it is was found out with this change (1.78).
       for (const line of response?.foundOut ?? []) toast.info(line);
       return response?.results ?? [];
     },
@@ -8196,7 +8196,7 @@ function GameSurfaceComponent({
           );
           return;
         }
-        // One that came out of a fake is found out as it is used (1.74).
+        // One that came out of a fake is found out as it is used (1.78).
         const truly = result.revealed?.[0];
         showInventoryNotification(
           truly
@@ -8929,7 +8929,7 @@ function GameSurfaceComponent({
         return;
       }
       if (!used) return;
-      // A fake used shows itself for what it truly is (Capability API 1.74).
+      // A fake used shows itself for what it truly is (Capability API 1.78).
       if (used.revealed) {
         showInventoryNotification(
           localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item: label, truly: used.revealed }),
@@ -8955,7 +8955,7 @@ function GameSurfaceComponent({
     ],
   );
 
-  // Starting gear (Capability API 1.73): what each bag has taken, kept in the chat's metadata.
+  // Starting gear (Capability API 1.77): what each bag has taken, kept in the chat's metadata.
   const startingGearTaken = useMemo<StartingGearTaken>(() => {
     const raw = chatMeta.gameStartingGearTaken;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -10486,7 +10486,7 @@ function GameSurfaceComponent({
     const { cards, index } = findStoredGameCard(cardTitle);
     // A stored sheet this version cannot read is kept as it is. Showing the ruleset's defaults in
     // its place would invite a Save that overwrites it, so the block says so and offers nothing.
-    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.72).
+    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.76).
     const envelope = index >= 0 ? readRulesetSheetEnvelope(gameRuleset.definition, cards[index]?.rulesetSheet) : null;
     if (index >= 0 && !envelope && cards[index]?.rulesetSheet != null) return { status: "unreadable" };
     // What this card holds, as the server reads it for checks and fights: the player's card the

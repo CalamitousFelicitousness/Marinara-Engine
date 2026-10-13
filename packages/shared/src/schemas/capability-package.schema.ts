@@ -836,7 +836,7 @@ const capabilityPackageManifestBaseSchema = z
 //        by attack kind, blow or ability, with typed additions and source-bound damage taken. No permission.
 // 1.133: save modifiers can count only against conditions, damage types or magic, together with
 //        the saves they name: Dwarven Resilience, Fey Ancestry and Gnome Cunning. No permission.
-// 1.134-1.163: the Kenhito lane.
+// 1.134-1.163: reserved.
 // 1.164: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
 //        ruleset, so a package with a list of more than 12 columns declares 1.164. No permission.
 // 1.165: a catalog entry's mechanics may be usable in a fight only while a value off its holder's
@@ -981,7 +981,7 @@ const capabilityPackageManifestBaseSchema = z
 //        Life Drain, a clay golem's Slam), and a live pool's `lasting`.
 // 1.203: catalog mechanics' `cureOneOf` (one of its `ends` conditions, `tracks` or `unseals`, picked
 //        as a mode of the option, else the first the target needs: 5e's Greater Restoration).
-// 1.204-1.233 are the Kenhito lane's; this lane goes on at 1.234.
+// 1.204-1.233 are reserved; the entries go on at 1.234.
 // 1.234: `reducesMax` with no save of its own (every blow that lands), `onFailedSave` (the entry's
 //        own failed save), `damageType` and `heals` (its maker regains what it lowered), on catalog
 //        mechanics too; catalog `leavesAtLeast` (5e's Harm); `targetHolds` on a creature action or

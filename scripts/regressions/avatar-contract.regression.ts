@@ -106,9 +106,19 @@ for (const path of [
   "vrm/model.",
   "sprites/a.png",
   "vrm\\a",
+  "vrm/NUL.vrm",
+  "pngtuber/con.png",
+  "mesh-avatar/Com1",
+  "vrm/lpt9.vrma",
 ]) {
   assert.equal(isAvatarFilePath(path), false, `${path} is refused`);
 }
+assert.ok(isAvatarFilePath("vrm/console.vrm"), "a name that only starts like a device name is fine");
+assert.equal(
+  avatarConfigSchema.safeParse({ ...withVrm, kinds: { vrm: { ...withVrm.kinds.vrm, file: "vrm/aux.vrm" } } }).success,
+  false,
+  "the schema refuses Windows device names too",
+);
 assert.equal(
   avatarModelFileUrl({ ownerType: "persona", ownerId: "abc" }, "pngtuber/a.png"),
   "/api/avatar-models/persona/abc/files/pngtuber/a.png",

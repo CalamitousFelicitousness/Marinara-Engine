@@ -7,7 +7,7 @@
 // renderers, the setup on each agent's Agent editor page, the stream director, the classifier and
 // the generation routes. Live2D is intentionally unsupported: its licence needs Live2D's review and
 // a separate agreement even for free open-source apps, and its runtime cannot be bundled.
-// See docs/agents/avatars.md for the lane-by-lane design.
+// Developer notes: docs/development/optional-agent-packages.md, "Capability API 1.73: the avatar agents".
 import { normalizeSpriteLookupToken } from "../utils/sprite-labels.js";
 
 // ── Agents ──
@@ -302,13 +302,20 @@ export const AVATAR_CONFIG_FILENAME = "avatar.json";
 export const AVATAR_CONFIG_VERSION = 1;
 
 /** A stored file, relative to the owner's avatar folder: `<kind>/<name>`. Never absolute, never `..`,
- *  never a nested folder, and never ending in a dot (Windows drops it). */
+ *  never a nested folder, never ending in a dot (Windows drops it), and never a Windows device name.
+ *  Check paths with isAvatarFilePath(); the pattern alone does not refuse device names. */
 export type AvatarFilePath = string;
 export const AVATAR_FILE_PATH_PATTERN =
   /^(?:pngtuber|mesh-avatar|vrm)\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/u;
+/** CON, PRN, AUX, NUL, COM0-9 and LPT0-9 name devices on Windows, with or without an extension. */
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/iu;
 
 export function isAvatarFilePath(value: unknown): value is AvatarFilePath {
-  return typeof value === "string" && AVATAR_FILE_PATH_PATTERN.test(value);
+  return (
+    typeof value === "string" &&
+    AVATAR_FILE_PATH_PATTERN.test(value) &&
+    !WINDOWS_DEVICE_NAME.test(value.slice(value.indexOf("/") + 1))
+  );
 }
 
 /** An image a PNGTuber layer shows: one of the owner's existing sprites, by its label normalized with

@@ -1061,12 +1061,15 @@ The Engine hosts the two avatar agents, `2d-avatars` (PNGTuber sprites and mesh 
 locales and the catalog entry. The Engine owns everything else: per-owner storage under
 `DATA_DIR/avatar-models/`, import, the lazy-loaded renderers, the setup on each agent's Agent editor
 page, the stream director, the expression classifier and the generation routes. The shared contract
-is `packages/shared/src/types/avatars.ts`, and [`docs/agents/avatars.md`](../agents/avatars.md)
-describes it.
+is `packages/shared/src/types/avatars.ts` (its schemas are in `schemas/avatars.schema.ts`), and the
+client half is `packages/client/src/features/avatars/contract.ts`. The user guide is
+[`docs/agents/avatars.md`](../agents/avatars.md).
 
 There is no new manifest field. An avatar package declares schema version 2 and Capability API 1.73,
 so an Engine without these surfaces refuses the install instead of listing an agent that shows
-nothing. The 2D agent's generation prompts ship as the `avatarGenerationTemplates` prompt template
+nothing. The change that introduced 1.73 shipped these surfaces as inert stubs, so the packages are
+published, even to the preview catalog, only once the Engine's setup, stage and a renderer are on
+`staging`. The 2D agent's generation prompts ship as the `avatarGenerationTemplates` prompt template
 collection in its `defaultSettings`, with the ids in `AVATAR_PROMPT_TEMPLATE_IDS`; the Agent editor
 merges and resets them like any other built-in template collection.
 

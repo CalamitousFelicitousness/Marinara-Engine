@@ -2,8 +2,8 @@
 // Avatar agents: Zod schemas for avatar.json and the API bodies
 // ──────────────────────────────────────────────
 // `avatar.json` is read back from disk and arrives in PUT bodies, so both go through these strict
-// schemas. File paths are checked against AVATAR_FILE_PATH_PATTERN here, which keeps every stored
-// reference inside the owner's own avatar folder.
+// schemas. File paths are checked with isAvatarFilePath here, which keeps every stored reference
+// inside the owner's own avatar folder.
 import { z } from "zod";
 import {
   AVATAR_CLASSIFIER_TIERS,
@@ -11,11 +11,11 @@ import {
   AVATAR_CONFIG_VERSION,
   AVATAR_EXPRESSION_BINDING_SOURCES,
   AVATAR_EXPRESSION_SLOTS,
-  AVATAR_FILE_PATH_PATTERN,
   AVATAR_KINDS,
   AVATAR_OWNER_ID_PATTERN,
   AVATAR_OWNER_TYPES,
   AVATAR_PNGTUBER_VARIANTS,
+  isAvatarFilePath,
   type AvatarClassifyRequest,
   type AvatarConfig,
   type AvatarConfigUpdate,
@@ -35,7 +35,9 @@ export const avatarOwnerRefSchema = z
   })
   .strict();
 
-export const avatarFilePathSchema = z.string().regex(AVATAR_FILE_PATH_PATTERN);
+export const avatarFilePathSchema = z
+  .string()
+  .refine(isAvatarFilePath, "A stored avatar file is <kind>/<name> inside the owner's folder.");
 
 const unitIntervalSchema = z.number().finite().min(0).max(1);
 

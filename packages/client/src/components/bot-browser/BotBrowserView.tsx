@@ -2364,14 +2364,19 @@ export function BotBrowserView() {
                           : "hover:bg-[var(--accent)]",
                       )}
                     >
-                      <span className="text-sm">{p.icon}</span>
-                      <span>{providerName(p)}</span>
-                      {p.unavailable && (
-                        <span className="ml-auto text-[0.6rem] opacity-70">
-                          {localizeUi("ui.botBrowser.providerUnavailable.badge")}
-                        </span>
-                      )}
-                      {p.id === sourceId && <span className={cn("text-[0.6rem]", !p.unavailable && "ml-auto")}>✓</span>}
+                      {/* A fixed-width icon column keeps every name aligned, whatever glyph a source uses. */}
+                      <span className="inline-flex w-5 shrink-0 justify-center text-sm" aria-hidden="true">
+                        {p.icon}
+                      </span>
+                      <span className="flex min-w-0 flex-col">
+                        <span>{providerName(p)}</span>
+                        {p.unavailable && (
+                          <span className="text-[0.6rem] opacity-70">
+                            {localizeUi("ui.botBrowser.providerUnavailable.badge")}
+                          </span>
+                        )}
+                      </span>
+                      {p.id === sourceId && <span className="ml-auto text-[0.6rem]">✓</span>}
                     </button>
                   ))}
                 </div>

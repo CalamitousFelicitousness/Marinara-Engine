@@ -60,6 +60,13 @@ function manualChunks(id: string) {
   // Removing those suffixes splits eager React imports across chunks and creates startup cycles.
   id = id.slice(id.search(/\/(?:\.pnpm|node_modules)\//u));
 
+  // Avatar renderer libraries load only with an avatar renderer's lazy chunk (features/avatars), never in
+  // vendor-misc, which the entry imports. three's core build is its own chunk to stay under the budget.
+  if (/\/node_modules\/three\/build\/three\.core\./u.test(id)) return "vendor-three-core";
+  if (/\/node_modules\/three\//u.test(id)) return "vendor-three";
+  if (/\/node_modules\/@pixiv\//u.test(id)) return "vendor-three-vrm";
+  if (/\/node_modules\/(?:mesh-avatar|fflate)\//u.test(id)) return "vendor-mesh-avatar";
+
   // Keep dynamically selected Lucide glyphs in small alphabetical chunks
   // instead of pulling the complete icon catalog into one eager vendor file.
   const lucideIcon = id.match(/lucide-react\/dist\/esm\/icons\/([^/]+)\.js$/u);

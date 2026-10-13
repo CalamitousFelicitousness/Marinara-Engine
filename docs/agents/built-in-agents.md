@@ -328,6 +328,28 @@ Plans still or animated visual storyboards from completed Roleplay exchanges and
 - **Compatibility**: Engine `2.3.5` through before `3.0.0`. The package uses `agent-runtime`, `chat-read`, `prompt-context`, `storage`, and `ui` permissions and does not require a restart.
 - **Full guide**: [Storyboard Agent: Roleplay and Game Mode](../game/storyboard.md).
 
+### 2D Avatars
+
+Shows your characters and personas as animated 2D avatars that blink, talk, and change faces with each reply. An avatar is either PNGTuber-style sprites (your expression sprites, with blink and talk pictures) or a mesh avatar file (`.mavatar`).
+
+- **Integration**: Agent package; the Engine runs it and draws the avatars. It sends no extra requests to your AI connections while you chat.
+- **Where it works**: Roleplay and Game, for characters and personas.
+- **Availability**: **In development**. It is not in **Download Agents** yet.
+- **Key settings**: set up each avatar on the agent's page in **Agents**. The agent also carries the prompts used to make blink and talk pictures and a mesh avatar from one of your sprites.
+- **Compatibility**: Engine `2.5.0` through before `4.0.0`, with Capability API 1.73. The package uses `agent-runtime`, `chat-read`, `storage`, and `ui` permissions and does not require a restart.
+- **Full guide**: [2D and 3D Avatars](avatars.md).
+
+### 3D Avatars
+
+Shows your characters and personas as animated 3D models that blink, talk, and change faces with each reply. It uses VRM models (`.vrm`, versions 0.x and 1.0), with an optional idle animation (`.vrma`).
+
+- **Integration**: Agent package; the Engine runs it and draws the avatars. It sends no extra requests to your AI connections while you chat.
+- **Where it works**: Roleplay and Game, for characters and personas.
+- **Availability**: **In development**. It is not in **Download Agents** yet.
+- **Key settings**: set up each avatar on the agent's page in **Agents**.
+- **Compatibility**: Engine `2.5.0` through before `4.0.0`, with Capability API 1.73. The package uses `agent-runtime`, `chat-read`, `storage`, and `ui` permissions and does not require a restart.
+- **Full guide**: [2D and 3D Avatars](avatars.md).
+
 ### Calls
 
 Adds live audio and video calls with Conversation characters, including user-started and incoming calls, call-only transcripts, text-to-speech, microphone input, and character video clips.

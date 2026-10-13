@@ -75,6 +75,7 @@ export function TrackerWindowCharacters({
     removeCharacter,
     updateCharacter,
     avatarFileInputRef,
+    generateAvatar,
     handleAvatarFileInputChange,
     openAvatarUpload,
   } = useTrackerMutations({
@@ -89,6 +90,7 @@ export function TrackerWindowCharacters({
   });
   const updateAgent = useUpdateAgent();
   const autoGenerateAvatars = characterTrackerSettings.autoGenerateAvatars === true;
+  const canGeneratePortraits = !!characterTrackerSettings.imageConnectionId;
   const toggleAutoGenerateAvatars = () => {
     if (!characterTrackerConfig) return;
     const nextSettings = { ...characterTrackerSettings };
@@ -205,6 +207,9 @@ export function TrackerWindowCharacters({
                   deleteMode={deleteMode}
                   addMode={addMode}
                   onUploadAvatar={() => openAvatarUpload(index)}
+                  onGeneratePortrait={
+                    canGeneratePortraits ? (includeOutfit) => generateAvatar(index, includeOutfit) : undefined
+                  }
                 />
               </div>
             );

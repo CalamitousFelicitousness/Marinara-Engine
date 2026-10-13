@@ -165,12 +165,14 @@ test("CharacterTavern explains it is unavailable without contacting the site", a
   );
   expect(nameLefts.length).toBeGreaterThan(5);
   expect(new Set(nameLefts).size).toBe(1);
+  await characterTavern.scrollIntoViewIfNeeded();
   const nameBox = await characterTavern.getByText("CharacterTavern", { exact: true }).boundingBox();
   const badgeBox = await characterTavern.getByText("Unavailable", { exact: true }).boundingBox();
   const menuBox = await menu.boundingBox();
   expect(nameBox && badgeBox && menuBox).toBeTruthy();
   expect(badgeBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 1);
   expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(menuBox!.x + menuBox!.width);
+  expect(badgeBox!.y + badgeBox!.height).toBeLessThanOrEqual(menuBox!.y + menuBox!.height);
   await testInfo.attach("source-menu", { body: await menu.screenshot(), contentType: "image/png" });
   await page.getByRole("button", { name: /CharacterTavern/u }).click();
 

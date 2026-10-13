@@ -15,7 +15,7 @@ import {
   type LLMToolDefinition,
   type LLMUsage,
 } from "../base-provider.js";
-import { parseTextualToolCalls } from "../textual-tool-call-parser.js";
+import { parseTextualToolCalls, stripTextualToolCalls } from "../textual-tool-call-parser.js";
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
@@ -1945,7 +1945,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       if (toolCalls.length === 0 && blocks?.toolCalls.length) toolCalls = blocks.toolCalls;
       if (toolCalls.length === 0 && resolvedContent && options.tools?.length) {
         toolCalls = parseTextualToolCalls(resolvedContent, options.tools);
-        if (toolCalls.length > 0) resolvedContent = null;
+        if (toolCalls.length > 0) resolvedContent = stripTextualToolCalls(resolvedContent, options.tools) || null;
       }
       return {
         content: resolvedContent,
@@ -2155,7 +2155,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
     if (toolCalls.length === 0 && content && options.tools?.length) {
       toolCalls = parseTextualToolCalls(content, options.tools);
-      if (toolCalls.length > 0) content = "";
+      if (toolCalls.length > 0) content = stripTextualToolCalls(content, options.tools);
     }
 
     this.emitChatCompletionsReasoning(options, reasoningMetadata);

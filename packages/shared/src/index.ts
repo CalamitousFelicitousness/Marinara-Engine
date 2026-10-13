@@ -137,6 +137,7 @@ export * from "./constants/tracker-custom-field-icons.js";
 export * from "./constants/stat-icons.js";
 export * from "./constants/docs-languages.js";
 export * from "./constants/mari-permissions-mode.js";
+export * from "./constants/mari-runtime.js";
 export * from "./constants/settings-registry.js";
 
 // Feature registries

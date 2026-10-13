@@ -3391,6 +3391,7 @@ export class ProfessorMariWorkspaceService {
     let runEndedWithDeferral = false;
     // Slice 71: what the deferred commands would change, saved beside the flag for the "Needs you" card.
     let runHeldChanges: MariHeldChange[] = [];
+    let runHeldCalls: WorkspaceCommandCall[] = [];
     // #5748: latched true on any round that asks the user for apply-approval
     // (awaitingAuthorization or ask-shaped visible text). Once set, later
     // rounds of THIS run defer their mutating commands behind the Accept
@@ -3432,6 +3433,7 @@ export class ProfessorMariWorkspaceService {
         commandResults: commandResultsForContinuity,
         endedWithDeferral: runEndedWithDeferral,
         heldChanges: runHeldChanges,
+        heldCalls: runHeldCalls,
         runError,
         runStartedAt,
         suggestions: runSuggestions,
@@ -3482,7 +3484,7 @@ export class ProfessorMariWorkspaceService {
         appendTraceStatus(workspaceTrace, runtime.note);
         args.onEvent({ type: "status", data: { content: runtime.note, kind: "info", level: "info" } });
       }
-      const { messages, manualApprovalArmed } = await this.buildPromptMessages(
+      const { messages, manualApprovalArmed, heldCalls } = await this.buildPromptMessages(
         args.chatId,
         connection,
         permissionsMode,
@@ -3563,11 +3565,58 @@ export class ProfessorMariWorkspaceService {
         }
       }
 
-      if (usePi) {
+      // The Accept button sends the chip prompt verbatim: apply the stored held calls here, no model request.
+      const acceptedCalls =
+        manualApprovalArmed && heldCalls.length > 0 && promptText.trim() === MARI_AUTHORIZATION_ACCEPT_CHIP.prompt
+          ? heldCalls
+          : null;
+      if (acceptedCalls) {
+        // The user approved these exact calls; the executor's Permissions Mode floor and sensitive staging still hold.
+        controller.signal.throwIfAborted();
+        this.activeRoundManualSilentMutationBlocked = false;
+        this.activeRoundAskLatchSilentMutationBlocked = false;
+        const acceptedResults = await this.executeWorkspaceCommandBatch(
+          acceptedCalls,
+          controller.signal,
+          workspaceTrace,
+          args.onEvent,
+          workspaceActionResults,
+        );
+        commandResultsForContinuity.push(...acceptedResults);
+        const failed = acceptedResults.filter((result) => !result.success || appliedMutationReadBackMismatched(result));
+        const staged = acceptedResults.some(isStagedSensitiveMutation);
+        const plural = acceptedCalls.length > 1 ? "changes" : "change";
+        assistantText =
+          failed.length > 0
+            ? [
+                "I could not apply everything you accepted.",
+                ...failed.map((result) => {
+                  const action = result.name === "app_data" ? stringArg(result.input, "action") : "";
+                  const label = `${formatWorkspaceToolName(result.name)}${action ? ` ${action}` : ""}`;
+                  return `- ${label}: ${compactTraceText(result.output.replace(/\s+/gu, " ").trim(), 200)}`;
+                }),
+              ].join("\n")
+            : staged
+              ? `Done. I staged the ${plural} you accepted. A sensitive change needs its own confirmation before it applies.`
+              : `Done. I applied the ${plural} you accepted.`;
+        appendTraceStatus(workspaceTrace, assistantText);
+        for (const chunk of chunkText(assistantText)) args.onEvent({ type: "token", data: chunk });
+        // #5740: the held record from the previous run now has its real outcome.
+        const heldRecord = this.latestUnderstoodRequest;
+        if (heldRecord !== null && heldRecord.chatId === args.chatId && heldRecord.outcome === "held") {
+          this.latestUnderstoodRequest = {
+            ...heldRecord,
+            outcome: failed.length > 0 ? "failed" : staged ? "held" : "applied",
+          };
+        }
+      }
+
+      if (usePi && !acceptedCalls) {
         const piState = {
           assistantText,
           endedWithDeferral: runEndedWithDeferral,
           heldChanges: runHeldChanges,
+          heldCalls: runHeldCalls,
           suggestions: runSuggestions,
         };
         try {
@@ -3612,13 +3661,14 @@ export class ProfessorMariWorkspaceService {
           assistantText = piState.assistantText;
           runEndedWithDeferral = piState.endedWithDeferral;
           runHeldChanges = piState.heldChanges;
+          runHeldCalls = piState.heldCalls;
           runSuggestions = piState.suggestions;
         }
       }
 
       for (let round = 0; round < MAX_COMMAND_ROUNDS; round += 1) {
         // The pi runtime already ran above; classic owns this loop.
-        if (usePi) break;
+        if (usePi || acceptedCalls) break;
         if (controller.signal.aborted) throw new Error("aborted");
         let result: ChatCompletionResult;
         try {
@@ -3725,7 +3775,9 @@ export class ProfessorMariWorkspaceService {
         }
         if (shouldDeferMutations) {
           runEndedWithDeferral = true;
-          runHeldChanges = describeHeldCommands(parsedAction.commands.filter(isMutatingWorkspaceCommand));
+          const heldMutating = parsedAction.commands.filter(isMutatingWorkspaceCommand);
+          runHeldChanges = describeHeldCommands(heldMutating);
+          runHeldCalls = heldMutating;
           // #5748: the chip is the shared constant so the client's persisted-
           // deferral re-derivation (from mariDeferredMutations) can never
           // drift from what this event sends.
@@ -4126,7 +4178,7 @@ export class ProfessorMariWorkspaceService {
     permissionsMode: MariPermissionsMode,
     handoffContextPrompt: string | null,
     runtime: MariRuntime = "classic",
-  ): Promise<{ messages: ChatMessage[]; manualApprovalArmed: boolean }> {
+  ): Promise<{ messages: ChatMessage[]; manualApprovalArmed: boolean; heldCalls: WorkspaceCommandCall[] }> {
     const chatStorage = createChatsStorage(this.app.db);
     const history = (await chatStorage.listMessages(chatId)).slice(-MAX_HISTORY_MESSAGES);
     // #5725 Manual mode: arm silent command frames only when Mari's last
@@ -4134,7 +4186,16 @@ export class ProfessorMariWorkspaceService {
     // deferral is a flag on the message's extra - persisted content is only
     // the visible say text, never the JSON envelope.
     const lastAssistant = [...history].reverse().find((row) => row.role === "assistant");
-    const manualApprovalArmed = parseExtra(lastAssistant?.extra).mariDeferredMutations === true;
+    const lastExtra = parseExtra(lastAssistant?.extra);
+    const manualApprovalArmed = lastExtra.mariDeferredMutations === true;
+    // Stored held calls: a fresh id each, only mutating ones, anything malformed counts as none.
+    const heldCalls: WorkspaceCommandCall[] = Array.isArray(lastExtra.mariHeldCalls)
+      ? lastExtra.mariHeldCalls.flatMap((raw): WorkspaceCommandCall[] =>
+          isRecord(raw) && typeof raw.name === "string" && isRecord(raw.arguments)
+            ? [{ id: `held-${randomUUID()}`, name: raw.name, arguments: raw.arguments } as WorkspaceCommandCall]
+            : [],
+        )
+      : [];
     const continuityPrompt = buildRecentWorkspaceContinuityPrompt(history);
     const skillsPrompt = await this.buildSkillsPrompt();
     const instructionsPrompt = await this.buildInstructionsPrompt();
@@ -4244,7 +4305,7 @@ export class ProfessorMariWorkspaceService {
       sumChars(messages, "injection"),
       WORKSPACE_TOOL_DEFINITIONS.length,
     );
-    return { messages, manualApprovalArmed };
+    return { messages, manualApprovalArmed, heldCalls: heldCalls.filter(isMutatingWorkspaceCommand) };
   }
 
   private async buildHandoffContextPrompt(context: ProfessorMariAskContext): Promise<string> {

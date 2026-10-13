@@ -93,6 +93,7 @@ try {
             { role: "user", content: userText, contextKind: "history" },
           ],
           manualApprovalArmed: armed,
+          heldCalls: [],
         };
       },
       runPiRuntime: async (args: Record<string, unknown>) => {
@@ -587,6 +588,96 @@ try {
     const status = await service.status(null, null);
     assert.equal(status.runtimeSelected, "pi");
     assert.equal(status.runtimeActive, "pi");
+  }
+
+  // Accept (the exact chip prompt) applies the stored held calls server-side with no model request, on both runtimes.
+  {
+    const realService = makeService(false);
+    const acceptPrompt = "I accept the proposed change.";
+    const heldFrame = (file: string) =>
+      JSON.stringify({
+        say: `I will create ${file}. Shall I go ahead?`,
+        commands: [{ name: "write", arguments: { path: file, content: "x", reason: "test" } }],
+        stop: false,
+      });
+    for (const runtime of ["pi", "classic"] as const) {
+      mode = "manual";
+      const file = `accepted-${runtime}.txt`;
+      const holdReply =
+        runtime === "pi"
+          ? reply(`I will create ${file}. Shall I go ahead?`, [
+              { id: "acc-1", name: "write", args: { path: file, content: "x", reason: "test" } },
+            ])
+          : reply(heldFrame(file));
+      const held = await start(`accept ${runtime}`, [holdReply], runtime, realService);
+      await held.done;
+      assert.equal(existsSync(join(workspaceDir, file)), false, `${runtime}: held`);
+      assert.equal(
+        (((await lastAssistant(held.chat.id))?.extra.mariHeldCalls as unknown[]) ?? []).length,
+        1,
+        `${runtime}: the raw held call is stored`,
+      );
+      const accepted = await start("unused", [], runtime, realService, held.chat.id, acceptPrompt);
+      await accepted.done;
+      assert.equal(requests.length, 0, `${runtime}: Accept makes no model request`);
+      assert.equal(existsSync(join(workspaceDir, file)), true, `${runtime}: the stored call is applied`);
+      const saved = await lastAssistant(held.chat.id);
+      assert.equal(saved?.content, "Done. I applied the change you accepted.");
+      assert.equal(saved?.extra.mariDeferredMutations, undefined, `${runtime}: not a deferral`);
+      assert.equal(saved?.extra.mariHeldCalls, undefined);
+
+      // Accept after switching to Plan: the executor floor refuses and the answer says so.
+      const planFile = `accepted-plan-${runtime}.txt`;
+      const heldAgain = await start(
+        `accept plan ${runtime}`,
+        [
+          runtime === "pi"
+            ? reply(`I will create ${planFile}. Shall I go ahead?`, [
+                { id: "acc-2", name: "write", args: { path: planFile, content: "x", reason: "test" } },
+              ])
+            : reply(heldFrame(planFile)),
+        ],
+        runtime,
+        realService,
+      );
+      await heldAgain.done;
+      mode = "plan";
+      const refused = await start("unused", [], runtime, realService, heldAgain.chat.id, acceptPrompt);
+      await refused.done;
+      assert.equal(requests.length, 0);
+      assert.equal(existsSync(join(workspaceDir, planFile)), false, `${runtime}: Plan still refuses`);
+      assert.match(
+        (await lastAssistant(heldAgain.chat.id))?.content ?? "",
+        /^I could not apply everything you accepted\./u,
+      );
+
+      // A typed "yes" still goes to the model with the armed pass.
+      mode = "manual";
+      const typedFile = `accepted-typed-${runtime}.txt`;
+      const heldTyped = await start(
+        `accept typed ${runtime}`,
+        [
+          runtime === "pi"
+            ? reply(`I will create ${typedFile}. Shall I go ahead?`, [
+                { id: "acc-3", name: "write", args: { path: typedFile, content: "x", reason: "test" } },
+              ])
+            : reply(heldFrame(typedFile)),
+        ],
+        runtime,
+        realService,
+      );
+      await heldTyped.done;
+      const typed = await start(
+        "unused",
+        [runtime === "pi" ? reply("Okay, noted.") : reply(JSON.stringify({ say: "Okay, noted.", stop: true }))],
+        runtime,
+        realService,
+        heldTyped.chat.id,
+        "yes",
+      );
+      await typed.done;
+      assert.equal(requests.length, 1, `${runtime}: a typed reply goes to the model`);
+    }
   }
 
   // The real prompt builder: pi prompt instead of the JSON protocol, and the stored chat as plain text.

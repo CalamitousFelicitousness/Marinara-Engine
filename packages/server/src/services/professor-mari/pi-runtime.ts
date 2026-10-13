@@ -67,6 +67,7 @@ export type PiRunState = {
   assistantText: string;
   endedWithDeferral: boolean;
   heldChanges: MariHeldChange[];
+  heldCalls: WorkspaceCommandCall[];
   suggestions: MariSuggestionChip[];
 };
 
@@ -456,8 +457,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       // Manual always holds an un-approved mutation, with or without words: a model that thinks instead of writing
       // would otherwise be refused in a loop. Only the run right after the user's Accept may apply silently.
       // The Accept pass covers only the first round with a mutating call, and never a run that already asked.
-      // ponytail: the approval is tied to the turn, not to the exact held calls. Upgrade path: on Accept the server
-      // applies the stored held calls itself.
+      // ponytail: the Accept button applies the stored held calls server-side, so this armed pass only serves typed
+      // replies ("yes"), and there the approval is tied to the turn, not to the exact held calls.
       const armedManual =
         input.permissionsMode === "manual" && input.manualApprovalArmed && !armedSpent && !runAskedForApproval;
       if (armedManual && mutating.length > 0) armedSpent = true;
@@ -475,6 +476,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       if (current.deferred) {
         state.endedWithDeferral = true;
         state.heldChanges = describeHeldCommands(mutating);
+        state.heldCalls = mutating;
         // The held calls ride in the hidden continuity record, so the Accept run repeats exactly them.
         for (const call of mutating) {
           input.commandResults.push({

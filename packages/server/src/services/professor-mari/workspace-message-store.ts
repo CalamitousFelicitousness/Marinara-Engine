@@ -14,6 +14,7 @@ import type { createChatsStorage } from "../storage/chats.storage.js";
 import {
   buildWorkspaceContinuitySnapshot,
   sanitizeTraceForStorage,
+  type WorkspaceCommandCall,
   type WorkspaceCommandResult,
 } from "./workspace-agent.service.js";
 
@@ -58,6 +59,8 @@ export type AssistantRunRecord = {
   /** #5725 Manual mode: the run ended by deferring mutating commands behind the Accept action. */
   endedWithDeferral: boolean;
   heldChanges: MariHeldChange[];
+  /** The raw held commands the Accept action applies server-side. */
+  heldCalls: WorkspaceCommandCall[];
   runError: { message: string } | null;
   runStartedAt: number;
   suggestions: MariSuggestionChip[];
@@ -71,6 +74,7 @@ export function buildAssistantMessageExtra(run: AssistantRunRecord): Record<stri
   const extraUpdate: Record<string, unknown> = {};
   if (run.endedWithDeferral) extraUpdate.mariDeferredMutations = true;
   if (run.endedWithDeferral && run.heldChanges.length > 0) extraUpdate.mariHeldChanges = run.heldChanges;
+  if (run.endedWithDeferral && run.heldCalls.length > 0) extraUpdate.mariHeldCalls = run.heldCalls;
   const storedTrace = sanitizeTraceForStorage(run.trace);
   if (run.thinkingText.trim()) extraUpdate.thinking = run.thinkingText;
   if (storedTrace.length > 0) extraUpdate.mariWorkspaceTimeline = storedTrace;

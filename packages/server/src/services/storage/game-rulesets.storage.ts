@@ -10,7 +10,7 @@
 // up on other arithmetic, which is the one outcome the pin exists to prevent. The author raises the
 // version number instead.
 //
-// A ruleset imported from a package zip (RM) may keep its catalogs as files: their texts are stored
+// A ruleset imported from a package file (RM) may keep its catalogs as files: their texts are stored
 // once each in `game_ruleset_catalogs`, by content, and the row names them `{ <id>: <sha256> }`. The
 // map is part of the version: the same ruleset text with other catalogs is another version.
 // ──────────────────────────────────────────────
@@ -43,7 +43,7 @@ export interface GameRulesetRow {
   repositoryId: string | null;
   sha256: string;
   definition: string;
-  /** `{ <catalog id>: <sha256> }` as JSON, for a package zip's catalog files; null otherwise. */
+  /** `{ <catalog id>: <sha256> }` as JSON, for a package file's catalog files; null otherwise. */
   catalogs: string | null;
   createdAt: string;
 }
@@ -57,7 +57,7 @@ export interface PutGameRulesetInput {
   repositoryId?: string | null;
   /** The imported `ruleset.json` text, exactly as it arrived. */
   definition: string;
-  /** A package zip's catalog files, by catalog id, exactly as they arrived (RM). Only the zip import
+  /** A package file's catalog files, by catalog id, exactly as they arrived (RM). Only the package import
    *  sends them; every other import keeps its catalogs inline. */
   catalogs?: Record<string, string>;
 }
@@ -148,7 +148,7 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
       `The ruleset file declares version ${parsed.definition.version}, not ${input.version}`,
     );
   }
-  // A catalog file beside `ruleset.json` comes only with a package zip (RM), which sends the files. Any
+  // A catalog file beside `ruleset.json` comes only with a package file (RM), which sends the files. Any
   // other import is this one file, so its catalogs have to be inline or the picker would have nothing
   // to read.
   const files = input.catalogs ?? {};
@@ -159,7 +159,7 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
       throw new RulesetRefusedError(
         input.catalogs
           ? `The catalog "${catalog.id}" names its file (${catalog.asset}), and the package does not have it`
-          : `The catalog "${catalog.id}" names a separate file (${catalog.asset}). An imported ruleset carries its catalogs inline, as "entries", or comes as a package zip with its catalog files`,
+          : `The catalog "${catalog.id}" names a separate file (${catalog.asset}). An imported ruleset carries its catalogs inline, as "entries", or comes as a package file (.ruleset.json) with its catalog files`,
       );
     }
   }

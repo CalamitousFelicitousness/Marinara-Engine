@@ -2537,7 +2537,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Ways of moving besides walking, 1.112: new keys on the strict creature and the strict economy.
   if (
-    !declaresApi(108) &&
+    !declaresApi(112) &&
     (carriesMoveModes || plainRecord(plainRecord(ruleset?.combat)?.economy)?.movementModes !== undefined)
   ) {
     return "A ruleset whose combatants fly, swim, climb or burrow requires schemaVersion 2 and capabilityApi 1.112 or newer";

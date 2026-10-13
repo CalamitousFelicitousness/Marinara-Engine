@@ -14,10 +14,14 @@ import { Check, ChevronLeft, Lock, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DEFAULT_MARI_PERMISSIONS_MODE,
+  DEFAULT_MARI_RUNTIME,
   LOCAL_SIDECAR_CONNECTION_ID,
   MARI_PERMISSIONS_MODE_LABELS,
   MARI_PERMISSIONS_MODES,
+  MARI_RUNTIMES,
   type MariPermissionsMode,
+  type MariRuntime,
+  type MariWorkspaceStatus,
 } from "@marinara-engine/shared";
 
 import { useInDialogFocusScope } from "../../../hooks/use-in-dialog-focus-scope";
@@ -225,6 +229,91 @@ function PermissionsModeRow() {
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+const MARI_RUNTIME_LABEL_KEYS: Record<MariRuntime, string> = {
+  classic: "omnibar.settings.mariRuntime.option.classic",
+  pi: "omnibar.settings.mariRuntime.option.pi",
+};
+
+type MariRuntimeStatus = Pick<MariWorkspaceStatus, "runtimeSelected" | "runtimeActive" | "runtimeNote">;
+
+// Professor Mari's runtime ("classic" or "pi"), the same server-authoritative pattern as the
+// Permissions Mode row above. The workspace status answers for her connection, so it also says
+// when "pi" is selected but the next run falls back to "classic" there.
+function RuntimeRow() {
+  const { t } = useTranslation();
+  const selectId = useId();
+  const helpId = useId();
+  const connectionId = useUIStore((state) => state.mariConnectionId);
+  const [status, setStatus] = useState<MariRuntimeStatus | null>(null);
+  const writeSeqRef = useRef(0);
+  const statusPath = `/professor-mari/workspace/status${
+    connectionId ? `?connectionId=${encodeURIComponent(connectionId)}` : ""
+  }`;
+  useEffect(() => {
+    let cancelled = false;
+    const seqAtStart = writeSeqRef.current;
+    api
+      .get<MariWorkspaceStatus>(statusPath)
+      .then((response) => {
+        if (!cancelled && writeSeqRef.current === seqAtStart) setStatus(response);
+      })
+      .catch(() => {
+        // The select keeps the default; a failed read is not worth a toast in a settings view.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [statusPath]);
+  const selected = status?.runtimeSelected ?? DEFAULT_MARI_RUNTIME;
+  const fellBack = status !== null && status.runtimeActive !== selected;
+  const change = async (next: MariRuntime) => {
+    const previous = status;
+    const writeSeq = ++writeSeqRef.current;
+    setStatus({ runtimeSelected: next, runtimeActive: next, runtimeNote: null });
+    try {
+      // The Permissions Mode chain is the one a run awaits before it posts a prompt, so a runtime
+      // change made here also lands before her next run.
+      await enqueueMariPermissionsModeWrite(() => api.put("/professor-mari/workspace/runtime", { runtime: next }));
+    } catch {
+      if (writeSeqRef.current !== writeSeq) return;
+      setStatus(previous);
+      toast.error(t("omnibar.settings.mariRuntime.couldNotChange"));
+      return;
+    }
+    // Only the server knows whether this connection can run the choice.
+    const fresh = await api.get<MariWorkspaceStatus>(statusPath).catch(() => null);
+    if (fresh && writeSeqRef.current === writeSeq) setStatus(fresh);
+  };
+  return (
+    <div id={anchorId("mari-runtime")} className="omnibar-settings-menu__row omnibar-settings-menu__row--stacked">
+      <label htmlFor={selectId} className="omnibar-settings-menu__label">
+        {t("omnibar.settings.mariRuntime.label")}
+      </label>
+      <select
+        id={selectId}
+        className="mari-chrome-field omnibar-settings-sheet__select"
+        value={selected}
+        aria-describedby={helpId}
+        onChange={(event) => void change(event.target.value as MariRuntime)}
+      >
+        {MARI_RUNTIMES.map((value) => (
+          <option key={value} value={value}>
+            {t(MARI_RUNTIME_LABEL_KEYS[value])}
+          </option>
+        ))}
+      </select>
+      <span id={helpId} aria-live="polite" className="omnibar-settings-menu__description">
+        {t("omnibar.settings.mariRuntime.help")}
+        {fellBack ? (
+          <span className="mt-1 block text-[var(--foreground)]">
+            {status.runtimeNote || t("omnibar.settings.mariRuntime.fallback")}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -674,6 +763,7 @@ export function OmnibarSettingsSheet({
             onChange={setMariEnabled}
           />
           <PermissionsModeRow />
+          <RuntimeRow />
           <SettingRow
             controlId="professor-mari-suggestions"
             label={t("settings.controls.professorMariSuggestions.label")}

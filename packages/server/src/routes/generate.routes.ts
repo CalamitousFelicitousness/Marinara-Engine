@@ -77,7 +77,7 @@ import type { FastifyInstance } from "fastify";
 import type { input as SchemaInput } from "zod";
 import { translateGeneratedMessage } from "../services/translation.service.js";
 import { randomInt, randomUUID } from "crypto";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import { extname, join } from "path";
 import {
@@ -372,6 +372,7 @@ import {
   resolveConnectionImageQuality,
 } from "../services/image/image-generation-defaults.js";
 import { generateIllustratorImageVariants } from "../services/image/illustrator-image-variants.js";
+import { generateTrackerPortrait, trackerPortraitStyleProfileId } from "../services/image/tracker-portrait.js";
 import {
   loadImageGenerationUserSettings,
   resolveIllustratorImageSize,
@@ -13462,22 +13463,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     // Fire-and-forget: generate avatars in background so we don't block
                     (async () => {
                       try {
-                        const imgConnFull = await connections.getWithKey(npcImgConnId);
-                        if (!imgConnFull) return;
-                        const { generateImage } = await import("../services/image/image-generation.js");
-                        const imgModel = imgConnFull.model || "";
-                        const imgBaseUrl = imgConnFull.baseUrl || "https://image.pollinations.ai";
-                        const imgApiKey = imgConnFull.apiKey || "";
-                        const imgSource = (imgConnFull as any).imageGenerationSource || imgModel;
-                        const imgServiceHint = imgConnFull.imageService || imgSource;
-                        const imageDefaults = resolveConnectionImageDefaults(imgConnFull);
-                        const imageFallback = await resolveImageConnectionFallback(connections, imgConnFull.id);
-                        const imageSettings = await loadImageGenerationUserSettings(app.db);
-                        const styleProfileId =
-                          ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.imageStyleProfileId as
-                            string | undefined) ??
-                          (chatMeta.imageStyleProfileId as string | undefined) ??
-                          null;
+                        const styleProfileId = trackerPortraitStyleProfileId(chatMeta);
+                        const includeOutfit = charTrackerAgent?.settings?.includeOutfitInAvatars !== false;
                         const generatedAvatarPaths = new Map<string, string>();
                         const avatarMatchKey = (character: Record<string, unknown>) =>
                           String(character.characterId ?? character.name ?? "")
@@ -13487,44 +13474,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         for (const npc of charsNeedingAvatars) {
                           try {
                             const npcName = npc.name as string;
-                            const appearance = (npc.appearance as string) || "";
-                            const outfit = (npc.outfit as string) || "";
-                            const prompt =
-                              `Portrait of ${npcName}, ${appearance}${outfit ? `, wearing ${outfit}` : ""}. Character portrait, head and shoulders, detailed face, high quality`.slice(
-                                0,
-                                1000,
-                              );
-                            const compiledPrompt = compileImagePrompt({
-                              kind: "portrait",
-                              prompt,
-                              styleProfiles: imageSettings.styleProfiles,
+                            // Update the character's avatarPath and stream to client
+                            npc.avatarPath = await generateTrackerPortrait({
+                              db: app.db,
+                              connectionId: npcImgConnId,
+                              chatId: input.chatId,
                               styleProfileId,
-                              imageDefaults,
-                            });
-
-                            const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
-                              prompt: compiledPrompt.prompt,
-                              negativePrompt: compiledPrompt.negativePrompt || undefined,
-                              model: imgModel,
-                              width: imageSettings.portrait.width,
-                              height: imageSettings.portrait.height,
-                              imageEndpointId: imgConnFull.imageEndpointId || undefined,
-                              comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
-                              imageDefaults,
-                              quality: resolveConnectionImageQuality(imgConnFull),
+                              character: npc,
+                              includeOutfit,
                               debugMode: input.debugMode,
-                              fallback: imageFallback,
                               onFallback,
                             });
-
-                            // Save to NPC avatars directory
-                            const safeName = npcAvatarSlug(npcName);
-                            const npcDir = join(NPC_AVATAR_DIR, input.chatId);
-                            if (!existsSync(npcDir)) mkdirSync(npcDir, { recursive: true });
-                            writeFileSync(join(npcDir, `${safeName}.png`), Buffer.from(imageResult.base64, "base64"));
-
-                            // Update the character's avatarPath and stream to client
-                            npc.avatarPath = `/api/avatars/npc/${input.chatId}/${safeName}.png`;
                             const key = avatarMatchKey(npc);
                             if (key) generatedAvatarPaths.set(key, npc.avatarPath);
                             logger.info(`[character-tracker] Generated avatar for NPC "${npcName}"`);

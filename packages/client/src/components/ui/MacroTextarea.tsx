@@ -72,6 +72,8 @@ interface ExpandedMacroEditorProps {
   maxLength?: number;
   showTokenCount?: boolean;
   formatOnChange?: (textarea: HTMLTextAreaElement, inputEvent: InputEvent) => string;
+  /** Font class for the expanded textarea, so it matches the inline field. */
+  fontClassName: string;
 }
 
 function ExpandedMacroEditor({
@@ -85,6 +87,7 @@ function ExpandedMacroEditor({
   maxLength,
   showTokenCount = false,
   formatOnChange,
+  fontClassName,
 }: ExpandedMacroEditorProps) {
   const { t: localizeUi } = useUiTranslation();
   const [localValue, setLocalValue] = useState(value);
@@ -178,7 +181,10 @@ function ExpandedMacroEditor({
             placeholder={placeholder}
             readOnly={readOnly}
             maxLength={maxLength}
-            className="min-h-0 flex-1 resize-none bg-[var(--sidebar)] p-4 font-mono text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+            className={cn(
+              "min-h-0 flex-1 resize-none bg-[var(--sidebar)] p-4 text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]",
+              fontClassName,
+            )}
             spellCheck={false}
           />
         </div>
@@ -526,6 +532,7 @@ export function MacroTextarea({
         maxLength={maxLength}
         showTokenCount={showTokenCount}
         formatOnChange={formatOnChange}
+        fontClassName={className?.split(/\s+/).includes("mari-prompt-font") ? "mari-prompt-font" : "font-mono"}
       />
       <MacrosReferenceModal open={showMacroRef} onClose={() => setShowMacroRef(false)} />
     </>

@@ -5,7 +5,7 @@
  * What is pinned here:
  *   - A repository may hold agents only, rulesets only, or both. One with neither is refused.
  *   - Only direct children of `rulesets/` count, at most 32 of them, each within RULESET_MAX_BYTES,
- *     checked before it is read (the archive is read strictly, so its sizes are the sizes read).
+ *     checked on the header's claim and on the real bytes.
  *   - A file that is not a usable ruleset becomes one preview row the confirm skips; it never takes
  *     the repository's agents or its other rulesets down with it.
  *   - The owner is the namespace, lower-cased, so an import can never take an official ruleset's id.

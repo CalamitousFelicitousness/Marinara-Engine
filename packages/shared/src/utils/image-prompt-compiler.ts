@@ -805,7 +805,8 @@ function distillLabeledPromptValue(label: string, value: string): string[] {
     return [];
   }
 
-  if (/^(?:appearance|canonical appearance|species|equipment|composition)$/i.test(normalizedLabel)) {
+  // Clothing is split like appearance so a compact portrait prompt keeps it (#7419).
+  if (/^(?:appearance|canonical appearance|species|equipment|composition|outfit)$/i.test(normalizedLabel)) {
     return splitPromptListItems(cleanValue)
       .map((part) => part.trim())
       .filter((part) => shouldKeepTaggedSourceFragment(part));

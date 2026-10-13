@@ -2267,7 +2267,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     const providerReasoningEffort: ChatOptions["reasoningEffort"] =
       enabledParameters?.reasoningEffort === false
         ? undefined
-        : reasoningEffort === null
+        : reasoningEffort === null && !resolvedEffort
           ? providerLower === "openai_chatgpt"
             ? undefined
             : "none"

@@ -5,9 +5,11 @@
 // blink and idle-motion switches, preview it, then show AVATAR_KIND_SETUP_PANELS for the kinds this
 // agent owns (AVATAR_KIND_AGENT) and, on the 2D page, AVATAR_GENERATION_PANEL. Not in Sprite Cards.
 //
-// Contract stub: renders nothing until the base lane fills it in.
+// Contract stub until the base lane fills it in. It already shows the mood reader's download (director lane),
+// which both avatar agents' pages keep: avatar-director.regression.ts checks this file renders <AvatarModelStatus />.
 import type { AvatarAgentSetupProps } from "../contract";
+import { AvatarModelStatus } from "../director/AvatarModelStatus";
 
 export function AvatarAgentSetup(_props: AvatarAgentSetupProps) {
-  return null;
+  return <AvatarModelStatus />;
 }

@@ -70,6 +70,16 @@ export const GAME_WORLDS_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/**
+ * Rulesets and creature packs: reading a package file, a ruleset's own files or the published schema, and
+ * filing or choosing a creature pack. A person importing or editing stays far below this; a scripted loop
+ * does not.
+ */
+export const GAME_RULESETS_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const ADMIN_RESTART_RATE_LIMIT = {
   max: 5,
   timeWindow: 60_000,

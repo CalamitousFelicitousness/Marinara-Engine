@@ -12,6 +12,7 @@ import { z } from "zod";
 import { CREATURE_PACK_MAX_BYTES, parseCreaturePack, type CreaturePack } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
+import { GAME_RULESETS_RATE_LIMIT } from "../middleware/rate-limit.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import {
   createGameCreaturePacksStorage,
@@ -70,14 +71,14 @@ export async function gameCreaturePacksRoutes(app: FastifyInstance) {
     reply.status(400).send({ error: `The creature pack is not usable: ${issues.slice(0, 5).join("; ")}` });
 
   // ── GET /api/game-tile-packs/creatures ── the pack fights are drawn with, or none.
-  app.get("/", async () => {
+  app.get("/", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async () => {
     const chosen = await readSelection();
     const row = chosen ? await store.latestOf(chosen) : null;
     return { pack: row ? packOf(row) : null };
   });
 
   // ── GET /api/game-tile-packs/creatures/library ── the stored packs and the one chosen.
-  app.get("/library", async () => ({
+  app.get("/library", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async () => ({
     packs: (await store.latest()).map((row) => ({
       id: row.packId,
       name: row.name,
@@ -88,7 +89,7 @@ export async function gameCreaturePacksRoutes(app: FastifyInstance) {
   }));
 
   // ── GET /api/game-tile-packs/creatures/pack?id= ── a stored pack's latest version.
-  app.get("/pack", async (req, reply) => {
+  app.get("/pack", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (req, reply) => {
     const { id } = z.object({ id: packIdSchema }).parse(req.query);
     const row = await store.latestOf(id);
     const pack = row ? packOf(row) : null;
@@ -97,21 +98,25 @@ export async function gameCreaturePacksRoutes(app: FastifyInstance) {
   });
 
   // ── POST /api/game-tile-packs/creatures ── a pack saved from the maker.
-  app.post("/", { bodyLimit: SAVE_BODY_LIMIT }, async (req, reply) => {
+  app.post("/", { bodyLimit: SAVE_BODY_LIMIT, config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Creature pack save" })) return;
     const read = parseCreaturePack(z.object({ pack: z.unknown() }).parse(req.body).pack);
     return read.ok ? save(reply, read.pack, read.notes) : refuse(reply, read.issues);
   });
 
   // ── POST /api/game-tile-packs/creatures/import ── a share file.
-  app.post("/import", { bodyLimit: IMPORT_BODY_LIMIT }, async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "Creature pack import" })) return;
-    const read = parseCreaturePack(z.object({ definition: z.string().min(1) }).parse(req.body).definition);
-    return read.ok ? save(reply, read.pack, read.notes) : refuse(reply, read.issues);
-  });
+  app.post(
+    "/import",
+    { bodyLimit: IMPORT_BODY_LIMIT, config: { rateLimit: GAME_RULESETS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "Creature pack import" })) return;
+      const read = parseCreaturePack(z.object({ definition: z.string().min(1) }).parse(req.body).definition);
+      return read.ok ? save(reply, read.pack, read.notes) : refuse(reply, read.issues);
+    },
+  );
 
   // ── DELETE /api/game-tile-packs/creatures?id= ── every version; if it was chosen, fights go back to tokens.
-  app.delete("/", async (req, reply) => {
+  app.delete("/", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Creature pack removal" })) return;
     const { id } = z.object({ id: packIdSchema }).parse(req.query);
     const removed = await store.removeAll(id);
@@ -121,7 +126,7 @@ export async function gameCreaturePacksRoutes(app: FastifyInstance) {
   });
 
   // ── PUT /api/game-tile-packs/creatures/selection ── the pack fights are drawn with; none for tokens.
-  app.put("/selection", async (req, reply) => {
+  app.put("/selection", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (req, reply) => {
     const { packId } = z.object({ packId: packIdSchema.nullable() }).parse(req.body);
     if (packId && !(await store.latestOf(packId))) return reply.status(404).send({ error: "No such creature pack." });
     await settings.set(SELECTION_KEY, packId ?? "");

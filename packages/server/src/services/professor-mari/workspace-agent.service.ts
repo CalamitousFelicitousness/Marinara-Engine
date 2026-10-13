@@ -927,7 +927,12 @@ export function piRuntimePrompt() {
   return `<workspace_tools>
 You work through native tool calls. Wherever the rules below say \`say\`, write ordinary assistant text; wherever they say \`commands\`, call the tools. There is no JSON frame, no \`stop\` and no \`awaitingAuthorization\` field.
 - To ask the user to approve a change, write the change and your question as text in the SAME turn as the mutating tool calls; Marinara holds those calls behind an Accept action and ends the run.
-- Call the \`suggestions\` tool for quick-reply chips (at most 5; each has label and prompt) and the \`plan\` tool for a guided plan. Both only show UI; they change nothing.
+- Call the \`suggestions\` tool for quick-reply chips (at most 5; each has label and prompt) and the \`plan\` tool for a guided plan. Both only show UI; they change nothing. Call them in the SAME turn as your final text.
+- Immediately after you successfully create or update something, call \`suggestions\` with 2-4 follow-up chips for a natural next step: refine a field, link it to something else, or open it for full editing. Lean toward refining or connecting what already exists rather than making new items, unless the user's task is itself about creating. Tag each with the relevant entity.
+- When your answer ends with a question the user can answer by picking an option, call \`suggestions\` with one chip per option.
+- A chip may carry a \`detail\` (under 80 characters, no full stop) only for a real fact from this run, and an \`action\` that acts at once: \`{"kind":"resource","resource":"character|persona|preset|lorebook|agent","id":"..."}\` opens it, \`{"kind":"chat","chatId":"..."}\`, \`{"kind":"start-chat","characterId":"..."}\`, \`{"kind":"panel","panel":"characters|personas|lorebooks|presets|connections|agents"}\`. Only ids you already know. Keep \`prompt\` filled.
+- Use \`plan\` ONLY when a create/edit request is vague ("make me a character" with no details): return the WHOLE plan in one call, an ordered list of the natural fields, each with 3-5 example-answer chips. For a vague edit, read the item first, then offer 2-4 concrete directions as \`suggestions\`. If the request already has enough detail, skip \`plan\` and do the work.
+- Do not mention tapping, clicking, chips, quick replies or buttons unless you call \`suggestions\` or \`plan\` in the same turn.
 - Finish by answering in text with no tool call.
 
 ${workspaceCommandKnowledgePrompt()}

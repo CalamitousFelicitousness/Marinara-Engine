@@ -434,7 +434,7 @@ try {
     mode = "auto";
     const { chat, done } = await start("pi claim", [
       reply("I have updated the character card and saved it."),
-      reply("I did not change anything yet. Tell me which card to edit."),
+      reply("I did not change anything yet.."),
     ]);
     await done;
     assert.equal(requests.length, 2);
@@ -588,6 +588,23 @@ try {
     const status = await service.status(null, null);
     assert.equal(status.runtimeSelected, "pi");
     assert.equal(status.runtimeActive, "pi");
+  }
+
+  // An answer that ends on a question with no chips gets one chips-only round; its words and other calls are dropped.
+  {
+    mode = "auto";
+    const { events, chat, done } = await start("chip round", [
+      reply("Do you want a short version or a long one?"),
+      reply("Extra words.", [
+        { id: "chipfix-1", name: "suggestions", args: { chips: [{ label: "Short", prompt: "Short version." }] } },
+        { id: "chipfix-2", name: "write", args: { path: "chip-round.txt", content: "x", reason: "test" } },
+      ]),
+    ]);
+    await done;
+    assert.equal(requests.length, 2, "one chips-only round");
+    assert.ok(events.some((event) => event.type === "suggestions"));
+    assert.equal(existsSync(join(workspaceDir, "chip-round.txt")), false, "no work runs in the chips-only round");
+    assert.equal((await lastAssistant(chat.id))?.content, "Do you want a short version or a long one?");
   }
 
   // Accept (the exact chip prompt) applies the stored held calls server-side with no model request, on both runtimes.

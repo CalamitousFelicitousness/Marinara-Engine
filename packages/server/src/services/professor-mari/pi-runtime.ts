@@ -34,6 +34,7 @@ import {
   isMutatingWorkspaceCommand,
   sanitizePlanSteps,
   sanitizeSuggestionChips,
+  answerEndsWithQuestion,
   visibleTextAsksApplyPermission,
   workspaceTextClaimsHeldChange,
   workspaceTextClaimsMutationCompletion,
@@ -99,6 +100,8 @@ type Round = {
   calls: WorkspaceCommandCall[];
   results: WorkspaceCommandResult[];
   deferred: boolean | null;
+  /** The one chips-only round a question without chips gets; only UI tools run in it and its words are dropped. */
+  chipRound: boolean;
   truncated: boolean;
   /** Provider replay data (Anthropic thinking, Gemini parts, ...) to send back with this turn's assistant message. */
   providerMetadata?: Record<string, unknown>;
@@ -176,6 +179,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   let runAskedForApproval = false;
   let armedSpent = false;
   let heldClaimRepaired = false;
+  let chipRepair: "unused" | "pending" | "used" = "unused";
+  let planShown = false;
   let toolRounds = 0;
   let round: Round | null = null;
   let session: AgentSession | null = null;
@@ -313,7 +318,15 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         if (result.providerMetadata && workspaceCalls[0])
           metadataByCallId.set(workspaceCalls[0].id, result.providerMetadata);
         if (isAgentTurn) {
-          round = { text, calls: workspaceCalls, results: [], deferred: null, truncated };
+          round = {
+            text,
+            calls: workspaceCalls,
+            results: [],
+            deferred: null,
+            truncated,
+            chipRound: chipRepair === "pending",
+          };
+          if (round.chipRound) chipRepair = "used";
           if (workspaceCalls.length > 0) toolRounds += 1;
         }
         message.stopReason = truncated ? "length" : workspaceCalls.length > 0 ? "toolUse" : "stop";
@@ -334,6 +347,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
    * then its words, then the repeated-failure stop and the round cap. A repair is returned for the caller to queue.
    */
   const finishRound = (current: Round, toolResults: readonly ToolResultMessage[]) => {
+    if (current.chipRound) {
+      // The answer before it stands; this round only added chips (or nothing).
+      stopRequested = true;
+      return "done" as const;
+    }
     const workspaceCalls = current.calls.filter((call) => !isUiTool(call.name));
     const hasWorkspaceCalls = workspaceCalls.length > 0;
     if (!current.deferred) {
@@ -427,6 +445,21 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       stopRequested = true;
       return "done" as const;
     }
+    // Same as classic (Slice 70): an answer that ends on a question with no chips and no plan gets one chips-only round.
+    if (
+      current.calls.length === 0 &&
+      chipRepair === "unused" &&
+      !planShown &&
+      state.suggestions.length === 0 &&
+      answerEndsWithQuestion(current.text)
+    ) {
+      chipRepair = "pending";
+      return {
+        kind: "repair" as const,
+        prompt:
+          "Your answer ends with a question but offers no chips. Call only the `suggestions` tool now: 2-4 chips, each one a possible answer to that question (for a list of proposals: apply all, then the main single ones), label under 40 characters. Write no text.",
+      };
+    }
     if (current.calls.length === 0) return "done" as const;
     const repeatedFailure = reviewRepeatedFailures(reviewState, current.results);
     if (repeatedFailure !== null) {
@@ -446,6 +479,15 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   const runTool = async (name: string, toolCallId: string, params: Record<string, unknown>) => {
     const current = round;
     if (!current) throw new Error("A tool ran outside a model round.");
+    // Before the hold logic: a chips-only round must not hold or run anything.
+    if (current.chipRound && !isUiTool(name)) {
+      return {
+        content: [{ type: "text" as const, text: "Only the suggestions tool can run in this turn." }],
+        details: {},
+        isError: true,
+        terminate: true,
+      };
+    }
     const call = current.calls.find((entry) => entry.id === toolCallId) ?? {
       id: toolCallId,
       name: name as never,
@@ -507,7 +549,10 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       text = chips.length > 0 ? "Chips shown." : "No valid chips; nothing was shown.";
     } else if (name === "plan") {
       const steps = sanitizePlanSteps(params.steps);
-      if (steps.length > 0) onEvent({ type: "plan", data: steps });
+      if (steps.length > 0) {
+        planShown = true;
+        onEvent({ type: "plan", data: steps });
+      }
       text = steps.length > 0 ? "Plan shown." : "No valid plan steps; nothing was shown.";
     } else if (current.deferred) {
       text = "Held: this change waits for the user's Accept and was not applied. Do not repeat it.";
@@ -530,7 +575,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       content: [{ type: "text" as const, text }],
       details: {},
       isError,
-      ...(onlyUiTools && current.text.trim() ? { terminate: true } : {}),
+      ...(current.chipRound || (onlyUiTools && current.text.trim()) ? { terminate: true } : {}),
     };
   };
 

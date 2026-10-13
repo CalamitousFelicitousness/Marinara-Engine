@@ -61,7 +61,8 @@ assert.match(
 );
 
 // ── Enforcement seams (source pins) ─────────────────────────────────────────
-const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
+const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
+  readSource("packages/server/src/services/professor-mari/workspace-commands.ts");
 // Mode read fresh per run and per status call - never latched at construction.
 assert.match(
   workspaceAgent,
@@ -76,7 +77,7 @@ assert.doesNotMatch(
 // Plan mode is a hard server-side floor in the executor, dry-runs allowed.
 assert.match(
   workspaceAgent,
-  /activeRunPermissionsMode === "plan" && isMutatingWorkspaceCommand\(command\)/u,
+  /this\.getRun\(\)\.permissionsMode === "plan" && isMutatingWorkspaceCommand\(command\)/u,
   "plan mode must refuse mutating commands in the executor, not just in the prompt",
 );
 // Manual forces the deferral; Bypass suppresses it. The run loop reads the
@@ -109,7 +110,7 @@ assert.ok(
   "assistantMessagePersisted must flip only after the extra writes land",
 );
 assert.match(workspaceAgent, /runEndedWithDeferral = true;/u);
-assert.match(workspaceAgent, /activeRoundManualSilentMutationBlocked && isMutatingWorkspaceCommand\(command\)/u);
+assert.match(workspaceAgent, /this\.getRun\(\)\.manualSilentMutationBlocked && isMutatingWorkspaceCommand\(command\)/u);
 // Slice 87: every applied change keeps a restore copy in every mode, so no review-policy gate
 // remains (the old auto-keep carve-outs for deletes, extensions and chat.updateMessage are gone).
 assert.doesNotMatch(workspaceAgent, /autoKeep|reviewPolicy|auto-keep/u);

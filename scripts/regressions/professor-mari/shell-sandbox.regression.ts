@@ -49,10 +49,15 @@ const sandboxSource = readFileSync(
   new URL("../../../packages/server/src/services/professor-mari/workspace-shell-sandbox.ts", import.meta.url),
   "utf8",
 );
-const workspaceSource = readFileSync(
-  new URL("../../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
-  "utf8",
-);
+const workspaceSource =
+  readFileSync(
+    new URL("../../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
+    "utf8",
+  ) +
+  readFileSync(
+    new URL("../../../packages/server/src/services/professor-mari/workspace-commands.ts", import.meta.url),
+    "utf8",
+  );
 assert.match(sandboxSource, /\(deny network\*\)/u);
 assert.match(sandboxSource, /--unshare-all/u);
 assert.match(sandboxSource, /throw new Error\(\s*`\$\{status\.reason\}/u);

@@ -94,7 +94,8 @@ assert.equal(
 // ── Engine: the latch exists, arms where text streams, holds, and floors ────
 // Structural pins run against a whitespace-flattened copy so Prettier reflow
 // can never break them; behavior changes still do.
-const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
+const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
+  readSource("packages/server/src/services/professor-mari/workspace-commands.ts");
 const flat = workspaceAgent.replace(/\s+/gu, " ");
 // Line comments can themselves contain semicolons (prose), so adjacency
 // checks across a comment use this copy instead of `flat`.
@@ -165,7 +166,7 @@ assert.ok(
     'this.activeRoundAskLatchSilentMutationBlocked = runAskedForApproval && !action.visibleText && permissionsMode !== "manual" && permissionsMode !== "bypass";',
   ),
 );
-assert.ok(flat.includes("if (this.activeRoundAskLatchSilentMutationBlocked && isMutatingWorkspaceCommand(command)) {"));
+assert.ok(flat.includes("if (this.getRun().askLatchSilentMutationBlocked && isMutatingWorkspaceCommand(command)) {"));
 assert.match(workspaceAgent, /only their reply or Accept can answer it/u);
 
 // ── The dry-run result: truthful, conditional, mode-safe ────────────────────

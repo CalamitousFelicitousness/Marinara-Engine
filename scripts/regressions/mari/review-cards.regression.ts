@@ -312,7 +312,7 @@ try {
 
   // ── Wiring: Mari's commands name their chat, status filters, deletion keeps ──
   {
-    const agent = source("services/professor-mari/workspace-agent.service.ts");
+    const agent = source("services/professor-mari/workspace-agent.service.ts") + source("services/professor-mari/workspace-commands.ts");
     assert.equal(
       (agent.match(/sessionId: this\.runSessionId\(\)/gu) ?? []).length,
       6,
@@ -322,7 +322,7 @@ try {
     assert.match(agent, /env\.MARI_WORKSPACE_SESSION_ID = this\.runSessionId\(\);/u, "so does Mari's shell");
     assert.match(
       agent,
-      /\.\.\.this\.workspaceChangeReviews\.getPendingApprovals\(\),\s*\]\.filter\(\(approval\) => isMariReviewVisibleInChat\(approval\.sessionId, chatId\)\)/u,
+      /\.\.\.this\.commands\.workspaceChangeReviews\.getPendingApprovals\(\),\s*\]\.filter\(\(approval\) => isMariReviewVisibleInChat\(approval\.sessionId, chatId\)\)/u,
       "the status filters file and install reviews by chat too",
     );
     assert.match(

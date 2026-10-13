@@ -35,12 +35,18 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
   if (!files) return null;
   const kit = readWorldKitFile(files.kit.toString("utf8"));
   if (!kit.ok) return { ok: false, reason: `its kit does not read: ${kit.issues[0]}` };
+  const api = files.capabilityApi;
+  const declaresIntro = !!api && (api.major > 1 || api.minor >= 338);
   const worlds: MapPack["worlds"] = [];
   for (const { path, data } of files.worlds) {
     const world = readWorldFile(data.toString("utf8"));
     if (!world.ok) return { ok: false, reason: `${path} does not read: ${world.issues[0]}` };
     if (!sameJson(world.kit, kit.kit)) return { ok: false, reason: `${path} was made with another kit` };
     if (world.notes.length) return { ok: false, reason: `${path} does not fit its kit: ${world.notes[0]}` };
+    // A story's intro message is Capability API 1.338.
+    if (world.story?.intro && !declaresIntro) {
+      return { ok: false, reason: `${path} sets an intro message, which needs Capability API 1.338` };
+    }
     worlds.push({
       path,
       name: world.name,

@@ -12,6 +12,7 @@ import {
 } from "../services/multiplayer/generation-policy.js";
 import { appendLorebookImageMessages, type LorebookImageNotice } from "../services/generation/lorebook-image-prompt.js";
 import { withLorebookImageCompatibility } from "../services/llm/lorebook-image-provider.js";
+import { fixedTextProvider } from "../services/llm/fixed-text-provider.js";
 import { DECISION_SETTINGS_KEYS, resolveDecisionBackend } from "../services/decision/decision-default.js";
 import {
   DECISION_TIMERS_METADATA_KEY,
@@ -214,6 +215,10 @@ import {
   storyState,
   storyTurn,
   storyTurnPromptText,
+  gameIntroFor,
+  gameIntroGuidanceText,
+  readGameIntroChoice,
+  type GameIntro,
   type StoryScript,
   type StoryTurn,
   readWorldLedger,
@@ -2014,6 +2019,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
       // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
       // tell the same turn. A continuation trips nothing, as it tells no walk.
+      // The Game Master's intro message (1.338), on the reply that opens the game: the Experience's when its
+      // creator locked it, else what the setup chose, else the Experience's own. A new session of a game
+      // already under way opens with none.
+      let gameIntroRead: Promise<GameIntro | null> | undefined;
+      const gameIntroNow = () =>
+        (gameIntroRead ??=
+          chatMode === "game" && !input.impersonate && !input.continueMessageId
+            ? (async () => {
+                const game = await loadGameWorld(app.db, input.chatId, chatMeta);
+                const intro = gameIntroFor(
+                  game ? gameStoryFromMetadata(chatMeta, game)?.intro : undefined,
+                  readGameIntroChoice(chatMeta.gameIntro),
+                );
+                if (!intro) return null;
+                const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+                return replies.carried || replies.all.some((reply) => reply.trim()) ? null : intro;
+              })().catch((error) => {
+                logger.warn(error, "[game/intro] Intro for chat %s could not be read", input.chatId);
+                return null;
+              })
+            : Promise.resolve(null));
       let turnStoryRead: Promise<{ story: StoryScript; game: GameWorld; turn: StoryTurn } | null> | undefined;
       const turnStory = () =>
         (turnStoryRead ??=
@@ -4369,8 +4395,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           providerTopK,
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           primaryProvider: agentChatProvider,
-          provider,
+          provider: runtimeProvider,
         } = providerRuntime;
+        // A defined Game Master intro (1.338) is the game's first message exactly as set: streamed as written.
+        const definedIntro = await gameIntroNow();
+        const provider =
+          definedIntro?.mode === "defined" ? fixedTextProvider(definedIntro.text, runtimeProvider) : runtimeProvider;
         ({
           temperature,
           maxTokens,
@@ -4972,9 +5002,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // What the story says to the Game Master this turn (worldgen W10): its values, the directions in
           // force, the scene just shown, and what it asks now.
           const promptTurnStory = await turnStory();
-          const promptStoryNow = promptTurnStory
-            ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn)
-            : "";
+          const promptStoryNow = [
+            // A guided intro (1.338), on the reply that opens the game.
+            gameIntroGuidanceText(await gameIntroNow()),
+            promptTurnStory ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn) : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.

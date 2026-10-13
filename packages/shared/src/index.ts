@@ -78,6 +78,7 @@ export * from "./features/world/world-kit-prompt.js";
 export * from "./schemas/world-brief.schema.js";
 export * from "./features/world/compile.js";
 export * from "./features/world/game-world.js";
+export * from "./features/world/game-intro.js";
 export * from "./features/world/people.js";
 export * from "./features/world/history.js";
 export * from "./features/world/ledger.js";

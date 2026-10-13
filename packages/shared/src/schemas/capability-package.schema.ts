@@ -1064,7 +1064,9 @@ const capabilityPackageManifestBaseSchema = z
 //        and refusal.
 // 1.264: an aura's `needs`, `harms` and `save` (Countercharm, a balor's Fire Aura, a pit fiend's Fear
 //        Aura); a save modifier's `against.casts` (Holy Nimbus).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 337 } as const);
+// 1.338: the Game Master's intro message, part of the GM setup and a story's `intro`: defined is the game's
+//        first message exactly, guided only shapes it; an Experience may lock its own.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 338 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

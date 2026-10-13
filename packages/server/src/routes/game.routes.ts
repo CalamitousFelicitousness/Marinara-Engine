@@ -20,6 +20,7 @@ import {
   readStoryLedger,
   storyObjectives,
   storyScriptSchema,
+  gameIntroChoiceSchema,
   storyState,
   type StoryScript,
   worldEditsEmpty,
@@ -1974,6 +1975,8 @@ const gameSetupConfigSchema = z.object({
   setting: z.string().min(1),
   tone: z.string().min(1).max(200),
   difficulty: z.string().min(1).max(100).transform(normalizeGameDifficulty),
+  /** The Game Master's intro message (1.338). */
+  gameIntro: gameIntroChoiceSchema.optional(),
   combatStyle: z.enum(["classic", "tactical"]).optional(),
   combatDirector: z.boolean().optional(),
   gmBossControl: z.boolean().optional(),
@@ -7004,6 +7007,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // Likewise fixed for the game's lifetime. Written only when a ruleset was chosen, so a game
       // on Marinara's own rules carries exactly the metadata it always has.
       ...(gameRuleset ? { gameRuleset } : {}),
+      // The Game Master's intro message (1.338), as the setup set it; a locked Experience intro wins over it.
+      ...(setupConfig.gameIntro ? { gameIntro: setupConfig.gameIntro } : {}),
       // The setting kit, likewise only when one was chosen, and the world made in its words.
       ...(setupConfig.worldKit ? { gameWorldKit: setupConfig.worldKit } : {}),
       ...(gameWorld ? { gameWorld } : {}),

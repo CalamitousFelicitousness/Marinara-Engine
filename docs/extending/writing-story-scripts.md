@@ -162,6 +162,22 @@ that marks the moment. So a beats scene a `gm` event uses is known to the Game M
 even when an Engine event plays it too. Since it is told them on every turn, the beats of all `gm`
 events together are kept to 16,000 characters.
 
+### The intro message
+
+`intro` (Capability API 1.338) sets how the game opens, the same choice the GM setup offers any game:
+
+```json
+"intro": { "mode": "defined", "text": "The leaves have not fallen in Hollowmere for nine years.", "locked": true }
+```
+
+`"defined"` makes the game's first message exactly `text`; the Game Master writes nothing for it, and
+regenerating it gives the same text. `"guided"` only shapes the opening the Game Master writes, as guidance
+it reads for that first reply alone. `text` is 1 to 8000 characters and may hold line breaks (the one text
+in a story that may), but never `{{`; guided text may not hold square brackets either. With `locked`, the
+player sees the intro in the GM setup and cannot change it; without it, the intro only fills the setup's
+field, and the player may change or clear it. A game whose first reply was already written, or that
+carries its party over, has no intro.
+
 ## How a story plays
 
 Once each turn, before the Game Master replies, the Engine reads what the story has done so far and

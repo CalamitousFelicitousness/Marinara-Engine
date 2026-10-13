@@ -6,6 +6,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { promptSafeText } from "../../schemas/ruleset.schema.js";
+import { gameIntroSchema } from "./game-intro.js";
 import type { GameWorld } from "./game-world.js";
 import { WORLD_DEED_KINDS, readWorldLedger, type WorldDeed, type WorldLedgerEntry } from "./ledger.js";
 import { worldPlaceNamed } from "./edits.js";
@@ -184,6 +185,10 @@ export const storyScriptSchema = z
       )
       .max(STORY_MAX.cutscenes)
       .default([]),
+    /** The Game Master's intro message (Capability API 1.338): exactly the game's first message
+     *  (`"defined"`) or guidance for the one the Game Master writes (`"guided"`); `locked` keeps a player
+     *  from changing it at setup. */
+    intro: gameIntroSchema.optional(),
   })
   .strict();
 export type StoryScript = z.infer<typeof storyScriptSchema>;

@@ -1847,6 +1847,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           combatant.riders = [...(combatant.riders ?? []), ...block.riders.map((rider) => ({ ...rider }))];
         }
         combatant.block = block;
+        if ("creature" in entry) combatant.creature = { ...entry.creature };
         // A sheet that gives it no health at all is a creature that could never be hurt or ever
         // stand: left out, and the opening says why, rather than walked in as something unkillable.
         const health = rulesetCombatHealth(definition, combat, combatant);
@@ -1881,6 +1882,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         id: entry.id,
         name: entry.name,
         side: "enemy",
+        ...("creature" in entry ? { creature: { ...entry.creature } } : {}),
         initiativeRoll: initiative.roll,
         initiativeModifier: initiative.modifier,
         initiative: initiative.total,

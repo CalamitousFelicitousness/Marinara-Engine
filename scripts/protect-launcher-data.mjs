@@ -206,6 +206,7 @@ const SHARDED_TABLES = [
   "game_rulesets",
   "game_ruleset_catalogs",
   "game_tile_packs",
+  "game_creature_packs",
   "game_worlds",
   "regex_scripts",
   "chat_images",

@@ -548,6 +548,7 @@ function projectCombatant(definition: RulesetDefinition, combatant: RulesetComba
     id: combatant.id,
     name: combatant.name,
     side: combatant.side,
+    ...(combatant.creature ? { creature: { ...combatant.creature } } : {}),
     initiative: combatant.initiative,
     health,
     defense: combatant.defense,

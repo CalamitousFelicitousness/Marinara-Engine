@@ -12872,10 +12872,13 @@ function GameSurfaceComponent({
               {/* Top-right action controls */}
               <div
                 data-tour="game-controls"
+                data-game-float="controls"
                 data-tracker-panel-anchor="roleplay-hud"
                 className={cn(
                   "pointer-events-none absolute right-3 z-50",
-                  tacticalCombatActive ? "top-14" : topOverlayOffsetClass,
+                  tacticalCombatActive
+                    ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
+                    : topOverlayOffsetClass,
                   replayActive && "hidden",
                 )}
               >
@@ -13483,9 +13486,12 @@ function GameSurfaceComponent({
 
                 {/* Top-left: Map + Party portraits side by side */}
                 <div
+                  data-game-float="map-and-party"
                   className={cn(
                     "pointer-events-auto absolute left-3 right-14 z-20 flex min-w-0 items-start gap-2 md:right-auto",
-                    tacticalCombatActive ? "top-14" : topOverlayOffsetClass,
+                    tacticalCombatActive
+                      ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
+                      : topOverlayOffsetClass,
                     replayActive && "hidden",
                     // The package draws its own header and party bar, so the built-in ones would collide.
                     // Gated on ownership rather than the mount, so they do not flash while the package

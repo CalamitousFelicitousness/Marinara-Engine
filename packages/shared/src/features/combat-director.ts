@@ -104,6 +104,8 @@ export interface DirectedRulesetCombatant {
   id: string;
   name: string;
   side: RulesetCombatSide;
+  /** The bestiary entry an opponent was made from: what its art is found by (design-game-creature-art.md). */
+  creature?: { catalogId: string; entryId: string };
   initiative: number;
   health: { value: number; max: number; temp: number };
   /** What an attack is rolled against. Sent for both sides: every option's forecast already carries

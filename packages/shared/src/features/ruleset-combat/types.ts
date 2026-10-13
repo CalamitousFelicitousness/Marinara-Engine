@@ -458,6 +458,9 @@ export interface RulesetCombatant {
   id: string;
   name: string;
   side: RulesetCombatSide;
+  /** The bestiary entry an opponent was made from, when it was made from one: what its art is found by
+   *  (design-game-creature-art.md). Never read by the fight's rules. */
+  creature?: { catalogId: string; entryId: string };
   initiative: number;
   initiativeRoll: number[];
   initiativeModifier: number;

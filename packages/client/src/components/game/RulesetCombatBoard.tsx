@@ -10,7 +10,13 @@
 // the same terrain and the same deployment. What it does with it is the ruleset's.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Skull } from "lucide-react";
-import type { Combatant, DirectedRulesetView, RulesetCombatCell } from "@marinara-engine/shared";
+import {
+  creatureArtVariant,
+  findCreatureArt,
+  type Combatant,
+  type DirectedRulesetView,
+  type RulesetCombatCell,
+} from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import {
   TACTICAL_BOARD_KEYFRAMES,
@@ -38,6 +44,7 @@ import {
 } from "../../lib/ruleset-combat-board";
 import { rulesetPickTarget, rulesetSendsOnPick, type RulesetMenuStep } from "../../lib/ruleset-combat-menu";
 import { RulesetCombatMenu } from "./RulesetCombatMenu";
+import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 import { cn } from "../../lib/utils";
 
 export interface RulesetCombatBoardProps {
@@ -199,6 +206,15 @@ export function RulesetCombatBoard({
   const palette = TERRAIN_PALETTES[environment ?? "default"] ?? TERRAIN_PALETTES.default;
   const tintAlpha = environment && TERRAIN_PALETTES[environment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
   const sprites = useMemo(() => new Map(units.map((unit) => [unit.id, unit.sprite])), [units]);
+  // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
+  const creaturePack = useCreaturePack();
+  const facings = useCreatureFacings(
+    cells.flatMap((cell) =>
+      cell.occupant ? [{ id: cell.occupant.id, x: cell.x, y: cell.y, side: cell.occupant.side }] : [],
+    ),
+    // A ruleset fight has no id of its own on screen: its fighters, as it began, tell one from the next.
+    view.order.join(","),
+  );
 
   // What the strip under the board says: the square being read, or, failing that, the one line a
   // fight nobody can reach has to say out loud.
@@ -401,6 +417,15 @@ export function RulesetCombatBoard({
             const onTurn = combatant.id === view.actorId;
             const ring = ringColorFor(combatant.id, combatant.side === "party" ? "party" : "enemy");
             const sprite = resolveSprite(sprites.get(combatant.id));
+            // An opponent with no picture of its own is drawn with its creature art when the pack has it.
+            const creature =
+              combatant.side !== "party" && sprite.kind !== "url"
+                ? findCreatureArt(creaturePack, {
+                    creature: combatant.creature,
+                    rulesetId: view.ruleset.id,
+                    name: combatant.name,
+                  })
+                : null;
             const percent = rulesetHealthPercent(combatant.health);
             const bar = percent > 60 ? "bg-emerald-500" : percent > 25 ? "bg-amber-500" : "bg-red-500";
             return (
@@ -433,7 +458,18 @@ export function RulesetCombatBoard({
                     animation: onTurn ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
                   }}
                 >
-                  {sprite.kind === "url" ? (
+                  {creature && creaturePack ? (
+                    // The token is 0.84 of a cell: its art is drawn at the creature's own size, on the cell.
+                    <CreatureArtFigure
+                      pack={creaturePack}
+                      creature={creature}
+                      // Fights of one ruleset share the key: a fighter keeps its look across them.
+                      variant={creatureArtVariant(creature, view.ruleset.id, combatant.id)}
+                      facing={facings.get(combatant.id) ?? "down"}
+                      cellFraction={1 / 0.84}
+                      label={combatant.name}
+                    />
+                  ) : sprite.kind === "url" ? (
                     <img src={sprite.value} alt="" className="h-full w-full rounded-full object-cover" />
                   ) : sprite.kind === "emoji" ? (
                     <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>

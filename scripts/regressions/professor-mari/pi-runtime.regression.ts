@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseTextualToolCalls } from "../../../packages/server/src/services/llm/textual-tool-call-parser.js";
 import type {
   ChatCompletionResult,
   ChatMessage,
@@ -606,6 +607,24 @@ try {
     assert.match(replayed[2]!.content, /hi from the workspace file/u);
     assert.equal((await lastAssistant(read.chat.id))?.content, "The file says hi.");
     assert.ok(!JSON.stringify(read.events).includes("tool_call"), "the call text never reaches the user");
+
+    // DeepSeek V4 writes its own call markup as text, with spaced identifiers ("app data", "lorebook get entry").
+    const dsml = await start("textual dsml", [
+      reply(
+        'Reading it.\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="read">\n<｜DSML｜parameter name="path" string="true">hello.txt</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>',
+      ),
+      reply("The file says hi."),
+    ]);
+    await dsml.done;
+    assert.equal(requests.length, 2, "the DSML call ran and the run continued");
+    assert.match(requests[1]!.messages.at(-1)!.content, /hi from the workspace file/u);
+    assert.ok(!JSON.stringify(dsml.events).includes("DSML"), "the markup never reaches the user");
+    const [spaced] = parseTextualToolCalls(
+      '<｜DSML｜tool_calls><｜DSML｜invoke name="app data"><｜DSML｜parameter name="action" string="true">lorebook get entry</｜DSML｜parameter><｜DSML｜parameter name="apply" string="false">true</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜tool_calls>',
+      [{ type: "function", function: { name: "app_data", description: "", parameters: {} } }],
+    );
+    assert.equal(spaced?.function.name, "app_data");
+    assert.deepEqual(JSON.parse(spaced!.function.arguments), { action: "lorebook.getEntry", apply: true });
 
     // Understood request (#5740) on pi: the round's words, the mutating command, then the observed outcome.
     const write = await start("textual write", [

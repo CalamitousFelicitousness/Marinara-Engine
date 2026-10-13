@@ -129,6 +129,45 @@ const TAGGED_PATTERNS: Array<{ re: RegExp; allowCommandFallback: boolean; allowA
   },
 ];
 
+/**
+ * DeepSeek V4 sometimes writes its native call markup as text instead of a native tool call:
+ * <｜DSML｜tool_calls><｜DSML｜invoke name="app data"><｜DSML｜parameter name="action" string="true">lorebook get entry</｜DSML｜parameter>…
+ * The bars are U+FF5C (an ASCII "|" variant is accepted). string="false" values are JSON. The markup also spaces out
+ * identifiers ("app data", "lorebook get entry"); tool names are matched loosely below and a spaced action is rejoined.
+ */
+const DSML_BLOCK_RE = /<[｜|]DSML[｜|]tool_calls>[\s\S]*?(?:<\/[｜|]DSML[｜|]tool_calls>|$)/gi;
+const DSML_INVOKE_RE = /<[｜|]DSML[｜|]invoke\s+name="([^"]*)"\s*>([\s\S]*?)(?:<\/[｜|]DSML[｜|]invoke>|$)/gi;
+const DSML_PARAM_RE =
+  /<[｜|]DSML[｜|]parameter\s+name="([^"]*)"(?:\s+string="(true|false)")?\s*>([\s\S]*?)<\/[｜|]DSML[｜|]parameter>/gi;
+
+function parseDsmlCalls(content: string): Array<{ name: string; arguments: Record<string, unknown> }> {
+  const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+  for (const block of content.matchAll(DSML_BLOCK_RE)) {
+    for (const invoke of block[0].matchAll(DSML_INVOKE_RE)) {
+      const args: Record<string, unknown> = {};
+      for (const param of (invoke[2] ?? "").matchAll(DSML_PARAM_RE)) {
+        const key = (param[1] ?? "").trim();
+        const raw = (param[3] ?? "").trim();
+        if (!key) continue;
+        let value: unknown = raw;
+        if (param[2] === "false") {
+          try {
+            value = JSON.parse(raw);
+          } catch {
+            value = raw;
+          }
+        } else if (key === "action" && /^[a-z]+(?: [a-z]+)+$/i.test(raw)) {
+          const [head, ...rest] = raw.split(" ");
+          value = `${head}.${rest.map((word, index) => (index === 0 ? word : word[0]!.toUpperCase() + word.slice(1))).join("")}`;
+        }
+        args[key] = value;
+      }
+      calls.push({ name: (invoke[1] ?? "").trim(), arguments: args });
+    }
+  }
+  return calls;
+}
+
 function parseTaggedSnippets(content: string): ParsedTaggedSnippet[] {
   const snippets: ParsedTaggedSnippet[] = [];
   for (const pattern of TAGGED_PATTERNS) {
@@ -235,11 +274,13 @@ function toolCallFromRaw(
       fnWrap?.parameters ??
       {},
   );
-  if (knownTools.has(name)) {
+  const looseName = (value: string) => value.toLowerCase().replace(/[\s.-]+/g, "_");
+  const known = knownTools.has(name) ? name : [...knownTools].find((tool) => looseName(tool) === looseName(name));
+  if (known) {
     return {
       id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : toolCallId(index),
       type: "function",
-      function: { name, arguments: JSON.stringify(args) },
+      function: { name: known, arguments: JSON.stringify(args) },
     };
   }
 
@@ -276,6 +317,14 @@ export function parseTextualToolCalls(
     });
   }
   if (calls.length > 0) return calls;
+
+  if (/<[｜|]DSML[｜|]tool_calls>/i.test(content)) {
+    parseDsmlCalls(content).forEach((raw) => {
+      const call = toolCallFromRaw(raw, calls.length, knownTools, hasBashTool);
+      if (call) calls.push(call);
+    });
+    if (calls.length > 0) return calls;
+  }
 
   // Try the whole content as a top-level JSON array of tool calls
   const trimmed = content.trim();
@@ -316,7 +365,7 @@ export function parseTextualToolCalls(
  */
 export function stripTextualToolCalls(content: string, tools: LLMToolDefinition[]): string {
   const [fence] = TAGGED_PATTERNS.filter(({ re }) => re.source.startsWith("(```"));
-  let text = content;
+  let text = content.replace(DSML_BLOCK_RE, "");
   for (const { re } of TAGGED_PATTERNS) if (re !== fence!.re) text = text.replace(re, "");
   if (text === content) {
     text = content.replace(fence!.re, (whole, _open, inner: string) =>

@@ -297,7 +297,11 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
             key={warning}
             className="flex items-start gap-1.5 text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]"
           >
-            <Info size="0.75rem" className="mt-px shrink-0 text-[var(--primary)]" aria-hidden="true" />
+            <Info
+              size="0.75rem"
+              className="mt-px shrink-0 text-[var(--marinara-app-accent-static)]"
+              aria-hidden="true"
+            />
             <span>{warning}</span>
           </li>
         ))}

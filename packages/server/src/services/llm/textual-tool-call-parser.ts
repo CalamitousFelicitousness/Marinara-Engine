@@ -168,6 +168,70 @@ function parseDsmlCalls(content: string): Array<{ name: string; arguments: Recor
   return calls;
 }
 
+/**
+ * Other models' native call markup, written as text. Each block regex also strips the markup from visible text.
+ * DeepSeek V3/R1 (<｜tool▁sep｜>NAME + json fence), Kimi K2 (<|tool_call_begin|>functions.NAME:0<|tool_call_argument_begin|>{json}),
+ * GLM (<tool_call>NAME<arg_key>..<arg_value>..), Qwen3-Coder (<function=NAME><parameter=K>V), MiniMax M2
+ * (<minimax:tool_call><invoke name=..>) and Mistral ([TOOL_CALLS]NAME[ARGS]{json} or [TOOL_CALLS][{json}]).
+ * ponytail: Mistral's marker is terminal, so everything after it is stripped; a lone DeepSeek <call_begin> without a calls wrapper eats to the end.
+ */
+const DEEPSEEK_BLOCK_RE = /<｜tool▁calls?▁begin｜>[\s\S]*?(?:<｜tool▁calls▁end｜>|$)/gi;
+const DEEPSEEK_CALL_RE = /<｜tool▁sep｜>\s*([^\s`<]+)\s*```(?:json)?\s*([\s\S]*?)\s*```/gi;
+const KIMI_BLOCK_RE = /<\|tool_calls_section_begin\|>[\s\S]*?(?:<\|tool_calls_section_end\|>|$)/gi;
+const KIMI_CALL_RE =
+  /<\|tool_call_begin\|>\s*(?:functions\.)?([^\s<:]+)(?::\d+)?\s*<\|tool_call_argument_begin\|>([\s\S]*?)<\|tool_call_end\|>/gi;
+const GLM_CALL_RE =
+  /<tool_call>\s*([^\s<{[]+)\s*((?:<arg_key>[\s\S]*?<\/arg_key>\s*<arg_value>[\s\S]*?<\/arg_value>\s*)+)(?:<\/tool_call>|$)/gi;
+const GLM_ARG_RE = /<arg_key>([\s\S]*?)<\/arg_key>\s*<arg_value>([\s\S]*?)<\/arg_value>/gi;
+const QWEN_CALL_RE = /(?:<tool_call>\s*)?<function=([^>\s]+)>([\s\S]*?)<\/function>(?:\s*<\/tool_call>)?/gi;
+const QWEN_PARAM_RE = /<parameter=([^>]+)>([\s\S]*?)<\/parameter>/gi;
+const MINIMAX_BLOCK_RE = /<minimax:tool_call>[\s\S]*?(?:<\/minimax:tool_call>|$)/gi;
+const MINIMAX_INVOKE_RE = /<invoke name="([^"]*)">([\s\S]*?)<\/invoke>/gi;
+const MINIMAX_PARAM_RE = /<parameter name="([^"]*)">([\s\S]*?)<\/parameter>/gi;
+const MISTRAL_RE = /\[TOOL_CALLS\][\s\S]*$/;
+const MARKUP_STRIP_RES = [
+  DSML_BLOCK_RE,
+  DEEPSEEK_BLOCK_RE,
+  KIMI_BLOCK_RE,
+  GLM_CALL_RE,
+  QWEN_CALL_RE,
+  MINIMAX_BLOCK_RE,
+  MISTRAL_RE,
+];
+
+function parseMarkupCalls(content: string): unknown[] {
+  const calls: unknown[] = [...parseDsmlCalls(content)];
+  const jsonOrString = (raw: string): unknown => {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  };
+  const params = (body: string, re: RegExp) =>
+    Object.fromEntries([...body.matchAll(re)].map((p) => [(p[1] ?? "").trim(), jsonOrString((p[2] ?? "").trim())]));
+  for (const m of content.matchAll(DEEPSEEK_CALL_RE)) calls.push({ name: m[1], arguments: m[2] });
+  for (const m of content.matchAll(KIMI_CALL_RE)) calls.push({ name: m[1], arguments: m[2] });
+  for (const m of content.matchAll(GLM_CALL_RE)) calls.push({ name: m[1], arguments: params(m[2] ?? "", GLM_ARG_RE) });
+  for (const m of content.matchAll(QWEN_CALL_RE))
+    calls.push({ name: m[1], arguments: params(m[2] ?? "", QWEN_PARAM_RE) });
+  for (const block of content.matchAll(MINIMAX_BLOCK_RE)) {
+    for (const m of block[0].matchAll(MINIMAX_INVOKE_RE)) {
+      calls.push({ name: m[1], arguments: params(m[2] ?? "", MINIMAX_PARAM_RE) });
+    }
+  }
+  for (const segment of content.split("[TOOL_CALLS]").slice(1)) {
+    const named = segment.match(/^\s*([^\s[\]{]+)\s*\[ARGS\]/);
+    const json = extractBalancedJson(named ? segment.slice(named[0].length) : segment);
+    if (named) calls.push({ name: named[1], arguments: json ?? "{}" });
+    else {
+      const list = json && jsonOrString(json);
+      if (Array.isArray(list)) calls.push(...list);
+    }
+  }
+  return calls;
+}
+
 function parseTaggedSnippets(content: string): ParsedTaggedSnippet[] {
   const snippets: ParsedTaggedSnippet[] = [];
   for (const pattern of TAGGED_PATTERNS) {
@@ -318,13 +382,11 @@ export function parseTextualToolCalls(
   }
   if (calls.length > 0) return calls;
 
-  if (/<[｜|]DSML[｜|]tool_calls>/i.test(content)) {
-    parseDsmlCalls(content).forEach((raw) => {
-      const call = toolCallFromRaw(raw, calls.length, knownTools, hasBashTool);
-      if (call) calls.push(call);
-    });
-    if (calls.length > 0) return calls;
-  }
+  parseMarkupCalls(content).forEach((raw) => {
+    const call = toolCallFromRaw(raw, calls.length, knownTools, hasBashTool);
+    if (call) calls.push(call);
+  });
+  if (calls.length > 0) return calls;
 
   // Try the whole content as a top-level JSON array of tool calls
   const trimmed = content.trim();
@@ -365,7 +427,7 @@ export function parseTextualToolCalls(
  */
 export function stripTextualToolCalls(content: string, tools: LLMToolDefinition[]): string {
   const [fence] = TAGGED_PATTERNS.filter(({ re }) => re.source.startsWith("(```"));
-  let text = content.replace(DSML_BLOCK_RE, "");
+  let text = MARKUP_STRIP_RES.reduce((rest, re) => rest.replace(re, ""), content);
   for (const { re } of TAGGED_PATTERNS) if (re !== fence!.re) text = text.replace(re, "");
   if (text === content) {
     text = content.replace(fence!.re, (whole, _open, inner: string) =>

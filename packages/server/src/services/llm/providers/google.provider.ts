@@ -98,9 +98,15 @@ const GEMINI_SAFETY_SETTINGS_OFF = [
   "HARM_CATEGORY_DANGEROUS_CONTENT",
 ].map((category) => ({ category, threshold: "OFF" }));
 
-/** Runs after custom parameters, so a user's own safety settings (in either spelling) are kept and never doubled. */
+/**
+ * Runs after custom parameters. A user's own safety settings (in either spelling) win for the categories they
+ * name; every other category is still sent as Off, under the user's spelling so the field is never doubled.
+ */
 function applyGeminiSafetySettingsOff(body: Record<string, unknown>): void {
-  if (!("safetySettings" in body) && !("safety_settings" in body)) body.safetySettings = GEMINI_SAFETY_SETTINGS_OFF;
+  const key = "safety_settings" in body && !("safetySettings" in body) ? "safety_settings" : "safetySettings";
+  const own = Array.isArray(body[key]) ? (body[key] as Array<{ category?: unknown } | null>) : [];
+  const named = new Set(own.map((setting) => setting?.category));
+  body[key] = [...own, ...GEMINI_SAFETY_SETTINGS_OFF.filter(({ category }) => !named.has(category))];
 }
 
 export function resolveGoogleFunctionCallingMode(toolChoice: ChatOptions["toolChoice"]): "AUTO" | "ANY" {

@@ -3332,7 +3332,8 @@ try {
       finishReason = "STOP";
       assert.equal(usage?.finishReason, "length");
 
-      // A user's own safety settings in custom parameters are kept, in either spelling, and never sent twice.
+      // A user's own safety settings in custom parameters win for the categories they name, in either spelling,
+      // and are never sent twice. The categories they leave out stay Off.
       requests.length = 0;
       const ownSafety = [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" }];
       await collectProviderOutput(provider, {
@@ -3345,7 +3346,7 @@ try {
       assert.deepEqual(body(0), {
         contents: [{ role: "user", parts: [{ text: "test" }] }],
         generationConfig: { maxOutputTokens: 4096 },
-        safety_settings: ownSafety,
+        safety_settings: [...ownSafety, ...safetySettings.slice(1)],
       });
 
       // Gemini 3 is unchanged, byte for byte, apart from the safety settings every Gemini request now carries:

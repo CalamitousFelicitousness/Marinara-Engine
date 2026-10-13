@@ -4592,14 +4592,14 @@ export function getCapabilityPackageInstallIssue(
   }
   // Clearing growth, 1.317.
   if (
-    !declaresApi(313) &&
+    !declaresApi(317) &&
     (carriesClears(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesClears(document)))
   ) {
     return "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.317 or newer";
   }
   // Legendary Resistance, 1.316.
   if (
-    !declaresApi(312) &&
+    !declaresApi(316) &&
     (carriesLegendaryResistance(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryResistance(document)))
   ) {
@@ -4607,7 +4607,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Lair actions, 1.314.
   if (
-    !declaresApi(310) &&
+    !declaresApi(314) &&
     (carriesLair(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesLair(document)))
   ) {
     return "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.314 or newer";

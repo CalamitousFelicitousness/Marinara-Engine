@@ -12,6 +12,12 @@ const MOUTH_EASE_SECONDS = 0.05;
 const POSE_EASE_SECONDS = 0.35;
 /** Below this the mouth counts as closed. */
 const MOUTH_CLOSED = 0.02;
+/** An eased weight this close to its target lands on it. Easing alone never reaches 0, and three-vrm treats
+ *  any weight above 0 of a "block" expression as fully on, so a faded face would keep blocking blinks. */
+const SETTLED = 0.001;
+/** While the avatar speaks, a face that holds the mouth still stays at this weight, leaving the mouth 60%
+ *  of its movement. */
+const SPEAKING_FACE_WEIGHT = 0.4;
 
 function clamp01(value: number): number {
   return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
@@ -30,15 +36,36 @@ export function createExpressionWeights(): ExpressionWeights {
   return new Map();
 }
 
+/** VRM 1.0 lets a face hold the mouth still (`overrideMouth`: "block" at any weight, "blend" in
+ *  proportion), which would freeze lip sync whenever the avatar speaks with that face. Each bound emotion
+ *  that does so switches to "blend", and stepExpressionWeights keeps it at SPEAKING_FACE_WEIGHT while the
+ *  avatar speaks. Returns the expression names that hold the mouth. */
+export function softenMouthOverrides(
+  map: AvatarExpressionMap,
+  getExpression: (name: string) => { overrideMouth: string } | null | undefined,
+): Set<string> {
+  const names = new Set<string>();
+  for (const emotion of AVATAR_EMOTIONS) {
+    const name = map[emotion]?.target;
+    const expression = name ? getExpression(name) : null;
+    if (!name || !expression || expression.overrideMouth === "none") continue;
+    expression.overrideMouth = "blend";
+    names.add(name);
+  }
+  return names;
+}
+
 /** Eases every bound emotion and mouth expression toward what the frame asks for: the frame's emotion
- *  at its weight, and the frame's mouth shape opened by `mouthOpen` (aa when the shape is unknown or the
- *  model lacks it). Blink is not eased here: the blink timer already shapes it. */
+ *  at its weight (held down while speaking when it is in `mouthHolders`), and the frame's mouth shape
+ *  opened by `mouthOpen` (aa when the shape is unknown or the model lacks it). Blink is not eased here:
+ *  the blink timer already shapes it. */
 export function stepExpressionWeights(
   weights: ExpressionWeights,
   map: AvatarExpressionMap,
   frame: AvatarFrameInput,
   features: { lipSync: boolean },
   dtSeconds: number,
+  mouthHolders: ReadonlySet<string> = new Set(),
 ): void {
   const targets = new Map<string, { value: number; seconds: number }>();
   const want = (name: string | null | undefined, value: number, seconds: number) => {
@@ -49,10 +76,14 @@ export function stepExpressionWeights(
       seconds: Math.min(previous?.seconds ?? seconds, seconds),
     });
   };
-  for (const emotion of AVATAR_EMOTIONS) {
-    want(map[emotion]?.target, emotion === frame.emotion ? clamp01(frame.emotionWeight) : 0, EMOTION_EASE_SECONDS);
-  }
   const mouthOpen = features.lipSync ? clamp01(frame.mouthOpen) : 0;
+  const speaking = features.lipSync && (frame.state === "talking" || mouthOpen > MOUTH_CLOSED);
+  for (const emotion of AVATAR_EMOTIONS) {
+    const name = map[emotion]?.target;
+    const weight = emotion === frame.emotion ? clamp01(frame.emotionWeight) : 0;
+    const held = speaking && !!name && mouthHolders.has(name);
+    want(name, held ? Math.min(weight, SPEAKING_FACE_WEIGHT) : weight, EMOTION_EASE_SECONDS);
+  }
   const viseme: AvatarViseme | null = frame.viseme ?? (mouthOpen > MOUTH_CLOSED ? "aa" : null);
   const mouthTarget = viseme ? (map[viseme]?.target ?? map.aa?.target) : null;
   for (const slot of AVATAR_VISEMES) {
@@ -60,7 +91,8 @@ export function stepExpressionWeights(
     want(name, name && name === mouthTarget ? mouthOpen : 0, MOUTH_EASE_SECONDS);
   }
   for (const [name, target] of targets) {
-    weights.set(name, ease(weights.get(name) ?? 0, target.value, dtSeconds, target.seconds));
+    const next = ease(weights.get(name) ?? 0, target.value, dtSeconds, target.seconds);
+    weights.set(name, Math.abs(next - target.value) < SETTLED ? target.value : next);
   }
 }
 
@@ -221,23 +253,26 @@ export interface BodyHeights {
 }
 
 export interface CameraFraming {
-  /** A tall canvas (at least 1.5 times as high as wide) shows the whole body; any other shows a bust. */
-  placement: "bust" | "full-body";
   targetY: number;
   distance: number;
 }
 
-/** Fits a bust (head and shoulders) or the whole body into a camera with this aspect and vertical field
- *  of view, from bone heights alone: the head's size scales with the hips-to-head distance. */
+/** Fits the head and shoulders into a camera with this aspect and vertical field of view, from bone
+ *  heights alone (the head's size scales with the hips-to-head distance). The head stays near the top: a
+ *  narrower canvas, which needs the camera further back to fit the shoulders, shows more of the body below,
+ *  down to the whole figure. The framing changes smoothly with the canvas shape, so a resize never flips it. */
 export function frameCamera(body: BodyHeights, aspect: number, fovDegrees: number): CameraFraming {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
   const unit = Math.max(0.1, body.headY - body.hipsY);
-  const placement = safeAspect <= 1 / 1.5 ? "full-body" : "bust";
-  const top = body.headY + (placement === "bust" ? 0.42 : 0.4) * unit;
-  const bottom = placement === "bust" ? body.headY - 0.6 * unit : body.footY - 0.03;
-  const width = (placement === "bust" ? 1.1 : 0.9) * unit;
+  const top = body.headY + 0.42 * unit;
+  const bustBottom = body.headY - 0.6 * unit;
+  const feet = Math.min(body.footY - 0.03, bustBottom);
   const margin = 1.08;
   const tanHalf = Math.tan((fovDegrees * Math.PI) / 360);
-  const distance = Math.max(((top - bottom) * margin) / 2 / tanHalf, (width * margin) / 2 / (tanHalf * safeAspect));
-  return { placement, targetY: (top + bottom) / 2, distance };
+  const distance = Math.max(
+    ((top - bustBottom) * margin) / 2 / tanHalf,
+    (1.1 * unit * margin) / 2 / (tanHalf * safeAspect),
+  );
+  const halfView = distance * tanHalf;
+  return { targetY: Math.max(top - halfView / margin, (top + feet) / 2), distance };
 }

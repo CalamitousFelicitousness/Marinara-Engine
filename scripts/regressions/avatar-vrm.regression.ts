@@ -6,9 +6,12 @@
  *   - expressions bind to the six emotions, five visemes and blink through presets, then clear names, then
  *     emotion word stems, and the result fits avatar.json;
  *   - meta is kept as plain bounded text with only http(s) license links;
- *   - compressed models, plain glTF models, broken skeletons and dishonest files are refused in plain words;
+ *   - compressed models, plain glTF models, broken skeletons, missing scenes, oversized JSON chunks and
+ *     dishonest files are refused in plain words;
  *   - a `.vrma` attaches to an existing model, and a new model keeps the idle animation;
- *   - the renderer's motion maths (expression smoothing, blink timer, framing, VRM 0.x mirroring) behaves.
+ *   - what the importer accepts loads in the stage's own loader (three + three-vrm, run here in Node);
+ *   - the renderer's motion maths (expression smoothing, lip sync on faces that hold the mouth, blink timer,
+ *     framing, VRM 0.x mirroring) behaves.
  * Models are synthetic: no VRM file is committed.
  */
 import assert from "node:assert/strict";
@@ -17,7 +20,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const { avatarConfigSchema, createAvatarConfig } = await import("../../packages/shared/src/index.js");
-const { vrmImporter, buildVrmImport, VRM_IDLE_ANIMATION_FILE, VRM_MODEL_FILE } =
+const { vrmImporter, buildVrmImport, VRM_IDLE_ANIMATION_FILE, VRM_MAX_JSON_CHUNK_BYTES, VRM_MODEL_FILE } =
   await import("../../packages/server/src/services/avatars/formats/vrm.js");
 const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
 
@@ -39,7 +42,11 @@ const REQUIRED_BONES = [
   "rightLowerArm",
   "rightHand",
 ];
-const nodes = Array.from({ length: REQUIRED_BONES.length }, (_, index) => ({ name: `node${index}` }));
+const nodes = Array.from({ length: REQUIRED_BONES.length }, (_, index) => ({
+  name: `node${index}`,
+  translation: [0, index / 10, 0],
+}));
+const scenes = [{ nodes: nodes.map((_, index) => index) }];
 
 function padded(bytes: Uint8Array, fill: number): Uint8Array {
   const out = new Uint8Array(Math.ceil(bytes.length / 4) * 4).fill(fill);
@@ -74,6 +81,7 @@ function glb(
 function vrm1(overrides: Record<string, unknown> = {}, vrmOverrides: Record<string, unknown> = {}) {
   return {
     asset: { version: "2.0", generator: "regression" },
+    scenes,
     nodes,
     extensionsUsed: ["VRMC_vrm"],
     extensions: {
@@ -117,6 +125,7 @@ function vrm1(overrides: Record<string, unknown> = {}, vrmOverrides: Record<stri
 function vrm0(groups: unknown[], metaOverrides: Record<string, unknown> = {}) {
   return {
     asset: { version: "2.0" },
+    scenes,
     nodes,
     extensionsUsed: ["VRM"],
     extensions: {
@@ -203,7 +212,40 @@ assert.deepEqual(modern.meta, {
   modification: "prohibited",
   licenseName: null,
   licenseUrl: "https://vrm.dev/licenses/1.0/",
+  termsUrl: null,
+  creditNotation: null,
+  allowRedistribution: null,
 });
+// The author's own terms, credit and sharing rules are kept too (VRM 1.0 otherLicenseUrl, creditNotation,
+// allowRedistribution; VRM 0.x otherPermissionUrl).
+const authorTerms = await vrmImporter.validate(
+  input(
+    glb(
+      vrm1(
+        {},
+        {
+          meta: {
+            name: "Booth model",
+            authors: ["Author"],
+            licenseUrl: "https://vrm.dev/licenses/1.0/",
+            otherLicenseUrl: "https://author.example/terms-of-use",
+            creditNotation: "required",
+            allowRedistribution: false,
+          },
+        },
+      ),
+    ),
+  ),
+);
+assert.ok(authorTerms.type === "model");
+assert.equal(authorTerms.meta.termsUrl, "https://author.example/terms-of-use");
+assert.equal(authorTerms.meta.creditNotation, "required");
+assert.equal(authorTerms.meta.allowRedistribution, false);
+const legacyTerms = await vrmImporter.validate(
+  input(glb(vrm0([], { otherPermissionUrl: "https://author.example/permissions" }))),
+);
+assert.ok(legacyTerms.type === "model");
+assert.equal(legacyTerms.meta.termsUrl, "https://author.example/permissions");
 const modernImport = buildVrmImport(modern, input(new Uint8Array([9])), null);
 assert.equal(modernImport.kind, "vrm");
 assert.deepEqual(
@@ -229,6 +271,14 @@ assert.equal(
   }).success,
   false,
   "avatar.json refuses a license link that is not http(s)",
+);
+assert.ok(
+  avatarConfigSchema.safeParse({
+    ...config,
+    activeKind: "vrm",
+    kinds: { vrm: buildVrmImport(authorTerms, input(new Uint8Array([1])), null).data },
+  }).success,
+  "the author's terms link, credit and sharing rules fit avatar.json",
 );
 
 // ── VRM 0.x ──
@@ -265,6 +315,9 @@ assert.deepEqual(legacy.meta, {
   modification: null,
   licenseName: "CC_BY",
   licenseUrl: null,
+  termsUrl: null,
+  creditNotation: null,
+  allowRedistribution: null,
 });
 assert.ok(
   legacy.warnings.some((warning) => /too long/u.test(warning)),
@@ -346,6 +399,7 @@ assert.ok(hostileMs < 5_000, `200,000 expression entries validate quickly (${Mat
 // ── .vrma idle animations ──
 const animationJson = {
   asset: { version: "2.0" },
+  scenes: [{ nodes: [0] }],
   nodes: [{ name: "hips" }],
   extensionsUsed: ["VRMC_vrm_animation"],
   extensions: { VRMC_vrm_animation: { specVersion: "1.0", humanoid: { humanBones: { hips: { node: 0 } } } } },
@@ -404,6 +458,12 @@ await refused(
   "unsupported-format",
   /\(meshopt, KTX2 textures\)/u,
   "required meshopt and KTX2 are refused",
+);
+await refused(
+  glb({ ...vrm1(), extensionsRequired: ["KHR_meshopt_compression"] }),
+  "unsupported-format",
+  /\(meshopt\)/u,
+  "the ratified KHR meshopt name is refused too (three 0.186 needs a decoder for it)",
 );
 assert.equal(
   (await vrmImporter.validate(input(glb({ ...vrm1(), extensionsUsed: ["VRMC_vrm", "EXT_meshopt_compression"] })))).type,
@@ -467,17 +527,51 @@ await refused(
   /missing parts VRM needs: head\./u,
   "a missing required bone is named",
 );
-await refused(
+const brokenSkeleton = /skeleton points to parts that aren't in the file/u;
+const withBones = (extra: Record<string, unknown>) =>
   glb(
     vrm1(
       {},
-      { humanoid: { humanBones: Object.fromEntries(REQUIRED_BONES.map((bone, node) => [bone, { node: node + 1 }])) } },
+      {
+        humanoid: {
+          humanBones: { ...Object.fromEntries(REQUIRED_BONES.map((bone, node) => [bone, { node }])), ...extra },
+        },
+      },
     ),
-  ),
+  );
+await refused(withBones({ rightHand: { node: 15 } }), "invalid-file", brokenSkeleton, "a bone past the last node");
+// three-vrm loads the node of every listed bone, optional ones included, and fails on these.
+await refused(withBones({ leftEye: { node: 999 } }), "invalid-file", brokenSkeleton, "an optional bone past the nodes");
+await refused(withBones({ leftEye: null }), "invalid-file", brokenSkeleton, "a bone entry that is not an object");
+await refused(withBones({ leftEye: {} }), "invalid-file", brokenSkeleton, "a bone entry without a node");
+const legacyBones = (extra: unknown[]) => {
+  const json = vrm0([]);
+  const humanBones = [...REQUIRED_BONES.map((bone, node) => ({ bone, node })), ...extra];
+  return glb({ ...json, extensions: { VRM: { ...json.extensions.VRM, humanoid: { humanBones } } } });
+};
+await refused(legacyBones([null]), "invalid-file", brokenSkeleton, "VRM 0.x: a bone entry that is not an object");
+await refused(
+  legacyBones([{ bone: "leftEye", node: 99 }]),
   "invalid-file",
-  /missing parts VRM needs: rightHand\./u,
-  "a bone pointing past the last node counts as missing",
+  brokenSkeleton,
+  "VRM 0.x: a bone past the nodes",
 );
+assert.equal(
+  (await vrmImporter.validate(input(legacyBones([{ bone: "leftEye" }, { node: 3 }])))).type,
+  "model",
+  "VRM 0.x: three-vrm skips an entry without a bone name or node, so it is not refused",
+);
+await refused(glb({ ...vrm1(), scenes: undefined }), "invalid-file", /damaged/u, "a model without a scene to show");
+await refused(glb({ ...vrm1(), scene: 1 }), "invalid-file", /damaged/u, "a default scene that does not exist");
+{
+  // A JSON chunk past the bound is refused before it is decoded; the binary chunk is never limited.
+  const prefix = new TextEncoder().encode('{"asset":{"version":"2.0"}}');
+  const rawJson = new Uint8Array(VRM_MAX_JSON_CHUNK_BYTES + 4).fill(0x20);
+  rawJson.set(prefix);
+  const started = performance.now();
+  await refused(glb(null, { rawJson }), "invalid-file", /far larger than any VRM model needs/u, "a huge JSON chunk");
+  assert.ok(performance.now() - started < 2_000, "the huge JSON chunk is refused without parsing it");
+}
 await refused(glb(vrm1({}, { meta: undefined })), "invalid-file", /model details/u, "VRM 1.0 without meta");
 const noMeta = vrm0([]);
 await refused(
@@ -535,15 +629,65 @@ const motion = await import("../../packages/client/src/features/avatars/renderer
   assert.equal(max, 0, "blink off never closes the eyes");
 }
 {
+  // A face that falls back to neutral lands on exactly 0: three-vrm counts any weight above 0 of a "block"
+  // expression as fully on, so easing alone would keep blinks blocked for minutes.
+  const weights = motion.createExpressionWeights();
+  const map = modernImport.data.expressionMap;
+  const frame = { emotion: "happy", emotionWeight: 1, viseme: null, mouthOpen: 0, state: "idle" } as const;
+  for (let step = 0; step < 30; step += 1) motion.stepExpressionWeights(weights, map, frame, { lipSync: true }, 1 / 30);
+  for (let step = 0; step < 60; step += 1) {
+    motion.stepExpressionWeights(weights, map, { ...frame, emotion: "neutral" }, { lipSync: true }, 1 / 30);
+  }
+  assert.equal(weights.get("happy"), 0, "a faded face settles on 0");
+}
+{
+  // While speaking, a face that holds the mouth is kept down; it returns to full strength afterwards.
+  const map = modernImport.data.expressionMap;
+  const holders = new Set(["happy"]);
+  const weights = motion.createExpressionWeights();
+  const talking = { emotion: "happy", emotionWeight: 1, viseme: "aa", mouthOpen: 1, state: "talking" } as const;
+  for (let step = 0; step < 30; step += 1) {
+    motion.stepExpressionWeights(weights, map, talking, { lipSync: true }, 1 / 30, holders);
+  }
+  assert.ok((weights.get("happy") ?? 1) <= 0.41, "the held face stays partial while the avatar speaks");
+  const quiet = { ...talking, mouthOpen: 0, viseme: null, state: "idle" } as const;
+  for (let step = 0; step < 30; step += 1)
+    motion.stepExpressionWeights(weights, map, quiet, { lipSync: true }, 1 / 30, holders);
+  assert.ok((weights.get("happy") ?? 0) > 0.95, "the face comes back in full once the avatar stops speaking");
+  const noLipSync = motion.createExpressionWeights();
+  for (let step = 0; step < 30; step += 1) {
+    motion.stepExpressionWeights(noLipSync, map, talking, { lipSync: false }, 1 / 30, holders);
+  }
+  assert.ok((noLipSync.get("happy") ?? 0) > 0.95, "with lip sync off the mouth never moves, so the face stays full");
+}
+{
+  // The head stays near the top, and a narrower canvas shows more of the body, smoothly: the stage's shapes
+  // (about 0.5 to 0.75 wide per unit of height) never flip between two framings.
   const body = { headY: 1.45, hipsY: 0.95, footY: 0.05 };
-  const bust = motion.frameCamera(body, 1, 25);
-  const full = motion.frameCamera(body, 0.5, 25);
-  assert.equal(bust.placement, "bust");
-  assert.equal(full.placement, "full-body");
-  assert.ok(bust.targetY > body.headY - 0.3 && bust.targetY < body.headY + 0.2, "a bust centres on the head");
-  assert.ok(full.targetY > 0.6 && full.targetY < 1, "a full body centres on the middle of the body");
-  assert.ok(full.distance > bust.distance, "the full body sits further away");
-  assert.ok(motion.frameCamera(body, 4, 25).distance <= bust.distance * 1.01, "a wide canvas never zooms out the bust");
+  const tanHalf = Math.tan((25 * Math.PI) / 360);
+  const view = (aspect: number) => {
+    const framing = motion.frameCamera(body, aspect, 25);
+    const half = framing.distance * tanHalf;
+    return { top: framing.targetY + half, bottom: framing.targetY - half, ...framing };
+  };
+  const headTop = body.headY + 0.42 * (body.headY - body.hipsY);
+  let previous = view(1.2);
+  for (let aspect = 1.19; aspect >= 0.3; aspect -= 0.01) {
+    const current = view(aspect);
+    assert.ok(current.top >= headTop, `the head stays in view at aspect ${aspect.toFixed(2)}`);
+    assert.ok(current.bottom <= previous.bottom + 1e-9, "a narrower canvas never shows less of the body");
+    assert.ok(previous.bottom - current.bottom < 0.1, `no jump at aspect ${aspect.toFixed(2)}`);
+    previous = current;
+  }
+  assert.ok(view(0.75).bottom < body.hipsY + 0.05, "a 3:4 spot reaches down to the hips");
+  assert.ok(view(0.75).top - headTop < 0.1, "with the head near the top, not centred in empty space");
+  assert.ok(view(0.3).bottom <= body.footY, "a very narrow spot shows the whole body");
+  const square = motion.frameCamera(body, 1, 25);
+  assert.ok(
+    motion.frameCamera(body, 4, 25).distance <= square.distance * 1.01,
+    "a wide canvas never zooms out the bust",
+  );
+  assert.ok(view(4).bottom > body.hipsY, "a wide canvas shows the head and shoulders");
 }
 assert.deepEqual(motion.canvasPixels(300, 300, 3, 2), { width: 600, height: 600 }, "the pixel ratio is capped");
 assert.deepEqual(
@@ -567,5 +711,136 @@ assert.equal(/requestAnimationFrame|setInterval/u.test(rendererSource), false, "
 assert.ok(/api\.raw\(avatarModelFilePath\(/u.test(rendererSource), "model bytes load through api.raw");
 assert.equal(/\bfetch\(/u.test(rendererSource), false);
 assert.ok(/VRMUtils\.deepDispose/u.test(rendererSource), "dispose releases the model's GPU resources");
+assert.ok(
+  /springBoneManager\?\.reset\(\)/u.test(rendererSource),
+  "hair and clothes restart from the posed model instead of whipping from the loader's T-pose",
+);
+
+// ── What the importer accepts, the stage's own loader loads ──
+// The renderer's loader (three's GLTFLoader + three-vrm, as the stage configures them) runs here in Node on
+// the same synthetic files; api.raw is served from memory, so no request leaves the process.
+{
+  const { loadStoredVrm } = await import("../../packages/client/src/features/avatars/renderers/vrm/vrm-renderer.js");
+  const realFetch = globalThis.fetch;
+  const realWarn = console.warn;
+  // three-vrm warns about the fixture's deliberately odd expression names; only those warnings are dropped.
+  console.warn = (...args: unknown[]) => {
+    if (!/^VRMExpressionLoaderPlugin:/u.test(String(args[0]))) realWarn(...args);
+  };
+  let served = new Uint8Array();
+  globalThis.fetch = (async () => new Response(served)) as typeof fetch;
+  const loadInStage = async (bytes: Uint8Array) => {
+    served = bytes;
+    const gltf = await loadStoredVrm(owner, VRM_MODEL_FILE, new AbortController().signal);
+    const vrm = gltf.userData.vrm;
+    assert.ok(vrm, "the loader returns a VRM");
+    return vrm as {
+      expressionManager?: {
+        getExpression(name: string): {
+          overrideMouth: string;
+          addBind(bind: { applyWeight(weight: number): void; clearAppliedWeight(): void }): void;
+        } | null;
+        setValue(name: string, weight: number): void;
+        update(): void;
+      };
+    };
+  };
+  const accepted = async (bytes: Uint8Array, label: string) => {
+    await vrmImporter.validate(input(bytes));
+    await loadInStage(bytes);
+    assert.ok(true, label);
+  };
+  await accepted(glb(vrm1()), "VRM 1.0");
+  await accepted(
+    glb(
+      vrm0([
+        { name: "Joy", presetName: "joy" },
+        { name: "Surprised", presetName: "unknown" },
+      ]),
+    ),
+    "VRM 0.x",
+  );
+  const metaWithout = (patch: Record<string, unknown>) =>
+    glb(vrm1({}, { meta: { ...vrm1().extensions.VRMC_vrm.meta, ...patch } }));
+  await accepted(metaWithout({ licenseUrl: undefined }), "VRM 1.0 without a licence URL");
+  await accepted(metaWithout({ licenseUrl: 42 }), "VRM 1.0 with a licence URL that is not text");
+  // The refusals above are needed: the loader fails on each of these too.
+  for (const [bytes, label] of [
+    [withBones({ leftEye: { node: 999 } }), "an optional bone past the nodes"],
+    [withBones({ leftEye: null }), "a bone entry that is not an object"],
+    [withBones({ leftEye: {} }), "a bone entry without a node"],
+    [glb({ ...vrm1(), scenes: undefined }), "a model without a scene"],
+  ] as const) {
+    await assert.rejects(loadInStage(bytes), Error, `the stage cannot load ${label} either`);
+  }
+
+  // Faces that hold the mouth (VRM 1.0 overrideMouth): lip sync still moves the mouth, and a faded face
+  // that blocked blinking lets the eyes blink again.
+  const faces = glb(
+    vrm1(
+      {},
+      {
+        expressions: {
+          preset: {
+            happy: { overrideMouth: "blend", overrideBlink: "block" },
+            sad: { overrideMouth: "block" },
+            aa: {},
+            blink: {},
+          },
+        },
+      },
+    ),
+  );
+  const facesValidated = await vrmImporter.validate(input(faces));
+  const map = buildVrmImport(facesValidated, input(faces), null).data.expressionMap;
+  const drive = async (soften: boolean) => {
+    const vrm = await loadInStage(faces);
+    const expressions = vrm.expressionManager;
+    assert.ok(expressions);
+    const applied = { aa: 0, blink: 0 };
+    for (const name of ["aa", "blink"] as const) {
+      expressions.getExpression(name)?.addBind({
+        applyWeight: (weight) => {
+          applied[name] = weight;
+        },
+        clearAppliedWeight: () => {
+          applied[name] = 0;
+        },
+      });
+    }
+    const holders = soften
+      ? motion.softenMouthOverrides(map, (name) => expressions.getExpression(name))
+      : new Set<string>();
+    const weights = motion.createExpressionWeights();
+    const run = (frame: Record<string, unknown>, frames: number) => {
+      for (let step = 0; step < frames; step += 1) {
+        motion.stepExpressionWeights(weights, map, frame as never, { lipSync: true }, 1 / 30, holders);
+        for (const [name, weight] of weights) expressions.setValue(name, weight);
+        expressions.update();
+      }
+    };
+    const mouth: Record<string, number> = {};
+    for (const emotion of ["happy", "sad"]) {
+      run({ emotion, emotionWeight: 1, viseme: "aa", mouthOpen: 1, state: "talking" }, 30);
+      mouth[emotion] = applied.aa;
+    }
+    run({ emotion: "neutral", emotionWeight: 1, viseme: null, mouthOpen: 0, state: "idle" }, 60);
+    expressions.setValue("blink", 1);
+    expressions.update();
+    return { holders, mouth, blink: applied.blink };
+  };
+  const unsoftened = await drive(false);
+  assert.ok(unsoftened.mouth.happy < 0.05 && unsoftened.mouth.sad < 0.05, "three-vrm alone freezes the mouth");
+  const softened = await drive(true);
+  assert.deepEqual([...softened.holders].sort(), ["happy", "sad"], "both faces that hold the mouth are found");
+  assert.ok(softened.mouth.happy > 0.5, `the mouth moves while happy (aa ${softened.mouth.happy.toFixed(2)})`);
+  assert.ok(
+    softened.mouth.sad > 0.5,
+    `the mouth moves while sad, a "block" face (aa ${softened.mouth.sad.toFixed(2)})`,
+  );
+  assert.equal(softened.blink, 1, "once happy has faded, its blink block no longer holds the eyes open");
+  globalThis.fetch = realFetch;
+  console.warn = realWarn;
+}
 
 console.log("avatar VRM regression passed");

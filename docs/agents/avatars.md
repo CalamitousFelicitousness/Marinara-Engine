@@ -24,19 +24,19 @@ How to reuse your expression sprites as a PNGTuber avatar, add blink and talk va
 
 1. Open **3D Avatars** in the Agent editor and pick the character or persona.
 2. Under **VRM model**, select **Import VRM** and choose a `.vrm` file.
-3. Read **The author's terms**. They come from the model file and say who may use the model as an avatar, whether commercial use is allowed, and whether you may change the model. Marinara Engine shows them but does not enforce them, so please follow them yourself.
+3. Read **The author's terms**. They come from the model file and say who may use the model as an avatar, whether commercial use is allowed, whether you may change the model, and for VRM 1.0 models whether you must credit the author and may share the file. When the file links to a license or to the author's own terms, open them too. Marinara Engine shows the terms but does not enforce them, so please follow them yourself.
 4. Under **Faces and mouth shapes**, check which of the model's expressions shows each face (Neutral, Happy, Angry, Sad, Relaxed and Surprised), each mouth shape (A, I, U, E and O) and blinking. Most are filled in for you: **Set by the model** means the model has the standard VRM expression, and **Guessed from its name** means one of its own expressions has a matching name. Pick another expression, or **None**, whenever a guess looks wrong.
 5. Optionally, under **Idle animation**, add a `.vrma` file for the model to play while it waits. Without one, the model breathes and sways gently.
 
 **Replace model** keeps the idle animation, because VRM animations fit any VRM model. **Remove model** deletes the model and its idle animation.
 
-While a chat runs, the model looks at you, blinks on its own when it has a blink expression, and tilts its head while it thinks or listens. A tall avatar spot shows the whole body; a square or wide one shows the head and shoulders. With reduced motion on, the face and mouth still change, but the model stops swaying, breathing and playing its idle animation.
+While a chat runs, the model looks at you, blinks on its own when it has a blink expression, and tilts its head while it thinks or listens. Its head stays near the top of its spot: a wide spot shows the head and shoulders, and a narrower one shows more of the body. Some VRM 1.0 models keep the mouth still while they show a face; while such a model talks, that face shows at partial strength so the mouth can still move. With reduced motion on, the face and mouth still change, but the model stops swaying, breathing and playing its idle animation.
 
 Some files can't be used, and the import says why:
 
 - **Compressed models.** Files saved with Draco or meshopt compression, or with KTX2 textures, don't load. Export the model again with compression turned off.
 - **Plain 3D models.** A `.glb` or `.gltf` model without VRM data has no face expressions or humanoid skeleton. Convert it to VRM first, for example with the VRM add-on for Blender.
-- **Incomplete models.** A model whose skeleton is missing bones VRM needs, or that points to files outside itself, is refused.
+- **Incomplete models.** A model whose skeleton is missing bones VRM needs or points to parts that aren't in the file, or that points to files outside itself, is refused.
 
 There is no size limit beyond the app's usual upload limit, but large models take longer to load, especially on phones.
 

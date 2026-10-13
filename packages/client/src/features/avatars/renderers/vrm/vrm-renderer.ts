@@ -43,6 +43,7 @@ import {
   createExpressionWeights,
   createIdleMotionState,
   frameCamera,
+  softenMouthOverrides,
   stepBlink,
   stepExpressionWeights,
   vrm0Mirror,
@@ -121,9 +122,16 @@ async function loadStoredGltf(
 function vrmPlugin(parser: GLTFParser): VRMLoaderPlugin {
   const licenseUrl = (parser.json as { extensions?: { VRMC_vrm?: { meta?: { licenseUrl?: unknown } } } }).extensions
     ?.VRMC_vrm?.meta?.licenseUrl;
-  // A slightly off licence URL is a spec slip, not a reason to show nothing; setup shows the author's terms.
-  const acceptLicenseUrls = typeof licenseUrl === "string" ? [VRM1_LICENSE_URL, licenseUrl] : [VRM1_LICENSE_URL];
+  // An off or missing licence URL is a spec slip, not a reason to show nothing; setup shows the author's terms.
+  // three-vrm compares the file's value as it is (a Set lookup), so it is accepted whatever its type.
+  const acceptLicenseUrls = [VRM1_LICENSE_URL, licenseUrl as string];
   return new VRMLoaderPlugin(parser, { metaPlugin: new VRMMetaLoaderPlugin(parser, { acceptLicenseUrls }) });
+}
+
+/** Loads a stored VRM model exactly as the stage does; the regression checks that what the importer accepts
+ *  loads here too. */
+export function loadStoredVrm(owner: AvatarOwnerRef, path: AvatarFilePath, signal: AbortSignal): Promise<GLTF> {
+  return loadStoredGltf(owner, path, signal, vrmPlugin);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -165,6 +173,7 @@ class VrmAvatarRenderer implements AvatarRenderer {
   private time = 0;
   private mirror: 1 | -1 = 1;
   private bindings: AvatarExpressionMap = {};
+  private mouthHolders: ReadonlySet<string> = new Set();
   private readonly weights = createExpressionWeights();
   private readonly blink = createBlinkTimer();
   private readonly idle = createIdleMotionState();
@@ -197,7 +206,7 @@ class VrmAvatarRenderer implements AvatarRenderer {
     light.position.set(1, 1, 1).normalize();
     this.scene.add(light, new AmbientLight(0xffffff, 0.4), this.lookTarget);
 
-    const gltf = await loadStoredGltf(options.owner, data.file, signal, vrmPlugin);
+    const gltf = await loadStoredVrm(options.owner, data.file, signal);
     const vrm = gltf.userData.vrm as VRM | undefined;
     if (this.disposed || signal.aborted || !vrm) {
       VRMUtils.deepDispose(gltf.scene);
@@ -221,6 +230,7 @@ class VrmAvatarRenderer implements AvatarRenderer {
       const binding = data.expressionMap[slot];
       if (binding?.target && vrm.expressionManager?.getExpression(binding.target)) this.bindings[slot] = binding;
     }
+    this.mouthHolders = softenMouthOverrides(this.bindings, (name) => vrm.expressionManager?.getExpression(name));
 
     // Measure the body at rest with the arms down, then frame it.
     this.applyPose(computeBodyPose(this.idle, 0, REST_FRAME, false, 0));
@@ -233,6 +243,14 @@ class VrmAvatarRenderer implements AvatarRenderer {
       await this.loadIdleAnimation(options.owner, data.idleAnimation, signal);
     }
     if (this.disposed || signal.aborted) throw abortError();
+    // three-vrm records where hair and clothes rest while loading, before the model is turned (VRM 0.x) and
+    // its arms are lowered; start them from the first frame's pose so they do not whip when the avatar appears.
+    if (this.mixer) {
+      this.mixer.update(0);
+      vrm.update(0);
+      vrm.scene.updateMatrixWorld(true);
+    }
+    vrm.springBoneManager?.reset();
     // Compile shaders before the first frame so the avatar does not stall the chat when it appears.
     await this.gl?.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
     if (this.disposed || signal.aborted) throw abortError();
@@ -248,7 +266,7 @@ class VrmAvatarRenderer implements AvatarRenderer {
     if (this.mixer && animate) this.mixer.update(dt);
     else this.applyPose(computeBodyPose(this.idle, this.time, frame, animate, dt));
 
-    stepExpressionWeights(this.weights, this.bindings, frame, this.features, dt);
+    stepExpressionWeights(this.weights, this.bindings, frame, this.features, dt, this.mouthHolders);
     const expressions = vrm.expressionManager;
     if (expressions) {
       for (const [name, weight] of this.weights) expressions.setValue(name, weight);

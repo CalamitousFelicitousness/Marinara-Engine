@@ -29,6 +29,10 @@ const GLB_HEADER_BYTES = 12;
 const GLB_CHUNK_HEADER_BYTES = 8;
 const GLB_CHUNK_JSON = 0x4e4f534a; // "JSON"
 const GLB_CHUNK_BIN = 0x004e4942; // "BIN\0"
+/** Largest JSON chunk parsed. Real VRM models describe themselves in about 0.1 to 2 MiB (meshes and
+ *  textures sit in the binary chunk, which is never limited), while parsing takes up to about 40 times the
+ *  chunk's size in memory, all at once on the server's only thread. This bounds that, not the file. */
+export const VRM_MAX_JSON_CHUNK_BYTES = 16 * 1024 * 1024;
 
 export const VRM_MODEL_FILE = "vrm/model.vrm";
 export const VRM_IDLE_ANIMATION_FILE = "vrm/idle.vrma";
@@ -128,6 +132,7 @@ const MAX_URL_LENGTH = 2048;
 
 const DAMAGED = "This VRM file is incomplete or damaged.";
 const NOT_A_VRM = "This isn't a VRM file. Choose a .vrm model, for example one exported from VRoid Studio.";
+const BROKEN_SKELETON = "This model's skeleton points to parts that aren't in the file, so it can't be used.";
 
 export type ValidatedVrmFile =
   | {
@@ -172,6 +177,12 @@ function readGlbJson(bytes: Uint8Array): JsonRecord {
     if (length > bytes.byteLength - offset) throw new AvatarImportError("invalid-file", DAMAGED);
     if (index === 0) {
       if (type !== GLB_CHUNK_JSON || length === 0) throw new AvatarImportError("invalid-file", DAMAGED);
+      if (length > VRM_MAX_JSON_CHUNK_BYTES) {
+        throw new AvatarImportError(
+          "invalid-file",
+          "This file's model description is far larger than any VRM model needs, so it can't be read safely.",
+        );
+      }
       try {
         json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(offset, offset + length)));
       } catch {
@@ -198,7 +209,9 @@ function refuseCompression(json: JsonRecord): void {
     ...(used.includes("KHR_draco_mesh_compression") || required.includes("KHR_draco_mesh_compression")
       ? ["Draco"]
       : []),
-    ...(required.includes("EXT_meshopt_compression") ? ["meshopt"] : []),
+    ...(required.includes("EXT_meshopt_compression") || required.includes("KHR_meshopt_compression")
+      ? ["meshopt"]
+      : []),
     ...(required.includes("KHR_texture_basisu") ? ["KTX2 textures"] : []),
   ];
   if (refused.length > 0) {
@@ -225,6 +238,15 @@ function refuseExternalFiles(json: JsonRecord): void {
   }
 }
 
+/** three's GLTFLoader shows the file's default scene; three-vrm and the VRM animation loader fail without one. */
+function requireScene(json: JsonRecord): void {
+  const index = json.scene ?? 0;
+  const scenes = Array.isArray(json.scenes) ? json.scenes : [];
+  if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || !isRecord(scenes[index])) {
+    throw new AvatarImportError("invalid-file", DAMAGED);
+  }
+}
+
 function boneNodeIsValid(node: unknown, nodeCount: number): boolean {
   return typeof node === "number" && Number.isInteger(node) && node >= 0 && node < nodeCount;
 }
@@ -245,24 +267,29 @@ function requireHumanoid(bones: ReadonlySet<string>): void {
   }
 }
 
-function vrm1HumanBones(humanoid: unknown, nodeCount: number): Set<string> {
+/** The listed bone names. three-vrm loads the node of every listed bone, optional ones included, and fails
+ *  on an entry that is not an object or whose node is not in the file, so such a file is refused. */
+function vrm1HumanBones(humanoid: unknown, nodeCount: number, broken: string): Set<string> {
   const bones = isRecord(humanoid) && isRecord(humanoid.humanBones) ? humanoid.humanBones : null;
   if (!bones) return new Set();
-  return new Set(
-    Object.entries(bones)
-      .filter(([, bone]) => isRecord(bone) && boneNodeIsValid(bone.node, nodeCount))
-      .map(([name]) => name),
-  );
+  for (const bone of Object.values(bones)) {
+    if (!isRecord(bone) || !boneNodeIsValid(bone.node, nodeCount)) throw new AvatarImportError("invalid-file", broken);
+  }
+  return new Set(Object.keys(bones));
 }
 
+/** VRM 0.x: three-vrm skips an entry without a bone name or node, and fails on an entry that is not an
+ *  object or whose node is not in the file. */
 function vrm0HumanBones(humanoid: unknown, nodeCount: number): Set<string> {
   const bones = isRecord(humanoid) && Array.isArray(humanoid.humanBones) ? humanoid.humanBones : [];
-  return new Set(
-    bones
-      .filter((bone): bone is JsonRecord => isRecord(bone) && typeof bone.bone === "string")
-      .filter((bone) => boneNodeIsValid(bone.node, nodeCount))
-      .map((bone) => bone.bone as string),
-  );
+  const names = new Set<string>();
+  for (const bone of bones) {
+    if (!isRecord(bone)) throw new AvatarImportError("invalid-file", BROKEN_SKELETON);
+    if (bone.bone == null || bone.node == null) continue;
+    if (!boneNodeIsValid(bone.node, nodeCount)) throw new AvatarImportError("invalid-file", BROKEN_SKELETON);
+    if (typeof bone.bone === "string") names.add(bone.bone);
+  }
+  return names;
 }
 
 /** Control characters out, trimmed, cut to `max` UTF-16 units without splitting a surrogate pair. */
@@ -303,6 +330,9 @@ function vrm1Meta(meta: JsonRecord): VrmModelMeta {
     modification: metaTerm(meta.modification),
     licenseName: null,
     licenseUrl: metaUrl(meta.licenseUrl),
+    termsUrl: metaUrl(meta.otherLicenseUrl),
+    creditNotation: metaTerm(meta.creditNotation),
+    allowRedistribution: typeof meta.allowRedistribution === "boolean" ? meta.allowRedistribution : null,
   };
 }
 
@@ -317,6 +347,9 @@ function vrm0Meta(meta: JsonRecord): VrmModelMeta {
     modification: null,
     licenseName: metaTerm(meta.licenseName),
     licenseUrl: metaUrl(meta.otherLicenseUrl),
+    termsUrl: metaUrl(meta.otherPermissionUrl),
+    creditNotation: null,
+    allowRedistribution: null,
   };
 }
 
@@ -428,7 +461,7 @@ function inspectModel(json: JsonRecord): ValidatedVrmFile | null {
   if (isRecord(vrm1) && typeof vrm1.specVersion === "string" && VRM1_SPEC_VERSIONS.has(vrm1.specVersion)) {
     if (!isRecord(vrm1.meta))
       throw new AvatarImportError("invalid-file", "This VRM file is missing its model details.");
-    requireHumanoid(vrm1HumanBones(vrm1.humanoid, nodeCount));
+    requireHumanoid(vrm1HumanBones(vrm1.humanoid, nodeCount, BROKEN_SKELETON));
     specVersion = "1.0";
     meta = vrm1Meta(vrm1.meta);
     expressions = vrm1ExpressionNames(vrm1.expressions);
@@ -467,12 +500,13 @@ function inspectAnimation(json: JsonRecord): ValidatedVrmFile | null {
   const extension = isRecord(json.extensions) ? json.extensions.VRMC_vrm_animation : undefined;
   if (!stringList(json.extensionsUsed).includes("VRMC_vrm_animation") || !isRecord(extension)) return null;
   const nodeCount = Array.isArray(json.nodes) ? json.nodes.length : 0;
-  const hips = vrm1HumanBones(extension.humanoid, nodeCount).has("hips");
+  const broken = "This animation file is damaged or isn't a VRM animation.";
+  const hips = vrm1HumanBones(extension.humanoid, nodeCount, broken).has("hips");
   const specVersion = extension.specVersion;
   const knownVersion =
     specVersion === undefined || (typeof specVersion === "string" && VRMA_SPEC_VERSIONS.has(specVersion));
   if (!hips || !knownVersion || !Array.isArray(json.animations) || json.animations.length === 0) {
-    throw new AvatarImportError("invalid-file", "This animation file is damaged or isn't a VRM animation.");
+    throw new AvatarImportError("invalid-file", broken);
   }
   return { type: "animation" };
 }
@@ -537,6 +571,7 @@ export const vrmImporter: AvatarFormatImporter<"vrm", ValidatedVrmFile> = {
         "This is a plain 3D model, not a VRM. Convert it to VRM first, for example with the VRM add-on for Blender.",
       );
     }
+    requireScene(json);
     return validated;
   },
   async extract(validated, input) {

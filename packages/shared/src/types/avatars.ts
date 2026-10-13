@@ -374,6 +374,12 @@ export interface VrmModelMeta {
   licenseName: string | null;
   /** An http(s) link: VRM 1.0 `licenseUrl` or VRM 0.x `otherLicenseUrl`. */
   licenseUrl: string | null;
+  /** The author's own terms, an http(s) link: VRM 1.0 `otherLicenseUrl` or VRM 0.x `otherPermissionUrl`. */
+  termsUrl?: string | null;
+  /** VRM 1.0 `creditNotation`: whether the author must be credited. */
+  creditNotation?: string | null;
+  /** VRM 1.0 `allowRedistribution`: whether the model file may be shared. */
+  allowRedistribution?: boolean | null;
 }
 
 export interface VrmAvatarData {

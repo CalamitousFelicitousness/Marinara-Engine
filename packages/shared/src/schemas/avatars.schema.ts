@@ -105,6 +105,11 @@ const meshAvatarDataSchema = z
 const MAX_VRM_EXPRESSION_NAMES = 256;
 const vrmMetaTextSchema = z.string().min(1).max(256).nullable();
 const vrmMetaTermSchema = z.string().min(1).max(64).nullable();
+const vrmMetaUrlSchema = z
+  .string()
+  .max(2048)
+  .regex(/^https?:\/\/[^\s]+$/iu, "A link in the model's terms is an http(s) address.")
+  .nullable();
 
 const vrmModelMetaSchema = z
   .object({
@@ -115,11 +120,10 @@ const vrmModelMetaSchema = z
     commercialUsage: vrmMetaTermSchema,
     modification: vrmMetaTermSchema,
     licenseName: vrmMetaTermSchema,
-    licenseUrl: z
-      .string()
-      .max(2048)
-      .regex(/^https?:\/\/[^\s]+$/iu, "A license link is an http(s) address.")
-      .nullable(),
+    licenseUrl: vrmMetaUrlSchema,
+    termsUrl: vrmMetaUrlSchema.optional(),
+    creditNotation: vrmMetaTermSchema.optional(),
+    allowRedistribution: z.boolean().nullable().optional(),
   })
   .strict();
 

@@ -38,7 +38,16 @@ const TERM_KEYS: ReadonlyMap<string, string> = new Map([
   ["allowModification", "avatars.vrm.terms.modifyNoSharing"],
   ["allowModificationRedistribution", "avatars.vrm.terms.modifyAndShare"],
   ["Redistribution_Prohibited", "avatars.vrm.terms.noRedistribution"],
+  ["required", "avatars.vrm.terms.creditRequired"],
+  ["unnecessary", "avatars.vrm.terms.creditUnnecessary"],
 ]);
+
+const LINK_CLASS =
+  "inline-flex min-h-11 items-center gap-1 text-[0.6875rem] font-medium text-[var(--primary)] underline-offset-2 hover:underline";
+
+function isWebLink(url: string | null | undefined): url is string {
+  return !!url && /^https?:\/\//iu.test(url);
+}
 
 const SOURCE_KEYS: Readonly<Record<AvatarExpressionBindingSource, string>> = {
   preset: "avatars.vrm.source.preset",
@@ -114,7 +123,19 @@ function ModelTerms({ meta }: { meta: VrmModelMeta }) {
     [t("avatars.vrm.terms.commercialUsage"), term(meta.commercialUsage)],
   ];
   if (meta.modification || !meta.licenseName) rows.push([t("avatars.vrm.terms.modification"), term(meta.modification)]);
+  if (typeof meta.allowRedistribution === "boolean") {
+    rows.push([
+      t("avatars.vrm.terms.redistribution"),
+      t(meta.allowRedistribution ? "avatars.vrm.terms.allowed" : "avatars.vrm.terms.notAllowed"),
+    ]);
+  }
+  if (meta.creditNotation) rows.push([t("avatars.vrm.terms.credit"), term(meta.creditNotation)]);
   if (meta.licenseName) rows.push([t("avatars.vrm.terms.license"), term(meta.licenseName)]);
+  const links: Array<[url: string, label: string]> = [];
+  if (isWebLink(meta.licenseUrl)) links.push([meta.licenseUrl, t("avatars.vrm.terms.openLicense")]);
+  if (isWebLink(meta.termsUrl) && meta.termsUrl !== meta.licenseUrl) {
+    links.push([meta.termsUrl, t("avatars.vrm.terms.openAuthorTerms")]);
+  }
   return (
     <div className="space-y-2 rounded-lg bg-[var(--background)]/70 p-3 ring-1 ring-[var(--border)]">
       <div>
@@ -131,16 +152,15 @@ function ModelTerms({ meta }: { meta: VrmModelMeta }) {
           </div>
         ))}
       </dl>
-      {meta.licenseUrl && /^https?:\/\//iu.test(meta.licenseUrl) ? (
-        <a
-          href={meta.licenseUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-11 items-center gap-1 text-[0.6875rem] font-medium text-[var(--primary)] underline-offset-2 hover:underline"
-        >
-          {t("avatars.vrm.terms.openLicense")}
-          <ExternalLink size="0.6875rem" aria-hidden="true" />
-        </a>
+      {links.length > 0 ? (
+        <div className="flex flex-wrap gap-x-4">
+          {links.map(([url, label]) => (
+            <a key={url} href={url} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+              {label}
+              <ExternalLink size="0.6875rem" aria-hidden="true" />
+            </a>
+          ))}
+        </div>
       ) : null}
     </div>
   );
@@ -352,7 +372,11 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
             label={t(data.idleAnimation ? "avatars.vrm.idle.replace" : "avatars.vrm.idle.add")}
             busy={importFile.isPending}
             disabled={busy}
-            onFile={(file) => importFile.mutate(file)}
+            // The server tells a model from an animation by content, so a .vrm picked here would replace the
+            // model; some phone pickers ignore `accept` and show every file.
+            onFile={(file) =>
+              /\.vrma$/iu.test(file.name) ? importFile.mutate(file) : toast.error(t("avatars.vrm.idle.notAnimation"))
+            }
           />
           {data.idleAnimation ? (
             <button

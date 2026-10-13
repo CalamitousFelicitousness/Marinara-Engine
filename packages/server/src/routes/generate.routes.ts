@@ -8767,12 +8767,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
               // A tool call the model wrote as text was streamed before the provider recognised
               // it, and the provider leaves that text out of the result (only the prose around it
-              // stays), as without streaming. Take the streamed text back out of the reply and the
-              // client's view (#6951); the prose, if any, is written again just below.
+              // stays), as without streaming. Whenever this round's streamed text differs from what the
+              // provider returned (call first or last), take it back out of the reply and the client's
+              // view (#6951); the prose, if any, is written again just below.
               if (
                 result.toolCalls.length &&
                 fullResponse.length > roundResponseStart &&
-                !(result.content && fullResponse.endsWith(result.content))
+                fullResponse.slice(roundResponseStart) !== (result.content ?? "")
               ) {
                 fullResponse = fullResponse.slice(0, roundResponseStart);
                 if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: fullResponse });

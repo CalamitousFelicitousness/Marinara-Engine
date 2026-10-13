@@ -985,7 +985,7 @@ export type MariWorkspacePromptEvent =
   | { type: "token"; data: string }
   | { type: "thinking"; data: string }
   // Her words as the model writes them, before the round is parsed and audited. Provisional: never
-  // saved, never the answer; `null` ends the round's draft. The audited text still arrives as `token`.
+  // saved, never the answer; `data` is the full visible text so far (replace, not append); `null` ends the round's draft. The audited text still arrives as `token`.
   | { type: "draft"; data: string | null }
   | {
       type: "status";

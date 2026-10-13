@@ -43,6 +43,7 @@ import {
   MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR,
   sanitizePlanSteps,
   sanitizeSuggestionChips,
+  createDraftStream,
   scrubInternalNames,
   answerEndsWithQuestion,
   visibleTextAsksApplyPermission,
@@ -187,16 +188,6 @@ ${docs}
 </text_tool_calls>`;
 }
 
-// The live draft stops at the first textual tool-call marker (<tool_call>, <|tool_call|>, DeepSeek's <｜DSML｜);
-// a trailing "<" still too short to tell is held back until more text arrives.
-const DRAFT_CALL_MARKER_RE = /<(?:tool_call|[|｜])/;
-export function draftVisibleText(text: string): string {
-  const marker = text.search(DRAFT_CALL_MARKER_RE);
-  if (marker >= 0) return text.slice(0, marker);
-  const open = text.lastIndexOf("<");
-  return open >= 0 && text.length - open < "<tool_call".length ? text.slice(0, open) : text;
-}
-
 function parseArguments(raw: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(raw || "{}");
@@ -256,22 +247,14 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
 
   /**
    * One provider call whose words stream to the client as a provisional draft (never saved, never the answer;
-   * the audited text still lands as tokens). Internal names are not scrubbed here; the final text is.
+   * the audited text still lands as tokens). Each event carries the full scrubbed visible text so far.
    */
   const completeWithDraft = async (messages: ChatMessage[], tools: LLMToolDefinition[], draft: boolean) => {
-    let raw = "";
-    let shown = 0;
-    const onText = (delta: string) => {
-      raw += delta;
-      const visible = draftVisibleText(raw);
-      if (visible.length <= shown) return;
-      onEvent({ type: "draft", data: visible.slice(shown) });
-      shown = visible.length;
-    };
+    const stream = createDraftStream((data) => onEvent({ type: "draft", data }));
     try {
-      return await input.complete(messages, tools, draft ? onText : undefined);
+      return await input.complete(messages, tools, draft ? stream.push : undefined);
     } finally {
-      if (shown > 0) onEvent({ type: "draft", data: null });
+      stream.end();
     }
   };
   const maxToolRounds = input.maxToolRounds ?? MAX_PI_TOOL_ROUNDS;

@@ -44,9 +44,9 @@ try {
     WORKSPACE_TOOL_DEFINITIONS,
     MAX_REPEATED_COMMAND_FAILURES,
     workspaceTextClaimsHeldChange,
+    draftVisibleText,
   } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
-  const { assertClosedToolSet, draftVisibleText } =
-    await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
+  const { assertClosedToolSet } = await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
   const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
   const { createAppSettingsStorage } =
     await import("../../../packages/server/src/services/storage/app-settings.storage.js");
@@ -675,6 +675,55 @@ try {
       1,
     );
 
+    // Two unclosed GLM calls must not merge into one; a literal [TOOL_CALLS] in prose is not a call.
+    const twoGlm =
+      "<tool_call>read\n<arg_key>path</arg_key><arg_value>A</arg_value>\n<tool_call>read\n<arg_key>path</arg_key><arg_value>B</arg_value>";
+    assert.equal(parseTextualToolCalls(twoGlm, readTool).length, 0);
+    assert.equal(parseTextualToolCalls(`${twoGlm}</tool_call>`, readTool).length, 1);
+    assert.equal(parseTextualToolCalls('Say [TOOL_CALLS] then x [{"name":"read","arguments":{}}]', readTool).length, 0);
+    assert.equal(
+      stripTextualToolCalls('Say [TOOL_CALLS]nope[ARGS]{"a":1} now\n[TOOL_CALLS]read[ARGS]{"path":"a"} tail', readTool),
+      'Say [TOOL_CALLS]nope[ARGS]{"a":1} now\n tail',
+    );
+
+    // Parsing and stripping stay linear on adversarial input (ReDoS).
+    const pairs = "<arg_key>k</arg_key><arg_value>v</arg_value>".repeat(30);
+    const adversarial: Array<[string, string]> = [
+      ["glm bad tail", `<tool_call>read ${pairs} tail`],
+      ["fence spaces", `\`\`\`${" ".repeat(20000)}`],
+      ["deepseek spaces", `<｜tool▁sep｜>read\`\`\`json${" ".repeat(20000)}`],
+      ["deepseek sep spaces", `<｜tool▁sep｜>${" ".repeat(20000)}`],
+      ["prose", "The quick brown fox jumps over the lazy dog. ".repeat(4500)],
+      ...[
+        "<｜tool▁sep｜>read```",
+        "<|tool_call_begin|>read<|tool_call_argument_begin|>",
+        "<tool_call>read ",
+        "<function=read>",
+        "<parameter=a>",
+        '<minimax:tool_call><invoke name="read"><parameter name="a">',
+        "[TOOL_CALLS]",
+        "<tool_code>",
+        "<|python_tag|>",
+        '<｜DSML｜tool_calls><｜DSML｜invoke name="read"><｜DSML｜parameter name="a">',
+        "<arg_key>",
+        "```",
+      ].map((open): [string, string] => [`open ${open.slice(0, 20)}`, open.repeat(2000)]),
+    ];
+    let slowest = 0;
+    for (const [label, input] of adversarial) {
+      for (const [op, run] of [
+        ["parse", () => parseTextualToolCalls(input, readTool)],
+        ["strip", () => stripTextualToolCalls(input, readTool)],
+      ] as const) {
+        const startedAt = performance.now();
+        run();
+        const ms = performance.now() - startedAt;
+        assert.ok(ms < 250, `${label} ${op} took ${Math.round(ms)} ms`);
+        slowest = Math.max(slowest, ms);
+      }
+    }
+    console.log(`Adversarial parser inputs: slowest call ${Math.round(slowest)} ms.`);
+
     // Understood request (#5740) on pi: the round's words, the mutating command, then the observed outcome.
     const write = await start("textual write", [
       reply(`Creating it.\n${call("write", { path: "textual.txt", content: "x", reason: "t" })}`),
@@ -987,7 +1036,7 @@ try {
     await done;
     provider = "custom";
     const drafts = events.filter((event) => event.type === "draft").map((event) => event.data);
-    assert.deepEqual(drafts, ["Reading ", "it now. ", null, "Provisional ", "words.", null]);
+    assert.deepEqual(drafts, ["Reading ", "Reading it now. ", null, "Provisional ", null]);
     const tokens = events
       .filter((event) => event.type === "token")
       .map((event) => event.data)
@@ -997,7 +1046,25 @@ try {
     assert.equal(saved?.content, "The file says hi.");
     assert.doesNotMatch(JSON.stringify(saved), /Provisional|tool_call/u, "no draft text is persisted");
     assert.equal(draftVisibleText("Hi <｜DSML｜tool_calls>"), "Hi ");
-    assert.equal(draftVisibleText("a < b and then some more"), "a < b and then some more");
+    assert.equal(draftVisibleText("a < b and then some more "), "a < b and then some more ");
+    // Every supported opener hides the rest, a half-written opener never flashes, fences stay visible.
+    for (const opener of [
+      "[TOOL_CALLS]",
+      "<minimax:tool_call>",
+      "<function=x>",
+      "<tool_code>",
+      "<invoke ",
+      "<|python_tag|>",
+      "<｜tool▁sep｜>",
+      "<|tool_call_begin|>",
+    ])
+      assert.equal(draftVisibleText(`Hi ${opener}rest`), "Hi ", opener);
+    for (const half of ["<", "[", "<tool", "[TOOL_", "<minimax:"])
+      assert.equal(draftVisibleText(`Hi ${half}`), "Hi ", half);
+    assert.equal(draftVisibleText("Code:\n```ts\nx\n```\nok "), "Code:\n```ts\nx\n```\nok ");
+    // Internal names are scrubbed and a name split across deltas never leaks.
+    assert.equal(draftVisibleText("Use character.update with apply:true now "), "Use character update with apply now ");
+    assert.doesNotMatch(draftVisibleText("Use app_da"), /app_/u);
 
     // Classic drafts its frame's `say` through the same event and ends each round with a null.
     const classic = await start(
@@ -1014,7 +1081,7 @@ try {
     await classic.done;
     assert.deepEqual(
       classic.events.filter((event) => event.type === "draft").map((event) => event.data),
-      ["Classic ", "draft.", null],
+      ["Classic ", null],
     );
     assert.equal((await lastAssistant(classic.chat.id))?.content, "Classic answer.");
   }

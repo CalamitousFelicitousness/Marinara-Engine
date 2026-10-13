@@ -14,7 +14,7 @@ import type {
   LLMUsage,
 } from "../llm/base-provider.js";
 import { resolveStoredChatOptions } from "../generation/generation-parameters.js";
-import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
+import { parseTextualToolCalls, textualCallMarkerIndex } from "../llm/textual-tool-call-parser.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
 import { GeminiNoContentError } from "../llm/providers/google.provider.js";
 import { setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
@@ -1578,6 +1578,34 @@ export function scrubInternalNames(text: string): string {
       ];
       return `${open ?? ""}${words.join(" / ")}${close ?? ""}`;
     });
+}
+
+/**
+ * The visible part of a live draft: cut at the first textual call opener (or a half-written one), internal names
+ * scrubbed. Without an opener the trailing word run is held back, so a name split across deltas never shows raw.
+ */
+export function draftVisibleText(raw: string): string {
+  const marker = textualCallMarkerIndex(raw);
+  let end = marker >= 0 ? marker : raw.length;
+  while (marker < 0 && end > 0 && /[\w.`:]/.test(raw[end - 1]!)) end -= 1;
+  return scrubInternalNames(raw.slice(0, end));
+}
+
+/** Draft events carry the full visible text so far (a replace, not a delta); `end` closes the round's draft. */
+export function createDraftStream(emit: (data: string | null) => void) {
+  let raw = "";
+  let shown = "";
+  return {
+    push(delta: string) {
+      raw += delta;
+      const visible = draftVisibleText(raw);
+      if (visible && visible !== shown) emit((shown = visible));
+    },
+    end() {
+      if (shown) emit(null);
+      raw = shown = "";
+    },
+  };
 }
 
 /** Slice 70: the end of her answer (last three lines) asks the user something ("…or pick specific ones?",
@@ -3662,15 +3690,9 @@ export class ProfessorMariWorkspaceService {
       }
 
       // Provisional live words for a round (classic below; pi filters its own and calls `onEvent` itself).
-      let drafting = false;
-      const emitDraft = (delta: string) => {
-        drafting = true;
-        args.onEvent({ type: "draft", data: delta });
-      };
-      const endDraft = () => {
-        if (drafting) args.onEvent({ type: "draft", data: null });
-        drafting = false;
-      };
+      const draftStream = createDraftStream((data) => args.onEvent({ type: "draft", data }));
+      const emitDraft = draftStream.push;
+      const endDraft = draftStream.end;
 
       if (usePi && !acceptedCalls) {
         const piState = {

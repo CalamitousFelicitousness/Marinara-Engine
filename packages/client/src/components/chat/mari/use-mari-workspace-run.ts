@@ -194,7 +194,7 @@ export function useMariWorkspaceRun({
         )) {
           if (event.type === "draft") {
             if (typeof event.data !== "string") clearDraft();
-            else draftThrottle.call((draft += event.data));
+            else draftThrottle.call((draft = event.data));
             continue;
           }
           // Her real words or a step replace the draft.

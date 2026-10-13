@@ -3542,6 +3542,8 @@ export class ProfessorMariWorkspaceService {
       }
 
       if (usePi) {
+        // The pi runtime writes no #5740 record, so an older run's record must not reach this run's prompt.
+        this.latestUnderstoodRequest = null;
         const piState = {
           assistantText,
           endedWithDeferral: runEndedWithDeferral,

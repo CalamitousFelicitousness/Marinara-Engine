@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AssistantMessage,
+  ToolResultMessage,
   AssistantMessageEventStream,
   Message,
   SimpleStreamOptions,
@@ -79,17 +80,39 @@ export type PiRunInput = {
   /** One provider call through Marinara's provider layer. */
   complete: (messages: ChatMessage[], tools: LLMToolDefinition[]) => Promise<ChatCompletionResult>;
   setRoundFlags: (flags: { manualSilentMutationBlocked: boolean; askLatchSilentMutationBlocked: boolean }) => void;
+  /** Tool rounds allowed in one run; defaults to MAX_PI_TOOL_ROUNDS. Injected only by the regression. */
+  maxToolRounds?: number;
+  /** Called once the session exists, with the tools it really has active. The regression inspects the boundary here. */
+  onSession?: (session: AgentSession, tools: ToolDefinition[]) => void;
 };
 
 type Round = {
   text: string;
   /** Tool calls in order, UI tools included. */
   calls: WorkspaceCommandCall[];
-  finished: number;
   results: WorkspaceCommandResult[];
   deferred: boolean | null;
   truncated: boolean;
+  /** Provider replay data (Anthropic thinking, Gemini parts, ...) to send back with this turn's assistant message. */
+  providerMetadata?: Record<string, unknown>;
 };
+
+/**
+ * Fail closed: pi keeps its built-in tools registered under an allowlist, so check that every ACTIVE tool is one of
+ * Marinara's own definitions (same object, same executor) before the model can call anything.
+ */
+export function assertClosedToolSet(
+  session: Pick<AgentSession, "getActiveToolNames" | "getToolDefinition">,
+  tools: readonly ToolDefinition[],
+) {
+  for (const name of session.getActiveToolNames()) {
+    const mine = tools.find((tool) => tool.name === name);
+    const registered = session.getToolDefinition(name);
+    if (!mine || !registered || registered.execute !== mine.execute) {
+      throw new Error(`The pi runtime stopped: tool "${name}" is not one of Professor Mari's own tools.`);
+    }
+  }
+}
 
 const UI_TOOL_SCHEMAS: Record<(typeof UI_TOOLS)[number], { description: string; parameters: Record<string, unknown> }> =
   {
@@ -147,7 +170,9 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   let toolRounds = 0;
   let round: Round | null = null;
   let session: AgentSession | null = null;
-  const currentRound = (): Round | null => round;
+  const maxToolRounds = input.maxToolRounds ?? MAX_PI_TOOL_ROUNDS;
+  // Replay metadata of each tool turn, by its first tool call id (the id is stable across the transcript).
+  const metadataByCallId = new Map<string, Record<string, unknown>>();
 
   const addNote = (content: string, kind: "retry" | "info" | "output_limit", level: "info" | "warning") => {
     state.assistantText = appendVisibleText(state.assistantText, content);
@@ -176,11 +201,13 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
               ]
             : [],
         );
+        const providerMetadata = toolCalls[0] ? metadataByCallId.get(toolCalls[0].id) : undefined;
         out.push({
           role: "assistant",
           content: textOf(message.content as never),
           contextKind: "history",
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+          ...(providerMetadata ? { providerMetadata } : {}),
         });
       } else if (message.role === "toolResult") {
         out.push({
@@ -274,8 +301,10 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
           stream.push({ type: "toolcall_end", contentIndex: index, toolCall, partial: message });
           workspaceCalls.push({ id, name: call.function.name as WorkspaceCommandCall["name"], arguments: args });
         }
+        if (result.providerMetadata && workspaceCalls[0])
+          metadataByCallId.set(workspaceCalls[0].id, result.providerMetadata);
         if (isAgentTurn) {
-          round = { text, calls: workspaceCalls, finished: 0, results: [], deferred: null, truncated };
+          round = { text, calls: workspaceCalls, results: [], deferred: null, truncated };
           if (workspaceCalls.length > 0) toolRounds += 1;
         }
         message.stopReason = truncated ? "length" : workspaceCalls.length > 0 ? "toolUse" : "stop";
@@ -291,9 +320,30 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     return stream;
   };
 
-  /** Review a finished round: claim audit, then its words, then the repeated-failure stop and the round cap. */
-  const finishRound = async (current: Round, hasWorkspaceCalls: boolean) => {
+  /**
+   * Review one finished model turn (pi's `turn_end`, so it runs whatever happened to the turn's calls): claim audit,
+   * then its words, then the repeated-failure stop and the round cap. A repair is returned for the caller to queue.
+   */
+  const finishRound = (current: Round, toolResults: readonly ToolResultMessage[]) => {
     const workspaceCalls = current.calls.filter((call) => !isUiTool(call.name));
+    const hasWorkspaceCalls = workspaceCalls.length > 0;
+    if (!current.deferred) {
+      // pi answers an unknown tool or invalid arguments itself, so the call never reached runTool: count it as the failed
+      // attempt it is, with pi's own error text, so the claim audit and the repeated-failure stop see it.
+      for (const call of workspaceCalls) {
+        if (current.results.some((result) => result.id === call.id)) continue;
+        const rejected = toolResults.find((toolResult) => toolResult.toolCallId === call.id);
+        const result: WorkspaceCommandResult = {
+          id: call.id,
+          name: call.name,
+          input: call.arguments,
+          output: rejected ? textOf(rejected.content) : "The call was rejected before it ran.",
+          success: false,
+        };
+        input.commandResults.push(result);
+        current.results.push(result);
+      }
+    }
     const action = {
       visibleText: current.text,
       commands: workspaceCalls,
@@ -342,12 +392,12 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       stopRequested = true;
       return "done" as const;
     }
-    if (!hasWorkspaceCalls) return "done" as const;
+    if (current.calls.length === 0) return "done" as const;
     const repeatedFailure = reviewRepeatedFailures(reviewState, current.results);
     if (repeatedFailure !== null) {
       addNote(repeatedFailure, "retry", "warning");
       stopRequested = true;
-    } else if (toolRounds >= MAX_PI_TOOL_ROUNDS) {
+    } else if (toolRounds >= maxToolRounds) {
       addNote(
         "Tool round limit reached for this run. Ask Professor Mari to continue and she can pick up from here.",
         "info",
@@ -366,7 +416,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       name: name as never,
       arguments: params,
     };
-    const hasWorkspaceCalls = current.calls.some((entry) => !isUiTool(entry.name));
+    const onlyUiTools = current.calls.every((entry) => isUiTool(entry.name));
     if (current.deferred === null) {
       const mutating = current.calls.filter((entry) => !isUiTool(entry.name) && isMutatingWorkspaceCommand(entry));
       current.deferred = shouldDeferRoundMutations({
@@ -408,15 +458,13 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       text = formatCommandResultForPrompt([result]);
       isError = !result.success;
     }
-    current.finished += 1;
-    if (current.finished === current.calls.length) {
-      const decision = await finishRound(current, hasWorkspaceCalls);
-      if (decision !== "done") {
-        // The repair reaches the model right after this round's tool results, before its next turn.
-        await session!.steer(decision.prompt);
-      }
-    }
-    return { content: [{ type: "text" as const, text }], details: {}, isError };
+    // A turn that only showed chips or a plan is a final answer: end it here instead of paying for another model round.
+    return {
+      content: [{ type: "text" as const, text }],
+      details: {},
+      isError,
+      ...(onlyUiTools ? { terminate: true } : {}),
+    };
   };
 
   const tools: ToolDefinition[] = [
@@ -529,19 +577,26 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   const onAbort = () => void session?.abort();
   signal.addEventListener("abort", onAbort, { once: true });
   try {
-    let next = last.content;
-    for (;;) {
+    assertClosedToolSet(session, tools);
+    input.onSession?.(session, tools);
+    // Agent listeners are awaited, so the review and a queued repair land before pi's next step.
+    session.agent.subscribe((event) => {
+      if (event.type !== "turn_end" || event.message.role !== "assistant") return;
+      const finished = round;
       round = null;
-      await session.prompt(next, { expandPromptTemplates: false });
-      if (providerError) throw providerError;
-      if (signal.aborted) throw new Error("aborted");
-      const finished = currentRound();
-      // A terminal turn (no tool call) is reviewed here; tool turns were reviewed inside their last tool.
-      if (stopRequested || !finished || finished.calls.length > 0) break;
-      const decision = await finishRound(finished, false);
-      if (decision === "done") break;
-      next = decision.prompt;
-    }
+      if (!finished || event.message.stopReason === "error" || event.message.stopReason === "aborted") return;
+      const decision = finishRound(finished, event.toolResults);
+      if (decision !== "done") {
+        session!.agent.steer({
+          role: "user",
+          content: [{ type: "text", text: decision.prompt }],
+          timestamp: Date.now(),
+        });
+      }
+    });
+    await session.prompt(last.content, { expandPromptTemplates: false });
+    if (providerError) throw providerError;
+    if (signal.aborted) throw new Error("aborted");
   } finally {
     signal.removeEventListener("abort", onAbort);
     session.dispose();

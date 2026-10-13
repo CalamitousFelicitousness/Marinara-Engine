@@ -73,6 +73,8 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
   const shown = stored ?? fromSprites;
   const motion = motionDraft ?? shown?.motion ?? PNGTUBER_DEFAULT_MOTION;
   const busy = save.isPending || importFile.isPending || remove.isPending;
+  /** Sprites can start a setup or refresh one built from sprites, never replace an imported or generated one. */
+  const spritesApply = fromSprites && (!stored || stored.source === "sprites") ? fromSprites : null;
 
   const store = (next: PngtuberAvatarData) =>
     save.mutate(
@@ -81,11 +83,15 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
     );
 
   const applySprites = () => {
-    if (!fromSprites) return;
+    if (!spritesApply) return;
     store(
       stored
-        ? { ...fromSprites, motion: stored.motion, expressionMap: keepUserBindings(stored.expressionMap, fromSprites) }
-        : fromSprites,
+        ? {
+            ...spritesApply,
+            motion: stored.motion,
+            expressionMap: keepUserBindings(stored.expressionMap, spritesApply),
+          }
+        : spritesApply,
     );
   };
 
@@ -271,7 +277,7 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
       )}
 
       <div className="flex flex-wrap gap-1.5">
-        {fromSprites && (
+        {spritesApply && (
           <button
             type="button"
             className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}

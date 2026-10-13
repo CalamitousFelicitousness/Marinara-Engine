@@ -34,14 +34,14 @@ export const gameRulesets = fileTable("game_rulesets", {
   sha256: text("sha256").notNull(),
   /** The imported `ruleset.json` text, verbatim. */
   definition: text("definition").notNull(),
-  /** A package zip's catalog files (RM), as the JSON of `{ <catalog id>: <sha256> }`, each kept once in
+  /** A package file's catalog files (RM), as the JSON of `{ <catalog id>: <sha256> }`, each kept once in
    *  `game_ruleset_catalogs`; null for a ruleset whose catalogs are inline (every JSON or repository
    *  import). Part of the version's identity: a changed catalog is a changed version. */
   catalogs: text("catalogs"),
   createdAt: text("created_at").notNull(),
 });
 
-/** The catalog files of rulesets imported from a package zip (RM), kept once by their content, however
+/** The catalog files of rulesets imported from a package file (RM), kept once by their content, however
  *  many versions name them. Read only through a ruleset row's `catalogs`, and checked against it; a file
  *  no version names any more is removed with the last one that did. */
 export const gameRulesetCatalogs = fileTable("game_ruleset_catalogs", {

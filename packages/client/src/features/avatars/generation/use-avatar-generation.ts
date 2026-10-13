@@ -161,7 +161,7 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
               update(item.id, { status: item.draft ? "done" : "waiting" });
               break;
             }
-            update(item.id, { status: "failed", error: errorMessage(error) });
+            update(item.id, { status: "failed", error: errorMessage(error), draft: undefined, kept: false });
           }
         }
       } finally {

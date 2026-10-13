@@ -48,12 +48,12 @@ Image models that edit pictures work best, because they get your sprite as a ref
 1. Pick one sprite. A front-facing bust (head and shoulders) works best; on a full-body sprite the face is small.
 2. Choose the **Chat connection that can see pictures**. **The agent's connection** uses the connection set on the 2D Avatars page, then your default agent connection. Its model must accept pictures.
 3. Leave **Draw closed eyes and an open mouth** on to let the image connection draw them. Off, the avatar blinks and talks with built-in eyelids and a built-in mouth. A drawing that doesn't line up with the sprite is left out, and the panel tells you.
-4. Select **Make mesh avatar**. The chat model finds the face, then Marinara Engine cuts the eyes into their own layers, fills the skin behind them and packs a `.mavatar`.
+4. Select **Make mesh avatar**. The chat model finds the face, and Marinara Engine builds the avatar from your sprite.
 5. Check the preview: the outlines should sit on the eyes, brows and mouth. Select **Save as mesh avatar**, or **Discard** and try another sprite or model.
 
 A generated mesh avatar moves its head, eyes, brows and mouth. Its hair moves with the head; hands, single hair strands and hanging accessories are not rigged.
 
-Your sprite is sent to the chat connection, and to the image connection when pictures are drawn. The prompts come from the 2D Avatars agent, where you can edit them like other agent prompts. With debug mode on (or `DEBUG_AGENTS=true` on the server), every prompt is written to the server log.
+Your sprite is sent to the chat connection, and to the image connection when pictures are drawn. The prompts come from the 2D Avatars agent, where you can edit them like other agent prompts. With debug mode on, every prompt is written to the server log.
 
 ## Performance and devices
 

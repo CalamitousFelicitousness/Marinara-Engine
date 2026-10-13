@@ -29,6 +29,7 @@ import {
   chatImages,
   gameSceneVideos,
   gameDicePools,
+  gameWorldSnapshots,
   gameTurnStoryboardKeyframes,
   gameTurnStoryboards,
   oocInfluences,
@@ -1491,6 +1492,7 @@ export function createChatsStorage(db: DB) {
     await database.delete(gameTurnStoryboards).where(eq(gameTurnStoryboards.chatId, chatId));
     await database.delete(gameSceneVideos).where(eq(gameSceneVideos.chatId, chatId));
     await database.delete(gameDicePools).where(eq(gameDicePools.chatId, chatId));
+    await database.delete(gameWorldSnapshots).where(eq(gameWorldSnapshots.chatId, chatId));
     const galleryFiles = await database
       .select({ filePath: chatImages.filePath })
       .from(chatImages)
@@ -2162,6 +2164,7 @@ export function createChatsStorage(db: DB) {
         await db.delete(gameTurnStoryboards).where(eq(gameTurnStoryboards.chatId, chat.id));
         await db.delete(gameSceneVideos).where(eq(gameSceneVideos.chatId, chat.id));
         await db.delete(gameDicePools).where(eq(gameDicePools.chatId, chat.id));
+        await db.delete(gameWorldSnapshots).where(eq(gameWorldSnapshots.chatId, chat.id));
         await cleanupChatGallery(chat.id);
         const videoDir = join(GAME_SCENE_VIDEOS_DIR, chat.id);
         if (existsSync(videoDir)) rmSync(videoDir, { recursive: true, force: true });

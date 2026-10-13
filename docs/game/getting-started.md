@@ -111,7 +111,11 @@ A world can travel as a file. **Download this world** (under **Make a world**) s
 
 A world file can also carry the world's **story**: the events and scenes a creator wrote for it. The story comes with the world and is kept on the same terms. In play, a story's scenes appear in the narration before the Game Master's reply, exactly as written. Its quest objectives are listed under **Story** on the journal's World tab once the story shows them. To write one, see [Writing Game Mode Story Scripts](../extending/writing-story-scripts.md).
 
-The hand edits and the story were made for that seed and brief, so they are left out if you change either. If a file cannot be read, it is refused and the wizard says why. A world made by another version of the world maker is refused the same way. If something in the file does not fit the setting kit, it is left out and the wizard says what.
+The hand edits and the story were made for that seed and brief, so they are left out if you change either. If a file cannot be read, it is refused and the wizard says why. A world file also carries the world as it was made, so a world made by another version of the world maker opens exactly as it was made. An older file without it is refused. If something in the file does not fit the setting kit, it is left out and the wizard says what.
+
+A game made without a world (an older game, or one started with no setting kit) can be given one later, only if you want it: the journal's **World** tab offers **Make a world for this game**, with the same setting kit and world choices as a new game. The world starts from the next turn; the game's past turns, map and people stay as they are.
+
+A game keeps its world as it was made. The places, people, towns and history are saved with the game when it starts and whenever its hand edits are saved, so an update that changes how worlds are made never changes a world already in play. A new session, a branch and an exported chat keep the same world, and how the world moved on in earlier sessions (its fortunes, rulers and wars) is kept as it played out. A world made by an earlier version of the world generator plays on as it was made, but can no longer be edited.
 
 A game with a world opens on the **overworld**, the world drawn as a pixel map where you can walk the party from settlement to settlement along the world's ways and enter the town it is in; the scene view is a switch away. See [The overworld](map-time-weather.md#the-overworld).
 

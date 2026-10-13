@@ -17,6 +17,7 @@ import { join } from "node:path";
 
 import {
   WORLD_GENERATOR_VERSION,
+  WORLD_SHARE_FILE_MAX_BYTES,
   WORLD_STARTER_KITS,
   capabilityPackageManifestSchema,
   checkWorldBrief,
@@ -163,7 +164,7 @@ const installed = [
     "huge",
     {
       "kit.worldkit.json": text(worldKitFile(kit)),
-      "huge.world.json": `${text(worldFile("Huge", kit, worldOf(9)))}${" ".repeat(2_000_001)}`,
+      "huge.world.json": `${text(worldFile("Huge", kit, worldOf(9)))}${" ".repeat(WORLD_SHARE_FILE_MAX_BYTES + 1)}`,
     },
     { kit: "kit.worldkit.json", worlds: ["huge.world.json"] },
   ),

@@ -2904,7 +2904,7 @@ export function ConnectionEditor() {
           {isVideoGenerationProvider && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.videoPromptingInstructions")}
-              icon={<Sparkles size="0.875rem" className="text-sky-400" />}
+              icon={<Sparkles size="0.875rem" className="text-[var(--marinara-chat-chrome-button-text-active)]" />}
               help={localizeUi("ui.connections.connectioneditor.videoPromptingInstructionsHelp")}
             >
               <textarea
@@ -2915,7 +2915,7 @@ export function ConnectionEditor() {
                   markDirty();
                 }}
                 placeholder={localizeUi("ui.connections.connectioneditor.videoPromptingInstructionsPlaceholder")}
-                className="w-full min-h-[96px] resize-y rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-sky-400/50"
+                className="w-full min-h-[96px] resize-y rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-2 focus:ring-[var(--ring)]"
               />
             </FieldGroup>
           )}

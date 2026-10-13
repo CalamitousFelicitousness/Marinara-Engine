@@ -18,10 +18,16 @@ export function resolveChatVideoAnchor(
 ): ChatVideoAnchor | null {
   const imageId = galleryImageId?.trim();
   if (imageId) {
-    const swipe = swipes.find((row) => extraReferencesGalleryImage(row.extra, imageId));
-    if (swipe && messages.some((message) => message.id === swipe.messageId)) {
-      return { messageId: swipe.messageId, swipeIndex: swipe.index };
-    }
+    // A swipe on screen wins over a hidden one that shows the same picture, so the clip is seen.
+    const matches = swipes.filter(
+      (row) =>
+        extraReferencesGalleryImage(row.extra, imageId) && messages.some((message) => message.id === row.messageId),
+    );
+    const swipe =
+      matches.find((row) =>
+        messages.some((message) => message.id === row.messageId && (message.activeSwipeIndex ?? 0) === row.index),
+      ) ?? matches[0];
+    if (swipe) return { messageId: swipe.messageId, swipeIndex: swipe.index };
     const message = messages.find((row) => extraReferencesGalleryImage(row.extra, imageId));
     if (message) return { messageId: message.id, swipeIndex: message.activeSwipeIndex ?? 0 };
   }

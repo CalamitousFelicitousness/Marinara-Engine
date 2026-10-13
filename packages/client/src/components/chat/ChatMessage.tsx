@@ -3419,7 +3419,7 @@ export const ChatMessage = memo(function ChatMessage({
           att.roleplaySound === true ? null : isVideoAttachment(att) && att.url ? (
             renderRoleplayImage(
               <ChatVideoAttachment
-                key={i}
+                key={att.videoId ?? att.url}
                 src={att.url}
                 prompt={att.prompt}
                 onRemove={hasVnMediaTarget ? undefined : () => handleRemoveAttachment(i)}
@@ -4498,7 +4498,7 @@ export const ChatMessage = memo(function ChatMessage({
               {extra.attachments.map((att: any, i: number) =>
                 att.roleplaySound === true ? null : isVideoAttachment(att) && att.url ? (
                   <ChatVideoAttachment
-                    key={i}
+                    key={att.videoId ?? att.url}
                     src={att.url}
                     prompt={att.prompt}
                     onRemove={() => handleRemoveAttachment(i)}

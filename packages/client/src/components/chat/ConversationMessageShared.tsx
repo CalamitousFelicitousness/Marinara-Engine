@@ -555,7 +555,15 @@ export function ConversationMessageAttachments({
   onImageOpen,
   onRemove,
 }: {
-  attachments: Array<{ type: string; url?: string; data?: string; filename?: string; name?: string; prompt?: string }>;
+  attachments: Array<{
+    type: string;
+    url?: string;
+    data?: string;
+    filename?: string;
+    name?: string;
+    prompt?: string;
+    videoId?: string;
+  }>;
   renderedContent: string;
   onImageOpen: (url: string, prompt?: string | null) => void;
   onRemove: (i: number) => void;
@@ -566,7 +574,12 @@ export function ConversationMessageAttachments({
     <div className="mt-1.5 flex flex-col items-start gap-2">
       {attachments.map((att, i) =>
         isVideoAttachment(att) && att.url ? (
-          <ChatVideoAttachment key={i} src={att.url} prompt={att.prompt} onRemove={() => onRemove(i)} />
+          <ChatVideoAttachment
+            key={att.videoId ?? att.url}
+            src={att.url}
+            prompt={att.prompt}
+            onRemove={() => onRemove(i)}
+          />
         ) : att.type === "image" || att.type?.startsWith("image/") ? (
           <div key={i} className="group/att relative inline-block">
             <button

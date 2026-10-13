@@ -22,6 +22,7 @@ const { galleryRoutes } = await import("../../packages/server/src/routes/gallery
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
+const { resolveChatVideoAnchor } = await import("../../packages/server/src/services/video/chat-video-messages.js");
 const { extractImageAttachmentDataUrls, extractFileAttachmentInputs, buildReadableAttachmentBlocks } =
   await import("../../packages/server/src/services/generation/prompt-attachments.js");
 
@@ -182,6 +183,17 @@ try {
   const second = await generate({ galleryImageId: loose.id });
   assert.equal(second.messageId, later.id);
   assert.equal((await videoAttachments(later.id)).message.length, 1);
+
+  // When two swipes of a message show the same picture, the clip goes on the one on screen.
+  const shows = JSON.stringify({ attachments: [{ type: "image", galleryId: "pic" }] });
+  const reply = { id: "reply", role: "assistant", activeSwipeIndex: 1 };
+  const bothSwipes = [
+    { messageId: "reply", index: 0, extra: shows },
+    { messageId: "reply", index: 1, extra: shows },
+  ];
+  assert.deepEqual(resolveChatVideoAnchor([reply], bothSwipes, "pic"), { messageId: "reply", swipeIndex: 1 });
+  // Only a hidden swipe shows it: the clip still goes there rather than nowhere.
+  assert.deepEqual(resolveChatVideoAnchor([reply], [bothSwipes[0]!], "pic"), { messageId: "reply", swipeIndex: 0 });
 
   // A video attachment is never an image, a provider file, or readable text for a model prompt.
   const attachment = { type: "video", url: first.video.url, filename: "clip.mp4", prompt: "Aster lifts the lantern" };

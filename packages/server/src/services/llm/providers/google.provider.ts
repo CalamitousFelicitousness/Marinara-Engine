@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import { createHash, createSign } from "crypto";
 import {
+  ASSISTANT_CONTINUATION_PROMPT,
   BaseLLMProvider,
   llmFetch,
   llmHttpErrorFromResponse,
@@ -14,7 +15,12 @@ import {
   type LLMToolDefinition,
   type LLMUsage,
 } from "../base-provider.js";
-import { shouldSuppressUnknownModelParameters } from "@marinara-engine/shared";
+import {
+  isGeminiArgonModel,
+  isGeminiThinkingLevelModel,
+  shouldSuppressUnknownModelParameters,
+  type GenerationParameterSendKey,
+} from "@marinara-engine/shared";
 import { getEmbeddingRequestTimeoutMs, isDebugAgentsEnabled } from "../../../config/runtime-config.js";
 import { logDebugOverride } from "../../../lib/logger.js";
 import { decodePossiblyCompressedBody } from "../../../utils/security.js";
@@ -72,6 +78,14 @@ interface GeminiEmbeddingPayload {
 }
 
 type GoogleProviderKind = "google" | "google_vertex";
+
+const GEMINI_ARGON_UNSENT = new Set<GenerationParameterSendKey>([
+  "temperature",
+  "topP",
+  "topK",
+  "frequencyPenalty",
+  "presencePenalty",
+]);
 
 export function resolveGoogleFunctionCallingMode(toolChoice: ChatOptions["toolChoice"]): "AUTO" | "ANY" {
   return toolChoice === "required" ? "ANY" : "AUTO";
@@ -269,7 +283,7 @@ export function resolveGeminiThinkingConfig(
   }
   if (!options.enableThinking && !options.reasoningEffort) return undefined;
 
-  if (/gemini-3/i.test(model)) {
+  if (isGeminiThinkingLevelModel(model)) {
     const levelMap = { low: "low", medium: "medium", high: "high", xhigh: "high", max: "high" } as const;
     return {
       thinkingLevel: options.reasoningEffort ? levelMap[options.reasoningEffort] : "high",
@@ -552,6 +566,15 @@ function formatGoogleContents(
   return contents;
 }
 
+/** Argon rejects a prefilled final model turn: keep it as history and ask for only the rest of the reply. */
+function withArgonContinuation(model: string, contents: Array<{ role: string; parts: object[] }>) {
+  const last = contents.at(-1);
+  if (!isGeminiArgonModel(model) || last?.role !== "model" || last.parts.some((part) => "functionCall" in part)) {
+    return contents;
+  }
+  return [...contents, { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] }];
+}
+
 function geminiToolCallFromPart(part: GeminiPart, index: number): LLMToolCall | null {
   const call = part.functionCall;
   if (!call || typeof call.name !== "string") return null;
@@ -575,7 +598,8 @@ function geminiUsage(usage?: GeminiUsageMetadata): LLMUsage | undefined {
 
 function normalizeGeminiFinishReason(reason: string | null | undefined): string {
   const normalized = typeof reason === "string" ? reason.trim().toUpperCase() : "";
-  if (normalized === "MAX_TOKENS") return "length";
+  // Argon ends a reply cut at its per-request output limit with CONTINUATION (a long-decode token Marinara does not use).
+  if (normalized === "MAX_TOKENS" || normalized === "CONTINUATION") return "length";
   if (normalized === "STOP") return "stop";
   return reason ?? "stop";
 }
@@ -601,6 +625,12 @@ export class GoogleProvider extends BaseLLMProvider {
     );
   }
 
+  // Argon ignores temperature, top-p and top-k and rejects both penalties with HTTP 400.
+  protected override shouldSendParameter(options: ChatOptions, key: GenerationParameterSendKey): boolean {
+    if (isGeminiArgonModel(options.model) && GEMINI_ARGON_UNSENT.has(key)) return false;
+    return super.shouldSendParameter(options, key);
+  }
+
   async chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
     if (this.shouldSuppressModelParameters(options) || !options.tools?.length)
       return super.chatComplete(messages, options);
@@ -612,8 +642,7 @@ export class GoogleProvider extends BaseLLMProvider {
     const maxTokens = this.applyMaxTokensCap(contextFit.maxTokens ?? configuredMaxTokens);
     const model = options.model || "gemini-2.0-flash";
 
-    const isGemini3 = /gemini-3/i.test(model);
-    const supportsThinking = isGemini3 || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model);
+    const supportsThinking = isGeminiThinkingLevelModel(model) || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model);
     const thinkingConfig =
       this.shouldSendParameter(options, "reasoningEffort") && supportsThinking
         ? resolveGeminiThinkingConfig(model, options, maxTokens ?? 4096)
@@ -639,7 +668,7 @@ export class GoogleProvider extends BaseLLMProvider {
 
     const systemMessages = messages.filter((m) => m.role === "system" && m.content?.trim());
     const body: Record<string, unknown> = {
-      contents: formatGoogleContents(messages),
+      contents: withArgonContinuation(model, formatGoogleContents(messages)),
       generationConfig: {
         ...(this.shouldSendParameter(options, "temperature") ? { temperature: options.temperature ?? 1 } : {}),
         ...(this.shouldSendParameter(options, "maxTokens") ? { maxOutputTokens: maxTokens } : {}),
@@ -874,13 +903,11 @@ export class GoogleProvider extends BaseLLMProvider {
 
     const model = options.model || "gemini-2.0-flash";
 
-    // Gemini 3.x models use thinkingLevel; Gemini 2.5 uses thinkingBudget
-    const isGemini3 = /gemini-3/i.test(model);
-
     // Only models that actually support thinking should get thinkingConfig:
-    // Gemini 3.x, 2.5-flash/pro, and 2.0-flash-thinking.
+    // Gemini 3 and later (thinkingLevel), 2.5-flash/pro and 2.0-flash-thinking (thinkingBudget).
     const supportsThinking =
-      !suppressModelParameters && (isGemini3 || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model));
+      !suppressModelParameters &&
+      (isGeminiThinkingLevelModel(model) || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model));
 
     const thinkingConfig =
       this.shouldSendParameter(options, "reasoningEffort") && supportsThinking
@@ -936,7 +963,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     const body: Record<string, unknown> = {
-      contents,
+      contents: withArgonContinuation(model, contents),
     };
 
     const outputMaxTokens = maxTokens ?? 4096;

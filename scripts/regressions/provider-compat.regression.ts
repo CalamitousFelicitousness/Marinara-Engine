@@ -4,6 +4,7 @@ import { logger } from "../../packages/server/src/lib/logger.js";
 import {
   findKnownModel,
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isGeminiThinkingLevelModel,
   resolveProviderReasoningEffort,
   shouldSuppressUnknownModelParameters,
 } from "../../packages/shared/src/constants/model-lists.js";
@@ -54,6 +55,7 @@ import {
   type GenerationProviderOrigin,
 } from "../../packages/server/src/services/llm/connection-fallback-provider.js";
 import {
+  ASSISTANT_CONTINUATION_PROMPT,
   BaseLLMProvider,
   resolveEmbeddingEndpointUrl,
   type ChatMessage,
@@ -904,6 +906,24 @@ assert.equal(
   resolveGeminiThinkingConfig("gemini-3.5-flash", { reasoningEffort: "none" }, 4096),
   undefined,
   "reasoning-mandatory Gemini 3 models must not receive an unsupported off value",
+);
+assert.equal(
+  resolveGeminiThinkingConfig("gemini-4-argon", { reasoningEffort: "none" }, 4096),
+  undefined,
+  "Argon cannot turn thinking off, so Off sends nothing and Google's default level applies",
+);
+assert.deepEqual(
+  [
+    "gemini-2.0-flash",
+    "gemini-2.5-pro",
+    "gemini-3",
+    "gemini-3.1-pro",
+    "gemini-4-argon",
+    "gemini-5-pro",
+    "gemini-10",
+  ].map(isGeminiThinkingLevelModel),
+  [false, false, true, true, true, true, true],
+  "Gemini 3 and every later generation take thinkingLevel; only 2.x takes thinkingBudget",
 );
 assert.equal(resolveGoogleFunctionCallingMode("required"), "ANY");
 assert.equal(resolveGoogleFunctionCallingMode("auto"), "AUTO");
@@ -3155,6 +3175,193 @@ try {
   await new Promise<void>((resolve, reject) =>
     contentBlockToolServer.close((error) => (error ? reject(error) : resolve())),
   );
+}
+
+// ── Gemini 4 Argon request shape (#7534) ──
+// Argon takes thinkingLevel low, medium or high only (thinkingBudget and "minimal" are HTTP 400), cannot turn thinking
+// off, ignores temperature, top-p and top-k, and rejects penalties and a prefilled final model turn.
+// https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+// The Gemini 3 bodies are pinned byte for byte so none of this leaks into them.
+{
+  const originalFetch = globalThis.fetch;
+  const originalLocalUrls = process.env.PROVIDER_LOCAL_URLS_ENABLED;
+  // The stub answers every request; the flag skips the DNS check, so nothing leaves the machine.
+  process.env.PROVIDER_LOCAL_URLS_ENABLED = "true";
+  const requests: Array<{ url: string; raw: string }> = [];
+  let finishReason = "STOP";
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    requests.push({ url, raw: String(init?.body) });
+    const payload = {
+      candidates: [{ content: { parts: [{ text: "Hi" }] }, finishReason }],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+    };
+    return url.includes(":streamGenerateContent")
+      ? new Response(`data: ${JSON.stringify(payload)}\n\n`, { headers: { "content-type": "text/event-stream" } })
+      : new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } });
+  };
+  const body = (index: number) => JSON.parse(requests[index]?.raw ?? "null") as Record<string, unknown>;
+  const samplers = { temperature: 0.7, topP: 0.9, topK: 40, frequencyPenalty: 0.3, presencePenalty: 0.4 };
+  const prefilled: ChatMessage[] = [
+    { role: "user", content: "test" },
+    { role: "assistant", content: "Once" },
+  ];
+  const diceTool = {
+    type: "function" as const,
+    function: { name: "roll_dice", description: "Roll dice", parameters: { type: "object", properties: {} } },
+  };
+  const diceDeclarations = [
+    {
+      functionDeclarations: [
+        { name: "roll_dice", description: "Roll dice", parameters: { type: "object", properties: {} } },
+      ],
+    },
+  ];
+  const hosts = [
+    ["google", "https://generativelanguage.googleapis.com", "https://generativelanguage.googleapis.com/v1beta/models"],
+    [
+      "google_vertex",
+      "https://aiplatform.googleapis.com/v1/projects/p/locations/global",
+      "https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google/models",
+    ],
+  ] as const;
+  try {
+    for (const [kind, baseUrl, modelsUrl] of hosts) {
+      const provider = new GoogleProvider(baseUrl, "test", undefined, undefined, undefined, kind);
+
+      // Every effort maps to one of Argon's three levels. Off sends no thinking config, so Google's default applies.
+      const efforts = [
+        ["none", null],
+        ["low", "low"],
+        ["medium", "medium"],
+        ["high", "high"],
+        ["xhigh", "high"],
+        ["max", "high"],
+      ] as const;
+      for (const [effort, level] of efforts) {
+        requests.length = 0;
+        await collectProviderOutput(provider, {
+          model: "gemini-4-argon",
+          stream: false,
+          ...samplers,
+          reasoningEffort: effort,
+          enableThinking: effort !== "none",
+        });
+        assert.equal(requests[0]?.url, `${modelsUrl}/gemini-4-argon:generateContent`);
+        assert.deepEqual(
+          body(0),
+          {
+            contents: [{ role: "user", parts: [{ text: "test" }] }],
+            generationConfig: {
+              maxOutputTokens: 4096,
+              ...(level ? { thinkingConfig: { thinkingLevel: level, includeThoughts: true } } : {}),
+            },
+          },
+          `${kind} Argon effort ${effort} must send only its own thinking level, with no samplers or thinking budget`,
+        );
+      }
+
+      // A streamed chat with a prefill keeps the prefill as history and asks for the rest of the reply.
+      requests.length = 0;
+      await collectProviderOutputForMessages(provider, prefilled, {
+        model: "gemini-4-argon",
+        stream: true,
+        ...samplers,
+        reasoningEffort: "high",
+        enableThinking: true,
+      });
+      assert.equal(
+        requests[0]?.url,
+        kind === "google"
+          ? `${modelsUrl}/gemini-4-argon:streamGenerateContent?alt=sse`
+          : `${modelsUrl}/gemini-4-argon:generateContent`,
+      );
+      assert.deepEqual(
+        body(0),
+        {
+          contents: [
+            { role: "user", parts: [{ text: "test" }] },
+            { role: "model", parts: [{ text: "Once" }] },
+            { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] },
+          ],
+          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "high", includeThoughts: true } },
+        },
+        `${kind} Argon must never end on a prefilled model turn`,
+      );
+
+      // The tools round takes the same rules.
+      requests.length = 0;
+      await provider.chatComplete([{ role: "user", content: "test" }], {
+        model: "gemini-4-argon",
+        ...samplers,
+        reasoningEffort: "medium",
+        enableThinking: true,
+        tools: [diceTool],
+        onToken: () => {},
+      });
+      assert.deepEqual(
+        body(0),
+        {
+          contents: [{ role: "user", parts: [{ text: "test" }] }],
+          generationConfig: {
+            maxOutputTokens: 4096,
+            thinkingConfig: { thinkingLevel: "medium", includeThoughts: true },
+          },
+          tools: diceDeclarations,
+          toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+        },
+        `${kind} Argon tools round must send no samplers`,
+      );
+
+      // A reply cut at Argon's per-request output limit ends with CONTINUATION; report it as cut, not finished.
+      finishReason = "CONTINUATION";
+      const usage = await collectProviderUsage(provider, {
+        model: "gemini-4-argon",
+        stream: false,
+        reasoningEffort: "high",
+        enableThinking: true,
+      });
+      finishReason = "STOP";
+      assert.equal(usage?.finishReason, "length");
+
+      // Gemini 3 is unchanged, byte for byte: samplers, penalties, its trailing model turn and its levels all stay.
+      requests.length = 0;
+      await collectProviderOutputForMessages(provider, prefilled, {
+        model: "gemini-3.5-flash",
+        stream: true,
+        ...samplers,
+        reasoningEffort: "high",
+        enableThinking: true,
+      });
+      await collectProviderOutput(provider, {
+        model: "gemini-3.5-flash",
+        stream: false,
+        ...samplers,
+        reasoningEffort: "none",
+      });
+      await provider.chatComplete([{ role: "user", content: "test" }], {
+        model: "gemini-3.5-flash",
+        ...samplers,
+        reasoningEffort: "medium",
+        enableThinking: true,
+        tools: [diceTool],
+        onToken: () => {},
+      });
+      assert.deepEqual(
+        requests.map(({ raw }) => raw),
+        [
+          '{"contents":[{"role":"user","parts":[{"text":"test"}]},{"role":"model","parts":[{"text":"Once"}]}],"generationConfig":{"maxOutputTokens":4096,"temperature":0.7,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4,"thinkingConfig":{"thinkingLevel":"high","includeThoughts":true}}}',
+          '{"contents":[{"role":"user","parts":[{"text":"test"}]}],"generationConfig":{"maxOutputTokens":4096,"temperature":0.7,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4}}',
+          '{"contents":[{"role":"user","parts":[{"text":"test"}]}],"generationConfig":{"temperature":0.7,"maxOutputTokens":4096,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4,"thinkingConfig":{"thinkingLevel":"medium","includeThoughts":true}},"tools":[{"functionDeclarations":[{"name":"roll_dice","description":"Roll dice","parameters":{"type":"object","properties":{}}}]}],"toolConfig":{"functionCallingConfig":{"mode":"AUTO"}}}',
+        ],
+        `${kind} Gemini 3 request bodies must not change`,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalUrls === undefined) delete process.env.PROVIDER_LOCAL_URLS_ENABLED;
+    else process.env.PROVIDER_LOCAL_URLS_ENABLED = originalLocalUrls;
+  }
 }
 
 // ── Gemini and Anthropic stream while tools are attached ──

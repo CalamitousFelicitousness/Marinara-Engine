@@ -323,11 +323,18 @@ try {
         "gemini-2.5-pro",
         "gemini-2.5-flash",
         "gemini-3-pro-preview",
+        "gemini-4-argon",
         "gemini-2.0-flash",
         "gemma-3-27b-it",
         "gemini-unknown",
       ],
       make: registry("google", `${base}/v1beta`),
+    },
+    {
+      provider: "google_vertex",
+      baseUrl: `${base}/v1/projects/p/locations/global`,
+      models: ["gemini-2.5-flash", "gemini-3-pro-preview", "gemini-4-argon", "gemini-unknown"],
+      make: registry("google_vertex", `${base}/v1/projects/p/locations/global`),
     },
     {
       provider: "openai_chatgpt",
@@ -640,6 +647,28 @@ try {
     ],
     "ChatGPT offers its own levels plus the model default instead of an Off it cannot honour",
   );
+  // Argon cannot turn thinking off: the null choice keeps Google's default level, and it has three levels of its own.
+  for (const provider of ["google", "google_vertex"]) {
+    assert.deepEqual(
+      reasoningEffortChoices({ provider, model: "gemini-4-argon" }).map((choice) => [
+        choice.label,
+        choice.kind ?? "",
+        choice.providerDefault ?? "",
+      ]),
+      [
+        [null, "default", "medium"],
+        ["low", "", ""],
+        ["medium", "", ""],
+        ["high", "", ""],
+      ],
+      `${provider} Argon offers its default instead of an Off it cannot honour`,
+    );
+    assert.equal(
+      reasoningEffortChoices({ provider, model: "gemini-3-pro-preview" })[0]?.kind,
+      undefined,
+      `${provider} Gemini 3 keeps its Off choice`,
+    );
+  }
   assert.deepEqual(
     verbosityChoices({
       provider: "openai_chatgpt",

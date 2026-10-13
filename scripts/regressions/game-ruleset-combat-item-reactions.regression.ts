@@ -306,16 +306,16 @@ try {
     const at = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc);
     parsed(withItem(coffinUse));
-    assert.equal(at(316, withItem(coffinUse)), message);
-    assert.notEqual(at(317, withItem(coffinUse)), message);
-    assert.notEqual(at(316, withItem({ ...coffinUse, reaction: false })), message, "false is no reaction");
-    assert.notEqual(at(316, withItem(loafUse)), message);
+    assert.equal(at(320, withItem(coffinUse)), message);
+    assert.notEqual(at(321, withItem(coffinUse)), message);
+    assert.notEqual(at(320, withItem({ ...coffinUse, reaction: false })), message, "false is no reaction");
+    assert.notEqual(at(320, withItem(loafUse)), message);
     const more = withItem({ kind: "buff", budget: "bonus", targets: "self", charges: 1, applies: loafUse.applies });
     more.catalogs.find((catalog: { holds?: string }) => catalog.holds === "items").entries.at(-1).item.moreUses = [
       { label: "Ward", use: coffinUse },
     ];
     parsed(more);
-    assert.equal(at(316, more), message);
+    assert.equal(at(320, more), message);
   }
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

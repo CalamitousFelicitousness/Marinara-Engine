@@ -607,7 +607,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.72: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
 //        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
 //        its declared assets. A new game with the Experience on is locked to them.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 72 } as const);
+// 1.73: the Engine hosts the 2D and 3D avatar agents (`2d-avatars`, `3d-avatars`, types/avatars.ts): it
+//        owns their storage, import, lazy renderers, setup on the Agent editor page, stream director,
+//        classifier and generation routes, and merges the 2D agent's `avatarGenerationTemplates`. No new
+//        manifest field; an avatar package declares 1.73 so an Engine without these surfaces refuses it.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 73 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -8794,17 +8794,32 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (rollRequestAbort?.signal.aborted)
                 result = { ...result, content: fullResponse.slice(roundResponseStart), toolCalls: [] };
 
+              // A tool call the model wrote as text was streamed before the provider recognised
+              // it, and the provider leaves that text out of the result (only the prose around it
+              // stays), as without streaming. Whenever this round's streamed text differs from what the
+              // provider returned (call first or last), take it back out of the reply and the client's
+              // view (#6951); the prose, if any, is written again just below.
+              if (
+                result.toolCalls.length &&
+                fullResponse.length > roundResponseStart &&
+                fullResponse.slice(roundResponseStart) !== (result.content ?? "")
+              ) {
+                fullResponse = fullResponse.slice(0, roundResponseStart);
+                // The earlier rounds can hold roleplay commands the stream filter hid, and the filter
+                // has already consumed this round's text: show the clean text and start it afresh.
+                const roleplayFiltered = chatMode === "roleplay" && !input.impersonate;
+                if (roleplayFiltered)
+                  roleplayCommandStreamFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
+                if (!holdForTextRewrite)
+                  sendSseEvent(reply, {
+                    type: "content_replace",
+                    data: roleplayFiltered ? parseRoleplayCommands(fullResponse).content : fullResponse,
+                  });
+              }
               // If provider doesn't support onToken (fell back to non-streaming),
               // write the content conventionally
               if (result.content && !fullResponse.endsWith(result.content)) {
                 await writeContentChunked(result.content);
-              }
-              // A tool call the model wrote as text was streamed before the provider recognised
-              // it, and the provider leaves that text out of the result, as without streaming.
-              // Take it back out of the reply and the client's view (#6951).
-              if (result.toolCalls.length && !result.content && fullResponse.length > roundResponseStart) {
-                fullResponse = fullResponse.slice(0, roundResponseStart);
-                if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: fullResponse });
               }
 
               // Gemini thought signatures reach this branch as providerMetadata rather than

@@ -171,8 +171,16 @@ export default defineConfig({
             // Intentionally exclude html so index.html is not precached and does not interfere with the PWA stale-version/update flow.
             globPatterns: ["**/*.{js,css,json,png,svg,ico,woff2}"],
             navigateFallback: null,
-            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand.
-            globIgnores: ["**/sprites/**", "logo.png", "logo-splash.gif"],
+            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand, and
+            // avatar renderers and their libraries load only where an avatar agent is used (features/avatars).
+            globIgnores: [
+              "**/sprites/**",
+              "logo.png",
+              "logo-splash.gif",
+              "**/{pngtuber,mesh-avatar,vrm}-renderer-*.js",
+              "**/vendor-three*.js",
+              "**/vendor-mesh-avatar*.js",
+            ],
             navigateFallbackAllowlist: [],
             runtimeCaching: [
               {

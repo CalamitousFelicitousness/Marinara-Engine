@@ -14,7 +14,7 @@ import { professorMariWorkspaceStatusKeys } from "../../../hooks/use-professor-m
 import { api, isPassiveStreamDisconnect } from "../../../lib/api-client";
 import { awaitMariPermissionsModeWrites } from "../../../lib/mari-permissions-write-chain";
 import { describeProfessorMariError } from "../../../lib/professor-mari-errors";
-import { RafThrottle } from "../../../lib/raf-throttle";
+import { RafThrottle, rafThrottle } from "../../../lib/raf-throttle";
 import { useChatStore } from "../../../stores/chat.store";
 import { useUIStore } from "../../../stores/ui.store";
 import {
@@ -151,6 +151,14 @@ export function useMariWorkspaceRun({
       useChatStore.getState().setMariPhase(chat.id, "thinking");
       let received = false;
       let sawDone = false;
+      // Her provisional words for the round she is writing reach the store at most once a frame.
+      let draft = "";
+      const draftThrottle = rafThrottle<string>((value) => useChatStore.getState().setMariDraft(chat.id, value));
+      const clearDraft = () => {
+        draft = "";
+        draftThrottle.cancel();
+        useChatStore.getState().setMariDraft(chat.id, null);
+      };
       // Mirror use-generate's backgrounding bookkeeping: Android browsers tear
       // down a hidden tab's connection with a plain TypeError, and the shared
       // classifier needs to know the page was hidden to call that passive.
@@ -184,6 +192,13 @@ export function useMariWorkspaceRun({
           // (and pending approvals) on return instead of hanging.
           { disconnectOnResume: true },
         )) {
+          if (event.type === "draft") {
+            if (typeof event.data !== "string") clearDraft();
+            else draftThrottle.call((draft = event.data));
+            continue;
+          }
+          // Her real words or a step replace the draft.
+          if (draft && (event.type === "token" || event.type === "tool_start")) clearDraft();
           if (event.type === "token" && typeof event.data === "string") {
             received = true;
             pendingWorkspaceTextRef.current += event.data;
@@ -306,6 +321,7 @@ export function useMariWorkspaceRun({
           window.removeEventListener("pagehide", markPageHidden);
         }
         workspaceTextThrottle.flush();
+        clearDraft();
         workspaceAbortRef.current = null;
         setWorkspaceActive(false);
         setWorkspaceRunClock((clock) => clock && { ...clock, endedAt: Date.now() });

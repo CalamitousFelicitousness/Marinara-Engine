@@ -81,6 +81,8 @@ import { ChatCommonOverlays, type ChatSettingsTools } from "./ChatCommonOverlays
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
 import { PinnedImageOverlay } from "./PinnedImageOverlay";
 import type { SpriteDisplayMode } from "./sprite-display-modes";
+import { chatAvatarParticipants } from "../../features/avatars/stage/avatar-stage-logic";
+import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-avatar-agents";
 import type {
   CharacterMap,
   ExpressionAvatarResolver,
@@ -115,6 +117,12 @@ const WeatherEffects = lazy(async () => {
 const SpriteOverlay = lazy(async () => {
   const module = await import("./SpriteOverlay");
   return { default: module.SpriteOverlay };
+});
+
+// 2D and 3D Avatars: loads only in chats where an avatar agent is on.
+const AvatarStage = lazy(async () => {
+  const module = await import("../../features/avatars/stage/AvatarStage");
+  return { default: module.AvatarStage };
 });
 
 const EchoChamberPanel = lazy(async () => {
@@ -1202,6 +1210,12 @@ export function ChatRoleplaySurface({
   const weatherEffectsPaused = isMobileToolbarViewport && (keyboardOpen || composerFocused || hasMobileDraftInput);
   const hideEchoChamberOnMobile = sidebarOpen || rightPanelOpen || settingsOpen || wizardOpen;
   const showSpriteOverlay = expressionAgentEnabled && spriteCharacterIds.length > 0 && spriteDisplayModes.length > 0;
+  // Avatars show independently of the Expression Engine; the user hides the full-body sprite by hand.
+  const avatarAgentIds = useChatAvatarAgentIds(chatMeta);
+  const avatarParticipants = useMemo(
+    () => chatAvatarParticipants(chatCharIds, characterMap, personaInfo),
+    [characterMap, chatCharIds, personaInfo],
+  );
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -1738,6 +1752,24 @@ export function ChatRoleplaySurface({
               spriteOpacity={spriteOpacity}
               expressionSpriteOpacity={expressionSpriteOpacity}
               fullBodySpriteOpacity={fullBodySpriteOpacity}
+              onPlacementChange={onSpritePlacementChange}
+              onFinishPlacement={onFinishSpritePlacement}
+            />
+          </Suspense>
+        )}
+        {avatarAgentIds.length > 0 && avatarParticipants.length > 0 && (
+          <Suspense fallback={null}>
+            <AvatarStage
+              chatId={activeChatId}
+              mode="roleplay"
+              participants={avatarParticipants}
+              enabledAgentIds={avatarAgentIds}
+              side={visualNovel ? "center" : spritePosition}
+              placements={spritePlacements}
+              characterVisualSettings={spriteVisualSettings?.characterOverrides}
+              scale={fullBodySpriteScale}
+              scaleMultiplier={visualNovel ? vnSpriteScale : 1}
+              editing={spriteArrangeMode}
               onPlacementChange={onSpritePlacementChange}
               onFinishPlacement={onFinishSpritePlacement}
             />

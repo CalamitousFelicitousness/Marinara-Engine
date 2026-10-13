@@ -49,10 +49,15 @@ import {
   workspacePolicyPaths,
 } from "../../packages/server/src/services/professor-mari/workspace-shell-sandbox.js";
 
-const workspaceAgentSource = readFileSync(
-  new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
-  "utf8",
-);
+const workspaceAgentSource =
+  readFileSync(
+    new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
+    "utf8",
+  ) +
+  readFileSync(
+    new URL("../../packages/server/src/services/professor-mari/workspace-commands.ts", import.meta.url),
+    "utf8",
+  );
 const flatAgentSource = workspaceAgentSource.replace(/\s+/gu, " ");
 
 // --- #5776: bash mari CLI dry-run sentinel ---------------------------------

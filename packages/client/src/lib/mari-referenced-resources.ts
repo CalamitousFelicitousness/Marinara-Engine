@@ -108,6 +108,26 @@ export function countMariListOutput(output: string | null): number | null {
     : null;
 }
 
+/**
+ * A batch in one call (a new lorebook with its `data.entries`): how many items it holds and the first few names,
+ * for the step row ("6 entries: The Docks, The Market, …"). Null when the call holds no batch.
+ */
+export function mariBatchItems(input: unknown, cap = 2): { count: number; names: string } | null {
+  const items = asRecord(asRecord(input)?.data)?.entries;
+  if (!Array.isArray(items) || items.length === 0) return null;
+  // A saved trace keeps the first ten items and ends on "… N more" (compactTraceValue on the server).
+  const last = items.at(-1);
+  const more = typeof last === "string" ? /^… (\d+) more$/u.exec(last) : null;
+  const count = more ? items.length - 1 + Number(more[1]) : items.length;
+  const names = items
+    .map((item) => asRecord(item)?.name)
+    .filter((name): name is string => typeof name === "string" && name.trim() !== "")
+    .slice(0, cap)
+    .map((name) => name.trim());
+  // Nameless items leave `names` empty: the row then shows the count alone.
+  return { count, names: names.length > 0 && names.length < count ? [...names, "…"].join(", ") : names.join(", ") };
+}
+
 /** Slice 72: a read that found nothing (its stdout is `null`, or it says so). */
 export function isMariNotFoundOutput(output: string | null): boolean {
   const stdout = stdoutOf(output).trim();

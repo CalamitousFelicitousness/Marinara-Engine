@@ -183,7 +183,7 @@ function OwnerAvatarSetup({
   const [importResult, setImportResult] = useState<AvatarImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingImport, setPendingImport] = useState<{ kind: AvatarKind; accept: string } | null>(null);
+  const [pendingKind, setPendingKind] = useState<AvatarKind | null>(null);
 
   // Until the user picks one: the kind that shows in chats when it belongs to this page, else the first set up.
   const activeHere = config?.activeKind && kinds.includes(config.activeKind) ? config.activeKind : null;
@@ -199,17 +199,20 @@ function OwnerAvatarSetup({
   };
 
   const startImport = (kind: AvatarKind, extensions: readonly string[]) => {
-    setPendingImport({ kind, accept: extensions.join(",") });
-    // The input's accept list updates on the next render; open the picker after that.
-    requestAnimationFrame(() => fileInputRef.current?.click());
+    const input = fileInputRef.current;
+    if (!input) return;
+    setPendingKind(kind);
+    // Set the file types directly and open the picker in the same tap (Safari needs the click in the gesture).
+    input.accept = extensions.join(",");
+    input.click();
   };
 
   const handleFile = async (file: File | undefined) => {
-    if (!file || !pendingImport) return;
+    if (!file || !pendingKind) return;
     setError(null);
     setImportResult(null);
     try {
-      const result = await importAvatar.mutateAsync({ owner, file, kind: pendingImport.kind });
+      const result = await importAvatar.mutateAsync({ owner, file, kind: pendingKind });
       setImportResult(result);
       setChosenKind(result.kind);
       toast.success(t("avatars.setup.import.done"));
@@ -271,7 +274,6 @@ function OwnerAvatarSetup({
         ref={fileInputRef}
         type="file"
         className="hidden"
-        accept={pendingImport?.accept}
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
 

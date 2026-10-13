@@ -86,6 +86,9 @@ export function useAvatarRenderer({
         setState({ renderer: created, status: "ready" });
       } catch (error) {
         if (controller.signal.aborted) return;
+        // A half-mounted renderer may hold its kind's one WebGL context; free it now, not on the next change.
+        renderer?.dispose();
+        renderer = null;
         console.warn(`[avatars] The ${kind} avatar could not be shown`, error);
         setState({ renderer: null, status: "error" });
       }

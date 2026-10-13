@@ -3523,7 +3523,11 @@ export class ProfessorMariWorkspaceService {
         commandResultsForContinuity.push(...checkupResults);
         if (usePi) {
           // No JSON frame to replay: the result joins the context the pi run reads.
-          messages.push({ role: "system", content: formatCommandResultForPrompt(checkupResults), contextKind: "injection" });
+          messages.push({
+            role: "system",
+            content: formatCommandResultForPrompt(checkupResults),
+            contextKind: "injection",
+          });
         } else {
           messages.push({
             role: "assistant",

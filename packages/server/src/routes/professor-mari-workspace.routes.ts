@@ -13,7 +13,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } from "./generate/sse.js";
-import { readStoredMariPermissionsMode, readStoredMariRuntime } from "../services/professor-mari/workspace-agent.service.js";
+import {
+  readStoredMariPermissionsMode,
+  readStoredMariRuntime,
+} from "../services/professor-mari/workspace-agent.service.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { getProfessorMariWorkspaceService } from "../services/professor-mari/workspace-agent.service.js";

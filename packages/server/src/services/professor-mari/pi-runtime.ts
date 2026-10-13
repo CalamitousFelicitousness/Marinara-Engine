@@ -41,7 +41,12 @@ import {
   type WorkspaceConnection,
 } from "./workspace-agent.service.js";
 import type { WorkspaceCommands } from "./workspace-commands.js";
-import { newRoundReviewState, reviewRepeatedFailures, reviewRoundClaim, shouldDeferRoundMutations } from "./workspace-round-review.js";
+import {
+  newRoundReviewState,
+  reviewRepeatedFailures,
+  reviewRoundClaim,
+  shouldDeferRoundMutations,
+} from "./workspace-round-review.js";
 
 // ponytail: a generous safety net per run, not a budget. Upgrade path: derive it from the token budget.
 export const MAX_PI_TOOL_ROUNDS = 400;
@@ -86,26 +91,27 @@ type Round = {
   truncated: boolean;
 };
 
-const UI_TOOL_SCHEMAS: Record<(typeof UI_TOOLS)[number], { description: string; parameters: Record<string, unknown> }> = {
-  suggestions: {
-    description:
-      "Show quick-reply chips under your answer (at most 5). Changes nothing. Each chip: label (short button text), prompt (the exact message sent when tapped), optional detail, entity, tone (danger|caution|success) and action.",
-    parameters: {
-      type: "object",
-      properties: { chips: { type: "array", items: { type: "object" }, maxItems: 6 } },
-      required: ["chips"],
+const UI_TOOL_SCHEMAS: Record<(typeof UI_TOOLS)[number], { description: string; parameters: Record<string, unknown> }> =
+  {
+    suggestions: {
+      description:
+        "Show quick-reply chips under your answer (at most 5). Changes nothing. Each chip: label (short button text), prompt (the exact message sent when tapped), optional detail, entity, tone (danger|caution|success) and action.",
+      parameters: {
+        type: "object",
+        properties: { chips: { type: "array", items: { type: "object" }, maxItems: 6 } },
+        required: ["chips"],
+      },
     },
-  },
-  plan: {
-    description:
-      "Show a guided plan for a vague create or edit request, one step per field. Changes nothing. Each step: fieldKey, question and chips (label, prompt).",
-    parameters: {
-      type: "object",
-      properties: { steps: { type: "array", items: { type: "object" }, maxItems: 8 } },
-      required: ["steps"],
+    plan: {
+      description:
+        "Show a guided plan for a vague create or edit request, one step per field. Changes nothing. Each step: fieldKey, question and chips (label, prompt).",
+      parameters: {
+        type: "object",
+        properties: { steps: { type: "array", items: { type: "object" }, maxItems: 8 } },
+        required: ["steps"],
+      },
     },
-  },
-};
+  };
 
 function textOf(content: string | readonly { type: string; text?: string }[]): string {
   if (typeof content === "string") return content;
@@ -114,9 +120,8 @@ function textOf(content: string | readonly { type: string; text?: string }[]): s
 
 export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommands }): Promise<void> {
   const { signal, state, commands, trace, onEvent } = input;
-  const { createAgentSession, createExtensionRuntime, ModelRuntime, SessionManager, SettingsManager } = await import(
-    "@earendil-works/pi-coding-agent"
-  );
+  const { createAgentSession, createExtensionRuntime, ModelRuntime, SessionManager, SettingsManager } =
+    await import("@earendil-works/pi-coding-agent");
   const { InMemoryCredentialStore, createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools } =
     await import("@earendil-works/pi-ai");
 
@@ -162,7 +167,13 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       } else if (message.role === "assistant") {
         const toolCalls = message.content.flatMap((part) =>
           part.type === "toolCall"
-            ? [{ id: part.id, type: "function" as const, function: { name: part.name, arguments: JSON.stringify(part.arguments) } }]
+            ? [
+                {
+                  id: part.id,
+                  type: "function" as const,
+                  function: { name: part.name, arguments: JSON.stringify(part.arguments) },
+                },
+              ]
             : [],
         );
         out.push({
@@ -172,7 +183,12 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
         });
       } else if (message.role === "toolResult") {
-        out.push({ role: "tool", tool_call_id: message.toolCallId, content: textOf(message.content), contextKind: "history" });
+        out.push({
+          role: "tool",
+          tool_call_id: message.toolCallId,
+          content: textOf(message.content),
+          contextKind: "history",
+        });
       }
     }
     return out;
@@ -190,7 +206,14 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       api: model.api,
       provider: model.provider,
       model: model.id,
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
       stopReason: "stop",
       timestamp: Date.now(),
     };
@@ -207,7 +230,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         signal.throwIfAborted();
         const toolDefs: LLMToolDefinition[] = tools.map((tool) => ({
           type: "function",
-          function: { name: tool.name, description: tool.description, parameters: JSON.parse(JSON.stringify(tool.parameters)) },
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: JSON.parse(JSON.stringify(tool.parameters)),
+          },
         }));
         const result = await input.complete(toChatMessages(context), toolDefs);
         const truncated = isLengthFinishReason(result.finishReason);
@@ -234,7 +261,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
           let args: Record<string, unknown> = {};
           try {
             const parsed: unknown = JSON.parse(call.function.arguments || "{}");
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+              args = parsed as Record<string, unknown>;
           } catch {
             // Unparsable arguments reach the tool as {}: schema validation answers the model with an error.
           }
@@ -266,7 +294,12 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   /** Review a finished round: claim audit, then its words, then the repeated-failure stop and the round cap. */
   const finishRound = async (current: Round, hasWorkspaceCalls: boolean) => {
     const workspaceCalls = current.calls.filter((call) => !isUiTool(call.name));
-    const action = { visibleText: current.text, commands: workspaceCalls, stop: !hasWorkspaceCalls, protocolValid: true };
+    const action = {
+      visibleText: current.text,
+      commands: workspaceCalls,
+      stop: !hasWorkspaceCalls,
+      protocolValid: true,
+    };
     if (current.deferred) {
       // Same outcome as classic: the words show, the held changes wait behind Accept, the run ends.
       const content =
@@ -301,7 +334,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       if (current.results.length > 0 && hasWorkspaceCalls) onEvent({ type: "metadata", data: { narration: true } });
     }
     if (current.truncated) {
-      addNote("Professor Mari hit the model output limit. Ask her to continue and she can pick up from here.", "output_limit", "warning");
+      addNote(
+        "Professor Mari hit the model output limit. Ask her to continue and she can pick up from here.",
+        "output_limit",
+        "warning",
+      );
       stopRequested = true;
       return "done" as const;
     }
@@ -311,7 +348,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       addNote(repeatedFailure, "retry", "warning");
       stopRequested = true;
     } else if (toolRounds >= MAX_PI_TOOL_ROUNDS) {
-      addNote("Tool round limit reached for this run. Ask Professor Mari to continue and she can pick up from here.", "info", "warning");
+      addNote(
+        "Tool round limit reached for this run. Ask Professor Mari to continue and she can pick up from here.",
+        "info",
+        "warning",
+      );
       stopRequested = true;
     }
     return "done" as const;
@@ -320,7 +361,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   const runTool = async (name: string, toolCallId: string, params: Record<string, unknown>) => {
     const current = round;
     if (!current) throw new Error("A tool ran outside a model round.");
-    const call = current.calls.find((entry) => entry.id === toolCallId) ?? { id: toolCallId, name: name as never, arguments: params };
+    const call = current.calls.find((entry) => entry.id === toolCallId) ?? {
+      id: toolCallId,
+      name: name as never,
+      arguments: params,
+    };
     const hasWorkspaceCalls = current.calls.some((entry) => !isUiTool(entry.name));
     if (current.deferred === null) {
       const mutating = current.calls.filter((entry) => !isUiTool(entry.name) && isMutatingWorkspaceCommand(entry));
@@ -375,7 +420,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   };
 
   const tools: ToolDefinition[] = [
-    ...WORKSPACE_TOOL_DEFINITIONS.map((definition) => ({ name: definition.name as string, description: definition.description, parameters: definition.parameters })),
+    ...WORKSPACE_TOOL_DEFINITIONS.map((definition) => ({
+      name: definition.name as string,
+      description: definition.description,
+      parameters: definition.parameters,
+    })),
     ...UI_TOOLS.map((name) => ({ name: name as string, ...UI_TOOL_SCHEMAS[name] })),
   ].map(
     (tool) =>
@@ -386,7 +435,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         // Plain JSON Schema, validated by pi before execute.
         parameters: tool.parameters as never,
         executionMode: "sequential",
-        execute: (toolCallId: string, params: unknown) => runTool(tool.name, toolCallId, params as Record<string, unknown>),
+        execute: (toolCallId: string, params: unknown) =>
+          runTool(tool.name, toolCallId, params as Record<string, unknown>),
       }) satisfies ToolDefinition,
   );
 
@@ -436,7 +486,14 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   // ponytail: the session starts from the stored chat every turn, so a compaction summary does not persist
   // across turns. Upgrade path: store the summary with the chat and seed it here.
   const sessionManager = SessionManager.inMemory(cwd);
-  const zeroUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const zeroUsage = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
   history.slice(0, -1).forEach((message, index) => {
     const timestamp = index + 1;
     if (message.role === "user") sessionManager.appendMessage({ role: "user", content: message.content, timestamp });

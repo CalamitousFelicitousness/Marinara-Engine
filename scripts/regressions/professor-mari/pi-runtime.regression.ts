@@ -5,7 +5,11 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ChatCompletionResult, ChatMessage, ChatOptions } from "../../../packages/server/src/services/llm/base-provider.js";
+import type {
+  ChatCompletionResult,
+  ChatMessage,
+  ChatOptions,
+} from "../../../packages/server/src/services/llm/base-provider.js";
 
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-mari-pi-storage-"));
 const workspaceDir = mkdtempSync(join(tmpdir(), "marinara-mari-pi-workspace-"));
@@ -30,7 +34,8 @@ try {
   const { ProfessorMariWorkspaceService, WORKSPACE_TOOL_DEFINITIONS } =
     await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
   const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
-  const { createAppSettingsStorage } = await import("../../../packages/server/src/services/storage/app-settings.storage.js");
+  const { createAppSettingsStorage } =
+    await import("../../../packages/server/src/services/storage/app-settings.storage.js");
   const { MARI_RUNTIME_SETTINGS_KEY } = await import("../../../packages/shared/src/constants/mari-runtime.js");
   const chats = createChatsStorage(db);
   const settings = createAppSettingsStorage(db);
@@ -44,7 +49,9 @@ try {
   let requests: Array<{ messages: ChatMessage[]; options: ChatOptions }> = [];
   let runtimeSeen: unknown[] = [];
   let piEntered = 0;
-  const originalRunPi = (service as unknown as { runPiRuntime: (args: unknown) => Promise<void> }).runPiRuntime.bind(service);
+  const originalRunPi = (service as unknown as { runPiRuntime: (args: unknown) => Promise<void> }).runPiRuntime.bind(
+    service,
+  );
   Object.assign(service, {
     ensureMariCliShim: async () => {},
     resolveConnection: async () => ({
@@ -93,7 +100,9 @@ try {
   const lastAssistant = async (chatId: string) => {
     const rows = (await chats.listMessages(chatId)).filter((message) => message.role === "assistant");
     const row = rows[rows.length - 1];
-    return row ? { content: String(row.content), extra: JSON.parse(String(row.extra ?? "{}")) as Record<string, unknown> } : null;
+    return row
+      ? { content: String(row.content), extra: JSON.parse(String(row.extra ?? "{}")) as Record<string, unknown> }
+      : null;
   };
 
   // (a) + (f): a read tool call runs through WorkspaceCommands and its result reaches the next model request,
@@ -108,14 +117,22 @@ try {
     assert.equal(piEntered, 1);
     assert.equal(requests.length, 2);
     const offered = requests[0]!.options.tools ?? [];
-    const allowed = new Map<string, string>(WORKSPACE_TOOL_DEFINITIONS.map((tool) => [tool.name as string, tool.description]));
-    allowed.set("suggestions", offered.find((tool) => tool.function.name === "suggestions")?.function.description ?? "");
+    const allowed = new Map<string, string>(
+      WORKSPACE_TOOL_DEFINITIONS.map((tool) => [tool.name as string, tool.description]),
+    );
+    allowed.set(
+      "suggestions",
+      offered.find((tool) => tool.function.name === "suggestions")?.function.description ?? "",
+    );
     allowed.set("plan", offered.find((tool) => tool.function.name === "plan")?.function.description ?? "");
     assert.deepEqual(offered.map((tool) => tool.function.name).sort(), [...allowed.keys()].sort());
     for (const tool of offered) assert.equal(tool.function.description, allowed.get(tool.function.name));
     assert.equal(requests[0]!.options.responseFormat, undefined);
     assert.notEqual(requests[0]!.options.reasoningEffort, "none", "pi must not force reasoning off");
-    assert.ok(!requests[0]!.messages.some((m) => m.content.includes("workspace_command_protocol")), "no JSON protocol prompt");
+    assert.ok(
+      !requests[0]!.messages.some((m) => m.content.includes("workspace_command_protocol")),
+      "no JSON protocol prompt",
+    );
     const toolMessage = requests[1]!.messages.find((message) => message.role === "tool");
     assert.equal(toolMessage?.tool_call_id, "call-read");
     assert.match(toolMessage?.content ?? "", /workspace_command_result name="read" success="true"/u);
@@ -139,14 +156,19 @@ try {
     assert.equal(saved?.extra.mariDeferredMutations, true);
     assert.ok(Array.isArray(saved?.extra.mariHeldChanges) || saved?.extra.mariHeldChanges === undefined);
     assert.match(saved?.content ?? "", /Shall I go ahead/u);
-    assert.ok(events.some((event) => event.type === "suggestions"), "the Accept chip is sent");
+    assert.ok(
+      events.some((event) => event.type === "suggestions"),
+      "the Accept chip is sent",
+    );
   }
 
   // (c) Plan: a mutation is refused by the executor floor and the model sees the refusal.
   {
     mode = "plan";
     const { chat, done } = await run("pi plan", [
-      reply("", [{ id: "call-plan-write", name: "write", args: { path: "planned.txt", content: "x", reason: "test" } }]),
+      reply("", [
+        { id: "call-plan-write", name: "write", args: { path: "planned.txt", content: "x", reason: "test" } },
+      ]),
       reply("I would create planned.txt."),
     ]);
     await done;

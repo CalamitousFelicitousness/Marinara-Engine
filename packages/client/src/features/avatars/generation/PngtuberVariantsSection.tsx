@@ -14,12 +14,14 @@ import {
   useOneAtATime,
   usePngtuberVariantJob,
   useSavePngtuberVariants,
+  variantJobId,
 } from "./use-avatar-generation";
 
 const VARIANT_KEYS: Record<AvatarPngtuberVariant, string> = {
   "eyes-closed": "avatars.generation.eyesClosed",
   "mouth-open": "avatars.generation.mouthOpen",
 };
+const FULL_BODY = /^full[_\s-]+/iu;
 
 export function PngtuberVariantsSection({
   owner,
@@ -42,7 +44,18 @@ export function PngtuberVariantsSection({
   const saving = useOneAtATime();
   const job = usePngtuberVariantJob(owner);
   const save = useSavePngtuberVariants(owner);
-  const count = labels.length * variants.length;
+  // Portrait sprites when there are any, like the PNGTuber avatar itself: full_happy would fill happy's slot.
+  const family = useMemo(() => {
+    const portraits = sprites.filter((sprite) => !FULL_BODY.test(sprite.expression.trim()));
+    return portraits.length ? portraits : sprites;
+  }, [sprites]);
+  // Pictures already made stay; a run makes the missing ones (Try again redoes one).
+  const made = new Set(job.items.filter((item) => item.draft).map((item) => item.id));
+  const missing = labels
+    .filter((label) => family.some((sprite) => sprite.expression === label))
+    .flatMap((label) => variants.filter((variant) => !made.has(variantJobId(label, variant))).map(() => label));
+  const count = missing.length;
+  const missingLabels = [...new Set(missing)];
   const busy = job.running || preparing.pending;
   const kept = useMemo(() => job.items.filter((item) => item.kept && item.draft), [job.items]);
   const current = job.items.findIndex((item) => item.status === "running") + 1;
@@ -59,8 +72,8 @@ export function PngtuberVariantsSection({
   const start = () =>
     preparing.run(async () => {
       if (job.running || !count || !imageConnectionId) return;
-      const options = await runOptions(labels, variants);
-      if (options) job.start(labels, variants, options);
+      const options = await runOptions(missingLabels, variants);
+      if (options) job.start(missingLabels, variants, options);
     });
 
   const retry = (id: string, label: string, variant: AvatarPngtuberVariant) =>
@@ -75,7 +88,12 @@ export function PngtuberVariantsSection({
       if (!kept.length) return;
       try {
         await save.mutateAsync(
-          kept.map((item) => ({ label: item.label, variant: item.variant, image: item.draft!.image })),
+          kept.map((item) => ({
+            label: item.label,
+            variant: item.variant,
+            image: item.draft!.image,
+            sourceHash: item.draft!.sourceHash,
+          })),
         );
         toast.success(t("avatars.generation.pngtuberSaved", { count: kept.length }));
         job.removeSaved(kept.map((item) => item.id));
@@ -96,7 +114,7 @@ export function PngtuberVariantsSection({
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("avatars.generation.pngtuberDescription")}</p>
       </div>
       <SpritePicker
-        sprites={sprites}
+        sprites={family}
         selected={labels}
         disabled={busy}
         label={t("avatars.generation.sprites")}
@@ -190,6 +208,11 @@ export function PngtuberVariantsSection({
                       </span>
                     )}
                   </div>
+                  {item.draft && item.status === "failed" && (
+                    <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                      {item.error || t("avatars.generation.failed")}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-1">
                     {item.draft && (
                       <button
@@ -207,7 +230,8 @@ export function PngtuberVariantsSection({
                         {item.kept ? t("avatars.generation.kept") : t("avatars.generation.keep")}
                       </button>
                     )}
-                    {(item.status === "done" || item.status === "failed") && (
+                    {/* A kept picture is replaced only after the user lets it go. */}
+                    {(item.status === "done" || item.status === "failed") && !item.kept && (
                       <button
                         type="button"
                         disabled={busy}

@@ -4,6 +4,7 @@
 // The owner's name, appearance and sprites; the 2D Avatars agent's prompt templates and connection;
 // the image request that edits a sprite; and the one-job-per-avatar guard. Card text is untrusted:
 // it reaches a prompt only as one capped line inside a template variable, never as instructions.
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -140,6 +141,8 @@ export async function readAvatarOwnerInfo(db: DB, owner: AvatarOwnerRef): Promis
 const SPRITES_ROOT = join(DATA_DIR, "sprites");
 /** Raster sprites only: an SVG sprite can't be sent to an image model as a picture. */
 const SPRITE_SOURCE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif"]);
+/** Every sprite the sprite editor lists (SPRITE_FILE_RE in routes/sprites.routes.ts). */
+const SPRITE_EXTENSIONS = new Set([...SPRITE_SOURCE_EXTENSIONS, ".svg"]);
 
 export interface AvatarSourceSprite {
   /** The sprite's file name without its extension, as the sprite editor shows it. */
@@ -150,14 +153,18 @@ export interface AvatarSourceSprite {
   height: number;
   /** Whether the sprite has see-through pixels (a cut-out). */
   transparent: boolean;
+  /** SHA-256 of the sprite file, so a save can tell the sprite was replaced after its pictures were made. */
+  hash: string;
 }
 
-/** Sprite labels of an owner that can be edited (raster files), sorted. */
-export function listAvatarSourceSprites(ownerId: string): string[] {
+/** Sprite labels of an owner, sorted: the ones that can be edited (raster files), or with `all` every
+ *  sprite, SVG ones too. */
+export function listAvatarSourceSprites(ownerId: string, { all = false } = {}): string[] {
   const dir = assertInsideDir(SPRITES_ROOT, join(SPRITES_ROOT, ownerId));
   if (!existsSync(dir)) return [];
+  const extensions = all ? SPRITE_EXTENSIONS : SPRITE_SOURCE_EXTENSIONS;
   return readdirSync(dir)
-    .filter((name) => SPRITE_SOURCE_EXTENSIONS.has(extname(name).toLowerCase()))
+    .filter((name) => extensions.has(extname(name).toLowerCase()))
     .map((name) => name.slice(0, -extname(name).length))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
@@ -180,7 +187,14 @@ export async function readAvatarSourceSprite(ownerId: string, label: string): Pr
   const sharp = await getSharp();
   const { data, info } = await sharp(bytes, { animated: false }).png().toBuffer({ resolveWithObject: true });
   const stats = await sharp(data).stats();
-  return { label, png: data, width: info.width, height: info.height, transparent: !stats.isOpaque };
+  return {
+    label,
+    png: data,
+    width: info.width,
+    height: info.height,
+    transparent: !stats.isOpaque,
+    hash: createHash("sha256").update(bytes).digest("hex"),
+  };
 }
 
 // ── The 2D Avatars agent: templates and connection ──
@@ -331,12 +345,41 @@ export async function compileAvatarImagePrompt(
   return { prompt: compiled.prompt, negativePrompt: compiled.negativePrompt };
 }
 
+/** Where the sprite sits on a canvas of another shape: scaled to fit and centred, never stretched. */
+export function avatarCanvasPlacement(
+  source: { width: number; height: number },
+  canvas: { width: number; height: number },
+): { left: number; top: number; width: number; height: number } {
+  const scale = Math.min(canvas.width / source.width, canvas.height / source.height);
+  const width = Math.max(1, Math.min(canvas.width, Math.round(source.width * scale)));
+  const height = Math.max(1, Math.min(canvas.height, Math.round(source.height * scale)));
+  return { left: Math.floor((canvas.width - width) / 2), top: Math.floor((canvas.height - height) / 2), width, height };
+}
+
 /** Edits a sprite through the image connection (with its fallback) and returns a PNG of exactly the
- *  sprite's size. A cut-out sprite keeps its own outline when the model drew a background. */
+ *  sprite's size. The provider gets the sprite already on a canvas of the size it is asked for, with
+ *  see-through or repeated edges around it, so an edit that keeps the picture where it is comes back
+ *  lined up with the sprite whatever canvas shapes the model accepts. No see-through background is asked
+ *  for: some models can't make one (GPT Image 2), and a cut-out gets the sprite's own outline back. */
 export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Promise<Buffer> {
   const { conn, fallback } = request.image;
   const model = conn.model || "";
   const size = avatarImageRequestSize(request.source.width, request.source.height, model);
+  const place = avatarCanvasPlacement(request.source, size);
+  const sharp = await getSharp();
+  const reference = await sharp(request.source.png)
+    .resize(place.width, place.height, { fit: "fill" })
+    .extend({
+      top: place.top,
+      bottom: size.height - place.height - place.top,
+      left: place.left,
+      right: size.width - place.width - place.left,
+      ...(request.source.transparent
+        ? { background: { r: 0, g: 0, b: 0, alpha: 0 } }
+        : { extendWith: "copy" as const }),
+    })
+    .png()
+    .toBuffer();
   logDebugOverride(
     request.debug,
     "[debug/avatar-generation] %s image prompt (%dx%d):\n%s\nnegative: %s",
@@ -357,8 +400,7 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
       model,
       width: size.width,
       height: size.height,
-      referenceImage: request.source.png.toString("base64"),
-      transparentBackground: request.source.transparent,
+      referenceImage: reference.toString("base64"),
       imageEndpointId: conn.imageEndpointId || undefined,
       comfyWorkflow: conn.comfyuiWorkflow || undefined,
       imageDefaults: resolveConnectionImageDefaults(conn),
@@ -368,16 +410,33 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
       debugMode: request.debug,
     },
   );
-  return fitAvatarImageToSource(Buffer.from(result.base64, "base64"), request.source);
+  return fitAvatarImageToSource(Buffer.from(result.base64, "base64"), request.source, size);
 }
 
-/** Scales a drawn picture to the sprite's exact size and gives it the sprite's outline when the sprite
- *  is a cut-out and the picture is not. */
-export async function fitAvatarImageToSource(drawn: Buffer, source: AvatarSourceSprite): Promise<Buffer> {
+/** Cuts the sprite's place back out of a drawn picture (`canvas` is the size it was asked for; a picture
+ *  of another size is read in proportion), scales it to the sprite's exact size, and gives it the
+ *  sprite's outline when the sprite is a cut-out and the picture is not. */
+export async function fitAvatarImageToSource(
+  drawn: Buffer,
+  source: AvatarSourceSprite,
+  canvas: { width: number; height: number } = source,
+): Promise<Buffer> {
   if (!isAllowedImageBuffer(drawn))
     throw new AvatarGenerationError(502, "The image model sent back something that isn't a picture.");
   const sharp = await getSharp();
-  const fitted = await sharp(drawn, { animated: false })
+  const { data: picture, info } = await sharp(drawn, { animated: false }).png().toBuffer({ resolveWithObject: true });
+  const place = avatarCanvasPlacement(source, canvas);
+  const fx = info.width / canvas.width;
+  const fy = info.height / canvas.height;
+  const left = Math.min(info.width - 1, Math.round(place.left * fx));
+  const top = Math.min(info.height - 1, Math.round(place.top * fy));
+  const fitted = await sharp(picture)
+    .extract({
+      left,
+      top,
+      width: Math.max(1, Math.min(info.width - left, Math.round(place.width * fx))),
+      height: Math.max(1, Math.min(info.height - top, Math.round(place.height * fy))),
+    })
     .resize(source.width, source.height, { fit: "fill" })
     .ensureAlpha()
     .png()

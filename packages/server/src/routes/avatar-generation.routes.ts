@@ -6,7 +6,7 @@
 //   POST /pngtuber-variants/preview   AvatarPngtuberVariantsRequest → { items } for the image prompt review
 //   POST /pngtuber-variants           AvatarPngtuberVariantsRequest (+ promptOverrides) → drafts
 //   POST /pngtuber-variants/save      { owner, images } → AvatarGenerationResponse
-//   POST /mesh-rig                    AvatarMeshRigRequest (+ imageConnectionId, drawVariants, promptOverrides) → draft
+//   POST /mesh-rig                    AvatarMeshRigRequest → draft
 //   POST /mesh-rig/save               { owner, archive } → AvatarGenerationResponse
 // Backed by services/avatars/generation/. Requests accept `debugMode`, and every prompt is logged with
 // logDebugOverride, honouring DEBUG_AGENTS. A closed connection cancels the provider requests. Hosted 3D
@@ -56,6 +56,7 @@ const pngtuberSaveBodySchema = z
             label: z.string().min(1).max(64),
             variant: z.enum(AVATAR_PNGTUBER_VARIANTS),
             image: z.string().min(1),
+            sourceHash: z.string().regex(/^[0-9a-f]{64}$/u),
           })
           .strict(),
       )
@@ -63,12 +64,6 @@ const pngtuberSaveBodySchema = z
       .max(128),
   })
   .strict();
-
-const meshRigBodySchema = avatarMeshRigRequestSchema.extend({
-  imageConnectionId: z.string().min(1).max(128).nullable().optional(),
-  drawVariants: z.boolean().optional(),
-  promptOverrides: promptOverridesSchema,
-});
 
 const meshSaveBodySchema = z.object({ owner: avatarOwnerRefSchema, archive: z.string().min(1) }).strict();
 
@@ -123,7 +118,7 @@ export async function avatarGenerationRoutes(app: FastifyInstance) {
 
   app.post("/mesh-rig", async (req, reply) => {
     try {
-      const body = meshRigBodySchema.parse(req.body);
+      const body = avatarMeshRigRequestSchema.parse(req.body);
       return await generateMeshRig(app.db, body, { signal: abortOnClose(reply) });
     } catch (error) {
       return sendFailure(reply, error, "Mesh avatar generation");

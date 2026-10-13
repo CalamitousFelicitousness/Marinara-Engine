@@ -129,8 +129,6 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
             owner={owner}
             sprites={sprites}
             languageConnections={languageConnections}
-            imageConnectionId={imageConnectionId}
-            reviewPrompts={reviewPrompts}
             onChanged={onChanged}
           />
         </>

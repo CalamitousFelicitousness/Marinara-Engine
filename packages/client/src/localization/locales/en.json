@@ -98,8 +98,6 @@
   "avatars.generation.cancel": "Cancel",
   "avatars.generation.description": "Makes an avatar from the sprites you already have.",
   "avatars.generation.discard": "Discard",
-  "avatars.generation.drawVariants": "Draw closed eyes and an open mouth",
-  "avatars.generation.drawVariantsHelp": "Uses the image connection. Without it, the avatar uses built-in eyelids and mouth.",
   "avatars.generation.eyesClosed": "Eyes closed",
   "avatars.generation.failed": "This picture couldn't be made.",
   "avatars.generation.imageConnection": "Image connection",

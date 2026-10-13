@@ -3,20 +3,31 @@
  *   - the face layout a vision model answers with is parsed strictly and checked against the picture;
  *     a bad answer is retried once with the reasons, and card text stays one line in the prompt;
  *   - the rig built from it passes mesh-avatar's own rig validator;
+ *   - eyes too big for the face are refused, and very big ones are built from a smaller copy;
  *   - the JavaScript layer builder takes the eyes out of the base and fills them with skin, cuts the
- *     eye layers, and cuts drawn closed eyes and open mouths into sprites, refusing drawings that moved;
- *   - the packed .mavatar passes mesh-avatar's archive validator and the Engine's strict ZIP reader;
+ *     eye layers, and stops when the request is cancelled;
+ *   - the packed .mavatar passes mesh-avatar's archive validator and the Engine's strict ZIP reader, and
+ *     carries no partial sprites.json (mesh-avatar would switch its own eyelids and mouth off);
  *   - a sprite edit goes through the existing image generation path (an edit request with the sprite as
- *     reference), its prompt reaches the debug log, and the picture comes back at the sprite's exact size
- *     with the sprite's own outline;
- *   - kept PNGTuber pictures merge into the owner's setup without mixing pictures drawn for other bases;
+ *     reference, padded to the canvas the model is asked for, without a see-through background), its
+ *     prompt reaches the debug log, and an edit that keeps the picture in place comes back lined up with
+ *     the sprite at its exact size, with the sprite's own outline;
+ *   - kept PNGTuber pictures merge into the owner's setup without mixing pictures drawn for other bases,
+ *     an avatar still showing plain sprites keeps all of them, and full-body sprites stay out of a
+ *     portrait setup;
+ *   - saving refuses a sprite replaced since its pictures were made, before anything is stored;
  *   - the routes refuse bad bodies, and one avatar runs one generation job at a time.
  * The picture is drawn here from SVG, so no binary fixture is committed and no paid provider is called.
  */
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-avatar-generation-"));
+process.env.DATA_DIR = dataDir;
 process.env.IMAGE_LOCAL_URLS_ENABLED = "true";
 
 const Fastify = createRequire(new URL("../../packages/server/package.json", import.meta.url))("fastify");
@@ -29,6 +40,7 @@ const { logger } = await import("../../packages/server/src/lib/logger.js");
 const { openZipArchive } = await import("../../packages/server/src/lib/zip-reader.js");
 const {
   AvatarGenerationError,
+  avatarCanvasPlacement,
   cardTextForPrompt,
   plainErrorText,
   drawAvatarImageEdit,
@@ -37,12 +49,12 @@ const {
 } = await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { checkMeshRigLayout, deriveMeshRig, extractLayoutJson, scaleMeshRigLayout } =
   await import("../../packages/server/src/services/avatars/generation/mesh-rig-layout.js");
-const { buildMeshAvatarLayers, cutDrawnSprites, packMeshAvatar, spritesJson } =
+const { buildMeshAvatarLayers, meshWorkScale, packMeshAvatar } =
   await import("../../packages/server/src/services/avatars/generation/mesh-layer-builder.js");
 const { generateMeshRig, requestMeshRigLayout } =
   await import("../../packages/server/src/services/avatars/generation/mesh-rig.js");
 const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
-const { mergePngtuberVariants, pngtuberVariantFilePath } =
+const { mergePngtuberVariants, pngtuberSpriteFamily, pngtuberVariantFilePath, spriteBuiltPngtuber } =
   await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
 
@@ -130,6 +142,35 @@ const goodLayout = {
     /contain its opening/u,
     "an eye region contains its opening",
   );
+  // An answer whose eyes are each half the picture would keep the server busy for tens of seconds.
+  refused(
+    {
+      ...goodLayout,
+      faceBox: [0, 0, 600, 720],
+      headBox: [0, 0, 600, 720],
+      eyes: [
+        { opening: [10, 10, 290, 700], region: [0, 0, 298, 710] },
+        { opening: [310, 10, 590, 700], region: [302, 0, 600, 710] },
+      ],
+      brows: [
+        [10, 0, 290, 4],
+        [310, 0, 590, 4],
+      ],
+    },
+    /too big for faceBox/u,
+    "an eye region is not bigger than the face allows",
+  );
+  assert.equal(
+    meshWorkScale(goodLayout.eyes.map((eye) => eye.region)),
+    1,
+    "eyes of a usual size keep the sprite's size",
+  );
+  const big = meshWorkScale([
+    [0, 0, 1020, 800],
+    [1028, 0, 2048, 800],
+  ]);
+  assert.ok(big > 0.3 && big < 0.4, `very big eyes are built from a smaller copy (got ${big})`);
+  assert.ok(((1020 * big + 80) * (800 * big + 80)) / 120_000 < 1.4, "the smaller copy keeps an eye's work bounded");
   assert.deepEqual(
     extractLayoutJson(`<think>{"not":"this"}</think>Sure!\n\`\`\`json\n${JSON.stringify(goodLayout)}\n\`\`\``),
     goodLayout,
@@ -183,27 +224,25 @@ for (const index of [0, 1]) {
 }
 const hairmask = await sharp(built.files.get("built/hairmask.png")!).metadata();
 assert.equal(hairmask.width, 600, "the hair mask is full size");
-
-// ── Drawn variants ──
-const closed = await cutDrawnSprites(source, await bustPng({ eyes: "closed" }), rig, "eyes_closed");
-assert.deepEqual([...closed.sprites.keys()].sort(), [
-  "built/sprites/eyes_closed_0.png",
-  "built/sprites/eyes_closed_1.png",
-]);
-assert.equal(closed.rejected, 0);
-const moved = await cutDrawnSprites(source, await bustPng({ eyes: "closed", shift: 24 }), rig, "eyes_closed");
-assert.equal(moved.sprites.size, 0, "a drawing that moved the picture is not used");
-assert.equal(moved.rejected, 2);
-const talking = await cutDrawnSprites(source, await bustPng({ mouth: "open" }), rig, "mouth_a");
-assert.deepEqual([...talking.sprites.keys()], ["built/sprites/mouth_a.png"]);
+{
+  // Cancel reaches the pixel work: the build yields to other requests and stops when asked.
+  const controller = new AbortController();
+  let turns = 0;
+  const turn = () => {
+    turns += 1;
+    if (turns === 3) controller.abort(new Error("cancelled by the regression"));
+    else setImmediate(turn);
+  };
+  setImmediate(turn);
+  await assert.rejects(buildMeshAvatarLayers(source, rig, controller.signal), /cancelled by the regression/u);
+}
 
 // ── Archive ──
-const files = new Map(built.files);
-for (const [path, bytes] of [...closed.sprites, ...talking.sprites]) files.set(path, bytes);
-files.set(
-  "built/sprites/sprites.json",
-  spritesJson(new Map([...closed.sprites, ...talking.sprites]), { ...closed.rects, ...talking.rects }),
+assert.ok(
+  [...built.files.keys()].every((path) => !path.startsWith("built/sprites/")),
+  "no drawn sprites: mesh-avatar treats any sprites.json as the full set and turns its own lids and mouth off",
 );
+const files = new Map(built.files);
 files.set("rig.json", Buffer.from(JSON.stringify(rig)));
 files.set("avatar.json", Buffer.from(JSON.stringify({ format: "mesh-avatar", version: 1, name: "Fixture" })));
 const archive = packMeshAvatar(files);
@@ -215,11 +254,7 @@ assert.deepEqual(meshAvatar.parseRig(JSON.parse(new TextDecoder().decode(unpacke
 });
 const zip = openZipArchive(archive);
 assert.equal(zip.getEntries()[0]!.entryName, "avatar.json", "the manifest comes first");
-assert.equal(
-  zip.getEntry("built/sprites/mouth_a.png")!.read(64 * 1024 * 1024).length > 0,
-  true,
-  "the strict reader reads it",
-);
+assert.equal(zip.getEntry("built/base.png")!.read(64 * 1024 * 1024).length > 0, true, "the strict reader reads it");
 
 // ── The vision request ──
 {
@@ -305,18 +340,57 @@ assert.equal(
 );
 
 // ── A sprite edit through the image generation path ──
+/** A red dot on a cut-out, to see where an edit put the picture. */
+function dotSprite(width: number, height: number, x: number, y: number) {
+  return sharp(
+    Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+      <ellipse cx="${width / 2}" cy="${height / 2}" rx="${width * 0.45}" ry="${height * 0.45}" fill="rgb(${SKIN})"/>
+      <circle cx="${x}" cy="${y}" r="${Math.min(width, height) * 0.04}" fill="#f00"/></svg>`),
+  )
+    .png()
+    .toBuffer();
+}
+async function dotCentre(png: Buffer) {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let i = 0; i < info.width * info.height; i += 1) {
+    if (data[i * 4]! > 200 && data[i * 4 + 1]! < 60 && data[i * 4 + 2]! < 60 && data[i * 4 + 3]! > 200) {
+      sx += i % info.width;
+      sy += Math.floor(i / info.width);
+      n += 1;
+    }
+  }
+  return [sx / n, sy / n];
+}
 {
-  const drawnPicture = await sharp({
+  assert.deepEqual(avatarCanvasPlacement({ width: 600, height: 720 }, { width: 1024, height: 1536 }), {
+    left: 0,
+    top: 153,
+    width: 1024,
+    height: 1229,
+  });
+  const opaquePicture = await sharp({
     create: { width: 1024, height: 1536, channels: 3, background: { r: 250, g: 250, b: 250 } },
   })
     .png()
     .toBuffer();
-  const requests: Array<{ url: string; contentType: string }> = [];
+  const requests: Array<{ url: string; contentType: string; body: Buffer }> = [];
+  // "echo" answers with the picture it was sent, like an edit that keeps everything in place.
+  let mode: "opaque" | "echo" = "opaque";
   const server = createServer(async (request, response) => {
-    for await (const _chunk of request) void _chunk;
-    requests.push({ url: request.url ?? "", contentType: String(request.headers["content-type"] ?? "") });
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks);
+    requests.push({ url: request.url ?? "", contentType: String(request.headers["content-type"] ?? ""), body });
+    let picture = opaquePicture;
+    if (mode === "echo") {
+      const start = body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      picture = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
+    }
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ data: [{ b64_json: drawnPicture.toString("base64") }] }));
+    response.end(JSON.stringify({ data: [{ b64_json: picture.toString("base64") }] }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const captured: string[] = [];
@@ -326,18 +400,19 @@ assert.equal(
   };
   try {
     const address = server.address() as { port: number };
+    const image = (model: string) => ({
+      conn: {
+        id: "image-fixture",
+        provider: "image_generation",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "fixture-key",
+        model,
+        imageService: "openai",
+      } as never,
+      fallback: undefined,
+    });
     const edited = await drawAvatarImageEdit({
-      image: {
-        conn: {
-          id: "image-fixture",
-          provider: "image_generation",
-          baseUrl: `http://127.0.0.1:${address.port}/v1`,
-          apiKey: "fixture-key",
-          model: "gpt-image-1",
-          imageService: "openai",
-        } as never,
-        fallback: undefined,
-      },
+      image: image("gpt-image-1"),
       prompt: "Close both eyes.",
       source,
       debug: true,
@@ -345,6 +420,10 @@ assert.equal(
     });
     assert.equal(requests.length, 1, "one provider request");
     assert.equal(requests[0]!.url, "/v1/images/edits", "the sprite goes as a reference picture");
+    assert.ok(
+      !requests[0]!.body.includes('name="background"'),
+      "no see-through background is asked for (GPT Image 2 has none; the sprite's outline is used)",
+    );
     const meta = await sharp(edited).metadata();
     assert.deepEqual([meta.width, meta.height], [600, 720], "the variant is the sprite's exact size");
     assert.equal((await rgbaAt(edited, 5, 5))[3], 0, "a cut-out sprite keeps its own outline");
@@ -353,6 +432,32 @@ assert.equal(
       captured.some((line) => line.includes("Close both eyes.")),
       "the image prompt reaches the debug log",
     );
+
+    // Canvases of another shape: a fixed 2:3 canvas for 600x720, a rounded 512x896 one for 300x900.
+    mode = "echo";
+    for (const [model, width, height, x, y] of [
+      ["gpt-image-1", 600, 720, 300, 300],
+      ["gpt-image-2", 300, 900, 150, 150],
+    ] as const) {
+      const png = await dotSprite(width, height, x, y);
+      const sprite = { label: "dot", png, width, height, transparent: true, hash: "" };
+      const [before, after] = [
+        await dotCentre(png),
+        await dotCentre(
+          await drawAvatarImageEdit({
+            image: image(model),
+            prompt: "Keep it.",
+            source: sprite,
+            debug: false,
+            logLabel: "dot",
+          }),
+        ),
+      ];
+      assert.ok(
+        Math.abs(before[0]! - after[0]!) < 1.5 && Math.abs(before[1]! - after[1]!) < 1.5,
+        `an edit that keeps the picture lines up with a ${width}x${height} sprite on ${model}: ${before} -> ${after}`,
+      );
+    }
   } finally {
     (logger as { warn: unknown }).warn = warn;
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -420,6 +525,28 @@ assert.equal(
   assert.deepEqual(merged.expressionMap.happy, current.expressionMap.happy, "the user's binding stays");
   assert.deepEqual(merged.motion, current.motion);
   assert.equal(merged.source, "pngtuber-plus");
+
+  // An avatar still showing plain sprites keeps every face when pictures are saved into it.
+  const sprites = ["neutral", "happy", "happy_talk", "sad", "angry", "full_happy", "full_neutral"];
+  assert.deepEqual(pngtuberSpriteFamily(sprites), ["neutral", "happy", "happy_talk", "sad", "angry"]);
+  assert.deepEqual(pngtuberSpriteFamily(["full_happy", "full_sad"]), ["full_happy", "full_sad"]);
+  const shown = spriteBuiltPngtuber(sprites)!;
+  assert.deepEqual(Object.keys(shown.layers), ["neutral", "happy", "sad", "angry"], "full-body sprites stay out");
+  assert.deepEqual(shown.layers.happy, {
+    base: { source: "sprite", label: "happy" },
+    mouthOpen: { source: "sprite", label: "happy_talk" },
+  });
+  const saved = mergePngtuberVariants(shown, [{ key: "happy", variants: ["eyes-closed"], keepOthers: true }]);
+  assert.deepEqual(Object.keys(saved.layers).sort(), ["angry", "happy", "neutral", "sad"], "no face is dropped");
+  assert.deepEqual(saved.layers.sad, { base: { source: "sprite", label: "sad" } });
+  assert.deepEqual(saved.layers.happy, {
+    base: { source: "file", path: "pngtuber/happy-base.png" },
+    mouthOpen: { source: "sprite", label: "happy_talk" },
+    eyesClosed: { source: "file", path: "pngtuber/happy-eyes-closed.png" },
+  });
+  assert.equal(saved.expressionMap.sad?.target, "sad", "other emotions still pick their own face");
+  assert.equal(saved.source, "generated", "refreshing from the sprites can't drop the new pictures");
+  assert.ok(avatarKindDataSchema.safeParse({ pngtuber: saved }).success);
 }
 
 // ── Routes and the job guard ──
@@ -438,7 +565,36 @@ assert.equal(
   assert.equal((await post("/pngtuber-variants", { owner, variants: ["eyes-closed"], extra: 1 })).statusCode, 400);
   assert.equal((await post("/pngtuber-variants", { owner, variants: [] })).statusCode, 400);
   assert.equal((await post("/pngtuber-variants/save", { owner, images: [] })).statusCode, 400);
-  assert.equal((await post("/mesh-rig", { owner, sourceLabel: "neutral", drawVariants: "yes" })).statusCode, 400);
+  assert.equal(
+    (await post("/mesh-rig", { owner, sourceLabel: "neutral", drawVariants: true })).statusCode,
+    400,
+    "mesh avatars draw no sprites, so the option is gone",
+  );
+
+  // Saving checks every kept picture before anything is stored (storage is not touched on these paths).
+  const spriteDir = join(dataDir, "sprites", owner.ownerId);
+  mkdirSync(spriteDir, { recursive: true });
+  writeFileSync(join(spriteDir, "happy.png"), sourcePng);
+  writeFileSync(join(spriteDir, "full_happy.png"), sourcePng);
+  const picture = `data:image/png;base64,${sourcePng.toString("base64")}`;
+  const keptHappy = { label: "happy", variant: "eyes-closed", image: picture };
+  const changed = await post("/pngtuber-variants/save", {
+    owner,
+    images: [{ ...keptHappy, sourceHash: "0".repeat(64) }],
+  });
+  assert.equal(changed.statusCode, 409, "a sprite replaced since its pictures were made is refused");
+  assert.match(changed.json().error, /changed after its pictures were made/u);
+  const fullBody = await post("/pngtuber-variants/save", {
+    owner,
+    images: [{ ...keptHappy, label: "full_happy", sourceHash: "0".repeat(64) }],
+  });
+  assert.equal(fullBody.statusCode, 400, "a full-body sprite is not saved into a portrait setup");
+  assert.equal(
+    (await post("/pngtuber-variants", { owner, labels: ["full_happy"], variants: ["eyes-closed"] })).statusCode,
+    400,
+    "nor drawn for it",
+  );
+  assert.equal((await post("/pngtuber-variants/save", { owner, images: [keptHappy] })).statusCode, 400);
   const garbage = await post("/mesh-rig/save", { owner, archive: Buffer.from("not a zip").toString("base64") });
   assert.equal(garbage.statusCode, 422, "a kept archive is checked by the 2D importer like an upload");
   assert.equal((await app.inject({ method: "GET", url: "/api/avatar-generation/mesh-rig" })).statusCode, 404);
@@ -466,4 +622,5 @@ assert.equal(
   await withAvatarGenerationJob(owner, "pngtuber", async () => undefined);
 }
 
+rmSync(dataDir, { recursive: true, force: true });
 console.log("avatar generation regression passed");

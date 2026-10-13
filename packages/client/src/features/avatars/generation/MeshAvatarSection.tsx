@@ -3,12 +3,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2, Sparkles, X } from "lucide-react";
-import { AVATAR_PNGTUBER_VARIANTS, type AvatarOwnerRef } from "@marinara-engine/shared";
+import type { AvatarOwnerRef } from "@marinara-engine/shared";
 import type { SpriteInfo } from "../../../hooks/use-characters";
-import { useUIStore } from "../../../stores/ui.store";
-import type { ImagePromptOverride, ImagePromptReviewItem } from "../../../components/ui/ImagePromptReviewModal";
 import { SpritePicker } from "./SpritePicker";
-import { previewVariantPrompts, useMeshRigJob, useOneAtATime, useSaveMeshRig } from "./use-avatar-generation";
+import { useMeshRigJob, useOneAtATime, useSaveMeshRig } from "./use-avatar-generation";
 
 export interface ConnectionOption {
   id: string;
@@ -20,49 +18,25 @@ export function MeshAvatarSection({
   owner,
   sprites,
   languageConnections,
-  imageConnectionId,
-  reviewPrompts,
   onChanged,
 }: {
   owner: AvatarOwnerRef;
   sprites: SpriteInfo[];
   languageConnections: ConnectionOption[];
-  /** Null when there is no image connection to draw with. */
-  imageConnectionId: string | null;
-  reviewPrompts: (items: ImagePromptReviewItem[]) => Promise<ImagePromptOverride[] | null>;
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
   const [label, setLabel] = useState<string | null>(null);
   const [visionConnectionId, setVisionConnectionId] = useState("");
-  const [drawVariants, setDrawVariants] = useState(true);
-  const preparing = useOneAtATime();
   const saving = useOneAtATime();
   const job = useMeshRigJob(owner);
   const save = useSaveMeshRig(owner);
-  const busy = job.running || preparing.pending;
-  const draws = drawVariants && !!imageConnectionId;
+  const busy = job.running;
 
-  const start = () =>
-    preparing.run(async () => {
-      if (job.running || !label) return;
-      let overrides: ImagePromptOverride[] | undefined;
-      if (draws && useUIStore.getState().reviewImagePromptsBeforeSend) {
-        const preview = await previewVariantPrompts(owner, [label], [...AVATAR_PNGTUBER_VARIANTS], imageConnectionId);
-        const reviewed = await reviewPrompts(preview.items);
-        if (!reviewed) return;
-        overrides = reviewed;
-      }
-      void job.start(
-        {
-          sourceLabel: label,
-          connectionId: visionConnectionId || null,
-          imageConnectionId: draws ? imageConnectionId : null,
-          drawVariants: draws,
-        },
-        overrides,
-      );
-    });
+  const start = () => {
+    if (job.running || !label) return;
+    void job.start({ sourceLabel: label, connectionId: visionConnectionId || null });
+  };
 
   const keep = () =>
     saving.run(async () => {
@@ -94,7 +68,7 @@ export function MeshAvatarSection({
         label={t("avatars.generation.sourceSprite")}
         onToggle={(expression) => setLabel((current) => (current === expression ? null : expression))}
       />
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="md:max-w-sm">
         <label className="flex flex-col gap-1 text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
           {t("avatars.generation.visionConnection")}
           <select
@@ -111,27 +85,12 @@ export function MeshAvatarSection({
             ))}
           </select>
         </label>
-        <label className="flex min-h-9 items-start gap-2 self-end text-xs text-[var(--foreground)]">
-          <input
-            type="checkbox"
-            className="mt-0.5 h-4 w-4 accent-[var(--primary)]"
-            checked={draws}
-            disabled={busy || !imageConnectionId}
-            onChange={(event) => setDrawVariants(event.target.checked)}
-          />
-          <span>
-            {t("avatars.generation.drawVariants")}
-            <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
-              {t("avatars.generation.drawVariantsHelp")}
-            </span>
-          </span>
-        </label>
       </div>
       <p className="text-[0.625rem] text-[var(--muted-foreground)]">{t("avatars.generation.sourceSpriteHelp")}</p>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => void start()}
+          onClick={start}
           disabled={busy || !label}
           className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary)]/85 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
         >

@@ -26,6 +26,8 @@ export interface PngtuberVariantDraft {
   image: string;
   width: number;
   height: number;
+  /** Which version of the sprite it was drawn from; saving refuses a sprite replaced since. */
+  sourceHash: string;
 }
 
 interface PngtuberDraftsResponse {
@@ -38,7 +40,6 @@ export interface MeshRigDraft {
   archive: string;
   /** The sprite with the face parts the vision model found. */
   preview: string;
-  drawn: AvatarPngtuberVariant[];
   warnings: string[];
 }
 
@@ -106,7 +107,8 @@ export function previewVariantPrompts(
 }
 
 /** Makes blink and talk pictures one at a time, so each can be checked, kept or tried again, and Cancel
- *  stops the picture being made. A second start while one runs does nothing. */
+ *  stops the picture being made. A second start while one runs does nothing. Pictures already made stay:
+ *  a new start makes only the missing ones, and a failed try keeps the picture it was replacing. */
 export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const [items, setItems] = useState<VariantJobItem[]>([]);
   const [running, setRunning] = useState(false);
@@ -153,15 +155,15 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
             update(
               item.id,
               draft
-                ? { status: "done", draft, kept: false }
-                : { status: "failed", error: response.failed[0]?.error ?? "", draft: undefined },
+                ? { status: "done", draft, kept: false, error: undefined }
+                : { status: "failed", error: response.failed[0]?.error ?? "" },
             );
           } catch (error) {
             if (controller.signal.aborted || isAbort(error)) {
               update(item.id, { status: item.draft ? "done" : "waiting" });
               break;
             }
-            update(item.id, { status: "failed", error: errorMessage(error), draft: undefined, kept: false });
+            update(item.id, { status: "failed", error: errorMessage(error) });
           }
         }
       } finally {
@@ -176,19 +178,17 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const start = useCallback(
     (labels: string[], variants: AvatarPngtuberVariant[], options: GenerationRunOptions) => {
       if (runningRef.current) return;
+      const made = items.filter((item) => item.draft);
       const queue = labels.flatMap((label) =>
-        variants.map((variant): VariantJobItem => ({
-          id: variantJobId(label, variant),
-          label,
-          variant,
-          status: "waiting",
-          kept: false,
-        })),
+        variants.flatMap((variant): VariantJobItem[] => {
+          const id = variantJobId(label, variant);
+          return made.some((item) => item.id === id) ? [] : [{ id, label, variant, status: "waiting", kept: false }];
+        }),
       );
-      setItems(queue);
+      setItems([...made, ...queue]);
       void run(queue, options);
     },
-    [run],
+    [items, run],
   );
 
   const retry = useCallback(
@@ -229,15 +229,7 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
   }, [owner.ownerType, owner.ownerId]);
 
   const start = useCallback(
-    async (
-      body: {
-        sourceLabel: string;
-        connectionId: string | null;
-        imageConnectionId: string | null;
-        drawVariants: boolean;
-      },
-      promptOverrides?: ImagePromptOverride[],
-    ) => {
+    async (body: { sourceLabel: string; connectionId: string | null }) => {
       if (runningRef.current) return;
       runningRef.current = true;
       setRunning(true);
@@ -247,7 +239,7 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
       try {
         const result = await api.post<MeshRigDraft>(
           `${PREFIX}/mesh-rig`,
-          { owner, ...body, promptOverrides, debugMode: useUIStore.getState().debugMode },
+          { owner, ...body, debugMode: useUIStore.getState().debugMode },
           { signal: controller.signal },
         );
         if (!controller.signal.aborted) setDraft({ ...result, label: body.sourceLabel });
@@ -279,7 +271,7 @@ function useInvalidateAvatar(owner: AvatarOwnerRef) {
 export function useSavePngtuberVariants(owner: AvatarOwnerRef) {
   const invalidate = useInvalidateAvatar(owner);
   return useMutation({
-    mutationFn: (images: Array<{ label: string; variant: AvatarPngtuberVariant; image: string }>) =>
+    mutationFn: (images: Array<{ label: string; variant: AvatarPngtuberVariant; image: string; sourceHash: string }>) =>
       api.post<AvatarGenerationResponse>(`${PREFIX}/pngtuber-variants/save`, { owner, images }),
     onSuccess: () => invalidate(),
   });

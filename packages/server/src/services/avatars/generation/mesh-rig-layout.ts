@@ -116,6 +116,14 @@ export function checkMeshRigLayout(
     (layout.mouth.left[1] + layout.mouth.right[1]) / 2,
   ];
   if (overlaps(eyeA.region, eyeB.region)) errors.push("the two eye regions overlap");
+  // Each eye is cut and filled pixel by pixel, so an eye the size of the face is refused as well as wrong.
+  layout.eyes.forEach((eye, index) => {
+    if (
+      boxWidth(eye.region) > boxWidth(layout.faceBox) * 0.5 ||
+      boxHeight(eye.region) > boxHeight(layout.faceBox) * 0.4
+    )
+      errors.push(`eyes[${index}].region is too big for faceBox`);
+  });
   if (!insideBox(boxCenter(layout.faceBox), layout.headBox)) errors.push("faceBox must be inside headBox");
   layout.brows.forEach((brow, index) => {
     if (boxCenter(brow)[1] >= eyeLine) errors.push(`brows[${index}] must be above the eyes`);

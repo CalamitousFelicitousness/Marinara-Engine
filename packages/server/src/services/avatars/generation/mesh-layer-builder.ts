@@ -1,12 +1,14 @@
 // ──────────────────────────────────────────────
 // Avatar generation: the mesh-avatar layer builder in JavaScript
 // ──────────────────────────────────────────────
-// A port of mesh-avatar-studio's tools/build-layers.py and build-sprites.py (MIT, shinshin86) to plain
+// A port of mesh-avatar-studio's tools/build-layers.py (MIT, shinshin86) to plain
 // typed-array pixel work, with sharp only decoding and encoding PNGs: no Python, OpenCV or GPU. It cuts
-// each eye into its ball, lash, lower-lid and crease layers, fills the hole they leave in the base
-// picture, and cuts drawn closed-eye and open-mouth pictures into sprites. Hands, hanging accessories,
-// buns and hair strands are not built: the rig leaves those optional groups out, so the avatar's hair
-// moves with its head.
+// each eye into its ball, lash, lower-lid and crease layers and fills the hole they leave in the base
+// picture. Hands, hanging accessories, buns and hair strands are not built: the rig leaves those optional
+// groups out, so the avatar's hair moves with its head. No drawn eye or mouth sprites are written:
+// mesh-avatar 0.1.1 treats any sprites.json as the full set (half-closed and smiling eyes, four mouth
+// shapes) and turns its own eyelids and mouth off, so a partial set leaves faces without eyes or a mouth.
+// The work runs on the server's main thread in short slices, so other requests and Cancel get through.
 import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
 import { getSharp } from "../../image/sharp-runtime.js";
@@ -38,6 +40,27 @@ const LUMA = [0.3, 0.59, 0.11] as const;
 const WORK_MARGIN = 40;
 /** Relaxation steps of the skin fill; it starts from the skin colour, so it settles quickly. */
 const MEMBRANE_ITERATIONS = 200;
+/** Longest stretch of pixel work before other requests get a turn. */
+const SLICE_MS = 25;
+
+/** Most pixels one eye's work area may cover. The fill's work grows with the eye's size, so a sprite with
+ *  bigger eyes is built smaller (meshWorkScale) and a build stays a few seconds of work, phones included. */
+const EYE_WORK_MAX_PIXELS = 120_000;
+
+/** How much to shrink a sprite so each eye region (x0, y0, x1, y1), with the room around it, fits
+ *  EYE_WORK_MAX_PIXELS. 1 when it already fits. */
+export function meshWorkScale(regions: ReadonlyArray<readonly [number, number, number, number]>): number {
+  const largest = Math.max(
+    ...regions.map(([x0, y0, x1, y1]) => (x1 - x0 + 2 * WORK_MARGIN) * (y1 - y0 + 2 * WORK_MARGIN)),
+  );
+  return Math.min(1, Math.sqrt(EYE_WORK_MAX_PIXELS / largest));
+}
+
+/** Lets other requests run, then stops if the request was cancelled. */
+async function pause(signal: AbortSignal | undefined): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  signal?.throwIfAborted();
+}
 
 // ── Pixel helpers ──
 
@@ -91,23 +114,6 @@ function polygonMask(area: Pixels, polygon: readonly Point[]): Mask {
       const from = Math.max(0, Math.ceil(crossings[i]! - 0.5 - area.x));
       const to = Math.min(area.width - 1, Math.floor(crossings[i + 1]! - 0.5 - area.x));
       for (let col = from; col <= to; col += 1) mask[row * area.width + col] = 1;
-    }
-  }
-  return mask;
-}
-
-/** Pixels inside a rotated ellipse (mesh-avatar's mouth area). */
-function ellipseMask(area: Pixels, e: { cx: number; cy: number; rx: number; ry: number; angle: number }): Mask {
-  const mask = new Uint8Array(area.width * area.height);
-  const cos = Math.cos(e.angle);
-  const sin = Math.sin(e.angle);
-  for (let row = 0; row < area.height; row += 1) {
-    for (let col = 0; col < area.width; col += 1) {
-      const dx = area.x + col + 0.5 - e.cx;
-      const dy = area.y + row + 0.5 - e.cy;
-      const u = (dx * cos + dy * sin) / e.rx;
-      const v = (-dx * sin + dy * cos) / e.ry;
-      if (u * u + v * v <= 1) mask[row * area.width + col] = 1;
     }
   }
   return mask;
@@ -203,25 +209,29 @@ function skinSamples(area: Pixels, region: Mask): { colour: [number, number, num
   return { colour, tolerance: Math.max(22, Math.min(60, percentile(spreads, 50) * 3)) };
 }
 
-/** Continues the surrounding skin shading into a hole by relaxing it towards the average of its
- *  neighbours (build-layers.py fill_skin's membrane solve). Returns RGB for the whole work area.
- *  ponytail: a smooth fill, so a lid painted over the filled hole shows flat shading with no texture;
- *  fine for anime-style skin. Upgrade: masked inpainting once the image path accepts an edit mask. */
-function fillSkin(area: Pixels, hole: Mask): Float32Array {
+interface Membrane {
+  rgb: Float32Array;
+  pixels: number[];
+  neighbours: number[];
+  starts: number[];
+}
+
+/** The skin fill's starting colours, and each pixel it solves with its neighbours (3x3, clipped at the
+ *  edge), listed once so each pass only adds. */
+function membrane(area: Pixels, hole: Mask): Membrane {
   const { width, height, data } = area;
   const rgb = new Float32Array(width * height * 3);
   for (let i = 0; i < width * height; i += 1) for (let c = 0; c < 3; c += 1) rgb[i * 3 + c] = data[i * 4 + c]!;
-  if (!hole.some(Boolean)) return rgb;
+  const pixels: number[] = [];
+  const neighbours: number[] = [];
+  const starts: number[] = [0];
+  if (!hole.some(Boolean)) return { rgb, pixels, neighbours, starts };
   const { colour, tolerance } = skinSamples(area, hole);
   const skin = new Uint8Array(width * height);
   for (let i = 0; i < skin.length; i += 1) {
     skin[i] = !hole[i] && data[i * 4 + 3]! > 200 && maxChannelDifference(data, i * 4, colour) < tolerance ? 1 : 0;
   }
   const solve = or(hole, and(dilate(hole, width, height, 8), not(skin)));
-  // Each solved pixel's neighbours (3x3, clipped at the edge), listed once so the loop below only adds.
-  const pixels: number[] = [];
-  const neighbours: number[] = [];
-  const starts: number[] = [0];
   for (let i = 0; i < solve.length; i += 1) {
     if (!solve[i]) continue;
     for (let c = 0; c < 3; c += 1) rgb[i * 3 + c] = colour[c]!;
@@ -233,25 +243,47 @@ function fillSkin(area: Pixels, hole: Mask): Float32Array {
     pixels.push(i);
     starts.push(neighbours.length);
   }
-  let current = rgb;
-  let next = rgb.slice();
-  for (let iteration = 0; iteration < MEMBRANE_ITERATIONS; iteration += 1) {
-    for (let p = 0; p < pixels.length; p += 1) {
-      let red = 0;
-      let green = 0;
-      let blue = 0;
-      for (let n = starts[p]!; n < starts[p + 1]!; n += 1) {
-        const at = neighbours[n]! * 3;
-        red += current[at]!;
-        green += current[at + 1]!;
-        blue += current[at + 2]!;
-      }
-      const count = starts[p + 1]! - starts[p]!;
-      const at = pixels[p]! * 3;
-      next[at] = red / count;
-      next[at + 1] = green / count;
-      next[at + 2] = blue / count;
+  return { rgb, pixels, neighbours, starts };
+}
+
+/** One relaxation pass: every solved pixel becomes the average of its neighbours. */
+function relax(current: Float32Array, next: Float32Array, { pixels, neighbours, starts }: Membrane): void {
+  for (let p = 0; p < pixels.length; p += 1) {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    for (let n = starts[p]!; n < starts[p + 1]!; n += 1) {
+      const at = neighbours[n]! * 3;
+      red += current[at]!;
+      green += current[at + 1]!;
+      blue += current[at + 2]!;
     }
+    const count = starts[p + 1]! - starts[p]!;
+    const at = pixels[p]! * 3;
+    next[at] = red / count;
+    next[at + 1] = green / count;
+    next[at + 2] = blue / count;
+  }
+}
+
+/** Continues the surrounding skin shading into a hole by relaxing it towards the average of its
+ *  neighbours (build-layers.py fill_skin's membrane solve). Returns RGB for the whole work area. The
+ *  passes run in slices so other requests get through; the pixel loops stay in plain functions, where
+ *  they run several times faster than inside this async one.
+ *  ponytail: a smooth fill, so a lid painted over the filled hole shows flat shading with no texture;
+ *  fine for anime-style skin. Upgrade: masked inpainting once the image path accepts an edit mask. */
+async function fillSkin(area: Pixels, hole: Mask, signal: AbortSignal | undefined): Promise<Float32Array> {
+  let sliceStart = performance.now();
+  const solve = membrane(area, hole);
+  let current = solve.rgb;
+  if (!solve.pixels.length) return current;
+  let next: Float32Array = current.slice();
+  for (let iteration = 0; iteration < MEMBRANE_ITERATIONS; iteration += 1) {
+    if (performance.now() - sliceStart > SLICE_MS) {
+      await pause(signal);
+      sliceStart = performance.now();
+    }
+    relax(current, next, solve);
     [current, next] = [next, current];
   }
   return current;
@@ -328,16 +360,30 @@ interface EyeLayers {
   lines: Record<"lash" | "low" | "crease", { mask: Mask; ink: [number, number, number] }>;
 }
 
-/** Sorts an eye's pixels into eye ball, lash, lower lid and crease (build-layers.py eye_classes). */
-function classifyEye(image: Pixels, eye: MeshRig["eyes"][number], index: number): EyeLayers {
+interface EyeWork {
+  area: Pixels;
+  /** The eye opening, the eye with its lashes, and the drawn pixels of the work area. */
+  core: Mask;
+  region: Mask;
+  opaque: Mask;
+}
+
+/** An eye's work area and masks. Refuses an eye on an empty part of the picture. */
+function eyeWork(image: Pixels, eye: MeshRig["eyes"][number], index: number): EyeWork {
   const area = workArea(image, eye.roi, WORK_MARGIN);
-  const { width, height, data } = area;
   const core = polygonMask(area, eye.opening);
   const region = polygonMask(area, eye.roi);
-  const opaque = data.filter((_, i) => i % 4 === 3).map((value) => (value > 0 ? 1 : 0));
+  const opaque = area.data.filter((_, i) => i % 4 === 3).map((value) => (value > 0 ? 1 : 0));
   if (!and(core, opaque).some(Boolean))
     throw new MeshLayerError(`Eye ${index + 1} is on an empty part of the picture.`);
-  const estimate = fillSkin(area, region);
+  return { area, core, region, opaque };
+}
+
+/** Sorts an eye's pixels into eye ball, lash, lower lid and crease (build-layers.py eye_classes).
+ *  `estimate` is the skin the region would show without the eye (fillSkin over the region). */
+function classifyEye(eye: MeshRig["eyes"][number], work: EyeWork, estimate: Float32Array): EyeLayers {
+  const { area, core, region, opaque } = work;
+  const { width, height, data } = area;
   const skin = new Uint8Array(width * height);
   for (let i = 0; i < skin.length; i += 1) skin[i] = maxChannelDifference(data, i * 4, estimate, i * 3) < 22 ? 1 : 0;
   const ink = and(region, not(skin), not(core), opaque);
@@ -391,10 +437,9 @@ function classifyEye(image: Pixels, eye: MeshRig["eyes"][number], index: number)
     ["low", low],
     ["crease", crease],
   ] as const) {
-    const darkest = percentile(
-      Array.from(mask.keys()).flatMap((i) => (mask[i] && data[i * 4 + 3]! > 200 ? [luma(data, i * 4)] : [])),
-      10,
-    );
+    const lumas: number[] = [];
+    for (let i = 0; i < mask.length; i += 1) if (mask[i] && data[i * 4 + 3]! > 200) lumas.push(luma(data, i * 4));
+    const darkest = percentile(lumas, 10);
     const inkColour =
       medianColour(area, (i) => !!mask[i] && data[i * 4 + 3]! > 200 && luma(data, i * 4) <= darkest) ?? skinColour;
     const grown = and(dilate(mask, width, height, 2), not(taken), grownRegion);
@@ -435,34 +480,52 @@ export interface BuiltMeshLayers {
   build: string;
 }
 
+/** Makes nearly opaque pixels fully opaque (build-layers.py does the same before cutting). */
+function solidifyAlpha(data: Uint8Array): void {
+  for (let i = 3; i < data.length; i += 4) if (data[i]! > 240) data[i] = 255;
+}
+
+/** Blends the filled skin into the base picture along the hole's soft edge. */
+function paintHole(base: Pixels, area: Pixels, hole: Mask, under: Float32Array): void {
+  const edge = softEdge(hole, area.width, area.height);
+  for (let i = 0; i < hole.length; i += 1) {
+    if (!edge[i]) continue;
+    const col = i % area.width;
+    const row = (i - col) / area.width;
+    const at = ((area.y + row) * base.width + area.x + col) * 4;
+    for (let c = 0; c < 3; c += 1) {
+      base.data[at + c] = Math.round(area.data[i * 4 + c]! * (1 - edge[i]!) + under[i * 3 + c]! * edge[i]!);
+    }
+  }
+}
+
 /** Builds `built/` for a rig whose eyes carry their sampled curves: base.png with the eyes taken out and
- *  the holes filled, an empty hairmask.png, the four layers of each eye and layers.json. */
-export async function buildMeshAvatarLayers(source: MeshLayerSource, rig: MeshRig): Promise<BuiltMeshLayers> {
+ *  the holes filled, an empty hairmask.png, the four layers of each eye and layers.json. Cancelled
+ *  through `signal` between slices of work. */
+export async function buildMeshAvatarLayers(
+  source: MeshLayerSource,
+  rig: MeshRig,
+  signal?: AbortSignal,
+): Promise<BuiltMeshLayers> {
   const image = await decodeRgba(source.png);
   if (image.width !== rig.image.width || image.height !== rig.image.height) {
     throw new MeshLayerError("The rig and the picture are different sizes.");
   }
-  for (let i = 3; i < image.data.length; i += 4) if (image.data[i]! > 240) image.data[i] = 255;
+  solidifyAlpha(image.data);
   const base: Pixels = { ...image, data: image.data.slice() };
   const files: MeshAvatarFiles = new Map();
   const rects: Record<string, Rect> = {};
 
   for (const [index, eye] of rig.eyes.entries()) {
-    const layers = classifyEye(image, eye, index);
-    // The pixel work runs on the server's main thread; let other requests through between steps.
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    const work = eyeWork(image, eye, index);
+    const estimate = await fillSkin(work.area, work.region, signal);
+    await pause(signal);
+    const layers = classifyEye(eye, work, estimate);
+    await pause(signal);
     const area = layers.area;
-    const under = fillSkin(area, layers.hole);
-    const edge = softEdge(layers.hole, area.width, area.height);
-    for (let i = 0; i < layers.hole.length; i += 1) {
-      if (!edge[i]) continue;
-      const col = i % area.width;
-      const row = (i - col) / area.width;
-      const at = ((area.y + row) * base.width + area.x + col) * 4;
-      for (let c = 0; c < 3; c += 1) {
-        base.data[at + c] = Math.round(area.data[i * 4 + c]! * (1 - edge[i]!) + under[i * 3 + c]! * edge[i]!);
-      }
-    }
+    const under = await fillSkin(area, layers.hole, signal);
+    await pause(signal);
+    paintHole(base, area, layers.hole, under);
     const ball = cropLayer(area, (i) => layers.ball[i]!, 3);
     files.set(`built/eye${index}_ball.png`, await encodePng(ball.pixels));
     rects[`eye${index}_ball`] = ball.rect;
@@ -492,127 +555,6 @@ export async function buildMeshAvatarLayers(source: MeshLayerSource, rig: MeshRi
   };
   files.set("built/layers.json", Buffer.from(`${JSON.stringify(layersJson, null, 2)}\n`));
   return { files, rects, build };
-}
-
-// ── Drawn variants ──
-
-export type MeshSpriteVariant = "eyes_closed" | "mouth_a";
-
-/** Mean premultiplied colour difference (0..255) between the drawing moved by (dx, dy) and the sprite,
- *  over the masked pixels of a work area. */
-function meanDifference(drawn: Pixels, original: Pixels, mask: Mask, area: Pixels, dx = 0, dy = 0): number {
-  let total = 0;
-  let count = 0;
-  for (let i = 0; i < mask.length; i += 1) {
-    if (!mask[i]) continue;
-    const col = i % area.width;
-    const row = (i - col) / area.width;
-    const x = area.x + col;
-    const y = area.y + row;
-    if (x + dx < 0 || y + dy < 0 || x + dx >= drawn.width || y + dy >= drawn.height) continue;
-    const at = (y * original.width + x) * 4;
-    const moved = ((y + dy) * drawn.width + x + dx) * 4;
-    let worst = 0;
-    for (let c = 0; c < 3; c += 1) {
-      worst = Math.max(
-        worst,
-        Math.abs(
-          (drawn.data[moved + c]! * drawn.data[moved + 3]!) / 255 -
-            (original.data[at + c]! * original.data[at + 3]!) / 255,
-        ),
-      );
-    }
-    total += worst;
-    count += 1;
-  }
-  return count ? total / count : 0;
-}
-
-/** Whether a drawing still lines up with the sprite around a region. Image models re-render the whole
- *  picture, so colours never match exactly; what matters is that no small shift matches better than
- *  none, and that the surroundings were not redrawn outright. */
-function linesUp(drawn: Pixels, original: Pixels, ring: Mask, area: Pixels): boolean {
-  const inPlace = meanDifference(drawn, original, ring, area);
-  if (inPlace > 48) return false;
-  for (let dy = -12; dy <= 12; dy += 2) {
-    for (let dx = -12; dx <= 12; dx += 2) {
-      if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) continue;
-      if (meanDifference(drawn, original, ring, area, dx, dy) < inPlace - 2) return false;
-    }
-  }
-  return true;
-}
-
-/** Cuts the eye or mouth regions out of a drawn full-size variant into feathered sprites (build-sprites.py).
- *  A region whose surroundings don't match the sprite is skipped: the drawing moved or redrew the picture,
- *  and a sprite from it would jump on every blink. Returns the sprites it kept. */
-export async function cutDrawnSprites(
-  source: MeshLayerSource,
-  drawn: Buffer,
-  rig: MeshRig,
-  variant: MeshSpriteVariant,
-): Promise<{ sprites: MeshAvatarFiles; rects: Record<string, Rect>; rejected: number }> {
-  const original = await decodeRgba(source.png);
-  const picture = await decodeRgba(drawn);
-  if (picture.width !== original.width || picture.height !== original.height) {
-    throw new MeshLayerError("A drawn variant must be the sprite's size.");
-  }
-  const regions =
-    variant === "eyes_closed"
-      ? rig.eyes.map((eye, index) => {
-          const area = workArea(original, eye.roi, 24);
-          return {
-            name: `eyes_closed_${index}`,
-            area,
-            mask: dilate(polygonMask(area, eye.roi), area.width, area.height, 4),
-          };
-        })
-      : [
-          (() => {
-            const e = rig.mouth.area;
-            const area = workArea(
-              original,
-              [
-                [e.cx - e.rx - e.ry, e.cy - e.rx - e.ry],
-                [e.cx + e.rx + e.ry, e.cy + e.rx + e.ry],
-              ],
-              24,
-            );
-            return { name: "mouth_a", area, mask: dilate(ellipseMask(area, e), area.width, area.height, 4) };
-          })(),
-        ];
-  const sprites: MeshAvatarFiles = new Map();
-  const rects: Record<string, Rect> = {};
-  let rejected = 0;
-  for (const { name, area, mask } of regions) {
-    const ring = and(dilate(mask, area.width, area.height, 10), not(mask));
-    if (!linesUp(picture, original, ring, area)) {
-      rejected += 1;
-      continue;
-    }
-    // Feather 4 px inward: each erosion step a pixel survives adds a quarter of its opacity.
-    const weight = new Float32Array(mask.length);
-    let layer = mask;
-    for (let step = 0; step < 4; step += 1) {
-      for (let i = 0; i < layer.length; i += 1) weight[i] = weight[i]! + layer[i]! / 4;
-      layer = erode(layer, area.width, area.height, 1);
-    }
-    const drawnArea = crop(picture, area.x, area.y, area.width, area.height);
-    const cut = cropLayer(drawnArea, (i) => weight[i]!, 0);
-    if (cut.rect[2] <= 1 && cut.rect[3] <= 1) continue;
-    sprites.set(`built/sprites/${name}.png`, await encodePng(cut.pixels));
-    rects[name] = cut.rect;
-  }
-  return { sprites, rects, rejected };
-}
-
-/** `built/sprites/sprites.json` for the kept sprites. */
-export function spritesJson(sprites: MeshAvatarFiles, rects: Record<string, Rect>): Buffer {
-  const hash = createHash("sha1");
-  for (const name of Object.keys(rects).sort()) hash.update(sprites.get(`built/sprites/${name}.png`) ?? "");
-  return Buffer.from(
-    `${JSON.stringify({ build: hash.digest("hex").slice(0, 10), layers: rects, version: 1 }, null, 2)}\n`,
-  );
 }
 
 // ── The archive ──

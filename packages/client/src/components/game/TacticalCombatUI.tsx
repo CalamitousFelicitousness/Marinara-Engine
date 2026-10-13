@@ -451,11 +451,13 @@ export function TacticalCombatUI({
           if (res.opening) {
             const before = mark(res.opening.before);
             setState(before);
-            // Kept as it will stand, so a refresh while the opening plays resumes this same fight.
+            // Kept as it will stand, so a refresh while the opening plays resumes this same fight. The
+            // battlefield is told now too: the opening turns move units, not the ground.
             persistSnapshot(marked);
             setStarting(false);
             playSfx(SFX.start);
-            playEventsRef.current?.(res.opening.events, marked, before, (final) => onBattlefieldReady?.(final));
+            onBattlefieldReady?.(marked);
+            playEventsRef.current?.(res.opening.events, marked, before);
             return;
           }
           setState(marked);

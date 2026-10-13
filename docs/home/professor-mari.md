@@ -101,7 +101,7 @@ Professor Mari can work in two ways. **Classic** is the default. **Pi** is a tri
 
 To switch, open **Search and Professor Mari settings** and change **Runtime**, below **Permissions mode**. The change applies from her next answer. Your permissions mode, change cards and Undo work the same in both.
 
-Pi needs a connection whose model supports tool calls. On the local model and on some other connections, Professor Mari keeps using Classic, and the setting tells you so. If Professor Mari behaves oddly on Pi, switch back to Classic.
+Pi works with every connection, including the local model. If Professor Mari behaves oddly on Pi, switch back to Classic.
 
 ## Attaching files
 

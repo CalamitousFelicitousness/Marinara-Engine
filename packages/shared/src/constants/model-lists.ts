@@ -181,9 +181,21 @@ export function isGeminiThinkingLevelModel(model: string): boolean {
 /**
  * Gemini 4 Argon ignores temperature, top-p and top-k, rejects penalties and a prefilled final model turn, and cannot
  * turn thinking off. https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+ * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
  */
 export function isGeminiArgonModel(model: string): boolean {
   return /(?:^|\/)gemini-4-argon(?:$|-)/i.test(model);
+}
+
+/**
+ * Gemini models that reject a request ending on a model turn (a prefill) and frequency or presence penalties: Argon,
+ * 3.5 Flash-Lite and 3.6 to 3.8 Flash. OpenRouter variants such as `:online` count too.
+ * https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.6
+ * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash-lite
+ * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-6-flash (also 3-7, 3-8)
+ */
+export function isGeminiStrictRequestModel(model: string): boolean {
+  return /(?:^|\/)gemini-(?:4-argon|3\.5-flash-lite|3\.[6-8]-flash)(?:$|[-:])/i.test(model);
 }
 
 export function isXaiConfigurableReasoningModel(model: string): boolean {

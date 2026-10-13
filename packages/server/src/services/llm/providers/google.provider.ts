@@ -17,6 +17,7 @@ import {
 } from "../base-provider.js";
 import {
   isGeminiArgonModel,
+  isGeminiStrictRequestModel,
   isGeminiThinkingLevelModel,
   shouldSuppressUnknownModelParameters,
   type GenerationParameterSendKey,
@@ -79,13 +80,8 @@ interface GeminiEmbeddingPayload {
 
 type GoogleProviderKind = "google" | "google_vertex";
 
-const GEMINI_ARGON_UNSENT = new Set<GenerationParameterSendKey>([
-  "temperature",
-  "topP",
-  "topK",
-  "frequencyPenalty",
-  "presencePenalty",
-]);
+const GEMINI_ARGON_UNSENT = new Set<GenerationParameterSendKey>(["temperature", "topP", "topK"]);
+const GEMINI_STRICT_UNSENT = new Set<GenerationParameterSendKey>(["frequencyPenalty", "presencePenalty"]);
 
 // Gemini's adjustable safety filters are always off (#7542). Google documents Off as the default only for
 // Gemini 2.5 and 3, so newer models need it said out loud. Core protections still apply and still block.
@@ -594,10 +590,17 @@ function formatGoogleContents(
   return contents;
 }
 
-/** Argon rejects a prefilled final model turn: keep it as history and ask for only the rest of the reply. */
-function withArgonContinuation(model: string, contents: Array<{ role: string; parts: object[] }>) {
+/**
+ * Argon and the newer Flash models reject a prefilled final model turn: keep it as history and ask for only the rest of
+ * the reply. https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
+ */
+function withGeminiContinuation(model: string, contents: Array<{ role: string; parts: object[] }>) {
   const last = contents.at(-1);
-  if (!isGeminiArgonModel(model) || last?.role !== "model" || last.parts.some((part) => "functionCall" in part)) {
+  if (
+    !isGeminiStrictRequestModel(model) ||
+    last?.role !== "model" ||
+    last.parts.some((part) => "functionCall" in part)
+  ) {
     return contents;
   }
   return [...contents, { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] }];
@@ -653,9 +656,10 @@ export class GoogleProvider extends BaseLLMProvider {
     );
   }
 
-  // Argon ignores temperature, top-p and top-k and rejects both penalties with HTTP 400.
+  // Argon ignores temperature, top-p and top-k. It and the newer Flash models reject both penalties with HTTP 400.
   protected override shouldSendParameter(options: ChatOptions, key: GenerationParameterSendKey): boolean {
     if (isGeminiArgonModel(options.model) && GEMINI_ARGON_UNSENT.has(key)) return false;
+    if (isGeminiStrictRequestModel(options.model) && GEMINI_STRICT_UNSENT.has(key)) return false;
     return super.shouldSendParameter(options, key);
   }
 
@@ -698,7 +702,7 @@ export class GoogleProvider extends BaseLLMProvider {
 
     const systemMessages = messages.filter((m) => m.role === "system" && m.content?.trim());
     const body: Record<string, unknown> = {
-      contents: withArgonContinuation(model, formatGoogleContents(messages)),
+      contents: withGeminiContinuation(model, formatGoogleContents(messages)),
       generationConfig: {
         ...(this.shouldSendParameter(options, "temperature") ? { temperature: options.temperature ?? 1 } : {}),
         ...(this.shouldSendParameter(options, "maxTokens") ? { maxOutputTokens: maxTokens } : {}),
@@ -963,8 +967,15 @@ export class GoogleProvider extends BaseLLMProvider {
 
     // Convert to Gemini format — filter out empty-content messages
     const systemMessages = messages.filter((m) => m.role === "system" && m.content?.trim());
+    // Saved Gemini parts keep a turn with no text, as formatGoogleContents does.
     const chatMessages = messages.filter(
-      (m) => m.role !== "system" && (m.content?.trim() || m.images?.length || m.files?.length || m.media?.length),
+      (m) =>
+        m.role !== "system" &&
+        (m.content?.trim() ||
+          m.images?.length ||
+          m.files?.length ||
+          m.media?.length ||
+          (m.role === "assistant" && m.providerMetadata?.geminiParts)),
     );
 
     const contents = chatMessages.map((m) => {
@@ -994,7 +1005,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     const body: Record<string, unknown> = {
-      contents: withArgonContinuation(model, contents),
+      contents: withGeminiContinuation(model, contents),
     };
 
     const outputMaxTokens = maxTokens ?? 4096;

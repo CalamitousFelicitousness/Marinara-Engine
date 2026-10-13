@@ -8,7 +8,6 @@
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import AdmZip from "adm-zip";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -207,7 +206,7 @@ try {
 
   // ── Catalogs kept in their own files: the entry is checked once every file is read ──
   {
-    const { readRulesetPackageZip } = await import("../../packages/server/src/services/game/ruleset-package-zip.js");
+    const { readRulesetPackageFile } = await import("../../packages/server/src/services/game/ruleset-package-file.js");
     const { createGameRulesetsStorage } =
       await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
     const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
@@ -248,10 +247,14 @@ try {
           permissions: [],
           restartRequired: false,
         };
-        const archive = new AdmZip();
-        for (const [name, text] of Object.entries({ ...documents, "manifest.json": JSON.stringify(declared) }))
-          archive.addFile(name, Buffer.from(text));
-        const result = readRulesetPackageZip(archive.toBuffer());
+        const result = readRulesetPackageFile({
+          format: "marinara-ruleset",
+          version: 1,
+          manifest: declared,
+          files: Object.fromEntries(
+            Object.entries(documents).map(([path, text]) => [path, Buffer.from(text).toString("base64")]),
+          ),
+        });
         assert.equal(result.ok, !fault, JSON.stringify(result));
         const input = {
           rulesetId: `local/${doc.id}`,

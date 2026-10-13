@@ -215,9 +215,12 @@ assert.deepEqual(modern.meta, {
   termsUrl: null,
   creditNotation: null,
   allowRedistribution: null,
+  allowSexualUse: null,
+  allowViolentUse: null,
+  allowPoliticalOrReligiousUse: null,
+  allowAntisocialOrHateUse: null,
 });
-// The author's own terms, credit and sharing rules are kept too (VRM 1.0 otherLicenseUrl, creditNotation,
-// allowRedistribution; VRM 0.x otherPermissionUrl).
+// The author's own terms link, credit, sharing and content rules are kept too.
 const authorTerms = await vrmImporter.validate(
   input(
     glb(
@@ -231,6 +234,10 @@ const authorTerms = await vrmImporter.validate(
             otherLicenseUrl: "https://author.example/terms-of-use",
             creditNotation: "required",
             allowRedistribution: false,
+            allowExcessivelySexualUsage: false,
+            allowExcessivelyViolentUsage: true,
+            allowPoliticalOrReligiousUsage: false,
+            allowAntisocialOrHateUsage: "no",
           },
         },
       ),
@@ -241,11 +248,25 @@ assert.ok(authorTerms.type === "model");
 assert.equal(authorTerms.meta.termsUrl, "https://author.example/terms-of-use");
 assert.equal(authorTerms.meta.creditNotation, "required");
 assert.equal(authorTerms.meta.allowRedistribution, false);
+assert.equal(authorTerms.meta.allowSexualUse, false);
+assert.equal(authorTerms.meta.allowViolentUse, true);
+assert.equal(authorTerms.meta.allowPoliticalOrReligiousUse, false);
+assert.equal(authorTerms.meta.allowAntisocialOrHateUse, null, "a value that is not yes or no is not stated");
 const legacyTerms = await vrmImporter.validate(
-  input(glb(vrm0([], { otherPermissionUrl: "https://author.example/permissions" }))),
+  input(
+    glb(
+      vrm0([], {
+        otherPermissionUrl: "https://author.example/permissions",
+        sexualUssageName: "Disallow",
+        violentUssageName: "Allow",
+      }),
+    ),
+  ),
 );
 assert.ok(legacyTerms.type === "model");
 assert.equal(legacyTerms.meta.termsUrl, "https://author.example/permissions");
+assert.equal(legacyTerms.meta.allowSexualUse, false, "VRM 0.x Disallow");
+assert.equal(legacyTerms.meta.allowViolentUse, true, "VRM 0.x Allow");
 const modernImport = buildVrmImport(modern, input(new Uint8Array([9])), null);
 assert.equal(modernImport.kind, "vrm");
 assert.deepEqual(
@@ -318,6 +339,10 @@ assert.deepEqual(legacy.meta, {
   termsUrl: null,
   creditNotation: null,
   allowRedistribution: null,
+  allowSexualUse: null,
+  allowViolentUse: null,
+  allowPoliticalOrReligiousUse: null,
+  allowAntisocialOrHateUse: null,
 });
 assert.ok(
   legacy.warnings.some((warning) => /too long/u.test(warning)),

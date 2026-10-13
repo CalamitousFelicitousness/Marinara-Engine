@@ -317,6 +317,12 @@ function metaUrl(value: unknown): string | null {
   }
 }
 
+/** A VRM 1.0 yes/no term, or a VRM 0.x "Allow"/"Disallow" one; anything else is not stated. */
+function metaFlag(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  return value === "Allow" ? true : value === "Disallow" ? false : null;
+}
+
 function vrm1Meta(meta: JsonRecord): VrmModelMeta {
   return {
     title: metaText(meta.name, MAX_META_TEXT_LENGTH),
@@ -332,7 +338,11 @@ function vrm1Meta(meta: JsonRecord): VrmModelMeta {
     licenseUrl: metaUrl(meta.licenseUrl),
     termsUrl: metaUrl(meta.otherLicenseUrl),
     creditNotation: metaTerm(meta.creditNotation),
-    allowRedistribution: typeof meta.allowRedistribution === "boolean" ? meta.allowRedistribution : null,
+    allowRedistribution: metaFlag(meta.allowRedistribution),
+    allowSexualUse: metaFlag(meta.allowExcessivelySexualUsage),
+    allowViolentUse: metaFlag(meta.allowExcessivelyViolentUsage),
+    allowPoliticalOrReligiousUse: metaFlag(meta.allowPoliticalOrReligiousUsage),
+    allowAntisocialOrHateUse: metaFlag(meta.allowAntisocialOrHateUsage),
   };
 }
 
@@ -350,6 +360,10 @@ function vrm0Meta(meta: JsonRecord): VrmModelMeta {
     termsUrl: metaUrl(meta.otherPermissionUrl),
     creditNotation: null,
     allowRedistribution: null,
+    allowSexualUse: metaFlag(meta.sexualUssageName),
+    allowViolentUse: metaFlag(meta.violentUssageName),
+    allowPoliticalOrReligiousUse: null,
+    allowAntisocialOrHateUse: null,
   };
 }
 

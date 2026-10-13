@@ -380,6 +380,14 @@ export interface VrmModelMeta {
   creditNotation?: string | null;
   /** VRM 1.0 `allowRedistribution`: whether the model file may be shared. */
   allowRedistribution?: boolean | null;
+  /** VRM 1.0 `allowExcessivelySexualUsage` or VRM 0.x `sexualUssageName` (Allow/Disallow). */
+  allowSexualUse?: boolean | null;
+  /** VRM 1.0 `allowExcessivelyViolentUsage` or VRM 0.x `violentUssageName` (Allow/Disallow). */
+  allowViolentUse?: boolean | null;
+  /** VRM 1.0 `allowPoliticalOrReligiousUsage`. */
+  allowPoliticalOrReligiousUse?: boolean | null;
+  /** VRM 1.0 `allowAntisocialOrHateUsage`. */
+  allowAntisocialOrHateUse?: boolean | null;
 }
 
 export interface VrmAvatarData {

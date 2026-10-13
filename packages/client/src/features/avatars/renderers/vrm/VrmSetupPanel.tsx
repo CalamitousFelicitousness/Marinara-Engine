@@ -123,11 +123,16 @@ function ModelTerms({ meta }: { meta: VrmModelMeta }) {
     [t("avatars.vrm.terms.commercialUsage"), term(meta.commercialUsage)],
   ];
   if (meta.modification || !meta.licenseName) rows.push([t("avatars.vrm.terms.modification"), term(meta.modification)]);
-  if (typeof meta.allowRedistribution === "boolean") {
-    rows.push([
-      t("avatars.vrm.terms.redistribution"),
-      t(meta.allowRedistribution ? "avatars.vrm.terms.allowed" : "avatars.vrm.terms.notAllowed"),
-    ]);
+  const flags: Array<[labelKey: string, value: boolean | null | undefined]> = [
+    ["avatars.vrm.terms.redistribution", meta.allowRedistribution],
+    ["avatars.vrm.terms.sexualUse", meta.allowSexualUse],
+    ["avatars.vrm.terms.violentUse", meta.allowViolentUse],
+    ["avatars.vrm.terms.politicalOrReligiousUse", meta.allowPoliticalOrReligiousUse],
+    ["avatars.vrm.terms.antisocialOrHateUse", meta.allowAntisocialOrHateUse],
+  ];
+  for (const [labelKey, allowed] of flags) {
+    if (typeof allowed !== "boolean") continue;
+    rows.push([t(labelKey), t(allowed ? "avatars.vrm.terms.allowed" : "avatars.vrm.terms.notAllowed")]);
   }
   if (meta.creditNotation) rows.push([t("avatars.vrm.terms.credit"), term(meta.creditNotation)]);
   if (meta.licenseName) rows.push([t("avatars.vrm.terms.license"), term(meta.licenseName)]);

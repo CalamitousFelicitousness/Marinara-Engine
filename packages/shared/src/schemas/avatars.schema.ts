@@ -124,6 +124,10 @@ const vrmModelMetaSchema = z
     termsUrl: vrmMetaUrlSchema.optional(),
     creditNotation: vrmMetaTermSchema.optional(),
     allowRedistribution: z.boolean().nullable().optional(),
+    allowSexualUse: z.boolean().nullable().optional(),
+    allowViolentUse: z.boolean().nullable().optional(),
+    allowPoliticalOrReligiousUse: z.boolean().nullable().optional(),
+    allowAntisocialOrHateUse: z.boolean().nullable().optional(),
   })
   .strict();
 

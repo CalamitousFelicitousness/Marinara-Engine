@@ -10,9 +10,9 @@
 // never take an official ruleset's id. Everything else a stored version has to satisfy is checked
 // by the storage service; this file only turns its refusals into status codes.
 //
-// A ruleset package zip (RM) is imported the same way, as data: read in memory by the one hardened
-// reader, its ruleset and catalog files kept, nothing in it ever run. A ruleset editor checks a ruleset
-// (or a zip) without saving it, opens an installed ruleset's files from its source, and builds its
+// A ruleset package file (RM, `<name>.ruleset.json`) is imported the same way, as data: read in memory by
+// the one reader, its ruleset and catalog files kept, nothing in it ever run. A ruleset editor checks a
+// ruleset (or a package file) without saving it, opens an installed ruleset's files from its source, and builds its
 // forms from the ruleset schema the Engine publishes.
 // ──────────────────────────────────────────────
 import { readFile } from "node:fs/promises";
@@ -27,6 +27,7 @@ import {
   rulesetRefSchema,
   RULESET_LOCAL_NAMESPACE,
   RULESET_MAX_BYTES,
+  RULESET_PACKAGE_FILE_MAX_BYTES,
   supportedCapabilityApi,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
@@ -45,7 +46,7 @@ import {
   capabilityPackageManager,
   getCapabilityPackageInstallIssue,
 } from "../services/capability-packages/package-manager.service.js";
-import { readRulesetPackageZip, RULESET_PACKAGE_ZIP_MAX_BYTES } from "../services/game/ruleset-package-zip.js";
+import { readRulesetPackageFile } from "../services/game/ruleset-package-file.js";
 
 /** The file text, verbatim. The byte ceiling is checked below, against bytes rather than
  *  characters, so a file of multi-byte text is measured the way the store measures it. */
@@ -59,14 +60,15 @@ const removeRulesetQuery = z.object({
   force: z.string().optional(),
 });
 
-/** A package zip travels as base64 in JSON: its size and a little more. */
-const PACKAGE_BODY_LIMIT = Math.ceil((RULESET_PACKAGE_ZIP_MAX_BYTES * 4) / 3) + 16_384;
-const base64 = z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "The package is not base64");
-const importPackageBody = z.object({ zip: base64.min(1), dryRun: z.boolean().optional() }).strict();
-/** A ruleset to check: its text alone, or a whole package zip (catalogs and all). */
+/** A package file travels as itself, the JSON body's `package`: its size and a little more. */
+const PACKAGE_BODY_LIMIT = RULESET_PACKAGE_FILE_MAX_BYTES + 16_384;
+// The package file is checked whole by its reader; here it only has to be an object.
+const packageFile = z.record(z.string(), z.unknown());
+const importPackageBody = z.object({ package: packageFile, dryRun: z.boolean().optional() }).strict();
+/** A ruleset to check: its text alone, or a whole package file (catalogs and all). */
 const checkBody = z.union([
   z.object({ definition: z.string().min(1) }).strict(),
-  z.object({ zip: base64.min(1) }).strict(),
+  z.object({ package: packageFile }).strict(),
 ]);
 const sourceQuery = z.object({ rulesetId: rulesetRefSchema.shape.id, version: z.coerce.number().int().positive() });
 
@@ -207,7 +209,7 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
     }
   });
 
-  // A ruleset package zip (RM): read in memory by the one hardened reader, kept as data under
+  // A ruleset package file (RM): read in memory by the one reader, kept as data under
   // `local/<its id>` with its catalog files. `dryRun` reads and checks it for the review, keeping nothing.
   app.post("/import-package", { bodyLimit: PACKAGE_BODY_LIMIT }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset import" })) return;
@@ -218,8 +220,12 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
         code: "custom_agent_imports_disabled",
       });
     }
-    const { zip, dryRun } = importPackageBody.parse(req.body);
-    const read = readRulesetPackageZip(Buffer.from(zip, "base64"));
+    const body = importPackageBody.safeParse(req.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Send the ruleset package file (.ruleset.json) as the body's package" });
+    }
+    const { package: file, dryRun } = body.data;
+    const read = readRulesetPackageFile(file);
     if (!read.ok) return reply.status(400).send({ error: read.issues.slice(0, 5).join("; "), issues: read.issues });
     let rulesetId: string;
     try {
@@ -260,16 +266,16 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
     }
   });
 
-  // A ruleset checked without saving anything: its text, or a whole package zip. The issues come as
+  // A ruleset checked without saving anything: its text, or a whole package file. The issues come as
   // `{ path, message }` for an editor to show where each points, with the least capability API a package
-  // of it needs; a zip also comes back read, so an editor opens one through this reader and no other.
+  // of it needs; a package file also comes back read, so an editor opens one through this reader and no other.
   app.post("/check", { bodyLimit: PACKAGE_BODY_LIMIT }, async (req, reply) => {
     // Reading a package costs real work, so only the Engine's own pages (and makers in them) may ask.
     if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset check" })) return;
     const body = checkBody.safeParse(req.body);
     if (!body.success) return reply.status(400).send({ error: body.error.issues[0]?.message ?? "Nothing to check" });
-    if ("zip" in body.data) {
-      const read = readRulesetPackageZip(Buffer.from(body.data.zip, "base64"));
+    if ("package" in body.data) {
+      const read = readRulesetPackageFile(body.data.package);
       if (!read.ok) return { ok: false, issues: issueObjects(read.issues), capabilityApi: null };
       return {
         ok: true,

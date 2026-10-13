@@ -59,10 +59,12 @@ import {
   getFolderImportEntries,
   isAgentConfigDeleted,
   isRetiredBuiltInAgentId,
+  isRulesetPackageFile,
   normalizeAgentPhaseForType,
   parseRulesetDefinition,
   RULESET_LOCAL_NAMESPACE,
   RULESET_MAX_BYTES,
+  RULESET_PACKAGE_FILE_MAX_BYTES,
   type CustomAgentCapability,
   type AgentCategory,
   type RulesetDefinition,
@@ -131,12 +133,10 @@ type PendingRulesetImport = {
   definition: RulesetDefinition;
   rulesetId: string;
   text: string;
-  /** A ruleset package zip (base64), imported whole; with each catalog file's entry count. */
-  zip?: string;
+  /** A ruleset package file (a parsed `.ruleset.json`), imported whole; with each catalog file's entry count. */
+  packageFile?: Record<string, unknown>;
   catalogs?: Record<string, number>;
 };
-/** The most a ruleset package zip may be: the Engine's own limit. */
-const RULESET_PACKAGE_MAX_BYTES = 8 * 1024 * 1024;
 const AGENT_GRADIENT_SURFACE =
   "mari-panel-gradient-surface mari-panel-gradient--agents text-[var(--mari-panel-gradient-text)]";
 const AGENT_GRADIENT_BUTTON = "mari-panel-gradient-button mari-panel-gradient--agents";
@@ -996,30 +996,34 @@ export function AgentsPanel() {
         setAgentImportError(agentImportsDisabledHelp);
         return;
       }
-      // A package zip is read by the Engine (the one reader that may open one), keeping nothing, and
-      // reviewed like a file.
-      if (file.name.toLowerCase().endsWith(".zip")) {
-        if (file.size > RULESET_PACKAGE_MAX_BYTES) {
-          setAgentImportError(
-            localizeUi("game.ruleset.import.packageTooLarge", { limit: RULESET_PACKAGE_MAX_BYTES / 1024 / 1024 }),
-          );
-          return;
-        }
-        let zip: string;
+      if (file.size > RULESET_PACKAGE_FILE_MAX_BYTES) {
+        setAgentImportError(
+          localizeUi("game.ruleset.import.packageTooLarge", {
+            limit: RULESET_PACKAGE_FILE_MAX_BYTES / 1024 / 1024,
+          }),
+        );
+        return;
+      }
+      let text: string;
+      try {
+        text = await file.text();
+      } catch {
+        setAgentImportError(localizeUi("game.ruleset.import.unreadable"));
+        return;
+      }
+      let document: unknown;
+      try {
+        document = JSON.parse(text);
+      } catch {
+        setAgentImportError(localizeUi("game.ruleset.import.notJson"));
+        return;
+      }
+      // A package file (`.ruleset.json`, with its catalog files) is read by the Engine, keeping nothing,
+      // and reviewed like a ruleset file.
+      if (isRulesetPackageFile(document)) {
+        const packageFile = document as Record<string, unknown>;
         try {
-          const dataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result));
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-          });
-          zip = dataUrl.slice(dataUrl.indexOf(",") + 1);
-        } catch {
-          setAgentImportError(localizeUi("game.ruleset.import.unreadable"));
-          return;
-        }
-        try {
-          const read = await readRulesetPackage(zip);
+          const read = await readRulesetPackage(packageFile);
           const parsed = parseRulesetDefinition(JSON.parse(read.ruleset ?? ""));
           if (!parsed.ok) throw new Error(parsed.issues.slice(0, 3).join("; "));
           setRulesetImportFailure(null);
@@ -1027,7 +1031,7 @@ export function AgentsPanel() {
             definition: parsed.definition,
             rulesetId: read.rulesetId,
             text: read.ruleset ?? "",
-            zip,
+            packageFile,
             catalogs: read.catalogs,
           });
         } catch (error) {
@@ -1045,20 +1049,7 @@ export function AgentsPanel() {
         );
         return;
       }
-      let text: string;
-      try {
-        text = await file.text();
-      } catch {
-        setAgentImportError(localizeUi("game.ruleset.import.unreadable"));
-        return;
-      }
-      let parsed: ReturnType<typeof parseRulesetDefinition>;
-      try {
-        parsed = parseRulesetDefinition(JSON.parse(text));
-      } catch {
-        setAgentImportError(localizeUi("game.ruleset.import.notJson"));
-        return;
-      }
+      const parsed = parseRulesetDefinition(document);
       if (!parsed.ok) {
         setAgentImportError(
           localizeUi("game.ruleset.import.invalid", { issues: parsed.issues.slice(0, 3).join("; ") }),
@@ -1086,8 +1077,8 @@ export function AgentsPanel() {
     setAgentImportSuccess(null);
     setRulesetImportFailure(null);
     try {
-      const result = pending.zip
-        ? await importRulesetPackage.mutateAsync(pending.zip)
+      const result = pending.packageFile
+        ? await importRulesetPackage.mutateAsync(pending.packageFile)
         : await importRuleset.mutateAsync(pending.text);
       setPendingRulesetImport(null);
       setAgentImportSuccess(
@@ -1309,8 +1300,8 @@ export function AgentsPanel() {
         ref={rulesetImportInputRef}
         type="file"
         // By extension only: the Agent import input beside this one is the panel's JSON-typed input.
-        // A ruleset comes as its file, or as a package zip with its catalog files.
-        accept=".json,.zip"
+        // A ruleset comes as its file, or as a package file (`.ruleset.json`) with its catalog files.
+        accept=".ruleset.json,.json"
         className="hidden"
         onChange={(event) => void handleRulesetFileSelected(event)}
       />

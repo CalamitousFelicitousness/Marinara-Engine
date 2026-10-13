@@ -1138,7 +1138,7 @@ function PromptsTab({
           onChange={onConversationPromptChange}
           title={localizeUi("ui.presets.promptstab.editConversationModePrompt")}
           placeholder={localizeUi("ui.presets.promptstab.leaveEmptyToUseMarinaraSBuiltInConversation")}
-          className="mari-editor-field min-h-[12rem] w-full p-3 font-mono text-xs"
+          className="mari-editor-field mari-prompt-font min-h-[12rem] w-full p-3 text-xs"
           formatOnChange={formatPrompt}
           showMarkdownPreview
           spellCheck={false}
@@ -1165,7 +1165,7 @@ function PromptsTab({
           onChange={onGamePromptChange}
           title={localizeUi("ui.presets.promptstab.editGameModePrompt")}
           placeholder={localizeUi("ui.presets.promptstab.leaveEmptyToUseMarinaraSBuiltInGame")}
-          className="mari-editor-field min-h-[12rem] w-full p-3 font-mono text-xs"
+          className="mari-editor-field mari-prompt-font min-h-[12rem] w-full p-3 text-xs"
           formatOnChange={formatPrompt}
           showMarkdownPreview
           spellCheck={false}
@@ -2249,7 +2249,7 @@ function SectionContentTextarea({
           : localizeUi("ui.presets.sectioncontenttextarea.editPrompt")
       }
       showMarkdownPreview
-      className="mari-editor-field min-h-[7.5rem] w-full p-2.5 font-mono text-xs"
+      className="mari-editor-field mari-prompt-font min-h-[7.5rem] w-full p-2.5 text-xs"
       placeholder={localizeUi("ui.presets.sectioncontenttextarea.promptContentSupportsUserCharCommentTrimMacros")}
     />
   );

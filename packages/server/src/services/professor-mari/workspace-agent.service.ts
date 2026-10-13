@@ -2172,6 +2172,8 @@ export function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boole
   return typeof rawCommand === "string" && bashLooksMutating(rawCommand);
 }
 
+/** The "Needs you" card lists this many held changes; Accept applies stored calls only when it showed them all. */
+const MAX_HELD_CHANGES_SHOWN = 8;
 const HELD_ID_ARGS = ["characterId", "lorebookId", "entryId", "personaId", "presetId", "id"] as const;
 
 /**
@@ -2180,7 +2182,7 @@ const HELD_ID_ARGS = ["characterId", "lorebookId", "entryId", "personaId", "pres
  * only the arguments Mari already showed in her turn.
  */
 export function describeHeldCommands(commands: WorkspaceCommandCall[]): MariHeldChange[] {
-  return commands.slice(0, 8).map((command) => {
+  return commands.slice(0, MAX_HELD_CHANGES_SHOWN).map((command) => {
     const args = command.arguments;
     if (command.name !== "app_data") {
       const target = stringArg(args, "path") || stringArg(args, "packageName") || stringArg(args, "package");
@@ -2911,6 +2913,7 @@ export class ProfessorMariWorkspaceService {
   // overwrites) so command execution and deferral read the run's own mode.
   private activeDecisionContext: { db: FastifyInstance["db"]; chatId: string; userMessageId: string } | null = null;
   private activeRunPermissionsMode: MariPermissionsMode = DEFAULT_MARI_PERMISSIONS_MODE;
+  private readonly acceptedHeldMessageIds = new Set<string>();
   private activeRoundManualSilentMutationBlocked = false;
   // #5748: round-scoped mirror of the Manual silent floor for runs where an
   // EARLIER round asked the user for apply-permission - a silent mutating
@@ -3484,7 +3487,7 @@ export class ProfessorMariWorkspaceService {
         appendTraceStatus(workspaceTrace, runtime.note);
         args.onEvent({ type: "status", data: { content: runtime.note, kind: "info", level: "info" } });
       }
-      const { messages, manualApprovalArmed, heldCalls } = await this.buildPromptMessages(
+      const { messages, manualApprovalArmed, heldCalls, heldMessageId } = await this.buildPromptMessages(
         args.chatId,
         connection,
         permissionsMode,
@@ -3566,11 +3569,20 @@ export class ProfessorMariWorkspaceService {
       }
 
       // The Accept button sends the chip prompt verbatim: apply the stored held calls here, no model request.
+      // More calls than the card showed go to the model as before: the user never saw them all.
       const acceptedCalls =
-        manualApprovalArmed && heldCalls.length > 0 && promptText.trim() === MARI_AUTHORIZATION_ACCEPT_CHIP.prompt
+        manualApprovalArmed &&
+        heldMessageId !== null &&
+        heldCalls.length > 0 &&
+        heldCalls.length <= MAX_HELD_CHANGES_SHOWN &&
+        promptText.trim() === MARI_AUTHORIZATION_ACCEPT_CHIP.prompt
           ? heldCalls
           : null;
-      if (acceptedCalls) {
+      if (acceptedCalls && heldMessageId !== null) {
+        // Single use: a second Accept for the same held message (two tabs) must not apply the calls again.
+        // ponytail: in-memory set, one id per Accept, lost on restart. Upgrade path: a flag on the message extra.
+        if (this.acceptedHeldMessageIds.has(heldMessageId)) throw new Error("This change was already accepted.");
+        this.acceptedHeldMessageIds.add(heldMessageId);
         // The user approved these exact calls; the executor's Permissions Mode floor and sensitive staging still hold.
         controller.signal.throwIfAborted();
         this.activeRoundManualSilentMutationBlocked = false;
@@ -3583,6 +3595,7 @@ export class ProfessorMariWorkspaceService {
           workspaceActionResults,
         );
         commandResultsForContinuity.push(...acceptedResults);
+        if (controller.signal.aborted) throw new Error("aborted");
         const failed = acceptedResults.filter((result) => !result.success || appliedMutationReadBackMismatched(result));
         const staged = acceptedResults.some(isStagedSensitiveMutation);
         const plural = acceptedCalls.length > 1 ? "changes" : "change";
@@ -3875,6 +3888,11 @@ export class ProfessorMariWorkspaceService {
           truncated: isLengthFinishReason(result.finishReason),
         });
         if (claimDecision.kind === "repair") {
+          // The repair discards this round, and with it any hold the round made: a later round may apply the change,
+          // and a stale hold would offer Accept for it a second time.
+          runEndedWithDeferral = false;
+          runHeldChanges = [];
+          runHeldCalls = [];
           messages.push({ role: "assistant", content: action.assistantHistoryContent });
           if (commandResults.length > 0) {
             messages.push({
@@ -4178,7 +4196,12 @@ export class ProfessorMariWorkspaceService {
     permissionsMode: MariPermissionsMode,
     handoffContextPrompt: string | null,
     runtime: MariRuntime = "classic",
-  ): Promise<{ messages: ChatMessage[]; manualApprovalArmed: boolean; heldCalls: WorkspaceCommandCall[] }> {
+  ): Promise<{
+    messages: ChatMessage[];
+    manualApprovalArmed: boolean;
+    heldCalls: WorkspaceCommandCall[];
+    heldMessageId: string | null;
+  }> {
     const chatStorage = createChatsStorage(this.app.db);
     const history = (await chatStorage.listMessages(chatId)).slice(-MAX_HISTORY_MESSAGES);
     // #5725 Manual mode: arm silent command frames only when Mari's last
@@ -4305,7 +4328,12 @@ export class ProfessorMariWorkspaceService {
       sumChars(messages, "injection"),
       WORKSPACE_TOOL_DEFINITIONS.length,
     );
-    return { messages, manualApprovalArmed, heldCalls: heldCalls.filter(isMutatingWorkspaceCommand) };
+    return {
+      messages,
+      manualApprovalArmed,
+      heldCalls: heldCalls.filter(isMutatingWorkspaceCommand),
+      heldMessageId: lastAssistant?.id ?? null,
+    };
   }
 
   private async buildHandoffContextPrompt(context: ProfessorMariAskContext): Promise<string> {

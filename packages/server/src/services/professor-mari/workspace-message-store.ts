@@ -101,7 +101,8 @@ export function buildAssistantMessageExtra(run: AssistantRunRecord): Record<stri
     tokensCompletion: run.latestUsage?.completionTokens ?? null,
     durationMs: null,
     finishReason: run.latestFinishReason,
-    usage: run.totalUsage,
+    // A run with no model request (Accept) reports no usage, so the context meter keeps the last real reading.
+    ...(run.latestUsage ? { usage: run.totalUsage } : {}),
   };
   return extraUpdate;
 }

@@ -625,6 +625,11 @@ try {
       assert.equal(saved?.content, "Done. I applied the change you accepted.");
       assert.equal(saved?.extra.mariDeferredMutations, undefined, `${runtime}: not a deferral`);
       assert.equal(saved?.extra.mariHeldCalls, undefined);
+      assert.equal(
+        (saved?.extra.generationInfo as { usage?: unknown } | undefined)?.usage,
+        undefined,
+        `${runtime}: no usage for a run with no model request`,
+      );
 
       // Accept after switching to Plan: the executor floor refuses and the answer says so.
       const planFile = `accepted-plan-${runtime}.txt`;
@@ -677,6 +682,44 @@ try {
       );
       await typed.done;
       assert.equal(requests.length, 1, `${runtime}: a typed reply goes to the model`);
+
+      // More held calls than the card lists: Accept goes to the model, nothing is applied unseen.
+      const many = Array.from({ length: 9 }, (_, index) => ({
+        path: `accepted-many-${runtime}-${index}.txt`,
+        content: "x",
+        reason: "test",
+      }));
+      const heldMany = await start(
+        `accept many ${runtime}`,
+        [
+          runtime === "pi"
+            ? reply(
+                "I will create nine files. Shall I go ahead?",
+                many.map((args, index) => ({ id: `many-${index}`, name: "write", args })),
+              )
+            : reply(
+                JSON.stringify({
+                  say: "I will create nine files. Shall I go ahead?",
+                  commands: many.map((args) => ({ name: "write", arguments: args })),
+                  stop: false,
+                }),
+              ),
+        ],
+        runtime,
+        realService,
+      );
+      await heldMany.done;
+      const manyAccepted = await start(
+        "unused",
+        [runtime === "pi" ? reply("Okay, noted.") : reply(JSON.stringify({ say: "Okay, noted.", stop: true }))],
+        runtime,
+        realService,
+        heldMany.chat.id,
+        acceptPrompt,
+      );
+      await manyAccepted.done;
+      assert.equal(requests.length, 1, `${runtime}: nine held calls are not applied by the server`);
+      assert.equal(existsSync(join(workspaceDir, many[8]!.path)), false);
     }
   }
 

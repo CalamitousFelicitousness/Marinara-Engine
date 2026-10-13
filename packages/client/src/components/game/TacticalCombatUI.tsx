@@ -333,7 +333,9 @@ export function TacticalCombatUI({
   const rootRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
   // How tall the bar and the order are, for the game surface's floating controls to clear: one line on
-  // a wide screen, more where the bar wraps and the round is fought by initiative.
+  // a wide screen, more where the bar wraps and the round is fought by initiative. The bar only mounts once
+  // the battle has loaded, so it is measured again when it appears.
+  const chromeShown = !starting && !startError && state != null;
   useEffect(() => {
     const chrome = chromeRef.current;
     if (!chrome || typeof ResizeObserver === "undefined") return;
@@ -346,7 +348,7 @@ export function TacticalCombatUI({
       observer.disconnect();
       root.style.removeProperty("--tactical-chrome-height");
     };
-  }, []);
+  }, [chromeShown]);
 
   // Action-menu drag offset lives at component level so the card keeps its
   // position across unit selections (the card unmounts on deselect).

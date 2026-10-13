@@ -625,16 +625,17 @@
   pointer-events: none;
 }
 
-/* Shape-only action buttons keep their existing fills. */
-.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control {
+/* Shape-only action buttons and history pagers (Load More, Show older) keep their existing fills. */
+.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control,
+.mari-chat-history-pager.mari-chrome-control {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg);
 }
-.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control:hover {
+.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control:hover,
+.mari-chat-history-pager.mari-chrome-control:hover {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg-hover);
 }
 [data-marinara-chat-chrome-accent-mode="gradient"]
-  .mari-chat-action-panel
-  .mari-chat-style-control.mari-chrome-control:hover {
+  :is(.mari-chat-action-panel .mari-chat-style-control, .mari-chat-history-pager).mari-chrome-control:hover {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-surface-bg-hover);
 }
 .mari-chat-action-panel .mari-chat-style-control[class~="bg-[var(--secondary)]"] {
@@ -660,16 +661,21 @@
   .mari-chat-style-control[class~="hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)]"]:hover {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-highlight-bg-hover);
 }
-/* Outrank gradient app chrome without painting over a cut-corner frame. */
+/* Outrank gradient app chrome without painting over a cut-corner frame. :is() keeps the
+   action panel's weight for history pagers too, which sit outside any panel. */
 :root[data-chat-widget-apply-colors="true"]
-  .mari-chat-action-panel.mari-chat-style-surface
-  .mari-chat-style-control.mari-chrome-control:not(.mari-chrome-control--danger) {
+  :is(
+    .mari-chat-action-panel.mari-chat-style-surface .mari-chat-style-control,
+    .mari-chat-history-pager
+  ).mari-chrome-control:not(.mari-chrome-control--danger) {
   background: var(--mari-chat-control-paint);
   border-color: var(--mari-chat-resolved-border-solid);
 }
 :root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
-  .mari-chat-action-panel.mari-chat-style-surface
-  .mari-chat-style-control.mari-chrome-control:not(.mari-chrome-control--danger) {
+  :is(
+    .mari-chat-action-panel.mari-chat-style-surface .mari-chat-style-control,
+    .mari-chat-history-pager
+  ).mari-chrome-control:not(.mari-chrome-control--danger) {
   background: transparent;
   border-color: transparent;
 }

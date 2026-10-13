@@ -4364,7 +4364,7 @@ export class ProfessorMariWorkspaceService {
     return this.commands.executeWorkspaceCommandBatch(...args);
   }
 
-  private executeWorkspaceCommand(...args: Parameters<WorkspaceCommands["executeWorkspaceCommand"]>) {
+  executeWorkspaceCommand(...args: Parameters<WorkspaceCommands["executeWorkspaceCommand"]>) {
     return this.commands.executeWorkspaceCommand(...args);
   }
 

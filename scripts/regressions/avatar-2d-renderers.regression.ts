@@ -1,0 +1,201 @@
+/**
+ * The rules the 2D avatar renderers follow, frame by frame:
+ *   - an owner's expression sprites become a PNGTuber setup with no setup step: one face per sprite, with
+ *     `_talk` and `_blink` sprites as its mouth-open and eyes-closed pictures, portraits before full-body;
+ *   - a frame picks the exact sprite label first, then the emotion's face, then the resting face;
+ *   - the mouth opens with hysteresis, blinks come every 3 to 6 seconds, and a hop lasts one short arc;
+ *   - a mesh avatar frame turns into the runtime's emotion tag or live expression, a held vowel or a voice
+ *     level, and parameter overrides for reduced motion, director blinks and gaze;
+ *   - every 2D setup label the panels look up exists in the English catalog.
+ */
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const layers = await import("../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.ts");
+const face = await import("../../packages/client/src/features/avatars/renderers/mesh-avatar/mesh-avatar-face.ts");
+
+// ── Sprites → PNGTuber setup ──
+const sprite = (expression: string) => ({ expression, url: `/api/sprites/c/file/${expression}.png` });
+const data = layers.buildPngtuberLayersFromSprites(
+  [
+    "Smirk-2",
+    "happy",
+    "happy_talk",
+    "Happy Blink",
+    "happy_blink_talk",
+    "full_angry",
+    "neutral",
+    "sad",
+    "sad_mouth_open",
+  ].map(sprite),
+);
+assert.ok(data);
+assert.deepEqual(Object.keys(data.layers), ["neutral", "happy", "sad", "smirk_2"], "suggested labels first");
+assert.deepEqual(data.layers.happy, {
+  base: { source: "sprite", label: "happy" },
+  mouthOpen: { source: "sprite", label: "happy_talk" },
+  eyesClosed: { source: "sprite", label: "happy_blink" },
+  eyesClosedMouthOpen: { source: "sprite", label: "happy_blink_talk" },
+});
+assert.deepEqual(data.layers.sad, {
+  base: { source: "sprite", label: "sad" },
+  mouthOpen: { source: "sprite", label: "sad_mouth_open" },
+});
+assert.equal(data.layers.angry, undefined, "a full-body sprite is not mixed in with portraits");
+assert.deepEqual(data.expressionMap.happy, { target: "happy", source: "sprite-label", confidence: 1 });
+assert.deepEqual(data.expressionMap.angry, { target: null, source: "missing", confidence: 0 });
+assert.equal(data.source, "sprites");
+assert.deepEqual(data.motion, { bounceOnTalk: true, bounceHeight: 0.06, blinkIntervalSeconds: 4.5 });
+
+const fullBodyOnly = layers.buildPngtuberLayersFromSprites(["full_happy", "full_sad"].map(sprite));
+assert.deepEqual(
+  Object.keys(fullBodyOnly!.layers),
+  ["happy", "sad"],
+  "full-body sprites serve when there is nothing else",
+);
+assert.equal(layers.buildPngtuberLayersFromSprites([]), null, "no sprites, no setup");
+assert.equal(layers.buildPngtuberLayersFromSprites([sprite("happy_talk")]), null, "a lone variant is not a face");
+const many = layers.buildPngtuberLayersFromSprites(Array.from({ length: 80 }, (_, index) => sprite(`pose${index}`)));
+assert.equal(Object.keys(many!.layers).length, 64, "a setup holds at most 64 faces, like the schema");
+
+assert.deepEqual(layers.splitSpriteVariant("happy_mouth_open_eyes_closed"), {
+  base: "happy",
+  mouthOpen: true,
+  eyesClosed: true,
+});
+assert.deepEqual(layers.splitSpriteVariant("talk"), { base: "talk", mouthOpen: false, eyesClosed: false });
+
+const owner = { ownerType: "character", ownerId: "c" } as const;
+assert.equal(
+  layers.resolvePngtuberImage(owner, { source: "file", path: "pngtuber/a.png" }, []),
+  "/api/avatar-models/character/c/files/pngtuber/a.png",
+);
+assert.equal(
+  layers.resolvePngtuberImage(owner, { source: "sprite", label: "happy" }, [sprite("full_happy"), sprite("happy")]),
+  "/api/sprites/c/file/happy.png",
+  "the portrait wins over the full-body sprite with the same face",
+);
+assert.equal(layers.resolvePngtuberImage(owner, { source: "sprite", label: "gone" }, [sprite("happy")]), null);
+
+// ── Which face a frame shows ──
+assert.equal(layers.pickPngtuberLayerKey(data, { emotion: "sad", label: "full_Happy" }), "happy", "the exact label");
+assert.equal(layers.pickPngtuberLayerKey(data, { emotion: "sad", label: "glare" }), "sad", "else the emotion");
+assert.equal(layers.pickPngtuberLayerKey(data, { emotion: "angry" }), "neutral", "else the resting face");
+assert.equal(
+  layers.pickPngtuberLayerKey(
+    { layers: { b: data.layers.sad!, a: data.layers.happy! }, expressionMap: {} },
+    { emotion: "angry" },
+  ),
+  "b",
+  "else the first face",
+);
+const happy = data.layers.happy!;
+assert.equal(layers.pickPngtuberPicture(happy, true, true), happy.eyesClosedMouthOpen);
+assert.equal(layers.pickPngtuberPicture(data.layers.sad!, true, true), data.layers.sad!.mouthOpen, "talking wins");
+assert.equal(layers.pickPngtuberPicture(data.layers.sad!, false, true), data.layers.sad!.base, "no blink picture");
+
+// ── Mouth, blink, hop ──
+assert.equal(layers.nextPngtuberMouthOpen(false, 0.25), false);
+assert.equal(layers.nextPngtuberMouthOpen(false, 0.35), true);
+assert.equal(layers.nextPngtuberMouthOpen(true, 0.2), true, "stays open until the level really drops");
+assert.equal(layers.nextPngtuberMouthOpen(true, 0.1), false);
+
+const clock = { waitMs: layers.pngtuberBlinkWaitMs(4.5, () => 0), closedMs: 0 };
+assert.equal(clock.waitMs, 3000, "the shortest wait is two thirds of the average");
+assert.equal(
+  layers.pngtuberBlinkWaitMs(4.5, () => 1),
+  6000,
+  "the longest is four thirds",
+);
+assert.equal(
+  layers.advancePngtuberBlink(clock, 2999, 4.5, () => 1),
+  false,
+);
+assert.equal(
+  layers.advancePngtuberBlink(clock, 1, 4.5, () => 1),
+  true,
+  "the eyes shut on time",
+);
+assert.equal(
+  layers.advancePngtuberBlink(clock, layers.PNGTUBER_BLINK_MS - 1, 4.5, () => 1),
+  true,
+);
+assert.equal(
+  layers.advancePngtuberBlink(clock, 1, 4.5, () => 1),
+  false,
+  "and open again after one blink",
+);
+assert.equal(clock.waitMs, 6000, "the next wait is drawn afresh");
+
+assert.equal(layers.pngtuberHop(0), 0);
+assert.equal(layers.pngtuberHop(layers.PNGTUBER_HOP_MS / 2), 1);
+assert.equal(layers.pngtuberHop(layers.PNGTUBER_HOP_MS), 0);
+assert.deepEqual(layers.fitPngtuberPicture(200, 400, 100, 100, 0.1), { x: 0, y: 200, width: 200, height: 200 });
+assert.deepEqual(layers.fitPngtuberPicture(400, 200, 100, 100, 0.1), { x: 110, y: 20, width: 180, height: 180 });
+
+// ── Mesh avatar frames ──
+const presets = Object.fromEntries(
+  ["neutral", "happy", "angry", "sad", "relaxed", "surprised"].map((emotion) => [
+    emotion,
+    { target: emotion, source: "preset", confidence: 1 },
+  ]),
+);
+assert.deepEqual(face.meshAvatarFace(presets, { emotion: "happy", emotionWeight: 0.8 }), {
+  emotion: "happy",
+  expression: "neutral",
+});
+assert.deepEqual(face.meshAvatarFace(presets, { emotion: "happy", emotionWeight: 0.1 }), {
+  emotion: "neutral",
+  expression: "neutral",
+});
+assert.deepEqual(
+  face.meshAvatarFace(
+    { ...presets, relaxed: { target: "shy", source: "user", confidence: 1 } },
+    { emotion: "relaxed", emotionWeight: 1 },
+  ),
+  { emotion: "neutral", expression: "shy" },
+  "a user can pick a live expression",
+);
+assert.deepEqual(face.meshAvatarFace({}, { emotion: "sad", emotionWeight: 1 }), {
+  emotion: "sad",
+  expression: "neutral",
+});
+assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.6 }, true), { mode: "hold", vowel: "o" });
+assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.02 }, true), { mode: "hold", vowel: "n" });
+assert.deepEqual(face.meshAvatarMouth({}, { viseme: null, mouthOpen: 1.4 }, true), { mode: "voice", level: 1 });
+assert.deepEqual(face.meshAvatarMouth({}, { viseme: "aa", mouthOpen: 1 }, false), { mode: "off" });
+assert.deepEqual(face.meshAvatarOverrides({}, { still: false, blink: true }), {}, "nothing to override");
+assert.deepEqual(face.meshAvatarOverrides({ blink: 0.75, lookAt: { x: 2, y: -0.5 } }, { still: false, blink: true }), {
+  eyeLOpen: 0.25,
+  eyeROpen: 0.25,
+  gazeX: 1,
+  gazeY: -0.5,
+});
+assert.deepEqual(face.meshAvatarOverrides({}, { still: true, blink: false }), {
+  angleX: 0,
+  angleY: 0,
+  angleZ: 0,
+  bodyAngleX: 0,
+  bodyAngleZ: 0,
+  breath: 0,
+  eyeLOpen: 1,
+  eyeROpen: 1,
+});
+
+// ── Every 2D setup label exists in English ──
+const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
+const english = JSON.parse(readFileSync(join(root, "packages/client/src/localization/locales/en.json"), "utf8"));
+const known = new Set(Object.keys(english).map((key) => key.replace(/_(?:one|other)$/u, "")));
+const rendererRoot = join(root, "packages/client/src/features/avatars/renderers");
+for (const folder of ["pngtuber", "mesh-avatar"]) {
+  for (const file of readdirSync(join(rendererRoot, folder))) {
+    const source = readFileSync(join(rendererRoot, folder, file), "utf8");
+    for (const [key] of source.matchAll(/avatars\.(?:pngtuber|meshAvatar)\.[A-Za-z]+/gu)) {
+      assert.ok(known.has(key), `${folder}/${file} uses ${key}, which en.json lacks`);
+    }
+  }
+}
+
+console.log("avatar 2D renderers regression passed");

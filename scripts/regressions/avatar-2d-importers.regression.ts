@@ -2,9 +2,11 @@
  * The 2D avatar importers treat files as hostile and turn honest ones into playable avatars:
  *   - a PNGTuber Plus `.save` becomes one layer set per distinct costume, flattened at rest with Godot's
  *     parent offsets, relative z-order, talk/blink visibility, clipping and costume switches; costume names
- *     map to feelings where they can, and broken or hostile saves are refused with a plain message;
+ *     map to feelings where they can, broken or hostile saves are refused with a plain message, and nested
+ *     clipping costs what its pictures cost;
  *   - a `.mavatar` is read with the strict ZIP reader, checked against the format's version 1 rules, and
- *     repacked so that mesh-avatar 0.1.1's own unpackAvatar and validateAvatarFiles accept it.
+ *     repacked so that mesh-avatar 0.1.1's own unpackAvatar and validateAvatarFiles accept it; an archive
+ *     that unpacks past the upload cap, or a rig too dense to play, is refused.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -22,7 +24,8 @@ import {
 const { avatarKindDataSchema, isAvatarFilePath } = await import("../../packages/shared/src/index.js");
 const { pngtuberImporter, PNGTUBER_MAX_OUTPUT_SIDE } =
   await import("../../packages/server/src/services/avatars/formats/pngtuber.js");
-const { mavatarImporter } = await import("../../packages/server/src/services/avatars/formats/mavatar.js");
+const { mavatarImporter, countMeshAvatarGridPoints, MESH_AVATAR_MAX_GRID_POINTS } =
+  await import("../../packages/server/src/services/avatars/formats/mavatar.js");
 const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
 const meshAvatar = await import("../../packages/client/node_modules/mesh-avatar/dist/index.js");
 
@@ -177,6 +180,21 @@ const spread = await importFile(
 const spreadMeta = await sharp(Buffer.from(spread.files[0]!.bytes)).metadata();
 assert.ok(spreadMeta.width! <= PNGTUBER_MAX_OUTPUT_SIDE, "the flattened picture fits the output side");
 assert.ok(spread.warnings.some((warning) => /scaled down/u.test(warning)));
+
+// A deep chain of clipping sprites on a large canvas costs what its own pictures cost, not a full-canvas pass
+// per level (which took about 0.12 s per level on a 2048 px canvas, so this save took half a minute).
+{
+  const dot = await paintPng(1, 1, solid(10, 10, 10));
+  const sprites = [plusSprite(0, dot), plusSprite(1, dot, { pos: "Vector2(2040, 2040)" })];
+  for (let id = 2; id < 250; id += 1)
+    sprites.push(plusSprite(id, dot, { clipped: true, parentId: id > 2 ? id - 1 : 0 }));
+  const started = performance.now();
+  const chain = await importFile(pngtuberImporter, "chain.save", plusSave(sprites));
+  const seconds = (performance.now() - started) / 1000;
+  const chainMeta = await sharp(Buffer.from(chain.files[0]!.bytes)).metadata();
+  assert.ok(chainMeta.width! > 2000 && chainMeta.width! <= PNGTUBER_MAX_OUTPUT_SIDE, "the canvas is large");
+  assert.ok(seconds < 8, `248 nested clipping sprites import quickly (${seconds.toFixed(2)} s)`);
+}
 
 // A loop of parent links is cut instead of hanging the import.
 const loop = await importFile(
@@ -375,6 +393,64 @@ await meshRefusal("a layer that is not a PNG", (files) => void files.set("built/
 await meshRefusal("a picture bigger than the image", async (files) => {
   files.set("built/base.png", await paintPng(129, 160, solid(0, 0, 0)));
 });
+// A rig whose mesh would have millions of points is refused, however small the file: the player moves every
+// point on each frame, so it would freeze the chat. A rig at Studio's example cell sizes is far below the cap.
+await meshRefusal(
+  "a 4096 px rig with 1 px cells",
+  (files) => {
+    editJson("rig.json", (value) => {
+      value.image = { width: 4096, height: 4096 };
+      (value.mesh as { baseCell: number }).baseCell = 1;
+    })(files);
+    editJson("built/layers.json", (value) => (value.size = [4096, 4096]))(files);
+  },
+  /too detailed/u,
+);
+{
+  const studioRig = {
+    image: { width: 2048, height: 2048 },
+    mesh: {
+      baseCell: 14,
+      fine: { x0: 400, x1: 1600, y0: 100, y1: 1500, cell: 7 },
+      handCell: 9,
+      tasselCell: 6,
+      eyeBallCell: 4,
+      eyeCell: 3,
+      spriteCell: 4,
+    },
+  };
+  const eyeRects = new Map(
+    [0, 1].flatMap((eye) =>
+      ["ball", "low", "crease", "lash"].map((part) => [`eye${eye}_${part}`, [800 + eye * 300, 700, 160, 90]] as const),
+    ),
+  );
+  const points = countMeshAvatarGridPoints(
+    studioRig as never,
+    eyeRects as never,
+    new Map([["mouth_a", [950, 1000, 120, 60]]]) as never,
+  );
+  assert.ok(points > 20_000 && points < MESH_AVATAR_MAX_GRID_POINTS / 4, `a Studio-sized rig has ${points} points`);
+}
+
+// The unpacked files share the upload cap: a deflated archive whose PNGs are padded past it is refused before
+// it is held in memory or stored, even though each file alone is under the per-file cap.
+{
+  const padded = new Map(meshFiles);
+  const padding = Buffer.alloc(129 * 1024 * 1024);
+  for (const name of ["built/base.png", "built/hairmask.png"]) {
+    padded.set(name, Buffer.concat([padded.get(name)!, padding]));
+  }
+  const upload = zipFiles(padded, { deflate: true });
+  assert.ok(upload.length < 2 * 1024 * 1024, "the upload itself is small");
+  await refused(
+    mavatarImporter,
+    "padded.mavatar",
+    upload,
+    /too large once unpacked/u,
+    "an archive that inflates past the cap",
+  );
+}
+
 // ZIP writers clean names like "../", so the climbing name is patched into the local and central records.
 const climbing = zipFiles(new Map([...meshFiles, ["zz/escape.json", Buffer.from("{}")]]));
 for (let at = climbing.indexOf("zz/escape.json"); at >= 0; at = climbing.indexOf("zz/escape.json", at)) {

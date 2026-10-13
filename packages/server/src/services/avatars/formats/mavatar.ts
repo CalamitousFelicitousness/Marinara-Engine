@@ -3,10 +3,11 @@
 // ──────────────────────────────────────────────
 // A `.mavatar` (npm "mesh-avatar" 0.1.1, MIT) is a ZIP of `avatar.json`, `rig.json` and the built layers
 // (docs/format.md in https://github.com/shinshin86/mesh-avatar-studio). The archive is read with the
-// Engine's strict ZIP reader (AVATAR_IMPORT_MAX_BYTES per entry, no lower limit), its JSON is checked
-// against the format's version 1 rules (the rig mirrors the runtime's own validateRig), and every PNG it
-// names must be present and a real PNG no larger than the rig's image. The stored copy is repacked with
-// only the files the player reads, as stored (uncompressed) entries, which is what the runtime opens.
+// Engine's strict ZIP reader (AVATAR_IMPORT_MAX_BYTES per entry and for all kept files together, no lower
+// limit), its JSON is checked against the format's version 1 rules (the rig mirrors the runtime's own
+// validateRig, and its mesh must stay playable), and every PNG it names must be present and a real PNG no
+// larger than the rig's image. The stored copy is repacked with only the files the player reads, as stored
+// (uncompressed) entries, which is what the runtime opens.
 import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
 import { z } from "zod";
@@ -35,6 +36,11 @@ const RESERVED_LAYERS = new Set([
 /** The browser runtime refuses archives above these (its unpackAvatar); the import itself adds no limit. */
 const RUNTIME_MAX_ENTRIES = 200;
 const RUNTIME_MAX_ENTRY_BYTES = 64 * 1024 * 1024;
+/** Most mesh points the player may build. mesh-avatar 0.1.1 lays a grid over the picture and every layer
+ *  (buildGrid) and moves every point on each frame, on the main thread. Studio's example cell sizes give tens
+ *  of thousands on a 2048 px picture; a rig far past this freezes the chat, so it is a broken (or hostile) file
+ *  however small it is. */
+export const MESH_AVATAR_MAX_GRID_POINTS = 500_000;
 
 /** Drawn mouth sprites per viseme, and the runtime's vowel for it (mesh-avatar holdMouth). `e` reuses the
  *  half-open "a" and `u` the rounded "o", as the format describes. */
@@ -48,6 +54,8 @@ export const MESH_AVATAR_VISEME_SPRITES: Readonly<Record<AvatarViseme, { vowel: 
 
 const NOT_A_MESH_AVATAR = "This file isn't a mesh avatar.";
 const DAMAGED = "This mesh avatar file is damaged or was made for a newer version, so it can't be imported.";
+const TOO_LARGE = "This mesh avatar is too large once unpacked, so it can't be imported.";
+const TOO_DETAILED = "This mesh avatar is too detailed to play smoothly, so it can't be imported.";
 
 function refuse(message: string, detail?: string): never {
   if (detail) logger.debug("[avatars] Refused a .mavatar import: %s", detail);
@@ -296,6 +304,61 @@ function sameNumbers(left: unknown, right: unknown): boolean {
     : left === right;
 }
 
+type FineBand = { from: number; to: number; cell: number } | null;
+
+/** Grid lines across one side of a layer, placed as mesh-avatar 0.1.1's buildGrid places them: every `cell`
+ *  pixels, or every `fine.cell` inside the fine band. Counting stops past `limit`. */
+function gridLines(start: number, length: number, cell: number, fine: FineBand, limit: number): number {
+  let lines = 1;
+  for (let at = start; at < start + length - 0.5 && lines <= limit; lines += 1) {
+    at = Math.min(start + length, at + (fine && at >= fine.from && at < fine.to ? fine.cell : cell));
+  }
+  return lines;
+}
+
+/** Mesh points the player builds for this rig: the picture's grid (finer in the fine rectangle), each eye
+ *  part, the hand, each hanging accessory and each drawn sprite. Stops counting once past the limit. */
+export function countMeshAvatarGridPoints(
+  rig: Pick<MeshAvatarRig, "image" | "mesh" | "hand" | "accessories">,
+  rects: ReadonlyMap<string, Rect>,
+  spriteRects: ReadonlyMap<string, Rect>,
+): number {
+  const { mesh } = rig;
+  const grids: { rect: Rect | undefined; cell: number; fine?: MeshAvatarRig["mesh"]["fine"] }[] = [
+    { rect: [0, 0, rig.image.width, rig.image.height], cell: mesh.baseCell, fine: mesh.fine },
+    ...[0, 1].flatMap((eye) =>
+      EYE_PARTS.map((part) => ({
+        rect: rects.get(`eye${eye}_${part}`),
+        cell: part === "ball" ? mesh.eyeBallCell : mesh.eyeCell,
+      })),
+    ),
+    ...(rig.hand ? [{ rect: rects.get("hand"), cell: mesh.handCell }] : []),
+    ...(rig.accessories ?? []).map((accessory) => ({ rect: rects.get(accessory.name), cell: mesh.tasselCell })),
+    ...[...spriteRects.values()].map((rect) => ({ rect, cell: mesh.spriteCell })),
+  ];
+  let total = 0;
+  for (const { rect, cell, fine } of grids) {
+    if (!rect || total > MESH_AVATAR_MAX_GRID_POINTS) continue;
+    const limit = MESH_AVATAR_MAX_GRID_POINTS - total;
+    const columns = gridLines(
+      rect[0],
+      rect[2],
+      cell,
+      fine ? { from: fine.x0, to: fine.x1, cell: fine.cell } : null,
+      limit,
+    );
+    const rows = gridLines(
+      rect[1],
+      rect[3],
+      cell,
+      fine ? { from: fine.y0, to: fine.y1, cell: fine.cell } : null,
+      limit,
+    );
+    total += columns * rows;
+  }
+  return total;
+}
+
 /** Parses and checks an untrusted `.mavatar`. Throws AvatarImportError with a plain message. */
 export function readMeshAvatarArchive(bytes: Uint8Array): ValidatedMeshAvatar {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -307,12 +370,23 @@ export function readMeshAvatarArchive(bytes: Uint8Array): ValidatedMeshAvatar {
     throw error;
   }
   const entries = new Map<string, { read(maxBytes: number): Buffer; size: number }>();
+  // Everything kept is held in memory and stored again, so the unpacked files share the upload cap, as
+  // .marinara packages do (import.routes.ts). Only an archive that inflates past its own upload limit fails.
+  let unpackedBytes = 0;
   for (const entry of archive.getEntries()) {
     const name = entry.entryName;
     if (name.startsWith("/") || name.includes("\\") || name.split("/").includes("..")) {
       refuse(DAMAGED, `unsafe entry name ${JSON.stringify(name.slice(0, 120))}`);
     }
-    if (!entry.isDirectory) entries.set(name, entry);
+    if (entry.isDirectory) continue;
+    entries.set(name, {
+      size: entry.size,
+      read(maxBytes) {
+        unpackedBytes += entry.size;
+        if (unpackedBytes > AVATAR_IMPORT_MAX_BYTES) refuse(TOO_LARGE, `${name} unpacks past the upload cap`);
+        return entry.read(maxBytes);
+      },
+    });
   }
   const get = (name: string) => entries.get(name) ?? refuse(DAMAGED, `${name} is missing`);
 
@@ -384,6 +458,7 @@ function readCheckedArchive(
 
   const pictures = ["built/base.png", "built/hairmask.png", ...[...rects.keys()].map((name) => `built/${name}.png`)];
   const sprites = new Set<string>();
+  let spriteRects = new Map<string, Rect>();
   const spritesEntry = entries.get("built/sprites/sprites.json");
   if (spritesEntry) {
     const spritesFile = readJson(spritesEntry, "built/sprites/sprites.json");
@@ -391,11 +466,15 @@ function readCheckedArchive(
     if (typeof spritesFile.value.build !== "string" || !spritesFile.value.build.trim()) {
       refuse(DAMAGED, "built/sprites/sprites.json.build is missing");
     }
-    for (const name of readRects(spritesFile.value.layers, "built/sprites/sprites.json", rig.image).keys()) {
+    spriteRects = readRects(spritesFile.value.layers, "built/sprites/sprites.json", rig.image);
+    for (const name of spriteRects.keys()) {
       sprites.add(name);
       pictures.push(`built/sprites/${name}.png`);
     }
     files.set("built/sprites/sprites.json", spritesFile.bytes);
+  }
+  if (countMeshAvatarGridPoints(rig, rects, spriteRects) > MESH_AVATAR_MAX_GRID_POINTS) {
+    refuse(TOO_DETAILED, "the rig's mesh has too many points");
   }
 
   for (const name of new Set(pictures)) {

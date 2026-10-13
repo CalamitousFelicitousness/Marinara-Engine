@@ -432,12 +432,17 @@ interface Canvas {
   scale: number;
 }
 
-interface CompositeInput {
-  input: Buffer;
+interface Area {
   left: number;
   top: number;
+  width: number;
+  height: number;
+}
+
+/** A picture placed on the output canvas, `width` x `height` pixels at `left`, `top`. */
+interface CompositeInput extends Area {
+  input: Buffer;
   raw?: { width: number; height: number; channels: 4 };
-  blend?: string;
 }
 
 /** One sprite's first animation frame, scaled for the output canvas, cached per sprite. */
@@ -461,20 +466,48 @@ async function framePicture(
     if (width !== node.frameWidth || height !== node.sprite.height) {
       pipeline = pipeline.resize(width, height, { fit: "fill" });
     }
-    picture = { input: await pipeline.ensureAlpha().png().toBuffer(), left, top };
+    picture = { input: await pipeline.ensureAlpha().png().toBuffer(), left, top, width, height };
   }
   cache.set(node, picture);
   return picture;
 }
 
-function blankCanvas(sharp: Sharp, canvas: Canvas) {
+interface Overlay {
+  input: Buffer;
+  left: number;
+  top: number;
+  raw?: CompositeInput["raw"];
+  blend?: string;
+}
+
+/** A transparent picture the size of an area, to draw overlays on (in order, in one pass). */
+function blankArea(sharp: Sharp, area: Area) {
   return sharp({
-    create: { width: canvas.width, height: canvas.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    create: { width: area.width, height: area.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
   });
 }
 
-async function compose(sharp: Sharp, canvas: Canvas, inputs: CompositeInput[]): Promise<Buffer> {
-  return blankCanvas(sharp, canvas).composite(inputs).raw().toBuffer();
+/** Pictures as overlays of one area of the output canvas. Each is cut to the area first, since sharp refuses a
+ *  picture larger than what it is drawn on, so the work never exceeds the area and the pictures' own size. */
+async function overlaysIn(sharp: Sharp, area: Area, inputs: readonly CompositeInput[]): Promise<Overlay[]> {
+  const placed: Overlay[] = [];
+  for (const item of inputs) {
+    const left = Math.max(item.left, area.left);
+    const top = Math.max(item.top, area.top);
+    const width = Math.min(item.left + item.width, area.left + area.width) - left;
+    const height = Math.min(item.top + item.height, area.top + area.height) - top;
+    if (width <= 0 || height <= 0) continue;
+    let { input, raw } = item;
+    if (width !== item.width || height !== item.height) {
+      input = await sharp(item.input, raw ? { raw } : {})
+        .extract({ left: left - item.left, top: top - item.top, width, height })
+        .raw()
+        .toBuffer();
+      raw = { width, height, channels: 4 };
+    }
+    placed.push({ input, raw, left: left - area.left, top: top - area.top });
+  }
+  return placed;
 }
 
 /** Draws one group in Godot's order: by absolute z, then tree order. A sprite with `clipped` set draws its
@@ -498,22 +531,29 @@ async function drawGroup(
     }
     // A clipping sprite that is hidden in this state leaves nothing for its descendants to show through.
     if (!picture) continue;
-    const descendants = clippedDescendants(node, members);
-    if (descendants.length === 0) {
-      inputs.push(picture);
-      continue;
-    }
-    const inner = await drawGroup(sharp, canvas, state, members, descendants, cache);
-    const raw = { width: canvas.width, height: canvas.height, channels: 4 as const };
     inputs.push(picture);
+    const descendants = clippedDescendants(node, members);
+    if (descendants.length === 0) continue;
+    const inner = await drawGroup(sharp, canvas, state, members, descendants, cache);
     if (inner.length === 0) continue;
-    // The mask covers the whole canvas, so everything outside the clipping picture is cut away too.
-    const mask = await compose(sharp, canvas, [picture]);
-    const masked = await sharp(await compose(sharp, canvas, inner), { raw })
-      .composite([{ input: mask, raw, left: 0, top: 0, blend: "dest-in" }])
+    // Nothing shows outside the clipping picture, so its descendants are drawn only inside its rectangle and
+    // cut to its shape there, in one pass: the cost follows the picture's size, not the canvas's.
+    const masked = await blankArea(sharp, picture)
+      .composite([
+        ...(await overlaysIn(sharp, picture, inner)),
+        { input: picture.input, left: 0, top: 0, blend: "dest-in" },
+      ])
       .raw()
       .toBuffer();
-    inputs.push({ input: masked, raw, left: 0, top: 0 });
+    const raw = { width: picture.width, height: picture.height, channels: 4 as const };
+    inputs.push({
+      input: masked,
+      raw,
+      left: picture.left,
+      top: picture.top,
+      width: picture.width,
+      height: picture.height,
+    });
   }
   return inputs;
 }
@@ -552,7 +592,11 @@ export async function flattenPngtuberState(
   const members = new Set(costume.members);
   const state = { talking, blinking };
   const inputs = await drawGroup(sharp, canvas, state, members, topLevel(costume.members), cache);
-  return blankCanvas(sharp, canvas).composite(inputs).png({ compressionLevel: 9 }).toBuffer();
+  const area = { left: 0, top: 0, width: canvas.width, height: canvas.height };
+  return blankArea(sharp, area)
+    .composite(await overlaysIn(sharp, area, inputs))
+    .png({ compressionLevel: 9 })
+    .toBuffer();
 }
 
 export function pngtuberCanvas(costumes: readonly PngtuberCostume[]): Canvas {

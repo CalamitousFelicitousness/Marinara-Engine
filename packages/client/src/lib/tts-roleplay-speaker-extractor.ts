@@ -68,6 +68,7 @@ export function buildExtractedRoleplayTTSVoiceRequests(
     return chunks.map((text, chunkIndex) => ({
       text,
       speaker,
+      ...(characterId ? { characterId } : {}),
       voice,
       ...(config.dialogueOnly &&
       segmentIndex < spokenSegments.length - 1 &&

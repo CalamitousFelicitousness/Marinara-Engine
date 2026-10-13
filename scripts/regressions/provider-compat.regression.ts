@@ -3261,7 +3261,8 @@ try {
         );
       }
 
-      // A streamed chat with a prefill keeps the prefill as history and asks for the rest of the reply.
+      // A streamed chat with a prefill keeps the prefill as history and asks for the rest of the reply. It streams with
+      // thinking on Vertex too: a buffered Argon reply stops at 32,768 tokens, half its streamed limit.
       requests.length = 0;
       await collectProviderOutputForMessages(provider, prefilled, {
         model: "gemini-4-argon",
@@ -3270,12 +3271,7 @@ try {
         reasoningEffort: "high",
         enableThinking: true,
       });
-      assert.equal(
-        requests[0]?.url,
-        kind === "google"
-          ? `${modelsUrl}/gemini-4-argon:streamGenerateContent?alt=sse`
-          : `${modelsUrl}/gemini-4-argon:generateContent`,
-      );
+      assert.equal(requests[0]?.url, `${modelsUrl}/gemini-4-argon:streamGenerateContent?alt=sse`);
       assert.deepEqual(
         body(0),
         {
@@ -3312,6 +3308,7 @@ try {
         },
         `${kind} Argon tools round must send no samplers`,
       );
+      assert.equal(requests[0]?.url, `${modelsUrl}/gemini-4-argon:streamGenerateContent?alt=sse`);
 
       // A reply cut at Argon's per-request output limit ends with CONTINUATION; report it as cut, not finished.
       finishReason = "CONTINUATION";
@@ -3347,6 +3344,16 @@ try {
         tools: [diceTool],
         onToken: () => {},
       });
+      assert.deepEqual(
+        [requests[0]?.url, requests[2]?.url],
+        kind === "google"
+          ? [
+              `${modelsUrl}/gemini-3.5-flash:streamGenerateContent?alt=sse`,
+              `${modelsUrl}/gemini-3.5-flash:streamGenerateContent?alt=sse`,
+            ]
+          : [`${modelsUrl}/gemini-3.5-flash:generateContent`, `${modelsUrl}/gemini-3.5-flash:generateContent`],
+        `${kind} Gemini 3 thinking turns keep their endpoint`,
+      );
       assert.deepEqual(
         requests.map(({ raw }) => raw),
         [

@@ -74,7 +74,7 @@ export function resolveStoredChatOptions(
     reasoningEffort:
       parameters.enabledParameters?.reasoningEffort === false
         ? undefined
-        : parameters.reasoningEffort === null
+        : parameters.reasoningEffort === null && !reasoningEffort
           ? "none"
           : (reasoningEffort ?? undefined),
     verbosity: parameters.verbosity ?? undefined,

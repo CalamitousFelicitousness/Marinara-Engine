@@ -122,9 +122,17 @@ export function resolveProviderReasoningEffort(args: {
   model: string;
   reasoningEffort: StoredReasoningEffort | undefined;
 }): ProviderReasoningEffort {
+  const providerLower = args.provider.toLowerCase();
+  // Argon cannot turn thinking off; without a level it thinks at Google's default, medium, so name that level.
+  if (
+    (!args.reasoningEffort || args.reasoningEffort === "none") &&
+    (providerLower === "google" || providerLower === "google_vertex") &&
+    isGeminiArgonModel(args.model)
+  ) {
+    return "medium";
+  }
   if (!args.reasoningEffort || args.reasoningEffort === "none") return null;
   const modelLower = args.model.toLowerCase();
-  const providerLower = args.provider.toLowerCase();
 
   const xaiUsesAutoReasoning =
     (providerLower === "xai" && isXaiAutoReasoningModel(modelLower)) ||
@@ -393,10 +401,10 @@ export const OPENAI_CHATGPT_MODELS: KnownModel[] = [
 // ── Google AI Studio (from #model_google_select) ──
 
 export const GOOGLE_MODELS: KnownModel[] = [
-  // Gemini 4
-  { id: "gemini-4-argon", name: "gemini-4-argon", context: 1000000, maxOutput: 65536 },
-  // Gemini 3.8
+  // Gemini 3.8. New Google and Vertex connections start on the first entry, so keep a widely available Flash here.
   { id: "gemini-3.8-flash", name: "gemini-3.8-flash", context: 1000000, maxOutput: 65536 },
+  // Gemini 4. Argon needs a paid tier and, on Vertex, the global, us or eu location.
+  { id: "gemini-4-argon", name: "gemini-4-argon", context: 1000000, maxOutput: 65536 },
   // Gemini 3.7
   { id: "gemini-3.7-flash", name: "gemini-3.7-flash", context: 1000000, maxOutput: 65536 },
   // Gemini 3.6

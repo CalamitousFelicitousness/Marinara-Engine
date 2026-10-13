@@ -1,4 +1,4 @@
-/** Save modifiers against conditions, damage or magic (Capability API 1.129). */
+/** Save modifiers against conditions, damage or magic (Capability API 1.133). */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -159,7 +159,7 @@ try {
     }
   }
 
-  // Magical creature damage and catalog spells use the same 1.96 quality. A debuff needs no damage.
+  // Magical creature damage and catalog spells use the same 1.100 quality. A debuff needs no damage.
   const cunning = parse(document(gnome));
   mode(
     cunning,
@@ -398,18 +398,18 @@ try {
       }
       parse(doc);
       assert.equal(
-        getCapabilityPackageInstallIssue(manifest(128) as any, doc, documents),
-        "A ruleset whose save modifiers count against conditions, damage or magic requires schemaVersion 2 and capabilityApi 1.129 or newer",
+        getCapabilityPackageInstallIssue(manifest(132) as any, doc, documents),
+        "A ruleset whose save modifiers count against conditions, damage or magic requires schemaVersion 2 and capabilityApi 1.133 or newer",
         `${source}, external=${external}`,
       );
-      assert.equal(getCapabilityPackageInstallIssue(manifest(129) as any, doc, documents), null);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(133) as any, doc, documents), null);
       assert.match(
-        getCapabilityPackageInstallIssue(manifest(129, 1) as any, doc, documents) ?? "",
+        getCapabilityPackageInstallIssue(manifest(133, 1) as any, doc, documents) ?? "",
         /requires schemaVersion 2/,
       );
     }
   }
-  assert.equal(getCapabilityPackageInstallIssue(manifest(128) as any, original), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(132) as any, original), null);
   const editor = JSON.parse(readFileSync(new URL("../../docs/extending/ruleset.schema.json", import.meta.url), "utf8"));
   let modifiers = 0;
   const walk = (node: any) => {
@@ -426,7 +426,7 @@ try {
   walk(editor);
   assert.ok(modifiers >= 3);
   console.info(
-    "Save against: conditions, all damage clauses, magical qualities, AND scope, ending saves, sources, summaries and 1.129 gate.",
+    "Save against: conditions, all damage clauses, magical qualities, AND scope, ending saves, sources, summaries and 1.133 gate.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

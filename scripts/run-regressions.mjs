@@ -32,7 +32,7 @@ export function regressionTimeoutMs(relativePath) {
   if (relativePath === 'scripts/regressions/scene-package-origin.regression.ts') return 60_000;
   // Two slow Decision recall passes (5.5 s each) prove that each has its own time limit.
   if (relativePath === 'scripts/regressions/advanced-memory-recall-shortlist.regression.ts') return 60_000;
-  // Hundreds of complete d20 and dice-pool fights take about a minute even on the pre-1.128 base.
+  // Hundreds of complete d20 and dice-pool fights take about a minute even on the pre-1.132 base.
   if (relativePath === 'scripts/regressions/ruleset-combat-director.regression.ts') return 90_000;
   return FILE_TIMEOUT_MS;
 }

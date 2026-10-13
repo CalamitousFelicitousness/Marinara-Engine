@@ -1205,7 +1205,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
 // ── A price the sheet would refuse is offered only from a higher pool, and refused if asked for anyway ──
 {
   const state = fight(fiveE, [wizard({ pools: { slots_3: { value: 0 } } }), snag()], 20, 5);
-  // No third-level slot: Fireball is cast with a higher one or not at all (1.166).
+  // No third-level slot: Fireball is cast with a higher one or not at all (1.170).
   const fireball = rulesetCombatOptions(fiveE, state, "corwin").find((option) => option.label === "Fireball");
   assert.equal(fireball?.upcastOnly, true, "no third-level slot, Fireball only from a higher one");
   assert.ok(!fireball?.payWith?.includes("slots_3"));

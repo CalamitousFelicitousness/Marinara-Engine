@@ -1,12 +1,12 @@
 /**
- * What a slowing condition holds over to its holder's next turn (Capability API 1.115): 5e's Slow.
+ * What a slowing condition holds over to its holder's next turn (Capability API 1.119): 5e's Slow.
  *
  *   - `delays: { catalogs, budget, chance }` on a combat condition: an action out of those catalogs,
  *     paid with that budget, rolls the die; at `atLeast` or more it waits.
  *   - As its maker's next turn begins it is completed with the same budget and lands; unable to act,
  *     it is lost. What it cost stays spent.
  *   - Anything else (a weapon, another budget, below the number) goes off as made.
- *   - Import and the install gate (1.115).
+ *   - Import and the install gate (1.119).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -248,7 +248,7 @@ try {
     );
   }
 
-  // ── The install gate: 1.115 ──
+  // ── The install gate: 1.119 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -266,7 +266,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /hold what their holder uses.*capabilityApi 1\.115/;
+    const gate = /hold what their holder uses.*capabilityApi 1\.119/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     assert.match(
@@ -283,10 +283,10 @@ try {
       ) ?? "",
       gate,
     );
-    assert.doesNotMatch(issue(114, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(118, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
   }
 
-  console.log("Delay: a slowed caster's spell waits for their next turn, or is lost, gated at 1.115.");
+  console.log("Delay: a slowed caster's spell waits for their next turn, or is lost, gated at 1.119.");
 
   function fightInput() {
     const state = fight();

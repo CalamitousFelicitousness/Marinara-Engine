@@ -44,7 +44,7 @@ export function rulesetModedAction(
   };
 }
 
-/** Whether one of the fighter's items is switched on (1.165): as this fight left it, else as its stack
+/** Whether one of the fighter's items is switched on (1.169): as this fight left it, else as its stack
  *  kept it. Off unless something turned it on. */
 export function rulesetItemOn(actor: RulesetCombatant, item: number): boolean {
   return actor.on?.[item] ?? actor.sheet?.items?.[item]?.on === true;
@@ -215,7 +215,7 @@ export interface RulesetFightItemChange {
   broke?: true;
   /** A fake's true name (1.78): what a use of it is written as. */
   truly?: string;
-  /** Its switch as the fight left it, when the fight turned it (1.165). */
+  /** Its switch as the fight left it, when the fight turned it (1.169). */
   on?: boolean;
 }
 

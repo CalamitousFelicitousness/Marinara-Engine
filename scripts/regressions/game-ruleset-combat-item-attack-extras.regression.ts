@@ -1,4 +1,4 @@
-/** A weapon's extra damage and saves on what its hit puts on (Capability API 1.164): a javelin of
+/** A weapon's extra damage and saves on what its hit puts on (Capability API 1.168): a javelin of
  *  lightning, a dragon slayer, a sword of sharpness and a sword of wounding. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -271,23 +271,23 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose weapons deal extra damage or put on conditions a save resists requires schemaVersion 2 and capabilityApi 1.164 or newer";
+      "A ruleset whose weapons deal extra damage or put on conditions a save resists requires schemaVersion 2 and capabilityApi 1.168 or newer";
     const withItem = (item: RulesetSheetItem) =>
       document((doc) => {
         delete doc.combat.creatureTypes;
         doc.catalogs.push({ id: "gear", label: "Gear", entries: [{ id: "blade", label: "Blade", item: item.item }] });
       });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(163) as never, withItem(javelin)), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(163) as never, withItem(wounding)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(164) as never, withItem(javelin)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(167) as never, withItem(javelin)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(167) as never, withItem(wounding)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(168) as never, withItem(javelin)), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(163) as never, withItem(weapon("Plain", {}))),
+      getCapabilityPackageInstallIssue(manifest(167) as never, withItem(weapon("Plain", {}))),
       gate,
       "nothing without the keys",
     );
   }
 
-  console.log("Item attack extras: lightning, slayer dice, a critical's 14, saves on a wound, gated at 1.164.");
+  console.log("Item attack extras: lightning, slayer dice, a critical's 14, saves on a wound, gated at 1.168.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

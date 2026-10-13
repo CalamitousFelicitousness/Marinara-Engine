@@ -1,5 +1,5 @@
 /**
- * Zones that move and change the ground (Capability API 1.168).
+ * Zones that move and change the ground (Capability API 1.172).
  *
  *   - `move`: its caster moves a zone held at a point on their turn, for a budget, to a cell within
  *     its distance (Moonbeam). Whoever it now covers is caught as `enter` says; the budget is spent.
@@ -435,13 +435,13 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with zones that move or change the ground requires schemaVersion 2 and capabilityApi 1.168 or newer";
+      "A ruleset with zones that move or change the ground requires schemaVersion 2 and capabilityApi 1.172 or newer";
     for (const entry of [beam, cloud, spikes]) {
       const withEntry = fiveE((doc) => {
         doc.catalogs.push({ id: "zones", label: "Zones", entries: [entry] });
       });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(167) as never, withEntry), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(168) as never, withEntry), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(171) as never, withEntry), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(172) as never, withEntry), gate, entry.id);
     }
     const plainZone = fiveE((doc) => {
       doc.catalogs.push({
@@ -450,11 +450,11 @@ try {
         entries: [spell("still", { area: { shape: "burst", size: 5 }, zone: { rounds: 1, triggers: ["enter"] } })],
       });
     });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(167) as never, plainZone), gate, "a zone that stays put");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(171) as never, plainZone), gate, "a zone that stays put");
   }
 
   console.log(
-    "Zone moves: Moonbeam moves for an action onto B, Cloudkill drifts and stops at the edge, Spike Growth slows and cuts per step, counted across walks; gated at 1.168.",
+    "Zone moves: Moonbeam moves for an action onto B, Cloudkill drifts and stops at the edge, Spike Growth slows and cuts per step, counted across walks; gated at 1.172.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

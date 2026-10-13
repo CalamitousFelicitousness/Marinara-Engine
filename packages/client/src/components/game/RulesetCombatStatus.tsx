@@ -12,7 +12,7 @@ import { rulesetDistanceText } from "../../lib/ruleset-combat-board";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { cn } from "../../lib/utils";
 
-/** The ruleset's own words for what a combatant is (1.163): "Fiend (devil)". */
+/** The ruleset's own words for what a combatant is (1.167): "Fiend (devil)". */
 function kindLine(kind: { type?: string; tags?: string[] }): string {
   const tags = (kind.tags ?? []).join(", ");
   if (!kind.type) return tags;
@@ -244,7 +244,7 @@ export function RulesetCombatStatus({
           </ol>
         </details>
 
-        {/* The areas spells left standing (1.167), each with whose it is and how long it has. */}
+        {/* The areas spells left standing (1.171), each with whose it is and how long it has. */}
         {view.zones && view.zones.length > 0 && (
           <ul aria-label={t("game.combat.ruleset.status.zones")} className="space-y-0.5 text-xs">
             {view.zones.map((zone) => (

@@ -1,5 +1,5 @@
 /**
- * How big a combatant is, and what escaping a hold takes (Capability API 1.98).
+ * How big a combatant is, and what escaping a hold takes (Capability API 1.102).
  *
  *   - `combat.sizes` lists sizes smallest first; a sheet reads its size as a number off itself (1 for
  *     the first), a creature names its own, and whoever nothing says is the `default`, or no size.
@@ -7,7 +7,7 @@
  *     reaches a Large ogre from a Medium fighter and not a Huge giant. No size is never too big.
  *   - `escapeDc` on a condition an action applies is what breaking free of it is rolled against: the
  *     holder throws nothing and the one held wins on meeting it, in the forecast and in the roll.
- *   - Import checks the names, and the install gate asks for 1.98, in a catalog file too.
+ *   - Import checks the names, and the install gate asks for 1.102, in a catalog file too.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -301,7 +301,7 @@ try {
     assert.deepEqual(escapeWith(12 - best), { winner: "target", stillHeld: true }, "one short");
   }
 
-  // ── The install gate: 1.98, in the ruleset file and in a catalog file ──
+  // ── The install gate: 1.102, in the ruleset file and in a catalog file ──
   {
     const manifest = (minor: number, paths = ["ruleset.json"]) => ({
       schemaVersion: 2,
@@ -319,7 +319,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /have sizes or whose holds name an escape DC.*capabilityApi 1\.98/;
+    const gate = /have sizes or whose holds name an escape DC.*capabilityApi 1\.102/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
     const sizesOnly = (doc: Record<string, any>) => {
@@ -342,10 +342,10 @@ try {
       ["a creature's size", sizeOnly],
       ["an escape DC", escapeOnly],
     ] as const) {
-      assert.match(issue(97, fiveE(edit)) ?? "", gate, what);
-      assert.doesNotMatch(issue(98, fiveE(edit)) ?? "", gate, what);
+      assert.match(issue(101, fiveE(edit)) ?? "", gate, what);
+      assert.doesNotMatch(issue(102, fiveE(edit)) ?? "", gate, what);
     }
-    assert.doesNotMatch(issue(97, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(101, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
     const document = fiveE(escapeOnly);
     const creatures = document.catalogs.find((one: { id: string }) => one.id === "creatures");
     const inFile = {
@@ -356,11 +356,11 @@ try {
     };
     const paths = ["ruleset.json", "catalogs/creatures.json"];
     const files = new Map<string, unknown>([["catalogs/creatures.json", { entries: creatures.entries }]]);
-    assert.match(issue(97, inFile, paths, files) ?? "", gate, "a catalog file");
-    assert.doesNotMatch(issue(98, inFile, paths, files) ?? "", gate);
+    assert.match(issue(101, inFile, paths, files) ?? "", gate, "a catalog file");
+    assert.doesNotMatch(issue(102, inFile, paths, files) ?? "", gate);
   }
 
-  console.log("Combat sizes: who may be grabbed, and escapes rolled against a hold's own DC, gated at 1.98.");
+  console.log("Combat sizes: who may be grabbed, and escapes rolled against a hold's own DC, gated at 1.102.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

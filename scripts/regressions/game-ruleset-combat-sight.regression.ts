@@ -1,5 +1,5 @@
 /**
- * Seeing (Capability API 1.173).
+ * Seeing (Capability API 1.177).
  *
  *   - `zone.obscures`: nobody sees into, out of or through it but by a sense it names, in range
  *     (Fog Cloud, Darkness); a `utility` entry that only leaves such an area is on the menu.
@@ -507,27 +507,27 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.173 or newer";
+      "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.177 or newer";
     const withEntry = (entry: RulesetCatalogEntry) =>
       fiveE((doc) => {
         doc.catalogs.push({ id: "x", label: "X", entries: [entry] });
       });
     for (const entry of [fog, bolt, storm]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(172) as never, withEntry(entry)), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(173) as never, withEntry(entry)), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(176) as never, withEntry(entry)), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(177) as never, withEntry(entry)), gate, entry.id);
     }
     const senses = fiveE((doc) => {
       doc.combat.senses = [{ id: "darkvision", label: "Darkvision" }];
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(172) as never, senses), gate, "combat senses");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(176) as never, senses), gate, "combat senses");
     const sight = fiveE((doc) => {
       doc.combat.sight = { unseenAttacks: true };
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(172) as never, sight), gate, "combat sight");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(176) as never, sight), gate, "combat sight");
     const hidden = fiveE((doc) => {
       for (const entry of doc.combat.conditions) if (entry.condition === "invisible") entry.unseen = {};
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(172) as never, hidden), gate, "a hiding condition");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(176) as never, hidden), gate, "a hiding condition");
     const plain = fiveE((doc) => {
       doc.catalogs.push({
         id: "x",
@@ -535,11 +535,11 @@ try {
         entries: [spell("ball", { area: { shape: "burst", size: 20 }, range: 150, amount: { flat: 5 } })],
       });
     });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(172) as never, plain), gate, "a burst alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(176) as never, plain), gate, "a burst alone");
   }
 
   console.log(
-    "Sight: fog and darkness hide what is in and beyond them but from the senses that pierce them, in range; darkvision comes off the sheet, blindsight works blind; invisible hides; unseen attacks get advantage or disadvantage; a creature you can see is one you can; Fire Storm lays touching cubes; gated at 1.173.",
+    "Sight: fog and darkness hide what is in and beyond them but from the senses that pierce them, in range; darkvision comes off the sheet, blindsight works blind; invisible hides; unseen attacks get advantage or disadvantage; a creature you can see is one you can; Fire Storm lays touching cubes; gated at 1.177.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

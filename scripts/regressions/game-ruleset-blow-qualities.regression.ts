@@ -1,5 +1,5 @@
 /**
- * What a blow carries past a resistance, off a spell and off a creature (Capability API 1.96).
+ * What a blow carries past a resistance, off a spell and off a creature (Capability API 1.100).
  *
  *   - `qualities` on a catalog entry's mechanics and on a creature action's damage are the ruleset's
  *     own item tags, checked at import exactly as a resistance's `except` is.
@@ -7,7 +7,7 @@
  *     `except` takes nothing off, an immunity that does lets the harm through, and harm without them
  *     is resisted as before. 5e's "resistance to slashing from nonmagical attacks" is
  *     `{ type: "slashing", except: ["magical"] }`, with spells and a deva's mace `["magical"]`.
- *   - The install gate asks for 1.96, in the ruleset file and in a catalog file.
+ *   - The install gate asks for 1.100, in the ruleset file and in a catalog file.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -171,7 +171,7 @@ try {
     assert.equal(biteOf(plain), undefined, "a plain bite carries nothing");
   }
 
-  // ── The install gate: 1.96, in the ruleset file and in a catalog file ──
+  // ── The install gate: 1.100, in the ruleset file and in a catalog file ──
   {
     const manifest = (minor: number, paths = ["ruleset.json"]) => ({
       schemaVersion: 2,
@@ -189,14 +189,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /carry qualities past a resistance.*capabilityApi 1\.96/;
+    const gate = /carry qualities past a resistance.*capabilityApi 1\.100/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
-    assert.match(issue(95, variant(silverFlare)) ?? "", gate, "a charm");
-    assert.match(issue(95, variant(silverGnaw)) ?? "", gate, "a creature");
-    assert.equal(issue(96, variant(silverFlare)), null);
-    assert.equal(issue(96, variant(silverGnaw)), null);
-    assert.doesNotMatch(issue(95, variant()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.match(issue(99, variant(silverFlare)) ?? "", gate, "a charm");
+    assert.match(issue(99, variant(silverGnaw)) ?? "", gate, "a creature");
+    assert.equal(issue(100, variant(silverFlare)), null);
+    assert.equal(issue(100, variant(silverGnaw)), null);
+    assert.doesNotMatch(issue(99, variant()) ?? "", gate, "the example as shipped asks nothing new");
     const document = variant(silverGnaw);
     const night = catalog(document, "night");
     const inFile = {
@@ -207,11 +207,11 @@ try {
     };
     const paths = ["ruleset.json", "catalogs/night.json"];
     const files = new Map<string, unknown>([["catalogs/night.json", { entries: night.entries }]]);
-    assert.match(issue(95, inFile, paths, files) ?? "", gate, "a catalog file");
-    assert.equal(issue(96, inFile, paths, files), null);
+    assert.match(issue(99, inFile, paths, files) ?? "", gate, "a catalog file");
+    assert.equal(issue(100, inFile, paths, files), null);
   }
 
-  console.log("Blow qualities: spells and creatures carry what gets through a resistance, checked and gated at 1.96.");
+  console.log("Blow qualities: spells and creatures carry what gets through a resistance, checked and gated at 1.100.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

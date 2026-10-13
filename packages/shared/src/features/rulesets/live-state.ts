@@ -1277,7 +1277,7 @@ export function planRulesetUse(
     return definition.sheet.live.pools.some((entry) => entry.group === target) ? target : undefined;
   };
 
-  /** The level of what a pool pays at: its own `level`, else its place in its group (1.111). */
+  /** The level of what a pool pays at: its own `level`, else its place in its group (1.115). */
   const poolLevel = (id: string): number => {
     const pool = definition.sheet.live.pools.find((one) => one.id === id);
     if (!pool) return 0;
@@ -1295,7 +1295,7 @@ export function planRulesetUse(
     const target = named
       ? declared.find((pool) => sameName(pool.key, named) || sameName(pool.label, named))
       : undefined;
-    // A pool of another group pays too where it says so (1.166): 5e's pact slots, for a spell
+    // A pool of another group pays too where it says so (1.170): 5e's pact slots, for a spell
     // costed from the spell slots, and at no lower a level than the cost's own.
     const pays = definition.sheet.live.pools.find((pool) => pool.id === target?.key)?.pays;
     if (!group || !target) return { ok: false, reason: "bad-pool" };

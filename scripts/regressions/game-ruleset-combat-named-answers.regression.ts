@@ -1,12 +1,12 @@
 /**
- * Answers to one entry by name (Capability API 1.112): 5e's Shield against Magic Missile.
+ * Answers to one entry by name (Capability API 1.116): 5e's Shield against Magic Missile.
  *
  *   - `against.entries` opens a moment only for an action from one of those entries; a catalog or an
  *     entry matching is enough, and an action from another entry opens nothing.
  *   - `also` takes the same answer at more moments, each with its own `against`: Shield is still
  *     taken when an attack hits, and now when Magic Missile is aimed at its caster.
  *   - A condition's `noDamageFrom` keeps those entries' harm off its holder, whatever its kind.
- *   - Import (cancels with `also`, refs, catalogs) and the install gate (1.112).
+ *   - Import (cancels with `also`, refs, catalogs) and the install gate (1.116).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -343,7 +343,7 @@ try {
     );
   }
 
-  // ── The install gate: 1.112 ──
+  // ── The install gate: 1.116 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -361,7 +361,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /name the entries they answer.*capabilityApi 1\.112/;
+    const gate = /name the entries they answer.*capabilityApi 1\.116/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     const answering = (reaction: Record<string, unknown>) => (doc: Record<string, any>) => {
@@ -375,18 +375,18 @@ try {
       ["an answer to a named entry", answering({ on: "aimed", against: { entries: ["spells/bolt"] } })],
       ["a condition keeping an entry off", keepingOff],
     ] as const) {
-      assert.match(issue(111, fiveE(edit)) ?? "", gate, what);
-      assert.doesNotMatch(issue(112, fiveE(edit)) ?? "", gate, what);
+      assert.match(issue(115, fiveE(edit)) ?? "", gate, what);
+      assert.doesNotMatch(issue(116, fiveE(edit)) ?? "", gate, what);
     }
     assert.doesNotMatch(
-      issue(111, fiveE(answering({ on: "aimed", against: { catalogs: ["spells"] } }))) ?? "",
+      issue(115, fiveE(answering({ on: "aimed", against: { catalogs: ["spells"] } }))) ?? "",
       gate,
       "an answer by catalog asks nothing new",
     );
-    assert.doesNotMatch(issue(111, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(115, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
   }
 
-  console.log("Named answers: Shield answers Magic Missile by name and keeps it off, gated at 1.112.");
+  console.log("Named answers: Shield answers Magic Missile by name and keeps it off, gated at 1.116.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

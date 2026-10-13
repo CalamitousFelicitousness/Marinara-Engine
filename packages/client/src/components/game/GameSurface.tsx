@@ -7999,7 +7999,7 @@ function GameSurfaceComponent({
     [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
-  /** An item's switch turned on or off (1.165): the flame of a flame tongue, out of a fight. */
+  /** An item's switch turned on or off (1.169): the flame of a flame tongue, out of a fight. */
   const handleSwitchInventoryStack = useCallback(
     async (stackId: string, on: boolean) => {
       if (!activeChatId) return null;

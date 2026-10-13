@@ -80,9 +80,9 @@ export interface RulesetItemEffectFact {
     | "harm"
     | "conditions";
   names: string[];
-  /** Exception tags beside each damage name, kept structured for translation (Capability API 1.127). */
+  /** Exception tags beside each damage name, kept structured for translation (Capability API 1.131). */
   except?: string[][];
-  /** What narrows damage on a hit (Capability API 1.128), kept as facts for localized screens. */
+  /** What narrows damage on a hit (Capability API 1.132), kept as facts for localized screens. */
   damage?: {
     attacks?: "weapon" | "spell" | "any";
     blow?: "melee" | "ranged";
@@ -90,7 +90,7 @@ export interface RulesetItemEffectFact {
     type?: string;
     fromSource?: true;
   };
-  /** Conditions and damage labels, and magic, that narrow this save modifier (1.129). */
+  /** Conditions and damage labels, and magic, that narrow this save modifier (1.133). */
   against?: { names: string[]; magic?: true };
   change:
     | { mode: "advantage" | "disadvantage" }
@@ -141,7 +141,7 @@ export interface RulesetItemFacts {
   requires?: RulesetItemRequirementFact[];
   attack?: RulesetItemAttackFact;
   use?: RulesetItemUseFact;
-  /** Its switch (1.165): what it is called and the budget's label a fight turns it with. */
+  /** Its switch (1.169): what it is called and the budget's label a fight turns it with. */
   toggle?: { label: string; budget: string };
 }
 
@@ -164,11 +164,11 @@ export interface RulesetItemUseFact {
   /** The ruleset's own distance unit, beside a range or an area. */
   unit?: string;
   consumes?: true;
-  /** It is held by its user's concentration (1.169), as a scroll's spell is. */
+  /** It is held by its user's concentration (1.173), as a scroll's spell is. */
   concentration?: true;
-  /** The area it leaves, and for how many rounds (1.169). */
+  /** The area it leaves, and for how many rounds (1.173). */
   zone?: { rounds: number };
-  /** What it cures (1.171): conditions it ends (by label, at most `count`), the dying it steadies,
+  /** What it cures (1.175): conditions it ends (by label, at most `count`), the dying it steadies,
    *  and the dead it brings back within so many rounds. */
   ends?: { conditions: string[]; count?: number };
   stabilizes?: true;
@@ -222,7 +222,7 @@ export interface RulesetItemAttackFact {
   /** The least a hit with it deals. */
   floor?: number;
   /** The conditions it puts on a target, by their labels, when a hit deals enough: with the save
-   *  that keeps one off and the save that ends one, by the save's label (1.164). */
+   *  that keeps one off and the save that ends one, by the save's label (1.168). */
   onHit?: Array<{
     condition: string;
     atLeast: number;
@@ -230,14 +230,14 @@ export interface RulesetItemAttackFact {
     save?: { save: string; difficulty: number };
     saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
   }>;
-  /** More damage on each hit (1.164): its amount, type, whom it reaches by the labels of the types
+  /** More damage on each hit (1.168): its amount, type, whom it reaches by the labels of the types
    *  and tags it names, whether only a critical hit carries it, and its own save. */
   plus?: Array<{
     amount: string;
     type?: string;
     against?: string[];
     critical?: true;
-    /** Dealt only while the item's switch is on (1.165): the switch's label. */
+    /** Dealt only while the item's switch is on (1.169): the switch's label. */
     toggled?: string;
     save?: { save: string; difficulty: number; onSuccess: "none" | "half" };
   }>;

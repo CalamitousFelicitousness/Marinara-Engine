@@ -1,5 +1,5 @@
 /**
- * An answer that reaches only so high (Capability API 1.111): 5e's Counterspell.
+ * An answer that reaches only so high (Capability API 1.115): 5e's Counterspell.
  *
  *   - `upTo: "paid"` on a `used` reaction that cancels stops what was paid no higher up its pool
  *     family than the answer was, outright and without a roll.
@@ -7,7 +7,7 @@
  *     level: a success stops it, a failure lets it land. Without `above` nothing higher is stopped.
  *   - Paying the answer out of a higher pool raises how high it reaches.
  *   - A level is a pool's own `level` read off the sheet, or its place in its group; nothing paid is 0.
- *   - Import and the install gate (1.111).
+ *   - Import and the install gate (1.115).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -335,7 +335,7 @@ try {
     );
   }
 
-  // ── The install gate: 1.111 ──
+  // ── The install gate: 1.115 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -353,7 +353,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /stop only what was paid no higher.*capabilityApi 1\.111/;
+    const gate = /stop only what was paid no higher.*capabilityApi 1\.115/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     const withCounter = (doc: Record<string, any>) => {
@@ -366,13 +366,13 @@ try {
       ["a counter", withCounter],
       ["a pool's level", withPoolLevel],
     ] as const) {
-      assert.match(issue(110, fiveE(edit)) ?? "", gate, what);
-      assert.doesNotMatch(issue(111, fiveE(edit)) ?? "", gate, what);
+      assert.match(issue(114, fiveE(edit)) ?? "", gate, what);
+      assert.doesNotMatch(issue(115, fiveE(edit)) ?? "", gate, what);
     }
-    assert.doesNotMatch(issue(110, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(114, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
   }
 
-  console.log("Counter reach: stopped outright up to its own level, a check above it, gated at 1.111.");
+  console.log("Counter reach: stopped outright up to its own level, a check above it, gated at 1.115.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

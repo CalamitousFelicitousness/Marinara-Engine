@@ -1,5 +1,5 @@
 /**
- * A pool that pays for another group, and targets that grow with the cost (Capability API 1.166).
+ * A pool that pays for another group, and targets that grow with the cost (Capability API 1.170).
  *
  *   - A live pool's `pays` lets it pay for a cost of another group at its own level: 5e's pact slots
  *     paying for a spell costed from the spell slots, growing it by as many steps as it is above.
@@ -288,23 +288,23 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose pools pay for another group or whose targets grow with the cost requires schemaVersion 2 and capabilityApi 1.166 or newer";
+      "A ruleset whose pools pay for another group or whose targets grow with the cost requires schemaVersion 2 and capabilityApi 1.170 or newer";
     const withHold = fiveE((doc) => {
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "spells")?.entries?.push(spells[1]);
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(165) as never, fiveE(pactPays)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(166) as never, fiveE(pactPays)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(169) as never, fiveE(pactPays)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(170) as never, fiveE(pactPays)), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(165) as never, fiveE()),
+      getCapabilityPackageInstallIssue(manifest(169) as never, fiveE()),
       gate,
       "nothing without the keys",
     );
     const catalogs = new Map([["spells.json", { entries: [spells[1]] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(165) as never, withHold, catalogs as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(169) as never, withHold, catalogs as never), gate);
   }
 
   console.log(
-    "Cast ladder: a pact slot pays a 1st-level spell two steps up, an empty slot climbs, Hold takes a target a step, gated at 1.166.",
+    "Cast ladder: a pact slot pays a 1st-level spell two steps up, an empty slot climbs, Hold takes a target a step, gated at 1.170.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

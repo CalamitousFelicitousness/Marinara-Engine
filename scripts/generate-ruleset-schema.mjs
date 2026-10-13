@@ -185,7 +185,7 @@ function restStepTo(node) {
   ];
 }
 
-// Senses an effect needs or a condition takes away cannot be named twice (1.122).
+// Senses an effect needs or a condition takes away cannot be named twice (1.126).
 function uniqueCombatSenses(node) {
   if (Array.isArray(node)) return node.forEach(uniqueCombatSenses);
   if (!node || typeof node !== "object") return;
@@ -195,7 +195,7 @@ function uniqueCombatSenses(node) {
   }
 }
 
-// A condition cannot name the same ending twice (1.120).
+// A condition cannot name the same ending twice (1.124).
 function uniqueConditionEndings(node) {
   if (Array.isArray(node)) return node.forEach(uniqueConditionEndings);
   if (!node || typeof node !== "object") return;
@@ -225,7 +225,7 @@ function cancelOnlyWhenAimed(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(cancelOnlyWhenAimed);
   const keys = Object.keys(node.properties ?? {}).filter((key) => key !== "$comment");
-  // Falls have no source entry, including when taken as an additional moment (1.119).
+  // Falls have no source entry, including when taken as an additional moment (1.123).
   if (node.type === "object" && ["on", "against", "blow", "seesSource"].every((key) => keys.includes(key))) {
     node.allOf = [
       ...(node.allOf ?? []),
@@ -443,7 +443,7 @@ function requireDamageAmount(node) {
   // A rider's amount carries no type of its own, so its keys alone look like every other pair of
   // dice and flat in the file, a creature's health included. The schema marks it by name instead.
   const riderAmountShaped = node.description === "rider-amount";
-  // An amount a blow deals instead (1.97) is `when` beside dice and flat, and nothing else.
+  // An amount a blow deals instead (1.101) is `when` beside dice and flat, and nothing else.
   const alternativeShaped =
     ["when", "dice", "flat"].every((key) => keys.includes(key)) &&
     keys.every((key) => ["when", "dice", "flat"].includes(key));

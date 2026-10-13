@@ -1,12 +1,12 @@
 /**
- * A condition on its source's clock (Capability API 1.114): 5e's Guiding Bolt.
+ * A condition on its source's clock (Capability API 1.118): 5e's Guiding Bolt.
  *
  *   - `duration: { rounds, of: "source" }` counts the turns of whoever put it on, from their next
  *     one: put on during the caster's turn, it lasts until the end of their NEXT turn, through the
  *     target's own turn between.
  *   - With `at: "turn-start"` it ends as the caster's next turn begins.
  *   - A source that has left the fight hands the clock back to the holder.
- *   - Import and the install gate (1.114).
+ *   - Import and the install gate (1.118).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -209,7 +209,7 @@ try {
     );
   }
 
-  // ── The install gate: 1.114 ──
+  // ── The install gate: 1.118 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -227,7 +227,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /turns of whoever put them on.*capabilityApi 1\.114/;
+    const gate = /turns of whoever put them on.*capabilityApi 1\.118/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     const inCatalog = (doc: Record<string, any>) => {
@@ -243,13 +243,13 @@ try {
       ["a catalog entry", inCatalog],
       ["what a condition leaves behind", leftBehind],
     ] as const) {
-      assert.match(issue(113, fiveE(edit)) ?? "", gate, what);
-      assert.doesNotMatch(issue(114, fiveE(edit)) ?? "", gate, what);
+      assert.match(issue(117, fiveE(edit)) ?? "", gate, what);
+      assert.doesNotMatch(issue(118, fiveE(edit)) ?? "", gate, what);
     }
-    assert.doesNotMatch(issue(113, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(117, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
   }
 
-  console.log("Source clock: Guiding Bolt lasts until the end of the caster's next turn, gated at 1.114.");
+  console.log("Source clock: Guiding Bolt lasts until the end of the caster's next turn, gated at 1.118.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,4 +1,4 @@
-/** A summoned weapon strikes on later turns, keeping its cast's payment level (Capability API 1.117). */
+/** A summoned weapon strikes on later turns, keeping its cast's payment level (Capability API 1.121). */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -473,7 +473,7 @@ try {
     "positive fractional distances and the duration ceiling",
   );
 
-  // Both inline and file catalogs require 1.117, including manifest v1.
+  // Both inline and file catalogs require 1.121, including manifest v1.
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -491,7 +491,7 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset whose spells leave something behind that strikes on later turns requires schemaVersion 2 and capabilityApi 1.117 or newer";
+    "A ruleset whose spells leave something behind that strikes on later turns requires schemaVersion 2 and capabilityApi 1.121 or newer";
   assert.equal(supportedCapabilityApi.major, 1);
   assert.ok(supportedCapabilityApi.minor >= 117);
   for (const file of [false, true]) {
@@ -503,14 +503,14 @@ try {
       delete header.entries;
       header.asset = "spells.json";
     }
-    assert.equal(getCapabilityPackageInstallIssue(manifest(116) as any, doc, catalogs), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(117) as any, doc, catalogs), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(120) as any, doc, catalogs), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(121) as any, doc, catalogs), null);
     assert.match(
-      getCapabilityPackageInstallIssue({ ...manifest(116), schemaVersion: 1 } as any, doc, catalogs) ?? "",
+      getCapabilityPackageInstallIssue({ ...manifest(120), schemaVersion: 1 } as any, doc, catalogs) ?? "",
       /requires schemaVersion 2/,
     );
   }
-  assert.equal(getCapabilityPackageInstallIssue(manifest(116) as any, JSON.parse(fiveEText)), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(120) as any, JSON.parse(fiveEText)), null);
   // The editor exposes the same shape and its attack-only restriction.
   const schema = JSON.parse(
     readFileSync(fileURLToPath(new URL("../../docs/extending/ruleset.schema.json", import.meta.url)), "utf8"),
@@ -537,7 +537,7 @@ try {
   visit(schema);
   assert.ok(found > 0, "the editor includes summons");
   console.log(
-    "Summons: later budget-only strikes, movement, duration, reactions, defeat, concentration, upcasts and import, gated at 1.117.",
+    "Summons: later budget-only strikes, movement, duration, reactions, defeat, concentration, upcasts and import, gated at 1.121.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

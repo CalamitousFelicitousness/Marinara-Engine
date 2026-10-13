@@ -1,4 +1,4 @@
-/** Reactions for others, at turn start, on a save, and for several fallers (Capability API 1.126). */
+/** Reactions for others, at turn start, on a save, and for several fallers (Capability API 1.130). */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -518,10 +518,10 @@ try {
             header.asset = `catalogs/${header.id}.json`;
           }
           assert.equal(
-            getCapabilityPackageInstallIssue(manifest(125) as any, doc, files),
-            "A ruleset whose reactions answer for others, at a turn's start, on a save or for several fallers requires schemaVersion 2 and capabilityApi 1.126 or newer",
+            getCapabilityPackageInstallIssue(manifest(129) as any, doc, files),
+            "A ruleset whose reactions answer for others, at a turn's start, on a save or for several fallers requires schemaVersion 2 and capabilityApi 1.130 or newer",
           );
-          assert.equal(getCapabilityPackageInstallIssue(manifest(126) as any, doc, files), null);
+          assert.equal(getCapabilityPackageInstallIssue(manifest(130) as any, doc, files), null);
         }
     for (const reaction of [
       { on: "aimed", for: "ally" },
@@ -568,7 +568,7 @@ try {
     assert.ok(moments >= 4);
   }
   console.log(
-    "Reaction moments: Protection, Shield Guardian, Unnerving Mask, Rock Catching and several fallers, gated at 1.126.",
+    "Reaction moments: Protection, Shield Guardian, Unnerving Mask, Rock Catching and several fallers, gated at 1.130.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

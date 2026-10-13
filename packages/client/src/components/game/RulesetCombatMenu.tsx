@@ -212,7 +212,7 @@ export function RulesetCombatMenu({
   };
   const paid = (payWith?: string) => {
     if (!step) return;
-    // A pool that lets it take more targets aims at as many as it lets it (1.166).
+    // A pool that lets it take more targets aims at as many as it lets it (1.170).
     const count = payWith ? step.option.targetsWith?.[payWith] : undefined;
     const option = count !== undefined ? { ...step.option, targets: { ...step.option.targets, count } } : step.option;
     const stage = stageFor(option);
@@ -322,7 +322,7 @@ export function RulesetCombatMenu({
           {t("game.combat.ruleset.upcast.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2">
-          {/* Its own pool is empty, so only a higher one pays for it now (1.166). */}
+          {/* Its own pool is empty, so only a higher one pays for it now (1.170). */}
           {!option.upcastOnly && (
             <button
               ref={first}
@@ -387,7 +387,7 @@ export function RulesetCombatMenu({
         <p className="text-xs text-amber-200">
           {t(prompt, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
         </p>
-        {/* How a wall is laid (1.172) and how many copies are down (1.173): the board takes the cells. */}
+        {/* How a wall is laid (1.176) and how many copies are down (1.177): the board takes the cells. */}
         {(wall || copies > 1) && (
           <div className="flex flex-wrap gap-2">
             {wall && area?.ring !== undefined && !turning && (

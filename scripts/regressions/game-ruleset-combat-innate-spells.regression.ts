@@ -1,4 +1,4 @@
-/** Creatures cast without slots and covens share their uses (Capability API 1.118). */
+/** Creatures cast without slots and covens share their uses (Capability API 1.122). */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
@@ -732,18 +732,18 @@ try {
         header.asset = `catalogs/${header.id}.json`;
       }
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(117) as any, doc, files),
-      "A ruleset whose creatures cast spells without slots requires schemaVersion 2 and capabilityApi 1.118 or newer",
+      getCapabilityPackageInstallIssue(manifest(121) as any, doc, files),
+      "A ruleset whose creatures cast spells without slots requires schemaVersion 2 and capabilityApi 1.122 or newer",
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(118) as any, doc, files), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(122) as any, doc, files), null);
     if (file) {
       const parsed = parsedOrThrow(doc);
       assert.ok(parseRulesetCatalogFile(parsed, "fey", files.get("catalogs/fey.json")).ok);
       (files.get("catalogs/spells.json") as any).entries.shift();
-      assert.match(getCapabilityPackageInstallIssue(manifest(118) as any, doc, files)!, /Unknown spell entry/);
+      assert.match(getCapabilityPackageInstallIssue(manifest(122) as any, doc, files)!, /Unknown spell entry/);
     }
   }
-  assert.equal(getCapabilityPackageInstallIssue(manifest(117) as any, JSON.parse(fiveEText)), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(121) as any, JSON.parse(fiveEText)), null);
 
   // Both import boundaries read references after every catalog file has been checked.
   {
@@ -770,7 +770,7 @@ try {
           ...Object.fromEntries(Object.entries(files).map(([id, text]) => [`catalogs/${id}.json`, text])),
         };
         const declared = {
-          ...manifest(118),
+          ...manifest(122),
           files: Object.entries(documents).map(([path, text]) => ({
             path,
             bytes: Buffer.byteLength(text),
@@ -808,7 +808,7 @@ try {
     }
   }
 
-  // A fight saved before 1.118 has none of the new keys and still resolves the same action.
+  // A fight saved before 1.122 has none of the new keys and still resolves the same action.
   {
     const rules = parsedOrThrow(
       fiveE((doc) => {
@@ -854,7 +854,7 @@ try {
     assert.ok(found > 0);
   }
   console.log(
-    "Innate spells: at will, limited uses, casting numbers and levels, covens, import, clamp, and 1.118 gate.",
+    "Innate spells: at will, limited uses, casting numbers and levels, covens, import, clamp, and 1.122 gate.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Exhaustion at its worst (Capability API 1.110).
+ * Exhaustion at its worst (Capability API 1.114).
  *
  *   - A modifier `{ "to": "health-max", "times": 0.5 }` halves the health maximum, rounded down and
  *     never below 1; health above it is lost as the fight begins, and healing never goes past it.
@@ -7,7 +7,7 @@
  *   - An opponent without a sheet carries live tracks: given on the combatant, or on a creature the
  *     Game Master proposes, and held to the ruleset's tracks by the clamp.
  *   - A creature's `conditionImmunities` may name a track a level reads; none of its levels touch it.
- *   - Import and the install gate (1.110).
+ *   - Import and the install gate (1.114).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -291,7 +291,7 @@ try {
     assert.deepEqual(immune.block.conditionImmunities, ["exhaustion"], "an immunity to a leveled track is kept");
   }
 
-  // ── The install gate: 1.110, in the ruleset file and in a catalog file ──
+  // ── The install gate: 1.114, in the ruleset file and in a catalog file ──
   {
     const manifest = (minor: number, paths = ["ruleset.json"]) => ({
       schemaVersion: 2,
@@ -309,7 +309,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /halve the health maximum or defeat.*capabilityApi 1\.110/;
+    const gate = /halve the health maximum or defeat.*capabilityApi 1\.114/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
     const halving = (doc: Record<string, any>) =>
@@ -322,10 +322,10 @@ try {
       ["a defeating level", defeating],
       ["an immunity to a track", immune],
     ] as const) {
-      assert.match(issue(109, fiveE(edit)) ?? "", gate, what);
-      assert.doesNotMatch(issue(110, fiveE(edit)) ?? "", gate, what);
+      assert.match(issue(113, fiveE(edit)) ?? "", gate, what);
+      assert.doesNotMatch(issue(114, fiveE(edit)) ?? "", gate, what);
     }
-    assert.doesNotMatch(issue(109, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(113, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
     const document = fiveE(immune);
     const creatures = document.catalogs.find((one: { id: string }) => one.id === "creatures");
     const inFile = {
@@ -336,11 +336,11 @@ try {
     };
     const paths = ["ruleset.json", "catalogs/creatures.json"];
     const files = new Map<string, unknown>([["catalogs/creatures.json", { entries: creatures.entries }]]);
-    assert.match(issue(109, inFile, paths, files) ?? "", gate, "a catalog file");
-    assert.doesNotMatch(issue(110, inFile, paths, files) ?? "", gate);
+    assert.match(issue(113, inFile, paths, files) ?? "", gate, "a catalog file");
+    assert.doesNotMatch(issue(114, inFile, paths, files) ?? "", gate);
   }
 
-  console.log("Exhaustion: a halved maximum, a level that defeats, opponents' tracks and immunity, gated at 1.110.");
+  console.log("Exhaustion: a halved maximum, a level that defeats, opponents' tracks and immunity, gated at 1.114.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

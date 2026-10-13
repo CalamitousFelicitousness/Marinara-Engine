@@ -177,7 +177,7 @@ export function rulesetBuilderOptions(
   });
 }
 
-/** The values written when a step adds an entry's rows (1.125): a `fromWithin` reads the first
+/** The values written when a step adds an entry's rows (1.129): a `fromWithin` reads the first
  *  parent pick whose id the entry's `within.filter` names, in pick order, as the offer is judged. */
 export function rulesetBuilderStamp(
   definition: RulesetDefinition,
@@ -204,7 +204,7 @@ export function rulesetBuilderStamp(
   return stamp;
 }
 
-/** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.95):
+/** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.99):
  *  what they wrote taken back, everything else as it was. The sheet itself when none are picked. */
 function rulesetBuilderBuildWithoutGroup(
   definition: RulesetDefinition,

@@ -69,7 +69,7 @@ export interface InventoryItem {
   loaded?: number;
   /** What an item that holds charges has left, as a fight left it. Absent reads as full. */
   charges?: number;
-  /** An item with a switch turned on, as the player or a fight left it (1.165). Only ever one item. */
+  /** An item with a switch turned on, as the player or a fight left it (1.169). Only ever one item. */
   on?: true;
 }
 
@@ -111,7 +111,7 @@ interface GameInventoryProps {
   /** Called when the user puts an item on or takes it off, binds or unbinds it. Resolves to the stack
    *  it is in afterwards (one item of a larger stack is taken into its own). */
   onWearItem?: (stackId: string, wear: GameInventoryWear) => Promise<string | null> | string | null;
-  /** Called when the user turns an item with a switch on or off (1.165). Resolves to the stack's id. */
+  /** Called when the user turns an item with a switch on or off (1.169). Resolves to the stack's id. */
   onSwitchItem?: (stackId: string, on: boolean) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (stackId: string, itemName: string) => void;

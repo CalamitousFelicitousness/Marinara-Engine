@@ -1,5 +1,5 @@
 /**
- * Wards, saves, monster spellcasting and scrolls (Capability API 1.176).
+ * Wards, saves, monster spellcasting and scrolls (Capability API 1.180).
  *
  *   - `zone.wards.by: "base"`: a spell is kept out by its own level, however it was paid (Globe of
  *     Invulnerability); `maxLevelPerCostStep` keeps out more for each step the ward was paid up.
@@ -81,7 +81,7 @@ try {
       wards: { catalogs: ["spells"], maxLevel: 1, by: "base", maxLevelPerCostStep: 1 },
     },
   });
-  // The 1.174 way, by the level paid, for comparison.
+  // The 1.178 way, by the level paid, for comparison.
   const paidGlobe = spell("paidglobe", {
     kind: "utility",
     area: { shape: "burst", size: 5 },
@@ -272,7 +272,7 @@ try {
       !rulesetWarded(definition, state, who(state, "mage"), actionOf(state, "Bolttwo"), who(state, "a")),
       "a 2nd-level spell gets in",
     );
-    // By the level paid (1.174), the upcast gets through.
+    // By the level paid (1.178), the upcast gets through.
     const paid = around(use(fight(), "Paidglobe", { at: { x: 10, y: 7 } }).state);
     assert.ok(!rulesetWarded(definition, paid, who(paid, "mage"), actionOf(paid, "Sign"), who(paid, "a"), "slots_2"));
     // Paid with a 2nd-level slot, the globe keeps out 2nd-level spells too, but not 3rd.
@@ -459,7 +459,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with wards by base level or raised by their cast, saves that say what else they are against or who passes them outright, creature spell components, or utility item uses, requires schemaVersion 2 and capabilityApi 1.176 or newer";
+      "A ruleset with wards by base level or raised by their cast, saves that say what else they are against or who passes them outright, creature spell components, or utility item uses, requires schemaVersion 2 and capabilityApi 1.180 or newer";
     const withEntries = (entries: unknown[]) =>
       fiveE((doc) => {
         doc.catalogs.push({ id: "x", label: "X", entries });
@@ -498,10 +498,10 @@ try {
       ],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(175) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(176) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(179) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(180) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(175) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(179) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

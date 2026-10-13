@@ -50,10 +50,10 @@ export interface GameInventoryStack {
   /** The charges an item holds, as a ruleset fight left them. Kept on a stack of one item only, as a
    *  loaded count is, and an item without one holds all it can. */
   charges?: number;
-  /** Its switch is on (Capability API 1.165): a flame tongue's flames. Kept on a stack of one item
+  /** Its switch is on (Capability API 1.169): a flame tongue's flames. Kept on a stack of one item
    *  only, as charges are; off without it. */
   on?: true;
-  /** A fake (Capability API 1.74): the ruleset item this truly is, while `item` and `name` are what it
+  /** A fake (Capability API 1.78): the ruleset item this truly is, while `item` and `name` are what it
    *  passes for. Set only by a dishonest seller's sale, never by an op a client sends. Only the Game
    *  Master's view, curses, use, sale and a reveal read it; everything the player sees reads `item`. */
   truly?: string;
@@ -121,7 +121,7 @@ export interface GameInventoryRulesetItem {
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
    *  one spent rolls a d`die` that breaks it at `atMost` or under. */
   charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
-  /** It has a switch (Capability API 1.165): what turning it on does, in the ruleset's words. */
+  /** It has a switch (Capability API 1.169): what turning it on does, in the ruleset's words. */
   toggle?: { label: string };
 }
 

@@ -84,7 +84,7 @@ export function rulesetAverageDamage(damage: {
     whileOn?: number;
   }>;
 }): number {
-  // A clause dealt only to some targets (1.163) or only on a critical hit (1.164) is not part of what
+  // A clause dealt only to some targets (1.167) or only on a critical hit (1.168) is not part of what
   // the blow does to anyone.
   return (damage.plus ?? [])
     .filter((clause) => !clause.targetIs && !clause.onCritical && clause.whileOn === undefined)

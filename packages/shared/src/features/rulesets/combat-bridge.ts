@@ -250,7 +250,7 @@ function powerFromAmount(amount: RulesetCatalogMechanics["amount"]): number {
 function areaRadius(area: NonNullable<RulesetCatalogMechanics["area"]>, perCell: number): number {
   const cells = inCells(area.size, perCell);
   if (area.shape === "line" || area.shape === "wall") return 1;
-  // A box reaches half its side from its middle (1.172).
+  // A box reaches half its side from its middle (1.176).
   return area.shape === "cone" || area.shape === "box" ? Math.max(1, Math.round(cells / 2)) : cells;
 }
 

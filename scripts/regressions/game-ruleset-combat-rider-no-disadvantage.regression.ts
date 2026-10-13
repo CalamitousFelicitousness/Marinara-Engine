@@ -1,5 +1,5 @@
 /**
- * A rider that needs an adjacent ally without disadvantage (Capability API 1.121): 5e's Sneak Attack.
+ * A rider that needs an adjacent ally without disadvantage (Capability API 1.125): 5e's Sneak Attack.
  * The final roll mode is read after advantage and disadvantage cancel. Catalog and creature riders
  * share the condition, and the old ally-adjacent condition still allows disadvantage.
  */
@@ -227,7 +227,7 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset whose riders need an adjacent ally without disadvantage requires schemaVersion 2 and capabilityApi 1.121 or newer";
+    "A ruleset whose riders need an adjacent ally without disadvantage requires schemaVersion 2 and capabilityApi 1.125 or newer";
   for (const kind of ["catalog", "creature"] as const) {
     for (const file of [false, true]) {
       for (const when of [[word], ["advantage", word], ["advantage", "ally-adjacent"]]) {
@@ -240,15 +240,15 @@ try {
           catalog.asset = "catalogs/sneak.json";
         }
         const issue = (minor: number) => getCapabilityPackageInstallIssue(manifest(minor) as any, doc, documents);
-        assert.equal(issue(120), when.includes(word) ? gate : null, `${kind}, file ${file}: the previous minor`);
-        assert.equal(issue(121), null, `${kind}, file ${file}: 1.121 accepts the rider`);
-        const legacy = { ...manifest(121), schemaVersion: 1 };
+        assert.equal(issue(124), when.includes(word) ? gate : null, `${kind}, file ${file}: the previous minor`);
+        assert.equal(issue(125), null, `${kind}, file ${file}: 1.125 accepts the rider`);
+        const legacy = { ...manifest(125), schemaVersion: 1 };
         assert.match(getCapabilityPackageInstallIssue(legacy as any, doc, documents) ?? "", /requires schemaVersion 2/);
       }
     }
   }
 
-  console.info("Rider no disadvantage: Sneak Attack reads the final mode, with catalog and creature gates at 1.121.");
+  console.info("Rider no disadvantage: Sneak Attack reads the final mode, with catalog and creature gates at 1.125.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

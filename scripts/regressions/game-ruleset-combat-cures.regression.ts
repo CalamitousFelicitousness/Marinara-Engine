@@ -1,5 +1,5 @@
 /**
- * Cures (Capability API 1.171).
+ * Cures (Capability API 1.175).
  *
  *   - `ends`: the named conditions come off the target in the order named, at most `count` of them
  *     (Lesser Restoration), and it is offered only against somebody holding one.
@@ -317,13 +317,13 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.171 or newer";
+      "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.175 or newer";
     for (const entry of [restoration, steady, revivify]) {
       const withEntry = fiveE((doc) => {
         doc.catalogs.push({ id: "cures", label: "Cures", entries: [entry] });
       });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(170) as never, withEntry), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(171) as never, withEntry), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(174) as never, withEntry), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(175) as never, withEntry), gate, entry.id);
     }
     const salve = fiveE((doc) => {
       doc.items = { categories: [{ id: "gear", label: "Gear" }] };
@@ -339,12 +339,12 @@ try {
         ],
       });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(170) as never, salve), gate, "an item's cure");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(170) as never, fiveE()), gate, "nothing cures");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(174) as never, salve), gate, "an item's cure");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(174) as never, fiveE()), gate, "nothing cures");
   }
 
   console.log(
-    "Cures: Lesser Restoration ends the first condition named, Spare the Dying stops the rolls, Revivify brings back the dead of ten rounds and no later; gated at 1.171.",
+    "Cures: Lesser Restoration ends the first condition named, Spare the Dying stops the rolls, Revivify brings back the dead of ten rounds and no later; gated at 1.175.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

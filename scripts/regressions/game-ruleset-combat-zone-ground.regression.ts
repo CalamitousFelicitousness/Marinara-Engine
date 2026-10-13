@@ -1,5 +1,5 @@
 /**
- * Zones that ram, and ground that costs more or halves speed (Capability API 1.170).
+ * Zones that ram, and ground that costs more or halves speed (Capability API 1.174).
  *
  *   - `move.ram`: moved a cell at a time, it stops on the first cell that reaches somebody new,
  *     catches them whatever its triggers say, and moves no more that turn (Flaming Sphere). Those who
@@ -329,13 +329,13 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with zones that ram or hurt whom they hold, ground that costs more or halves speed, or holds broken only by their escape DC and checks requires schemaVersion 2 and capabilityApi 1.170 or newer";
+      "A ruleset with zones that ram or hurt whom they hold, ground that costs more or halves speed, or holds broken only by their escape DC and checks requires schemaVersion 2 and capabilityApi 1.174 or newer";
     for (const entry of [sphere, plants, halving]) {
       const withEntry = fiveE((doc) => {
         doc.catalogs.push({ id: "zones", label: "Zones", entries: [entry] });
       });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(169) as never, withEntry), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(170) as never, withEntry), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(173) as never, withEntry), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(174) as never, withEntry), gate, entry.id);
     }
     const scroll = fiveE((doc) => {
       doc.items = { categories: [{ id: "gear", label: "Gear" }] };
@@ -359,7 +359,7 @@ try {
         ],
       });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(169) as never, scroll), gate, "a scroll's ground");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(173) as never, scroll), gate, "a scroll's ground");
     const moonbeam = fiveE((doc) => {
       doc.catalogs.push({
         id: "zones",
@@ -377,11 +377,11 @@ try {
         ],
       });
     });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(169) as never, moonbeam), gate, "1.168 keys alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(173) as never, moonbeam), gate, "1.172 keys alone");
   }
 
   console.log(
-    "Zone ground: Flaming Sphere rams A and stops for the turn, walk-ins wait for its trigger; Plant Growth costs four, half speed doubles on top; gated at 1.170.",
+    "Zone ground: Flaming Sphere rams A and stops for the turn, walk-ins wait for its trigger; Plant Growth costs four, half speed doubles on top; gated at 1.174.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

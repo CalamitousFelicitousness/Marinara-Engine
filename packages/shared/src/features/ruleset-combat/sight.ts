@@ -1,6 +1,6 @@
 /**
- * Who sees whom (Capability API 1.173; senses conditions and items give, and conditions that give
- * away the unseen, 1.175).
+ * Who sees whom (Capability API 1.177; senses conditions and items give, and conditions that give
+ * away the unseen, 1.179).
  *
  * Off a board everybody sees everybody, as before. On one, a viewer does not see somebody it has no
  * line to (walls and solid ground), somebody standing in, behind or beyond an obscuring zone from
@@ -22,7 +22,7 @@ import type { RulesetCombatant, RulesetCombatCell, RulesetEncounterState } from 
 
 /** How far each of the fight's senses reaches for this combatant, in cells: a creature's off its
  *  block, anybody else's as it was read off their sheet when the fight began. What their conditions
- *  and items give now (1.175) reaches further where it is longer: 5e's Darkvision spell, goggles of
+ *  and items give now (1.179) reaches further where it is longer: 5e's Darkvision spell, goggles of
  *  night, True Seeing. */
 export function rulesetSenseRanges(
   definition: RulesetDefinition,
@@ -112,7 +112,7 @@ export function rulesetCanSee(
     if (![...blindSenses].some((sense) => (ranges[sense] ?? 0) >= away)) return false;
   }
   // Hidden by a condition (5e's invisible) unless a sense sees it, or another of theirs gives them
-  // away (1.175: Faerie Fire outlines the invisible).
+  // away (1.179: Faerie Fire outlines the invisible).
   const theirs = new Set(rulesetCombatConditions(definition, seen));
   const outlined = entries.some((entry) => entry.cancelsUnseen && theirs.has(entry.condition));
   for (const entry of entries) {

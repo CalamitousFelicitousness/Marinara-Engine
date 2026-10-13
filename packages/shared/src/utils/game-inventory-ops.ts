@@ -105,7 +105,7 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("give"), id: stackId, to: holder.optional(), count: amount.optional() }).strict(),
   /** One stack put on or taken off, bound or unbound, by whoever carries it. */
   z.object({ op: z.enum(["equip", "unequip", "bind", "unbind"]), id: stackId }).strict(),
-  /** One stack's switch turned on or off (Capability API 1.165): an item of one with a `toggle`. */
+  /** One stack's switch turned on or off (Capability API 1.169): an item of one with a `toggle`. */
   z.object({ op: z.literal("switch"), id: stackId, on: z.boolean() }).strict(),
 ]);
 

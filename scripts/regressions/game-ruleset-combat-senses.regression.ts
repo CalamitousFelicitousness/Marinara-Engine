@@ -1,5 +1,5 @@
 /**
- * Senses a target needs, and conditions that take them away (Capability API 1.122): Deafened.
+ * Senses a target needs, and conditions that take them away (Capability API 1.126): Deafened.
  * Target menus, the director and resolution agree; nothing rolls against a target it cannot affect.
  */
 import assert from "node:assert/strict";
@@ -436,7 +436,7 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset whose effects need a sense a condition can take away requires schemaVersion 2 and capabilityApi 1.122 or newer";
+    "A ruleset whose effects need a sense a condition can take away requires schemaVersion 2 and capabilityApi 1.126 or newer";
   for (const kind of ["condition", "catalog", "creature", "legacy"] as const) {
     for (const file of [false, true]) {
       const doc = document();
@@ -451,24 +451,24 @@ try {
         catalog.asset = "catalogs/senses.json";
       }
       assert.equal(
-        getCapabilityPackageInstallIssue(manifest(121) as any, doc, documents),
+        getCapabilityPackageInstallIssue(manifest(125) as any, doc, documents),
         kind === "legacy" ? null : gate,
         `${kind}, file ${file}: previous minor`,
       );
       assert.equal(
-        getCapabilityPackageInstallIssue(manifest(122) as any, doc, documents),
+        getCapabilityPackageInstallIssue(manifest(126) as any, doc, documents),
         null,
         `${kind}, file ${file}: current minor`,
       );
       if (kind !== "legacy")
         assert.match(
-          getCapabilityPackageInstallIssue({ ...manifest(122), schemaVersion: 1 } as any, doc, documents) ?? "",
+          getCapabilityPackageInstallIssue({ ...manifest(126), schemaVersion: 1 } as any, doc, documents) ?? "",
           /requires schemaVersion 2/,
         );
     }
   }
   console.info(
-    "Senses: Deafened removes hearing targets, areas skip them without saves or damage, and the install gate requires 1.122.",
+    "Senses: Deafened removes hearing targets, areas skip them without saves or damage, and the install gate requires 1.126.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

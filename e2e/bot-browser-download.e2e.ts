@@ -150,7 +150,28 @@ test("CharacterTavern explains it is unavailable without contacting the site", a
   await expect(header).not.toContainText("4,321");
 
   await browser.getByRole("button", { name: /Wyvern/u }).click();
-  await expect(page.getByRole("button", { name: /CharacterTavern.*Unavailable/u })).toBeVisible();
+  const characterTavern = page.getByRole("button", { name: /CharacterTavern.*Unavailable/u });
+  await expect(characterTavern).toBeVisible();
+  // Every source name starts at the same x, whatever glyph its icon is (ChubAI uses ✦), and the
+  // Unavailable label sits under the name, fully inside the menu, even on a phone (#7525).
+  const menu = characterTavern.locator("xpath=..");
+  const nameLefts = await menu.getByRole("button").evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const name = Array.from(button.querySelectorAll("span")).find(
+        (span) => !span.children.length && /\p{L}{3}/u.test(span.textContent ?? "") && span.textContent !== "Unavailable",
+      );
+      return name ? Math.round(name.getBoundingClientRect().left) : -1;
+    }),
+  );
+  expect(nameLefts.length).toBeGreaterThan(5);
+  expect(new Set(nameLefts).size).toBe(1);
+  const nameBox = await characterTavern.getByText("CharacterTavern", { exact: true }).boundingBox();
+  const badgeBox = await characterTavern.getByText("Unavailable", { exact: true }).boundingBox();
+  const menuBox = await menu.boundingBox();
+  expect(nameBox && badgeBox && menuBox).toBeTruthy();
+  expect(badgeBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 1);
+  expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(menuBox!.x + menuBox!.width);
+  await testInfo.attach("source-menu", { body: await menu.screenshot(), contentType: "image/png" });
   await page.getByRole("button", { name: /CharacterTavern/u }).click();
 
   const notice = browser.locator('[data-component="BotBrowserProviderUnavailable"]');

@@ -80,8 +80,13 @@ interface GeminiEmbeddingPayload {
 
 type GoogleProviderKind = "google" | "google_vertex";
 
-const GEMINI_ARGON_UNSENT = new Set<GenerationParameterSendKey>(["temperature", "topP", "topK"]);
-const GEMINI_STRICT_UNSENT = new Set<GenerationParameterSendKey>(["frequencyPenalty", "presencePenalty"]);
+const GEMINI_STRICT_UNSENT = new Set<GenerationParameterSendKey>([
+  "temperature",
+  "topP",
+  "topK",
+  "frequencyPenalty",
+  "presencePenalty",
+]);
 
 // Gemini's adjustable safety filters are always off (#7542). Google documents Off as the default only for
 // Gemini 2.5 and 3, so newer models need it said out loud. Core protections still apply and still block.
@@ -656,9 +661,8 @@ export class GoogleProvider extends BaseLLMProvider {
     );
   }
 
-  // Argon ignores temperature, top-p and top-k. It and the newer Flash models reject both penalties with HTTP 400.
+  // Argon and the newer Flash models ignore temperature, top-p and top-k and reject both penalties with HTTP 400.
   protected override shouldSendParameter(options: ChatOptions, key: GenerationParameterSendKey): boolean {
-    if (isGeminiArgonModel(options.model) && GEMINI_ARGON_UNSENT.has(key)) return false;
     if (isGeminiStrictRequestModel(options.model) && GEMINI_STRICT_UNSENT.has(key)) return false;
     return super.shouldSendParameter(options, key);
   }

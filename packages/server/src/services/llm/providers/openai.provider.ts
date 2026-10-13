@@ -15,11 +15,11 @@ import {
   type LLMToolDefinition,
   type LLMUsage,
 } from "../base-provider.js";
-import { parseTextualToolCalls } from "../textual-tool-call-parser.js";
+import { parseTextualToolCalls, stripTextualToolCalls } from "../textual-tool-call-parser.js";
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
-  isGeminiArgonModel,
+  isGeminiModel,
   isGeminiStrictRequestModel,
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
@@ -868,7 +868,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private shouldSendPenaltyParams(model: string): boolean {
     // DeepSeek marks both penalties deprecated and states they no longer take effect. Argon and the newer Gemini Flash
-    // models reject them; a custom endpoint keeps them, as it keeps Argon's samplers.
+    // models reject them; a custom endpoint keeps them, as it keeps their samplers.
     return (
       this.providerKind !== "deepseek" &&
       !this.isXAIReasoningModel(model) &&
@@ -894,8 +894,8 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (m.startsWith("gpt-5") && reasoningEffort && reasoningEffort !== "none") return true;
     // Claude adaptive-only models forbid all sampling params (covers reverse proxies).
     if (isClaudeAdaptiveOnlyNoSamplingModel(m)) return true;
-    // Gemini 4 Argon ignores sampling and rejects penalties (OpenRouter, NanoGPT).
-    if (isGeminiArgonModel(m)) return true;
+    // Argon and the newer Gemini Flash models ignore sampling and reject penalties (OpenRouter, NanoGPT).
+    if (isGeminiStrictRequestModel(m)) return true;
     return false;
   }
 
@@ -1229,7 +1229,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   /** Gemini request rules on OpenAI-compatible routes, applied after Custom Parameters. */
   private normalizeGeminiRequest(body: Record<string, unknown>, model: string): void {
-    if (!/(?:^|\/)gemini-/i.test(model) || !Array.isArray(body.messages)) return;
+    if (!isGeminiModel(model) || !Array.isArray(body.messages)) return;
     // How OpenRouter hands Gemini a system message after the first turn (Post-Processing: Don't Apply) is undocumented,
     // so it goes as a user turn in place.
     const firstTurn = body.messages.findIndex((message) => message.role !== "system");
@@ -1945,7 +1945,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       if (toolCalls.length === 0 && blocks?.toolCalls.length) toolCalls = blocks.toolCalls;
       if (toolCalls.length === 0 && resolvedContent && options.tools?.length) {
         toolCalls = parseTextualToolCalls(resolvedContent, options.tools);
-        if (toolCalls.length > 0) resolvedContent = null;
+        if (toolCalls.length > 0) resolvedContent = stripTextualToolCalls(resolvedContent, options.tools) || null;
       }
       return {
         content: resolvedContent,
@@ -2155,7 +2155,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
     if (toolCalls.length === 0 && content && options.tools?.length) {
       toolCalls = parseTextualToolCalls(content, options.tools);
-      if (toolCalls.length > 0) content = "";
+      if (toolCalls.length > 0) content = stripTextualToolCalls(content, options.tools);
     }
 
     this.emitChatCompletionsReasoning(options, reasoningMetadata);

@@ -5,7 +5,7 @@
 // NPC notes, locations, inventory, and events —
 // all assembled from committed snapshots, no LLM.
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ComponentProps, type ReactNode } from "react";
 import {
   X,
   MapPin,
@@ -31,6 +31,8 @@ import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/gam
 import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { AnimatedText } from "./AnimatedText";
+import { GameMakeWorld } from "./GameMakeWorld";
+import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
 
 import type { GameNpc, WorldFile, WorldJournal } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -80,6 +82,12 @@ interface GameJournalProps {
   hasWorld?: boolean;
   /** The latest turn as shown (its swipe too), so the World tab reads the world again after it. */
   worldTurnKey?: string | null;
+  /** A game made without a world may be given one (worldgen W12), from the World tab, when the player asks;
+   *  with what the model writes it for. */
+  canMakeWorld?: boolean;
+  worldRequest?: ComponentProps<typeof GameMakeWorld>["request"];
+  /** The setting kit the game was made with, when it has one: its world is made in it. */
+  worldKit?: ComponentProps<typeof GameMakeWorld>["ownKit"];
 }
 
 type TabId = "all" | "npcs" | "locations" | "inventory" | "library" | "notes" | "world";
@@ -200,7 +208,13 @@ export function GameJournal({
   embedded = false,
   hasWorld = false,
   worldTurnKey = null,
+  canMakeWorld = false,
+  worldRequest = null,
+  worldKit = null,
 }: GameJournalProps) {
+  const [makingWorld, setMakingWorld] = useState(false);
+  // Overworld games locked on this server: the World tab says so and cannot make a world.
+  const overworldEnabled = useOverworldGamesEnabled();
   const { t: localizeUi } = useUiTranslation();
   const [journal, setJournal] = useState<Journal | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("all");
@@ -385,7 +399,7 @@ export function GameJournal({
       {/* Tabs — horizontally scrollable on mobile */}
       <div className="overflow-x-auto border-b border-white/10 px-4 py-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
         <div className="flex gap-1 w-max min-w-full">
-          {TABS.filter((tab) => tab.id !== "world" || hasWorld).map((tab) => {
+          {TABS.filter((tab) => tab.id !== "world" || hasWorld || canMakeWorld).map((tab) => {
             const Icon = tab.icon;
             return (
               <button
@@ -447,7 +461,37 @@ export function GameJournal({
         )}
         {activeTab === "notes" && <NotesView notes={playerNotes} onChange={handleNotesChange} saved={notesSaved} />}
         {activeTab === "world" && hasWorld && <WorldView chatId={chatId} turnKey={worldTurnKey} />}
+        {activeTab === "world" && !hasWorld && canMakeWorld && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <p className="max-w-sm text-xs leading-relaxed text-white/60">{localizeUi("ui.game.makeworld.intro")}</p>
+            {!overworldEnabled && (
+              <p role="note" className="max-w-sm text-xs leading-relaxed text-white/60">
+                {localizeUi("game.worldKit.setup.overworldLocked")}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setMakingWorld(true)}
+              disabled={!overworldEnabled}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Globe2 size={13} />
+              {localizeUi("ui.game.makeworld.open")}
+            </button>
+          </div>
+        )}
       </div>
+
+      {makingWorld && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <GameMakeWorld
+            chatId={chatId}
+            request={worldRequest}
+            ownKit={worldKit}
+            onClose={() => setMakingWorld(false)}
+          />
+        </div>
+      )}
 
       {editingEntry && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">

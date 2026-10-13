@@ -7,7 +7,11 @@
 //
 // A town can also be laid out by hand (W9h), in the world's hand edits: buildings moved between its lots
 // (a lot faces a street, its door on it, so a moved building always does too), and its ground painted.
-// The hand layout is applied after the town is laid out, so the story's places, people and ids hold.
+// The hand layout is applied after the town is laid out, so its people and ids hold.
+//
+// The places the story adds come last of all, each on the next free lot, so a world's snapshot (W11)
+// keeps each town as laid out with its edits and the story's places are added on top of it, the same
+// as when the town is laid out whole.
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { worldStream, type WorldPlace } from "./compile.js";
@@ -110,8 +114,71 @@ export function worldTown(
   present?: WorldPresent,
   { byHand = true }: { byHand?: boolean } = {},
 ): WorldTown | null {
-  const entry = byHand ? game.edits?.towns?.find((each) => each.settlement === settlementId) : undefined;
-  return layOutTown(game, settlementId, present, entry)?.town ?? null;
+  const stored = byHand ? game.frozen?.towns[settlementId] : undefined;
+  const town = stored
+    ? { ...structuredClone(stored), people: townPeople(game, settlementId) }
+    : byHand
+      ? worldTownBase(game, settlementId)
+      : (layOutTown(game, settlementId, undefined)?.town ?? null);
+  if (!town) return null;
+  addStoryPlaces(
+    town,
+    (present?.places ?? []).filter((place) => place.parentId === settlementId),
+  );
+  return town;
+}
+
+/** A settlement's town as the world and its edits lay it out, with none of the story's places: what a
+ *  world's snapshot keeps (W11). Null for a place that is not a settlement. */
+export function worldTownBase(game: GameWorld, settlementId: string): WorldTown | null {
+  const entry = game.edits?.towns?.find((each) => each.settlement === settlementId);
+  return layOutTown(game, settlementId, entry)?.town ?? null;
+}
+
+/** Everyone in a settlement's town: its people and those of the places inside it, the people added by
+ *  hand after everyone drawn, so nobody already in town moves house. */
+function townPeople(game: GameWorld, settlementId: string): WorldPerson[] {
+  const within = game.world.places.filter((place) => place.parentId === settlementId);
+  const cast = [settlementId, ...within.map((place) => place.id)].flatMap((id) => worldCast(game, id));
+  return [
+    ...cast.filter((person) => !worldPersonByHand(person.id)),
+    ...cast.filter((person) => worldPersonByHand(person.id)),
+  ];
+}
+
+/** The places the story added in a town, each on the next free lot, nearest the crossroads first, or
+ *  else in the home furthest out that nobody named lives in. */
+function addStoryPlaces(town: WorldTown, places: ReadonlyArray<{ id: string; name: string }>): void {
+  const overlaps = (a: WorldTownLot, b: WorldTownLot) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const free = (lot: WorldTownLot) => {
+    for (let yy = lot.y; yy < lot.y + lot.h; yy++)
+      for (let xx = lot.x; xx < lot.x + lot.w; xx++) if (town.ground[yy * town.width + xx] !== ".") return false;
+    // Its door opens on a street or the square, never on ground painted since (a tree, a well).
+    if (!/[sq]/.test(town.ground[lot.door.y * town.width + lot.door.x] ?? "")) return false;
+    return !town.buildings.some((building) => overlaps(building, lot));
+  };
+  for (const place of places) {
+    const lot = town.lots.find(free);
+    let building: WorldTownBuilding | undefined;
+    if (lot) {
+      building = {
+        id: place.id,
+        kind: "place",
+        ...lot,
+        door: { ...lot.door },
+        people: [],
+        placeId: place.id,
+        name: place.name,
+      };
+      town.buildings.push(building);
+    } else {
+      const empty = [...town.buildings].reverse().find((each) => each.kind === "home" && each.people.length === 0);
+      if (!empty) break;
+      building = Object.assign(empty, { id: place.id, kind: "place" as const, placeId: place.id, name: place.name });
+    }
+    for (const person of town.people) if (person.placeId === place.id) building.people.push(person.id);
+  }
 }
 
 /**
@@ -119,14 +186,17 @@ export function worldTown(
  * lays it out (the story's places aside). The edits are a world's whole layer, as a world editor saves it.
  */
 export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[] {
-  const next: GameWorld = { ...game, edits, world: compileGameWorld({ ...game, edits }) };
+  // The world these edits make, from its recipe: never a snapshot's people or towns (W11), which are
+  // the edits before these.
+  const { frozen: _frozen, compiled: _compiled, ...recipe } = game;
+  const next: GameWorld = { ...recipe, edits, world: compileGameWorld({ ...recipe, edits }) };
   const issues: string[] = [];
   const seen = new Set<string>();
   for (const entry of edits.towns ?? []) {
     const settlement = next.world.places.find((place) => place.id === entry.settlement);
     if (seen.has(entry.settlement)) issues.push(`The town of "${entry.settlement}" is laid out twice.`);
     seen.add(entry.settlement);
-    const laidOut = settlement?.rank === undefined ? null : layOutTown(next, entry.settlement, undefined, entry);
+    const laidOut = settlement?.rank === undefined ? null : layOutTown(next, entry.settlement, entry);
     if (!laidOut) {
       issues.push(`No settlement "${entry.settlement}" to lay out.`);
       continue;
@@ -139,7 +209,6 @@ export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[
 function layOutTown(
   game: GameWorld,
   settlementId: string,
-  present: WorldPresent | undefined,
   entry: WorldTownEdit | undefined,
 ): { town: WorldTown; issues: string[] } | null {
   const { world } = game;
@@ -203,17 +272,9 @@ function layOutTown(
   // ── Who is in town ──
   const within = world.places.filter((place) => place.parentId === settlementId);
   const inside = within.filter((place) => !place.byHand);
-  // Places the story added, then those added by hand (W9c): both go last, so the town never moves.
-  const added = [
-    ...(present?.places ?? []).filter((place) => place.parentId === settlementId),
-    ...within.filter((place) => place.byHand),
-  ];
-  // People added by hand come after everyone drawn, so nobody already in town moves house.
-  const cast = [settlement, ...within].flatMap((place) => worldCast(game, place.id));
-  const people = [
-    ...cast.filter((person) => !worldPersonByHand(person.id)),
-    ...cast.filter((person) => worldPersonByHand(person.id)),
-  ];
+  // Places added by hand (W9c) go last, so the town never moves; the story's go after them, on top.
+  const added = within.filter((place) => place.byHand);
+  const people = townPeople(game, settlementId);
   const buildings: WorldTownBuilding[] = [];
   const homeOf: Record<string, string> = {};
   const workOf: Record<string, string> = {};

@@ -2840,6 +2840,23 @@ html[data-mari-pull-landing] .mari-arrival-content * {
   font-weight: 600;
 }
 
+/* Her words while she writes them: provisional, so muted, and capped to three lines that keep the newest
+   words in view (older ones are clipped at the top). The real answer replaces it once checked. */
+.mari-work-timeline__draft {
+  display: flex;
+  max-height: calc(0.875rem * 1.45 * 3);
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  margin: 0;
+  padding-inline: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* A finished run: where the live line was, "Worked for Ns · N steps" folds the work away. Older turns
    keep only the words, without her sprite. */
 .mari-work-timeline__live[data-past="true"] {

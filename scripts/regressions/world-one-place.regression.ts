@@ -20,6 +20,7 @@ import {
   checkWorldBrief,
   compileGameWorld,
   createConnectionSchema,
+  gameInventoryNameKey,
   parseWorldKit,
   worldCast,
   worldPlaceInForce,
@@ -233,6 +234,35 @@ try {
       })),
     };
     assert.equal(await turn(await newGame(otherMap), `On. [place: name="${there.name}"]`), null);
+
+    // With a ruleset's market where the map has the party (and the replies last named somewhere else),
+    // each reply says it was at that world place, so the market day there runs on across turns.
+    {
+      const { readFileSync } = await import("node:fs");
+      const { createGameRulesetsStorage } =
+        await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
+      const gravewatch = JSON.parse(
+        readFileSync(new URL("../../docs/examples/rulesets/gravewatch.json", import.meta.url), "utf8"),
+      ) as { version: number };
+      await createGameRulesetsStorage(db).put({
+        rulesetId: "local/gravewatch-world",
+        version: gravewatch.version,
+        sourceKind: "local",
+        definition: JSON.stringify({ ...gravewatch, id: "gravewatch-world" }),
+      });
+      const traded = await newGame(atlas);
+      await chats.patchMetadata(traded, {
+        gameRuleset: { id: "local/gravewatch-world", version: gravewatch.version, packageId: null, options: {} },
+      });
+      await turn(traded, "They browse the stalls.");
+      const last = (await chats.listMessages(traded)).filter((message) => message.role === "assistant").at(-1)!;
+      assert.ok(
+        String(JSON.parse(last.extra as string).gameMarketPlace).startsWith(
+          `world|${gameInventoryNameKey(here.name)}|`,
+        ),
+        last.extra as string,
+      );
+    }
   } finally {
     await app.close();
     await closeDB();

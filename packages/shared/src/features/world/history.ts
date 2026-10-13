@@ -12,7 +12,7 @@ import type { WorldBriefEvent } from "../../schemas/world-brief.schema.js";
 import type { WorldChangeKind } from "../../schemas/world-kit.schema.js";
 import { worldStream, type WorldPlace } from "./compile.js";
 import { worldPlaceNamed } from "./edits.js";
-import { compileGameWorld, type GameWorld } from "./game-world.js";
+import { worldPreEdit, type GameWorld } from "./game-world.js";
 import { worldFullName } from "./people.js";
 import { readGmTagAttributes } from "../../utils/skill-check-tag.js";
 
@@ -64,12 +64,13 @@ const CACHE_SIZE = 8;
 
 /** The world's history, the same for the same world every time. */
 export function worldHistory(game: GameWorld): WorldHistory {
+  if (game.frozen) return game.frozen.history;
   const key = JSON.stringify([game.seed, game.grounding, game.kit, game.brief]);
   const hit = cache.get(key);
   if (hit) return hit;
   // The past is the compiled world's: hand edits (W9c) change the world from now on, never its history,
   // so the history is the same however the world was since edited.
-  const history = runHistory(game.edits ? { ...game, world: compileGameWorld({ ...game, edits: undefined }) } : game);
+  const history = runHistory(game.edits ? { ...game, world: worldPreEdit(game) } : game);
   cache.set(key, history);
   if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);
   return history;

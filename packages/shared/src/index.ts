@@ -93,6 +93,7 @@ export * from "./features/world/journal.js";
 export * from "./features/world/atlas.js";
 export * from "./features/world/overworld.js";
 export * from "./features/world/town.js";
+export * from "./features/world/snapshot.js";
 export * from "./features/world/tile-pack.js";
 export * from "./features/world/edits.js";
 export * from "./features/world/battlefield-maps.js";
@@ -136,6 +137,7 @@ export * from "./constants/tracker-custom-field-icons.js";
 export * from "./constants/stat-icons.js";
 export * from "./constants/docs-languages.js";
 export * from "./constants/mari-permissions-mode.js";
+export * from "./constants/mari-runtime.js";
 export * from "./constants/settings-registry.js";
 
 // Feature registries

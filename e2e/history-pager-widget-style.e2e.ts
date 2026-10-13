@@ -86,6 +86,23 @@ async function appearance(target: Locator) {
   });
 }
 
+// The keyboard focus ring's colour (#7572). The pagers sit on the open chat, so a faint ring would vanish there.
+// Call it after the font step reads the composer: on a phone, focus in the chat folds that composer away.
+async function focusRing(page: Page, target: Locator) {
+  await target.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect.poll(() => target.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  const ring = await target.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+    const shadow = getComputedStyle(element).boxShadow;
+    (element as HTMLElement).blur();
+    return shadow;
+  });
+  expect(ring).toMatch(/ 0px 0px 0px [\d.]+px$/);
+  return ring.replace(/ 0px 0px 0px [\d.]+px$/, "");
+}
+
 async function resolvedStyle(page: Page, property: string, value: string) {
   return page.evaluate(
     ({ property, value }) => {
@@ -213,6 +230,7 @@ for (const [preset, theme] of [
             expect([colored.radius, colored.clip]).toEqual([baseline.radius, baseline.clip]);
             expect([colored.background, colored.color]).toEqual([paint, ink]);
           }
+          expect(await focusRing(page, loadMore)).toBe(ink);
           if (!isMobile) {
             await loadMore.hover();
             await expect
@@ -237,6 +255,7 @@ for (const [preset, theme] of [
             expect(painted.image).toContain("102, 126, 234");
             await expect(pager.locator("svg")).toHaveCSS("color", "rgb(255, 107, 107)");
           }
+          expect(await focusRing(page, loadMore)).toBe("rgb(255, 107, 107)");
           await loadMore.scrollIntoViewIfNeeded();
           await page.screenshot({
             path: info.outputPath(`history-pager-${preset}-${theme}-${chat.mode}-custom.png`),
@@ -245,6 +264,9 @@ for (const [preset, theme] of [
 
           await setStyle(page, "default", []);
           for (const pager of pagers) expect(await appearance(pager)).toEqual(baseline);
+          expect(await focusRing(page, loadMore)).toBe(
+            await resolvedStyle(page, "color", "var(--marinara-chat-chrome-accent)"),
+          );
         });
       }
     } finally {

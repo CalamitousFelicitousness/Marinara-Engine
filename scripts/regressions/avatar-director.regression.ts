@@ -9,10 +9,17 @@
  *     with a 0.15 lead, hold 2 s, need two neutral sentences, and relax 4 s after the reply unless the Expression
  *     Engine settled them; a reply that arrives whole is classified whole and spoken within 8 s;
  *   - text-to-speech audio drives the mouth while it plays; Game mode faces and mouths follow the Game Master's
- *     lines and never call the classifier; states are thinking, talking, listening and idle.
- * Runs on the real chat and agent stores with a stubbed classifier; time is the frame time passed in.
+ *     lines (a thought sets the face only) and never call the classifier; states are thinking, talking, listening
+ *     and idle;
+ *   - a reply ends with its generation, not at message-ready, whatever the typewriter still shows; streaming off is
+ *     the setting, not a guess; Merged group replies are split by name, and a paragraph's dialogue waits for its
+ *     speaker's name; an Expression Engine pick for an earlier reply never lands on this one;
+ *   - a Roleplay stage asks the server for its local model, again while it answers with keywords, never once the
+ *     server cannot run it.
+ * Runs on the real chat, agent and UI stores with a stubbed classifier; time is the frame time passed in.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type {
   AvatarClassification,
   AvatarClassifyRequest,
@@ -20,8 +27,20 @@ import type {
   AvatarFrameInput,
 } from "@marinara-engine/shared";
 
+// The UI store persists the streaming setting; keep it in memory here.
+const savedSettings = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: {
+    getItem: (key: string) => savedSettings.get(key) ?? null,
+    setItem: (key: string, value: string) => savedSettings.set(key, value),
+    removeItem: (key: string) => savedSettings.delete(key),
+  },
+});
+
 const { useChatStore } = await import("../../packages/client/src/stores/chat.store.js");
 const { useAgentStore } = await import("../../packages/client/src/stores/agent.store.js");
+const { useUIStore } = await import("../../packages/client/src/stores/ui.store.js");
 const { TTS_AUTOPLAY_MESSAGE_READY_EVENT } = await import("../../packages/client/src/lib/tts-autoplay.js");
 const director = await import("../../packages/client/src/features/avatars/director/avatar-director.js");
 const { createSpeechClock, followMouthEnvelope } =
@@ -155,7 +174,16 @@ const classify = async (request: AvatarClassifyRequest) => {
   assert.equal(request.tier, "local-model", "the director asks for the best tier");
   return { results: request.texts.map(answer), tier: "local-model" as const, model: "stub", latencyMs: 1 };
 };
-const roleplay = director.createAvatarDirector({ chatId, mode: "roleplay", reducedMotion: false }, { classify });
+const prepared: string[] = [];
+const prepareModel = async (id: string) => {
+  prepared.push(id);
+  return { unsupported: null };
+};
+const roleplay = director.createAvatarDirector(
+  { chatId, mode: "roleplay", reducedMotion: false },
+  { classify, prepareModel },
+);
+assert.deepEqual(prepared, [chatId], "a Roleplay stage asks the server to get its local model ready");
 roleplay.setParticipants([
   { owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" },
   { owner: { ownerType: "persona", ownerId: "me" }, name: "Sam" },
@@ -183,6 +211,7 @@ const messageReady = (content: string) =>
 const endReply = (content: string) => {
   messageReady(content);
   store().clearStreamBuffer(chatId);
+  store().setStreamedMessageId(chatId, null);
   store().setAbortController(chatId, null);
 };
 const waitFor = async (what: string, test: () => boolean, maxMs = 4_000) => {
@@ -264,16 +293,24 @@ store().setAbortController(chatId, new AbortController());
 setText("Alice beams at you. ");
 await waitFor("the cached happy face", () => frames.alice!.emotion === "happy");
 assert.equal(calls.length, callsBefore, "a sentence classified before is answered from the cache");
-useAgentStore.getState().addResult("expression", {
-  agentId: "expression",
-  agentType: "expression",
-  type: "sprite_change",
-  data: { expressions: [{ characterId: "alice", expression: "crying" }] },
-  tokensUsed: 0,
-  durationMs: 1,
-  success: true,
-  error: null,
-});
+const expressionPick = (messageId: string, expression: string) =>
+  useAgentStore.getState().addResult("expression", {
+    agentId: "expression",
+    agentType: "expression",
+    type: "sprite_change",
+    data: { expressions: [{ characterId: "alice", expression }] },
+    tokensUsed: 0,
+    durationMs: 1,
+    success: true,
+    error: null,
+    messageId,
+  });
+// The previous reply's Expression Engine finishes after this message was sent (Roleplay frees the composer).
+expressionPick("reply-1", "angry");
+await step(16);
+assert.equal(frames.alice!.emotion, "happy", "a pick for an earlier reply does not land on this one");
+store().setStreamedMessageId(chatId, "reply-2");
+expressionPick("reply-2", "crying");
 await step(16);
 assert.deepEqual(
   [frames.alice!.emotion, frames.alice!.label],
@@ -288,6 +325,7 @@ await step(6_000);
 assert.equal(frames.alice!.emotion, "sad", "a settled face does not relax");
 
 // Streaming off: the reply arrives whole, is classified whole, and its dialogue is spoken within 8 s.
+useUIStore.setState({ enableStreaming: false });
 store().setAbortController(chatId, new AbortController());
 await step(32);
 const longLine = "I miss him so much. ".repeat(12).trim();
@@ -303,6 +341,7 @@ await step(6_600);
 assert.equal(frames.alice!.state, "talking", "still speaking just before 8 s");
 await step(600);
 assert.notEqual(frames.alice!.state, "talking", "done speaking by 8 s even though the line is longer");
+useUIStore.setState({ enableStreaming: true });
 
 // Text-to-speech: the voice level drives the mouth while it plays.
 roleplay.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true, viseme: () => "oh" });
@@ -402,5 +441,266 @@ assert.deepEqual(
 );
 late.dispose();
 await flush();
+
+// A Game thought (or the player's own input) changes the face, never the mouth: Game voices skip those lines too.
+const thoughts = director.createAvatarDirector(
+  { chatId: gameChatId, mode: "game", reducedMotion: false },
+  { classify: async () => Promise.reject(new Error("unused")), prepareModel },
+);
+thoughts.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+publishAvatarGameLine(gameChatId, {
+  id: "s2",
+  type: "dialogue",
+  speaker: "Alice",
+  sprite: "worried",
+  partyType: "thought",
+  content: "I hope he never finds out what I did.",
+});
+let thoughtTalking = 0;
+for (let index = 0; index < 60; index += 1) {
+  t += 16;
+  if (thoughts.frame("alice", t).state === "talking") thoughtTalking += 16;
+}
+assert.equal(thoughtTalking, 0, "a thought line does not move the mouth");
+assert.equal(thoughts.frame("alice", t).label, "worried", "a thought line still sets the face");
+thoughts.dispose();
+assert.equal(prepared.filter((id) => id === gameChatId).length, 0, "Game mode never asks for the local model");
+
+// ── How a reply ends, who speaks, and whose pick it is ──
+const answerOf = (request: AvatarClassifyRequest) => ({
+  results: request.texts.map(answer),
+  tier: "local-model" as const,
+  model: "stub",
+  latencyMs: 1,
+});
+const scene = (id: string, names: string[]) => {
+  const texts: string[] = [];
+  const scened = director.createAvatarDirector(
+    { chatId: id, mode: "roleplay", reducedMotion: false },
+    {
+      classify: async (request) => {
+        texts.push(...request.texts);
+        return answerOf(request);
+      },
+      prepareModel,
+    },
+  );
+  const ids = names.map((name) => name.toLowerCase());
+  scened.setParticipants(
+    names.map((name) => ({ owner: { ownerType: "character", ownerId: name.toLowerCase() }, name })),
+  );
+  const talking: Record<string, number> = Object.fromEntries(ids.map((id2) => [id2, 0]));
+  const last: Record<string, AvatarFrameInput> = {};
+  const play = async (ms: number) => {
+    const end = t + ms;
+    while (t < end) {
+      t += 16;
+      for (const owner of ids) {
+        last[owner] = scened.frame(owner, t);
+        if (last[owner]!.state === "talking") talking[owner]! += 16;
+      }
+      await flush();
+    }
+  };
+  /** Types `text` at about 50 characters a second, like the default typewriter. */
+  const type = async (text: string, onChar?: (index: number) => void) => {
+    for (let index = 1; index <= text.length; index += 1) {
+      store().setStreamBuffer(text.slice(0, index), id);
+      onChar?.(index);
+      await play(20);
+    }
+  };
+  const ready = (content: string, characterId: string) =>
+    window.dispatchEvent(
+      new CustomEvent(TTS_AUTOPLAY_MESSAGE_READY_EVENT, {
+        detail: { chatId: id, message: { id: `${id}-m${t}`, role: "assistant", content, characterId } },
+      }),
+    );
+  const start = () => store().setAbortController(id, new AbortController());
+  const end = () => {
+    store().clearStreamBuffer(id);
+    store().setAbortController(id, null);
+  };
+  return { scened, texts, talking, last, play, type, ready, start, end };
+};
+
+// The server says the reply is saved while the typewriter still shows it: the reply goes on until the generation
+// ends, so the classifier gets whole sentences, never one letter per frame.
+{
+  const drain = scene("director-drain", ["Alice"]);
+  const reply = 'Alice beams at first. Then she sobs into her sleeve. "I miss him so much, I cannot stop crying."';
+  drain.start();
+  await drain.type(reply, (index) => {
+    if (index === Math.floor(reply.length * 0.4)) drain.ready(reply, "alice");
+  });
+  drain.end();
+  await drain.play(4_000);
+  assert.ok(
+    drain.texts.every((text) => text.length > 12),
+    `no fragments reach the classifier: ${JSON.stringify(drain.texts)}`,
+  );
+  assert.ok(drain.texts.some((text) => text.includes("sobs into her sleeve")));
+  assert.equal(drain.last.alice!.emotion, "sad", "the sad sentences shown after message-ready still set the face");
+  drain.scened.dispose();
+}
+
+// Message-ready before the first paint (a reply that arrived in one chunk) with streaming on: the typewriter still
+// shows it, so the mouth follows the typed dialogue once and sentences are read once.
+{
+  const early = scene("director-early", ["Alice"]);
+  const line = "I am so glad you came back, I missed you every single day.";
+  const reply = `Alice smiles. "${line}" She hugs you.`;
+  early.start();
+  early.ready(reply, "alice");
+  await early.play(64);
+  await early.type(reply);
+  early.end();
+  await early.play(3_000);
+  const clock = createSpeechClock();
+  clock.speakAll(line, 8_000);
+  const onePass = lastSpeaking(run(clock, 0, 8_000, 16));
+  assert.ok(early.talking.alice! <= onePass + 500, `the line is mouthed once (${early.talking.alice} ms)`);
+  assert.ok(early.talking.alice! > 1_000, "and it is mouthed");
+  assert.ok(
+    early.texts.every((text, index) => early.texts.every((other, at) => at === index || !other.startsWith(text))),
+    `no growing prefixes reach the classifier: ${JSON.stringify(early.texts)}`,
+  );
+  early.scened.dispose();
+}
+
+// Streaming off with a held rewrite agent: the rewritten text lands in the buffer before message-ready, and its
+// dialogue is still spoken within 8 s, not skipped down to the last second and a half.
+{
+  useUIStore.setState({ enableStreaming: false });
+  const held = scene("director-held", ["Alice"]);
+  const longLine = "I miss him so much. ".repeat(12).trim();
+  const reply = `Alice sobs quietly by the window.\n\n"${longLine}"`;
+  held.start();
+  await held.play(32);
+  store().setStreamBuffer(reply, "director-held");
+  await held.play(100);
+  held.ready(reply, "alice");
+  held.end();
+  await held.play(9_000);
+  assert.ok(held.talking.alice! > 6_500, `a held rewrite's dialogue is spoken whole (${held.talking.alice} ms)`);
+  useUIStore.setState({ enableStreaming: true });
+  held.scened.dispose();
+}
+
+// A Merged group reply with streaming off is saved under the first character: each paragraph goes to the
+// character it names. In an Individual group the message's own character speaks it all.
+{
+  useUIStore.setState({ enableStreaming: false });
+  const merged = scene("director-merged", ["Alice", "Bob"]);
+  merged.start();
+  await merged.play(32);
+  merged.ready('Bob slams the mug down. "Get out of my tavern!"\n\nAlice raises an eyebrow. "Fine, fine."', "alice");
+  merged.end();
+  await merged.play(4_000);
+  assert.ok(
+    merged.talking.bob! > 0 && merged.talking.alice! > 0,
+    `both speak their lines ${JSON.stringify(merged.talking)}`,
+  );
+  assert.ok(
+    merged.texts.some((text) => text.includes("slams") && !text.includes("eyebrow")),
+    "Bob's paragraph is classified as Bob's",
+  );
+  merged.scened.dispose();
+
+  useChatStore.setState({
+    activeChat: { id: "director-individual", metadata: { groupChatMode: "individual" } } as never,
+  });
+  const individual = scene("director-individual", ["Alice", "Bob"]);
+  individual.start();
+  await individual.play(32);
+  individual.ready('He slams the mug down and glares at Alice. "Get out!"', "bob");
+  individual.end();
+  await individual.play(3_000);
+  assert.ok(
+    individual.talking.bob! > 0 && individual.talking.alice === 0,
+    `an Individual member's message is theirs ${JSON.stringify(individual.talking)}`,
+  );
+  individual.scened.dispose();
+  useChatStore.setState({ activeChat: null });
+  useUIStore.setState({ enableStreaming: true });
+}
+
+// Streaming a Merged group reply whose speech tag follows the quote: the line waits for its speaker's name, so
+// the previous paragraph's character never mouths it first.
+{
+  const tagged = scene("director-tagged", ["Alice", "Bob"]);
+  tagged.start();
+  await tagged.type('Alice wipes the bar.\n"Get out of my tavern, and take your mangy dog with you," Bob growls.');
+  tagged.end();
+  await tagged.play(4_000);
+  assert.equal(tagged.talking.alice, 0, "Alice never mouths Bob's line");
+  assert.ok(tagged.talking.bob! > 1_000, "Bob says it");
+  tagged.scened.dispose();
+}
+
+// The server's model: asked for once per Roleplay stage, again (at most once a minute) while it answers with
+// keywords, and never again once the server says it cannot run it.
+{
+  const realNow = Date.now;
+  let fakeNow = realNow();
+  Date.now = () => fakeNow;
+  const asks: string[] = [];
+  const keywordTier = director.createAvatarDirector(
+    { chatId: "director-model", mode: "roleplay", reducedMotion: false },
+    {
+      classify: async (request) => ({ ...answerOf(request), tier: "keywords" as const, model: null }),
+      prepareModel: async (id) => {
+        asks.push(id);
+        return { unsupported: asks.length >= 2 ? "low-memory" : null };
+      },
+    },
+  );
+  keywordTier.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  assert.equal(asks.length, 1, "asked once when the stage mounts");
+  const sayAndWait = async (text: string) => {
+    store().setAbortController("director-model", new AbortController());
+    store().setStreamBuffer(text, "director-model");
+    for (let index = 0; index < 120; index += 1) {
+      t += 16;
+      keywordTier.frame("alice", t);
+      await flush();
+    }
+    store().clearStreamBuffer("director-model");
+    store().setAbortController("director-model", null);
+  };
+  await sayAndWait("Alice beams at you. ");
+  assert.equal(asks.length, 1, "not again within the minute");
+  fakeNow += 61_000;
+  await sayAndWait("Alice sobs quietly. ");
+  assert.equal(asks.length, 2, "again after a minute of keyword answers");
+  fakeNow += 61_000;
+  await sayAndWait("Alice beams again. ");
+  assert.equal(asks.length, 2, "never again once the server cannot run the model");
+  Date.now = realNow;
+  keywordTier.dispose();
+}
+
+// A swipe in an Individual group gets no group_turn from the server; use-generate names the swiped member as the
+// streaming character, so the director's group test above ("only the streaming character's mouth moves") applies.
+const generateSource = readFileSync(
+  new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
+  "utf8",
+);
+assert.match(
+  generateSource,
+  /setRegenerateMessageId\(params\.regenerateMessageId \?\? null\);\s+const swipeSpeaker = getIndividualGroupSwipeSpeaker\(qc, params\.chatId, params\.regenerateMessageId\);\s+if \(swipeSpeaker\) setStreamingCharacterId\(swipeSpeaker\);/u,
+  "a swipe names its member as the streaming character",
+);
+assert.match(
+  generateSource,
+  /function getIndividualGroupSwipeSpeaker[\s\S]{0,400}normalizeGroupChatMode\(parseChatMetadata\(chat\?\.metadata\)\.groupChatMode\) !== "individual"/u,
+  "only in Individual groups: a Merged reply is saved under its first character",
+);
+// The Expression Engine's pick keeps the message it was for, so a late pick finds its reply.
+assert.equal(
+  (generateSource.match(/addResult\(result\.agentType, \{[^}]*messageId: result\.messageId \?\? null,/gu) ?? []).length,
+  2,
+  "both agent-result paths keep the result's message",
+);
 
 console.log("avatar director regression passed");

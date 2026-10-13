@@ -4,9 +4,11 @@
  *     classifier's instant tier; it matches whole words across accents and scripts without the old prefix
  *     false positives;
  *   - the classifier answers with keywords until the local model is ready, then averages the model with the
- *     keywords, caches per text, falls back per text, and stays on keywords in Lite mode;
+ *     keywords, caches per text, falls back per text (uncached), and stays on keywords in Lite mode;
+ *   - only a prepare request for a Roleplay chat with an avatar agent on downloads or loads the model; classifying
+ *     never does; the status the agents' pages show follows the download; an interrupted file is replaced;
  *   - the route validates the request, sits in its own rate-limit bucket, and never logs user text above debug.
- * The local model is a stub here: no download, no ONNX.
+ * The local model is a stub here: no network, no ONNX.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -57,6 +59,19 @@ const cases: Array<[string, string]> = [
   ["テーブルをひっくり返した。", "neutral"],
   ["她哭了。", "sad"],
   ["그녀는 눈물을 흘렸다.", "sad"],
+  // A Korean syllable stays whole: 무서 (scary) is not inside 무성한 (overgrown) or 무선 (wireless).
+  ["무성한 숲을 지나갔다.", "neutral"],
+  ["무선 이어폰을 꼈다.", "neutral"],
+  ["너무 무서워.", "scared"],
+  // Phrases the old Roleplay sprite fallback caught, kept as whole words.
+  ["He looks at her with wide eyes.", "surprised"],
+  ["She beams at him.", "happy"],
+  ["Her shyness gets the better of her.", "embarrassed"],
+  ["His head ached.", "hurt"],
+  ["She looks at him, her heart racing.", "love"],
+  // Broad stems the shared list no longer has.
+  ["Concerning the treaty, nothing changed.", "neutral"],
+  ["A considerable amount of gold.", "neutral"],
 ];
 for (const [text, expected] of cases) {
   assert.equal(detectExpressionKeyword(text), expected, `${JSON.stringify(text)} reads as ${expected}`);
@@ -119,6 +134,7 @@ delete process.env.MARINARA_LITE;
 
 // ── The local model, stubbed ──
 const modelCalls: string[] = [];
+let loads = 0;
 let failNext = false;
 const fakeModel = {
   async classify(text: string) {
@@ -133,12 +149,20 @@ const fakeModel = {
   },
   async dispose() {},
 };
-await classifier.setAvatarEmotionModelLoaderForTests(async () => fakeModel);
+const countingLoader = async () => {
+  loads += 1;
+  return fakeModel;
+};
+await classifier.setAvatarEmotionModelLoaderForTests(countingLoader);
 assert.equal(classifier.isAvatarEmotionModelSupported(), true);
 
 const first = await classifier.classifyAvatarEmotions({ texts: ["Wait, you're the prince?"], tier: "local-model" });
-assert.equal(first.tier, "keywords", "callers get keywords while the model loads in the background");
+assert.equal(first.tier, "keywords", "callers get keywords until the model is ready");
+assert.equal(loads, 0, "a classify request never downloads or loads the model");
+assert.equal(classifier.avatarEmotionModelStatus().state, "not-downloaded");
 assert.equal(await classifier.prepareAvatarEmotionModel(), fakeModel);
+assert.equal(loads, 1);
+assert.equal(classifier.avatarEmotionModelStatus().state, "downloaded");
 
 const texts = ["Wait, you're the prince?", "She laughs.", "He opens the door.", "I miss him so much."];
 const ready = await classifier.classifyAvatarEmotions({ texts, tier: "local-model" });
@@ -165,6 +189,9 @@ failNext = true;
 const fallback = await classifier.classifyAvatarEmotions({ texts: ["Tears fall. A brand new line."] });
 assert.equal(fallback.tier, "local-model");
 assert.equal(fallback.results[0]?.emotion, "sad", "a model failure on one text falls back to its keywords");
+const callsAfterFailure = modelCalls.length;
+await classifier.classifyAvatarEmotions({ texts: ["Tears fall. A brand new line."] });
+assert.equal(modelCalls.length, callsAfterFailure + 1, "a keyword fallback is not cached as the model's answer");
 
 assert.deepEqual(
   classifier.avatarEmotionScoresFromModel({}),
@@ -174,11 +201,15 @@ assert.deepEqual(
 const folded = classifier.avatarEmotionScoresFromModel({ love: 0.9, caring: 0.4, neutral: 0.1 });
 assert.ok(folded.relaxed > 0.8, "love and caring fold into relaxed");
 
+let failedLoads = 0;
 await classifier.setAvatarEmotionModelLoaderForTests(async () => {
+  failedLoads += 1;
   throw new Error("offline");
 });
-await classifier.classifyAvatarEmotions({ texts: ["Load attempt."] });
-assert.equal(await classifier.prepareAvatarEmotionModel(), null, "a failed download waits before retrying");
+assert.equal(await classifier.prepareAvatarEmotionModel(), null, "a failed download reports no model");
+assert.equal(classifier.avatarEmotionModelStatus().state, "failed");
+assert.equal(await classifier.prepareAvatarEmotionModel(), null);
+assert.equal(failedLoads, 1, "a failed download waits before retrying");
 const offline = await classifier.classifyAvatarEmotions({ texts: ["She smiles."] });
 assert.equal(offline.tier, "keywords");
 assert.equal(offline.results[0]?.emotion, "happy");
@@ -206,7 +237,10 @@ const { rateLimitHook, resetRateLimitBucketsForTests } =
 resetRateLimitBucketsForTests();
 const app = fastify({ logger: false });
 app.addHook("onRequest", rateLimitHook);
-await app.register(avatarClassifyRoutes, { prefix: "/api/avatar-classify" });
+await app.register(avatarClassifyRoutes, {
+  prefix: "/api/avatar-classify",
+  avatarAgentOnInChat: async (chatId: string) => chatId === "rp-on",
+});
 await app.ready();
 
 const secret = "Zanzibar-7319 whispers she is so happy";
@@ -250,7 +284,81 @@ for (const payload of [
   const refused = await app.inject({ method: "POST", url: "/api/avatar-classify", payload });
   assert.equal(refused.statusCode, 400, `refuses ${JSON.stringify(payload).slice(0, 60)}`);
 }
+
+// ── The download starts only for a Roleplay chat with an avatar agent on, and the agents' pages follow it ──
+let downloads = 0;
+let finishDownload: () => void = () => {};
+await classifier.setAvatarEmotionModelLoaderForTests((onProgress) => {
+  downloads += 1;
+  onProgress(1_000);
+  return new Promise((resolve) => (finishDownload = () => resolve(fakeModel)));
+});
+const modelUrl = "/api/avatar-classify/model";
+const notOn = await app.inject({ method: "POST", url: modelUrl, payload: { chatId: "rp-off" } });
+assert.equal(notOn.statusCode, 409, "a chat without an avatar agent on gets no download");
+await app.inject({
+  method: "POST",
+  url: "/api/avatar-classify",
+  payload: { texts: ["She laughs."], tier: "local-model" },
+});
+assert.equal(downloads, 0, "classifying never starts a download");
+for (const payload of [{}, { chatId: "../x" }, { chatId: "rp-on", extra: true }]) {
+  const refused = await app.inject({ method: "POST", url: modelUrl, payload });
+  assert.equal(refused.statusCode, 400, `refuses ${JSON.stringify(payload)}`);
+}
+assert.equal(downloads, 0);
+const on = await app.inject({ method: "POST", url: modelUrl, payload: { chatId: "rp-on" } });
+assert.equal(on.statusCode, 200);
+assert.equal(downloads, 1, "turning an avatar agent on in a Roleplay chat starts the download");
+const progress = (await app.inject({ method: "GET", url: modelUrl })).json() as {
+  unsupported: string | null;
+  state: string;
+  downloadedBytes: number;
+  totalBytes: number;
+};
+assert.deepEqual([progress.unsupported, progress.state, progress.downloadedBytes], [null, "downloading", 1_000]);
+assert.ok(progress.totalBytes > 300_000_000, "the pinned files are about 300 MB");
+await app.inject({ method: "POST", url: modelUrl, payload: { chatId: "rp-on" } });
+assert.equal(downloads, 1, "one download at a time");
+finishDownload();
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal((await app.inject({ method: "GET", url: modelUrl })).json().state, "downloaded");
 await app.close();
 await classifier.setAvatarEmotionModelLoaderForTests(null);
+
+// ── The real download: an interrupted file is replaced, never piled up ──
+const { join } = await import("node:path");
+const { existsSync, mkdirSync, truncateSync, writeFileSync } = await import("node:fs");
+const { DATA_DIR } = await import("../../packages/server/src/utils/data-dir.js");
+const localModel = await import("../../packages/server/src/services/avatars/classifier/local-emotion-model.js");
+const modelDir = join(DATA_DIR, "models", "avatar-emotion", localModel.AVATAR_EMOTION_MODEL_REVISION);
+mkdirSync(join(modelDir, "onnx"), { recursive: true });
+for (const [path, size] of [
+  ["config.json", 3_155],
+  ["tokenizer_config.json", 46_440],
+  ["tokenizer.json", 34_363_286],
+] as const) {
+  writeFileSync(join(modelDir, path), "");
+  truncateSync(join(modelDir, path), size);
+}
+const stale = join(modelDir, "onnx", "model_quantized.onnx.download");
+writeFileSync(stale, "half a model from a download that was stopped");
+assert.equal(localModel.isLocalEmotionModelDownloaded(), false);
+const realFetch = globalThis.fetch;
+const fetched: string[] = [];
+globalThis.fetch = (async (url: string | URL | Request) => {
+  fetched.push(String(url));
+  throw new DOMException("The operation was aborted.", "AbortError");
+}) as typeof fetch;
+await assert.rejects(localModel.downloadLocalEmotionModel(() => {}));
+globalThis.fetch = realFetch;
+assert.deepEqual(
+  fetched,
+  [
+    `https://huggingface.co/${classifier.AVATAR_EMOTION_MODEL_ID}/resolve/${localModel.AVATAR_EMOTION_MODEL_REVISION}/onnx/model_quantized.onnx`,
+  ],
+  "only the missing file is fetched, at the pinned commit",
+);
+assert.equal(existsSync(stale), false, "the stopped download's leftover is removed before the next try");
 
 console.log("avatar classifier regression passed");

@@ -44,17 +44,17 @@ Avatars react on their own; there is nothing to set up for this part.
 **How the mood is read.** No AI model or chat connection is asked, and your chat text is not sent anywhere else.
 
 - A built-in word list answers at once, everywhere, and knows common mood words in several languages.
-- Where your computer can run it, a small emotion model on your computer reads the sentences instead and understands 36 languages. It downloads once (about 300 MB) the first time an avatar needs it, and the word list answers until it is ready. It uses about 900 MB of memory while in use and unloads after 10 idle minutes. Lite installs and Android keep the word list.
+- Where your computer can run it, a small emotion model on your computer, the mood reader, reads the sentences instead and understands 36 languages. It downloads once (about 300 MB) when you first open a Roleplay chat with 2D Avatars or 3D Avatars turned on, and never while neither agent is on. Each avatar agent's page in **Agents** shows the download's progress, and a failed download tries again by itself a few minutes later. The word list answers until the mood reader is ready, and after the download it works offline. It uses about 1 GB of memory while in use and unloads after 10 idle minutes. Lite installs, Android and computers with less than 3 GB of memory keep the word list.
 
-**Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it.
+**Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it. A character's inner thoughts change the face but not the mouth.
 
-**The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. Avatars work without it too.
+**The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. A pick that arrives after you sent your next message stays with the reply it was for. Avatars work without it too.
 
 **Mouths.** The mouth moves only for dialogue (words in quotes, `[Name]:` lines and speaker tags), never for narration, at about the pace of speech. If the text appears faster than anyone could say it, the mouth speeds up and then skips ahead so it stays with the words on screen. With streaming off, a reply's dialogue is spoken within eight seconds. When text-to-speech plays a line, the voice moves the mouth instead.
 
 **Body.** An avatar thinks from the moment you send until its first words, talks while its mouth moves, listens while someone else talks or while you type, and rests otherwise.
 
-**Group chats.** When Marinara Engine knows who is replying, that character speaks. Otherwise each paragraph belongs to the first character it names, or to the one before it.
+**Group chats.** In an Individual group, the member who is replying speaks, including when you swipe one member's message. In a Merged group, each paragraph belongs to the first character it names, or to the one before it. While a paragraph that names nobody is still appearing, its dialogue waits until a name or the paragraph's end shows who says it. With streaming off in an Individual group, only the last member's reply moves an avatar for now.
 
 ## Lip sync with text-to-speech
 

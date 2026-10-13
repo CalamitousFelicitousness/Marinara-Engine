@@ -2,9 +2,10 @@
 // Avatar director: the Game Master line now on screen
 // ──────────────────────────────────────────────
 // GameNarration publishes the narration segment it shows; the director listens. Only dialogue lines with a
-// speaker reach avatars, with the Game Master's per-line expression. The last line is kept and handed to each new
-// listener, because the avatar stage usually mounts after the line it should show. Nothing listens unless an
-// avatar stage is mounted, so publishing costs one Set lookup.
+// speaker reach avatars, with the Game Master's per-line expression. Lines Game voices never speak (a thought, the
+// player's own input) change the face but not the mouth: they arrive with no text. The last line is kept and
+// handed to each new listener, because the avatar stage usually mounts after the line it should show. Nothing
+// listens unless an avatar stage is mounted, so publishing costs one Set lookup.
 import type { AvatarGameLine } from "../contract";
 
 type GameLineListener = (chatId: string, line: AvatarGameLine) => void;
@@ -15,6 +16,10 @@ interface ShownSegment {
   speaker?: string;
   sprite?: string;
   content: string;
+  /** "thought" for a character's inner thought. */
+  partyType?: string | null;
+  /** "user" for the player's own input shown before the Game Master's lines. */
+  sourceRole?: string | null;
 }
 
 const listeners = new Set<GameLineListener>();
@@ -25,11 +30,13 @@ export function publishAvatarGameLine(chatId: string | null, segment: ShownSegme
   if (!chatId || !segment || segment.type !== "dialogue" || !segment.speaker?.trim()) return;
   const key = `${chatId}\n${segment.id}\n${segment.content}`;
   if (key === lastShown?.key) return;
+  // The same lines GameNarration's voice skips (shouldSkipGameVoiceSegment).
+  const unspoken = segment.partyType === "thought" || segment.sourceRole === "user" || segment.sourceRole === "system";
   const line: AvatarGameLine = {
     speakerName: segment.speaker.trim(),
     ownerId: null,
     expression: segment.sprite?.trim() || null,
-    text: segment.content,
+    text: unspoken ? "" : segment.content,
   };
   lastShown = { key, chatId, line };
   for (const listener of listeners) listener(chatId, line);

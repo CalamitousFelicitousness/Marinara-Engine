@@ -7,9 +7,13 @@
 // with hysteresis: a new emotion needs a score of 0.45 and a 0.15 lead over the current one, a face holds for at
 // least 2 s, and going back to neutral takes two neutral sentences. 4 s after the reply ends the face relaxes,
 // unless the Expression Engine has settled it. Game: the Game Master's per-line expression for the line on screen.
-// Either way an Expression Engine pick is the final face for that reply.
+// Either way an Expression Engine pick for this reply's message is the final face for that reply.
+// A reply ends when its generation does (after the typewriter has shown it all). With streaming off it arrives whole
+// (assistant_message_ready), is classified once and spoken within 8 s.
 // Mouths: the speech clock speaks the visible dialogue (only dialogue, never narration); while text-to-speech
 // plays for an owner, its audio level drives the mouth instead (subscribeAvatarAudio).
+// A Roleplay director asks the server to get the local emotion model ready (POST /api/avatar-classify/model): that,
+// for a chat with an avatar agent on, is the only thing that downloads it.
 // Everything runs on the stage's frame calls: no timers, and no work at all while the stage is paused.
 import {
   AVATAR_API_PREFIXES,
@@ -17,6 +21,7 @@ import {
   AVATAR_NEUTRAL_FRAME,
   classifyExpressionKeywords,
   mapSpriteExpressionToAvatarEmotion,
+  normalizeGroupChatMode,
   type AvatarClassification,
   type AvatarClassifyRequest,
   type AvatarClassifyResponse,
@@ -25,6 +30,7 @@ import {
   type AvatarState,
 } from "@marinara-engine/shared";
 import { api } from "../../../lib/api-client";
+import { parseChatMetadata } from "../../../lib/chat-display";
 import { TTS_AUTOPLAY_MESSAGE_READY_EVENT, type TTSAutoplayMessageReadyDetail } from "../../../lib/tts-autoplay";
 import { cleanTTSInputText, findTTSCharacterIdBySpeakerName } from "../../../lib/tts-dialogue";
 import { useAgentStore } from "../../../stores/agent.store";
@@ -68,11 +74,19 @@ export const AVATAR_DIRECTOR_TIMING = Object.freeze({
   /** A reply that arrives whole (streaming off) or a Game line is spoken within this time. */
   wholeSpeechMaxMs: 8_000,
   cacheSize: 256,
+  /** While the server answers with keywords, how often to ask it again to get its local model ready. */
+  prepareModelIntervalMs: 60_000,
 });
 
-/** Injection points for regressions: the classifier request. */
+/** The part of the server's model status the director reads. */
+interface AvatarEmotionModelAnswer {
+  unsupported: string | null;
+}
+
+/** Injection points for regressions: the classifier request and the model preparation request. */
 export interface AvatarDirectorHooks {
   classify?(request: AvatarClassifyRequest, signal: AbortSignal): Promise<AvatarClassifyResponse>;
+  prepareModel?(chatId: string): Promise<AvatarEmotionModelAnswer>;
 }
 
 interface OwnerState {
@@ -108,6 +122,19 @@ function defaultClassify(request: AvatarClassifyRequest, signal: AbortSignal) {
   return api.post<AvatarClassifyResponse>(AVATAR_API_PREFIXES.classify, request, { signal });
 }
 
+function defaultPrepareModel(chatId: string) {
+  return api.post<AvatarEmotionModelAnswer>(`${AVATAR_API_PREFIXES.classify}/model`, { chatId });
+}
+
+/** Whether a message's character is the one who wrote all of it: not in a Merged group, where the server saves the
+ *  whole group reply under the first character. Unknown chats count as Merged groups when several characters show. */
+function messageSpeakerIsReliable(chatId: string, characterCount: number): boolean {
+  if (characterCount <= 1) return true;
+  const chat = useChatStore.getState().activeChat;
+  if (chat?.id !== chatId) return false;
+  return normalizeGroupChatMode(parseChatMetadata(chat.metadata).groupChatMode) === "individual";
+}
+
 function newOwner(participant: AvatarParticipant): OwnerState {
   return {
     ownerId: participant.owner.ownerId,
@@ -132,6 +159,7 @@ function newOwner(participant: AvatarParticipant): OwnerState {
 export function createAvatarDirector(options: AvatarDirectorOptions, hooks: AvatarDirectorHooks = {}): AvatarDirector {
   const { chatId, mode } = options;
   const classify = hooks.classify ?? defaultClassify;
+  const prepareModel = hooks.prepareModel ?? defaultPrepareModel;
   const T = AVATAR_DIRECTOR_TIMING;
   const owners = new Map<string, OwnerState>();
   /** Sentence text → classification (a Map hashes the text). */
@@ -150,10 +178,13 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   let streamEndedAt: number | null = null;
   let lineShownThisTurn = false;
   let userTyping = false;
+  /** This turn's reply rows: an Expression Engine pick for another message belongs to an earlier reply. */
+  let replyMessageIds = new Set<string>();
 
   // The visible reply text: the newest, and how far it has been read.
   let latest: { text: string; speakerId: string | null } | null = null;
   let replyDone = false;
+  /** Streaming is off this turn: the reply shows at once (assistant_message_ready, or a held rewrite). */
   let wholeReply = false;
   let dirty = false;
   let lastReadAt = -Infinity;
@@ -166,6 +197,20 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   let arrived: Array<{ ownerId: string; turn: number; result: AvatarClassification }> = [];
   let inFlight: AbortController | null = null;
   let lastSentAt = -Infinity;
+  // Getting the server's local model ready: asked at once, then again while it answers with keywords.
+  let modelUnsupported = mode !== "roleplay";
+  let lastPrepareAt = -Infinity;
+  const askForModel = () => {
+    if (modelUnsupported || disposed || Date.now() - lastPrepareAt < T.prepareModelIntervalMs) return;
+    lastPrepareAt = Date.now();
+    void prepareModel(chatId)
+      .then((status) => {
+        if (status?.unsupported) modelUnsupported = true;
+      })
+      .catch(() => {
+        // Not ready, rate limited or offline: the keyword tier keeps answering.
+      });
+  };
 
   const characters = (): ReplySpeaker[] =>
     [...owners.values()].filter((owner) => !owner.isPersona).map(({ ownerId, name }) => ({ ownerId, name }));
@@ -224,9 +269,11 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     streamStarted = false;
     streamEndedAt = null;
     lineShownThisTurn = false;
+    replyMessageIds = new Set();
     latest = null;
     replyDone = false;
-    wholeReply = false;
+    // Read the way use-generate reads it when the generation starts.
+    wholeReply = !useUIStore.getState().enableStreaming;
     dirty = false;
     read = { text: "", speakerId: null };
     readOffset = 0;
@@ -278,7 +325,16 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       readOffset = 0;
     }
     const paragraphs = paragraphsOf(text, speakerId);
-    for (const [ownerId, said] of collectReplyDialogue(text, paragraphs, characters())) {
+    // A growing paragraph that names nobody yet may name its speaker after the quote ('"Get out," Bob growls.'):
+    // its dialogue and sentences wait until it names someone or ends, so they never go to the wrong avatar first.
+    const last = paragraphs.at(-1);
+    const settledEnd =
+      !replyDone && !wholeReply && last?.inherited && last.end === text.length ? last.start : text.length;
+    const settled = paragraphs.filter((paragraph) => paragraph.start < settledEnd);
+    const saidNow = collectReplyDialogue(text, settled, characters());
+    // An owner whose words moved to someone else has said nothing so far; their next line starts from empty.
+    for (const ownerId of spoken.keys()) if (!saidNow.has(ownerId)) saidNow.set(ownerId, "");
+    for (const [ownerId, said] of saidNow) {
       const before = spoken.get(ownerId) ?? "";
       spoken.set(ownerId, said);
       const owner = owners.get(ownerId);
@@ -286,9 +342,12 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       if (wholeReply) owner.clock.speakAll(said, T.wholeSpeechMaxMs);
       else owner.clock.push(said.slice(before.length));
     }
-    if (wholeReply) {
-      // A reply that arrived whole is classified whole, once per owner.
-      if (readOffset >= text.length) return;
+    if (!wholeReply) {
+      const next = readReplySegments(text.slice(0, settledEnd), readOffset, replyDone);
+      for (const segment of next.segments) enqueue(ownerAt(paragraphs, segment.start), segment.text);
+      readOffset = next.next;
+    } else if (replyDone && readOffset < text.length) {
+      // A reply that arrived whole is classified whole, once per owner, when it is complete.
       const byOwner = new Map<string, string[]>();
       for (const paragraph of paragraphs) {
         if (!paragraph.ownerId) continue;
@@ -301,10 +360,6 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
         if (/\p{L}/u.test(plain)) enqueue(ownerId, plain);
       }
       readOffset = text.length;
-    } else {
-      const next = readReplySegments(text, readOffset, replyDone);
-      for (const segment of next.segments) enqueue(ownerAt(paragraphs, segment.start), segment.text);
-      readOffset = next.next;
     }
     read = { text, speakerId };
     if (replyDone) streamEndedAt = now;
@@ -341,6 +396,8 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
           const result = response.results[index];
           if (result) remember(text, result);
         });
+        // The model unloaded after idle minutes, or an earlier attempt failed: ask for it again (at most once a minute).
+        if (response.tier === "keywords") askForModel();
       })
       .catch(() => {
         // Offline or rate limited: the same keyword list the server's instant tier uses.
@@ -422,9 +479,9 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     pushStreamText(update: AvatarStreamUpdate) {
       if (update.chatId !== chatId || mode !== "roleplay") return;
       if (/\S/u.test(update.text)) {
-        // Text that does not continue a finished reply starts the next part (the next group speaker). After the
-        // generation ends it is a late rewrite of the finished reply, read as finished.
-        if (replyDone && generating && latest && !update.text.startsWith(latest.text)) replyDone = false;
+        // New text while the generation runs means the reply goes on (the next group speaker, or the typewriter still
+        // showing it). After the generation ends it is a late rewrite of the finished reply, read as finished.
+        if (replyDone && generating && latest && update.text !== latest.text) replyDone = false;
         latest = { text: update.text, speakerId: update.speakerOwnerId };
         streamStarted = true;
         dirty = true;
@@ -513,6 +570,8 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     const busy = state.abortControllers.has(chatId);
     if (busy || state.streamingChatId === chatId) expectedSpeakerId = state.streamingCharacterId;
     setGenerating(busy);
+    const streamedMessageId = state.streamedMessageIds.get(chatId);
+    if (busy && streamedMessageId) replyMessageIds.add(streamedMessageId);
     const text = state.streamBuffers.get(chatId) ?? (active ? state.streamBuffer : "");
     if (text !== lastStoreText) {
       lastStoreText = text;
@@ -529,7 +588,11 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   readChatStore(useChatStore.getState());
   unsubscribers.push(useChatStore.subscribe(readChatStore));
 
-  // The Expression Engine's post-reply pick (only stored for the chat on screen).
+  // The Expression Engine's post-reply pick (only stored for the chat on screen). In Roleplay the composer is free
+  // while post-processing runs, so a pick can land after the next message was sent: it counts for the latest
+  // reply's rows, and otherwise only while no generation runs and no reply has been seen yet.
+  const ownsPick = (messageId: string | null | undefined) =>
+    messageId ? replyMessageIds.has(messageId) || (!generating && replyMessageIds.size === 0) : !generating;
   const seenResults = new Map(useAgentStore.getState().lastResults);
   unsubscribers.push(
     useAgentStore.subscribe((state) => {
@@ -538,6 +601,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
         seenResults.set(key, result);
         if (!result.success || result.type !== "sprite_change") continue;
         if (useChatStore.getState().activeChatId !== chatId) continue;
+        if (mode === "roleplay" && !ownsPick(result.messageId)) continue;
         const expressions = (result.data as { expressions?: unknown } | null)?.expressions;
         if (!Array.isArray(expressions)) continue;
         director.pushExpressionPicks(
@@ -555,17 +619,19 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     const onMessageReady = (event: Event) => {
       const detail = (event as CustomEvent<TTSAutoplayMessageReadyDetail>).detail;
       if (detail?.chatId !== chatId || mode !== "roleplay") return;
-      if (streamStarted || latest) {
-        finishReply();
-        return;
-      }
-      // Streaming is off: the reply arrives whole. Read it at once and speak its dialogue within 8 s.
-      wholeReply = true;
+      const parts = [...(detail.earlierMessages ?? []), detail.message];
+      for (const part of parts) replyMessageIds.add(part.id);
+      // Streaming: the typewriter may still be showing the reply. It ends when the generation does.
+      if (!wholeReply) return;
+      // Streaming is off: the reply shows whole. Read it at once and speak its dialogue within 8 s. A Merged group
+      // reply is saved under its first character, so there each paragraph goes to the character it names.
       director.pushStreamText({
         chatId,
         messageId: detail.message.id,
-        text: [...(detail.earlierMessages ?? []), detail.message].map((part) => part.content).join("\n\n"),
-        speakerOwnerId: detail.message.characterId ?? null,
+        text: parts.map((part) => part.content).join("\n\n"),
+        speakerOwnerId: messageSpeakerIsReliable(chatId, characters().length)
+          ? (detail.message.characterId ?? null)
+          : null,
         done: true,
       });
     };
@@ -574,6 +640,9 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   }
 
   unsubscribers.push(subscribeAvatarAudio((ownerId, source) => director.setAudioSource(ownerId, source)));
+
+  // An avatar agent is on in this Roleplay chat: the server downloads (once) and loads its local model now.
+  askForModel();
 
   return director;
 }

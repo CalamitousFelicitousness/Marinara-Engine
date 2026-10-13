@@ -22,6 +22,8 @@ export interface ReplyParagraph {
   start: number;
   end: number;
   ownerId: string | null;
+  /** The owner came from the paragraph before (or the fallback): this paragraph names nobody yet. */
+  inherited: boolean;
 }
 
 /** A sentence runs on past this many characters before it is cut at a clause. */
@@ -65,6 +67,7 @@ export function attributeReplyParagraphs(
   for (;;) {
     const match = breaks.exec(text);
     const end = match ? match.index : text.length;
+    let inherited = false;
     if (!fixedOwner) {
       const paragraph = text.slice(start, end);
       let firstIndex = Infinity;
@@ -75,8 +78,9 @@ export function attributeReplyParagraphs(
           owner = ownerId;
         }
       }
+      inherited = firstIndex === Infinity;
     }
-    if (end > start) paragraphs.push({ start, end, ownerId: owner });
+    if (end > start) paragraphs.push({ start, end, ownerId: owner, inherited });
     if (!match) break;
     start = match.index + match[0].length;
   }

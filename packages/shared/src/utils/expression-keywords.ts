@@ -183,6 +183,8 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
       "grinning",
       "cheer*",
       "delight*",
+      "beam",
+      "beams",
       "beamed",
       "beaming",
       "giggl*",
@@ -256,6 +258,8 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
       "gasp*",
       "wide-eyed",
       "wide eyed",
+      "wide eyes",
+      "eyes wide",
       "eyes widen*",
       "startl*",
       "stunned",
@@ -346,6 +350,7 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
       "sheepish*",
       "shy",
       "shyly",
+      "shyness",
       "bashful*",
       "avert*",
       // de, es, fr, it, pt, pl, ru
@@ -386,6 +391,10 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
       "embrace*",
       "cherish*",
       "smitten",
+      "heart racing",
+      "heart pound*",
+      "heart flutter*",
+      "heart skip*",
       // de, es/pt, fr, it, pl, ru
       "liebe",
       "kuss*",
@@ -419,7 +428,10 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
       "think*",
       "thoughtful*",
       "ponder*",
-      "consider*",
+      "consider",
+      "considers",
+      "considered",
+      "considering",
       "contemplat*",
       "muse",
       "muses",
@@ -451,7 +463,8 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
       "frets",
       "fretted",
       "fretting",
-      "concern*",
+      "concern",
+      "concerned",
       "dread*",
     ],
   },
@@ -490,7 +503,22 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
   {
     label: "hurt",
     aliases: ["pain", "sad"],
-    words: ["hurt*", "pain", "pains", "painful*", "wound*", "winc*", "grimac*", "ache", "aches", "aching", "suffer*"],
+    words: [
+      "hurt*",
+      "pain",
+      "pains",
+      "painful*",
+      "wound",
+      "wounds",
+      "wounded",
+      "winc*",
+      "grimac*",
+      "ache",
+      "aches",
+      "ached",
+      "aching",
+      "suffer*",
+    ],
   },
 ];
 
@@ -502,9 +530,10 @@ const NO_WORD_BREAK_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Kataka
 const LATIN_CYRILLIC_ACCENTS = /[\u0300-\u036f]+/gu;
 const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/g;
 
-/** Lower case without accents, so `Wütend`, `wütend` and `wutend` read the same. Applied to words and text. */
+/** Lower case without accents, so `Wütend`, `wütend` and `wutend` read the same. Applied to words and text. Composed
+ *  again afterwards, so a Korean syllable stays one syllable (무서 never matches inside 무성한). */
 function foldForKeywords(value: string): string {
-  return value.normalize("NFD").replace(LATIN_CYRILLIC_ACCENTS, "").toLowerCase();
+  return value.normalize("NFD").replace(LATIN_CYRILLIC_ACCENTS, "").normalize("NFC").toLowerCase();
 }
 
 function compileGroup(words: readonly string[]): RegExp {

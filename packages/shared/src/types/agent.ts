@@ -276,6 +276,8 @@ export interface AgentResult {
   /** Whether the agent succeeded */
   success: boolean;
   error: string | null;
+  /** The message the result belongs to, when the server anchored it to one. */
+  messageId?: string | null;
 }
 
 export type AgentWriteApprovalKind = "character_card_create" | "lorebook_update" | "summary_update";

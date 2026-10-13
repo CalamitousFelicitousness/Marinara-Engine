@@ -3,18 +3,18 @@
 // ──────────────────────────────────────────────
 // Roleplay's expression source while a reply streams. Two tiers (AVATAR_CLASSIFIER_TIERS):
 //   - keywords: the shared expression keyword list (classifyExpressionKeywords), instant and always there;
-//   - local-model: a small multilingual emotion model run with the server's own @huggingface/transformers and
-//     onnxruntime-node, like services/local-embedder.ts. It downloads into DATA_DIR/models on first use, loads in
-//     the background (callers get keywords until it is ready), and unloads after ten idle minutes. It is off on
-//     MARINARA_LITE and wherever onnxruntime-node has no native binding (Termux), which keeps those on keywords.
+//   - local-model: a small multilingual emotion model (classifier/local-emotion-model.ts), run in a worker thread.
+//     It downloads and loads only through prepareAvatarEmotionModel(), which the classify route calls for a
+//     Roleplay chat that has 2D or 3D Avatars turned on; a classify request never downloads or loads anything, it
+//     uses the model only once it is ready. It unloads after ten idle minutes and loads again from disk on the next
+//     prepare. Lite installs, servers without onnxruntime-node's native binding (Termux) and machines with less than
+//     3 GB of memory keep the keyword tier.
 // When a keyword names an emotion, the model's scores are averaged with it: the model reads dialogue well but
 // calls most narrated prose neutral, and explicit words ("tears", "laughs") are the strongest evidence there is.
 // Never an LLM, never LLM-written tags, never a Decision model: those run after generation and cannot follow the
 // stream. Game mode uses the Game Master's per-line expressions and does not call this.
 // User text is logged at debug level only; debug mode and DEBUG_AGENTS show counts, tiers and timings.
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import {
   AVATAR_EMOTIONS,
   classifyExpressionKeywords,
@@ -26,15 +26,18 @@ import {
 } from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logDebugOverride, logger } from "../../lib/logger.js";
-import { DATA_DIR } from "../../utils/data-dir.js";
-import { resolveOnnxRuntimeBindingPath } from "../local-embedder.js";
+import {
+  AVATAR_EMOTION_MODEL_BYTES,
+  AVATAR_EMOTION_MODEL_ID,
+  downloadLocalEmotionModel,
+  isLocalEmotionModelDownloaded,
+  localEmotionModelUnsupportedReason,
+  startLocalEmotionModel,
+  type AvatarEmotionModel,
+} from "./classifier/local-emotion-model.js";
 
-/** Horizon-Labs/multilingual-emotions-small (Apache-2.0): mmBERT-small trained on GoEmotions and its
- *  35-language translation, with GoEmotions' 28 labels. Pinned to one commit and downloaded from Horizon. */
-export const AVATAR_EMOTION_MODEL_ID = "Horizon-Labs/multilingual-emotions-small";
-export const AVATAR_EMOTION_MODEL_REVISION = "1bc9627f189e5aa08b00cf525c3c86052067b81e";
+export { AVATAR_EMOTION_MODEL_ID, type AvatarEmotionModel };
 
-const MODELS_DIR = join(DATA_DIR, "models");
 const IDLE_UNLOAD_MS = 10 * 60_000;
 const LOAD_RETRY_MS = 10 * 60_000;
 const CACHE_LIMIT = 512;
@@ -73,14 +76,20 @@ const GO_EMOTION_LABELS: Readonly<Record<string, readonly [AvatarEmotion, number
   neutral: ["neutral", 1, 0.36],
 };
 
-/** The loaded model: label scores (0..1 each, multi-label) for one text. */
-export interface AvatarEmotionModel {
-  classify(text: string): Promise<Record<string, number>>;
-  dispose(): Promise<void>;
-}
-
 export interface AvatarClassifierOptions {
   signal?: AbortSignal;
+}
+
+/** Downloads the model when it is missing and starts it; `onProgress` gets the bytes downloaded so far. */
+export type AvatarEmotionModelLoader = (onProgress: (downloadedBytes: number) => void) => Promise<AvatarEmotionModel>;
+
+/** What the avatar agents' pages show about the local model. */
+export interface AvatarEmotionModelStatus {
+  /** Why this server keeps the word list (Lite, no ONNX runtime, too little memory), or null. */
+  unsupported: "lite" | "no-runtime" | "low-memory" | null;
+  state: "not-downloaded" | "downloading" | "loading" | "downloaded" | "failed";
+  downloadedBytes: number;
+  totalBytes: number;
 }
 
 type ModelState =
@@ -91,39 +100,48 @@ type ModelState =
 
 let modelState: ModelState = { status: "idle" };
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
-let loadModel: () => Promise<AvatarEmotionModel> = loadHorizonModel;
-let testLoaderInstalled = false;
+let testLoader: AvatarEmotionModelLoader | null = null;
+/** Bumped by every prepare and every reset, so a stale load cannot report progress or become the model. */
+let loadAttempt = 0;
+let downloading = false;
+let downloadedBytes = 0;
 const cache = new Map<string, AvatarClassification>();
 
-function isLite(): boolean {
-  return process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
+async function downloadAndStartLocalModel(onProgress: (downloadedBytes: number) => void) {
+  if (!isLocalEmotionModelDownloaded()) {
+    logger.info("[avatar-classify] Downloading the local emotion model %s", AVATAR_EMOTION_MODEL_ID);
+    await downloadLocalEmotionModel(onProgress);
+  }
+  onProgress(AVATAR_EMOTION_MODEL_BYTES);
+  const model = await startLocalEmotionModel((err) => {
+    if (modelState.status !== "ready" || modelState.model !== model) return;
+    modelState = { status: "idle" };
+    logger.warn(err, "[avatar-classify] The local emotion model stopped; avatars use keywords until it loads again");
+  });
+  return model;
 }
 
-/** Whether this server can run the local model at all (it may still be downloading or loading). */
+function unsupportedReason(): AvatarEmotionModelStatus["unsupported"] {
+  if (!testLoader) return localEmotionModelUnsupportedReason();
+  return process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1" ? "lite" : null;
+}
+
+/** Whether this server can run the local model at all (it may still need downloading or loading). */
 export function isAvatarEmotionModelSupported(): boolean {
-  if (isLite()) return false;
-  if (testLoaderInstalled) return true;
-  const bindingPath = resolveOnnxRuntimeBindingPath();
-  return bindingPath !== null && existsSync(bindingPath);
+  return unsupportedReason() === null;
 }
 
-async function loadHorizonModel(): Promise<AvatarEmotionModel> {
-  const { pipeline, env } = await import("@huggingface/transformers");
-  env.cacheDir = MODELS_DIR;
-  env.allowLocalModels = true;
-  env.useBrowserCache = false;
-  const classify = (await pipeline("text-classification", AVATAR_EMOTION_MODEL_ID, {
-    dtype: "q8",
-    revision: AVATAR_EMOTION_MODEL_REVISION,
-  })) as unknown as ((text: string, options: { top_k: null }) => Promise<Array<{ label: string; score: number }>>) & {
-    dispose(): Promise<void>;
-  };
+export function avatarEmotionModelStatus(): AvatarEmotionModelStatus {
+  let state: AvatarEmotionModelStatus["state"];
+  if (modelState.status === "ready") state = "downloaded";
+  else if (modelState.status === "loading") state = downloading ? "downloading" : "loading";
+  else if (modelState.status === "failed") state = "failed";
+  else state = !testLoader && isLocalEmotionModelDownloaded() ? "downloaded" : "not-downloaded";
   return {
-    async classify(text) {
-      const output = await classify(text, { top_k: null });
-      return Object.fromEntries(output.map(({ label, score }) => [label, score]));
-    },
-    dispose: () => classify.dispose(),
+    unsupported: unsupportedReason(),
+    state,
+    downloadedBytes: state === "downloaded" ? AVATAR_EMOTION_MODEL_BYTES : downloadedBytes,
+    totalBytes: AVATAR_EMOTION_MODEL_BYTES,
   };
 }
 
@@ -140,22 +158,36 @@ function scheduleIdleUnload() {
   idleTimer.unref?.();
 }
 
-/** Starts loading the local model when this server supports it and resolves once it is ready (or failed). */
+/** Downloads the local model when it is missing, starts it in its worker, and resolves once it is ready (or null
+ *  when this server cannot run it, or a failed attempt is waiting to retry). Only the classify route's prepare
+ *  request calls this, for a Roleplay chat with an avatar agent on, so nothing else downloads the model. */
 export function prepareAvatarEmotionModel(): Promise<AvatarEmotionModel | null> {
   if (!isAvatarEmotionModelSupported()) return Promise.resolve(null);
-  if (modelState.status === "ready") return Promise.resolve(modelState.model);
+  if (modelState.status === "ready") {
+    scheduleIdleUnload();
+    return Promise.resolve(modelState.model);
+  }
   if (modelState.status === "loading") return modelState.promise;
   if (modelState.status === "failed" && Date.now() < modelState.retryAt) return Promise.resolve(null);
   const startedAt = Date.now();
-  logger.info("[avatar-classify] Loading the local emotion model %s", AVATAR_EMOTION_MODEL_ID);
+  logger.info("[avatar-classify] Preparing the local emotion model %s", AVATAR_EMOTION_MODEL_ID);
   // A load that was reset meanwhile (setAvatarEmotionModelLoaderForTests) must not overwrite the newer state.
-  const current = () => modelState.status === "loading" && modelState.promise === promise;
-  const promise: Promise<AvatarEmotionModel | null> = loadModel().then(
+  const attempt = ++loadAttempt;
+  const current = () => attempt === loadAttempt;
+  downloading = true;
+  downloadedBytes = 0;
+  const load = testLoader ?? downloadAndStartLocalModel;
+  const promise: Promise<AvatarEmotionModel | null> = load((bytes) => {
+    if (!current()) return;
+    downloadedBytes = bytes;
+    if (bytes >= AVATAR_EMOTION_MODEL_BYTES) downloading = false;
+  }).then(
     (model) => {
       if (!current()) {
         void model.dispose().catch(() => {});
         return null;
       }
+      downloading = false;
       modelState = { status: "ready", model };
       scheduleIdleUnload();
       logger.info("[avatar-classify] Local emotion model ready in %dms", Date.now() - startedAt);
@@ -163,6 +195,7 @@ export function prepareAvatarEmotionModel(): Promise<AvatarEmotionModel | null> 
     },
     (err: unknown) => {
       if (!current()) return null;
+      downloading = false;
       modelState = { status: "failed", retryAt: Date.now() + LOAD_RETRY_MS };
       logger.warn(err, "[avatar-classify] Local emotion model unavailable; avatars use keywords for now");
       return null;
@@ -232,15 +265,8 @@ export async function classifyAvatarEmotions(
 ): Promise<AvatarClassifyResponse> {
   const startedAt = performance.now();
   const debug = request.debugMode === true || isDebugAgentsEnabled();
-  let model: AvatarEmotionModel | null = null;
-  if (request.tier !== "keywords") {
-    if (modelState.status === "ready") {
-      model = modelState.model;
-      scheduleIdleUnload();
-    } else {
-      void prepareAvatarEmotionModel();
-    }
-  }
+  // Never a download or a load here: only prepareAvatarEmotionModel() does that, for a chat with an avatar agent on.
+  const model = request.tier !== "keywords" && modelState.status === "ready" ? modelState.model : null;
   const tier: AvatarClassifierTier = model ? "local-model" : "keywords";
   const results: AvatarClassification[] = [];
   let cached = 0;
@@ -255,14 +281,17 @@ export async function classifyAvatarEmotions(
     }
     const keywords = classifyExpressionKeywords(text);
     let result = keywords;
+    let answered = true;
     if (model) {
       try {
         result = blendAvatarEmotion(avatarEmotionScoresFromModel(await model.classify(text)), keywords);
       } catch (err) {
+        // Not cached: the next request for this text asks the model again.
+        answered = false;
         logger.warn(err, "[avatar-classify] The local emotion model failed on a text; using keywords for it");
       }
     }
-    remember(key, result);
+    if (answered) remember(key, result);
     results.push(result);
   }
   if (model) scheduleIdleUnload();
@@ -281,12 +310,14 @@ export async function classifyAvatarEmotions(
 }
 
 /** Regression hook: swaps the model loader (null restores the real one) and forgets the loaded model and cache. */
-export async function setAvatarEmotionModelLoaderForTests(loader: (() => Promise<AvatarEmotionModel>) | null) {
+export async function setAvatarEmotionModelLoaderForTests(loader: AvatarEmotionModelLoader | null) {
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = null;
   if (modelState.status === "ready") await modelState.model.dispose();
   modelState = { status: "idle" };
+  loadAttempt += 1;
+  downloading = false;
+  downloadedBytes = 0;
   cache.clear();
-  loadModel = loader ?? loadHorizonModel;
-  testLoaderInstalled = loader !== null;
+  testLoader = loader;
 }

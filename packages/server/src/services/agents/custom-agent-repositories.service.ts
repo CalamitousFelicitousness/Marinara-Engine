@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import AdmZip from "adm-zip";
 import { z } from "zod";
 import {
   APP_VERSION,
@@ -27,6 +26,7 @@ import {
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
+import { openZipArchive, type ZipEntry } from "../../lib/zip-reader.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { safeFetch } from "../../utils/security.js";
 import { createAgentsStorage } from "../storage/agents.storage.js";
@@ -179,7 +179,7 @@ export function normalizeCustomAgentRepositoryUrl(value: string): RepositoryIden
 
 /** Returns null when the archive has no `agents.json` at all, which a rulesets-only repository is
  *  allowed to be. An `agents.json` that lists nothing stays an empty list, exactly as before. */
-function readAgentDefinitions(entries: AdmZip.IZipEntry[]): PackagedAgentDefinition[] | null {
+function readAgentDefinitions(entries: ZipEntry[]): PackagedAgentDefinition[] | null {
   const definitionEntries = entries.filter((entry) => {
     const parts = normalizeArchivePath(entry.entryName).split("/");
     return parts.length === 2 && parts[1] === "agents.json";
@@ -190,8 +190,8 @@ function readAgentDefinitions(entries: AdmZip.IZipEntry[]): PackagedAgentDefinit
   const definitionEntry = definitionEntries[0];
   if (!definitionEntry) return null;
 
-  if (definitionEntry.header.size > MAX_DEFINITIONS_BYTES) throw new Error("agents.json is too large");
-  const data = definitionEntry.getData();
+  if (definitionEntry.size > MAX_DEFINITIONS_BYTES) throw new Error("agents.json is too large");
+  const data = definitionEntry.read(MAX_DEFINITIONS_BYTES);
   if (data.byteLength > MAX_DEFINITIONS_BYTES) throw new Error("agents.json is too large");
   const definitions = packagedAgentDefinitionsSchema.parse(JSON.parse(data.toString("utf8")));
   if (definitions.length > MAX_AGENT_DEFINITIONS) {
@@ -209,7 +209,7 @@ function readAgentDefinitions(entries: AdmZip.IZipEntry[]): PackagedAgentDefinit
   return definitions;
 }
 
-function readRepositoryRulesets(entries: AdmZip.IZipEntry[]): RepositoryRulesetFile[] {
+function readRepositoryRulesets(entries: ZipEntry[]): RepositoryRulesetFile[] {
   const rulesetEntries = entries.filter((entry) => {
     const parts = normalizeArchivePath(entry.entryName).split("/");
     // Direct children of `<top>/rulesets/` only: a deeper path is the author's own working material,
@@ -227,8 +227,8 @@ function readRepositoryRulesets(entries: AdmZip.IZipEntry[]): RepositoryRulesetF
         // archive says about itself. The archive as a whole is already bounded, so one oversized file
         // is that file's problem and not the repository's.
         const tooLarge = { file, text: null, issue: `The file is over the ${RULESET_MAX_BYTES}-byte limit` };
-        if (entry.header.size > RULESET_MAX_BYTES) return tooLarge;
-        const data = entry.getData();
+        if (entry.size > RULESET_MAX_BYTES) return tooLarge;
+        const data = entry.read(RULESET_MAX_BYTES);
         if (data.byteLength > RULESET_MAX_BYTES) return tooLarge;
         try {
           return { file, text: utf8Decoder.decode(data) };
@@ -247,7 +247,7 @@ function readRepositoryRulesets(entries: AdmZip.IZipEntry[]): RepositoryRulesetF
  *  refused so the user is told rather than shown an empty preview. Pure, so the regression covers it
  *  without reaching the network. */
 export function parseCustomAgentRepositoryContents(archive: Buffer): CustomAgentRepositoryContents {
-  const zip = new AdmZip(archive);
+  const zip = openZipArchive(archive);
   const entries = validatePackageArchiveEntries(zip, MAX_EXPANDED_BYTES);
   const definitions = readAgentDefinitions(entries);
   const rulesets = readRepositoryRulesets(entries);

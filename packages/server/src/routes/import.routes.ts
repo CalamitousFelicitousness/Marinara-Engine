@@ -15,6 +15,7 @@ import {
   inspectSTCharacter,
   inspectCharX,
   getExistingCharacterTagKeys,
+  IMPORT_BODY_LIMIT_BYTES,
   type STCharacterImportPreview,
   type STCharacterTagImportMode,
 } from "../services/import/st-character.importer.js";
@@ -30,11 +31,11 @@ import { getImportAllowedRoots } from "../config/runtime-config.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { assertInsideDir, safeCompareString, tokenForPath } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
+import { openZipArchive, type ZipArchive } from "../lib/zip-reader.js";
 import { parseJsonBytes } from "../utils/large-json.js";
 
 const PICK_FOLDER_TIMEOUT_MS = 60_000; // 60s — prevents infinite hang on headless servers
 const FOLDER_TOKEN_TTL_MS = 15 * 60_000;
-const IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES = 1024 * 1024 * 1024;
 const MAX_BATCH_IMPORT_FILES = 128;
 const NATIVE_PACKAGE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
@@ -750,10 +751,9 @@ export async function importRoutes(app: FastifyInstance) {
       }
       return importEnvelope(envelope);
     }
-    const AdmZip = (await import("adm-zip")).default;
-    let zip: InstanceType<typeof AdmZip>;
+    let zip: ZipArchive;
     try {
-      zip = new AdmZip(buffer);
+      zip = openZipArchive(buffer);
     } catch {
       return reply.status(400).send({ success: false, error: "Could not read .marinara package" });
     }
@@ -768,7 +768,7 @@ export async function importRoutes(app: FastifyInstance) {
     let totalUncompressedBytes = 0;
     for (const entry of entries) {
       if (entry.isDirectory) continue;
-      const size = entry.header.size;
+      const size = entry.size;
       if (!Number.isSafeInteger(size) || size < 0 || size > NATIVE_PACKAGE_ENTRY_LIMIT_BYTES) {
         return reply.status(413).send({ success: false, error: ".marinara package entry is too large" });
       }
@@ -783,7 +783,8 @@ export async function importRoutes(app: FastifyInstance) {
     }
     let envelope: Record<string, unknown>;
     try {
-      envelope = JSON.parse(dataEntry.getData().toString("utf-8")) as Record<string, unknown>;
+      const dataJson = dataEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES).toString("utf-8");
+      envelope = JSON.parse(dataJson) as Record<string, unknown>;
     } catch {
       return reply.status(400).send({ success: false, error: "data.json is not valid JSON" });
     }
@@ -800,7 +801,7 @@ export async function importRoutes(app: FastifyInstance) {
               : ext === "avif"
                 ? "image/avif"
                 : "image/png";
-      const dataUrl = `data:${mime};base64,${avatarEntry.getData().toString("base64")}`;
+      const dataUrl = `data:${mime};base64,${avatarEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES).toString("base64")}`;
       (envelope.data as Record<string, unknown>).avatar = dataUrl;
     }
     return importEnvelope(envelope);

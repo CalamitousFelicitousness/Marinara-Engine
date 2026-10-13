@@ -100,10 +100,10 @@ Avatars react on their own; there is nothing to set up for this part.
 - The face goes back to calm only after two calm sentences in a row.
 - About four seconds after the reply ends, the face relaxes back to calm.
 
-**How the mood is read.** Your chat connection is not asked, and your chat text never leaves your computer.
+**How the mood is read.** Your chat connection is not asked. Your chat text stays with your own Marinara Engine and is never sent to an outside service.
 
 - A built-in word list answers at once, everywhere, and knows common mood words in several languages.
-- Where your computer can run it, a small emotion model on your computer, the mood reader, reads the sentences instead and understands 36 languages. It downloads once, about 300 MB, the first time you open a Roleplay chat with 2D Avatars or 3D Avatars turned on. It does not download while both agents are off. Each avatar agent's page in **Agents** shows the download's progress, and a failed download tries again by itself about 10 minutes later. The word list answers until the mood reader is ready, and after the download it works offline. It uses about 1 GB of memory while in use and unloads after 10 idle minutes. Lite installs, Android and computers with less than 3 GB of memory keep the word list.
+- Where the computer running Marinara Engine can run it, a small emotion model there, the mood reader, reads the sentences instead and understands 36 languages. It downloads once, about 300 MB, the first time you open a Roleplay chat with 2D Avatars or 3D Avatars turned on. It does not download while both agents are off. Each avatar agent's page in **Agents** shows the download's progress, and a failed download tries again by itself about 10 minutes later. The word list answers until the mood reader is ready, and after the download it works offline. It uses about 1 GB of memory while in use and unloads after 10 idle minutes. Lite installs, Android and computers with less than 3 GB of memory keep the word list.
 
 **Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it. A character's inner thoughts change the face but not the mouth.
 

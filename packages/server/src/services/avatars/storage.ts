@@ -19,6 +19,7 @@ import {
   AVATAR_CONFIG_FILENAME,
   AVATAR_KINDS,
   AVATAR_OWNER_TYPES,
+  DEFAULT_AVATAR_FEATURE_FLAGS,
   avatarConfigSchema,
   avatarOwnerRefSchema,
   createAvatarConfig,
@@ -26,6 +27,7 @@ import {
   type AvatarConfig,
   type AvatarExtractedFile,
   type AvatarExtractedImport,
+  type AvatarFeatureFlags,
   type AvatarFilePath,
   type AvatarImportResult,
   type AvatarKind,
@@ -385,7 +387,16 @@ export async function removeAvatarKind(owner: AvatarOwnerRef, kind: AvatarKind):
     const kinds = { ...current?.kinds };
     delete kinds[kind];
     const remaining = AVATAR_KINDS.filter((candidate) => kinds[candidate] !== undefined);
-    if (current && remaining.length === 0) {
+    // The folder goes with the last kind unless avatar.json still holds a choice: expression sprites are
+    // a PNGTuber avatar without one, so an avatar turned off (or with a switch changed) must stay that way.
+    if (
+      current &&
+      remaining.length === 0 &&
+      current.enabled &&
+      Object.entries(DEFAULT_AVATAR_FEATURE_FLAGS).every(
+        ([key, value]) => current.features[key as keyof AvatarFeatureFlags] === value,
+      )
+    ) {
       await rm(ownerDir, { recursive: true, force: true });
       return null;
     }
@@ -397,7 +408,7 @@ export async function removeAvatarKind(owner: AvatarOwnerRef, kind: AvatarKind):
         {
           ...current,
           kinds,
-          activeKind: current.activeKind && kinds[current.activeKind] ? current.activeKind : remaining[0]!,
+          activeKind: current.activeKind && kinds[current.activeKind] ? current.activeKind : (remaining[0] ?? null),
           updatedAt: new Date().toISOString(),
         },
         current,

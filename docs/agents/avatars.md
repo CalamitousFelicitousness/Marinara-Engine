@@ -22,15 +22,14 @@ The agents send no extra requests to your AI connections while you chat. They ne
 
 Avatars are set up on each agent's own page. Open **Agents**, open **2D Avatars** or **3D Avatars**, and use the **Avatars** section near the top.
 
-1. In **Character or persona**, choose who gets the avatar. Names marked "(has an avatar)" already have one.
+1. In **Character or persona**, choose who gets the avatar. Names marked "(has an avatar)" already have one saved.
 2. In **Avatar type**, choose the kind to set up. 2D Avatars offers **PNGTuber sprites** and **Mesh avatar**. 3D Avatars offers **VRM model**.
-3. Set it up:
-   - **Use my sprites** builds a PNGTuber avatar from the character's expression sprites. Full-body sprites are left out. Running it again adds new sprites and keeps the faces you chose.
-   - **Import a PNGTuber Plus file**, **Import a mesh avatar** and **Import a VRM model** read a file from your device. **Add an idle animation** attaches a `.vrma` animation to a VRM model.
-4. Check **Faces**. Each feeling (and, for models, each mouth shape and the blink) shows the face it uses and where that came from: **Found** when the import or your sprite names matched it, **Your choice** after you change it, and **Missing** when nothing fits. A missing feeling shows the calm face.
-5. Use **Preview** to see it. **Try a face** switches feelings and **Talk** moves the mouth. Before anything is set up, the preview shows an example avatar.
+3. Set it up in that type's own section below the switches: use your sprites or import a file, choose the face for each feeling, or remove it. See [2D avatars](#2d-avatars-pngtuber-sprites-and-mesh-avatars) and [3D avatars](#3d-avatars-vrm-models).
+4. Use **Preview** to see it. **Try a face** switches feelings and **Talk** moves the mouth. When there is nothing to show yet, the preview shows an example avatar.
 
-**Show this avatar in chats** turns the avatar on or off without deleting it. **Movement** has three switches: **Lip sync** moves the mouth, **Blinking** blinks every few seconds, and **Idle motion** breathes and sways while waiting. If a character has more than one avatar type, **Show this one** picks the type chats use. When that type's agent is off in a chat, the chat shows another type whose agent is on. **Remove** deletes one avatar type and its files; your sprites stay.
+A character or persona with expression sprites already has a PNGTuber avatar on the 2D Avatars page, so chats with 2D Avatars on show it with nothing saved.
+
+**Show this avatar in chats** turns the avatar on or off without deleting it. **Movement** has three switches that apply to every type: **Lip sync** moves the mouth, **Blinking** blinks every few seconds, and **Idle motion** breathes and sways while waiting. If a character has more than one avatar type, **Show this one** picks the type chats use. When that type's agent is off in a chat, the chat shows another type whose agent is on. Removing a type deletes its files; your sprites stay, and an avatar you turned off stays off.
 
 An avatar shows in a Roleplay, Visual Novel or Game chat when the chat has agents on and the matching agent added. It works with or without the Expression Engine. The avatar does not hide the full-body sprite, so turn that off yourself if the avatar replaces it. Avatars stand where the full-body sprite would and share its size. To move them, use the sprites' **Arrange** mode in the Expression Engine's sprite settings.
 

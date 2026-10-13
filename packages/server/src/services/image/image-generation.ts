@@ -515,7 +515,13 @@ export function stageImageToDisk(chatId: string, base64: string, ext: string): S
 
 // ── Provider Implementations ──
 
-const MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
+const DEFAULT_MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
+const configuredMaxImageResponseBytes = Number(process.env.IMAGE_GEN_MAX_RESPONSE_BYTES);
+// A blank, zero, or malformed value must not disable the cap.
+const MAX_IMAGE_RESPONSE_BYTES =
+  Number.isFinite(configuredMaxImageResponseBytes) && configuredMaxImageResponseBytes > 0
+    ? configuredMaxImageResponseBytes
+    : DEFAULT_MAX_IMAGE_RESPONSE_BYTES;
 const SWARMUI_MAX_TRACKED_IMAGES = 16;
 const LOCAL_IMAGE_BACKENDS = new Set(["comfyui", "swarmui", "automatic1111"]);
 const NANOGPT_REFERENCE_IMAGE_LIMIT = 3;
@@ -653,6 +659,14 @@ function imageFetch(url: string | URL, init?: RequestInit, options: ImageFetchOp
     keepAliveInitialDelayMs: options.keepAliveInitialDelayMs,
     maxResponseBytes: MAX_IMAGE_RESPONSE_BYTES,
     decodeCompressedResponse: true,
+  }).catch((err: unknown) => {
+    // No `cause`: route error formatters append cause.message and would print the limit twice.
+    if (err instanceof Error && err.message.startsWith("Outbound response exceeded")) {
+      throw new Error(
+        `${err.message}. Raise IMAGE_GEN_MAX_RESPONSE_BYTES in .env and restart Marinara to accept larger images.`,
+      );
+    }
+    throw err;
   });
 }
 

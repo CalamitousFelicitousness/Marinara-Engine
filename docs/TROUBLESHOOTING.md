@@ -267,6 +267,7 @@ Game Mode Storyboards turn a completed GM narration into keyframe images and opt
 - Keyframe images need an image connection. Clips also need a video connection.
 - If a custom prompt works better with all characters combined, turn off **Use NovelAI Character Prompts**.
 - Slow providers can hit a timeout. Raise `IMAGE_GEN_TIMEOUT_MS` or `VIDEO_GEN_TIMEOUT_MS` in `.env`, then restart Marinara. The server only reads these values at startup.
+- An image provider response larger than 30 MiB fails with `Outbound response exceeded 31457280 bytes`. Local ComfyUI output files that embed the workflow and reference images as metadata can reach this size. Raise `IMAGE_GEN_MAX_RESPONSE_BYTES` in `.env` and restart Marinara, or turn off metadata in ComfyUI.
 
 See the [Storyboard Agent Guide](game/storyboard.md) for both workflows and [Game Mode: Getting Started](game/getting-started.md) for Game setup.
 

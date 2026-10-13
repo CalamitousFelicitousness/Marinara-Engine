@@ -100,16 +100,16 @@ Avatars react on their own; there is nothing to set up for this part.
 - The face goes back to calm only after two calm sentences in a row.
 - About four seconds after the reply ends, the face relaxes back to calm.
 
-**How the mood is read.** No AI model or chat connection is asked, and your chat text is not sent anywhere else.
+**How the mood is read.** Your chat connection is not asked, and your chat text never leaves your computer.
 
 - A built-in word list answers at once, everywhere, and knows common mood words in several languages.
-- Where your computer can run it, a small emotion model on your computer, the mood reader, reads the sentences instead and understands 36 languages. It downloads once (about 300 MB) when you first open a Roleplay chat with 2D Avatars or 3D Avatars turned on, and never while neither agent is on. Each avatar agent's page in **Agents** shows the download's progress, and a failed download tries again by itself about 10 minutes later. The word list answers until the mood reader is ready, and after the download it works offline. It uses about 1 GB of memory while in use and unloads after 10 idle minutes. Lite installs, Android and computers with less than 3 GB of memory keep the word list.
+- Where your computer can run it, a small emotion model on your computer, the mood reader, reads the sentences instead and understands 36 languages. It downloads once, about 300 MB, the first time you open a Roleplay chat with 2D Avatars or 3D Avatars turned on. It does not download while both agents are off. Each avatar agent's page in **Agents** shows the download's progress, and a failed download tries again by itself about 10 minutes later. The word list answers until the mood reader is ready, and after the download it works offline. It uses about 1 GB of memory while in use and unloads after 10 idle minutes. Lite installs, Android and computers with less than 3 GB of memory keep the word list.
 
 **Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it. A character's inner thoughts change the face but not the mouth.
 
 **The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. A pick that arrives after you sent your next message stays with the reply it was for. Avatars work without it too.
 
-**Mouths.** The mouth moves only for dialogue (words in quotes, `[Name]:` lines and speaker tags), never for narration, at about the pace of speech. If the text appears faster than anyone could say it, the mouth speeds up and then skips ahead so it stays with the words on screen. With streaming off, a reply's dialogue is spoken within eight seconds. When text-to-speech plays a line, the voice moves the mouth instead.
+**Mouths.** From the text, the mouth moves only for dialogue (words in quotes, `[Name]:` lines and speaker tags), not for narration, at about the pace of speech. If the text appears faster than anyone could say it, the mouth speeds up and then skips ahead so it stays with the words on screen. With streaming off, a reply's dialogue is spoken within eight seconds. When text-to-speech plays a line, the voice moves the mouth instead, so a character's narration read in their voice moves their mouth too.
 
 **Body.** An avatar thinks from the moment you send until its first words, talks while its mouth moves, listens while someone else talks or while you type, and rests otherwise.
 

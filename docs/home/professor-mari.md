@@ -95,6 +95,14 @@ If you have no connections yet, the dropdown shows **Add a connection** instead.
 
 For a full walkthrough, see the connection guide linked at the end.
 
+## Trying the Pi runtime (experimental)
+
+Professor Mari can work in two ways. **Classic** is the default. **Pi** is a trial that lets her think more before she acts and work through longer tasks.
+
+To switch, open **Search and Professor Mari settings** and change **Runtime**, below **Permissions mode**. The change applies from her next answer. Your permissions mode, change cards and Undo work the same in both.
+
+Pi needs a connection whose model supports tool calls. On the local model and on some other connections, Professor Mari keeps using Classic, and the setting tells you so. If Professor Mari behaves oddly on Pi, switch back to Classic.
+
 ## Attaching files
 
 Click the paperclip button, labeled **Attach files**, to add a file to your message.

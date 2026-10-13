@@ -2,7 +2,7 @@
 // Game: reading one catalog of a registered ruleset
 // ──────────────────────────────────────────────
 // A catalog's entries sit inline in `ruleset.json` or in a hash-pinned `catalogs/<id>.json` asset
-// beside it: a package's installed file, or, for a ruleset imported from a package zip (RM), the file
+// beside it: a package's installed file, or, for a ruleset imported from a package file (RM), the file
 // kept with it in the store, under `local/<its id>`. Two callers need them: the route the sheet editor's picker reads, and the turn that
 // resolves a `use` command. Opening and reading are separate steps on purpose, so the route can
 // answer a browser that already holds the file before the megabyte is read and checked.
@@ -41,8 +41,8 @@ export async function openRulesetCatalog(
 ): Promise<OpenedRulesetCatalog> {
   if (catalog.entries) return { kind: "inline", entries: catalog.entries };
   if (!catalog.asset) return { kind: "unusable", issues: ["(root): this catalog holds no entries"] };
-  // A package ships its catalog files; of the imported rulesets, only one from a package zip has them,
-  // and the zip import always files it under `local/` (the JSON and repository imports refuse them).
+  // A package ships its catalog files; of the imported rulesets, only one from a package file has them,
+  // and the package import always files it under `local/` (the JSON and repository imports refuse them).
   const source = packageId
     ? await capabilityPackageManager.rulesetCatalogAsset(packageId, catalog.id)
     : await storedCatalog(definition, catalog.id);
@@ -76,7 +76,7 @@ export async function openRulesetCatalog(
   };
 }
 
-/** A zip-imported ruleset's catalog file, from the store, in the shape a package's asset comes in. */
+/** A package-imported ruleset's catalog file, from the store, in the shape a package's asset comes in. */
 async function storedCatalog(
   definition: RulesetDefinition,
   catalogId: string,

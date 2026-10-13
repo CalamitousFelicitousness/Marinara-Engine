@@ -628,7 +628,7 @@ The path is always `catalogs/<the catalog's id>.json`. The file itself looks lik
 { "schemaVersion": 1, "catalog": "knacks", "entries": [] }
 ```
 
-Separate catalog files come in a package: one published through the official catalog, or a ruleset package zip you import yourself (see [Sharing your ruleset](#sharing-your-ruleset)). The package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27, and a catalog of items needs 1.49. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 256 KB limit on the whole ruleset file. That is room for a few hundred short entries.
+Separate catalog files come in a package: one published through the official catalog, or a ruleset package file you import yourself (see [Sharing your ruleset](#sharing-your-ruleset)). The package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27, and a catalog of items needs 1.49. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 256 KB limit on the whole ruleset file. That is room for a few hundred short entries.
 
 The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and 1 MB for one catalog file.
 
@@ -2627,7 +2627,7 @@ its own file) are a later addition. Today a layer ships inside the ruleset it be
 Community rulesets use the same switch as imported agents. Open **Settings** > **Advanced** > **Danger Zone** and make sure **Allow custom Agent imports** is on. Importing also needs localhost access or configured **Admin Access**.
 
 1. Open the **Agents** panel and choose the **Import agents** button (the download icon in the row of buttons at the top of the panel).
-2. Pick **Game Mode ruleset** and choose your JSON file, or a ruleset package zip (see [Sharing your ruleset](#sharing-your-ruleset)).
+2. Pick **Game Mode ruleset** and choose your JSON file, or a ruleset package file ending in `.ruleset.json` (see [Sharing your ruleset](#sharing-your-ruleset)).
 3. Read the review. It shows the name, version, license, what the ruleset covers, and the Game Master text. Choose **Import**.
 
 Your ruleset appears in the panel's **Rules** section and in the setup wizard's **Rules** choice for new games. A ruleset imported from a file is filed as `local/<your id>`, so it can never be confused with an official ruleset or with somebody else's.
@@ -2683,7 +2683,21 @@ Adding things needs nothing more. When a new layout moves a value somewhere else
 
 **As a file.** Send the JSON file to a friend. They import it the same way you did.
 
-**As a package zip.** A ruleset too big for one file, with catalogs in their own files, travels as a zip holding exactly a `manifest.json`, the `ruleset.json` and its `catalogs/<id>.json` files. A ruleset editor such as Pixelforge makes one. **Import agents** → **Game Mode ruleset** takes the zip and shows the same review as for a file, with each catalog and its number of entries. The zip is read as data and never installed as a package: it is refused, with the reason, if it holds anything else (any other file, a folder that holds something, a link, an encrypted file), if its manifest is more than a ruleset's (any code, permissions or other contributions), if a file is not the one the manifest lists, if a `$comment` is longer than 2,000 characters or `$schema` names anything but the Engine's own schema, or if the ruleset or a catalog does not read. It is filed as `local/<its id>` like a file, at most 8 MB, with at most 12 catalog files of 1 MB each. A version is its ruleset and its catalogs together, so a changed catalog needs a higher `version` too.
+**As a package file.** A ruleset too big for one file, with catalogs in their own files, travels as one plain JSON file named `<name>.ruleset.json`. It holds the package manifest and the ruleset's documents, each as its exact bytes in base64:
+
+```json
+{
+  "format": "marinara-ruleset",
+  "version": 1,
+  "manifest": { "kind": ["ruleset"], "…": "the package manifest" },
+  "files": {
+    "ruleset.json": "<base64>",
+    "catalogs/spells.json": "<base64>"
+  }
+}
+```
+
+The manifest lists `ruleset.json` and each `catalogs/<id>.json` in `contributions.assets.paths` and in `files`, with each one's size and sha256. A ruleset editor such as Pixelforge makes one. **Import agents** → **Game Mode ruleset** takes the file and shows the same review as for a ruleset file, with each catalog and its number of entries. Nothing in it is compressed, so it never holds more than its own size. It is read as data and never installed as a package: it is refused, with the reason, if it holds anything else (another key, any other file, a document that is not strict base64 or not UTF-8 text), if its manifest is more than a ruleset's (any code, permissions or other contributions), if a file is not the one the manifest lists, if a `$comment` is longer than 2,000 characters or `$schema` names anything but the Engine's own schema, or if the ruleset or a catalog does not read. It is filed as `local/<its id>` like a ruleset file, at most 24 MB, with at most 12 catalog files of 1 MB each. A version is its ruleset and its catalogs together, so a changed catalog needs a higher `version` too. Ruleset packages are not accepted as zips.
 
 **From a GitHub repository.** If you keep your work in a public GitHub repository, put each ruleset in a `rulesets` folder at the top of the repository, one file per ruleset:
 

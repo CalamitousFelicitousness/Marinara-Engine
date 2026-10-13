@@ -67,21 +67,67 @@ export function meshAvatarMouth(
   return { mode: "voice", level: Math.max(0, Math.min(1, frame.mouthOpen)) };
 }
 
+/** How open mesh-avatar 0.1.1 holds the eyes for each emotion tag (the eyeOpen of the preset setEmotion picks:
+ *  happyTalk, angryTalk, sadTalk, relaxedTalk, surprisedTalk). An eyelid override replaces the runtime's own
+ *  eyes, emotion included, so overrides start from these. */
+export const MESH_AVATAR_EMOTION_EYE_OPEN: Readonly<Record<AvatarEmotion, number>> = {
+  neutral: 1,
+  happy: 0.8,
+  angry: 0.72,
+  sad: 0.78,
+  relaxed: 0.82,
+  surprised: 1.18,
+};
+
+/** Eases the eyes toward an emotion's openness at the runtime's own expression rate (9 per second), so an
+ *  override follows a face change as smoothly as the brows do. */
+export function easeMeshAvatarEyes(current: number, emotion: AvatarEmotion, seconds: number): number {
+  const target = MESH_AVATAR_EMOTION_EYE_OPEN[emotion];
+  return current + (target - current) * (1 - Math.exp(-Math.max(0, seconds) * 9));
+}
+
 /** Parameter overrides (setParameters) for one frame: the head held still for reduced motion or with idle
- *  motion off, eyelids when the director drives the blink or blinking is off, and the gaze. */
+ *  motion off, eyelids when the director drives the blink or blinking is off, and the gaze. `eyeOpen` is the
+ *  face's own eye openness (easeMeshAvatarEyes), which the eyelids keep. */
 export function meshAvatarOverrides(
   frame: Pick<AvatarFrameInput, "blink" | "lookAt">,
-  options: { still: boolean; blink: boolean },
+  options: { still: boolean; blink: boolean; eyeOpen: number },
 ): Record<string, number> {
   const overrides: Record<string, number> = {};
   if (options.still) {
     Object.assign(overrides, { angleX: 0, angleY: 0, angleZ: 0, bodyAngleX: 0, bodyAngleZ: 0, breath: 0 });
   }
-  const eyesOpen = !options.blink ? 1 : frame.blink !== undefined ? 1 - Math.max(0, Math.min(1, frame.blink)) : null;
-  if (eyesOpen !== null) Object.assign(overrides, { eyeLOpen: eyesOpen, eyeROpen: eyesOpen });
+  const shut = !options.blink ? 0 : frame.blink !== undefined ? Math.max(0, Math.min(1, frame.blink)) : null;
+  if (shut !== null) {
+    const eyesOpen = Math.round(options.eyeOpen * (1 - shut) * 1000) / 1000;
+    Object.assign(overrides, { eyeLOpen: eyesOpen, eyeROpen: eyesOpen });
+  }
   if (frame.lookAt) {
     overrides.gazeX = Math.max(-1, Math.min(1, frame.lookAt.x));
     overrides.gazeY = Math.max(-1, Math.min(1, frame.lookAt.y));
   }
   return overrides;
+}
+
+interface Size {
+  width: number;
+  height: number;
+}
+
+/** Where a drawing made at `drawn` pixels goes on a `target` canvas so the avatar looks as if drawn at the
+ *  target's own size. mesh-avatar 0.1.1 (Renderer.resize, fit "contain") scales the picture plus the rig's
+ *  margins to fit, centred and standing on the bottom edge, so one scale and a bottom-centre anchor map one
+ *  size onto the other. The rectangle may overhang the target; drawImage clips it. */
+export function meshAvatarCopyRect(
+  rig: { image: Size; view: { padTop: number; padSide: number } },
+  drawn: Size,
+  target: Size,
+): { x: number; y: number; width: number; height: number } {
+  const boxWidth = rig.image.width * (1 + 2 * rig.view.padSide);
+  const boxHeight = rig.image.height * (1 + rig.view.padTop);
+  const fit = (size: Size) => Math.min(size.width / boxWidth, size.height / boxHeight);
+  const scale = fit(target) / fit(drawn);
+  const width = drawn.width * scale;
+  const height = drawn.height * scale;
+  return { x: (target.width - width) / 2, y: target.height - height, width, height };
 }

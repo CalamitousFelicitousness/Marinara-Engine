@@ -144,9 +144,11 @@ export function pickPngtuberPicture(set: PngtuberLayerSet, mouthOpen: boolean, e
   return set.base;
 }
 
-/** Mouth open or shut for one frame, with hysteresis so a level hovering at the edge does not flicker. */
+/** Mouth open or shut for one frame, with hysteresis so a level hovering at the edge does not flicker. Vowels
+ *  open it and consonants close it: the director's speech clock holds consonants at 0.2 and vowels at 0.5 or
+ *  more, and text-to-speech levels are scaled so the loud parts of a clip reach 1. */
 export function nextPngtuberMouthOpen(wasOpen: boolean, mouthOpen: number): boolean {
-  return wasOpen ? mouthOpen > 0.15 : mouthOpen > 0.3;
+  return wasOpen ? mouthOpen >= 0.3 : mouthOpen > 0.42;
 }
 
 export interface PngtuberBlinkClock {

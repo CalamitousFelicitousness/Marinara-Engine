@@ -47,6 +47,7 @@ export function createAvatarRenderer(): AvatarRenderer {
   let paused = false;
   let dirty = true;
   let lastDrawn = "";
+  let lastFrame: AvatarFrameInput | null = null;
 
   let timeMs = 0;
   let mouthOpen = false;
@@ -206,6 +207,7 @@ export function createAvatarRenderer(): AvatarRenderer {
       if (features?.blink && frame.blink === undefined) {
         advancePngtuberBlink(blink, step, (data.motion ?? PNGTUBER_DEFAULT_MOTION).blinkIntervalSeconds, Math.random);
       }
+      lastFrame = frame;
       draw(frame);
     },
 
@@ -214,9 +216,12 @@ export function createAvatarRenderer(): AvatarRenderer {
       const canvas = options.canvas;
       const pixelWidth = Math.max(1, Math.round(width * devicePixelRatio));
       const pixelHeight = Math.max(1, Math.round(height * devicePixelRatio));
-      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
-      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      if (canvas.width === pixelWidth && canvas.height === pixelHeight) return;
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
       dirty = true;
+      // Resizing clears the canvas, and the stage's next frame may be a while off (or paused): draw it now.
+      if (lastFrame) draw(lastFrame);
     },
 
     setPaused(value) {

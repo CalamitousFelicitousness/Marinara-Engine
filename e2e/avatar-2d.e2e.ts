@@ -1,7 +1,9 @@
 // The 2D avatar renderers and setup panels in a real browser, before the base lane mounts them in chats:
 // the PNGTuber renderer swaps talk, blink and face pictures, crossfades and hops; mesh avatars draw through
-// one shared WebGL2 context and fall back to the owner's sprites; the setup panels save what the user picks.
+// one shared WebGL2 context, load under the server's Content-Security-Policy, reuse their pictures, and fall
+// back to the owner's sprites; both redraw when resized; the setup panels save what the user picks.
 import { expect, test, type Page } from "@playwright/test";
+import { securityHeadersHook } from "../packages/server/src/middleware/security-headers.js";
 import { meshAvatarFiles, paintPng, solid, zipFiles } from "../scripts/regressions/fixtures/avatar-2d-fixtures.js";
 import { seedUIState } from "./ui-state-fixture.js";
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
@@ -46,16 +48,94 @@ async function openApp(page: Page) {
 }
 
 interface PageAvatar {
-  renderers: { update(frame: unknown, dtMs: number): void; resize(w: number, h: number, dpr: number): void }[];
+  renderers: {
+    update(frame: unknown, dtMs: number): void;
+    resize(w: number, h: number, dpr: number): void;
+    setPaused(paused: boolean): void;
+    dispose(): void;
+  }[];
   canvases: HTMLCanvasElement[];
+}
+interface MeshProbe {
+  /** Canvases that asked for WebGL2. */
+  glCanvases: Set<HTMLCanvasElement>;
+  /** Width or height changes on those canvases (each one reallocates the drawing buffer). */
+  reallocations: number;
+  /** `new Image()` calls, which is how mesh-avatar loads every picture. */
+  images: number;
+  violations: string[];
 }
 declare global {
   interface Window {
     __avatar2d?: PageAvatar;
+    __meshProbe?: MeshProbe;
   }
 }
 
-/** Mounts renderers of one kind on fresh canvases (100 x 200 CSS px, ratio 1) and keeps them on window. */
+/** Watches WebGL2 canvases, their reallocations, picture loads and CSP violations from the first script on. */
+async function probeMeshAvatars(page: Page) {
+  await page.addInitScript(() => {
+    const probe: MeshProbe = { glCanvases: new Set(), reallocations: 0, images: 0, violations: [] };
+    window.__meshProbe = probe;
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+      if (type === "webgl2") probe.glCanvases.add(this);
+      return (getContext as (...args: unknown[]) => RenderingContext | null).call(this, type, ...rest);
+    } as typeof getContext;
+    for (const side of ["width", "height"] as const) {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, side)!;
+      Object.defineProperty(HTMLCanvasElement.prototype, side, {
+        ...descriptor,
+        set(this: HTMLCanvasElement, value: number) {
+          if (probe.glCanvases.has(this) && value !== descriptor.get!.call(this)) probe.reallocations += 1;
+          descriptor.set!.call(this, value);
+        },
+      });
+    }
+    window.Image = new Proxy(window.Image, {
+      construct(target, args) {
+        probe.images += 1;
+        return Reflect.construct(target, args);
+      },
+    });
+    document.addEventListener("securitypolicyviolation", (event) =>
+      probe.violations.push(`${event.violatedDirective} ${event.blockedURI}`),
+    );
+  });
+}
+
+/** Serves the app page with the server's own connect-src and img-src (the directives the mesh renderer meets).
+ *  Vite's dev page needs inline scripts the production build does not, so the other directives stay off. */
+async function serveWithServerCsp(page: Page) {
+  let policy = "";
+  securityHeadersHook(
+    {} as never,
+    {
+      header: (name: string, value: string) => {
+        if (name === "Content-Security-Policy") policy = value;
+      },
+    } as never,
+    () => {},
+  );
+  const directives = policy
+    .split(";")
+    .map((directive) => directive.trim())
+    .filter((directive) => /^(?:connect|img)-src\s/u.test(directive));
+  expect(directives, "the server sets both directives").toHaveLength(2);
+  await page.route(
+    (url) => url.pathname === "/",
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        headers: { ...response.headers(), "content-security-policy": directives.join("; ") },
+      });
+    },
+  );
+}
+
+/** Mounts renderers of one kind on fresh canvases (100 x 200 CSS px unless `sizes` says, ratio 1) and keeps
+ *  them on window. */
 async function mountRenderers(
   page: Page,
   module: string,
@@ -63,9 +143,10 @@ async function mountRenderers(
   kinds: unknown,
   count = 1,
   reducedMotion = false,
+  sizes: [number, number][] = [],
 ) {
   await page.evaluate(
-    async ({ module, ownerId, kinds, count, reducedMotion, features }) => {
+    async ({ module, ownerId, kinds, count, reducedMotion, features, sizes }) => {
       const { createAvatarRenderer } = (await import(module)) as {
         createAvatarRenderer: () => PageAvatar["renderers"][number] & { mount(options: unknown): Promise<void> };
       };
@@ -79,9 +160,11 @@ async function mountRenderers(
         kinds,
         updatedAt: "2026-10-13T12:00:00.000Z",
       };
+      const sizeOf = (index: number) => sizes[index] ?? [100, 200];
       const canvases = Array.from({ length: count }, (_, index) => {
         const canvas = document.createElement("canvas");
-        canvas.style.cssText = `position:fixed;top:0;left:${index * 110}px;width:100px;height:200px;z-index:99999`;
+        const [width, height] = sizeOf(index);
+        canvas.style.cssText = `position:fixed;top:0;left:${index * 130}px;width:${width}px;height:${height}px;z-index:99999`;
         document.body.append(canvas);
         return canvas;
       });
@@ -98,22 +181,23 @@ async function mountRenderers(
           }),
         ),
       );
-      for (const renderer of renderers) renderer.resize(100, 200, 1);
+      renderers.forEach((renderer, index) => renderer.resize(...sizeOf(index), 1));
       window.__avatar2d = { renderers, canvases };
     },
-    { module, ownerId, kinds, count, reducedMotion, features: FEATURES },
+    { module, ownerId, kinds, count, reducedMotion, features: FEATURES, sizes },
   );
 }
 
 const quiet = { emotion: "neutral", emotionWeight: 1, viseme: null, mouthOpen: 0, state: "idle" };
 const talking = { ...quiet, mouthOpen: 1, state: "talking" };
 
-/** Runs one frame on every renderer and reads each canvas: the centre colour and the top of the picture. */
+/** Runs one frame on every renderer (none when `frame` is null) and reads each canvas: the centre colour, the
+ *  top of the picture and how many pixels are painted. */
 async function step(page: Page, frame: unknown, dtMs: number) {
   return page.evaluate(
     ({ frame, dtMs }) => {
       const avatar = window.__avatar2d!;
-      for (const renderer of avatar.renderers) renderer.update(frame, dtMs);
+      if (frame) for (const renderer of avatar.renderers) renderer.update(frame, dtMs);
       return avatar.canvases.map((canvas) => {
         const context = canvas.getContext("2d")!;
         const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
@@ -202,54 +286,128 @@ test("PNGTuber avatars do not hop with reduced motion", async ({ page }) => {
   expect(near(frames.at(-1)!.centre, GREEN), "the mouth still moves").toBe(true);
 });
 
-test("mesh avatars share one WebGL2 context and fall back to sprites", async ({ page }) => {
-  // Count the canvases that ask for WebGL2.
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    const glCanvases = new Set<HTMLCanvasElement>();
-    (window as unknown as { __glCanvases: Set<HTMLCanvasElement> }).__glCanvases = glCanvases;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (type === "webgl2") glCanvases.add(this);
-      return (original as (...args: unknown[]) => RenderingContext | null).call(this, type, ...rest);
-    } as typeof original;
-  });
+/** Serves a mesh avatar file for an owner. */
+async function routeMeshAvatar(page: Page, ownerId: string) {
   const archive = zipFiles(await meshAvatarFiles({ sprites: true }));
-  await page.route("**/api/avatar-models/character/e2e-mesh/files/mesh-avatar/avatar-e2e.mavatar", (route) =>
+  await page.route(`**/api/avatar-models/character/${ownerId}/files/mesh-avatar/avatar-e2e.mavatar`, (route) =>
     route.fulfill({ contentType: "application/octet-stream", body: archive }),
   );
-  await routeSprites(page, "e2e-mesh", { neutral: GRAY });
-  await openApp(page);
+  return { "mesh-avatar": { file: "mesh-avatar/avatar-e2e.mavatar", expressionMap: {}, source: "import" } };
+}
+
+/** Loads the mesh renderer and says whether this browser has WebGL2 (the probe's own canvas is forgotten). */
+async function loadMeshRenderer(page: Page) {
   await loadModule(page, MESH_RENDERER);
-  const webgl2 = await page.evaluate(() => {
-    const probe = document.createElement("canvas").getContext("webgl2");
+  return page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    const probe = canvas.getContext("webgl2");
     probe?.getExtension("WEBGL_lose_context")?.loseContext();
-    (window as unknown as { __glCanvases: Set<HTMLCanvasElement> }).__glCanvases.clear();
+    window.__meshProbe!.glCanvases.delete(canvas);
     return !!probe;
   });
-  test.skip(!webgl2, "This browser build has no WebGL2; the fallback test below still covers it.");
+}
 
-  const kinds = {
-    "mesh-avatar": { file: "mesh-avatar/avatar-e2e.mavatar", expressionMap: {}, source: "import" },
-  };
+const NO_WEBGL2 = "This browser build has no WebGL2; the fallback test covers it.";
+
+test("mesh avatars share one WebGL2 context and fall back to sprites", async ({ page }) => {
+  await probeMeshAvatars(page);
+  const kinds = await routeMeshAvatar(page, "e2e-mesh");
+  await routeSprites(page, "e2e-mesh", { neutral: GRAY });
+  await openApp(page);
+  test.skip(!(await loadMeshRenderer(page)), NO_WEBGL2);
+
   await mountRenderers(page, MESH_RENDERER, "e2e-mesh", kinds, 2);
   const talkingHappy = { ...talking, emotion: "happy", viseme: "aa" };
   await expect
     .poll(async () => (await step(page, talkingHappy, 33)).map((canvas) => canvas.painted > 1000))
     .toEqual([true, true]);
-  expect(await page.evaluate(() => (window as unknown as { __glCanvases: Set<unknown> }).__glCanvases.size)).toBe(1);
+  expect(await page.evaluate(() => window.__meshProbe!.glCanvases.size)).toBe(1);
   // The face is drawn in its skin colour (240, 200, 170), shaded by the runtime.
   const [first] = await step(page, quiet, 33);
   expect(first!.centre[3], "the face is opaque in the middle").toBeGreaterThan(200);
 
   // A lost context turns every mesh avatar into its owner's sprites.
   await page.evaluate(() => {
-    for (const canvas of (window as unknown as { __glCanvases: Set<HTMLCanvasElement> }).__glCanvases) {
+    for (const canvas of window.__meshProbe!.glCanvases) {
       canvas.getContext("webgl2")?.getExtension("WEBGL_lose_context")?.loseContext();
     }
   });
   await expect
     .poll(async () => (await step(page, quiet, 16)).map((canvas) => near(canvas.centre, GRAY)))
     .toEqual([true, true]);
+});
+
+test("mesh avatars load under the server's CSP and reuse their pictures when mounted again", async ({ page }) => {
+  await probeMeshAvatars(page);
+  const kinds = await routeMeshAvatar(page, "e2e-csp");
+  // No sprites: a fallback would paint nothing, so a painted canvas is the mesh avatar itself.
+  await routeSprites(page, "e2e-csp", {});
+  await serveWithServerCsp(page);
+  await openApp(page);
+  test.skip(!(await loadMeshRenderer(page)), NO_WEBGL2);
+
+  const painted = async () => (await step(page, quiet, 33))[0]!.painted > 1000;
+  await mountRenderers(page, MESH_RENDERER, "e2e-csp", kinds);
+  await expect.poll(painted).toBe(true);
+  const firstMount = await page.evaluate(() => window.__meshProbe!.images);
+  expect(firstMount, "the avatar's pictures load as images").toBeGreaterThan(5);
+
+  // Chat switches and setup edits mount the same file again: no picture is loaded (or kept) a second time.
+  for (let round = 0; round < 3; round += 1) {
+    await page.evaluate(() => window.__avatar2d!.renderers.forEach((renderer) => renderer.dispose()));
+    await mountRenderers(page, MESH_RENDERER, "e2e-csp", kinds);
+    await expect.poll(painted).toBe(true);
+  }
+  expect(await page.evaluate(() => window.__meshProbe!.images), "later mounts reuse the pictures").toBe(firstMount);
+  expect(await page.evaluate(() => window.__meshProbe!.violations)).toEqual([]);
+});
+
+test("mesh avatars of different sizes never reallocate the shared canvas and redraw when resized", async ({ page }) => {
+  await probeMeshAvatars(page);
+  const kinds = await routeMeshAvatar(page, "e2e-sizes");
+  await routeSprites(page, "e2e-sizes", {});
+  await openApp(page);
+  test.skip(!(await loadMeshRenderer(page)), NO_WEBGL2);
+
+  await mountRenderers(page, MESH_RENDERER, "e2e-sizes", kinds, 2, false, [
+    [100, 200],
+    [120, 240],
+  ]);
+  await expect
+    .poll(async () => (await step(page, quiet, 33)).map((canvas) => canvas.painted > 1000))
+    .toEqual([true, true]);
+  const before = await page.evaluate(() => window.__meshProbe!.reallocations);
+  const frames = [];
+  for (let index = 0; index < 30; index += 1) frames.push(await step(page, talking, 33));
+  expect(await page.evaluate(() => window.__meshProbe!.reallocations), "drawing in turn reallocates nothing").toBe(
+    before,
+  );
+  // The smaller avatar is the larger one scaled down: the same share of its canvas is painted.
+  const [small, large] = frames.at(-1)!;
+  expect(Math.abs(small!.painted / (100 * 200) - large!.painted / (120 * 240))).toBeLessThan(0.02);
+
+  // Resizing clears a canvas; it is drawn again at once, even while paused.
+  await page.evaluate(() => {
+    for (const renderer of window.__avatar2d!.renderers) {
+      renderer.setPaused(true);
+      renderer.resize(110, 220, 1);
+    }
+  });
+  expect((await step(page, null, 0)).map((canvas) => canvas.painted > 1000)).toEqual([true, true]);
+});
+
+test("PNGTuber avatars redraw at once when resized while paused", async ({ page }) => {
+  await routeSprites(page, "e2e-resize", { neutral: GRAY });
+  await openApp(page);
+  await mountRenderers(page, PNGTUBER_RENDERER, "e2e-resize", {});
+  await expect.poll(async () => near((await step(page, quiet, 16))[0]?.centre, GRAY)).toBe(true);
+  await page.evaluate(() => {
+    const [renderer] = window.__avatar2d!.renderers;
+    renderer!.setPaused(true);
+    renderer!.resize(110, 220, 1);
+  });
+  const [resized] = await step(page, null, 0);
+  expect(near(resized!.centre, GRAY), "the face is back without another frame").toBe(true);
 });
 
 test("mesh avatars show the owner's sprites without WebGL2", async ({ page }) => {

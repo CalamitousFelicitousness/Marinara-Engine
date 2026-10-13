@@ -3,9 +3,11 @@
  *   - an owner's expression sprites become a PNGTuber setup with no setup step: one face per sprite, with
  *     `_talk` and `_blink` sprites as its mouth-open and eyes-closed pictures, portraits before full-body;
  *   - a frame picks the exact sprite label first, then the emotion's face, then the resting face;
- *   - the mouth opens with hysteresis, blinks come every 3 to 6 seconds, and a hop lasts one short arc;
+ *   - the mouth opens on vowels and closes on consonants (it flaps with the syllables of streamed text),
+ *     blinks come every 3 to 6 seconds, and a hop lasts one short arc;
  *   - a mesh avatar frame turns into the runtime's emotion tag or live expression, a held vowel or a voice
- *     level, and parameter overrides for reduced motion, director blinks and gaze;
+ *     level, and parameter overrides for reduced motion, director blinks and gaze that keep each feeling's
+ *     eye shape; a drawing at the shared canvas's size maps onto each avatar's own canvas;
  *   - every 2D setup label the panels look up exists in the English catalog.
  */
 import assert from "node:assert/strict";
@@ -97,10 +99,53 @@ assert.equal(layers.pickPngtuberPicture(data.layers.sad!, true, true), data.laye
 assert.equal(layers.pickPngtuberPicture(data.layers.sad!, false, true), data.layers.sad!.base, "no blink picture");
 
 // ── Mouth, blink, hop ──
-assert.equal(layers.nextPngtuberMouthOpen(false, 0.25), false);
-assert.equal(layers.nextPngtuberMouthOpen(false, 0.35), true);
-assert.equal(layers.nextPngtuberMouthOpen(true, 0.2), true, "stays open until the level really drops");
-assert.equal(layers.nextPngtuberMouthOpen(true, 0.1), false);
+assert.equal(layers.nextPngtuberMouthOpen(false, 0.35), false, "a consonant-sized level does not open the mouth");
+assert.equal(layers.nextPngtuberMouthOpen(false, 0.5), true, "a vowel opens it");
+assert.equal(layers.nextPngtuberMouthOpen(true, 0.32), true, "stays open until the level really drops");
+assert.equal(layers.nextPngtuberMouthOpen(true, 0.2), false, "a consonant closes it");
+
+// Text lip sync: per character, vowels open 0.5-1, other letters 0.2, labials 0 and a word gap 0.1, each for
+// 1/14 s, eased with a 50 ms attack and an 80 ms release (the director lane's speech clock). The talk picture
+// has to flap with the syllables, not hang open for whole sentences.
+{
+  const sentence = "Well, I really think we should go to the market before it closes tonight.";
+  const unitMs = 1000 / 14;
+  const target = (char: string) =>
+    /[aeiouy]/iu.test(char)
+      ? (({ a: 1, o: 0.8, e: 0.65, u: 0.55 } as Record<string, number>)[char.toLowerCase()] ?? 0.5)
+      : /[mbp]/iu.test(char)
+        ? 0
+        : /\p{L}/u.test(char)
+          ? 0.2
+          : char === " "
+            ? 0.1
+            : 0;
+  const frameMs = 1000 / 30;
+  let level = 0;
+  let open = false;
+  let openFrames = 0;
+  let flaps = 0;
+  let run = 0;
+  let longestOpenMs = 0;
+  const frames = Math.round((sentence.length * unitMs) / frameMs);
+  for (let index = 0; index < frames; index += 1) {
+    const goal = target(sentence[Math.min(sentence.length - 1, Math.floor((index * frameMs) / unitMs))]!);
+    level += (goal - level) * (1 - Math.exp(-frameMs / (goal > level ? 50 : 80)));
+    const next = layers.nextPngtuberMouthOpen(open, level);
+    if (next && !open) flaps += 1;
+    open = next;
+    openFrames += open ? 1 : 0;
+    run = open ? run + frameMs : 0;
+    longestOpenMs = Math.max(longestOpenMs, run);
+  }
+  const seconds = (frames * frameMs) / 1000;
+  assert.ok(flaps / seconds >= 1.5, `the mouth flaps with the syllables (${(flaps / seconds).toFixed(2)} per second)`);
+  assert.ok(
+    openFrames / frames <= 0.7,
+    `and is not open most of the time (${((openFrames / frames) * 100).toFixed(0)}%)`,
+  );
+  assert.ok(longestOpenMs <= 800, `and never hangs open for long (${longestOpenMs.toFixed(0)} ms)`);
+}
 
 const clock = { waitMs: layers.pngtuberBlinkWaitMs(4.5, () => 0), closedMs: 0 };
 assert.equal(clock.waitMs, 3000, "the shortest wait is two thirds of the average");
@@ -166,14 +211,12 @@ assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.6 }, true
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.02 }, true), { mode: "hold", vowel: "n" });
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: null, mouthOpen: 1.4 }, true), { mode: "voice", level: 1 });
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: "aa", mouthOpen: 1 }, false), { mode: "off" });
-assert.deepEqual(face.meshAvatarOverrides({}, { still: false, blink: true }), {}, "nothing to override");
-assert.deepEqual(face.meshAvatarOverrides({ blink: 0.75, lookAt: { x: 2, y: -0.5 } }, { still: false, blink: true }), {
-  eyeLOpen: 0.25,
-  eyeROpen: 0.25,
-  gazeX: 1,
-  gazeY: -0.5,
-});
-assert.deepEqual(face.meshAvatarOverrides({}, { still: true, blink: false }), {
+assert.deepEqual(face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1 }), {}, "nothing to override");
+assert.deepEqual(
+  face.meshAvatarOverrides({ blink: 0.75, lookAt: { x: 2, y: -0.5 } }, { still: false, blink: true, eyeOpen: 1 }),
+  { eyeLOpen: 0.25, eyeROpen: 0.25, gazeX: 1, gazeY: -0.5 },
+);
+assert.deepEqual(face.meshAvatarOverrides({}, { still: true, blink: false, eyeOpen: 1 }), {
   angleX: 0,
   angleY: 0,
   angleZ: 0,
@@ -183,6 +226,51 @@ assert.deepEqual(face.meshAvatarOverrides({}, { still: true, blink: false }), {
   eyeLOpen: 1,
   eyeROpen: 1,
 });
+// With blinking off (or a director blink), the eyelid override keeps each feeling's own eye shape, the
+// openness mesh-avatar 0.1.1's emotion presets hold: wide for surprised, narrowed for the others.
+for (const [emotion, eyes] of Object.entries({ happy: 0.8, angry: 0.72, sad: 0.78, relaxed: 0.82, surprised: 1.18 })) {
+  let eyeOpen = 1;
+  for (let index = 0; index < 60; index += 1) eyeOpen = face.easeMeshAvatarEyes(eyeOpen, emotion as never, 1 / 30);
+  assert.deepEqual(
+    face.meshAvatarOverrides({}, { still: false, blink: false, eyeOpen }),
+    { eyeLOpen: eyes, eyeROpen: eyes },
+    `${emotion} keeps its eyes with blinking off`,
+  );
+}
+assert.ok(face.easeMeshAvatarEyes(1, "surprised", 1 / 30) < 1.18, "the eyes ease toward a new face");
+assert.deepEqual(face.meshAvatarOverrides({ blink: 0.5 }, { still: false, blink: true, eyeOpen: 0.8 }), {
+  eyeLOpen: 0.4,
+  eyeROpen: 0.4,
+});
+
+// Every mesh avatar draws at the shared canvas's size and is scaled onto its own canvas as if drawn there:
+// mesh-avatar fits the picture plus margins, centred and standing on the bottom edge.
+const rig = { image: { width: 100, height: 200 }, view: { padTop: 0.1, padSide: 0.05 } };
+assert.deepEqual(face.meshAvatarCopyRect(rig, { width: 200, height: 400 }, { width: 200, height: 400 }), {
+  x: 0,
+  y: 0,
+  width: 200,
+  height: 400,
+});
+assert.deepEqual(
+  face.meshAvatarCopyRect(rig, { width: 240, height: 480 }, { width: 120, height: 240 }),
+  { x: 0, y: 0, width: 120, height: 240 },
+  "the same shape scales straight down",
+);
+{
+  // A wider slot than the shared canvas: the avatar keeps the height it would have, centred, on the ground.
+  const drawn = { width: 200, height: 400 };
+  const target = { width: 300, height: 300 };
+  const box = (size: { width: number; height: number }) =>
+    Math.min(size.width / (100 * 1.1), size.height / (200 * 1.1));
+  const rect = face.meshAvatarCopyRect(rig, drawn, target);
+  const scale = box(target) / box(drawn);
+  assert.equal(rect.width, drawn.width * scale);
+  assert.equal(rect.y + rect.height, target.height, "standing on the bottom edge");
+  assert.equal(rect.x * 2 + rect.width, target.width, "centred");
+  // The picture's height inside the slot is what the runtime would draw at the slot's own size.
+  assert.equal(Math.round(200 * box(drawn) * scale * 1000), Math.round(200 * box(target) * 1000));
+}
 
 // ── Every 2D setup label exists in English ──
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");

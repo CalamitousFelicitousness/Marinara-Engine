@@ -480,7 +480,7 @@ try {
       });
     assert.notEqual(
       issue(
-        261,
+        265,
         only(() => {}),
       ),
       gate,
@@ -521,7 +521,7 @@ try {
     }
     assert.equal(
       issue(
-        261,
+        265,
         only(() => {}),
         new Map([["extra.json", { mechanics: { needsAny: true } }]]),
       ),

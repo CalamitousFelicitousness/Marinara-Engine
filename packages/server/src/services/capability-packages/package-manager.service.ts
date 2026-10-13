@@ -4148,7 +4148,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Ways of moving besides walking, 1.112: new keys on the strict creature and the strict economy.
   if (
-    !declaresApi(108) &&
+    !declaresApi(112) &&
     (carriesMoveModes || plainRecord(plainRecord(ruleset?.combat)?.economy)?.movementModes !== undefined)
   ) {
     return "A ruleset whose combatants fly, swim, climb or burrow requires schemaVersion 2 and capabilityApi 1.112 or newer";
@@ -4461,7 +4461,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Senses added to the holder's own, pushes, lines and cones carried and turned, 1.181.
   if (
-    !declaresApi(177) &&
+    !declaresApi(181) &&
     (carriesPushAndTurn(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
@@ -5361,7 +5361,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Creature kinds read further, 1.184.
   if (
-    !declaresApi(180) &&
+    !declaresApi(184) &&
     (carriesCreatureKinds(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureKinds(document)))
   ) {
@@ -5369,7 +5369,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Creature actions that push, item uses with a line's width, 1.183.
   if (
-    !declaresApi(179) &&
+    !declaresApi(183) &&
     (carriesCreaturePush(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreaturePush(document)))
   ) {
@@ -5377,7 +5377,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Zones that go off later or burn away, 1.182.
   if (
-    !declaresApi(178) &&
+    !declaresApi(182) &&
     (carriesDetonations(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesDetonations(document)))
   ) {

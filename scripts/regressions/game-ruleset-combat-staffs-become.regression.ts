@@ -318,7 +318,7 @@ try {
     );
     assert.equal(
       issue(
-        267,
+        271,
         document((doc) => (striking(doc).charges.breaksOn.becomes = "gear/broom")),
       ),
       'The item "gear/striking" cannot become "gear/broom": it is no other item of this ruleset',

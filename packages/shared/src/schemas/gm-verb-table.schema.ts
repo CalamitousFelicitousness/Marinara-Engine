@@ -249,6 +249,7 @@ export const ENGINE_OWNED_METADATA_KEY_PREFIXES = Object.freeze([
   "translate",
   "translation",
   "week",
+  "window",
 ] as const);
 
 /** The package id as it appears at the head of a metadata key: `hierarchical-maps` →

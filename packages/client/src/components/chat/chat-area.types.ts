@@ -1,4 +1,4 @@
-import type { Message, AvatarCrop } from "@marinara-engine/shared";
+import type { Message, AvatarCrop, ReplyCheckupFinding, ReplyCheckupLink } from "@marinara-engine/shared";
 
 export type CharacterMap = Map<
   string,
@@ -48,6 +48,8 @@ export type PersonaInfo = {
 
 export type PeekPromptData = {
   chatId?: string;
+  /** The character whose reply is inspected in a one-by-one group chat. */
+  characterId?: string;
   messages: Array<{ role: string; content: string }>;
   /** Decision statements with no answer for this turn, which read as no in the preview. */
   decisions?: { unanswered: string[]; dropped?: string[]; decisionModelSet: boolean };
@@ -75,6 +77,8 @@ export type PeekPromptData = {
     finishReason?: string | null;
   } | null;
   agentNote?: string;
+  /** R2: the checkup of the reply this prompt produced, shown in the Peek header. */
+  checkup?: { findings: ReplyCheckupFinding[]; onLink: (link: ReplyCheckupLink) => void };
 };
 
 export type MessageWithSwipes = Message & {

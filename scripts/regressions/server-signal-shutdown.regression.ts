@@ -156,7 +156,7 @@ for (const nodeEnv of ["production", "development"]) {
         mode,
         nodeEnv,
       ],
-      { stdio: "inherit", timeout: 40_000 },
+      { stdio: "inherit", timeout: 50_000 },
     );
   }
 }

@@ -14,11 +14,15 @@ import {
   takeTypewriterCharacters,
 } from "../../packages/client/src/lib/generation-stream-policy.js";
 import { reconcilePersistedMessages } from "../../packages/client/src/lib/message-cache-reconciliation.js";
-import { resolveMessageRewriteVersions } from "../../packages/client/src/lib/message-rewrite-versions.js";
+import {
+  applyMessageTextRewrite,
+  resolveMessageRewriteVersions,
+} from "../../packages/client/src/lib/message-rewrite-versions.js";
 import { resolveMessageReasoningDisplay } from "../../packages/client/src/lib/message-reasoning.js";
 import { shouldFormatTextareaQuotes } from "../../packages/client/src/lib/textarea-quotes.js";
 import {
   findLatestTTSAutoplayMessage,
+  findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
 } from "../../packages/client/src/lib/tts-autoplay.js";
@@ -436,7 +440,7 @@ const chatStoreSource = readSourceText(
   "utf8",
 );
 const summaryPopoverSource = readSourceText(
-  new URL("../../packages/client/src/components/chat/SummaryPopover.tsx", import.meta.url),
+  new URL("../../packages/client/src/components/chat/ChatSummaryPanel.tsx", import.meta.url),
   "utf8",
 );
 const professorMariHomeSource = readSourceText(
@@ -455,16 +459,26 @@ const reducedAmbientEffectsHookSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-reduced-ambient-effects.ts", import.meta.url),
   "utf8",
 );
+// Slice 82: the send loop and the settle helper moved into components/chat/mari/.
+const professorMariRunSource = readSourceText(
+  new URL("../../packages/client/src/components/chat/mari/use-mari-workspace-run.ts", import.meta.url),
+  "utf8",
+);
+const professorMariHelpersSource = readSourceText(
+  new URL("../../packages/client/src/components/chat/mari/mari-chat-helpers.tsx", import.meta.url),
+  "utf8",
+);
 const professorMariTokenBranch =
-  professorMariHomeSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
+  professorMariRunSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
 const roleplayTrackerSettingsBranch =
   chatSettingsDrawerSource.match(
     /activeInCat\.map\(\(agent\) => \{[\s\S]*?\{\/\* Available agents to add \*\//u,
   )?.[0] ?? "";
 assert.match(professorMariHomeSource, /rafThrottle<void>\(appendPendingWorkspaceText\)/u);
+assert.ok(professorMariTokenBranch, "the token branch must exist for the check below");
 assert.doesNotMatch(professorMariTokenBranch, /setWorkspaceTimeline/u);
 assert.match(professorMariHomeSource, /void refreshAfterWorkspaceRun\(chat\.id, runId\)/u);
-assert.match(professorMariHomeSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
+assert.match(professorMariHelpersSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
 assert.doesNotMatch(personalExtensionsHookSource, /refetchInterval/u);
 assert.match(chatSettingsDrawerSource, /active && agent\.id !== "illustrator"[\s\S]*?<AgentPromptTemplateSelect/u);
 assert.match(
@@ -526,22 +540,20 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(pageActivitySource, /document\.hasFocus|addEventListener\(\s*["'](?:blur|focus)["']/u);
 assert.match(pageActivitySource, /document\.visibilityState === "visible"/u);
-const activeContextLinksButtonSource =
-  chatRoleplaySurfaceSource.match(/function ActiveContextLinksButton[\s\S]*?\nfunction SummaryButton/u)?.[0] ?? "";
-assert.match(
+const activeContextLinksPanelSource =
+  chatRoleplaySurfaceSource.match(/function ActiveContextLinksPanel[\s\S]*?\nfunction RoleplaySummaryPanel/u)?.[0] ??
+  "";
+assert.match(activeContextLinksPanelSource, /data-component="RoleplayActiveContextPanel"/u);
+// Both are drawers in the Chat Settings window now, so they render inline instead of portaling over the chat.
+assert.doesNotMatch(
   summaryPopoverSource,
-  /className="fixed z-\[9999\]"[\s\S]*?return createPortal\(content, document\.body\)/u,
-  "the Roleplay Chat Summary panel should portal above independent floating-panel stacking contexts",
-);
-assert.match(
-  activeContextLinksButtonSource,
-  /desktopAnchor &&[\s\S]*?createPortal\([\s\S]*?data-component="RoleplayActiveContextPanel"[\s\S]*?fixed z-\[9999\][\s\S]*?document\.body/u,
-  "the desktop Roleplay Active Context panel should portal above independent floating-panel stacking contexts",
+  /createPortal|fixed z-\[9999\]/u,
+  "the Roleplay Chat Summary drawer should render inline in Chat Settings",
 );
 assert.doesNotMatch(
-  activeContextLinksButtonSource,
-  /absolute right-0 top-full/u,
-  "the desktop Roleplay Active Context panel must not remain trapped in the toolbar stacking context",
+  activeContextLinksPanelSource,
+  /createPortal|fixed z-\[9999\]/u,
+  "the Roleplay Active Context drawer should render inline in Chat Settings",
 );
 const spatialTransitionEventSource =
   useGenerateSource.match(/case "spatial_transition_committed": \{[\s\S]*?case "token":/u)?.[0] ?? "";
@@ -682,23 +694,18 @@ assert.match(
 );
 assert.match(
   echoChamberPanelSource,
-  /if \(activeChatId\) setEchoChamberSizeForChat\(activeChatId, nextSize\);/u,
-  "Echo Chamber should persist a completed resize against the active chat",
+  /<FloatingWindow\s+id=\{ECHO_WINDOW_ID\}/u,
+  "Echo Chamber should reuse the shared window's drag and resize behavior",
 );
 assert.match(
   echoChamberPanelSource,
-  /onPointerCancel=\{handleResizeCancel\}/u,
-  "a canceled Echo Chamber resize should use its rollback path",
+  /useFloatingWindowStore\(\(s\) => s\.layouts\[ECHO_WINDOW_ID\]\)/u,
+  "Echo Chamber should read the shared per-chat layout before falling back to legacy dimensions",
 );
 assert.match(
   echoChamberPanelSource,
-  /onLostPointerCapture=\{handleResizeLostCapture\}/u,
-  "Echo Chamber should still commit a finished drag when the browser drops pointer capture",
-);
-assert.doesNotMatch(
-  echoChamberPanelSource,
-  /onPointerCancel=\{handleResizeEnd\}/u,
-  "pointer cancellation must not persist an incomplete Echo Chamber resize",
+  /const minimized = savedLayout\?\.minimized \?\? !echoChamberOpen/u,
+  "a saved Echo Chamber close should take precedence over the old global open preference",
 );
 assert.match(
   uiStoreSource,
@@ -962,6 +969,82 @@ assert.match(
   /addEventListener\(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady\)/u,
   "TTS autoplay must listen for finalized text without waiting for the full agent stream to close",
 );
+// #7481: a reply split at scene breaks is read part by part, and a held rewrite keeps the live reply empty.
+assert.match(
+  generateHookSource,
+  /const splitPartsBefore = \(id: string\) =>\s*\(splitPartIdsBefore\.get\(id\) \?\? \[\]\)\.flatMap\(\(partId\) => persistedMessages\.get\(partId\) \?\? \[\]\)/u,
+  "split parts must resolve to their latest saved rows",
+);
+assert.match(
+  generateHookSource,
+  /case "assistant_message_ready": \{[\s\S]{0,500}earlierMessages: splitPartsBefore\(message\.id\) \}/u,
+  "the ready event must carry the earlier parts of a split reply",
+);
+assert.match(
+  chatAreaSource,
+  /Promise\.all\(\s*\[\.\.\.earlierMessages, lastMsg\]\.map\([\s\S]{0,1200}ttsService\.speakSequence\(\s*parts\.flatMap/u,
+  "autoplay must read a split reply's earlier parts before its last part, as one sequence",
+);
+assert.match(
+  generateRouteSource,
+  /type: "message_saved",\s*data: heldForRewrite\(savedPart \?\? part\.message\),\s*remainingContent: holdForTextRewrite\s*\?\s*""/u,
+  "while a rewrite agent holds the reply, an earlier part must show the placeholder and not type out the unrewritten rest",
+);
+// Every part of a split reply is rewritten (#7481): each rewrite names its part, and an earlier part's rewrite
+// updates that part's row instead of the live reply, which only the last part holds.
+assert.match(
+  generateHookSource,
+  /case "text_rewrite": \{[\s\S]{0,1200}const splitPart =\s*rw\.messageId && isSplitPart\(rw\.messageId\) \? persistedMessages\.get\(rw\.messageId\) : undefined;\s*if \(splitPart\) \{\s*const rewrittenPart = applyMessageTextRewrite\(splitPart, rewrittenText, rewriteOriginalText\);\s*persistedMessages\.set\(rewrittenPart\.id, rewrittenPart\);[\s\S]{0,200}upsertPersistedMessages\(qc, params\.chatId, \[rewrittenPart\]\);\s*break;\s*\}\s*\/\/ Post-processing rewrites the complete stored message/u,
+  "an earlier part's rewrite must update its own row before anything touches the live reply",
+);
+assert.match(
+  generateHookSource,
+  /if \(\s*remainingContent === null &&\s*savedMessage\.role === "assistant" &&\s*pendingPostProcessing &&/u,
+  "a held earlier part must keep its own row instead of becoming the held live reply",
+);
+{
+  const held = {
+    id: "part",
+    content: "Prose Guardian is working!",
+    extra: JSON.stringify({ postProcessingPending: { agentType: "prose-guardian" }, continuesAfterSceneBreak: true }),
+  };
+  const rewritten = applyMessageTextRewrite(held, "***\n\nREWRITTEN", "***\n\nORIGINAL");
+  const rewrittenExtra = rewritten.extra as Record<string, unknown>;
+  assert.equal(rewritten.content, "***\n\nREWRITTEN");
+  assert.equal(rewrittenExtra.postProcessingPending, undefined, "the placeholder is gone");
+  assert.equal(rewrittenExtra.continuesAfterSceneBreak, true, "the part stays an earlier part");
+  assert.deepEqual(
+    resolveMessageRewriteVersions(rewritten.content, rewrittenExtra, false).alternateText,
+    "***\n\nORIGINAL",
+    "a built-in rewrite of a part can be toggled back to the part as written",
+  );
+  const released = applyMessageTextRewrite(rewritten, "***\n\nORIGINAL", null);
+  assert.equal((released.extra as Record<string, unknown>).proseGuardianOriginalText, undefined);
+}
+{
+  const part = (id: string, characterId: string, extra: unknown) => ({
+    id,
+    role: "assistant",
+    content: id,
+    characterId,
+    extra,
+  });
+  const history = [
+    part("other", "cyno", { continuesAfterSceneBreak: true }),
+    part("first", "mari", { continuesAfterSceneBreak: true }),
+    part("second", "mari", JSON.stringify({ continuesAfterSceneBreak: true })),
+    part("last", "mari", {}),
+  ];
+  assert.deepEqual(
+    findSplitReplyEarlierParts(history, history[3]!).map((message) => message.id),
+    ["first", "second"],
+    "stream-end autoplay must find a split reply's earlier parts from the saved rows",
+  );
+  assert.match(
+    chatAreaSource,
+    /speakTTSAutoplayMessage\(lastMsg, activeChatId, generation, findSplitReplyEarlierParts\(msgs, lastMsg\)\)/u,
+  );
+}
 const galleryCreateIndex = generateRouteSource.indexOf("const galleryEntry = await galleryStore.create");
 const illustrationMessageLookupIndex = generateRouteSource.indexOf(
   "const msgRow = await chats.getMessage(messageId)",
@@ -1111,8 +1194,8 @@ assert.match(
 );
 assert.match(
   firefoxSupportsSource,
-  /(?:^|\})\s*\[data-chat-mode="roleplay"\] \.marinara-chat-input-shell\s*\{[^{}]*background:\s*linear-gradient\(var\(--card\), var\(--card\)\),\s*var\(--background\) !important;[^{}]*\}/u,
-  "Firefox should use an opaque Roleplay composer surface after disabling backdrop blur",
+  /(?:^|\})\s*\[data-chat-mode="roleplay"\] \.marinara-chat-input-shell\s*\{[^{}]*--mari-chat-existing-bg:\s*linear-gradient\(var\(--card\), var\(--card\)\),\s*var\(--background\);[^{}]*background:\s*var\(--mari-chat-surface-paint,\s*var\(--mari-chat-existing-bg\)\) !important;[^{}]*\}/u,
+  "Firefox should retain the opaque Roleplay composer fallback while allowing the selected chat surface paint",
 );
 assert.doesNotMatch(
   chatInputSource,

@@ -13,6 +13,7 @@ import {
   type InstalledCapabilityPackage,
   parseAgentSettingsRecord,
   type PackagedAchievementDefinition,
+  type SceneOriginProvider,
 } from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
@@ -27,6 +28,7 @@ import {
 import { registerCapabilityService } from "./capability-service-registry.service.js";
 import { assertCapabilityAgentRuntimeServiceRegistration } from "./capability-agent-runtime.service.js";
 import { assertCapabilityMariActionsServiceRegistration } from "./capability-mari-actions.service.js";
+import { createCapabilityDecisionHost } from "./capability-decision.service.js";
 import { createCapabilityIntegrationHost } from "./capability-integrations.service.js";
 import { createCapabilityLanguageModelHost } from "./capability-language-model.service.js";
 import { linkCapabilityNativeDependencies } from "./capability-native-dependencies.service.js";
@@ -48,6 +50,7 @@ import {
   type CapabilityPromptContextContributor,
 } from "./capability-prompt-context.service.js";
 import { registerCapabilityTool, type CapabilityToolRegistration } from "./capability-tool-registry.service.js";
+import { registerCapabilitySceneOrigin } from "./capability-scene-origin.service.js";
 import { failInjectFastDuring } from "../../lib/fastify-inject-gate.js";
 
 /**
@@ -80,6 +83,8 @@ type CapabilityActivationContext = {
     /** Contribute badges to the Home achievements panel, shown under this package's own section.
      *  Requires the `achievements` permission. */
     registerAchievements(achievements: readonly PackagedAchievementDefinition[]): Cleanup;
+    /** Let this package's threads be the origin of a roleplay scene. Requires the `scenes` permission. */
+    registerSceneOrigin(provider: SceneOriginProvider): Cleanup;
     registerPrivilegedRoutes(
       routes: import("fastify").FastifyPluginAsync,
       options: { prefix: string },
@@ -114,7 +119,7 @@ async function createCapabilityRuntimeHost(
     isDebugAgentsEnabled,
     json: Object.freeze({ parseJsonish: parseGameJsonish }),
     languageModels: createCapabilityLanguageModelHost(app.db),
-    integrations: createCapabilityIntegrationHost(permissions),
+    integrations: createCapabilityIntegrationHost(permissions, app.db),
     logger: Object.freeze({
       debug: (message: string, ...args: CapabilityRuntimeLogArgument[]) =>
         Reflect.apply(logger.debug, logger, [message, ...args]),
@@ -128,6 +133,7 @@ async function createCapabilityRuntimeHost(
         logDebugOverride(overrideEnabled, message, ...args),
     }),
     achievements: createCapabilityAchievementHost(app.db, packageId, permissions),
+    decisions: createCapabilityDecisionHost(app.db),
     persistence: createCapabilityPersistenceHost(app.db, permissions),
     resources: createCapabilityResourceHost(app.db),
   });
@@ -310,6 +316,14 @@ class CapabilityModuleRuntime {
             const release = registerCapabilityTool(installed.id, registration);
             toolCleanups.push(release);
             return trackCleanup(release);
+          },
+          registerSceneOrigin: (provider) => {
+            if (!installed.manifest.permissions?.includes("scenes")) {
+              throw new Error(
+                `Capability package ${installed.id} must declare the "scenes" permission to be a scene origin`,
+              );
+            }
+            return trackCleanup(registerCapabilitySceneOrigin(installed.id, provider));
           },
           registerAchievements: (achievements) => {
             if (!installed.manifest.permissions?.includes("achievements")) {

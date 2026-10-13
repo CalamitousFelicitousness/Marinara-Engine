@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
   findImageStyleProfile,
   LOCAL_SIDECAR_CONNECTION_ID,
+  readImageAppearanceOverride,
   resolveGameSetupArtStylePrompt,
   VIDEO_GENERATION_SETTINGS_KEY,
   normalizeVideoGenerationUserSettings,
@@ -44,6 +45,7 @@ import { loadImageGenerationUserSettings } from "../services/image/image-generat
 import {
   compileImagePrompt,
   formatImageStylePromptGuidance,
+  removeCopiedPromptGuidance,
   resolveImageStyleGuidanceText,
 } from "../services/image/image-prompt-compiler.js";
 import {
@@ -359,17 +361,28 @@ function readStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
 }
 
-function getCharacterAppearance(data: Record<string, unknown>): string {
+/**
+ * The card's appearance text and its Image Appearance Override, kept apart (#7243).
+ *
+ * #7053 folded the override into the appearance, which left the prompt-builder with
+ * the override alone — an unexplained token for a ComfyUI LoRA user — and no visual
+ * context, so it discarded the token and invented a look.
+ */
+function getCharacterAppearance(data: Record<string, unknown>): {
+  appearance: string;
+  imageAppearance: string;
+} {
   const extensions = parseJsonRecord(data.extensions);
-  const appearance =
+  const appearance = (
     typeof extensions.appearance === "string"
       ? extensions.appearance
       : typeof data.appearance === "string"
         ? data.appearance
         : typeof data.description === "string"
           ? data.description
-          : "";
-  return appearance.trim();
+          : ""
+  ).trim();
+  return { appearance, imageAppearance: readImageAppearanceOverride(extensions, null) ?? "" };
 }
 
 function titleCaseSlug(value: string): string {
@@ -1251,7 +1264,12 @@ export async function galleryRoutes(app: FastifyInstance) {
 
     const characterData = parseJsonRecord(character.data);
     const characterName = readTrimmedString(characterData.name) ?? "character";
-    const appearance = getCharacterAppearance(characterData);
+    const { appearance, imageAppearance } = getCharacterAppearance(characterData);
+    // Same inputs the character-sent selfie passes (conversation-selfie-command-runtime.ts),
+    // so `/selfie` and the gallery button get the personality and image-instruction blocks too.
+    const personality = readTrimmedString(characterData.personality) ?? "";
+    const characterImageInstructions =
+      readTrimmedString(parseJsonRecord(characterData.extensions).conversationImageInstructions) ?? "";
     const selfiePromptTemplate = readTrimmedString(meta.selfiePrompt) ?? "";
     const selfieTags = readStringArray(meta.selfieTags);
     const selfiePositivePrompt = readTrimmedString(meta.selfiePositivePrompt) ?? selfieTags.join(", ").trim();
@@ -1276,7 +1294,10 @@ export async function galleryRoutes(app: FastifyInstance) {
       promptOverridesStorage,
       chatPromptTemplate: selfiePromptTemplate,
       appearance,
+      imageAppearance,
       charName: characterName,
+      characterImageInstructions,
+      personality,
     });
     const selfieSystemPrompt = styleGuidance
       ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`
@@ -1327,7 +1348,12 @@ export async function galleryRoutes(app: FastifyInstance) {
             anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
           },
         );
-        imagePrompt = (promptResult.content ?? "").trim();
+        // A sentence of the guidance the writer copied word for word is not image-model text (#7357).
+        imagePrompt = removeCopiedPromptGuidance((promptResult.content ?? "").trim(), [
+          styleGuidance,
+          imageConn.imagePromptInstructions,
+          characterImageInstructions,
+        ]);
       } catch (err) {
         logger.warn(err, "[gallery/selfie] Failed to build selfie image prompt for chat %s", chatId);
         const message = err instanceof Error ? err.message : "Failed to build selfie prompt";
@@ -1363,6 +1389,10 @@ export async function galleryRoutes(app: FastifyInstance) {
             name: characterName,
             avatarPath: character.avatarPath ?? null,
             appearance,
+            // #7053: `appearance` above is already the override when one is
+            // enabled, but pass it explicitly so the reference resolver's own
+            // precedence cannot fall back to the raw card text.
+            appearanceOverride: readImageAppearanceOverride(parseJsonRecord(characterData.extensions), null),
           },
         ],
         persona: null,

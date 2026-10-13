@@ -32,6 +32,8 @@ interface HelpTooltipProps {
   /** Increment to programmatically open the tooltip (e.g. on a mobile tap where there's
    *  no hover). Opens it pinned; changes are ignored while equal to the previous value. */
   openSignal?: number;
+  /** When set, a click runs this action instead of pinning the tip open; hover and focus still show the text. */
+  onActivate?: () => void;
 }
 
 export function HelpTooltip({
@@ -44,6 +46,7 @@ export function HelpTooltip({
   buttonClassName,
   wide,
   openSignal,
+  onActivate,
 }: HelpTooltipProps) {
   const { t: localizeUi } = useUiTranslation();
   const localize = useLocalizedUiText();
@@ -184,9 +187,20 @@ export function HelpTooltip({
         onPointerDown={(event) => {
           event.stopPropagation();
         }}
+        onKeyDown={(event) => {
+          // The open tip takes Escape first, so a surrounding window or panel stays open.
+          if (event.key !== "Escape" || !show) return;
+          event.preventDefault();
+          closeSelf();
+        }}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          if (onActivate) {
+            closeSelf();
+            onActivate();
+            return;
+          }
           // Toggle from the rendered state: React may call a state updater twice, so opening or closing
           // inside one could reopen the tip right after a click closed it.
           if (pinned) {
@@ -205,7 +219,7 @@ export function HelpTooltip({
           <div
             ref={tipRef}
             className={cn(
-              "pointer-events-none fixed z-[9999] rounded-lg bg-[var(--popover)] px-3 py-2 text-left text-[0.6875rem] leading-relaxed text-[var(--popover-foreground)] shadow-xl ring-1 ring-[var(--border)]",
+              "pointer-events-none fixed z-[calc(var(--mari-layer-omnibar)+1)] rounded-lg bg-[var(--popover)] px-3 py-2 text-left text-[0.6875rem] leading-relaxed text-[var(--popover-foreground)] shadow-xl ring-1 ring-[var(--border)]",
               wide ? "w-[min(22rem,calc(100vw-1.5rem))] max-w-[22rem]" : "w-56",
             )}
             style={{ top: pos.top, left: pos.left, visibility: pos.ready ? "visible" : "hidden" }}

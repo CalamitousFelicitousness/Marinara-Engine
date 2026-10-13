@@ -17,6 +17,7 @@ export const MULTIPLAYER_GUEST_LABEL_KEYS = [
   "lobby",
   "paused",
   "connected",
+  "offline",
   "host",
   "you",
   "waiting",

@@ -9,6 +9,7 @@ export { resolveChoiceVariableValue, type ChoiceOptionValue } from "@marinara-en
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 import type {
+  CharacterMacroProfile,
   ChatMLMessage,
   MarkerConfig,
   WrapFormat,
@@ -41,6 +42,7 @@ import {
   collectCharacterAdvancedPromptEntries,
   MAX_REFERENCED_CHARACTERS,
   MAX_REFERENCED_PERSONAS,
+  resolveChatSummaryMacros,
   resolveMacrosForPreview,
   resolveMacrosWithVariableSnapshot,
   setLorebookEntryCounts,
@@ -147,6 +149,8 @@ export interface AssemblerInput {
   lorebookScanMessages?: ChatMLMessage[];
   /** Current chat summary text (if any) */
   chatSummary?: string | null;
+  /** Characters a merged group reply may voice; the Chat Summary marks who knows what (#7252). */
+  chatSummaryReaders?: readonly CharacterMacroProfile[];
   /** Presence enables advanced memory placement; values must already be audience-scoped. */
   advancedMemory?: AdvancedMemoryPromptParts;
   /** Leave opaque slots for per-responder finalization without repeating lorebook/macro side effects. */
@@ -217,6 +221,8 @@ export interface AssemblerOutput {
   macroVariables: Record<string, string>;
   /** Agent outputs made available to {{agent::TYPE}} while assembling sections. */
   macroAgentData: Record<string, string>;
+  /** Valid character cards discovered through exact ID macros, including activated lorebook entries. */
+  referencedCharacterIds: string[];
   /** Any lorebook depth entries that were queued (already injected into messages) */
   lorebookDepthEntriesCount: number;
   /** Updated per-chat entry state overrides after ephemeral processing. Caller should persist to chat metadata. */
@@ -498,6 +504,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     chatMessages: input.chatMessages,
     lorebookScanMessages: input.lorebookScanMessages,
     chatSummary,
+    chatSummaryReaders: input.chatSummaryReaders,
     advancedMemory: input.advancedMemory,
     wrapFormat,
     enableAgents: input.enableAgents ?? true,
@@ -775,6 +782,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       wrapFormat,
       macroCtx,
       deferAllMacroOptions,
+      input.chatSummaryReaders,
     );
   }
 
@@ -813,6 +821,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     parameters,
     macroVariables: { ...macroCtx.variables },
     macroAgentData: { ...(macroCtx.agentData ?? {}) },
+    referencedCharacterIds: Object.keys(macroCtx.characterReferences ?? {}),
     lorebookDepthEntriesCount,
     ...(markerCtx.updatedEntryStateOverrides
       ? { updatedEntryStateOverrides: markerCtx.updatedEntryStateOverrides }
@@ -1079,8 +1088,12 @@ export function appendFallbackChatSummaryToSystemPrompt(
   wrapFormat: WrapFormat,
   macroCtx: MacroContext,
   macroOptions?: ResolveMacroOptions,
+  readers?: readonly CharacterMacroProfile[],
 ): ChatMLMessage[] {
-  const summary = sanitizePromptLeaf(resolveMacros(chatSummary ?? "", macroCtx, macroOptions), wrapFormat).trim();
+  const summary = sanitizePromptLeaf(
+    resolveChatSummaryMacros(chatSummary ?? "", macroCtx, macroOptions, readers),
+    wrapFormat,
+  ).trim();
   if (!summary) return messages;
 
   const wrapped = wrapContent(summary, "Chat Summary", wrapFormat).trim();

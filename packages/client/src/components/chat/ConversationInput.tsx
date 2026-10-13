@@ -1154,6 +1154,11 @@ export function ConversationInput({
       name: attachment.name,
     }));
 
+    // Cancel the pending draft save so it cannot restore the sent text after clearInputDraft.
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
     if (textareaRef.current) {
       textareaRef.current.value = "";
       textareaRef.current.style.height = "auto";
@@ -2032,7 +2037,10 @@ export function ConversationInput({
     <div className="mari-chat-input chat-input-container relative px-2 sm:px-3 pb-3">
       {/* Slash command autocomplete */}
       {completions.length > 0 && (
-        <div className="absolute bottom-full left-3 right-3 z-40 mb-1 max-h-[min(18rem,45dvh)] overflow-y-auto rounded-lg border border-foreground/10 bg-[var(--card)] shadow-lg [-webkit-overflow-scrolling:touch]">
+        <div
+          data-chat-input-popup="commands"
+          className="mari-chat-style-surface mari-chat-input-popup absolute bottom-full left-3 right-3 z-40 mb-1 max-h-[min(18rem,45dvh)] overflow-y-auto rounded-lg border border-foreground/10 bg-[var(--card)] shadow-lg [-webkit-overflow-scrolling:touch]"
+        >
           {completions.map((cmd, i) => (
             <button
               key={cmd.key}
@@ -2076,7 +2084,10 @@ export function ConversationInput({
 
       {/* @mention autocomplete */}
       {mentionCompletions.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 overflow-hidden rounded-lg border border-foreground/10 bg-[var(--card)] shadow-lg">
+        <div
+          data-chat-input-popup="mentions"
+          className="mari-chat-style-surface mari-chat-input-popup absolute bottom-full left-0 right-0 mb-1 overflow-hidden rounded-lg border border-foreground/10 bg-[var(--card)] shadow-lg"
+        >
           {mentionCompletions.map((name, i) => (
             <button
               key={name}
@@ -2098,7 +2109,10 @@ export function ConversationInput({
 
       {/* :emoji: autocomplete */}
       {emojiCompletions.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 max-h-56 overflow-y-auto rounded-lg border border-foreground/10 bg-[var(--card)] shadow-lg sm:left-[2%] sm:right-[2%]">
+        <div
+          data-chat-input-popup="emoji-completions"
+          className="mari-chat-style-surface mari-chat-input-popup absolute bottom-full left-0 right-0 mb-1 max-h-56 overflow-y-auto rounded-lg border border-foreground/10 bg-[var(--card)] shadow-lg sm:left-[2%] sm:right-[2%]"
+        >
           {emojiCompletions.map((em, i) => (
             <button
               key={em.name}
@@ -2220,6 +2234,7 @@ export function ConversationInput({
           dragging: isDragging,
           hasContent: hasInput || attachments.length > 0,
           layout: "conversation",
+          className: isProfessorMariChat ? "mari-professor-composer" : undefined,
         })}
       >
         {/* Attach button */}
@@ -2235,6 +2250,7 @@ export function ConversationInput({
           }}
         />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           className={cn(
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all active:scale-90 sm:h-8 sm:w-8",
@@ -2243,6 +2259,7 @@ export function ConversationInput({
               : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
           )}
           title={t("chat.input.attachFiles")}
+          aria-label={t("chat.input.attachFiles")}
         >
           <Paperclip size="1rem" />
         </button>

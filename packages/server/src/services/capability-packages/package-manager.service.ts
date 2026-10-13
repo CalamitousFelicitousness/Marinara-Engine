@@ -1022,9 +1022,9 @@ function entriesCarryItemGate(entries: unknown): boolean {
 }
 
 const HELD_RIDER_ISSUE =
-  "A ruleset whose riders fire on held weapons requires schemaVersion 2 and capabilityApi 1.67 or newer";
+  "A ruleset whose riders fire on held weapons requires schemaVersion 2 and capabilityApi 1.70 or newer";
 
-/** A rider that names held `weapons`, which is 1.67: a new key on the strict rider. */
+/** A rider that names held `weapons`, which is 1.70: a new key on the strict rider. */
 function entriesCarryHeldRider(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1085,13 +1085,13 @@ function entriesCarryMarket(entries: unknown): boolean {
 }
 
 const MARKET_DAY_ISSUE =
-  "A ruleset whose market keeps stock, limits what a place keeps, buys back or has a purse requires schemaVersion 2 and capabilityApi 1.66 or newer";
+  "A ruleset whose market keeps stock, limits what a place keeps, buys back or has a purse requires schemaVersion 2 and capabilityApi 1.69 or newer";
 
-/** A `sold` (a rule's or an item's) of 1.66: one with a limit. (One naming neither a place nor a
+/** A `sold` (a rule's or an item's) of 1.69: one with a limit. (One naming neither a place nor a
  *  limit is refused at import.) */
 const soldOfMarketDay = (sold: unknown): boolean => plainRecord(sold)?.limited !== undefined;
 
-/** An item's `sold` that keeps a limit, which is 1.66. */
+/** An item's `sold` that keeps a limit, which is 1.69. */
 function entriesCarryMarketDay(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1102,8 +1102,8 @@ function entriesCarryMarketDay(entries: unknown): boolean {
   );
 }
 
-/** The market's 1.66 keys: a purse, a buy-back share, a seller's stock, a rule's limit. */
-function rulesetCarriesMarketDay166(ruleset: { items?: unknown } | undefined): boolean {
+/** The market's 1.69 keys: a purse, a buy-back share, a seller's stock, a rule's limit. */
+function rulesetCarriesMarketDay169(ruleset: { items?: unknown } | undefined): boolean {
   const market = plainRecord(plainRecord(ruleset?.items)?.market);
   if (!market) return false;
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
@@ -1408,7 +1408,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
-      if (entriesCarryHeldRider(header.entries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
+      if (entriesCarryHeldRider(header.entries) && !declaresApi(70)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
       if (entriesCarryMarket(header.entries)) carriesMarket = true;
       if (entriesCarryCoverlessSaves(header.entries)) carriesCoverlessSaves = true;
@@ -1450,7 +1450,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
-      if (entriesCarryHeldRider(fileEntries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
+      if (entriesCarryHeldRider(fileEntries) && !declaresApi(70)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
       if (entriesCarryMarket(fileEntries)) carriesMarket = true;
       if (entriesCarryCoverlessSaves(fileEntries)) carriesCoverlessSaves = true;
@@ -1665,16 +1665,16 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(63) && (carriesLoot || plainRecord(ruleset?.items)?.lootTables !== undefined)) return LOOT_ISSUE;
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
-  if (!declaresApi(66) && (carriesMarketDay || rulesetCarriesMarketDay166(ruleset))) return MARKET_DAY_ISSUE;
-  // Cover by degrees, 1.69: new keys on the strict cover object and the strict save.
+  if (!declaresApi(69) && (carriesMarketDay || rulesetCarriesMarketDay169(ruleset))) return MARKET_DAY_ISSUE;
+  // Cover by degrees, 1.73: new keys on the strict cover object and the strict save.
   const cover = plainRecord(plainRecord(ruleset?.combat)?.cover);
   const graded = ["threeQuarters", "saves", "creatures"].some((key) => cover?.[key] !== undefined);
-  if (!declaresApi(69) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
-  // Height, 1.70 (combat C6b): a new key on the strict combat block.
-  if (!declaresApi(70) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
-    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.70 or newer";
+  if (!declaresApi(73) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
+  // Height, 1.74 (combat C6b): a new key on the strict combat block.
+  if (!declaresApi(74) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
+    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.74 or newer";
   }
-  // The action economy conditions change, 1.71 (combat C6d): new keys on the strict condition, and a
+  // The action economy conditions change, 1.75 (combat C6d): new keys on the strict condition, and a
   // budget of no count, which an older Engine refuses.
   const combatBlock = plainRecord(ruleset?.combat);
   const economy = Array.isArray(combatBlock?.conditions)
@@ -1686,31 +1686,31 @@ export function getCapabilityPackageInstallIssue(
     : false;
   const budgets = plainRecord(combatBlock?.economy)?.budgets;
   const emptyBudget = Array.isArray(budgets) && budgets.some((budget) => plainRecord(budget)?.count === 0);
-  if (!declaresApi(71) && (economy || emptyBudget)) {
-    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.71 or newer";
+  if (!declaresApi(75) && (economy || emptyBudget)) {
+    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.75 or newer";
   }
-  // Sheet migrations, 1.72 (C6e-0): a new key on the strict sheet.
-  if (!declaresApi(72) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
-    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.72 or newer";
+  // Sheet migrations, 1.76 (C6e-0): a new key on the strict sheet.
+  if (!declaresApi(76) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
+    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.76 or newer";
   }
-  // A rest that shares a pool group's fraction, 1.72 (C6e): a new key on the strict restore step.
+  // A rest that shares a pool group's fraction, 1.76 (C6e): a new key on the strict restore step.
   const sharedRest = Array.isArray(ruleset?.rests)
     ? ruleset.rests.some((rest) => {
         const restore = plainRecord(rest)?.restore;
         return Array.isArray(restore) && restore.some((step) => plainRecord(step)?.shared !== undefined);
       })
     : false;
-  if (!declaresApi(72) && sharedRest) {
-    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.72 or newer";
+  if (!declaresApi(76) && sharedRest) {
+    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.76 or newer";
   }
-  // Starting gear, 1.73 (P1-6): a new key on the strict items block.
-  if (!declaresApi(73) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
-    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.73 or newer";
+  // Starting gear, 1.77 (P1-6): a new key on the strict items block.
+  if (!declaresApi(77) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
+    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.77 or newer";
   }
-  // Seller honesty, 1.74 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
+  // Seller honesty, 1.78 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
   const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
   const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
-  if (!declaresApi(74) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
+  if (!declaresApi(78) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
   return null;
 }
 
@@ -1871,19 +1871,27 @@ export function findCompatibleCapabilityPackageUpdates(
   });
 }
 
-/** Decorate pending updates with the notes published for their target version.
+/** Decorate pending updates with the notes published for every version they install:
+ *  each version above the installed one, up to and including the target, newest first.
  *
  *  Pure and separate from the fetch so the mapping is testable without a network,
- *  and so a notes document that is absent, unreadable, or missing this package
- *  provably returns the update list unchanged. */
+ *  and so a notes document that is absent, unreadable, or has nothing in range for
+ *  this package provably returns the update list unchanged. */
 export function attachCapabilityReleaseNotes(
   updates: CapabilityPackageUpdate[],
   notes: CapabilityReleaseNotes | null,
 ): CapabilityPackageUpdate[] {
   if (!notes) return updates;
   return updates.map((update) => {
-    const note = notes.packages[update.id]?.versions.find((entry) => entry.version === update.version);
-    return note ? { ...update, releaseNotes: note.notes, releaseHighlight: note.highlight } : update;
+    const inRange = (notes.packages[update.id]?.versions ?? [])
+      .filter(
+        (entry) =>
+          compareCapabilityPackageVersions(entry.version, update.installedVersion) > 0 &&
+          compareCapabilityPackageVersions(entry.version, update.version) <= 0,
+      )
+      .sort((left, right) => compareCapabilityPackageVersions(right.version, left.version));
+    if (inRange.length === 0) return update;
+    return { ...update, releaseNotes: inRange, releaseHighlight: inRange.some((entry) => entry.highlight) };
   });
 }
 
@@ -2808,16 +2816,23 @@ export const capabilityPackageManager = {
   },
 
   async declineUpdate(packageId: string, version: string) {
-    const installedPackages = await this.installed();
-    const catalog = await this.catalog();
-    const candidate = findCompatibleCapabilityPackageUpdates(installedPackages, catalog).find(
-      ({ installed, entry }) => installed.id === packageId && entry.manifest.version === version,
+    return (await this.declineUpdates([{ id: packageId, version }])).length > 0;
+  },
+
+  /** "Not now" on the updates dialog: every listed update in one catalog read and one decisions write, so a
+   *  reload right after it cannot bring back updates a one-by-one loop had not reached yet. Returns the ids
+   *  declined; an update that is no longer offered is skipped. */
+  async declineUpdates(updates: Array<{ id: string; version: string }>) {
+    const candidates = findCompatibleCapabilityPackageUpdates(await this.installed(), await this.catalog());
+    const declined = updates.filter(({ id, version }) =>
+      candidates.some(({ installed, entry }) => installed.id === id && entry.manifest.version === version),
     );
-    if (!candidate) return false;
+    if (declined.length === 0) return [];
     const decisions = await readUpdateDecisions();
-    decisions.declined[packageId] = { version, declinedAt: new Date().toISOString() };
+    const declinedAt = new Date().toISOString();
+    for (const { id, version } of declined) decisions.declined[id] = { version, declinedAt };
     await writeUpdateDecisions(decisions);
-    return true;
+    return declined.map(({ id }) => id);
   },
 
   async install(packageId: string, expectedVersion: string, expectedArtifactSha256: string) {

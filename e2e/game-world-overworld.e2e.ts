@@ -8,6 +8,7 @@ import {
   worldRoute,
 } from "@marinara-engine/shared";
 import { openGame } from "./game-ruleset-fight-fixture.js";
+import { openChatTool } from "./chat-settings-tools.js";
 
 /**
  * The overworld (worldgen W8), on screen: a game with a world opens on it; the party walks along the
@@ -68,12 +69,19 @@ async function metadataOf(request: APIRequestContext, chatId: string) {
 }
 
 /** On a phone the toolbar's buttons sit in the game's actions menu. */
+/** A button in the Game controls window, opened from its bubble (or the phone's Chat tools menu). */
 async function toolbarButton(page: Page, name: string) {
-  const actions = page.getByRole("button", { name: "Game actions", exact: true });
-  const button = page.getByRole("button", { name, exact: true });
-  await expect(actions.or(button).first()).toBeVisible({ timeout: 40_000 });
-  if (await actions.isVisible()) await actions.click();
-  return button;
+  const controls = page.locator('.mari-window[data-window="control:game"]');
+  // The window may already be open from an earlier click, and then its bubble is not shown.
+  await expect(
+    page
+      .locator(
+        '.mari-window[data-window="control:game"], .mari-window-bubble[data-window="control:game"], [data-chat-tools-menu-button]',
+      )
+      .first(),
+  ).toBeVisible({ timeout: 40_000 });
+  if (!(await controls.isVisible())) await openChatTool(page, "control:game");
+  return controls.getByRole("button", { name, exact: true });
 }
 
 test("a world game opens on the overworld, and a walk moves the party and the clock and is told next turn", async ({
@@ -218,9 +226,7 @@ test("a game without a world has no overworld", async ({ page, request }) => {
       timeout: 40_000,
     });
     await expect(page.getByRole("region", { name: "Overworld", exact: true })).toHaveCount(0);
-    const actions = page.getByRole("button", { name: "Game actions", exact: true });
-    if (await actions.isVisible()) await actions.click();
-    await expect(page.getByRole("button", { name: "Show the overworld", exact: true })).toHaveCount(0);
+    await expect(await toolbarButton(page, "Show the overworld")).toHaveCount(0);
   } finally {
     await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
   }

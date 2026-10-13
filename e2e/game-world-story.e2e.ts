@@ -9,6 +9,7 @@ import {
   storyTurn,
   worldCast,
 } from "@marinara-engine/shared";
+import { openChatTool } from "./chat-settings-tools.js";
 import { openGame } from "./game-ruleset-fight-fixture.js";
 
 /**
@@ -93,14 +94,10 @@ const turn = storyTurn(story, {
 if (turn.tripped[0] !== "harbour") throw new Error(`The arrival did not trip: ${turn.tripped.join(", ")}`);
 const opened = `${turn.prepend}The quay smells of tar.`;
 
-/** The Session panel's journal: on a phone, Session sits in the game's actions menu. */
+/** The journal, opened from the Session window as staging's game controls do. */
 async function openJournal(page: Page) {
-  const actions = page.getByRole("button", { name: "Game actions", exact: true });
-  const session = page.getByRole("button", { name: "Session", exact: true });
-  await expect(actions.or(session).first()).toBeVisible({ timeout: 40_000 });
-  if (await actions.isVisible()) await actions.click();
-  await session.click();
-  await page.getByRole("button", { name: "Journal", exact: true }).click();
+  const session = await openChatTool(page, "control:session");
+  await session.getByRole("button", { name: "Journal", exact: true }).click();
 }
 
 test("a story's scene plays as written before the reply, and the World tab lists its objectives", async ({

@@ -92,6 +92,8 @@ export interface WorldPresent extends WorldEngineState {
   places: Array<{ id: string; name: string; parentId: string }>;
   /** What the story did at each place, oldest first. */
   done: Record<string, string[]>;
+  /** Every deed at a known place in the order it was done, across places. */
+  deeds: Array<{ placeId: string; text: string }>;
   /** How many deeds the party has done: with its holdings, how far its word reaches. */
   renown: number;
   /** The places the party took, and for which group. */
@@ -104,9 +106,11 @@ export const WORLD_HOLD_REASONS = Object.freeze(["no-sense", "no-agency"] as con
 export const WORLD_DAYS_CAP = 365;
 const FORTUNE_OF: Record<WorldProsperity, number> = { struggling: 20, modest: 50, thriving: 80 };
 
-const WORLD_TAG = /\[world:([^\]]*)\]/gi;
-const LEDGER_TAG = /\[(world|place):([^\]]*)\]/gi;
-const CARRIED_TAG = /\[(world|place|story):[^\]]*\]/gi;
+// A body never holds "[", so each tag is read in one pass: a tag opener repeated without a "]" cannot
+// make every start scan to the end of the reply.
+const WORLD_TAG = /\[world:([^[\]]*)\]/gi;
+const LEDGER_TAG = /\[(world|place):([^[\]]*)\]/gi;
+const CARRIED_TAG = /\[(world|place|story):[^[\]]*\]/gi;
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp = (value: number) => Math.max(-100, Math.min(100, value));
 
@@ -389,6 +393,7 @@ function foldPresent(
         places: [],
         groups: [],
         done: {},
+        deeds: [],
         news: [],
         pending: [],
         raised: 0,
@@ -409,7 +414,9 @@ function foldPresent(
   };
   const record = (name: string | undefined, line: string) => {
     const id = placeId(name);
-    if (id) present.done[id] = [...(present.done[id] ?? []), line];
+    if (!id) return;
+    present.done[id] = [...(present.done[id] ?? []), line];
+    present.deeds.push({ placeId: id, text: line });
   };
   const shift = (id: string, by: number) => {
     present.fortune[id] = Math.max(0, Math.min(100, (present.fortune[id] ?? 50) + by));

@@ -31,6 +31,7 @@ import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { assertInsideDir, safeCompareString, tokenForPath } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
 import { readZip, ZipReadError, type ZipFile } from "../lib/zip-reader.js";
+import { parseJsonBytes } from "../utils/large-json.js";
 
 const PICK_FOLDER_TIMEOUT_MS = 60_000; // 60s — prevents infinite hang on headless servers
 const FOLDER_TOKEN_TTL_MS = 15 * 60_000;
@@ -713,7 +714,9 @@ export async function importRoutes(app: FastifyInstance) {
 
   /**
    * Import a Marinara Engine native package (.marinara file — a zip with
-   * data.json plus the avatar binary). Single-file multipart upload.
+   * data.json plus the avatar binary). Single-file multipart upload. A native
+   * .marinara.json too large for the JSON route (a big gallery) is uploaded
+   * here as a file too and read in pieces.
    */
   app.post("/marinara-package", { bodyLimit: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES }, async (req, reply) => {
     const file = await req.file({
@@ -721,8 +724,32 @@ export async function importRoutes(app: FastifyInstance) {
     });
     if (!file) return reply.status(400).send({ success: false, error: "No file uploaded" });
     const buffer = await file.toBuffer();
+    const importEnvelope = async (envelope: Record<string, unknown>) => {
+      const timestampOverrides = readTimestampOverridesFromMultipart(file as any);
+      if (timestampOverrides && envelope.data && typeof envelope.data === "object") {
+        const data = envelope.data as Record<string, unknown>;
+        const existingMeta =
+          data.metadata && typeof data.metadata === "object" ? (data.metadata as Record<string, unknown>) : {};
+        data.metadata = { ...existingMeta, timestamps: timestampOverrides };
+      }
+      return flagDecisionStatements(await importMarinara(envelope as any, app.db), envelope);
+    };
     if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
-      return reply.status(400).send({ success: false, error: "Not a .marinara package (zip signature missing)" });
+      const firstChar = buffer
+        .subarray(0, 64)
+        .toString("utf8")
+        .replace(/^\uFEFF/, "")
+        .trimStart()[0];
+      if (firstChar !== "{") {
+        return reply.status(400).send({ success: false, error: "Not a .marinara package (zip signature missing)" });
+      }
+      let envelope: Record<string, unknown>;
+      try {
+        envelope = parseJsonBytes(buffer) as Record<string, unknown>;
+      } catch {
+        return reply.status(400).send({ success: false, error: "The file is not valid JSON" });
+      }
+      return importEnvelope(envelope);
     }
     // Read strictly: the sizes the package declares are the sizes read, so the limits below hold.
     let entries: ZipFile[];
@@ -785,14 +812,7 @@ export async function importRoutes(app: FastifyInstance) {
       const dataUrl = `data:${mime};base64,${avatarBytes.toString("base64")}`;
       (envelope.data as Record<string, unknown>).avatar = dataUrl;
     }
-    const timestampOverrides = readTimestampOverridesFromMultipart(file as any);
-    if (timestampOverrides && envelope.data && typeof envelope.data === "object") {
-      const data = envelope.data as Record<string, unknown>;
-      const existingMeta =
-        data.metadata && typeof data.metadata === "object" ? (data.metadata as Record<string, unknown>) : {};
-      data.metadata = { ...existingMeta, timestamps: timestampOverrides };
-    }
-    return flagDecisionStatements(await importMarinara(envelope as any, app.db), envelope);
+    return importEnvelope(envelope);
   });
 
   /** Import a SillyTavern character (JSON body or PNG file upload). */

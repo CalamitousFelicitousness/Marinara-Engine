@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { createServer, type Server } from "node:http";
 import { WORLD_GENERATOR_VERSION, WORLD_STARTER_KITS, compileGameWorld, parseWorldKit } from "@marinara-engine/shared";
 import { openGame } from "./game-ruleset-fight-fixture.js";
+import { openChatTool } from "./chat-settings-tools.js";
 
 /**
  * The town (worldgen W8b), on screen: from the overworld the party enters the settlement it is in, walks
@@ -58,12 +59,19 @@ async function metadataOf(request: APIRequestContext, chatId: string) {
 }
 
 /** On a phone the toolbar's buttons sit in the game's actions menu. */
+/** A button in the Game controls window, opened from its bubble (or the phone's Chat tools menu). */
 async function toolbarButton(page: Page, name: string) {
-  const actions = page.getByRole("button", { name: "Game actions", exact: true });
-  const button = page.getByRole("button", { name, exact: true });
-  await expect(actions.or(button).first()).toBeVisible({ timeout: 40_000 });
-  if (await actions.isVisible()) await actions.click();
-  return button;
+  const controls = page.locator('.mari-window[data-window="control:game"]');
+  // The window may already be open from an earlier click, and then its bubble is not shown.
+  await expect(
+    page
+      .locator(
+        '.mari-window[data-window="control:game"], .mari-window-bubble[data-window="control:game"], [data-chat-tools-menu-button]',
+      )
+      .first(),
+  ).toBeVisible({ timeout: 40_000 });
+  if (!(await controls.isVisible())) await openChatTool(page, "control:game");
+  return controls.getByRole("button", { name, exact: true });
 }
 
 test("the party enters the town it is in, walks across it, and the next turn tells where", async ({

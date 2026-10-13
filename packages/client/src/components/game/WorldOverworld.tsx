@@ -477,8 +477,9 @@ export function WorldOverworld({
                   onClick={() => choose(selected === place.id ? null : place.id)}
                   onFocus={() => setLookAt(centre(place))}
                   className={cn(
-                    "absolute inset-0 rounded-sm outline-none transition-shadow hover:ring-2 hover:ring-white/60 focus-visible:ring-2 focus-visible:ring-white",
-                    selected === place.id && "ring-2 ring-amber-300",
+                    // The hit area reaches past the cell, so a small village is easy to tap on a phone.
+                    "absolute inset-0 rounded-sm outline-none transition-shadow before:absolute before:-inset-2 before:content-[''] hover:ring-2 hover:ring-white/60 focus-visible:ring-2 focus-visible:ring-white",
+                    selected === place.id && "ring-2 ring-[var(--primary)]",
                   )}
                   aria-label={
                     isHere

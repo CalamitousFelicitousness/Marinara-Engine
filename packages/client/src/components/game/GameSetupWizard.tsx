@@ -138,6 +138,9 @@ import {
 } from "../../lib/game-setup-suggestions";
 import { restoredRulesetLayers, rulesetLayerOptions, toggleRulesetLayer } from "../../lib/ruleset-layers";
 
+/** The "Surprise me!" chip, told apart from the localized ideas by this value, never by its text. */
+const SURPRISE_SUGGESTION = "__surprise__";
+
 const GameAssetsBrowserView = lazy(() =>
   import("../game-assets/GameAssetsBrowserView").then((module) => ({ default: module.GameAssetsBrowserView })),
 );
@@ -566,6 +569,8 @@ export function GameSetupWizard({
   );
   const mapPack = mapPackQuery.data ?? null;
   const mapPackUnreadable = mapPackQuery.isError;
+  // While the pack is read, neither the player's own kit nor a start goes ahead: the server would refuse it.
+  const mapPackPending = mapPackQuery.isLoading;
   // The map picked, for the Experience it was picked for: another Experience starts on its own first map.
   const [mapPackPick, setMapPackPick] = useState<{ experienceId: string; path: string } | null>(null);
   const mapPackWorldPath = mapPackPick && mapPackPick.experienceId === activeExperience?.id ? mapPackPick.path : null;
@@ -805,8 +810,13 @@ export function GameSetupWizard({
   );
   const gmModelCapabilities = useModelParameterCapabilities(customizeParameters ? selectedGmConnection : null);
   const gmParameterDefaults = useMemo(
-    () => getEditableGenerationParameters(ROLEPLAY_PARAMETER_DEFAULTS, selectedGmConnection?.defaultParameters),
-    [selectedGmConnection?.defaultParameters],
+    () =>
+      getEditableGenerationParameters(
+        ROLEPLAY_PARAMETER_DEFAULTS,
+        selectedGmConnection?.defaultParameters,
+        selectedGmConnection?.provider,
+      ),
+    [selectedGmConnection?.defaultParameters, selectedGmConnection?.provider],
   );
   const imageConnections = useMemo(() => connections.filter((c) => c.provider === "image_generation"), [connections]);
   const videoConnections = useMemo(() => connections.filter((c) => c.provider === "video_generation"), [connections]);
@@ -929,7 +939,7 @@ export function GameSetupWizard({
     [learnedGameSetupOptions?.tones, tones],
   );
   const suggestionText = useCallback(
-    (keys: string[]) => ["Surprise me!", ...keys.map((key) => localizeUi(key))],
+    (keys: string[]) => [SURPRISE_SUGGESTION, ...keys.map((key) => localizeUi(key))],
     [localizeUi],
   );
   const settingSuggestions = suggestionText(setupSuggestionKeys("setting", effectiveWorldKit?.id, suggestionOffset));
@@ -1030,7 +1040,7 @@ export function GameSetupWizard({
   );
 
   const applySuggestion = useCallback((setter: (v: string) => void, value: string) => {
-    if (value === "Surprise me!") {
+    if (value === SURPRISE_SUGGESTION) {
       setter("Surprise me, go wild!");
     } else {
       setter(value);
@@ -1137,6 +1147,7 @@ export function GameSetupWizard({
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
     !mapPackUnreadable &&
+    !mapPackPending &&
     !(checkedWorldKit && !checkedWorldKit.ok) &&
     !(checkedWorld && !checkedWorld.ok) &&
     (!activeLorebookEntryIds.length || Boolean(eligibleEntries)) &&
@@ -1148,21 +1159,23 @@ export function GameSetupWizard({
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
       : mapPackUnreadable
         ? localizeUi("game.mapPack.fixBeforeStart")
-        : checkedWorldKit && !checkedWorldKit.ok
-          ? localizeUi("game.worldKit.setup.fixBeforeStart")
-          : checkedWorld && !checkedWorld.ok
-            ? localizeUi("game.world.setup.fixBeforeStart")
-            : activeLorebookEntryIds.length && !eligibleEntries
-              ? localizeUi(
-                  entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
-                )
-              : !gmConnectionId
-                ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-                : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-                  ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                      value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-                    })
-                  : null;
+        : mapPackPending
+          ? localizeUi("game.mapPack.loading")
+          : checkedWorldKit && !checkedWorldKit.ok
+            ? localizeUi("game.worldKit.setup.fixBeforeStart")
+            : checkedWorld && !checkedWorld.ok
+              ? localizeUi("game.world.setup.fixBeforeStart")
+              : activeLorebookEntryIds.length && !eligibleEntries
+                ? localizeUi(
+                    entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+                  )
+                : !gmConnectionId
+                  ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+                  : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+                    ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                        value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                      })
+                    : null;
   const normalizedLanguage = normalizeGameLanguage(language);
   // What the model writes a setting kit or a world's brief for: the World step's own choices.
   const worldWriteRequest = gmConnectionId
@@ -1288,6 +1301,7 @@ export function GameSetupWizard({
       const importedGmDefaults = getEditableGenerationParameters(
         ROLEPLAY_PARAMETER_DEFAULTS,
         importedGmConnection?.defaultParameters,
+        importedGmConnection?.provider,
       );
 
       setStep(0);
@@ -1714,6 +1728,7 @@ export function GameSetupWizard({
             ref={panelRef}
             tabIndex={-1}
             data-component="GameSetupWizard"
+            data-game-setup-step={currentStep.title}
             role="dialog"
             aria-modal="true"
             aria-labelledby="game-setup-wizard-title"
@@ -2029,8 +2044,8 @@ export function GameSetupWizard({
                             onClick={() => applySuggestion(setSetting, s)}
                             className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
-                            {s === "Surprise me!" && <Sparkles size={9} />}
-                            {s}
+                            {s === SURPRISE_SUGGESTION && <Sparkles size={9} />}
+                            {s === SURPRISE_SUGGESTION ? localizeUi("game.setup.suggestions.surprise") : s}
                           </button>
                         ))}
                       </div>
@@ -2256,7 +2271,7 @@ export function GameSetupWizard({
                           }
                         />
                       )}
-                      {isNewGame && !mapPack && !mapPackUnreadable && (
+                      {isNewGame && !mapPack && !mapPackUnreadable && !mapPackPending && (
                         <GameSetupWorldKitChooser
                           kit={worldKit}
                           onChange={chooseWorldKit}
@@ -2267,7 +2282,7 @@ export function GameSetupWizard({
                           writeRequest={worldWriteRequest}
                         />
                       )}
-                      {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && (
+                      {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && !mapPackPending && (
                         <GameSetupWorldChooser
                           kit={checkedWorldKit.kit}
                           draft={worldDraft}
@@ -3328,8 +3343,8 @@ export function GameSetupWizard({
                             onClick={() => applySuggestion(setPlayerGoals, s)}
                             className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
-                            {s === "Surprise me!" && <Sparkles size={9} />}
-                            {s}
+                            {s === SURPRISE_SUGGESTION && <Sparkles size={9} />}
+                            {s === SURPRISE_SUGGESTION ? localizeUi("game.setup.suggestions.surprise") : s}
                           </button>
                         ))}
                       </div>

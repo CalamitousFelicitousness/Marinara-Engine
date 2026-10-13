@@ -18,6 +18,7 @@ export const capabilityPermissionSchema = z.enum([
   "network",
   "prompt-context",
   "routes",
+  "scenes",
   "storage",
   "tools",
   "ui",
@@ -123,7 +124,7 @@ const capabilityPackageManifestBaseSchema = z
             /** A map pack (worldgen W9e): the Experience's own setting kit, ready-made worlds built with it
              *  and its own tile pack, as the kit, world and tile pack share files among its assets. A new
              *  game with the Experience on is locked to its kit, and to one of its worlds when it ships
-             *  any; its overworld and towns are drawn with its tiles. Requires Capability API 1.68. */
+             *  any; its overworld and towns are drawn with its tiles. Requires Capability API 1.72. */
             mapPack: z
               .object({
                 kit: z
@@ -573,59 +574,72 @@ const capabilityPackageManifestBaseSchema = z
 //        (`coin:<unit>`) that the Game Master pays and earns with. Not a soft seam, for the same reason as
 //        1.20 through 1.63: an Engine that cannot read these refuses the whole ruleset file, so a package
 //        that ships either declares 1.64. No permission.
-// 1.68: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
-//        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
-//        its declared assets. A new game with the Experience on is locked to them. (1.66 and 1.67 are
-//        taken by held ruleset work landing first; renumber if the landing order changes.)
 // 1.65: the items block may declare a `market` (price levels, place sizes, what each place sells, and
 //        kinds of seller), and an item may name the smallest place that sells it (`sold`) or be a
 //        `service`, bought and never carried; the Game Master buys with `[inventory: action="buy"]` and
 //        says where the party is with `[place:]`. Not a soft seam, for the same reason as 1.20 through
 //        1.64: an Engine that cannot read these refuses the whole ruleset or catalog file, so a package
 //        that ships any of them declares 1.65. No permission.
-// 1.66: a market day: a place size may carry a daily `purse`, the market a `buyBack` share, a seller a
+// 1.66: `api.registerSceneOrigin` lets a package thread (a direct-message thread, for example) be the
+//        origin of a roleplay scene, the way a Conversation is: the package supplies the planning
+//        context, holds the lock while the scene runs and receives the recap when it ends. The browser
+//        view gets `startScene`, `openChat`, `focusSceneOriginId` and `onFocusSceneOriginHandled`. Requires
+//        the `scenes` permission.
+// 1.67: the browser view gets `openCharacter(characterId, { tab })`, which opens the character editor,
+//        on that tab when given. Soft seam: a package checks that the function exists, so it does not
+//        need to declare 1.67. No permission.
+// 1.68: `embeddings.embed(texts, signal, inputType)` takes `"query"` or `"document"` (the default), so a
+//        model with query and document prefixes embeds a search query as a query. Soft seam: an older
+//        Engine ignores the third argument, so a package does not need to declare 1.68. No permission.
+// 1.69: a market day: a place size may carry a daily `purse`, the market a `buyBack` share, a seller a
 //        `stock` loot table rolled each day, and a `sold` rule or an item's `sold` a `limited` count kept
 //        on hand (a rule or an item's `sold` may now name a limit without a place); the Game Master
 //        sells with `[inventory: action="sell"]` and starts a new day with `[place: day="new"]`. Not a
 //        soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot read these refuses
-//        the whole ruleset or catalog file, so a package that ships any of them declares 1.66. No
+//        the whole ruleset or catalog file, so a package that ships any of them declares 1.69. No
 //        permission.
-// 1.67: a catalog entry's rider may name `weapons` by item tag, so it fires on a held weapon as it
+// 1.70: a catalog entry's rider may name `weapons` by item tag, so it fires on a held weapon as it
 //        does on an attack row (Sneak Attack with a rapier held from the bag). A new key on the strict
-//        rider, so a package whose entries carry one declares 1.67.
-// 1.69: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
+//        rider, so a package whose entries carry one declares 1.70.
+// 1.71: `listMessages` records carry `agentContent` in Roleplay outside hosted rooms: the message as Engine
+//        agents read it, with its whispers. Soft seam: a package reads `agentContent ?? content`, so it does not
+//        need to declare 1.71. Requires `chat-read`, like `listMessages`.
+// 1.72: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
+//        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
+//        its declared assets. A new game with the Experience on is locked to them.
+// 1.73: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
 //        creatures in the way (`creatures`), and a save (an entry's, a creature action's or an item use's)
 //        may ignore cover (`ignoresCover`); cover is read from the attacker's position by corner lines
-//        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot
+//        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.72: an Engine that cannot
 //        read these refuses the whole ruleset or catalog file, so a package that ships any of them
-//        declares 1.69. No permission.
-// 1.70: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
+//        declares 1.73. No permission.
+// 1.74: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
 //        is, what higher ground gives an attack and a shot, and what a fall does (combat C6b). Boards
 //        may have height whatever a ruleset says. Not a soft seam, for the same reason as 1.20 through
-//        1.69: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
-//        declares 1.70. No permission.
-// 1.71: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
+//        1.73: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
+//        declares 1.74. No permission.
+// 1.75: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
 //        `budgets`, `grants`, `exclusive`, `attacksPerTurn` and `onEnd`, and a budget may have a count of
-//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.70: an
+//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.74: an
 //        Engine that cannot read these refuses the whole ruleset file, so a package that ships any of
-//        them declares 1.71. No permission.
-// 1.72: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
+//        them declares 1.75. No permission.
+// 1.76: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
 //        (C6e-0): fields, abilities, skills and saves renamed, one field routed by another's text, and
 //        a live pool or track routed to the one the migrated sheet shows. A rest's poolGroup restore
 //        may also be `shared` (C6e): its fraction worked out on the whole group. Not a soft seam, for
-//        the same reason as 1.20 through 1.71: an Engine that cannot read it refuses the whole ruleset
-//        file, so a package that ships it declares 1.72. No permission.
-// 1.73: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
+//        the same reason as 1.20 through 1.75: an Engine that cannot read it refuses the whole ruleset
+//        file, so a package that ships it declares 1.76. No permission.
+// 1.77: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
 //        never on its own, with choices and lists to pick from. Not a soft seam, for the same reason as
-//        1.20 through 1.72: an Engine that cannot read it refuses the whole ruleset file, so a package
-//        that ships it declares 1.73. No permission.
-// 1.74: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
+//        1.20 through 1.76: an Engine that cannot read it refuses the whole ruleset file, so a package
+//        that ships it declares 1.77. No permission.
+// 1.78: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
 //        that `passesFor` another item, and a market seller may be `honest: false`. A fake bought from
 //        a dishonest seller is a stack that shows as what it passes for and keeps what it truly is.
-//        Not a soft seam, for the same reason as 1.20 through 1.73: an Engine that cannot read these
-//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.74.
+//        Not a soft seam, for the same reason as 1.20 through 1.77: an Engine that cannot read these
+//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.78.
 //        No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 74 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 78 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -661,11 +675,11 @@ export const capabilityPackageManifestSchema = z
     const mapPack = manifest.contributions?.gameSurface?.mapPack;
     if (mapPack) {
       const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
-      if (!api || api.major !== 1 || api.minor < 68) {
+      if (!api || api.major !== 1 || api.minor < 72) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["contributions", "gameSurface", "mapPack"],
-          message: "A map pack requires schemaVersion 2 and capabilityApi 1.68 or newer",
+          message: "A map pack requires schemaVersion 2 and capabilityApi 1.72 or newer",
         });
       }
       // The lock lives in the Engine's own setup, so an Experience with a map pack sets up through it
@@ -744,6 +758,17 @@ export const capabilityPackageManifestSchema = z
           code: z.ZodIssueCode.custom,
           path: ["permissions"],
           message: 'The "mari-actions" permission requires schemaVersion 2 and capabilityApi 1.50 or newer',
+        });
+      }
+    }
+    // Same reason as `tools`: `registerSceneOrigin` only exists on an Engine this new.
+    if (manifest.permissions.includes("scenes")) {
+      const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 66)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["permissions"],
+          message: 'The "scenes" permission requires schemaVersion 2 and capabilityApi 1.66 or newer',
         });
       }
     }
@@ -1089,9 +1114,10 @@ export interface CapabilityPackageUpdate {
   version: string;
   artifactSha256: string;
   restartRequired: boolean;
-  /** Release notes published for `version`, when the catalog ships a notes sidecar. */
-  releaseNotes?: string;
-  /** Whether the publisher marked `version` as a change the user will notice. */
+  /** Notes published for every version after `installedVersion` up to `version`, newest first,
+   *  when the catalog ships a notes sidecar. */
+  releaseNotes?: CapabilityPackageVersionNote[];
+  /** Whether the publisher marked any of those versions as a change the user will notice. */
   releaseHighlight?: boolean;
 }
 
@@ -1115,10 +1141,9 @@ const capabilityPackageVersionNoteSchema = z
     //   * numeric prerelease identifiers must be canonical, or "01" and "1"
     //     compare as different versions while meaning the same one.
     // Leading zeros matter for the same reason: 01.2.3 and 1.2.3 compare equal
-    // numerically but differ as strings, so the duplicate check and the lookup in
-    // attachCapabilityReleaseNotes would disagree with the ordering — two notes
-    // for one version, or a note that never attaches because the catalog spells
-    // the version differently.
+    // numerically but differ as strings, so the duplicate check and the range
+    // filter in attachCapabilityReleaseNotes would disagree with the ordering —
+    // two notes listed for what the comparator treats as one version.
     // Nine digits is far beyond any real version, and this is canonical SemVer
     // otherwise.
     version: z
@@ -1156,8 +1181,8 @@ export const capabilityReleaseNotesSchema = z
           versions: z
             .array(capabilityPackageVersionNoteSchema)
             .max(MAX_RELEASE_NOTE_VERSIONS)
-            // A repeated version would make the two readers disagree: the update
-            // prompt takes the first match, the history sheet shows every one.
+            // A repeated version would list the same release twice in the update
+            // prompt and the history sheet, and collide on their per-version list key.
             .refine((versions) => new Set(versions.map((note) => note.version)).size === versions.length, {
               message: "must not list the same version twice",
             }),

@@ -247,9 +247,10 @@ const vectors = await embeddings.embed(texts, signal);
 // Store/compare embeddings.spaceId with persisted vectors; do not mix embedding spaces.
 ```
 
-The returned host has `spaceId`, `label`, and `embed(texts, signal?)`. Resolution uses the
-configured embedding source and falls back to the built-in local MiniLM embedder when
-none is available or configuration resolution fails. `embed` can return `null`; empty
+The returned host has `spaceId`, `label`, and `embed(texts, signal?, inputType?)` (see
+capability API 1.68 for the input type). Resolution uses the configured embedding source
+and falls back to the built-in local MiniLM embedder when none is available or
+configuration resolution fails. `embed` can return `null`; empty
 batches, more than 128 texts, or more than 200,000 combined characters are refused. A
 new host does not re-embed existing vectors, so a package must handle a changed `spaceId`
 before comparing new vectors with stored ones.
@@ -599,7 +600,27 @@ The user's **Decision model** answers yes/no and choice statements about the rec
 
 An agent prompt template shipped by a package can use decision statements exactly as a user's custom agent does: `{{#if decision:"..."}}` and `{{#if decision_choice:"..." == "..."}}`. The Engine finds them in the template, asks them before the agent runs (after the reply, for a post-processing agent), and resolves the template with the answers. No capability API version is involved. See [Conditional Prompts](../prompts/conditional-prompts.md#asking-the-decision-model) for the syntax and the wording advice, and [Creating Custom Agents](../agents/custom-agents.md#decision-statements-in-the-agents-prompt) for how agent phases read them.
 
-Package runtime code has no way to ask the Decision model directly yet. That needs a capability API method and a version bump of its own.
+Package server code can also ask the user's configured Decision model bounded yes/no and Choice questions about context the package supplies, through `api.runtime.decisions.evaluate(...)`. It uses the same Decision model as agent activation questions and prompt conditionals (a managed local model or a Decision connection) and never exposes keys or Engine internals. `decisions` is optional and needs no newer capability API or permission: check `typeof api.runtime.decisions?.evaluate === "function"` and fall back on older Engines.
+
+```ts
+const result = await api.runtime.decisions?.evaluate({
+  messages: [{ role: "user", content: "The tavern falls silent as the stranger draws a blade." }],
+  questions: [
+    { id: "danger", question: "Someone is about to be attacked." },
+    { id: "mood", question: "The mood of the scene is", options: ["calm", "tense", "festive"] },
+  ],
+  // Optional: pass `signal` to cancel and `debugMode: true` to log the Decision prompt.
+});
+// null: no Decision model is configured, or it gave no answer (unreachable, timed out or cancelled).
+if (result && (result.answers.danger ?? 0) >= result.threshold) {
+  // ...
+}
+```
+
+- `messages` is the package's own context, oldest first (at most 200 messages and 200,000 characters; a message `name` is at most 100 characters). The oldest messages are dropped to fit the model.
+- Each `question` is at most 500 characters; ids must be unique. A Choice question has at least two `options`, and its answer is one of them or `"none of these"`.
+- One request may ask for at most the user's **Decision statements per turn** limit of answers; each Choice option counts once, plus one. An invalid request throws a `TypeError`.
+- `answers` holds the probability of yes per yes/no question, and a question missing from it was not answered. Compare it with `threshold`, the model's own operating point: probabilities are not comparable across Decision models.
 
 Design every use for a user with no Decision model. A statement with no answer reads as no, so the `{{else}}` branch, or nothing, must be a sensible default. Write for "a Decision model", rather than requiring Jev: local chat models and other supported backends use the same syntax, but can give different answers. See [Thresholds](../connections/decision-models.md#thresholds) and [Limits and cost](../prompts/conditional-prompts.md#limits-and-cost) before relying on a particular score, request count or cached answer.
 
@@ -1033,10 +1054,10 @@ definition is older than the pinned version) is reported as unavailable and neve
 another ruleset. The pin is matched on the ruleset id and on the package that supplied it, so
 another package claiming the same id does not take over an existing game.
 
-### Capability API 1.68: an Experience's map pack
+### Capability API 1.72: an Experience's map pack
 
 A `game-surface` package that sets up through the Game wizard (`gameSurface.setup`, 1.18) can ship a
-map pack with schema version 2 and Capability API 1.68: its own setting kit, ready-made worlds built
+map pack with schema version 2 and Capability API 1.72: its own setting kit, ready-made worlds built
 with that kit, and its own tile pack. Each is the share file Game Mode and Pixelforge already read and
 write (a `.worldkit.json`, `.world.json` files and a `.tilepack.json`), and each is also a declared,
 hash-pinned asset.
@@ -1133,6 +1154,133 @@ Use the existing startup-readiness declaration independently when the world must
 be prepared before the opening turn. Declare API 1.18 as the package minimum;
 older hosts cannot interpret this setup declaration.
 
+### Capability API 1.71: read messages as agents read them
+
+In Roleplay, a message can carry whispers that are not part of its `content`. Every agent the Engine
+runs reads them, and a package that reads the chat itself can now read the same text. Each record
+from `persistence.listMessages(chatId)` gets `agentContent`: the message as Engine agents read it.
+Each whisper sits at its place, marked `[Private whisper to <name>: …]`, and a message that is only
+a whisper reads as its whispers. A document a character hands over, such as a letter, follows the
+message. The player's private notes are left out.
+
+`agentContent` is there only in Roleplay chats. It is missing in other modes and in a hosted
+multiplayer room, where everyone sees what agents write. `content` never changes: it is still the
+public text. `extra` doesn't change either: it is the message's saved data, with every whisper in it,
+in every mode. Never show text built from it to players or characters a whisper was not for.
+
+```ts
+const messages = await api.runtime.persistence.listMessages(chatId);
+const history = messages.map((message) => message.agentContent ?? message.content);
+```
+
+It is a soft seam: older Engines leave the field out, so a package that reads
+`agentContent ?? content` does not need to declare 1.71. It needs the `chat-read` permission, like
+`listMessages`. Whispers are private: anything a package writes from them, such as a note or a memory,
+can reach characters the whisper was not for.
+
+### Capability API 1.68: embed search queries as queries
+
+`embeddings.embed(texts, signal?, inputType?)` takes a third argument: pass `"query"` for search
+text, such as a recall query. Texts default to `"document"`. Some embedding models expect a prefix
+on queries, and some also on documents: e5 and nomic-embed-text use one of each, and Snowflake
+Arctic Embed v2 prefixes only queries. The Engine adds the right one. Recall is weaker when a query
+is embedded as a document. Other models, including the built-in MiniLM embedder, get no prefix
+either way. The input type does not change `spaceId`, so stored vectors stay comparable and nothing
+needs re-embedding.
+
+```ts
+const embeddings = await api.runtime.resolveEmbeddings();
+const [queryVector] = (await embeddings.embed([query], signal, "query")) ?? [];
+const memoryVectors = await embeddings.embed(memoryTexts, signal); // documents
+```
+
+It is a soft seam: an older Engine ignores the third argument, so a package can always pass it and
+does not need to declare 1.68. Pass the input type as the third argument, never in an options
+object: an older Engine hands the second argument straight to the provider as an abort signal.
+
+### Capability API 1.67: open a character in the editor
+
+The browser view gets `openCharacter(characterId, { tab })`. It opens the character editor, on the
+given tab when there is one, so a package can send the user to a card field it reads. Older Engines
+do not have it: check that `openCharacter` exists before you show the link.
+
+```ts
+if (typeof props.openCharacter === "function") props.openCharacter(characterId, { tab: "convo" });
+```
+
+### Capability API 1.66: scenes from package threads
+
+A roleplay scene usually branches from a Conversation (`/scene`). A package holding the new `scenes`
+permission can let its own threads, such as a direct-message thread, be the origin instead. The scene
+is an ordinary scene chat: the same planner, prompt-preference dialog, scene instructions, End Scene,
+Discard and Convert controls, and the same character memory when it concludes. The package owns the
+thread side: what the planner reads, the lock while the scene runs, and what happens with the recap.
+
+```ts
+export async function activate({ api }) {
+  api.registerSceneOrigin({
+    // Planning context, or null when the thread no longer exists.
+    getContext: async (threadId) => ({
+      characterIds: [creatorCharacterId],
+      personaId,
+      connectionId: null, // the Engine's default connection
+      transcript: [{ speaker: "Mina", content: "Come to my shoot tonight?" }],
+      notes: "Stage persona, limits and anything else the scene writer must respect.",
+    }),
+    // Lock the thread. Return false when it already has an active scene.
+    claim: async (threadId, { sceneChatId, characterIds }) => lockThread(threadId, sceneChatId),
+    // Unlock and receive the outcome.
+    release: async (threadId, end) => {
+      if (!(await holdsLock(threadId, end.sceneChatId))) return;
+      if (end.kind === "concluded") await saveRecap(threadId, end.summary);
+      await unlockThread(threadId);
+    },
+  });
+}
+```
+
+The browser view (`home-browser-tab`) receives these props:
+
+- `startScene({ originId, prompt?, planHint?, plan?, data?, initiatorCharacterId?, initiatorName? })` opens the
+  scene prompt-preference dialog, plans and creates the scene, and opens its chat. Pass `plan` (a
+  `SceneFullPlan`: name, description, hidden scenario, first message, scene system prompt, rating,
+  relationship history, participation guide, background, cast) to write the scene yourself; the
+  dialog and the Engine planner are skipped and the scene is created exactly as planned. It resolves to
+  `{ chatId }`, or `null` when the user cancels or creating fails (the user sees why). The helper always
+  uses the package's own id. It is a convenience, not a boundary: the scene routes accept any package
+  id, so `getContext` must return only what the player may see in that thread anyway.
+- `openChat(chatId)` goes to a chat, for a "Go to scene" button on a locked thread.
+- `focusSceneOriginId` is the thread to show when the user comes back from a scene (Back, End Scene,
+  Discard). Call `onFocusSceneOriginHandled()` once you have shown it.
+
+Rules worth knowing:
+
+- `data` is this scene's own settings, a plain JSON object of at most 4,000 characters. The Engine
+  keeps it with the scene and passes it to `claim(originId, { sceneChatId, characterIds, data })` and
+  to `release` as `end.data`, so each scene can decide for itself: `claim` may admit a scene without
+  locking (return `true` and store nothing), and `release` may unlock without taking the recap, or
+  take it at the reach the scene asked for.
+- Only `getContext` is required. A package that just wants to start scenes leaves out `claim` and
+  `release`: nothing is locked, any number of scenes can run from the same origin, and nothing is
+  delivered when they end (**Back** still returns to the package). Leave out only `release` to lock
+  without hearing the outcome, or only `claim` to hear outcomes without a lock.
+- One provider per package; registering again replaces it, and deactivating removes it.
+- `characterIds` must be Engine characters; unknown IDs are dropped, and a context without one known
+  character is refused. An unknown `personaId` is treated as none. `notes` is cut at 8,000 characters
+  and is given to the planner and, with the transcript, to the scene writer as hidden context.
+- `claim` runs after the scene chat exists. `false` discards it with a 409; a throw discards it with
+  a 503. `getContext`, `claim` and `release` each have 8 seconds: a late `getContext` or `claim`
+  counts as a failure (503, the scene chat is removed), a late `release` is logged and dropped.
+- `release` gets `concluded` (with `summary`, `description`, `scenario`, `rating` and the cast),
+  `abandoned`, `deleted` or `converted`. It must be idempotent and must ignore a scene that does not
+  hold the lock. A release that throws, or that arrives while the package is inactive, is logged and
+  dropped: the scene chat stays ended either way, so reconcile a stale lock by reading the scene chat
+  with `chat-read`. Its metadata has `sceneStatus`, and a concluded scene also has `sceneSummary`.
+- The Engine writes nothing into a Conversation for a package origin. Character memory is stored on
+  conclude exactly as for a Conversation scene.
+
+`scenes` is refused on a manifest that declares a `capabilityApi` older than 1.66.
+
 ### Capability API 1.50: Professor Mari actions
 
 A package holding the new `mari-actions` permission can offer named actions to Professor Mari. It
@@ -1143,7 +1291,11 @@ runs one when the user asks for it.
 export async function activate({ api }) {
   api.registerService("mari-actions:my-package", {
     list: () => [
-      { name: "add-idea", summary: "Give a Creator an idea for a post.", inputs: { accountId: "The Creator.", text: "The idea." } },
+      {
+        name: "add-idea",
+        summary: "Give a Creator an idea for a post.",
+        inputs: { accountId: "The Creator.", text: "The idea." },
+      },
     ],
     run: async (name, input, { signal }) => {
       const parsed = schemas[name]?.safeParse(input);
@@ -1369,5 +1521,6 @@ Server packages can call `api.runtime.integrations` to use the current Engine's 
 - `llm.withFallback(...)` wraps a provider created by the same package host. It preserves Engine's admission, fallback notifications and provider selection behavior.
 - `images.generate(...)` and `videos.generate(...)` use the live Engine implementations, including cancellation, request logging, network checks and media queues. Forward the caller's `signal` and UI `debugMode` when present.
 - `images.save`, `images.remove`, `images.stage` and `images.sweepStaged` reuse the gallery's safe writes and staged-file lifecycle. `videos.save` and `videos.remove` reuse the video storage path. `images.resolveNovelAiRequestSize` reuses the host's NovelAI size normalization. Video duration and public reference-upload normalization are also available through `videos.resolveDuration` and `videos.resolveReferenceUpload`.
+- `speech.transcribe(audio, { filename, mimeType, signal })` sends recorded audio to the speech-to-text server the user set in **Connections → Speech to Text** and resolves the transcript, or `null` while that server is off, so the package keeps its own transcription. It applies the host's URL policy (`STT_LOCAL_URLS_ENABLED`), size and time limits, and never exposes the saved key. `speech` is optional and needs no newer capability API: check `typeof api.runtime.integrations?.speech?.transcribe === "function"` and fall back on older Engines.
 
 Shared request/result types are exported by `@marinara-engine/shared`. Keep package-specific prompt building and orchestration in the package; call these host entrypoints for provider I/O instead of copying Engine service implementations. Pure helpers and types may still be bundled.

@@ -20,7 +20,6 @@ test.beforeEach(async ({ page }) => {
       rightPanelOpen: false,
       chatHelpSeenModes: ["conversation", "roleplay", "game"],
       appAccentColor: "#16a6b6",
-      professorMariNavigationEnabled: false,
     },
     "if-missing",
   );
@@ -422,10 +421,18 @@ test("UX sweep: Background library mobile toolbar, accent marker and settled mod
   await page.screenshot({ path: testInfo.outputPath("background-library.png") });
   if (testInfo.project.name === "mobile-webkit") {
     await expect(library.locator(".mari-modal-backdrop")).toHaveCSS("backdrop-filter", "none");
-    await expect(library.locator(".mari-modal-panel")).toHaveCSS(
-      "background-color",
-      await page.locator("body").evaluate((element) => getComputedStyle(element).backgroundColor),
-    );
+    // The panel keeps an opaque app-background backing. The page itself now carries the flattened
+    // topbar surface for browser chrome (4234d024f), so compare with --background, not with <body>.
+    const appBackground = await page.evaluate(() => {
+      const probe = document.createElement("div");
+      probe.style.backgroundColor = "var(--background)";
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+    expect(appBackground).toMatch(/^rgb\(\d+, \d+, \d+\)$/u);
+    await expect(library.locator(".mari-modal-panel")).toHaveCSS("background-color", appBackground);
   }
 });
 
@@ -637,12 +644,13 @@ for (const mode of ["roleplay", "game", "conversation"] as const) {
             probe.remove();
             return color;
           });
-          for (const [trigger, name] of [
-            ["Quick Connection Switcher", "Connections"],
-            ["Quick Persona Switcher", "Personas"],
+          // The connection picker is a non-modal dialog: it holds a model search box and pin toggles.
+          for (const [trigger, name, role] of [
+            ["Quick Connection Switcher", "Connections", "dialog"],
+            ["Quick Persona Switcher", "Personas", "menu"],
           ] as const) {
             await page.getByTitle(trigger, { exact: true }).click();
-            const picker = page.getByRole("menu", { name, exact: true });
+            const picker = page.getByRole(role, { name, exact: true });
             await expect(picker).toHaveCSS("background-color", cardColor);
             await picker.screenshot({ path: testInfo.outputPath(`desktop-${name.toLowerCase()}-picker.png`) });
             await picker.press("Escape");
@@ -680,10 +688,12 @@ for (const mode of ["roleplay", "game", "conversation"] as const) {
       expect(Number(await section.evaluate((el) => getComputedStyle(el).order))).toBeGreaterThan(
         Number(await agents.evaluate((el) => getComputedStyle(el).order)),
       );
-      const header = section.locator('[role="button"][aria-expanded]').first();
-      await expect(header.locator("svg.lucide-image")).toBeVisible();
+      // The shared drawer (f502a1ffd) keeps the help tip beside its toggle; 76d1e52c3 gave Background the wallpaper icon.
+      const headerRow = section.locator(":scope > .mari-drawer__header");
+      const header = headerRow.locator("[data-drawer-toggle]");
+      await expect(header.locator("svg.lucide-wallpaper")).toBeVisible();
       const wasExpanded = await header.getAttribute("aria-expanded");
-      await header.getByRole("button", { name: "Show help", exact: true }).click();
+      await headerRow.getByRole("button", { name: "Show help", exact: true }).click();
       await expect(
         page.getByText(
           "Choose a background for this chat from your library. The preview shows the currently active background.",
@@ -691,7 +701,7 @@ for (const mode of ["roleplay", "game", "conversation"] as const) {
         ),
       ).toBeVisible();
       await expect(header).toHaveAttribute("aria-expanded", wasExpanded!);
-      await header.getByRole("button", { name: "Show help", exact: true }).click();
+      await headerRow.getByRole("button", { name: "Show help", exact: true }).click();
       if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
       await section.getByRole("button", { name: "Browse library", exact: true }).click();
       const library = page.getByRole("dialog", { name: "Background Library" });

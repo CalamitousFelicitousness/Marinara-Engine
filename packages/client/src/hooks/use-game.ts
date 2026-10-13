@@ -39,7 +39,7 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat, GameWorld, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
+import type { Chat, GameWorld, WorldJournal, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -50,6 +50,7 @@ export const gameKeys = {
   overworld: (chatId: string) => [...gameKeys.all, "overworld", chatId] as const,
   world: (chatId: string) => [...gameKeys.all, "world", chatId] as const,
   town: (chatId: string) => [...gameKeys.all, "town", chatId] as const,
+  worldJournal: (chatId: string) => [...gameKeys.all, "world-journal", chatId] as const,
 };
 
 // ── Types ──
@@ -105,11 +106,23 @@ interface UpdateCampaignProgressionResponse {
   };
 }
 
+export interface PartyCardChoice {
+  id: string;
+  name: string;
+  title: string | null;
+  avatarPath: string | null;
+  avatarCrop: unknown;
+  /** The card's library preview text, shown when it has no title. */
+  summary: string | null;
+}
+
 interface RecruitPartyMemberResponse {
   sessionChat: Chat;
   added: boolean;
   characterName: string;
   cardCreated: boolean;
+  /** Set when several characters share the name: nothing changed, and the player picks one. */
+  cardChoices?: PartyCardChoice[];
 }
 
 interface RegenerateCharacterSheetResponse {
@@ -523,7 +536,7 @@ export function useRecruitPartyMember() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { chatId: string; characterName: string; connectionId?: string }) =>
+    mutationFn: (data: { chatId: string; characterName: string; characterId?: string | null; connectionId?: string }) =>
       api.post<RecruitPartyMemberResponse>("/game/party/recruit", data),
     onMutate: (variables) => ({ metadataVersion: captureChatMetadataVersion(variables.chatId) }),
     onSuccess: (res, variables, context) => {
@@ -981,6 +994,17 @@ export interface OverworldState {
   here: string | null;
   walk: WorldWalk | null;
   ruined: string[];
+}
+
+/** The world as the party knows it (the Journal's World tab), read again after each turn (`turnKey`), so
+ *  a swipe or branch never shows another turn's world. */
+export function useWorldJournal(chatId: string, turnKey: string | null) {
+  return useQuery({
+    queryKey: [...gameKeys.worldJournal(chatId), turnKey],
+    queryFn: () => api.get<{ journal: WorldJournal | null }>(`/game/${chatId}/world-journal`),
+    select: (data) => data.journal,
+    enabled: !!chatId,
+  });
 }
 
 /** The overworld of a game with a world, read again after each turn (`turnKey`). */

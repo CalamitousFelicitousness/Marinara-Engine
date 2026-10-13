@@ -45,7 +45,9 @@ with tempfile.TemporaryDirectory(prefix="marinara-terminal-shutdown-") as temp:
             time.sleep(0.025)
 
     try:
-        deadline = time.monotonic() + 20
+        # Starting from source takes about 20 s on the slowest CI runner (macOS Intel), so allow 30 (within
+        # the caller's 50 s).
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             pump()
             for line in output.decode(errors="replace").splitlines():

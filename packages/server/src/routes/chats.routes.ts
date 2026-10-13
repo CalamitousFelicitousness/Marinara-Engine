@@ -3,7 +3,6 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import AdmZip from "adm-zip";
 import { logger } from "../lib/logger.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
@@ -47,12 +46,17 @@ import {
   formatRpgStatsForPrompt,
   normalizeRpgStatPools,
   characterDataSchema,
+  withoutUnreadableOnboarding,
+  characterOnboardingSchema,
+  seedCardVariables,
+  withUniqueOnboardingIds,
   readGameInventoryTurn,
   rulesetLiveStatesSchema,
   applyContextMessageLimitWithPins,
   isMessagePinnedToContext,
   normalizeMessageMarkPatch,
   normalizeGroupChatMode,
+  normalizeIllustratorRunInterval,
   readMessagePrivateNote,
   stripPrivateMessageNote,
   MESSAGE_MARK_EXTRA_KEYS,
@@ -155,25 +159,29 @@ import {
 } from "../services/chat-insights/transcript-document.js";
 import { readSmallAvatarDataUri } from "../services/chat-insights/transcript-avatars.js";
 import { characters, gameStateSnapshots, memoryChunks } from "../db/schema/index.js";
-import { and, desc, eq, inArray } from "../db/file-query.js";
+import { and, desc, eq, inArray, isNotNull } from "../db/file-query.js";
 import { existsSync } from "fs";
 import { join } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
+import { singleChunk, streamExportZip } from "../utils/export-stream.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import {
   appendNonLeadingSystemMessagesToLastUser,
   computeSummaryHideIds,
   computeSummaryMessageRange,
+  selectSummaryRangeMessages,
   selectRollingSummaryMessages,
   findTrackerContextInsertIndex,
   isManualTrackerCharacterId,
   parseExtra,
   resolveRoleplayChatSummary,
   resolveRoleplaySummaryTail,
+  summaryHidingPatch,
   isMessageHiddenFromAI,
   resolveBaseUrl,
   resolveActiveCharacterIds,
   resolveVisibleGameStateAnchor,
+  mergedChatSummaryReaders,
   shouldEnableAgentsForGeneration,
   formatConversationInstructionsForWrap,
   injectIntoOutputFormatOrLastUser,
@@ -206,6 +214,11 @@ import {
 } from "../services/generation/roleplay-summary-runtime.js";
 import { resolveLorebookTokenBudget } from "../services/generation/lorebook-generation-runtime.js";
 import { resolveGameGmPromptTemplate } from "../services/generation/game-gm-prompt-runtime.js";
+import {
+  parseScenePackageOrigin,
+  parseStoredScenePackageData,
+  releaseScenePackageOrigin,
+} from "../services/capability-packages/capability-scene-origin.service.js";
 import {
   isBackgroundAutonomousCandidate,
   hasRoleplayDmThreadMarkers,
@@ -290,7 +303,7 @@ async function isValidCharacterIdentity(db: Parameters<typeof createCharactersSt
   if (!character) return false;
   try {
     const rawData = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
-    return characterDataSchema.safeParse(rawData).success;
+    return characterDataSchema.safeParse(withoutUnreadableOnboarding(rawData)).success;
   } catch {
     return false;
   }
@@ -656,6 +669,80 @@ function mergeRoleplayTrackerDefaultCharacters(currentCharacters: PresentCharact
   return merged;
 }
 
+/**
+ * The card-variable defaults every character in this chat declares, first
+ * character winning on a shared name (the two lists are separate, so two cards
+ * may legitimately use the same name).
+ */
+async function buildNewChatCardVariableDefaults(
+  app: FastifyInstance,
+  characterIds: string[],
+): Promise<Record<string, string>> {
+  const charactersStore = createCharactersStorage(app.db);
+  const defaults: Record<string, string> = {};
+  for (const characterId of characterIds) {
+    const row = await charactersStore.getById(characterId);
+    if (!row) continue;
+    let data: CharacterData;
+    try {
+      data = (typeof row.data === "string" ? JSON.parse(row.data) : row.data) as CharacterData;
+    } catch {
+      continue;
+    }
+    const parsed = characterOnboardingSchema.safeParse((data.extensions ?? {})?.onboarding);
+    if (!parsed.success || !parsed.data.enabled) continue;
+    // Cards saved before ids were made unique repeat one; the seeding below is
+    // keyed by name, so this is only about reading a card the wizard reads too.
+    for (const [name, value] of Object.entries(seedCardVariables(withUniqueOnboardingIds(parsed.data)))) {
+      if (!Object.prototype.hasOwnProperty.call(defaults, name)) defaults[name] = value;
+    }
+  }
+  return defaults;
+}
+
+/**
+ * Give a new chat the starting values for the character questions its chosen
+ * card declares (#7434).
+ *
+ * Card fields can hold `{{relationshipToUser}}`, which only resolves when that
+ * name exists as a chat variable. The Roleplay setup wizard asks the questions
+ * and writes the real answers, but a chat can also be created without it (Quick
+ * Start, the conversation wizard, start-from-card). Seeding the defaults here
+ * means such a chat shows something sensible instead of the literal tag.
+ *
+ * Seeding is skipped for any name the chat already has, and a free-text
+ * question seeds nothing at all — an absent variable is exactly what a card
+ * that never declared the question would see.
+ *
+ * A failure here must not fail chat creation: an unseeded chat is the behaviour
+ * that existed before, so it is logged and swallowed.
+ *
+ * Returns the updated row when it wrote something, so the caller can answer with
+ * what is actually stored — `storage.create`'s row predates this patch, and the
+ * client caches whatever the response carries.
+ */
+async function seedNewChatCardVariables(app: FastifyInstance, chatId: string, characterIds: string[]) {
+  if (characterIds.length === 0) return null;
+  const defaults = await buildNewChatCardVariableDefaults(app, characterIds);
+  if (Object.keys(defaults).length === 0) return null;
+
+  // Imported here rather than at the top like the routes below: the prompt
+  // module reads this one's types, so a static import is a load-order cycle.
+  const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
+  let wrote = false;
+  const updated = await createChatsStorage(app.db).patchMetadata(chatId, (current) => {
+    const saved = normalizeChatMacroVariables(current.macroVariables);
+    const missing: Record<string, string> = {};
+    for (const [name, value] of Object.entries(defaults)) {
+      if (!Object.prototype.hasOwnProperty.call(saved, name)) missing[name] = value;
+    }
+    if (Object.keys(missing).length === 0) return {};
+    wrote = true;
+    return { macroVariables: { ...saved, ...missing } };
+  });
+  return wrote ? updated : null;
+}
+
 async function seedNewRoleplayChatTrackerDefaults(
   app: FastifyInstance,
   chat: { id: string; mode?: string | null },
@@ -714,10 +801,117 @@ function resolveEntryStateOverrides(value: unknown): EntryStateOverrides | undef
   return overrides;
 }
 
+/** Slice 70: Mari's continuity snapshot is prompt-only (her run reads it from storage; the client never does). It was
+ *  ~30 % of a long Mari thread's bytes on every load, so the message list leaves it out. Storage is unchanged. */
+export function withoutPromptOnlyExtra<T extends { extra?: unknown }>(rows: T[]): T[] {
+  return rows.map((row) => {
+    const raw = row.extra;
+    if (typeof raw === "string" && !raw.includes('"mariWorkspaceContinuity"')) return row;
+    let extra: unknown = raw;
+    if (typeof raw === "string") {
+      try {
+        extra = JSON.parse(raw);
+      } catch {
+        return row;
+      }
+    }
+    if (!extra || typeof extra !== "object" || !("mariWorkspaceContinuity" in extra)) return row;
+    const { mariWorkspaceContinuity: _promptOnly, ...rest } = extra as Record<string, unknown>;
+    return { ...row, extra: typeof raw === "string" ? JSON.stringify(rest) : rest };
+  });
+}
+
+type ProfessorMariRestartQuery = {
+  connectionId?: string;
+  personaId?: string;
+  contextKey?: string;
+  contextLabel?: string;
+  name?: string;
+};
+
 export async function chatsRoutes(app: FastifyInstance) {
   const storage = createChatsStorage(app.db);
   const messageTrashStore = createMessageTrashStorage(app.db);
   const appSettings = createAppSettingsStorage(app.db);
+
+  /**
+   * Append a summary entry and recompile the prompt-facing summary without replacing concurrent metadata
+   * changes. When the chat hides summarized messages, the entry's messages (minus the protected tail) are
+   * hidden first. Hiding and the entry write share the per-chat queue with deletion, so neither can
+   * interleave between them, and a failed write unhides again. `req` is the summarizing route's request, whose
+   * chat id keys that queue.
+   */
+  const appendSummaryEntryHidingMessages = async (
+    req: { params: { id: string } },
+    entry: Partial<ChatSummaryEntry> & { content: string; messageIds: string[] },
+    options: { signal?: AbortSignal; metadata?: Record<string, unknown> } = {},
+  ) => {
+    const checkAborted = () => {
+      if (options.signal) throwIfChatSummaryAborted(options.signal);
+    };
+    let hideMessageIds: string[] = [];
+    let appended = null as ReturnType<typeof appendChatSummaryEntryToMetadata> | null;
+    const updatedChat = await withChatMetadataPatchQueue(req.params.id, async () => {
+      checkAborted();
+      const [latestChat, latestMessages] = await Promise.all([
+        storage.getById(req.params.id),
+        storage.listMessages(req.params.id),
+      ]);
+      if (!latestChat) return null;
+      checkAborted();
+      const latestMeta = parseExtra(latestChat.metadata) as Record<string, unknown>;
+      // A repeated save of the same new entry (say, a retried request) finds it already written.
+      const alreadySaved =
+        !!entry.id &&
+        normalizeChatSummaryEntries(latestMeta.summaryEntries, {
+          legacySummary: typeof latestMeta.summary === "string" ? latestMeta.summary : null,
+        }).some((existing) => existing.id === entry.id);
+      if (alreadySaved) return latestChat;
+      const eligibleToHide =
+        latestMeta.hideSummarisedMessages === true
+          ? computeSummaryHideIds({
+              messages: latestMessages,
+              entryMessageIds: entry.messageIds,
+              tail: resolveRoleplaySummaryTail(latestMeta.summaryTailMessages),
+            })
+          : [];
+      checkAborted();
+      hideMessageIds =
+        eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
+
+      try {
+        const updated = await storage.patchMetadata(
+          req.params.id,
+          (freshMeta) => {
+            checkAborted();
+            const now = new Date().toISOString();
+            appended = appendChatSummaryEntryToMetadata(
+              freshMeta,
+              {
+                ...entry,
+                ...(hideMessageIds.length > 0 ? { hiddenMessageIds: hideMessageIds } : {}),
+                createdAt: entry.createdAt ?? now,
+                updatedAt: now,
+              },
+              { createId: newId, now },
+            );
+            return { summary: appended.summary, summaryEntries: appended.entries, ...options.metadata };
+          },
+          { metadataQueueHeld: true },
+        );
+        if (!updated && hideMessageIds.length > 0) {
+          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
+        }
+        return updated;
+      } catch (err) {
+        if (hideMessageIds.length > 0) {
+          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
+        }
+        throw err;
+      }
+    });
+    return { updatedChat, hideMessageIds, appended };
+  };
 
   const cleanupEmptyRoleplayDmChats = async () => {
     const allChats = await storage.list();
@@ -932,71 +1126,89 @@ export async function chatsRoutes(app: FastifyInstance) {
     return normalizeChatForResponse(updated ?? created);
   });
 
-  app.post<{ Querystring: { connectionId?: string; personaId?: string } }>(
-    "/internal/professor-mari/restart",
-    async (req) => {
-      const professorChats = sortProfessorMariChats((await storage.list()).filter(isHomeProfessorMariChat));
-      const active = professorChats.find(isActiveHomeProfessorMariChat) ?? professorChats[0] ?? null;
-      const connectionId =
-        typeof req.query.connectionId === "string" && req.query.connectionId
-          ? req.query.connectionId
-          : (active?.connectionId ?? null);
-      const personaId =
-        typeof req.query.personaId === "string" && req.query.personaId
-          ? req.query.personaId
-          : (active?.personaId ?? null);
+  app.post<{ Querystring: ProfessorMariRestartQuery }>("/internal/professor-mari/restart", async (req) => {
+    // R7: the screen the new thread is about, so the next door from there continues it.
+    const contextKey = typeof req.query.contextKey === "string" ? req.query.contextKey.trim().slice(0, 300) : "";
+    // Quick answer hand-off: the new thread is named after the question it starts with.
+    const name = typeof req.query.name === "string" ? req.query.name.trim().slice(0, 120) : "";
+    const contextLabel = typeof req.query.contextLabel === "string" ? req.query.contextLabel.trim().slice(0, 120) : "";
+    const professorChats = sortProfessorMariChats((await storage.list()).filter(isHomeProfessorMariChat));
+    const active = professorChats.find(isActiveHomeProfessorMariChat) ?? professorChats[0] ?? null;
+    const connectionId =
+      typeof req.query.connectionId === "string" && req.query.connectionId
+        ? req.query.connectionId
+        : (active?.connectionId ?? null);
+    const personaId =
+      typeof req.query.personaId === "string" && req.query.personaId
+        ? req.query.personaId
+        : (active?.personaId ?? null);
 
-      if (active && (await storage.countMessages(active.id)) > 0) {
-        const metadata = parseChatMetadata(active.metadata);
-        const currentName = typeof active.name === "string" && active.name.trim() ? active.name.trim() : "";
-        const shouldRename = currentName === "Professor Mari";
-        await storage.update(active.id, {
-          name: shouldRename ? formatProfessorMariStashName() : active.name,
-          characterIds: [PROFESSOR_MARI_ID],
-          connectionId: active.connectionId ?? null,
-          personaId: active.personaId ?? null,
-          promptPresetId: null,
-        });
-        await storage.patchMetadata(active.id, {
-          ...metadata,
-          internalAssistant: PROFESSOR_MARI_INTERNAL_CHAT_MARKER,
-          professorMariActive: false,
-          professorMariArchived: true,
-          enableAgents: false,
-          autonomousMessages: false,
-          characterExchanges: false,
-          tags: ["internal"],
-        });
-      } else if (active) {
-        await storage.patchMetadata(active.id, {
-          internalAssistant: PROFESSOR_MARI_INTERNAL_CHAT_MARKER,
-          professorMariActive: false,
-          professorMariArchived: true,
-        });
-      }
-
-      const created = await storage.create({
-        name: "Professor Mari",
-        mode: "conversation",
-        characterIds: [PROFESSOR_MARI_ID],
-        groupId: null,
-        personaId,
-        promptPresetId: null,
-        connectionId,
-      });
-      if (!created) return created;
-      const updated = await storage.patchMetadata(created.id, {
+    const activeMessageCount = active ? await storage.countMessages(active.id) : 0;
+    // R7: an empty thread about nothing yet (the one opening her made) becomes the new one,
+    // instead of leaving an empty "general" thread behind in her Chats list.
+    if (active && activeMessageCount === 0 && !parseChatMetadata(active.metadata).mariContextKey) {
+      await storage.update(active.id, { connectionId, personaId, ...(name ? { name } : {}) });
+      const reused = await storage.patchMetadata(active.id, {
         internalAssistant: PROFESSOR_MARI_INTERNAL_CHAT_MARKER,
         professorMariActive: true,
         professorMariArchived: false,
+        mariContextKey: contextKey || null,
+        mariContextLabel: contextKey ? contextLabel || null : null,
+      });
+      return normalizeChatForResponse(reused ?? active);
+    }
+    if (active && activeMessageCount > 0) {
+      const metadata = parseChatMetadata(active.metadata);
+      const currentName = typeof active.name === "string" && active.name.trim() ? active.name.trim() : "";
+      const shouldRename = currentName === "Professor Mari";
+      await storage.update(active.id, {
+        name: shouldRename ? formatProfessorMariStashName() : active.name,
+        characterIds: [PROFESSOR_MARI_ID],
+        connectionId: active.connectionId ?? null,
+        personaId: active.personaId ?? null,
+        promptPresetId: null,
+      });
+      await storage.patchMetadata(active.id, {
+        ...metadata,
+        internalAssistant: PROFESSOR_MARI_INTERNAL_CHAT_MARKER,
+        professorMariActive: false,
+        professorMariArchived: true,
         enableAgents: false,
         autonomousMessages: false,
         characterExchanges: false,
         tags: ["internal"],
       });
-      return normalizeChatForResponse(updated ?? created);
-    },
-  );
+    } else if (active) {
+      await storage.patchMetadata(active.id, {
+        internalAssistant: PROFESSOR_MARI_INTERNAL_CHAT_MARKER,
+        professorMariActive: false,
+        professorMariArchived: true,
+      });
+    }
+
+    const created = await storage.create({
+      name: name || "Professor Mari",
+      mode: "conversation",
+      characterIds: [PROFESSOR_MARI_ID],
+      groupId: null,
+      personaId,
+      promptPresetId: null,
+      connectionId,
+    });
+    if (!created) return created;
+    const updated = await storage.patchMetadata(created.id, {
+      internalAssistant: PROFESSOR_MARI_INTERNAL_CHAT_MARKER,
+      professorMariActive: true,
+      professorMariArchived: false,
+      enableAgents: false,
+      autonomousMessages: false,
+      characterExchanges: false,
+      tags: ["internal"],
+      mariContextKey: contextKey || null,
+      mariContextLabel: contextKey ? contextLabel || null : null,
+    });
+    return normalizeChatForResponse(updated ?? created);
+  });
 
   app.post<{ Params: { id: string } }>("/internal/professor-mari/chats/:id/activate", async (req, reply) => {
     const professorChats = (await storage.list()).filter(isHomeProfessorMariChat);
@@ -1116,7 +1328,14 @@ export async function chatsRoutes(app: FastifyInstance) {
       logger.warn(err, "Failed to seed Character Tracker defaults for new Roleplay chat");
     }
 
-    return normalizeChatForResponse(chat);
+    let seeded = chat;
+    try {
+      seeded = (await seedNewChatCardVariables(app, chat.id, input.characterIds)) ?? chat;
+    } catch (err) {
+      logger.warn(err, "Failed to seed onboarding card variables for new chat");
+    }
+
+    return normalizeChatForResponse(seeded);
   });
 
   // Update chat
@@ -1128,6 +1347,20 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
     if (data.characterIds?.includes(PROFESSOR_MARI_ID) && !hasProfessorMariCharacter(existing)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
+    }
+    if (data.characterIds !== undefined) {
+      // A hosted room's AI roster lives in the room. Changing it here would leave the room's
+      // own list behind and every later room reply would be refused.
+      const room = parseChatMetadata(existing.metadata).multiplayer as { role?: unknown; status?: unknown } | null;
+      const before = new Set(resolveChatCharacterIds(existing.characterIds));
+      const after = new Set(data.characterIds);
+      if (
+        room?.role === "host" &&
+        room.status !== "ended" &&
+        (before.size !== after.size || [...after].some((id) => !before.has(id)))
+      ) {
+        return reply.status(409).send({ error: "Add or remove room characters from Players." });
+      }
     }
     const nextPersonaCharacterId =
       data.personaCharacterId === undefined ? existing.personaCharacterId : data.personaCharacterId;
@@ -1168,6 +1401,11 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     }
     let roleplayTrackerCharacterIdsToSeed: string[] = [];
+    // Characters added to an existing chat need the same card-variable defaults
+    // as at creation, or a card that just joined carries a literal
+    // `{{relationshipToUser}}` into the prompt. Compared before/after like the
+    // tracker below so re-sending an unchanged roster writes nothing.
+    let cardVariableCharacterIdsToSeed: string[] = [];
     if (data.characterIds !== undefined) {
       const previousIds = resolveChatCharacterIds(existing.characterIds);
       const nextIds = data.characterIds;
@@ -1175,6 +1413,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       const previousSet = new Set(previousIds);
       const removedIds = previousIds.filter((id) => !nextSet.has(id));
       const addedIds = nextIds.filter((id) => !previousSet.has(id));
+
+      cardVariableCharacterIdsToSeed = addedIds;
 
       if (removedIds.length > 0 || addedIds.length > 0) {
         const existingMessages = await storage.listMessages(req.params.id);
@@ -1248,12 +1488,23 @@ export async function chatsRoutes(app: FastifyInstance) {
         }
       }
     }
-    const updated = await storage.update(req.params.id, data);
+    let updated = await storage.update(req.params.id, data);
     if (updated && roleplayTrackerCharacterIdsToSeed.length > 0) {
       try {
         await seedNewRoleplayChatTrackerDefaults(app, updated, roleplayTrackerCharacterIdsToSeed);
       } catch (err) {
         logger.warn(err, "Failed to seed Character Tracker defaults while setting up Roleplay chat");
+      }
+    }
+    // Seeded after the update, and its row returned: the client caches whatever
+    // this response carries, so answering with the pre-seed row would leave the
+    // added character's variables missing until the next fetch. Swallowed like
+    // the tracker above — an unseeded chat is the pre-existing behaviour.
+    if (updated && cardVariableCharacterIdsToSeed.length > 0) {
+      try {
+        updated = (await seedNewChatCardVariables(app, req.params.id, cardVariableCharacterIdsToSeed)) ?? updated;
+      } catch (err) {
+        logger.warn(err, "Failed to seed onboarding card variables for added chat characters");
       }
     }
     if (updated && identityChanged) {
@@ -1421,6 +1672,10 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (Object.prototype.hasOwnProperty.call(incoming, "summaryMaxTokens")) {
       incoming.summaryMaxTokens = clampRoleplaySummaryMaxTokens(incoming.summaryMaxTokens);
     }
+    if (Object.prototype.hasOwnProperty.call(incoming, "illustratorRunInterval")) {
+      // Numbers clamp to 0-100; anything else returns the chat to the agent's Run Interval.
+      incoming.illustratorRunInterval = normalizeIllustratorRunInterval(incoming.illustratorRunInterval);
+    }
     if (
       Object.prototype.hasOwnProperty.call(incoming, "noodleTimelineContextEnabled") &&
       typeof incoming.noodleTimelineContextEnabled !== "boolean"
@@ -1433,69 +1688,38 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
+    const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
+      if (
+        incoming.enableMemoryRecall === true &&
+        !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
+        normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
+      ) {
+        createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+      }
+    };
     if (
       Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
       typeof incoming.hideSummarisedMessages === "boolean"
     ) {
-      const updated = await storage.patchMetadata(req.params.id, async (freshMeta) => {
-        const previousHideEnabled = freshMeta.hideSummarisedMessages === true;
-        if (previousHideEnabled === incoming.hideSummarisedMessages) {
-          return incoming;
-        }
-
-        const allMessages = await storage.listMessages(req.params.id);
-        const currentEntries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
-          legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
-        });
-        const now = new Date().toISOString();
-        let nextEntries: ChatSummaryEntry[];
-
-        if (incoming.hideSummarisedMessages) {
-          const tail = resolveRoleplaySummaryTail(freshMeta.summaryTailMessages);
-          nextEntries = [];
-          for (const entry of currentEntries) {
-            if (!entry.enabled || !entry.messageIds?.length) {
-              nextEntries.push(entry);
-              continue;
-            }
-
-            const eligibleToHide = computeSummaryHideIds({
-              messages: allMessages,
-              entryMessageIds: entry.messageIds,
-              tail,
-            });
-            const hiddenMessageIds =
-              eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
-            const ownedHiddenMessageIds = Array.from(new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]));
-            nextEntries.push(
-              ownedHiddenMessageIds.length > 0
-                ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
-                : entry,
-            );
-          }
-        } else {
-          const summaryOwnedHiddenIds = Array.from(
-            new Set(currentEntries.flatMap((entry) => entry.hiddenMessageIds ?? [])),
-          );
-          if (summaryOwnedHiddenIds.length > 0) {
-            await storage.bulkSetHiddenFromAI(req.params.id, summaryOwnedHiddenIds, false);
-          }
-          nextEntries = currentEntries.map((entry) => {
-            if (!entry.hiddenMessageIds?.length) return entry;
-            const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
-            return { ...rest, updatedAt: now };
-          });
-        }
-
-        return {
+      const updated = await storage.patchMetadata(
+        req.params.id,
+        async (freshMeta) => ({
           ...incoming,
-          summaryEntries: nextEntries,
-          summary: compileChatSummaryEntries(nextEntries),
-        };
-      });
+          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
+        }),
+        { afterWrite: cancelReplacedAdvancedMemory },
+      );
       return updated ? normalizeChatForResponse(updated) : updated;
     }
-    const updated = await storage.patchMetadata(req.params.id, incoming);
+    // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
+    const changedKeys = Object.keys(incoming);
+    const viewOnly =
+      changedKeys.length > 0 &&
+      changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
+    const updated = await storage.patchMetadata(req.params.id, incoming, {
+      touchUpdatedAt: !viewOnly,
+      afterWrite: cancelReplacedAdvancedMemory,
+    });
     return updated ? normalizeChatForResponse(updated) : updated;
   });
 
@@ -1638,6 +1862,46 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     } else {
       return reply.status(400).send({ error: "Unsupported summary entry operation" });
+    }
+
+    // A new entry written for a message range covers and hides that range exactly as Generate does.
+    const rangeEntry = body.operation === "replace" && body.entry.sourceMode === "range" ? body.entry : null;
+    if (rangeEntry) {
+      const chat = await storage.getById(req.params.id);
+      if (!chat) return reply.status(404).send({ error: "Chat not found" });
+      const meta = parseExtra(chat.metadata) as Record<string, unknown>;
+      const existingEntries = normalizeChatSummaryEntries(meta.summaryEntries, {
+        legacySummary: typeof meta.summary === "string" ? meta.summary : null,
+      });
+      if (!existingEntries.some((entry) => entry.id === rangeEntry.id)) {
+        const { rangeStartIndex, rangeEndIndex } = rangeEntry;
+        if (
+          !Number.isInteger(rangeStartIndex) ||
+          !Number.isInteger(rangeEndIndex) ||
+          rangeStartIndex! < 1 ||
+          rangeEndIndex! < 1
+        ) {
+          return reply
+            .status(400)
+            .send({ error: "Summary ranges need positive whole message numbers", code: "invalid" });
+        }
+        const selection = selectSummaryRangeMessages(
+          await storage.listMessages(req.params.id),
+          rangeStartIndex! - 1,
+          rangeEndIndex! - 1,
+        );
+        if ("error" in selection) return reply.status(400).send({ error: selection.error, code: selection.code });
+        const { hiddenMessageIds: _hiddenMessageIds, ...entry } = rangeEntry;
+        const { updatedChat } = await appendSummaryEntryHidingMessages(req, {
+          ...entry,
+          messageCount: selection.messages.length,
+          rangeStartIndex: selection.rangeStartIndex,
+          rangeEndIndex: selection.rangeEndIndex,
+          messageIds: selection.messages.map((message) => message.id),
+        });
+        if (!updatedChat) return reply.status(404).send({ error: "Chat not found" });
+        return normalizeChatForResponse(updatedChat);
+      }
     }
 
     let reorderConflict = false;
@@ -2042,8 +2306,15 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
     // If this is a scene chat, clean up the origin chat's scene pointer
     const chat = await storage.getById(req.params.id);
+    let scenePackageOrigin: ReturnType<typeof parseScenePackageOrigin> = null;
+    let scenePackageData: ReturnType<typeof parseStoredScenePackageData> = null;
     if (chat) {
       const meta = parseExtra(chat.metadata) as Record<string, unknown>;
+      // A package origin is told after the chat is gone, so its thread never unlocks while the scene still exists.
+      if (meta.sceneStatus === "active") {
+        scenePackageOrigin = parseScenePackageOrigin(meta.scenePackageOrigin);
+        scenePackageData = parseStoredScenePackageData(meta);
+      }
       const originId = meta.sceneOriginChatId;
       if (typeof originId === "string" && originId) {
         const origin = await storage.getById(originId);
@@ -2066,6 +2337,12 @@ export async function chatsRoutes(app: FastifyInstance) {
     // Disconnect from partner chat before deleting
     await storage.disconnectChat(req.params.id);
     await storage.remove(req.params.id);
+    if (scenePackageOrigin)
+      await releaseScenePackageOrigin(scenePackageOrigin, {
+        kind: "deleted",
+        sceneChatId: req.params.id,
+        data: scenePackageData,
+      });
     return reply.status(204).send();
   });
 
@@ -2081,7 +2358,9 @@ export async function chatsRoutes(app: FastifyInstance) {
           return reply.status(400).send({ error: "Invalid message cursor" });
         }
         try {
-          return await storage.listMessagesPaginated(req.params.id, limit, req.query.before || undefined);
+          return withoutPromptOnlyExtra(
+            await storage.listMessagesPaginated(req.params.id, limit, req.query.before || undefined),
+          );
         } catch (error) {
           if (error instanceof InvalidMessageCursorError) {
             return reply.status(400).send({ error: error.message });
@@ -2089,7 +2368,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           throw error;
         }
       }
-      return storage.listMessages(req.params.id);
+      return withoutPromptOnlyExtra(await storage.listMessages(req.params.id));
     },
   );
 
@@ -2355,9 +2634,18 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (created?.id && input.role === "user") {
       const chat = await storage.getById(req.params.id);
       const personaSnapshot = await buildPersonaSnapshotForChat(app, chat);
-      if (personaSnapshot) {
-        return (await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created;
+      const saved = personaSnapshot
+        ? ((await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created)
+        : created;
+      const memory = normalizeAdvancedMemorySettings(parseExtra(chat?.metadata).advancedMemory);
+      if (chat?.mode !== "roleplay" || !memory.enabled || !memory.autoMessageVisibility) return saved;
+      // Your message is decided once, when you post it, even if no reply follows (#7349).
+      try {
+        await createAdvancedMemoryService(app.db).settleMessageVisibility(chat.id);
+      } catch (error) {
+        logger.warn(error, "[advanced-memory] Message visibility failed for chat %s; hiding nothing", chat.id);
       }
+      return (await storage.getMessage(created.id)) ?? saved;
     }
     return created;
   });
@@ -2499,12 +2787,31 @@ export async function chatsRoutes(app: FastifyInstance) {
             partial[key] = normalizeMessageCharacterIds(partial[key]);
           }
         }
+        // A whisper edited to nothing is removed from the message rather than kept as a blank secret.
+        if (Array.isArray(partial.roleplayCommandActivity)) {
+          partial.roleplayCommandActivity = partial.roleplayCommandActivity.filter(
+            (item: { command?: { type?: unknown; text?: unknown }; error?: unknown } | null) =>
+              !(
+                item?.command?.type === "whisper" &&
+                !item.error &&
+                typeof item.command.text === "string" &&
+                !item.command.text.trim()
+              ),
+          );
+        }
         const syncAllSwipeExtra: Record<string, unknown> = {};
         if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI")) {
           syncAllSwipeExtra.hiddenFromAI = partial.hiddenFromAI;
         }
         if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
           syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
+        }
+        // A user's visibility choice, for everyone or per character, always wins over Advanced Memory's automatic one (#7192).
+        if (
+          Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI") ||
+          Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")
+        ) {
+          partial.visibilityManual = syncAllSwipeExtra.visibilityManual = true;
         }
         if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
           syncAllSwipeExtra.isConversationStart = partial.isConversationStart;
@@ -2578,7 +2885,10 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (typeof hidden !== "boolean") {
         return reply.status(400).send({ error: "hidden must be a boolean" });
       }
-      const updated = (await storage.bulkSetHiddenFromAI(req.params.chatId, messageIds, hidden)).length;
+      // /hide and /unhide are the user's choice too, so Advanced Memory never overrides them (#7192).
+      const updated = (
+        await storage.bulkSetHiddenFromAI(req.params.chatId, messageIds, hidden, { visibilityManual: true })
+      ).length;
       return { updated };
     },
   );
@@ -2926,12 +3236,13 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!updated && !hasExplicitTarget) {
       updated = await gameStateStore.updateLatest(req.params.id, fields, manual);
     }
-    // Wipe all manual overrides when explicitly requested
+    // Wipe all manual overrides when explicitly requested. Every row's, because a regeneration
+    // starts from the edits on any swipe of the reply it replaces.
     if (clearOverrides && updated) {
       await app.db
         .update(gameStateSnapshots)
         .set({ manualOverrides: null })
-        .where(and(eq(gameStateSnapshots.chatId, req.params.id), eq(gameStateSnapshots.id, (updated as any).id)));
+        .where(and(eq(gameStateSnapshots.chatId, req.params.id), isNotNull(gameStateSnapshots.manualOverrides)));
       updated = { ...updated, manualOverrides: null };
     }
     // If no snapshot exists yet, create one so manual edits aren't lost
@@ -3118,6 +3429,8 @@ export async function chatsRoutes(app: FastifyInstance) {
           parameters: null,
           source: "cached",
           exact: true,
+          // Whose saved prompt this is, so Decision diagnostics can follow that character (#7264).
+          characterId: promptSourceMessage.characterId ?? null,
           generationInfo: cached.generationInfo ?? null,
           gameToolPlanning: cached.gameToolPlanning ?? null,
           agentNote: requestedMessage
@@ -3161,8 +3474,13 @@ export async function chatsRoutes(app: FastifyInstance) {
       try {
         const { createPromptsStorage } = await import("../services/storage/prompts.storage.js");
         const { createCharactersStorage } = await import("../services/storage/characters.storage.js");
-        const { assemblePrompt, buildPromptMacroContext, resolvePromptIdleDuration, setLorebookEntryCounts } =
-          await import("../services/prompt/index.js");
+        const {
+          assemblePrompt,
+          buildPromptMacroContext,
+          resolveCharacterMacroData,
+          resolvePromptIdleDuration,
+          setLorebookEntryCounts,
+        } = await import("../services/prompt/index.js");
         const presetStore = createPromptsStorage(app.db);
         const charStore = createCharactersStorage(app.db);
 
@@ -3594,6 +3912,16 @@ export async function chatsRoutes(app: FastifyInstance) {
             personaStats,
             chatMessages: mappedMessages,
             chatSummary: activeChatSummary,
+            // Read the summary as the next merged reply will, so the preview matches it (#7252).
+            chatSummaryReaders: activeChatSummary
+              ? mergedChatSummaryReaders({
+                  characterIds: assistantCharacterIds,
+                  individual: normalizeGroupChatMode(chatMeta.groupChatMode) === "individual",
+                  impersonate: false,
+                  narratorCharacterId: normalizeAdvancedMemorySettings(chatMeta.advancedMemory).narratorCharacterId,
+                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds)),
+                })
+              : undefined,
             enableAgents: chatMeta.enableAgents === true,
             activeAgentIds: activePromptAgentIds,
             activeLorebookIds: Array.isArray(chatMeta.activeLorebookIds)
@@ -4464,6 +4792,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       }),
     ];
 
+    const swipesByMessageId = await storage.getSwipesByMessageId(exportedMessages.map((msg) => msg.id));
     for (const msg of exportedMessages) {
       const rawMessageExtra = parseExportMetadata(msg.extra);
       const normalizeInterruptionExtra = (extra: Record<string, unknown>) =>
@@ -4474,7 +4803,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         exportNoteExtra(sanitizeJsonlMessageExtra(rawMessageExtra)),
       );
       const thinking = includeReasoning ? getExportThinking(rawMessageExtra) : null;
-      const swipes = await storage.getSwipes(msg.id);
+      const swipes = swipesByMessageId.get(msg.id) ?? [];
       const activeContent = msg.content;
       const exportSwipes =
         swipes.length > 0
@@ -4589,59 +4918,63 @@ export async function chatsRoutes(app: FastifyInstance) {
 
     if (chatsToExport.length === 0) return reply.status(404).send({ error: "No chats found to export" });
 
-    const zip = new AdmZip();
-    const manifest: Array<Record<string, unknown>> = [];
-
-    for (let index = 0; index < chatsToExport.length; index++) {
-      const chat = chatsToExport[index]!;
-      const serialized = await serializeChatTranscript(chat, format, { includeReasoning, includePrivateNotes });
-      const file = buildBulkExportFilename(
-        chat,
-        index,
-        chatsToExport.length,
-        serialized.branchName,
-        serialized.extension,
-      );
-      zip.addFile(file, Buffer.from(serialized.content, "utf8"));
-      manifest.push({
-        file,
-        id: chat.id,
-        name: chat.name,
-        mode: chat.mode,
-        groupId: chat.groupId,
-        folderId: chat.folderId,
-        branchName: serialized.branchName || null,
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt,
-        messageCount: serialized.messageCount,
-      });
-    }
-
-    zip.addFile(
-      "manifest.json",
-      Buffer.from(
-        JSON.stringify(
-          {
-            exportedAt: new Date().toISOString(),
-            format,
-            includeReasoning,
-            includePrivateNotes,
-            scope,
-            count: chatsToExport.length,
-            chats: manifest,
-          },
-          null,
-          2,
+    // One transcript is read and compressed at a time while the ZIP is sent (#7115); the manifest goes last.
+    const files = (async function* () {
+      const manifest: Array<Record<string, unknown>> = [];
+      for (let index = 0; index < chatsToExport.length; index++) {
+        const chat = chatsToExport[index]!;
+        const serialized = await serializeChatTranscript(chat, format, { includeReasoning, includePrivateNotes });
+        const file = buildBulkExportFilename(
+          chat,
+          index,
+          chatsToExport.length,
+          serialized.branchName,
+          serialized.extension,
+        );
+        manifest.push({
+          file,
+          id: chat.id,
+          name: chat.name,
+          mode: chat.mode,
+          groupId: chat.groupId,
+          folderId: chat.folderId,
+          branchName: serialized.branchName || null,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+          messageCount: serialized.messageCount,
+        });
+        yield {
+          stem: file.slice(0, -(serialized.extension.length + 1)),
+          extension: serialized.extension,
+          content: singleChunk(serialized.content),
+        };
+      }
+      yield {
+        stem: "manifest",
+        extension: "json",
+        content: singleChunk(
+          JSON.stringify(
+            {
+              exportedAt: new Date().toISOString(),
+              format,
+              includeReasoning,
+              includePrivateNotes,
+              scope,
+              count: chatsToExport.length,
+              chats: manifest,
+            },
+            null,
+            2,
+          ),
         ),
-        "utf8",
-      ),
-    );
+      };
+    })();
 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     return reply
       .header("Content-Type", "application/zip")
       .header("Content-Disposition", `attachment; filename="chat-transcripts-${format}-${stamp}.zip"`)
-      .send(zip.toBuffer());
+      .send(streamExportZip(files));
   });
 
   // Export chat — supports JSONL (default, SillyTavern-compatible), plain text, Markdown and a standalone HTML story
@@ -4683,7 +5016,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       sourceChat.mode === "roleplay"
         ? await createAdvancedMemoryService(app.db).exportTransferRecords(sourceChat.id)
         : [];
-    const isSceneChat = sourceMeta.sceneStatus === "active" || !!sourceMeta.sceneOriginChatId;
+    const isSceneChat =
+      sourceMeta.sceneStatus === "active" || !!sourceMeta.sceneOriginChatId || !!sourceMeta.scenePackageOrigin;
     if (isSceneChat) {
       return reply.status(400).send({ error: "Scene chats cannot be branched" });
     }
@@ -4778,8 +5112,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     const copiedSourceMessages: typeof msgs = [];
     const copiedMessageInputs: Parameters<typeof storage.createMessagesBatch>[1] = [];
 
-    for (const msg of msgs) {
-      const swipes = await storage.getSwipes(msg.id);
+    const swipesByMessageId = await storage.getSwipesByMessageId(sourceMessagesToCopy.map((msg) => msg.id));
+    for (const msg of sourceMessagesToCopy) {
+      const swipes = swipesByMessageId.get(msg.id) ?? [];
       const messageExtra = await storage.prepareRoleplayInterruptionExtraForCopy(
         sanitizeBranchedMessageExtra(parseExportMetadata(msg.extra)),
       );
@@ -4833,9 +5168,6 @@ export async function chatsRoutes(app: FastifyInstance) {
         msg.id,
         copiedSwipes.map((swipe) => swipe.index),
       );
-
-      // Stop if we hit the specified message
-      if (upToMessageId && msg.id === upToMessageId) break;
     }
 
     // A branch ending before the interrupting response keeps the full preceding message.
@@ -5344,40 +5676,29 @@ export async function chatsRoutes(app: FastifyInstance) {
     // Hidden-from-AI messages are excluded from summary generation even when
     // they fall inside the selected range.
     const allMessages = await storage.listMessages(req.params.id);
-    let selectedRangeStartIndex: number | undefined;
-    let selectedRangeEndIndex: number | undefined;
-    const selectedMessages = hasRange
-      ? (() => {
-          const startIndex = hasRangeByIndex
+    const rangeSelection = hasRange
+      ? selectSummaryRangeMessages(
+          allMessages,
+          hasRangeByIndex
             ? requestedRangeStartIndex! - 1
-            : allMessages.findIndex((message) => message.id === requestedRangeStartMessageId);
-          const endIndex = hasRangeByIndex
+            : allMessages.findIndex((message) => message.id === requestedRangeStartMessageId),
+          hasRangeByIndex
             ? requestedRangeEndIndex! - 1
-            : allMessages.findIndex((message) => message.id === requestedRangeEndMessageId);
-          if (startIndex === -1 || endIndex === -1) {
-            return { error: "Summary range messages were not found in this chat" as const };
-          }
-          if (startIndex < 0 || endIndex < 0 || startIndex >= allMessages.length || endIndex >= allMessages.length) {
-            return { error: "Summary range is outside this chat's message history" as const };
-          }
-          const from = Math.min(startIndex, endIndex);
-          const to = Math.max(startIndex, endIndex);
-          const count = to - from + 1;
-          if (count > 500) {
-            return { error: "Summary ranges cannot include more than 500 messages" as const };
-          }
-          selectedRangeStartIndex = from + 1;
-          selectedRangeEndIndex = to + 1;
-          return allMessages.slice(from, to + 1).filter((message) => !isMessageHiddenFromAI(message));
-        })()
-      : selectRollingSummaryMessages({
-          messages: allMessages,
-          contextSize,
-          summaryEntries: chatMeta.summaryEntries as ChatSummaryEntry[] | undefined,
-        });
-    if (selectedMessages && "error" in selectedMessages) {
-      return reply.status(400).send({ error: selectedMessages.error });
+            : allMessages.findIndex((message) => message.id === requestedRangeEndMessageId),
+        )
+      : null;
+    if (rangeSelection && "error" in rangeSelection) {
+      return reply.status(400).send({ error: rangeSelection.error });
     }
+    let selectedRangeStartIndex = rangeSelection?.rangeStartIndex;
+    let selectedRangeEndIndex = rangeSelection?.rangeEndIndex;
+    const selectedMessages =
+      rangeSelection?.messages ??
+      selectRollingSummaryMessages({
+        messages: allMessages,
+        contextSize,
+        summaryEntries: chatMeta.summaryEntries as ChatSummaryEntry[] | undefined,
+      });
     if (selectedMessages.length === 0) {
       return reply.status(400).send({ error: "No non-hidden messages available for the requested summary range" });
     }
@@ -5439,90 +5760,32 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
 
     const messageIds = selectedMessages.map((message) => message.id);
-    // Append as a structured entry and recompile the prompt-facing summary
-    // without replacing concurrent metadata changes. Hiding and metadata
-    // ownership share the same per-chat queue as deletion, so neither operation
-    // can interleave between the visibility write and its summary entry.
-    let hideMessageIds: string[] = [];
-    let combined: string | null = summaryText;
-    let createdEntry: ChatSummaryEntry | null = null;
-    let summaryEntries: ChatSummaryEntry[] = [];
-    let updatedChat: Awaited<ReturnType<typeof storage.patchMetadata>>;
-    updatedChat = await withChatMetadataPatchQueue(req.params.id, async () => {
-      throwIfChatSummaryAborted(signal);
-      const [latestChatBeforeHide, latestMessagesBeforeHide] = await Promise.all([
-        storage.getById(req.params.id),
-        storage.listMessages(req.params.id),
-      ]);
-      if (!latestChatBeforeHide) return null;
-      throwIfChatSummaryAborted(signal);
-      const latestMetaBeforeHide = parseExtra(latestChatBeforeHide.metadata) as Record<string, unknown>;
-      const eligibleToHide =
-        latestMetaBeforeHide.hideSummarisedMessages === true
-          ? computeSummaryHideIds({
-              messages: latestMessagesBeforeHide,
-              entryMessageIds: messageIds,
-              tail: resolveRoleplaySummaryTail(latestMetaBeforeHide.summaryTailMessages),
-            })
-          : [];
-      throwIfChatSummaryAborted(signal);
-      hideMessageIds =
-        eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
-
-      try {
-        const updated = await storage.patchMetadata(
-          req.params.id,
-          (freshMeta) => {
-            throwIfChatSummaryAborted(signal);
-            const now = new Date().toISOString();
-            const result = appendChatSummaryEntryToMetadata(
-              freshMeta,
-              {
-                kind: "rolling",
-                origin: "manual",
-                sourceMode: hasRange ? "range" : "last",
-                ...(parsedSummary.title ? { title: parsedSummary.title } : {}),
-                content: summaryText,
-                enabled: true,
-                messageCount: selectedMessages.length,
-                rangeStartIndex: selectedRangeStartIndex,
-                rangeEndIndex: selectedRangeEndIndex,
-                messageIds,
-                ...(hideMessageIds.length > 0 ? { hiddenMessageIds: hideMessageIds } : {}),
-                promptTemplateId: requestedPromptTemplateId,
-                createdAt: now,
-                updatedAt: now,
-              },
-              { createId: newId, now },
-            );
-            combined = result.summary;
-            createdEntry = result.entry;
-            summaryEntries = result.entries;
-            return {
-              summary: result.summary,
-              summaryEntries: result.entries,
-              ...(!hasRange && typeof body.contextSize !== "undefined" ? { summaryContextSize: contextSize } : {}),
-            };
-          },
-          { metadataQueueHeld: true },
-        );
-        if (!updated && hideMessageIds.length > 0) {
-          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
-        }
-        return updated;
-      } catch (err) {
-        if (hideMessageIds.length > 0) {
-          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
-        }
-        throw err;
-      }
-    });
-    if (!updatedChat) return reply.status(404).send({ error: "Chat not found" });
+    const { updatedChat, hideMessageIds, appended } = await appendSummaryEntryHidingMessages(
+      req,
+      {
+        kind: "rolling",
+        origin: "manual",
+        sourceMode: hasRange ? "range" : "last",
+        ...(parsedSummary.title ? { title: parsedSummary.title } : {}),
+        content: summaryText,
+        enabled: true,
+        messageCount: selectedMessages.length,
+        rangeStartIndex: selectedRangeStartIndex,
+        rangeEndIndex: selectedRangeEndIndex,
+        messageIds,
+        promptTemplateId: requestedPromptTemplateId,
+      },
+      {
+        signal,
+        metadata: !hasRange && typeof body.contextSize !== "undefined" ? { summaryContextSize: contextSize } : {},
+      },
+    );
+    if (!updatedChat || !appended) return reply.status(404).send({ error: "Chat not found" });
 
     return {
-      summary: combined,
-      entry: createdEntry,
-      entries: summaryEntries,
+      summary: appended.summary,
+      entry: appended.entry,
+      entries: appended.entries,
       messageIds,
       hideMessageIds,
     };

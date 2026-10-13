@@ -382,11 +382,13 @@ export interface StoryLedgerEntry {
   show: string[];
 }
 
-const STORY_TAG = /\[story:([^\]]*)\]/gi;
+// A body never holds "[", so a tag opener repeated without a "]" is read in one pass.
+const STORY_TAG = /\[story:([^[\]]*)\]/gi;
 
 function attributes(body: string): Map<string, string> {
   const values = new Map<string, string>();
-  for (const match of body.matchAll(/([a-z]+)\s*=\s*"([^"]*)"/gi)) values.set(match[1]!.toLowerCase(), match[2]!);
+  // A name starts only where a word does, so a long run of letters with no "=" is read once, not from each letter.
+  for (const match of body.matchAll(/\b([a-z]+)\s*=\s*"([^"]*)"/gi)) values.set(match[1]!.toLowerCase(), match[2]!);
   return values;
 }
 

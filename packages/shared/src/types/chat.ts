@@ -2,9 +2,15 @@
 // Chat & Message Types
 // ──────────────────────────────────────────────
 
-import type { MariWorkspaceTraceItem } from "./professor-mari-workspace.js";
+import type {
+  MariHeldChange,
+  MariWorkspaceActionResult,
+  MariWorkspaceTraceItem,
+  ProfessorMariAskContext,
+} from "./professor-mari-workspace.js";
 import type { GameDicePlaceholderRecord } from "../utils/dice-placeholder.js";
 import type { GenerationGuideSource } from "../utils/generation-guide.js";
+import type { ContextFitSummary } from "./generation-integration.js";
 import type { HapticFeedbackSensitivity } from "./haptic.js";
 import type { CustomEmojiSelectionPrefs } from "../schemas/custom-emoji.schema.js";
 import type { DiceRollResult, GameDicePoolConsumption, GameDicePoolMismatch } from "./game.js";
@@ -181,6 +187,20 @@ export interface ChatSummaryPromptTemplate {
 /** Server app-setting key for Roleplay Chat Summary prompt templates shared across all roleplays. */
 export const CHAT_SUMMARY_PROMPT_SETTINGS_KEY = "chat-summary-prompts";
 
+const PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX = "professor-mari-seen-run:";
+
+/** Per Professor Mari thread: the id of the newest run the user has seen in her window. */
+export function professorMariSeenRunSettingsKey(chatId: string) {
+  return `${PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX}${chatId}`;
+}
+
+export function isProfessorMariSeenRunSettingsKey(key: string) {
+  return (
+    key.startsWith(PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX) &&
+    /^[A-Za-z0-9_-]{1,80}$/.test(key.slice(PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX.length))
+  );
+}
+
 /** Global Roleplay Chat Summary prompt template settings. */
 export interface ChatSummaryPromptSettings {
   templates: ChatSummaryPromptTemplate[];
@@ -274,6 +294,14 @@ export interface ChatMetadata {
   };
   /** Roleplay presentation only; omitted chats use the Appearance default. */
   roleplayDisplayStyle?: "classic" | "visual-novel";
+  /**
+   * This chat's window layout on a computer (window places and sizes, pinned and locked state,
+   * popped-out drawers), owned and validated by the client. Absent migrates an older chat's toolbar;
+   * null selects the current defaults, including after Reset View.
+   */
+  windowLayout?: unknown;
+  /** Hide Chat Settings' introductory tips for this chat; included in settings profiles. */
+  chatSettingsHintDismissed?: boolean;
   /** Chat-local tracker icon overrides keyed by persona id, unique character id, or tracker character slot. */
   trackerStatIconOverrides?: Record<string, import("../constants/stat-icons.js").TrackerStatIconAssignment[]>;
   /** Compiled enabled rolling summary text for context injection. Derived from summaryEntries when present. */
@@ -328,7 +356,7 @@ export interface ChatMetadata {
   agentWriteApprovalRequired?: boolean;
   /** Per-agent enable overrides (agentId → boolean) */
   agentOverrides: Record<string, boolean>;
-  /** Agent IDs scoped to this chat. Non-empty = only these agents run; empty = use globally-enabled agents. */
+  /** Agent IDs that run in this chat. An empty list runs none. */
   activeAgentIds: string[];
   /** Per-chat selected named prompt template for each agent type. Missing/default = the agent's default prompt. */
   agentPromptTemplateIds?: Record<string, string>;
@@ -342,6 +370,11 @@ export interface ChatMetadata {
   illustratorImageConnectionId?: string | null;
   /** Number of image variants generated for each Illustrator request. */
   illustratorImagesPerGeneration?: number;
+  /**
+   * Messages between automatic Illustrator runs in this chat: a whole number from 0 to 100, where 0 means
+   * it only runs when the user asks (Gallery or slash command). Missing/null = the agent's Run Interval.
+   */
+  illustratorRunInterval?: number | null;
   /** Whether Roleplay Illustrator may generate and activate a reusable background after a scene-location change. */
   illustratorAutoBackgroundsEnabled?: boolean;
   /** Whether Conversation selfie commands should send the matching character avatar as a reference image. */
@@ -809,6 +842,8 @@ export interface MessageAttachment {
   name?: string;
   prompt?: string;
   galleryId?: string;
+  /** Character who sent a Conversation selfie; older selfies lack it. */
+  characterName?: string;
 }
 
 /** A reaction on a Conversation message: an emoji token + who reacted. */
@@ -903,10 +938,25 @@ export interface MessageExtra {
   roleplayCommandActivity?: RoleplayCommandActivity[] | null;
   /** Professor Mari workspace trace shown on the home assistant transcript. */
   mariWorkspaceTimeline?: MariWorkspaceTraceItem[] | null;
+  /** Trusted resource results from Professor Mari workspace app-data commands. */
+  mariWorkspaceActionResults?: MariWorkspaceActionResult[] | null;
+  /** Resource focus used for this Professor Mari exchange, retained for transcript context. */
+  professorMariContext?: ProfessorMariAskContext | null;
   /** True when this Mari turn deferred mutating commands behind an Accept action (#5725 Manual mode). */
   mariDeferredMutations?: boolean | null;
+  /** Slice 71: what those held commands would change, for the "Needs you" card. */
+  mariHeldChanges?: MariHeldChange[] | null;
+  /** Slice 70: the quick-reply chips this Mari turn offered (raw; the client sanitizes), so a reload keeps them. */
+  mariSuggestions?: unknown;
+  /**
+   * R14: why this Mari turn failed, on the turn's last saved message (her partial reply, or your message
+   * when she saved nothing), so a reload still shows it failed. `dismissed` once you close its card.
+   */
+  mariRunError?: { message: string; dismissed?: boolean } | null;
   /** Per-swipe sprite expressions from the Expression Engine agent */
   spriteExpressions?: Record<string, string> | null;
+  /** Presentation-only ID-macro card references for merged Roleplay narrator avatars; never chat members. */
+  referencedCharacterIds?: string[];
   /** All sprite owners in the completed expression result, including the persona. Empty means none. */
   expressionSpriteIds?: string[];
   /** Per-swipe CYOA choices from the CYOA Choices agent */
@@ -944,6 +994,10 @@ export interface MessageExtra {
   privateNote?: string | null;
   /** Character IDs whose generation context excludes this message. Global hiddenFromAI takes precedence. */
   hiddenFromAICharacterIds?: string[];
+  /** Advanced Memory hid this message from these characters automatically; decided once per message. */
+  autoVisibility?: { decidedAt: string; hiddenCharacterIds: string[] } | null;
+  /** The user changed this message's character visibility, so automatic visibility never touches it. */
+  visibilityManual?: boolean;
   /** When true, Roleplay renders this generated assistant turn as a fresh bubble instead of grouping with the previous assistant turn. */
   startsNewAssistantBubble?: boolean;
   /** Structured dice roll payload rendered by the chat UI. */
@@ -1050,6 +1104,8 @@ export interface GenerationInfo {
   /** Time from generation start until reasoning yielded to visible output. */
   reasoningDurationMs?: number | null;
   finishReason: string | null;
+  /** What the context fit cut from this prompt, for the "replies got worse" checkup. */
+  contextFit?: ContextFitSummary | null;
 }
 
 /** A swipe (alternate response) for a message. */

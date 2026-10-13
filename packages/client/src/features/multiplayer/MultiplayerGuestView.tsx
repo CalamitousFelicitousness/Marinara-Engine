@@ -288,7 +288,7 @@ export function MultiplayerGuestView({ state, onAction, labels, onOpenPlayers }:
                     {player.personaName ? formatLabel(labels.playing, { name: player.personaName }) : labels.noPersona}
                   </p>
                   <p className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-                    {player.connected ? labels.connected : labels.reconnecting}
+                    {player.connected ? labels.connected : labels.offline}
                     {isGame && (
                       <>
                         <span aria-hidden="true">·</span>
@@ -333,6 +333,10 @@ export function MultiplayerGuestView({ state, onAction, labels, onOpenPlayers }:
           <ol className="space-y-4">
             {snapshot?.messages.map((message) => {
               const isSelf = message.actorId === snapshot.selfId;
+              // The server sets the host flag, so a look-alike persona name cannot borrow it.
+              const fromHost =
+                message.kind === "user" &&
+                snapshot.players.some((player) => player.isHost && player.id === message.actorId);
               const bubble = snapshot.mode === "conversation" && message.kind !== "event";
               return (
                 <li key={message.id} className={cn("flex min-w-0", isSelf && bubble && "justify-end")}>
@@ -347,6 +351,9 @@ export function MultiplayerGuestView({ state, onAction, labels, onOpenPlayers }:
                   >
                     <p className="mari-message-meta mb-1 break-words text-xs font-semibold">
                       {message.actorName}
+                      {fromHost && (
+                        <span className="ml-2 font-normal text-[var(--muted-foreground)]">{labels.host}</span>
+                      )}
                       {isSelf && <span className="ml-2 font-normal">{labels.you}</span>}
                     </p>
                     <p className="mari-message-content whitespace-pre-wrap break-words text-sm leading-relaxed">

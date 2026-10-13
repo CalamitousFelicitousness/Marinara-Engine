@@ -2542,14 +2542,104 @@ function flattenAgentConditionalMacrosInner(input: string, decodeTextEntities: b
   return result;
 }
 
-/** Keep generated summaries inside their readers' scope without nesting duplicate character guards. */
-export function scopeCharacterSummary(input: string, characterNames: readonly string[], depth = 0): string {
+/** A condition, or `null` for an {{else}}, that compares only the character name and literals. */
+function characterOnlyCondition(condition: string | null): boolean {
+  return (
+    condition === null ||
+    (!condition.includes("{{") &&
+      parseConditionComparisons(condition).every(({ left, right }) =>
+        [left, right].every(
+          (operand) =>
+            operand === undefined ||
+            ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
+            stripOuterQuotes(operand) !== null,
+        ),
+      ))
+  );
+}
+
+/** The one character a condition such as `char == "Maukie"` names, or `null`. */
+function namedCharacter(condition: string | null): string | null {
+  const comparisons = condition === null ? [] : parseConditionComparisons(condition);
+  if (comparisons.length !== 1) return null;
+  const { left, operator, right } = comparisons[0]!;
+  if (!["=", "==", "is"].includes(operator) || right === undefined) return null;
+  const isCharacter = (operand: string) =>
+    ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand));
+  const name = isCharacter(left) ? stripOuterQuotes(right) : isCharacter(right) ? stripOuterQuotes(left) : null;
+  return name && !name.includes("{{") ? name : null;
+}
+
+/**
+ * Keep the text of every branch of each character-only condition, once and without its tags, for a reader
+ * who knows every character's part. With `nameReaders`, `{{char}}` in a branch for one character becomes that
+ * character's name, and a condition whose branch still names its reader another way stays as it is, like a
+ * condition on anything else, with its parts flattened inside. Branches no reader got together are joined
+ * with a space.
+ */
+export function flattenCharacterConditions(input: string, nameReaders = true, depth = 0): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  let result = "";
+  let cursor = 0;
+  let joined = false;
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) return result + input.slice(cursor);
+    if (start.start > cursor) joined = false;
+    result += input.slice(cursor, start.start);
+    const contents = block.branches.map(({ condition, contentStart, contentEnd }) => {
+      const name = nameReaders ? namedCharacter(condition) : null;
+      const content = input.slice(contentStart, contentEnd);
+      return name === null ? content : content.replace(/\{\{char(?:Name)?\}\}/giu, () => name);
+    });
+    const characterOnly = block.branches.every(
+      ({ condition }, index) =>
+        characterOnlyCondition(condition) &&
+        (!nameReaders ||
+          ![...CHARACTER_MACRO_NAMES].some((name) => contents[index]!.toLowerCase().includes(`{{${name}}}`))),
+    );
+    let tag = start.start;
+    for (const [index, branch] of block.branches.entries()) {
+      if (!characterOnly) result += input.slice(tag, branch.contentStart);
+      const text = flattenCharacterConditions(
+        characterOnly ? contents[index]! : input.slice(branch.contentStart, branch.contentEnd),
+        nameReaders,
+        depth + 1,
+      );
+      if (characterOnly && joined && text && !/\s$/u.test(result) && !/^\s/u.test(text)) result += " ";
+      result += text;
+      joined ||= characterOnly && !!text;
+      tag = branch.contentEnd;
+    }
+    if (!characterOnly) {
+      result += input.slice(tag, block.endEnd);
+      joined = false;
+    }
+    cursor = block.endEnd;
+  }
+  return result;
+}
+
+/**
+ * Keep generated summaries inside their readers' scope without nesting duplicate character guards.
+ * With `mark`, each part goes to `mark(text, itsReaders, depth)` instead of a character guard, and parts no
+ * reader knows are dropped, e.g. to note who knows what when one prompt serves several characters.
+ * `depth` counts the character conditions around the part; 0 is the top level.
+ */
+export function scopeCharacterSummary(
+  input: string,
+  characterNames: readonly string[],
+  depth = 0,
+  mark?: (text: string, readers: readonly string[], depth: number) => string,
+): string {
   const names = [...new Set(characterNames)];
   if (!names.length) return "";
-  if (names.some((name) => name.includes("{{") || name.includes("}}")))
+  if (!mark && names.some((name) => name.includes("{{") || name.includes("}}")))
     throw new Error("Cannot scope a summary: character names must not contain macro delimiters ({{ or }}).");
   const wrap = (text: string) => {
     if (!text.trim()) return text;
+    if (mark) return mark(text, names, depth);
     const condition = names
       .map((name) => `"${name.replace(/\\/gu, "\\\\").replace(/["\u201c\u201d\u201e\u201f]/gu, "\\$&")}"`)
       .join(" || ");
@@ -2566,19 +2656,7 @@ export function scopeCharacterSummary(input: string, characterNames: readonly st
     result += wrap(input.slice(cursor, start.start));
     // Only character/literal conditions can be simplified now. Keep authored
     // variable conditions intact so changing a variable still changes visibility.
-    const characterOnly = block.branches.every(
-      ({ condition }) =>
-        condition === null ||
-        (!condition.includes("{{") &&
-          parseConditionComparisons(condition).every(({ left, right }) =>
-            [left, right].every(
-              (operand) =>
-                operand === undefined ||
-                ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
-                stripOuterQuotes(operand) !== null,
-            ),
-          )),
-    );
+    const characterOnly = block.branches.every(({ condition }) => characterOnlyCondition(condition));
     if (!characterOnly) result += wrap(input.slice(start.start, block.endEnd));
     else {
       let remaining = names;
@@ -2588,13 +2666,62 @@ export function scopeCharacterSummary(input: string, characterNames: readonly st
             branch.condition === null ||
             evaluateCondition(branch.condition, { user: "", char: name, characters: [name], variables: {} }),
         );
-        result += scopeCharacterSummary(input.slice(branch.contentStart, branch.contentEnd), readers, depth + 1);
+        result += scopeCharacterSummary(input.slice(branch.contentStart, branch.contentEnd), readers, depth + 1, mark);
         remaining = remaining.filter((name) => !readers.includes(name));
       }
     }
     cursor = block.endEnd;
   }
   return result;
+}
+
+/**
+ * The names the character-only conditions in `input` compare the character with, as `scopeCharacterSummary`
+ * reads them, e.g. to keep the part of a character who left the chat.
+ */
+export function characterConditionNames(input: string, depth = 0): string[] {
+  const names = new Set<string>();
+  let cursor = 0;
+  while (depth < MAX_MACRO_RESOLUTION_DEPTH) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) break;
+    if (block.branches.every(({ condition }) => characterOnlyCondition(condition)))
+      for (const { condition, contentStart, contentEnd } of block.branches) {
+        for (const { left, right } of condition === null ? [] : parseConditionComparisons(condition))
+          for (const operand of [left, right]) {
+            const name = operand === undefined ? null : stripOuterQuotes(operand);
+            if (name) names.add(name);
+          }
+        for (const name of characterConditionNames(input.slice(contentStart, contentEnd), depth + 1)) names.add(name);
+      }
+    cursor = block.endEnd;
+  }
+  return [...names];
+}
+
+/**
+ * Render text once per reader of a shared prompt and mark each version not everyone gets,
+ * e.g. `[Known only to Maukie: …]` (#7237). `everyone` is how many readers the prompt has.
+ */
+export function markReaderVersions(
+  readers: readonly string[],
+  everyone: number,
+  render: (reader: string) => string,
+): string {
+  const readersByText = new Map<string, string[]>();
+  for (const reader of readers) {
+    const output = render(reader);
+    readersByText.set(output, [...(readersByText.get(output) ?? []), reader]);
+  }
+  return [...readersByText]
+    .map(([output, who]) => {
+      if (who.length === everyone || !output.trim()) return output;
+      const start = output.length - output.trimStart().length;
+      const end = output.trimEnd().length;
+      return `${output.slice(0, start)}[Known only to ${who.join(", ")}: ${output.slice(start, end)}]${output.slice(end)}`;
+    })
+    .join("");
 }
 
 function splitTopLevelDoubleColon(input: string): string[] {

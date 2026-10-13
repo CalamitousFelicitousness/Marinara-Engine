@@ -17,7 +17,7 @@ export function textRewriteDropsProtectedMarkup(original: string | null | undefi
 }
 
 /** World, place and story tags: the Engine's record of what a reply did (worldgen W4, W10). */
-const ENGINE_TAG = /\[(?:world|place|story):[^\]]*\]/gi;
+const ENGINE_TAG = /\[(?:world|place|story):[^[\]]*\]/gi;
 const engineTags = (text: string) => (text.match(ENGINE_TAG) ?? []).sort().join("\n");
 
 /** The scenes a game reply shows as written (worldgen W10), as kept on the message. */

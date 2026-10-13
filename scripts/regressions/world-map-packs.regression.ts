@@ -1,7 +1,7 @@
 /**
  * Experience map packs (worldgen W9e).
  *
- *   - A manifest may declare a map pack on its game surface from Capability API 1.68: its kit, worlds and
+ *   - A manifest may declare a map pack on its game surface from Capability API 1.72: its kit, worlds and
  *     tiles, each also a declared asset.
  *   - The Engine reads an installed Experience's pack through the verified asset path: a kit, worlds made
  *     with that kit, and a tile pack. A pack whose files do not read, whose world was made with another
@@ -91,7 +91,7 @@ function install(
     legacy: false,
     manifest: {
       schemaVersion: 2,
-      capabilityApi: { major: 1, minor: 68 },
+      capabilityApi: { major: 1, minor: 72 },
       builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
       id,
       name: `${id} Experience`,
@@ -185,11 +185,11 @@ const { gameRoutes } = await import("../../packages/server/src/routes/game.route
 const { readMapPack } = await import("../../packages/server/src/services/game/map-pack.service.js");
 
 try {
-  // ── The manifest: from 1.68, its files declared ──
+  // ── The manifest: from 1.72, its files declared ──
   const manifest = installed[0]!.manifest;
-  assert.ok(capabilityPackageManifestSchema.safeParse(manifest).success, "a map pack at 1.68");
-  const older = capabilityPackageManifestSchema.safeParse({ ...manifest, capabilityApi: { major: 1, minor: 67 } });
-  assert.ok(!older.success && older.error.issues.some((issue) => /1\.68/.test(issue.message)));
+  assert.ok(capabilityPackageManifestSchema.safeParse(manifest).success, "a map pack at 1.72");
+  const older = capabilityPackageManifestSchema.safeParse({ ...manifest, capabilityApi: { major: 1, minor: 71 } });
+  assert.ok(!older.success && older.error.issues.some((issue) => /1\.72/.test(issue.message)));
   const undeclared = capabilityPackageManifestSchema.safeParse({
     ...manifest,
     contributions: { ...manifest.contributions, assets: { paths: ["kit.worldkit.json"] } },

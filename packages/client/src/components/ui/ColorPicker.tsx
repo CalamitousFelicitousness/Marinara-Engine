@@ -4,6 +4,7 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import { Pipette, Sparkles, X, Plus, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { SETTINGS_BUTTON_CLASS, SETTINGS_ICON_BUTTON_CLASS } from "../panels/settings/SettingControls";
 import { isCssGradient, MARINARA_GRADIENT_PRESET, RAINBOW_GRADIENT_PRESET } from "../../lib/css-colors";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -508,13 +509,8 @@ export function ColorPicker({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {showClear && (
-            <button
-              type="button"
-              onClick={clearColor}
-              disabled={disabled}
-              className="flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-all hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"
-            >
-              <X size="0.625rem" />
+            <button type="button" onClick={clearColor} disabled={disabled} className={SETTINGS_BUTTON_CLASS}>
+              <X size="0.75rem" />
               {clearLabel}
             </button>
           )}
@@ -663,12 +659,9 @@ export function ColorPicker({
                   <p className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
                     {localizeUi("ui.ui.colorpicker.colorStops")}
                   </p>
-                  <button
-                    type="button"
-                    onClick={addStop}
-                    className="flex items-center gap-0.5 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-all hover:text-[var(--foreground)]"
-                  >
-                    <Plus size="0.625rem" /> {localizeUi("ui.characters.metadatatab.add")}
+                  <button type="button" onClick={addStop} className={SETTINGS_BUTTON_CLASS}>
+                    <Plus size="0.75rem" />
+                    {localizeUi("ui.characters.metadatatab.add")}
                   </button>
                 </div>
                 {gradientStops.map((stop, i) => {
@@ -696,9 +689,10 @@ export function ColorPicker({
                         <button
                           type="button"
                           onClick={() => removeStop(i)}
-                          className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"
+                          aria-label={localizeUi("ui.ui.colorpicker.removeColorStop", { index: i + 1 })}
+                          className={cn(SETTINGS_ICON_BUTTON_CLASS, "mari-chrome-control--danger")}
                         >
-                          <Trash2 size="0.6875rem" />
+                          <Trash2 size="0.75rem" />
                         </button>
                       )}
                     </div>

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { WORLD_GENERATOR_VERSION, WORLD_STARTER_KITS, parseWorldKit } from "@marinara-engine/shared";
 import { openGame } from "./game-ruleset-fight-fixture.js";
+import { openChatTool } from "./chat-settings-tools.js";
 
 /**
  * The World tab (worldgen W7), on screen: a world game's journal shows where the party is, its standing
@@ -25,14 +26,13 @@ const brief = {
   events: [],
 };
 
-/** The Session panel's journal: on a phone, Session sits in the game's actions menu. */
+/** The Session window's journal, opened from its bubble (or the phone's Chat tools menu). */
 async function openJournal(page: Page) {
-  const actions = page.getByRole("button", { name: "Game actions", exact: true });
-  const session = page.getByRole("button", { name: "Session", exact: true });
-  await expect(actions.or(session).first()).toBeVisible({ timeout: 40_000 });
-  if (await actions.isVisible()) await actions.click();
-  await session.click();
-  await page.getByRole("button", { name: "Journal", exact: true }).click();
+  await expect(
+    page.locator('.mari-window-bubble[data-window="control:session"], [data-chat-tools-menu-button]').first(),
+  ).toBeVisible({ timeout: 40_000 });
+  const session = await openChatTool(page, "control:session");
+  await session.getByRole("button", { name: "Journal", exact: true }).click();
 }
 
 test("a world game's journal has a World tab with where the party is, its standing and its deeds", async ({

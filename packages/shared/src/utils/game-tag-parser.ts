@@ -909,9 +909,10 @@ export function resolveMessageWeatherAction(state: string, content: string): "tr
   return state === "travel_rest" ? "travel" : state === "exploration" ? "explore" : "turn";
 }
 
-// Unbounded, as the tag always was: a body without "]" cannot backtrack, and a long action must still
-// be read and stripped rather than left in the narration.
-const REPUTATION_TAG = /\[reputation:([^\]]*)\]/gi;
+// Unbounded in length, as the tag always was, so a long action is still read and stripped rather than
+// left in the narration; a body never holds "[", so "[reputation:" repeated without a "]" cannot make
+// every start scan to the end of the text.
+const REPUTATION_TAG = /\[reputation:([^[\]]*)\]/gi;
 
 /**
  * Every `[reputation: npc="Name" action="helped"]` tag in a text, its attributes in any order. A

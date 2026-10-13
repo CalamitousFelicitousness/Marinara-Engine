@@ -192,6 +192,8 @@ Tools only work if the chat itself allows them. In **Chat Settings**, open the *
 
 Imported agent files do not grant tool access. After importing an agent, inspect its prompt and settings, then select any tools you want it to use yourself.
 
+An agent gets at most 16 rounds of tool calls in one run (fewer if the server's `MAX_TOOL_ROUNDS` is lower), then gives its answer with what it has. A model that calls one tool at a time spends a round on each call, so an agent that saves many entries should make several calls in one response where the model supports parallel tool calls. A lorebook backfill run, which only saves entries, gets up to 64 rounds.
+
 ## Named prompt options
 
 A single agent can hold several prompt variants. This is the **Named prompt options** feature. A chat can then pick one variant without you editing the agent globally.
@@ -209,7 +211,7 @@ When someone adds your agent to a chat, they see a **Prompt Mode** dropdown list
 
 Custom agents share some settings with built-in agents:
 
-- **Connection Override**: pick a different AI connection for this agent. For example, use a cheaper model for background work. Leave it empty to use the chat's connection.
+- **Connection Override**: pick a different AI connection for this agent. For example, use a cheaper model for background work. Leave it empty to use the chat's connection. The agent sends the generation parameters saved on that connection; see [Parameters for agents](../prompts/generation-parameters.md#parameters-for-agents).
 - **Agent Budget**: set **Context Size** (how many recent messages the agent reads, default 5). Also set **Max Output Tokens** (the output room reserved, default 4096, from 128 to 32768).
 - **Add as Prompt Section**: turn this on to expose the agent's latest output as a section you can inject in a prompt preset.
 

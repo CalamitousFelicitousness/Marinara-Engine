@@ -347,16 +347,22 @@ function layOutTown(
   // The townsfolk the story never names: more of the free lots, the bigger the place.
   const open = ordered.filter(({ lot }) => free(lot.x, lot.y, lot.w, lot.h)).length;
   for (let left = Math.round(open * FILL[tier]!); left > 0; left--) if (!build("home", {})) break;
-  // The places added by hand, last, so the town as the world laid it out never moves: each takes the
-  // next free lot, or else the home furthest out that nobody named lives in.
+  // The places the story added, last, so the town as the world laid it out never moves: each takes the
+  // next free lot, or else the home furthest out that nobody named lives in. That home keeps its id, so a
+  // party saved standing there is still somewhere in town.
   for (const place of added) {
     let building = build("place", { placeId: place.id, name: place.name });
     if (!building) {
       const empty = [...buildings].reverse().find((each) => each.kind === "home" && each.people.length === 0);
       if (!empty) break;
-      building = Object.assign(empty, { id: place.id, kind: "place" as const, placeId: place.id, name: place.name });
+      building = Object.assign(empty, { kind: "place" as const, placeId: place.id, name: place.name });
     }
-    for (const person of people) if (person.placeId === place.id) building.people.push(person.id);
+    // Its people work in it, by the building's own id (an empty home it took keeps that home's).
+    for (const person of people) {
+      if (person.placeId !== place.id) continue;
+      building.people.push(person.id);
+      workOf[person.id] = building.id;
+    }
   }
   // Someone whose workplace found no lot is in the square by day.
   for (const [personId, at] of Object.entries(workOf)) {

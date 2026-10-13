@@ -394,11 +394,14 @@ test("Combat director ruleset: the ruleset's own menu resolves the fight and wri
     const axe = page.getByRole("button", { name: /Road axe/ });
     await expect(axe).toBeVisible({ timeout: 60000 });
     // The ruleset's contests sit in a group of their own, and breaking free is not there while
-    // nothing holds on.
-    await expect(page.getByText("Contests", { exact: true })).toBeVisible();
+    // nothing holds on. A phone hides the group names to leave the stage its room (71bccc1de), so the
+    // group is found by its name and the heading is only looked for where it is shown.
+    const contests = page.getByRole("region", { name: "Contests", exact: true });
+    if ((page.viewportSize()?.width ?? 0) >= 640)
+      await expect(contests.getByText("Contests", { exact: true })).toBeVisible();
     // Its forecast is the chance to win it, not to hit.
-    await expect(page.getByRole("button", { name: /^Grab/ })).toContainText(/\d+% to win/);
-    await expect(page.getByRole("button", { name: /^Shove back/ })).toBeVisible();
+    await expect(contests.getByRole("button", { name: /^Grab/ })).toContainText(/\d+% to win/);
+    await expect(contests.getByRole("button", { name: /^Shove back/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Break free/ })).toHaveCount(0);
     await axe.click();
     const target = page.getByRole("button", { name: /Cinder-moth/ });
@@ -610,8 +613,10 @@ test("Combat director ruleset: an attack is made in a style where initiative is 
 
     const spade = page.getByRole("button", { name: /^Spade/ });
     await expect(spade).toBeVisible({ timeout: 60000 });
-    // Everybody's number is on the status panel, since a player spends it.
+    // Everybody's number is on the status panel, since a player spends it. A phone folds the turn
+    // order away until it is tapped (71bccc1de); anywhere wider it is open from the start.
     const fight = page.getByRole("region", { name: "Combat decisions" });
+    if ((page.viewportSize()?.width ?? 0) < 640) await fight.getByText("Turn order", { exact: true }).click();
     await expect(fight.getByText(/^Initiative -?\d+$/).first()).toBeVisible();
     // The option says only its chance: what it does depends on the style.
     await expect(spade).toContainText(/\d+% to hit/);

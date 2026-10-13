@@ -52,7 +52,9 @@ import { registerSequentialGameTasks } from "../services/game/sequential-tasks.j
 import { loadGameWorld } from "../services/game/game-world.service.js";
 import {
   createAdvancedMemoryService,
+  sceneCheckTranscript,
   selectAdvancedMemoryMessages,
+  selectAdvancedMemoryWhisperOnlyIds,
   type AdvancedMemorySceneCheck,
 } from "../services/advanced-memory.js";
 import {
@@ -75,7 +77,8 @@ import type { input as SchemaInput } from "zod";
 import { translateGeneratedMessage } from "../services/translation.service.js";
 import { randomInt, randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { readFile } from "fs/promises";
+import { extname, join } from "path";
 import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
   parseDecisionPromptQuestionLimit,
@@ -136,6 +139,7 @@ import {
   estimateTextTokens,
   diffChatVariables,
   mergeChatVariableChanges,
+  removeCopiedPromptGuidance,
   undoChatVariableChanges,
   type APIProvider,
   type MacroContext,
@@ -154,6 +158,8 @@ import type {
   DiceRollResult,
   ResolvedSpatialTravel,
   ThinkingTagPair,
+  GameWorld,
+  WorldPerson,
 } from "@marinara-engine/shared";
 import {
   createChatsStorage,
@@ -207,7 +213,6 @@ import {
   storyState,
   storyTurn,
   storyTurnPromptText,
-  type GameWorld,
   type StoryScript,
   type StoryTurn,
   readWorldLedger,
@@ -228,6 +233,7 @@ import {
   worldTownVisitText,
   type WorldTownVisit,
   lastGamePlace,
+  type GamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
@@ -246,7 +252,10 @@ import {
   normalizeGameInventoryStacks,
   rulesetItemPromptFacts,
   rulesetLayerOptionKey,
+  rulesetLayeredCurrencies,
   rulesetPurseText,
+  leadingSceneBreak,
+  splitAtSceneBreaks,
   type RoleplayCommandActivity,
   type RulesetDefinition,
   type RulesetItemBook,
@@ -261,7 +270,15 @@ import {
   buildRoleplayPersonalContext,
   parseRoleplayCommands,
   parseRoleplayUserCommands,
+  placeAfterPrefix,
+  placeRoleplayActivityInParts,
+  roleplayAgentContinuation,
+  roleplayAgentPrompt,
+  roleplayAgentsSeeWhispers,
+  roleplayAgentText,
   roleplayCommandKey,
+  roleplayHiddenWhisperMessageIds,
+  latestRoleplayUserInput,
   resolveRoleplayWhisperRecipient,
   RoleplayCommandStreamFilter,
   type RoleplayCommand,
@@ -303,6 +320,9 @@ import { createCustomEmojisStorage } from "../services/storage/custom-emojis.sto
 import { createCustomStickersStorage } from "../services/storage/custom-stickers.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
 import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
+import { createGalleryStorage } from "../services/storage/gallery.storage.js";
+import { resolveGalleryImagePath } from "../services/image/gallery-image-path.js";
+import { isSentSelfieAttachment } from "../services/generation/prompt-attachments.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
 import { buildLorebookSemanticEmbeddingsById, warmLorebookEntryEmbeddings } from "../services/lorebook/embeddings.js";
@@ -346,8 +366,12 @@ import {
 import { persistGeneratedImageToEntityGalleries } from "../services/image/generated-image-entity-gallery.js";
 import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import {
+  buildIllustratorImageAppearanceOverrides,
   buildUncaptionedCharacterAppearanceBlock,
+  IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY,
+  personaEntityId,
   readCharacterPrompts,
+  readIllustratorImageAppearanceOverride,
   resolveNovelAiCharacterPromptLimit,
   supportsNovelAiCharacterPrompts,
 } from "../services/image/character-prompts.js";
@@ -358,6 +382,7 @@ import {
   appendFallbackChatSummaryToSystemPrompt,
   buildPromptMacroContext,
   decodeDeferredPresetConditionals,
+  loadLorebookIncludesFor,
   normalizeChatMacroVariables,
   mergeGeneratedChatMacroVariables,
   parsePresetVariableNames,
@@ -381,7 +406,11 @@ import {
   type ChatOptions,
   type LLMUsage,
 } from "../services/llm/base-provider.js";
-import { executeToolCalls, formatToolExecutionResultForModel } from "../services/tools/tool-executor.js";
+import {
+  executeToolCalls,
+  formatToolExecutionResultForModel,
+  toolRoundsAsText,
+} from "../services/tools/tool-executor.js";
 import { createAgentPipeline, type ResolvedAgent, type AgentInjection } from "../services/agents/agent-pipeline.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import {
@@ -425,9 +454,11 @@ import {
 import {
   buildAutonomousDailyBudgetPatch,
   clearGenerationInProgress,
+  isAutonomousDailyBudgetExhausted,
   markGenerationInProgress,
   recordAssistantActivity,
   recordUserActivity,
+  sharesAutonomousDailyBudget,
 } from "../services/conversation/autonomous.service.js";
 import { buildIntentCooldownPatch, isMessageIntent } from "../services/conversation/intent.service.js";
 import { buildImpersonateInstruction } from "../services/conversation/impersonate-prompt.js";
@@ -517,6 +548,7 @@ import {
   resolveUserRegenerationPersistentAttachments,
   resolveVisibleGameStateAnchor,
   resolveKnowledgeSourceLorebookIds,
+  mergedChatSummaryReaders,
   shouldPreferLatestVisibleGameState,
   shouldRunCharacterActivityAgents,
   shouldAbortOnPassiveGenerationDisconnect,
@@ -564,9 +596,11 @@ import {
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
+  formatSentSelfieNotes,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
+  captionSentSelfies,
   normalizePromptAttachments,
   resolveImageCaptioningRuntime,
   resolvePromptAttachmentInputs,
@@ -582,6 +616,7 @@ import {
   buildAvailableSpriteCharacter,
   completeRequiredSpriteExpressionEntries,
   normalizeRequiredSpriteExpressionIds,
+  playerTurnAwaitsExpression,
   normalizeSpriteDisplayModes,
   validateSpriteExpressionEntries,
 } from "./generate/expression-agent-utils.js";
@@ -693,7 +728,12 @@ import {
   resolveChatSummaryPrompt,
   withoutRetiredChatSummaryAgentIds,
 } from "../services/generation/roleplay-summary-runtime.js";
-import { getChatGenerationTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../config/runtime-config.js";
+import {
+  GAME_TURN_MAX_TOOL_ROUNDS,
+  getChatGenerationTimeoutMs,
+  getMaxToolRounds,
+  isDebugAgentsEnabled,
+} from "../config/runtime-config.js";
 import {
   isReviewableWriterAgentType,
   buildRuntimeAgentSectionEligibleTypes,
@@ -793,6 +833,7 @@ import {
   filterPromptMessagesForCharacterAudience,
   filterPromptHistoryByMessageIds,
   scopeIndividualGroupMessagesForTarget,
+  selectHistoryMessagesForRecall,
   type GenerationPromptMessage,
 } from "../services/generation/prompt-message-scope.js";
 import {
@@ -842,7 +883,10 @@ import { loadPriorBeholderState } from "../services/agents/beholder-state.js";
 import { gameGmPromptDecisionTexts, injectGameGmPromptRuntime } from "../services/generation/game-gm-prompt-runtime.js";
 import { mergeConversationCharacterMemories } from "../services/generation/conversation-memory-context.js";
 import { injectMemoryRecallContext } from "../services/generation/memory-recall-context.js";
-import { shouldSkipAgentByMessageInterval } from "../services/generation/agent-cadence.js";
+import {
+  applyIllustratorChatRunInterval,
+  shouldSkipAgentByMessageInterval,
+} from "../services/generation/agent-cadence.js";
 import {
   appendTrackerLorebookBatchContextKey,
   applyTrackerLorebookContextPolicy,
@@ -1071,6 +1115,14 @@ export type GenerationRunner = (
 export interface GenerateRouteOptions {
   onRunnerReady?: (runner: GenerationRunner) => void;
 }
+
+const SENT_SELFIE_MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
 
 export async function generateRoutes(app: FastifyInstance, options: GenerateRouteOptions = {}) {
   const pendingTranslations = new Map<string, number>();
@@ -1769,13 +1821,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
       // Get chat messages
       const chatMode = requestChatMode;
+      const advancedMemorySettings = normalizeAdvancedMemorySettings(chatMeta.advancedMemory);
+      const advancedMemoryEnabled = chatMode === "roleplay" && advancedMemorySettings.enabled;
+      // A character never replies before Advanced Memory has decided who sees earlier messages (#7192).
+      const decidesMessageVisibility =
+        advancedMemoryEnabled &&
+        advancedMemorySettings.autoMessageVisibility &&
+        groupGenerationMode === "individual" &&
+        parseJsonField<string[]>(chat.characterIds, []).length > 1;
+      if (decidesMessageVisibility) {
+        await advancedMemory.settleMessageVisibility(input.chatId, {
+          signal: generationSignal,
+          debugMode: requestDebug,
+        });
+        // Show the decision on your new message now, not after every character has replied (#7349).
+        const decided = currentTurnUserMessageId ? await chats.getMessage(currentTurnUserMessageId) : null;
+        if (decided) sendSseEvent(reply, { type: "message_saved", data: decided });
+      }
       const allChatMessages = (await chats.listMessages(input.chatId)).map((message) =>
         chatMode === "roleplay" && message.role === "user"
           ? { ...message, content: parseRoleplayUserCommands(message.content).content }
           : message,
       );
-      const advancedMemorySettings = normalizeAdvancedMemorySettings(chatMeta.advancedMemory);
-      const advancedMemoryEnabled = chatMode === "roleplay" && advancedMemorySettings.enabled;
       // Resolve historical time before user start markers: later resets must not hide an older swipe target.
       const advancedTargetIndex =
         advancedMemoryEnabled && (input.regenerateMessageId || input.continueMessageId)
@@ -2152,6 +2219,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           return false;
         }
       };
+      // Selfies live in the chat gallery, not inline, so captioning reads the file.
+      const sentSelfieGallery = createGalleryStorage(app.db);
+      const readSentSelfieDataUrl = async (attachment: PromptAttachment): Promise<string | null> => {
+        if (!attachment.galleryId) return null;
+        const image = await sentSelfieGallery.getById(attachment.galleryId, input.chatId);
+        const filePath = image ? resolveGalleryImagePath(image) : null;
+        if (!filePath) return null;
+        const mimeType = SENT_SELFIE_MIME_TYPES[extname(filePath).slice(1).toLowerCase()];
+        if (!mimeType) return null;
+        return `data:${mimeType};base64,${(await readFile(filePath)).toString("base64")}`;
+      };
+      // ponytail: only the newest selfie messages are captioned, so a long chat (or a changed caption
+      // model) never queues a caption call per old selfie before the reply; older selfies keep a saved
+      // caption or use their image prompt. Raise the count or caption in the background if that falls short.
+      const selfieCaptionMessageIds = new Set(
+        chatMessages
+          .filter(
+            (message: any) =>
+              message.role === "assistant" && normalizePromptAttachments(message.extra)?.some(isSentSelfieAttachment),
+          )
+          .slice(-2)
+          .map((message: any) => message.id),
+      );
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
       const mapChatHistoryMessageForPrompt = async (
         m: any,
@@ -2163,9 +2253,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const providerMetadata = pastReasoning.get(m.id);
 
         // Annotate assistant messages that have user-uploaded image attachments
-        // so the model is aware it sent a photo in prior turns.
-        // Skip illustration/selfie attachments (type "image") — those are generated
-        // by agents and should be invisible to the main model.
+        // so the model is aware it sent a photo in prior turns. Generated images
+        // (type "image") stay invisible except the character's own selfies.
         const attachmentInputs = await resolvePromptAttachmentInputs({
           content: conversationPromptHistoryContent(m, chatMode),
           attachments,
@@ -2173,13 +2262,24 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           signal: generationSignal,
           debugMode: requestDebug,
         });
+        const selfieCaptionedAttachments =
+          m.role === "assistant" && selfieCaptionMessageIds.has(m.id)
+            ? await captionSentSelfies({
+                attachments: attachmentInputs.updatedAttachments ?? attachments,
+                imageCaptioning: imageCaptioningRuntime,
+                readImageDataUrl: readSentSelfieDataUrl,
+                signal: generationSignal,
+                debugMode: requestDebug,
+              })
+            : null;
+        const updatedAttachments = selfieCaptionedAttachments ?? attachmentInputs.updatedAttachments;
         const captionsPersisted = await persistPromptAttachmentCaptions(
           typeof m.id === "string" ? m.id : null,
-          attachmentInputs.updatedAttachments,
+          updatedAttachments,
         );
         if (advancedMemoryEnabled && captionsPersisted) {
           // Keep our own cache write in the prepared source snapshot; unrelated edits still fail revision checks.
-          m.extra = JSON.stringify({ ...extra, attachments: attachmentInputs.updatedAttachments });
+          m.extra = JSON.stringify({ ...extra, attachments: updatedAttachments });
         }
         let content = withLatestMessageReply(
           attachmentInputs.content,
@@ -2191,6 +2291,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
           content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
         }
+        if (m.role === "assistant") content += formatSentSelfieNotes(updatedAttachments ?? attachments);
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 
@@ -2277,7 +2378,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       const currentInputMessages = (): SimpleMessage[] =>
         regenerateUserSourceMessage ? [...mappedMessages, regenerateUserSourceMessage] : mappedMessages;
       const currentUserInputContent = (): string | undefined =>
-        [...currentInputMessages()].reverse().find((message) => message.role === "user")?.content;
+        chatMode === "roleplay"
+          ? latestRoleplayUserInput(currentInputMessages(), chatMessages)
+          : [...currentInputMessages()].reverse().find((message) => message.role === "user")?.content;
 
       const identity =
         roomHostIdentity() ??
@@ -2354,6 +2457,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         chatPresetChoices: (chatMeta.presetChoices ?? {}) as Record<string, string | string[]>,
       });
 
+      let groupHistoryCharacterNamesByIdPromise: Promise<Map<string, string>> | null = null;
+      const getGroupHistoryCharacterNamesById = () => {
+        groupHistoryCharacterNamesByIdPromise ??= resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
+        return groupHistoryCharacterNamesByIdPromise;
+      };
+      // Every agent reads Roleplay whispers, each with its recipient's name (#7430). Null where they don't.
+      const agentWhisperNames = roleplayAgentsSeeWhispers(chatMode, chatMeta)
+        ? new Map<string, string>([
+            ...(await getGroupHistoryCharacterNamesById()),
+            [userIdentityId ?? "user", personaName],
+          ])
+        : null;
+
       const eligibleCharacterActivityConfigs: typeof characterActivityAgentConfigs = [];
       if (
         shouldRunCharacterActivityAgents({
@@ -2428,6 +2544,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           chatProvider: routingChatProvider,
           chatConnectionId: connId ?? conn.id,
           chatModel: conn.model,
+          chatConnectionProvider: conn.provider,
+          chatDefaultParameters: conn.defaultParameters,
+          managedParameterDefinitions,
           chatCustomParameters: storedParameters?.customParameters ?? {},
           chatTemperature: storedParameters?.temperature,
           chatEnabledParameters: storedParameters?.enabledParameters,
@@ -2469,7 +2588,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             recentMessages: chatMessages.slice(-routingContextSize).map((message: any) => ({
               id: typeof message.id === "string" ? message.id : undefined,
               role: message.role as string,
-              content: conversationPromptHistoryContent(message, chatMode),
+              content: roleplayAgentText(
+                conversationPromptHistoryContent(message, chatMode),
+                message,
+                agentWhisperNames,
+              ),
               characterId:
                 typeof message.characterId === "string" && message.characterId ? message.characterId : undefined,
             })),
@@ -2493,6 +2616,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   }
                 : null,
             memory: {},
+            lorebookIncludes: await loadLorebookIncludesFor(
+              app.db,
+              input.chatId,
+              characterActivityAgents.flatMap((agent) => [agent.promptTemplate, JSON.stringify(agent.settings)]),
+            ),
             writableLorebookIds: null,
             chatSummary: null,
             authorNotes: typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : null,
@@ -2605,12 +2733,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         !input.impersonate;
       const effectiveGroupResponseOrder = smartResponseRequested ? "smart" : savedGroupResponseOrder;
 
-      let groupHistoryCharacterNamesByIdPromise: Promise<Map<string, string>> | null = null;
-      const getGroupHistoryCharacterNamesById = () => {
-        groupHistoryCharacterNamesByIdPromise ??= resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
-        return groupHistoryCharacterNamesByIdPromise;
-      };
-
       // ── Professor Mari fetch follow-up loop ──
       // After Mari executes a [fetch:], the fetched data is persisted to
       // chatMeta.mariContext but only injected into the prompt at the START
@@ -2720,6 +2842,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let advancedMemoryPlacements: AdvancedMemoryPlacement[] = [];
         let longTermMemoryRecallReceipt: LongTermMemoryRecallReceipt | undefined;
         let longTermMemoryPromptRecorded = false;
+        let conversationRecallHistory: GenerationPromptMessage[] | undefined;
         const ownerSpatialProjection = await ownerSpatialProjectionPromise;
         let conversationCommandsReminder: string | null = null;
         let conversationContextMacroSlots: ConversationContextMacroSlots = {
@@ -2861,11 +2984,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ).map((message) => message.id),
             )
           : null;
+        const advancedAgentWhisperOnlyIds = advancedMemoryEnabled
+          ? selectAdvancedMemoryWhisperOnlyIds(
+              advancedSourceMessages,
+              advancedMemorySettings,
+              promptCharacterIds,
+              promptGroupChatMode === "individual",
+            )
+          : undefined;
         const sharedPromptForAgents = (messages: GenerationPromptMessage[]) =>
           advancedAgentSourceIds
             ? filterPromptHistoryByMessageIds(
                 resolveAdvancedMemoryPrompt(messages, advancedMemoryPlacements, {}),
-                advancedAgentSourceIds,
+                new Set([...advancedAgentSourceIds, ...advancedAgentWhisperOnlyIds!]),
                 new Set(advancedSourceMessages.map((message) => message.id)),
               )
             : messages;
@@ -2913,15 +3044,31 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           macroSources: [
             activeChatSummary ?? "",
             ...currentInputMessages().map((message) => message.content),
-            ...pipelineConfiguredPromptAgents.map((agent) => JSON.stringify(agent.settings)),
+            // Agent prompts too, so `{{include::...}}` in them has lorebooks to read (#7212).
+            ...pipelineConfiguredPromptAgents.flatMap((agent) => [
+              agent.promptTemplate ?? "",
+              JSON.stringify(agent.settings),
+            ]),
             // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
             JSON.stringify(chatMeta),
             resolvedPreset ? JSON.stringify(resolvedPreset) : "",
           ],
           nameCharacterReferences: !(presetId && resolvedPreset && chatMode !== "conversation" && chatMode !== "game"),
         });
+        const referencedCharacterIds = new Set(Object.keys(promptMacroContext.characterReferences ?? {}));
         const conversationMacroFieldsByCharacterId = new Map<string, NonNullable<MacroContext["convoFields"]>>();
-        const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
+        const { profilesById: historyMacroProfilesById, unreadableIds } = await resolveCharacterMacroData(
+          app.db,
+          allCharacterIds,
+        );
+        const chatSummaryReaders = mergedChatSummaryReaders({
+          characterIds,
+          individual: promptGroupChatMode === "individual",
+          impersonate: input.impersonate === true,
+          narratorCharacterId: advancedMemorySettings.narratorCharacterId,
+          profilesById: historyMacroProfilesById,
+          unreadableIds,
+        });
 
         // Decision statements in prompt conditionals (#6569). Asked once, before anything
         // below resolves a macro, so every place a condition is evaluated finds its answer.
@@ -3192,13 +3339,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           if (regenerateUserSourceMessage) {
             regenerateUserSourceMessage = resolveHistoryMessageMacros([regenerateUserSourceMessage])[0] ?? null;
           }
+          const lorebookKeeperSources = lorebookKeeperMessages;
           lorebookKeeperMessages = resolveHistoryMessageMacros(
-            lorebookKeeperMessages.map((message: any) => ({
+            lorebookKeeperSources.map((message: any) => ({
               ...message,
               content: conversationPromptHistoryContent(message, chatMode),
               characterId: typeof message.characterId === "string" && message.characterId ? message.characterId : null,
             })),
-          );
+          ).map((message, index) => ({
+            ...message,
+            content: roleplayAgentText(message.content, lorebookKeeperSources[index], agentWhisperNames),
+          }));
           if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
             const characterNamesById = await getGroupHistoryCharacterNamesById();
             mappedMessages.splice(
@@ -3443,6 +3594,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatMessages: mappedMessages,
             lorebookScanMessages: toLorebookScanMessages(),
             chatSummary: activeChatSummary,
+            chatSummaryReaders,
             ...(advancedMemoryEnabled ? { advancedMemory: {}, deferAdvancedMemory: true } : {}),
             enableAgents: chatEnableAgents,
             activeAgentIds: chatActiveAgentIds,
@@ -3477,6 +3629,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           };
 
           const assembled = await assemblePrompt(assemblerInput);
+          for (const id of assembled.referencedCharacterIds) referencedCharacterIds.add(id);
           Object.assign(promptMacroContext.variables, assembled.macroVariables);
           // Preset values are available now, so deferred names resolve normally
           // (and preset-first) in the provider-boundary pass. Conditionals were
@@ -3662,8 +3815,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               signal: generationSignal,
             },
             summaryVectorizerAvailable: memoryRecallVectorizerAvailable,
+            includeRecallHistory:
+              chatEnableAgents && chatActiveAgentIds.includes("long-term-memory") && !input.regenerateMessageId,
           });
           finalMessages = preparedHistory.finalMessages;
+          conversationRecallHistory = preparedHistory.recallHistoryMessages;
 
           // ── Conversation-mode profiles (Convo ONLY): display name, about-me, behavior ──
           // Built entirely inside this branch, so none of these fields can reach
@@ -4253,6 +4409,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           chatProvider: agentChatProvider,
           chatConnectionId: connId ?? "",
           chatModel: conn.model,
+          chatConnectionProvider: conn.provider,
+          chatDefaultParameters: conn.defaultParameters,
+          managedParameterDefinitions,
           chatCustomParameters: connectionParams?.customParameters ?? {},
           chatTemperature: temperature,
           chatEnabledParameters: enabledParameters,
@@ -4448,6 +4607,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             wrapFormat,
             promptMacroContext,
             deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined,
+            chatSummaryReaders,
           );
         }
 
@@ -4744,9 +4904,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // A game with no ruleset buys, pays and earns in its setting kit's money (worldgen W6b).
           const promptKitItems =
             chatMeta.gameRuleset == null ? worldKitItems(gameWorldKitFromMetadata(chatMeta)) : undefined;
-          // What each ruleset item the party holds is, for the Game Master: only read when one is held.
+          // What each ruleset item the party holds is, for the Game Master: read when one is held, or
+          // when the game has coins in use (its layers may hide them all), so an empty purse is said
+          // too (never told one is empty, the Game Master narrates a buy the Engine then refuses).
+          const promptHeldItem = promptInventoryStacks.some((stack) => stack.item);
           const promptItemBook =
-            (pinnedGameRuleset?.status === "ok" || promptKitItems) && promptInventoryStacks.some((stack) => stack.item)
+            (pinnedGameRuleset?.status === "ok" &&
+              (promptHeldItem ||
+                rulesetLayeredCurrencies(pinnedGameRuleset.definition, gameRulesetLayerOptions(pinnedGameRuleset))
+                  .length > 0)) ||
+            (promptKitItems && promptHeldItem)
               ? await loadGameInventoryItemBook(
                   app.db,
                   { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
@@ -4868,7 +5035,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ? rulesetMarketPromptText(
                   pinnedGameRuleset.definition,
                   promptMarketBook,
-                  await promptPlace(),
+                  promptMarketDay.place,
                   gameRulesetLayerOptions(pinnedGameRuleset),
                   promptMarketDay.day,
                 )
@@ -5237,7 +5404,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // Get current game state (if any)
         // Prefer committed game state after a real user turn, but keep visible
         // uncommitted tracker edits authoritative for continue/impersonate flows.
-        // Regenerate uses the previous assistant's tracker snapshot as the prompt baseline.
+        // Regenerate uses the previous assistant's tracker snapshot as the prompt baseline,
+        // with the Tracker Panel edits made on the regenerated reply laid over it.
         const latestGameState = await selectedGameStateSnapshotPromise;
         const baseGameStateSnapshot = latestGameState;
         const allowLatestGameStateFallback = !input.regenerateMessageId;
@@ -5249,9 +5417,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           resolvedAgents.length > 0
             ? Math.max(...resolvedAgents.map((a) => normalizeAgentContextSize(a.settings.contextSize)))
             : 5;
+        // Advanced Memory's live view keeps no empty message; agents still read a whisper-only one as its whispers.
         const agentSlice = (
           advancedAgentSourceIds
-            ? chatMessages.filter((message) => advancedAgentSourceIds.has(message.id))
+            ? chatMessages.filter(
+                (message) =>
+                  advancedAgentSourceIds.has(message.id) ||
+                  (!!agentWhisperNames && !!advancedAgentWhisperOnlyIds?.has(message.id)),
+              )
             : chatMessages
         ).slice(-agentContextSize);
         const resolvedAgentSlice = resolveHistoryMessageMacros(
@@ -5301,7 +5474,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const msg: AgentContext["recentMessages"][number] = {
             id: typeof m.id === "string" ? m.id : undefined,
             role: m.role as string,
-            content: resolved?.content ?? (m.content as string),
+            content: roleplayAgentText(resolved?.content ?? (m.content as string), m, agentWhisperNames),
             characterId: m.characterId ?? undefined,
             ...(speakerName ? { speakerName } : {}),
           };
@@ -5322,6 +5495,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
           return msg;
         });
+        // The main reply's custom tools act for the character responding, so their {{input}} is the latest user
+        // message's public text, without the whispers agents read (#7430).
+        const responderToolInput = agentWhisperNames
+          ? ([...resolvedAgentSlice]
+              .reverse()
+              .find(
+                (message) =>
+                  message.role === "user" && (!advancedAgentSourceIds || advancedAgentSourceIds.has(message.id)),
+              )?.content ?? "")
+          : undefined;
         const customAgentsWithLorebookTriggers = resolvedAgents.filter(
           (agent) => !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true,
         );
@@ -5427,6 +5610,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : null,
           memory: {},
           lorebookEntryCounts: promptMacroContext.lorebookEntryCounts,
+          lorebookIncludes: promptMacroContext.lorebookIncludes,
           writableLorebookIds: null,
           chatSummary: shouldAttachSummariesToAgents(chatMode, chatMeta) ? activeChatSummary : null,
           authorNotes: authorNotes || null,
@@ -5567,6 +5751,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         if (personaId) {
           agentContext.memory._personaId = personaId;
+          // #7053: the persona's image-prompt override, read once from the
+          // resolved identity so every image path keys it consistently. Set
+          // unconditionally: the retry path reads this key without a guard, so
+          // leaving it unset when the override is cleared would let a stale
+          // value survive on a reused memory object.
+          agentContext.memory._personaImageAppearanceOverride = identity?.imageAppearanceOverride ?? "";
         }
         if (userIdentityId) {
           agentContext.memory._userIdentityId = userIdentityId;
@@ -5647,11 +5837,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             agentsStore,
             chatId: input.chatId,
             agentType: "illustrator",
-            settings: illustratorAgentForInterval.settings,
+            settings: applyIllustratorChatRunInterval(
+              "illustrator",
+              illustratorAgentForInterval.settings,
+              chatMeta,
+              requestChatMode,
+            ),
             fallbackInterval: (getDefaultBuiltInAgentSettings("illustrator").runInterval as number) ?? 5,
             messages: allChatMessages,
             countUpcomingAssistantMessage: createsAssistantMessage,
           }));
+
+        // Keep image-only appearances available to custom image agents and native
+        // caption fallbacks, even when no built-in Illustrator instruction exists.
+        const imageAppearanceOverrides = buildIllustratorImageAppearanceOverrides(charInfo, {
+          id: userIdentityId,
+          imageAppearanceOverride: identity?.imageAppearanceOverride || undefined,
+        });
+        if (imageAppearanceOverrides) {
+          agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+        }
 
         const illustratorPromptAgent = resolvedAgents.find((agent) => agent.type === "illustrator");
         if (illustratorPromptAgent) {
@@ -6352,6 +6557,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           gameState,
           gameSpotifyMusicEnabled,
           agentContext,
+          responderInput: responderToolInput,
           getLorebookSourceMessageRefs,
           emitMetadataPatch: (patch) => sendSseEvent(reply, { type: "metadata_patch", data: patch }),
           // Game Mode rolls its dice for real. This does not turn the chat's tool toggle on —
@@ -6428,7 +6634,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         if (chatMode !== "roleplay" && !gameToolConnection) appendLocalEndpointTools(finalMessages, toolDefs);
         // Pre-generation prompt-patch agents read the assembled prompt here; this is overwritten
         // with the fitted provider prompt before each main model call.
-        agentContext.memory._mainPromptPreview = promptPreviewForAgents(sharedPromptForAgents(finalMessages));
+        agentContext.memory._mainPromptPreview = promptPreviewForAgents(
+          roleplayAgentPrompt(sharedPromptForAgents(finalMessages), roleplayTimeline, agentWhisperNames),
+        );
         const resolveAgentContext = async (agent: AgentExecConfig, context: AgentContext): Promise<AgentContext> => {
           const resolvedContext = customLorebookReadBehindTargets.get(agent.id)?.context ?? context;
           const trackerContext = applyTrackerLorebookContextPolicy({
@@ -6657,16 +6865,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     type: "agent_start",
                     data: { phase: "pre_generation", agentType: "knowledge-retrieval" },
                   });
-                  const krConfig = {
-                    id: knowledgeRetrievalAgent!.id,
-                    type: knowledgeRetrievalAgent!.type,
-                    name: knowledgeRetrievalAgent!.name,
-                    isCustomAgent: knowledgeRetrievalAgent!.isCustomAgent,
-                    phase: knowledgeRetrievalAgent!.phase,
-                    promptTemplate: knowledgeRetrievalAgent!.promptTemplate,
-                    connectionId: knowledgeRetrievalAgent!.connectionId,
-                    settings: knowledgeRetrievalAgent!.settings,
-                  };
+                  // The whole resolved agent, so its connection's saved parameters apply too (#7131).
+                  const krConfig = { ...knowledgeRetrievalAgent! };
                   const sourceMaterial = agentContext.memory._knowledgeRetrievalMaterial as string;
                   const krResult = await executeKnowledgeRetrieval(
                     krConfig,
@@ -6712,16 +6912,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     type: "agent_start",
                     data: { phase: "pre_generation", agentType: "knowledge-router" },
                   });
-                  const routerConfig = {
-                    id: knowledgeRouterAgent!.id,
-                    type: knowledgeRouterAgent!.type,
-                    name: knowledgeRouterAgent!.name,
-                    isCustomAgent: knowledgeRouterAgent!.isCustomAgent,
-                    phase: knowledgeRouterAgent!.phase,
-                    promptTemplate: knowledgeRouterAgent!.promptTemplate,
-                    connectionId: knowledgeRouterAgent!.connectionId,
-                    settings: knowledgeRouterAgent!.settings,
-                  };
+                  const routerConfig = { ...knowledgeRouterAgent! };
                   const routerResult = await executeKnowledgeRouter(
                     routerConfig,
                     agentContext,
@@ -7025,7 +7216,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatId: input.chatId,
             chatMode,
             characterIds: promptCharacterIds,
-            messages: sharedPromptForAgents(finalMessages).map(({ role, content }) => ({ role, content })),
+            messages: selectHistoryMessagesForRecall(
+              roleplayAgentPrompt(
+                sharedPromptForAgents(conversationRecallHistory ?? finalMessages),
+                roleplayTimeline,
+                agentWhisperNames,
+              ),
+            ),
             signal: agentSignal,
             debugMode: requestDebug || isDebug,
           });
@@ -7112,6 +7309,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let allResponses: string[] = [];
         // The scenes a game reply shows as written (worldgen W10): a rewrite of the reply must keep them.
         let turnShownScenes: readonly string[] = [];
+        // The earlier parts of the last reply, when it was split at scene breaks; its last part is the last response.
+        let lastReplyEarlierParts: Array<{ message: any; content: string }> = [];
         const allResponseSegments: NonNullable<AgentContext["mainResponseSegments"]> = [];
         const roleplayResponseIndexes = new Map<string, number>();
         let continuedMessageRewriteSource: string | null = null;
@@ -7326,12 +7525,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 about: character.personality || character.description || undefined,
               };
             });
+            // Smart order reads whispers like every agent: a whisper to Bob can make Bob the one who replies (#7430).
             const transcript = chatMessages
               .filter((message: any) => message.role === "user" || message.role === "assistant")
               .map((message: any) => ({
                 role: message.role as string,
                 name: resolveMessageSpeakerName(message),
-                content: stripConversationPromptTimestamps(conversationPromptHistoryContent(message, chatMode)),
+                content: stripConversationPromptTimestamps(
+                  roleplayAgentText(conversationPromptHistoryContent(message, chatMode), message, agentWhisperNames),
+                ),
               }));
             const answers = await backend.ask(
               smartOrderState(transcript, candidates, backend.maxStateTokens),
@@ -7375,11 +7577,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             .slice(-5)
             .map((message: any) => {
               const speaker = resolveMessageSpeakerName(message);
-              const content = stripConversationPromptTimestamps(conversationPromptHistoryContent(message, chatMode))
-                .replace(/\s+/g, " ")
-                .trim()
-                .slice(0, 900);
-              return `${speaker}: ${content}`;
+              // A turn's text and each of its whispers get 900 characters apiece, so a long whisper cannot crowd
+              // out what was said aloud.
+              const text = conversationPromptHistoryContent(message, chatMode);
+              const whispered = roleplayAgentText(text, message, agentWhisperNames, false, 900);
+              const content = stripConversationPromptTimestamps(whispered).replace(/\s+/g, " ").trim();
+              return `${speaker}: ${whispered === text ? content.slice(0, 900) : content}`;
             })
             .filter(Boolean)
             .join("\n");
@@ -7675,9 +7878,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           return prepared;
         };
 
-        // Only individual main-model inputs count toward the memory cutoff, never
-        // summed tool usage, output tokens, or agent/planner requests.
+        // Only the outgoing prompt counts toward the memory cutoff: the first main-model input
+        // of each responder (the narrator or a character). Tool rounds and roll or Game
+        // follow-ups resend that prompt with the model's own output and results, so they
+        // never count, nor do output tokens, summed usage or agent/planner requests.
         let maxMainRequestInputTokens: number | null = null;
+        // The model's own window, before Advanced Memory narrows it to the cap for the
+        // outgoing prompt. Follow-ups are bounded only by this window.
+        const modelMaxContext = effectiveMaxContext;
         /** Generate a single response for a given character and save it. */
         const generateForCharacter = async (
           targetCharId: string | null,
@@ -7688,6 +7896,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           savedMsg: Awaited<ReturnType<typeof chats.createMessage>>;
           savedSwipeIndex: number | null;
           response: string;
+          /** A reply split at scene breaks: the parts saved before `savedMsg`, its last part. */
+          earlierParts?: Array<{ message: any; content: string }>;
           commands: CharacterCommand[];
           commandCharacterIds: (string | null)[] | null;
           oocMessages: string[];
@@ -7699,9 +7909,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             targetCharId &&
             !input.regenerateMessageId &&
             !input.impersonate &&
-            (await resolveSceneBusyCharacterIds(chats, input.chatId)).includes(targetCharId)
+            (
+              await resolveSceneBusyCharacterIds(chats, input.chatId, undefined, {
+                userReply: input.autonomous !== true,
+              })
+            ).includes(targetCharId)
           ) {
-            sendSseEvent(reply, { type: "offline", characters: [groupResponderName(targetCharId)] });
+            sendSseEvent(reply, {
+              type: "offline",
+              reason: "scene_busy",
+              characters: [groupResponderName(targetCharId)],
+            });
             return null;
           }
           generationProviderOrigin = { model: conn.model, provider: conn.provider };
@@ -7812,9 +8030,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? [targetCharId]
                 : []
               : characterIds;
+          const roleplayPrivateAvailable =
+            Boolean(targetCharId) && (allCharacterIds.length === 1 || usesIndividualGroupGeneration);
+          const roleplayCallerId = roleplayPrivateAvailable && speaksOnlyTargetCharacter ? targetCharId : null;
           gameAwareMessagesForGen = filterPromptMessagesForCharacterAudience(
             gameAwareMessagesForGen,
             audienceCharacterIds,
+            chatMode === "roleplay" && !input.impersonate
+              ? roleplayHiddenWhisperMessageIds(roleplayTimeline, roleplayCallerId)
+              : undefined,
           );
           if (
             usesIndividualGroupGeneration &&
@@ -7999,12 +8223,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(message.providerMetadata ? { providerMetadata: message.providerMetadata } : {}),
             }));
 
-          // Private state enters only the final responder request, after shared agent context.
-          const publicRoleplayPrompt =
-            chatMode === "roleplay" ? toProviderMessages(sharedPromptForAgents(preparedMessagesForGen)) : null;
-          const roleplayPrivateAvailable =
-            Boolean(targetCharId) && (allCharacterIds.length === 1 || usesIndividualGroupGeneration);
-          const roleplayCallerId = roleplayPrivateAvailable && speaksOnlyTargetCharacter ? targetCharId : null;
+          // Agents get their own copy, with every whisper (#7430). The responder's whispers, notes and personal
+          // state enter only its own request, after that copy is made.
+          const agentRoleplayPrompt =
+            chatMode === "roleplay"
+              ? toProviderMessages(
+                  roleplayAgentPrompt(
+                    sharedPromptForAgents(preparedMessagesForGen),
+                    roleplayTimeline,
+                    agentWhisperNames,
+                  ),
+                )
+              : null;
           const roleplayWhisperContext =
             chatMode === "roleplay" &&
             appendRoleplayWhispers(
@@ -8059,6 +8289,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : chatResolvedToolNames.has("roll_dice"));
           const roleplayActivity: RoleplayCommandActivity[] = [];
           const roleplayInlinePrefixes = new Map<RoleplayCommandActivity, string>();
+          // The reply text before each command, so a reply split at scene breaks keeps it with its part.
+          const roleplayActivityPlaces = new Map<RoleplayCommandActivity, string>();
+          let roleplayParsedLength = 0;
           const responderToolDefs =
             chatMode === "roleplay"
               ? toolDefs
@@ -8181,22 +8414,35 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
           let finalPromptSent: ChatMessage[] = [];
           const rememberMainPromptPreviewForAgents = (messages: ChatMessage[]) => {
-            agentContext.memory._mainPromptPreview = promptPreviewForAgents(publicRoleplayPrompt ?? messages);
+            agentContext.memory._mainPromptPreview = promptPreviewForAgents(agentRoleplayPrompt ?? messages);
           };
           let effectiveMaxTokensForSend: number | undefined = maxTokens;
-          const fitPromptForSend = async (candidateMessages: ChatMessage[]): Promise<ChatMessage[]> => {
+          let maxContextForSend = effectiveMaxContext;
+          let lastContextFit: ReturnType<typeof fitMessagesForModelAccess>["contextFit"] | undefined;
+          // Advanced Memory holds the outgoing prompt to its cap. A follow-up (tool round, roll or
+          // Game continuation) resends that prompt with the reply so far and the results, so only
+          // the model's own window bounds it, and it reserves room only for the tools it sends.
+          const fitPromptForSend = async (
+            candidateMessages: ChatMessage[],
+            followUp?: { tools: ChatOptions["tools"] },
+          ): Promise<ChatMessage[]> => {
             if (advancedMemoryEnabled) {
               if (advancedMemoryReceipt)
                 await advancedMemory.validatePrepared(input.chatId, advancedSourceMessages, advancedMemoryReceipt);
               const messages = limitPastReasoningMetadata(candidateMessages, chatMeta);
-              const budget = measureContextBudget(messages, {
-                maxContext: effectiveMaxContext!,
-                maxTokens,
-                tools: gameToolConnection ? undefined : responderToolDefs,
-              });
-              if (!budget.fits)
+              maxContextForSend = followUp ? modelMaxContext : effectiveMaxContext;
+              const budget = maxContextForSend
+                ? measureContextBudget(messages, {
+                    maxContext: maxContextForSend,
+                    maxTokens,
+                    tools: followUp ? followUp.tools : gameToolConnection ? undefined : responderToolDefs,
+                  })
+                : undefined;
+              if (budget && !budget.fits)
                 throw new Error(
-                  "Advanced Memory: this tool follow-up or continuation exceeds the context cap. Increase the cap or reduce the tool result or reply space.",
+                  followUp
+                    ? "This tool follow-up or continuation exceeds the model's context window. Reduce the tool result or reply space."
+                    : "Advanced Memory: the complete request exceeds the context cap. Reduce fixed prompt content, attachments or the reply reserve, or increase the cap.",
                 );
               finalPromptSent = messages;
               effectiveMaxTokensForSend = maxTokens;
@@ -8210,6 +8456,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             });
             finalPromptSent = fit.messages;
             effectiveMaxTokensForSend = fit.maxTokensForSend;
+            lastContextFit = fit.contextFit;
             return fit.messages;
           };
 
@@ -8251,12 +8498,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let tokensContext: number | null = null;
           let tokensLastRequestInput: number | null = null;
           let requestCount = 0;
-          const recordRequestUsage = (next: LLMUsage | undefined) => {
+          /** `addedToLostPrompt`: what a follow-up added to an outgoing prompt whose usage was lost. */
+          const recordRequestUsage = (next: LLMUsage | undefined, addedToLostPrompt?: ChatMessage[]) => {
             requestCount++;
             tokensContext = getRequestContextTokens(next, generationProviderOrigin.provider);
             tokensLastRequestInput = getRequestInputTokens(next, generationProviderOrigin.provider);
-            if (tokensLastRequestInput !== null)
-              maxMainRequestInputTokens = Math.max(maxMainRequestInputTokens ?? 0, tokensLastRequestInput);
+            // The first request carries the outgoing prompt; a follow-up never stands in for it.
+            // When cutting a streamed reply at its roll lost that usage (OpenAI-compatible providers
+            // send it last), the first later request that reports input, minus the bytes added since,
+            // is a floor for it: every token covers at least one byte, so it never cuts early.
+            // ponytail: a prompt only just past the cap can cut a turn late. Upgrade: a
+            // provider-reported count of the outgoing prompt.
+            const outgoingInput =
+              tokensLastRequestInput === null
+                ? null
+                : requestCount === 1
+                  ? tokensLastRequestInput
+                  : addedToLostPrompt
+                    ? tokensLastRequestInput - Buffer.byteLength(JSON.stringify(addedToLostPrompt))
+                    : null;
+            if (outgoingInput !== null)
+              maxMainRequestInputTokens = Math.max(maxMainRequestInputTokens ?? 0, outgoingInput);
             usage = addGenerationUsage(usage, next);
           };
           let finishReason: string | undefined;
@@ -8285,7 +8547,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 conn.provider,
                 effTemp,
                 effectiveMaxTokensForSend,
-                effectiveMaxContext ?? connectionMaxContext ?? "default",
+                maxContextForSend ?? connectionMaxContext ?? "default",
                 effTopP,
                 providerTopK ?? "default",
                 enableThinking,
@@ -8400,9 +8662,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : null;
           if (generationSignal.aborted) return null;
           if (responderToolsAttached && (gameToolPlan || (!gameToolConnection && provider.chatComplete))) {
-            const maxToolRounds = gameToolPlan ? 1 : getMaxToolRounds();
+            // A game turn rolls a check or two, so it gets a few rounds, never the general limit: a
+            // model that keeps asking for a roll (a proxy that loses the results makes Claude re-roll
+            // forever) costs a few calls, not a hundred. MAX_TOOL_ROUNDS still wins when lower.
+            const maxToolRounds = gameToolPlan
+              ? 1
+              : chatMode === "game"
+                ? Math.min(getMaxToolRounds(), GAME_TURN_MAX_TOOL_ROUNDS)
+                : getMaxToolRounds();
             let loopMessages: ChatMessage[] = [...initialProviderMessages];
+            const loopTools = supportsNativeToolCalls(conn.provider) ? responderToolDefs : undefined;
             let rollRequestAbort: AbortController | null = null;
+            // Length of the outgoing prompt when cutting its stream at a roll lost its usage. It stays
+            // set while each later round is also cut at a roll without usage, since those rounds add
+            // only their text and roll results; the first request that finishes or reports usage ends it.
+            let lostPromptLength: number | null = null;
+            const addedToLostPrompt = () =>
+              lostPromptLength === null ? undefined : loopMessages.slice(lostPromptLength);
             // Stream tokens in real-time via onToken callback.
             // Some providers (e.g. Gemini with thinking) return the entire response
             // in one chunk. Break large chunks into small pieces so the client sees
@@ -8439,7 +8715,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   // usage, signatures and encrypted reasoning belong to this pass only.
                   result = { content: null, toolCalls: gameToolPlan.toolCalls, finishReason: "tool_calls" };
                 } else {
-                  loopMessages = await fitPromptForSend(loopMessages);
+                  loopMessages = await fitPromptForSend(loopMessages, round > 0 ? { tools: loopTools } : undefined);
                   rememberMainPromptPreviewForAgents(loopMessages);
                   logPromptSentToModel(
                     loopMessages,
@@ -8451,14 +8727,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       preserveContext: advancedMemoryEnabled,
                       temperature,
                       maxTokens: effectiveMaxTokensForSend,
-                      maxContext: effectiveMaxContext,
+                      maxContext: maxContextForSend,
                       topP,
                       topK: providerTopK,
                       frequencyPenalty: frequencyPenalty || undefined,
                       presencePenalty: presencePenalty || undefined,
                       minP: minP || undefined,
                       stop: stopSequences.length ? stopSequences : undefined,
-                      tools: supportsNativeToolCalls(conn.provider) ? responderToolDefs : undefined,
+                      tools: loopTools,
                       toolChoice: supportsNativeToolCalls(conn.provider)
                         ? resolveMainGenerationToolChoice({ chatMetadata: chatMeta, enableChatTools, round })
                         : undefined,
@@ -8529,7 +8805,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               geminiResponseParts = appendRoundGeminiParts(geminiResponseParts, result.providerMetadata);
 
               // Accumulate usage across tool rounds
-              if (!gameToolPlan) recordRequestUsage(result.usage);
+              if (!gameToolPlan) {
+                recordRequestUsage(result.usage, addedToLostPrompt());
+                const usageLostAtRoll =
+                  rollRequestAbort?.signal.aborted &&
+                  getRequestInputTokens(result.usage, generationProviderOrigin.provider) === null;
+                if (!usageLostAtRoll) lostPromptLength = null;
+                else if (round === 0) lostPromptLength = loopMessages.length;
+              }
               finishReason = result.finishReason;
 
               let textualRoleplayRoll = false;
@@ -8752,7 +9035,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     toolResults.map(formatToolExecutionResultForModel).join("\n") +
                     "\nWrite the narration using these results. Do not reroll these actions or claim a failed tool succeeded.",
                 });
-                narratorMessages = await fitPromptForSend(withToolResults);
+                narratorMessages = await fitPromptForSend(withToolResults, { tools: undefined });
                 break;
               }
 
@@ -8777,7 +9060,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (round === maxToolRounds - 1) {
                 // Reset per-character accumulator for final round content
                 const prevLen = fullResponse.length;
-                loopMessages = await fitPromptForSend(loopMessages);
+                // Sent without tools, so the exchange so far goes as text (toolRoundsAsText).
+                loopMessages = await fitPromptForSend(toolRoundsAsText(loopMessages), { tools: undefined });
                 rememberMainPromptPreviewForAgents(loopMessages);
                 logPromptSentToModel(loopMessages, "Prompt sent to model (final tool follow-up)");
                 const finalResult = await withLlmRequestTimeout(chatGenerationTimeoutMs, () =>
@@ -8786,7 +9070,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     preserveContext: advancedMemoryEnabled,
                     temperature,
                     maxTokens: effectiveMaxTokensForSend,
-                    maxContext: effectiveMaxContext,
+                    maxContext: maxContextForSend,
                     topP,
                     topK: providerTopK,
                     frequencyPenalty: frequencyPenalty || undefined,
@@ -8831,7 +9115,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   await writeContentChunked(finalResult.content);
                 }
                 geminiResponseParts = appendRoundGeminiParts(geminiResponseParts, finalResult.providerMetadata);
-                recordRequestUsage(finalResult.usage);
+                recordRequestUsage(finalResult.usage, addedToLostPrompt());
                 finishReason = finalResult.finishReason;
               }
             }
@@ -8842,7 +9126,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             finishReason = undefined;
             rememberMainPromptPreviewForAgents(narratorMessages);
             logPromptSentToModel(narratorMessages);
-            const gen = provider.chat(narratorMessages, textChatOptions);
+            const gen = provider.chat(narratorMessages, { ...textChatOptions, maxContext: maxContextForSend });
             try {
               let result = await withLlmRequestTimeout(chatGenerationTimeoutMs, () => gen.next());
               await recordAcceptedLongTermMemoryPrompt(narratorMessages);
@@ -9000,11 +9284,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const parsed = parseRoleplayCommands(fullResponse);
             roleplayHadCommands = parsed.content !== fullResponse;
             fullResponse = parsed.content;
+            roleplayParsedLength = parsed.content.length;
+            // A swipe of a split reply's earlier part is a new version of that part alone (#7481). Its prompt is the
+            // whole reply's, but the scenes after its break already have their own message and audience.
+            let regeneratedPartEnd = Infinity;
+            if (input.regenerateMessageId && parseExtra(regenMsg?.extra).continuesAfterSceneBreak === true) {
+              const [firstPart] = splitAtSceneBreaks(fullResponse);
+              if (firstPart !== undefined && firstPart !== fullResponse) {
+                regeneratedPartEnd = fullResponse.indexOf(firstPart) + firstPart.length;
+                fullResponse = firstPart;
+              }
+            }
             if (!roleplayDmCommandsEnabled) fullResponse = parseDirectMessageCommands(fullResponse).cleanContent;
             contentReplaced = true;
             if (parsed.invalid) sendSseEvent(reply, { type: "roleplay_command_error", data: { invalid: true } });
             for (const activity of parsed.activity) {
               const { command } = activity;
+              if ((parsed.positions.get(activity) ?? 0) > regeneratedPartEnd) continue;
               if (
                 !roomRoleplayCommandAllowed(command.type) ||
                 !isRoleplayCommandAllowed(chatMeta, roleplayCommandKey(command), roleplayCallerId)
@@ -9045,6 +9341,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       : null;
               if (requiredAgent && !resolvedAgents.some((agent) => agent.type === requiredAgent)) continue;
               roleplayActivity.push(activity);
+              roleplayActivityPlaces.set(activity, parsed.content.slice(0, parsed.positions.get(activity)));
               if (
                 command.type === "illustrate" ||
                 command.type === "combat" ||
@@ -9129,7 +9426,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (blockedSpeakers.length) {
               fullResponse = "";
               if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: "" });
-              sendSseEvent(reply, { type: "offline", characters: [...new Set(blockedSpeakers)] });
+              const sceneBusyIds = new Set(
+                await resolveSceneBusyCharacterIds(chats, input.chatId, undefined, {
+                  userReply: input.autonomous !== true,
+                }),
+              );
+              const sceneBusyNames = new Set(
+                charInfo.filter((character) => sceneBusyIds.has(character.id)).flatMap(speakerNames),
+              );
+              const offlineSpeakerNames = new Set(
+                charInfo
+                  .filter((character) => !isAvailableGroupResponder(character.id) && !sceneBusyIds.has(character.id))
+                  .flatMap(speakerNames),
+              );
+              const names = [...new Set(blockedSpeakers)];
+              const sceneNames = names.filter((name) => sceneBusyNames.has(normalizeTextForMatch(name)));
+              const offlineNames = names.filter((name) => offlineSpeakerNames.has(normalizeTextForMatch(name)));
+              if (sceneNames.length) {
+                sendSseEvent(reply, { type: "offline", reason: "scene_busy", characters: sceneNames });
+              }
+              if (offlineNames.length) sendSseEvent(reply, { type: "offline", characters: offlineNames });
               return null;
             }
           }
@@ -9548,14 +9864,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ...checks.map(formatSkillCheckResultSummary),
                 ...toolDiceRollResults.map((result) => `🎲 ${result.notation} = ${result.total}`),
               ].join("\n");
-              const continuationMessages = await fitPromptForSend([
-                ...narratorMessages,
-                { role: "assistant", content: gameDraftWithCommands },
-                {
-                  role: "user",
-                  content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them. Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language.`,
-                },
-              ]);
+              const continuationMessages = await fitPromptForSend(
+                [
+                  ...narratorMessages,
+                  { role: "assistant", content: gameDraftWithCommands },
+                  {
+                    role: "user",
+                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them. Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language.`,
+                  },
+                ],
+                { tools: undefined },
+              );
               logPromptSentToModel(continuationMessages, "Game narration after engine rolls");
               rememberMainPromptPreviewForAgents(continuationMessages);
               // The replacement is a new assistant response; old native parts
@@ -9567,6 +9886,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const followup = provider.chat(continuationMessages, {
                 ...textChatOptions,
                 maxTokens: effectiveMaxTokensForSend,
+                maxContext: maxContextForSend,
                 encryptedReasoningItems: undefined,
               });
               try {
@@ -9670,6 +9990,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // add up. The answers are worked out here, on the stacks as they are, so the reply is saved
           // with them; the stacks themselves only change once the reply is saved (below), so a reply
           // that is never saved changes nothing.
+          // The world's people this reply named, tracked once it is saved.
+          let worldNpcsNamed: { world: GameWorld; people: WorldPerson[] } | undefined;
           let inventoryTurn: {
             requested: string;
             preview: string;
@@ -9850,16 +10172,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               return found ? [found.id] : [];
             });
             const named = worldPeopleNamed(turnWorld, placeIds, fullResponse);
-            if (named.length > 0) {
-              await chats.patchMetadata(input.chatId, (current) => {
-                const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
-                const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
-                const added = named
-                  .filter((person) => !known.has(person.id))
-                  .map((person) => worldPersonNpc(turnWorld, person));
-                return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
-              });
-            }
+            // Tracked once the reply is saved (below), so a discarded or stopped reply adds nobody.
+            if (named.length > 0) worldNpcsNamed = { world: turnWorld, people: named };
           }
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
@@ -10231,6 +10545,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Save assistant message (or user message for impersonate)
           let savedMsg: any;
           let savedSwipeIndex: number | null = null;
+          // A new reply split at scene breaks: each part with where it starts in the whole reply.
+          type ReplyPart = { content: string; start: number; message: any; activity: RoleplayCommandActivity[] };
+          let replyParts = null as ReplyPart[] | null;
           if (input.regenerateMessageId) {
             const createdSwipe = await chats.addSwipe(input.regenerateMessageId, fullResponse);
             savedSwipeIndex = createdSwipe.index;
@@ -10313,32 +10630,49 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const roomActor = roomAuthority?.characters.find((character) =>
               chatMode === "game" ? character.role === "gm" : character.id === targetCharId,
             );
-            savedMsg = await chats.createMessage({
-              chatId: input.chatId,
-              role: input.impersonate ? "user" : "assistant",
-              characterId: input.impersonate ? null : targetCharId,
-              content: fullResponse,
-              ...(roomAuthority
-                ? {
-                    extra: {
-                      multiplayerActor: roomActor
-                        ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
-                        : { id: null, name: "GM", role: "gm" },
-                      ...(roomAudience
-                        ? {
-                            multiplayerGameAudience: {
-                              roomId: roomAudience.roomId,
-                              participants: roomAudience.participants.map((participant) => ({
-                                id: participant.id,
-                                name: participant.persona.name,
-                              })),
-                            },
-                          }
-                        : {}),
-                    },
-                  }
-                : {}),
-            });
+            // With Advanced Memory, each scene or POV break starts a message of its own, so each part has its own
+            // audience (#7481). The last part is the reply the rest of this turn works with.
+            const parts =
+              advancedMemoryEnabled && !input.impersonate ? splitAtSceneBreaks(fullResponse) : [fullResponse];
+            const saved: ReplyPart[] = [];
+            try {
+              for (const content of parts) {
+                const previous = saved.at(-1);
+                const start = fullResponse.indexOf(content, previous ? previous.start + previous.content.length : 0);
+                savedMsg = await chats.createMessage({
+                  chatId: input.chatId,
+                  role: input.impersonate ? "user" : "assistant",
+                  characterId: input.impersonate ? null : targetCharId,
+                  content,
+                  ...(roomAuthority
+                    ? {
+                        extra: {
+                          multiplayerActor: roomActor
+                            ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
+                            : { id: null, name: "GM", role: "gm" },
+                          ...(roomAudience
+                            ? {
+                                multiplayerGameAudience: {
+                                  roomId: roomAudience.roomId,
+                                  participants: roomAudience.participants.map((participant) => ({
+                                    id: participant.id,
+                                    name: participant.persona.name,
+                                  })),
+                                },
+                              }
+                            : {}),
+                        },
+                      }
+                    : {}),
+                });
+                saved.push({ content, start, message: savedMsg, activity: [] });
+              }
+            } catch (error) {
+              // A reply is saved whole or not at all: drop the parts already saved, so no half-reply is left.
+              for (const part of saved) await chats.removeMessage(part.message.id).catch(() => undefined);
+              throw error;
+            }
+            if (saved.length > 1) replyParts = saved;
             savedSwipeIndex = 0;
           }
           // The scenes the reply shows as written (worldgen W10) stay with it, so a rewrite later (a retry, or
@@ -10390,6 +10724,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // The reply is saved either way: a failed write is logged, never the turn's failure.
               logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);
             }
+          }
+          // The world's people the saved reply named become tracked NPCs (worldgen W2).
+          if (worldNpcsNamed && savedMsg?.id && !generationSignal.aborted) {
+            const { world: namedWorld, people: named } = worldNpcsNamed;
+            await chats.patchMetadata(input.chatId, (current) => {
+              const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
+              const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
+              const added = named
+                .filter((person) => !known.has(person.id))
+                .map((person) => worldPersonNpc(namedWorld, person));
+              return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
+            });
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
           // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──
@@ -10559,6 +10905,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           if (savedMsg?.id && savedSwipeIndex !== null && outputTranslationConfig && !input.impersonate) {
+            // A split reply's earlier parts are translated first, in order; their source is saved with their extras.
+            for (const part of replyParts?.slice(0, -1) ?? []) translationMessages.set(part.message.id, 0);
             translationMessages.set(savedMsg.id, savedSwipeIndex);
             // Persist ownership before message_saved can trigger Game's legacy
             // browser backfill, which also runs when navigating between chats.
@@ -10729,6 +11077,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 durationMs,
                 reasoningDurationMs,
                 finishReason: finishReason ?? null,
+                contextFit: lastContextFit ?? null,
               },
             };
             if (fullThinking) extraUpdate.thinking = fullThinking;
@@ -10745,6 +11094,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             // Cache the exact prompt injections used for this swipe so future
             // regenerations and swipe switches replay the same guidance.
             extraUpdate.contextInjections = contextInjections.length > 0 ? contextInjections : null;
+            // Continuing extends this swipe; a new or regenerated reply owns a fresh reference snapshot.
+            if (
+              chatMode === "roleplay" &&
+              groupGenerationMode === "merged" &&
+              allCharacterIds.length > 1 &&
+              !input.impersonate
+            ) {
+              const previousReferenceIds = input.continueMessageId
+                ? parseExtra(savedMsg.extra).referencedCharacterIds
+                : null;
+              extraUpdate.referencedCharacterIds = [
+                ...new Set([
+                  ...(Array.isArray(previousReferenceIds)
+                    ? previousReferenceIds.filter(
+                        (id): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{21}$/.test(id),
+                      )
+                    : []),
+                  ...referencedCharacterIds,
+                ]),
+              ];
+            } else {
+              extraUpdate.referencedCharacterIds = [];
+            }
             extraUpdate.conversationCommandContent =
               chatMode === "conversation" && !input.impersonate ? conversationCommandContent : null;
             extraUpdate.sceneRequest =
@@ -10753,26 +11125,37 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const previousExtra = input.continueMessageId
                 ? parseExtra((await chats.getMessage(savedMsg.id))?.extra)
                 : {};
+              const placeInReply = (rawPrefix: string) =>
+                placeAfterPrefix(fullResponse, stripSpacesBeforeLineBreaks(rawPrefix).trim());
+              // A split reply places its commands in the whole reply first, then in the part each one was in.
+              const placedContent = replyParts ? fullResponse : savedMsg.content;
               for (const [activity, rawPrefix] of roleplayInlinePrefixes) {
-                const prefix = stripSpacesBeforeLineBreaks(rawPrefix).trim();
-                const anchor = prefix.slice(-80);
-                const prefixStart = fullResponse.indexOf(prefix);
-                const anchorStart = fullResponse.indexOf(anchor);
-                const offset =
-                  prefixStart >= 0
-                    ? prefixStart + prefix.length
-                    : anchor && anchorStart >= 0 && anchorStart === fullResponse.lastIndexOf(anchor)
-                      ? anchorStart + anchor.length
-                      : null;
+                const offset = placeInReply(rawPrefix);
                 if (offset !== null) {
-                  activity.contentOffset = Math.max(0, savedMsg.content.length - fullResponse.length) + offset;
+                  activity.contentOffset = Math.max(0, placedContent.length - fullResponse.length) + offset;
                   activity.contentAnchor =
                     activity.contentOffset === 0
-                      ? savedMsg.content.slice(0, 80)
-                      : savedMsg.content.slice(Math.max(0, activity.contentOffset - 80), activity.contentOffset);
+                      ? placedContent.slice(0, 80)
+                      : placedContent.slice(Math.max(0, activity.contentOffset - 80), activity.contentOffset);
                 }
               }
-              extraUpdate.roleplayCommandActivity = [...getRoleplayCommandActivity(previousExtra), ...roleplayActivity];
+              if (replyParts) {
+                const placed = placeRoleplayActivityInParts(replyParts, roleplayActivity, (item) => {
+                  if (typeof item.contentOffset === "number") return item.contentOffset;
+                  const place = roleplayActivityPlaces.get(item);
+                  if (place === undefined) return null;
+                  // Not found after cleanup: the same relative place, so the command still lands near its part.
+                  return (
+                    placeInReply(place) ??
+                    Math.round((place.length * fullResponse.length) / Math.max(1, roleplayParsedLength))
+                  );
+                });
+                for (const [index, part] of replyParts.entries()) part.activity = placed[index]!;
+              }
+              extraUpdate.roleplayCommandActivity = [
+                ...getRoleplayCommandActivity(previousExtra),
+                ...(replyParts?.at(-1)!.activity ?? roleplayActivity),
+              ];
               // New records own their editable context; legacy extras are read only as a fallback.
               extraUpdate.roleplayPrivateCommands = null;
               extraUpdate.roleplayDocuments = null;
@@ -10790,11 +11173,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               )
                 extraUpdate.hiddenFromUser = false;
               const timelineMessage = { ...savedMsg, extra: { ...parseExtra(savedMsg.extra), ...extraUpdate } };
+              for (const part of replyParts?.slice(0, -1) ?? [])
+                roleplayTimeline.push({
+                  ...part.message,
+                  extra: {
+                    ...parseExtra(part.message.extra),
+                    roleplayCommandActivity: part.activity,
+                    roleplayPrivateContext: extraUpdate.roleplayPrivateContext,
+                  },
+                });
               const existingTimelineIndex = roleplayTimeline.findIndex((message) => message.id === savedMsg.id);
               if (existingTimelineIndex >= 0) roleplayTimeline[existingTimelineIndex] = timelineMessage;
               else roleplayTimeline.push(timelineMessage);
-              for (const command of currentRoleplayMedia)
-                roleplayMediaRequests.push({ command, messageId: savedMsg.id, swipeIndex: savedSwipeIndex ?? 0 });
+              for (const command of currentRoleplayMedia) {
+                const part = replyParts?.find((item) => item.activity.some((activity) => activity.command === command));
+                roleplayMediaRequests.push({
+                  command,
+                  messageId: (part?.message ?? savedMsg).id,
+                  swipeIndex: savedSwipeIndex ?? 0,
+                });
+              }
             }
             extraUpdate.generationReplay = buildGenerationReplay(input);
             extraUpdate.startsNewAssistantBubble = startsNewAssistantBubble;
@@ -10842,6 +11240,62 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               extraUpdate.advancedMemorySnapshot = advancedMemorySnapshot;
             const persistentAttachments = resolveUserRegenerationPersistentAttachments(regenMsg ?? {});
             if (persistentAttachments) extraUpdate.attachments = persistentAttachments;
+            // While a rewrite agent holds the reply, each saved message shows its placeholder until its rewrite arrives.
+            const heldForRewrite = (message: any) =>
+              holdForTextRewrite && !input.impersonate
+                ? {
+                    ...message,
+                    content: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
+                    extra: {
+                      ...parseExtra(message.extra),
+                      postProcessingPending: {
+                        agentType: textRewritePendingState?.agentType ?? "prose-guardian",
+                        message: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
+                      },
+                    },
+                  }
+                : message;
+            if (replyParts) {
+              // The reasoning and the memory preparation belong to the first part, whose prompt produced them.
+              // Generation info, the prompt cache and everything that ends the turn stay with the last part.
+              // Each part keeps what regenerating it replays. Gemini parts hold the whole reply's text, so a
+              // split reply keeps none: replayed with one part, they would show the others to its readers.
+              const firstPartKeys = [
+                "thinking",
+                "chatCompletionsReasoning",
+                "encryptedReasoning",
+                "advancedMemorySnapshot",
+                "startsNewAssistantBubble",
+              ];
+              const pick = (keys: string[]) =>
+                Object.fromEntries(keys.filter((key) => key in extraUpdate).map((key) => [key, extraUpdate[key]]));
+              const everyPart = pick(["contextInjections", "generationReplay", "referencedCharacterIds"]);
+              for (const [index, part] of replyParts.slice(0, -1).entries()) {
+                const savedPart = await chats.updateMessageExtraForSwipe(part.message.id, 0, {
+                  ...everyPart,
+                  ...(index === 0 ? pick(firstPartKeys) : {}),
+                  roleplayCommandActivity: part.activity,
+                  roleplayPrivateContext: extraUpdate.roleplayPrivateContext,
+                  // The reply goes on in the next message: its reasoning covers both, and a swipe keeps this part.
+                  continuesAfterSceneBreak: true,
+                  ...(outputTranslationConfig ? { automaticTranslationSource: part.content } : {}),
+                });
+                // The live reply keeps showing the rest, so the part appears above it without a repeat. While a
+                // rewrite agent holds the reply, the live reply stays empty until the rewrite arrives.
+                sendSseEvent(reply, {
+                  type: "message_saved",
+                  data: heldForRewrite(savedPart ?? part.message),
+                  remainingContent: holdForTextRewrite
+                    ? ""
+                    : replyParts
+                        .slice(index + 1)
+                        .map((rest) => rest.content)
+                        .join("\n\n"),
+                });
+              }
+              for (const key of firstPartKeys) extraUpdate[key] = key === "startsNewAssistantBubble" ? false : null;
+              extraUpdate.geminiParts = null;
+            }
             let refreshedMsg;
             if (roleplayActivity.some((item) => item.command.type === "interrupt")) {
               const committed = await chats.commitRoleplayInterruption({
@@ -10902,23 +11356,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               });
             }
 
-            const savedMessagePayload =
-              holdForTextRewrite && !input.impersonate
-                ? {
-                    ...(refreshedMsg ?? savedMsg),
-                    content: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
-                    extra: {
-                      ...parseExtra((refreshedMsg ?? savedMsg).extra),
-                      postProcessingPending: {
-                        agentType: textRewritePendingState?.agentType ?? "prose-guardian",
-                        message: textRewritePendingState?.message ?? PROSE_GUARDIAN_PENDING_MESSAGE,
-                      },
-                    },
-                  }
-                : (refreshedMsg ?? savedMsg);
             sendSseEvent(reply, {
               type: "message_saved",
-              data: savedMessagePayload,
+              data: heldForRewrite(refreshedMsg ?? savedMsg),
             });
 
             if (chatMode === "game" && !input.impersonate) {
@@ -11015,10 +11455,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             postToDiscordWebhook(discordWebhookUrl, { content: fullResponse, username: charName });
           }
 
+          // The reply this turn goes on with is a split reply's last part; the caller records the earlier ones.
+          if (replyParts) fullResponse = replyParts.at(-1)!.content;
           return {
             savedMsg,
             savedSwipeIndex,
             response: fullResponse,
+            earlierParts: replyParts?.slice(0, -1).map(({ message, content }) => ({ message, content })),
             commands: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommands,
             commandCharacterIds: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommandCharacterIds,
             oocMessages: recoveredAlreadyAppliedSpatialTurn ? [] : oocMessages,
@@ -11064,11 +11507,30 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               .filter((messageId: unknown): messageId is string => typeof messageId === "string"),
           );
 
+          const inTurnMessageIds = new Set<string>();
           for (let ci = 0; ci < respondingCharIds.length; ci++) {
             if (generationSignal.aborted) break;
             const charId = respondingCharIds[ci];
             if (!charId) continue;
             const charName = charInfo.find((c) => c.id === charId)?.name ?? "Character";
+            if (decidesMessageVisibility && inTurnMessageIds.size) {
+              // Earlier replies in this turn are decided before the next character reads them (#7192).
+              await advancedMemory.settleMessageVisibility(input.chatId, {
+                signal: generationSignal,
+                debugMode: requestDebug,
+              });
+              for (const [index, message] of runningMessages.entries()) {
+                if (!message.id || !inTurnMessageIds.has(message.id)) continue;
+                const saved = await chats.getMessage(message.id);
+                // Apply the saved list even when empty: the user may have unhidden this reply mid-turn.
+                if (saved)
+                  runningMessages[index] = {
+                    ...message,
+                    hiddenFromAICharacterIds: getMessageHiddenFromAICharacterIds(saved),
+                  };
+              }
+              inTurnMessageIds.clear();
+            }
 
             if (chatMode === "conversation") {
               const responderDelay = conversationResponderDelays.get(charId);
@@ -11139,7 +11601,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (charInstruction) {
               messagesWithInstruction.push({ role: "system", content: charInstruction });
             }
-            if (routeCharacterMentions && groupTurnPromptEnabled) {
+            // @Name handoffs are a Conversation convention. Roleplay's turn
+            // instruction is only the reminder above, so replies don't end in
+            // @-pings (#7319); a mention a reply writes anyway still routes below.
+            if (routeCharacterMentions && groupTurnPromptEnabled && chatMode === "conversation") {
               messagesWithInstruction.push({
                 role: "system",
                 contextKind: "injection",
@@ -11157,17 +11622,33 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (generationSignal.aborted) break;
               continue;
             }
-            firstSavedMsg ??= genResult.savedMsg;
+            // A reply split at scene breaks is read and decided part by part, like separate replies.
+            const replyParts = [
+              ...(genResult.earlierParts ?? []),
+              { message: genResult.savedMsg, content: genResult.response },
+            ];
+            firstSavedMsg ??= replyParts[0]!.message;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
+            // Rewrite agents rewrite only the last reply, so an earlier responder's held parts show their text again.
+            if (holdForTextRewrite)
+              for (const part of lastReplyEarlierParts)
+                sendSseEvent(reply, {
+                  type: "text_rewrite",
+                  data: { messageId: part.message.id, editedText: part.content, changes: [], rewriteApplied: false },
+                });
+            lastReplyEarlierParts = genResult.earlierParts ?? [];
             currentIterationSavedMsg = genResult.savedMsg;
-            if (typeof genResult.savedMsg?.id === "string") {
-              knownConversationMessageIds.add(genResult.savedMsg.id);
+            for (const part of replyParts) {
+              if (typeof part.message?.id === "string") {
+                knownConversationMessageIds.add(part.message.id);
+                inTurnMessageIds.add(part.message.id);
+                roleplayResponseIndexes.set(part.message.id, allResponses.length);
+              }
+              allResponses.push(part.content);
+              allResponseSegments.push({ characterId: charId, characterName: charName, content: part.content });
             }
             recordExpressionTarget(genResult.savedMsg, charId);
-            if (genResult.savedMsg?.id) roleplayResponseIndexes.set(genResult.savedMsg.id, allResponses.length);
-            allResponses.push(genResult.response);
-            allResponseSegments.push({ characterId: charId, characterName: charName, content: genResult.response });
             for (const cmd of genResult.commands) {
               collectedCommands.push({
                 command: cmd,
@@ -11181,13 +11662,39 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (routeCharacterMentions) {
               // Reuse this turn's queue: prioritize mentions, but never revisit a speaker.
               const visited = new Set(respondingCharIds.slice(0, ci + 1));
-              const mentioned = getExplicitlyMentionedCharacterIds(genResult.response).filter((id) => !visited.has(id));
-              if (mentioned.length > 0) {
+              let mentioned = getExplicitlyMentionedCharacterIds(
+                replyParts.map((part) => part.content).join("\n\n"),
+              ).filter((id) => !visited.has(id));
+              let remaining = respondingCharIds.slice(ci + 1).filter((id) => !mentioned.includes(id!));
+              let queueChanged = false;
+              if (shouldAccountAutonomousGeneration && mentioned.length > 0) {
+                // Every autonomous reply counts, so handoffs must fit the daily
+                // limit together with the replies already queued (#7055).
+                const { schedules } = await chats.resolveConversationPresenceState(input.chatId);
+                let projectedMeta = chatMeta;
+                const reserve = (id: string) => {
+                  // Like /autonomous/check, a character without a schedule uses its card talkativeness.
+                  const capSchedule = schedules[id] ?? {
+                    talkativeness: Math.round((charInfo.find((c) => c.id === id)?.talkativeness ?? 0.5) * 100),
+                  };
+                  const next = { ...projectedMeta, ...buildAutonomousDailyBudgetPatch(projectedMeta, id) };
+                  // Like /autonomous/exchange, a handoff never takes a shared limit's last check-in.
+                  const capMeta = sharesAutonomousDailyBudget(projectedMeta) ? next : projectedMeta;
+                  if (isAutonomousDailyBudgetExhausted(id, capSchedule, capMeta)) return false;
+                  projectedMeta = next;
+                  return true;
+                };
+                // Queued replies keep their place first; any that no longer fit the limit leave the queue.
+                const kept = remaining.filter((id) => !id || reserve(id));
+                queueChanged = kept.length !== remaining.length;
+                remaining = kept;
+                mentioned = mentioned.filter(reserve);
+              }
+              if (mentioned.length > 0 || queueChanged) {
                 for (const id of mentioned) {
                   const delay = conversationMentionResponderDelays.get(id);
                   if (delay && !conversationResponderDelays.has(id)) conversationResponderDelays.set(id, delay);
                 }
-                const remaining = respondingCharIds.slice(ci + 1).filter((id) => !mentioned.includes(id!));
                 respondingCharIds.splice(ci + 1, respondingCharIds.length, ...mentioned, ...remaining);
                 const pending = respondingCharIds.slice(ci + 1);
                 sendSseEvent(reply, {
@@ -11205,33 +11712,35 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
 
             // Add this character's response to the running context for the next character
-            const inTurnMessage = {
-              id: genResult.savedMsg?.id,
-              role: "assistant",
-              content:
-                chatMode === "roleplay"
-                  ? conversationPromptHistoryContent(
-                      roleplayTimeline.find((message) => message.id === genResult.savedMsg?.id) ?? {
-                        role: "assistant",
-                        content: genResult.response,
-                      },
-                      chatMode,
-                    )
-                  : genResult.response,
-              contextKind: "history",
-              characterId: charId,
-            } as const;
-            if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
-              const characterNamesById = await getGroupHistoryCharacterNamesById();
-              const [prefixed] = prefixGroupIndividualHistorySpeakers([inTurnMessage], {
-                personaName,
-                characterNamesById,
-              });
-              roleplayHistoryBodies.set(inTurnMessage.id, (prefixed ?? inTurnMessage).content);
-              runningMessages.push(prefixed ?? inTurnMessage);
-            } else {
-              roleplayHistoryBodies.set(inTurnMessage.id, inTurnMessage.content);
-              runningMessages.push(inTurnMessage);
+            for (const part of replyParts) {
+              const inTurnMessage = {
+                id: part.message?.id,
+                role: "assistant",
+                content:
+                  chatMode === "roleplay"
+                    ? conversationPromptHistoryContent(
+                        roleplayTimeline.find((message) => message.id === part.message?.id) ?? {
+                          role: "assistant",
+                          content: part.content,
+                        },
+                        chatMode,
+                      )
+                    : part.content,
+                contextKind: "history",
+                characterId: charId,
+              } as const;
+              if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
+                const characterNamesById = await getGroupHistoryCharacterNamesById();
+                const [prefixed] = prefixGroupIndividualHistorySpeakers([inTurnMessage], {
+                  personaName,
+                  characterNamesById,
+                });
+                roleplayHistoryBodies.set(inTurnMessage.id, (prefixed ?? inTurnMessage).content);
+                runningMessages.push(prefixed ?? inTurnMessage);
+              } else {
+                roleplayHistoryBodies.set(inTurnMessage.id, inTurnMessage.content);
+                runningMessages.push(inTurnMessage);
+              }
             }
           }
         } else {
@@ -11288,6 +11797,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // target or a single explicit @mention pins it to exactly one speaker.
           const genResult = await generateForCharacter(targetCharId, sentMessages, true, mergedSpeaksOnlyTarget);
           if (genResult) {
+            // A reply split at scene breaks: agents read every part, each with its own whispers.
+            for (const part of genResult.earlierParts ?? []) {
+              firstSavedMsg ??= part.message;
+              roleplayResponseIndexes.set(part.message.id, allResponses.length);
+              allResponses.push(part.content);
+              allResponseSegments.push({
+                ...(genResult.characterId ? { characterId: genResult.characterId } : {}),
+                characterName:
+                  charInfo.find((character) => character.id === genResult.characterId)?.name ?? "Character",
+                content: part.content,
+              });
+            }
+            lastReplyEarlierParts = genResult.earlierParts ?? [];
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
             lastSavedSwipeIndex = genResult.savedSwipeIndex;
@@ -11313,11 +11835,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               content: genResult.response,
             });
           }
+          if (genResult?.savedMsg?.id) roleplayResponseIndexes.set(genResult.savedMsg.id, allResponses.length);
           allResponses.push(fullResponse);
         }
 
         const combinedResponse = allResponses.join("\n\n");
         const completedResponse = continuedMessageRewriteSource ?? combinedResponse;
+        // Agents read the new reply with its whispers (#7430). Text rewrite agents still edit the public text.
+        const responseMessageIds = new Map([...roleplayResponseIndexes].map(([id, index]) => [index, id]));
+        const agentReplyText = (text: string, id: unknown) =>
+          roleplayAgentText(
+            text,
+            roleplayTimeline.find((message) => message.id === id),
+            agentWhisperNames,
+          );
+        const agentCompletedResponse =
+          continuedMessageRewriteSource !== null
+            ? agentReplyText(continuedMessageRewriteSource, input.continueMessageId)
+            : allResponses
+                .map((response, index) => agentReplyText(response, responseMessageIds.get(index)))
+                .join("\n\n");
         const continuedTargetIndex = input.continueMessageId
           ? chatMessages.findIndex((message) => message.id === input.continueMessageId)
           : -1;
@@ -11466,7 +12003,24 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         await finalizeLorebookWrites();
         const hasPostProcessingAgents = resolvedAgents.some((a) => a.phase === "post_processing");
-        agentContext.mainResponseSegments = shouldPrefixGroupHistorySpeakers ? allResponseSegments : undefined;
+        // A continued reply's segment is only the added text, so it reads only the whispers written with it.
+        agentContext.mainResponseSegments = shouldPrefixGroupHistorySpeakers
+          ? allResponseSegments.map((segment, index) => {
+              const id = responseMessageIds.get(index);
+              return {
+                ...segment,
+                content:
+                  continuedMessageRewriteSource !== null && id === input.continueMessageId
+                    ? roleplayAgentContinuation(
+                        segment.content,
+                        roleplayTimeline.find((message) => message.id === id),
+                        getRoleplayCommandActivity(parseExtra(continueTargetMessage?.extra)).length,
+                        agentWhisperNames,
+                      )
+                    : agentReplyText(segment.content, id),
+              };
+            })
+          : undefined;
         let lorebookKeeperProcessedMessageId = "";
         // Illustration runs asynchronously so it doesn't block other agents.
         // (pendingIllustration is hoisted above the follow-up loop.)
@@ -11693,7 +12247,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
         };
 
-        if (hasPostWork && (completedResponse || roleplayMediaRequests.length > 0) && !generationSignal.aborted) {
+        // Agents also process a reply that is only a whisper (#7430).
+        if (hasPostWork && (agentCompletedResponse || roleplayMediaRequests.length > 0) && !generationSignal.aborted) {
           // A tracker the user gave its own request does not take on the scene check (#6977);
           // Advanced Memory then checks the scene in a request of its own.
           const sceneCheckTrackers = pipelineAgents.filter(
@@ -11723,7 +12278,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 pendingSceneCheck = request;
                 agentContext.sceneCheck = {
                   trackerAgentIds: sceneCheckTrackers.map((agent) => agent.id),
-                  prompt: `${request.prompt}\nTranscript:\n${JSON.stringify(request.messages)}`,
+                  // The previous message joins only when this tracker could already see it.
+                  prompt: `${request.prompt}\nTranscript:\n${sceneCheckTranscript(request, !!request.previous && allowedIds.has(request.previous.messageId))}`,
                   claimed: false,
                 };
               }
@@ -11737,12 +12293,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               {
                 id: latestAssistantMessageId || undefined,
                 role: "assistant",
-                content: completedResponse,
+                content: agentCompletedResponse,
               },
             ]);
           }
+          // The persona needs an expression on the turn the player wrote, including its swipes and
+          // continuations. Later replies leave it to the Expression Engine, so a persona who has left the scene
+          // is not shown again by "Only show active sprites" while an older message of theirs is in context.
+          const replyIndex = allChatMessages.findIndex(
+            (message) => message.id === (input.regenerateMessageId ?? input.continueMessageId),
+          );
           if (
             userIdentityId &&
+            (currentTurnUserMessageId ||
+              playerTurnAwaitsExpression(allChatMessages, replyIndex >= 0 ? replyIndex : allChatMessages.length)) &&
             getLatestUserExpressionSource() &&
             Array.isArray(agentContext.memory._availableSprites)
           ) {
@@ -11819,7 +12383,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const postAgentContext: AgentContext = {
             ...agentContext,
             ...postReplyDecisionContext,
-            mainResponse: completedResponse,
+            mainResponse: agentCompletedResponse,
             preGenInjections: contextInjections,
             parallelResults,
           };
@@ -11878,7 +12442,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
           let postResults = hasPostProcessingAgents
             ? [
-                ...(await pipeline.postGenerate(completedResponse, {
+                ...(await pipeline.postGenerate(agentCompletedResponse, {
                   preGenInjections: contextInjections,
                   parallelResults,
                   ...postReplyDecisionContext,
@@ -11894,7 +12458,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             );
             const lorebookKeeperContext = historicalLorebookTarget
               ? buildHistoricalLorebookKeeperContext(agentContext, lorebookKeeperMessages, historicalLorebookTarget.id)
-              : { ...agentContext, ...postReplyDecisionContext, mainResponse: completedResponse };
+              : { ...agentContext, ...postReplyDecisionContext, mainResponse: agentCompletedResponse };
             const processedMessageId = historicalLorebookTarget?.id ?? (lastSavedMsg as any)?.id ?? "";
 
             if (lorebookKeeperContext && processedMessageId) {
@@ -11956,7 +12520,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   agentCfg.phase === "post_processing"
                     ? {
                         ...(preparedCapabilityPostContext ?? postAgentContext),
-                        mainResponse: completedResponse,
+                        mainResponse: agentCompletedResponse,
                       }
                     : agentContext;
                 const retryCtx: AgentContext = historicalLorebookTarget
@@ -12116,7 +12680,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : undefined;
             const context = await resolveAgentContext(agent, {
               ...postAgentContext,
-              mainResponse: `${sourceName ? `${sourceName}: ` : ""}${sourceMessage?.content ?? completedResponse}\n\nExplicit scene request: ${command.type === "illustrate" ? `${command.subject}${command.characters?.length ? `\nInvolved characters: ${command.characters.join(", ")}. Depict these participants.` : ""}` : command.type === "combat" ? "Combat starts now. Establish and track the encounter from the current scene." : command.mood}`,
+              mainResponse: `${sourceName ? `${sourceName}: ` : ""}${sourceMessage ? roleplayAgentText(sourceMessage.content, sourceMessage, agentWhisperNames) : agentCompletedResponse}\n\nExplicit scene request: ${command.type === "illustrate" ? `${command.subject}${command.characters?.length ? `\nInvolved characters: ${command.characters.join(", ")}. Depict these participants.` : ""}` : command.type === "combat" ? "Combat starts now. Establish and track the encounter from the current scene." : command.mood}`,
             });
             try {
               let result: AgentResult;
@@ -12191,9 +12755,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : typeof (lastSavedMsg as { activeSwipeIndex?: unknown } | null)?.activeSwipeIndex === "number"
                 ? (lastSavedMsg as { activeSwipeIndex: number }).activeSwipeIndex
                 : 0;
-          const siblingSwipeSnapshot = projectGameSnapshotLocation(
+          const siblingSwipeRow =
             input.regenerateMessageId && messageId && targetSwipeIndex > 0
               ? await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex - 1)
+              : null;
+          // A value the trackers leave out keeps the user's edit, which the trackers were shown.
+          const siblingSwipeSnapshot = projectGameSnapshotLocation(
+            siblingSwipeRow
+              ? ((await gameStateStore.applyManualEdits(input.chatId, messageId, siblingSwipeRow)) ?? siblingSwipeRow)
               : null,
             ownerSpatialProjection,
           );
@@ -12377,10 +12946,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               try {
                 const gs = result.data as Record<string, unknown>;
 
-                // Manual overrides are one-shot: they live on the snapshot the user
-                // edited and are visible to the agent as the prevSnap values, but they
-                // are NOT carried forward to new snapshots.  The agent naturally reads
-                // the edited prevSnap values and produces its own output.
+                // Tracker Panel edits live on the snapshot the user edited. A new message
+                // starts from that snapshot and a regeneration lays the edits over its base
+                // (see getForGeneration), so the agent reads them as the prevSnap values.
+                // They are NOT copied into the new snapshot's edit record: the agent's
+                // output replaces them.
                 const prevSnap =
                   trackerBaseGameStateSnapshot ??
                   (allowLatestGameStateFallback ? await gameStateStore.getLatest(input.chatId) : null);
@@ -12506,7 +13076,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     ),
                     hiddenTrackerFields: currentGameStateForLocks?.hiddenTrackerFields,
                   },
-                  null, // manual overrides are one-shot — never carry forward
+                  null, // never copy the base's edit record; a rewritten row keeps its own
                   // The stats above are the turn before's; this turn's inventory tags already wrote its own.
                   { keepReplacedInventory: true },
                 );
@@ -12586,7 +13156,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   !isTrackerRowsUpdate(ctData.presentCharacters) &&
                   (!Array.isArray(ctData.presentCharacters) || ctData.presentCharacters.length === 0)
                 ) {
-                  logger.debug("[generate] character-tracker emitted no presentCharacters; keeping existing snapshot");
+                  const resultKeys = Object.keys(ctData);
+                  // `{}` and an empty list are the prompt's no-change replies; any other shape is lost output (#7208).
+                  logger[resultKeys.length === 0 || Array.isArray(ctData.presentCharacters) ? "debug" : "warn"](
+                    "[generate] character-tracker emitted no presentCharacters (result keys: %s); keeping existing snapshot",
+                    resultKeys.join(", ") || "none",
+                  );
                   continue;
                 }
                 const snapBeforeUpdate = await gameStateStore.getByChatAndMessage(
@@ -13387,7 +13962,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       chatMetadata: freshMeta,
                       currentBackground: backgroundBeforeGeneration ?? currentBackground,
                       illustratorAgent: illustratorBackgroundAgent,
-                      assistantResponse: completedResponse,
+                      assistantResponse: agentCompletedResponse,
                       decisionReason: backgroundDecisionReason,
                       gameState: latestGameState,
                       recentMessages: agentContext.recentMessages,
@@ -13494,7 +14069,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     try {
                       const imgConnFull = resolvedImageConnection;
                       const { generateImage, saveImageToDisk } = await import("../services/image/image-generation.js");
-                      const { createGalleryStorage } = await import("../services/storage/gallery.storage.js");
                       const galleryStore = createGalleryStorage(app.db);
 
                       const imgModel = imgConnFull.model || "";
@@ -13545,8 +14119,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       const imgWidth = illustrationSize.width;
                       const imgHeight = illustrationSize.height;
 
+                      // The writer follows the Style text and the connection's instructions; a sentence
+                      // of them it copied word for word is not image-model text (#7357).
+                      const writerGuidance = [
+                        typeof agentContext.memory._illustratorImageStyleInstruction === "string"
+                          ? agentContext.memory._illustratorImageStyleInstruction
+                          : null,
+                        imgConnFull.imagePromptInstructions,
+                      ];
+                      // A style that was only the copied Style text is dropped; the prompt keeps the subject.
+                      const writerStyle = removeCopiedPromptGuidance(style, writerGuidance, { allowEmpty: true });
+                      const writerPrompt = removeCopiedPromptGuidance(imagePrompt, writerGuidance);
                       // Prepend style to the prompt for better results
-                      let fullPrompt = style ? `${style}, ${imagePrompt}` : imagePrompt;
+                      let fullPrompt = writerStyle ? `${writerStyle}, ${writerPrompt}` : writerPrompt;
                       if (imagePositivePrompt) {
                         fullPrompt = `${fullPrompt}, ${imagePositivePrompt}`;
                       }
@@ -13583,6 +14168,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             name: character.name,
                             avatarPath: character.avatarPath,
                             appearance: character.appearance,
+                            appearanceOverride: character.imageAppearanceOverride ?? null,
                           })),
                           ...(identity?.source === "character" &&
                           !charInfo.some((character) => character.id === identity.id)
@@ -13592,6 +14178,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   name: identity.name,
                                   avatarPath: identity.avatarPath,
                                   appearance: identity.appearance,
+                                  // #7053: mirror the charInfo entries above so a
+                                  // character used as the user identity keeps its
+                                  // image-prompt override.
+                                  appearanceOverride: identity.imageAppearanceOverride || null,
                                 },
                               ]
                             : []),
@@ -13603,6 +14193,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                 name: personaName,
                                 avatarPath: persona.avatarPath as string | null,
                                 appearance: personaFields.appearance,
+                                // #7053: identity-source persona, so the override
+                                // is already resolved as a string.
+                                appearanceOverride: persona.imageAppearanceOverride || null,
                                 characterSheetImageId:
                                   typeof persona.characterSheetImageId === "string"
                                     ? persona.characterSheetImageId
@@ -13628,8 +14221,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           illustratorCharacterPrompts.length > 0
                             ? buildUncaptionedCharacterAppearanceBlock(
                                 [
-                                  ...agentContext.characters,
-                                  ...(agentContext.persona ? [agentContext.persona] : []),
+                                  ...agentContext.characters.map((character) => ({
+                                    name: character.name,
+                                    // #7053: image-only override; the shared
+                                    // `appearance` stays untouched for lore.
+                                    appearance:
+                                      readIllustratorImageAppearanceOverride(agentContext.memory, character.id) ??
+                                      character.appearance ??
+                                      "",
+                                  })),
+                                  ...(agentContext.persona
+                                    ? [
+                                        {
+                                          name: agentContext.persona.name,
+                                          appearance:
+                                            readIllustratorImageAppearanceOverride(
+                                              agentContext.memory,
+                                              personaEntityId(agentContext.memory),
+                                            ) ??
+                                            agentContext.persona.appearance ??
+                                            "",
+                                        },
+                                      ]
+                                    : []),
                                   ...referenceResolution.appearanceSources,
                                 ],
                                 illCharacters.filter((name): name is string => typeof name === "string"),
@@ -13670,7 +14284,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         styleProfiles: imageSettings.styleProfiles,
                         styleProfileId,
                         imageDefaults,
-                        generatedStyle: style,
+                        generatedStyle: writerStyle,
                         omitProfileStyleText: typeof agentContext.memory._illustratorImageStyleInstruction === "string",
                         omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
                           imagePromptAgent?.promptTemplate ?? "",
@@ -13690,7 +14304,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             styleProfiles: imageSettings.styleProfiles,
                             styleProfileId,
                             imageDefaults: imageFallback.imageDefaults,
-                            generatedStyle: style,
+                            generatedStyle: writerStyle,
                             omitProfileStyleText:
                               typeof agentContext.memory._illustratorImageStyleInstruction === "string",
                             omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
@@ -13853,8 +14467,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           // ── Text rewrite/editing agents: run after ALL other agents ──
-          const originalResponseBeforeRewrite = completedResponse;
-          let textRewriteApplied = false;
           // A game reply keeps what the Engine wrote (worldgen W10): every world, place and story tag, and
           // every scene shown as written (a continuation's, kept with the reply it continues).
           const engineScenes =
@@ -13865,163 +14477,215 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? storyScenesOf(continueTargetMessage?.extra)
                   : []
               : null;
-          if (activatedTextRewriteRunAgents.length > 0 && messageId && !generationSignal.aborted) {
-            let currentResponseForRewrite = originalResponseBeforeRewrite;
+          // Each part of a reply split at scene breaks is a message of its own, so the agents rewrite every part on
+          // its own, in order. A part's break line stays on top of it, and a failed rewrite leaves its part as written.
+          // They rewrite only the last reply's own text, never the replies of earlier responders in an individual group.
+          const rewriteParts = lastReplyEarlierParts.length
+            ? [...lastReplyEarlierParts, { message: lastSavedMsg, content: allResponses.at(-1)! }].map((part) => ({
+                messageId: (part.message?.id as string | undefined) ?? "",
+                content: part.content,
+              }))
+            : [{ messageId, content: continuedMessageRewriteSource ?? allResponses.at(-1) ?? "" }];
+          // Every successful agent output, as a summary for rewrite agents; it is the same for every part.
+          const agentSummary: Record<string, unknown> = {};
+          for (const result of postResults) {
+            if (result.success && result.data) {
+              agentSummary[result.agentType ?? result.type] = result.data;
+            }
+          }
+          for (const { messageId, content: originalResponseBeforeRewrite } of rewriteParts) {
+            const sceneBreak = lastReplyEarlierParts.length ? leadingSceneBreak(originalResponseBeforeRewrite) : "";
+            let textRewriteApplied = false;
+            // Rewrite agents edit the public text, so a reply without any is left alone.
+            const hasPublicReply = !!originalResponseBeforeRewrite.slice(sceneBreak.length).trim();
+            if (activatedTextRewriteRunAgents.length > 0 && messageId && hasPublicReply && !generationSignal.aborted) {
+              let currentResponseForRewrite = originalResponseBeforeRewrite.slice(sceneBreak.length);
 
-            for (const textRewriteAgent of activatedTextRewriteRunAgents) {
-              if (generationSignal.aborted) break;
-              try {
-                // Collect all successful agent outputs as a summary for rewrite agents.
-                const agentSummary: Record<string, unknown> = {};
-                for (const result of postResults) {
-                  if (result.success && result.data) {
-                    agentSummary[result.agentType ?? result.type] = result.data;
-                  }
-                }
-
-                const editorContext: AgentContext = {
-                  ...agentContext,
-                  ...postReplyDecisionContext,
-                  mainResponse: currentResponseForRewrite,
-                  preGenInjections:
-                    textRewriteAgent.settings.includePreGenInjections === true ? contextInjections : undefined,
-                  parallelResults:
-                    textRewriteAgent.settings.includeParallelResults === true ? parallelResults : undefined,
-                  memory: { ...agentContext.memory, _agentResults: agentSummary },
-                };
-
-                const editorResult = await executeAgent(
-                  textRewriteAgent,
-                  editorContext,
-                  textRewriteAgent.provider,
-                  textRewriteAgent.model,
-                );
-                sendAgentEvent(editorResult);
-
+              for (const textRewriteAgent of activatedTextRewriteRunAgents) {
+                if (generationSignal.aborted) break;
                 try {
-                  await agentsStore.saveRun({
-                    agentConfigId: editorResult.agentId,
-                    chatId: input.chatId,
-                    messageId,
-                    result: editorResult,
-                  });
-                } catch {
-                  /* Non-critical */
-                }
+                  const editorContext: AgentContext = {
+                    ...agentContext,
+                    ...postReplyDecisionContext,
+                    mainResponse: currentResponseForRewrite,
+                    preGenInjections:
+                      textRewriteAgent.settings.includePreGenInjections === true ? contextInjections : undefined,
+                    parallelResults:
+                      textRewriteAgent.settings.includeParallelResults === true ? parallelResults : undefined,
+                    memory: { ...agentContext.memory, _agentResults: agentSummary },
+                  };
 
-                if (
-                  editorResult.success &&
-                  editorResult.type === "text_rewrite" &&
-                  editorResult.data &&
-                  customAgentCanApplyResult(editorResult, resolvedAgents, builtInAgentTypes, "edit_messages")
-                ) {
-                  const edData = editorResult.data as Record<string, unknown>;
-                  const editedText = typeof edData.editedText === "string" ? edData.editedText : "";
-                  let sanitizedEditedText = editedText;
+                  const editorResult = await executeAgent(
+                    textRewriteAgent,
+                    editorContext,
+                    textRewriteAgent.provider,
+                    textRewriteAgent.model,
+                  );
+                  sendAgentEvent(editorResult);
+
+                  try {
+                    await agentsStore.saveRun({
+                      agentConfigId: editorResult.agentId,
+                      chatId: input.chatId,
+                      messageId,
+                      result: editorResult,
+                    });
+                  } catch {
+                    /* Non-critical */
+                  }
+
                   if (
-                    hierarchicalMapsEnabledForChat &&
-                    (requestChatMode === "roleplay" || requestChatMode === "game")
+                    editorResult.success &&
+                    editorResult.type === "text_rewrite" &&
+                    editorResult.data &&
+                    customAgentCanApplyResult(editorResult, resolvedAgents, builtInAgentTypes, "edit_messages")
                   ) {
-                    const parsedRewriteSpatial = extractAssistantSpatialDirective(editedText);
-                    if (parsedRewriteSpatial.matched) {
-                      sanitizedEditedText = parsedRewriteSpatial.cleanContent;
+                    const edData = editorResult.data as Record<string, unknown>;
+                    const editedText = typeof edData.editedText === "string" ? edData.editedText : "";
+                    let sanitizedEditedText = editedText;
+                    if (
+                      hierarchicalMapsEnabledForChat &&
+                      (requestChatMode === "roleplay" || requestChatMode === "game")
+                    ) {
+                      const parsedRewriteSpatial = extractAssistantSpatialDirective(editedText);
+                      if (parsedRewriteSpatial.matched) {
+                        sanitizedEditedText = parsedRewriteSpatial.cleanContent;
+                        logger.warn(
+                          "[text-rewrite] Stripped package-owned spatial directive from rewritten message %s",
+                          messageId,
+                        );
+                      }
+                    }
+                    const changes = Array.isArray(edData.changes)
+                      ? (edData.changes as Array<{ description: string }>)
+                      : [{ description: "Rewrote the assistant response." }];
+                    const editNeededValue = edData.editNeeded;
+                    const strictEditNeeded = isBuiltInTextRewriteAgentType(editorResult.agentType);
+                    const rewriteAllowed =
+                      editNeededValue === false
+                        ? false
+                        : strictEditNeeded
+                          ? explicitlyRequestsTextRewrite(editNeededValue)
+                          : true;
+                    const droppedProtectedMarkup =
+                      (strictEditNeeded &&
+                        textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText)) ||
+                      (engineScenes !== null &&
+                        textRewriteChangesEngineText(currentResponseForRewrite, sanitizedEditedText, engineScenes));
+                    if (droppedProtectedMarkup) {
                       logger.warn(
-                        "[text-rewrite] Stripped package-owned spatial directive from rewritten message %s",
+                        "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",
+                        editorResult.agentType,
                         messageId,
                       );
                     }
-                  }
-                  const changes = Array.isArray(edData.changes)
-                    ? (edData.changes as Array<{ description: string }>)
-                    : [{ description: "Rewrote the assistant response." }];
-                  const editNeededValue = edData.editNeeded;
-                  const strictEditNeeded = isBuiltInTextRewriteAgentType(editorResult.agentType);
-                  const rewriteAllowed =
-                    editNeededValue === false
-                      ? false
-                      : strictEditNeeded
-                        ? explicitlyRequestsTextRewrite(editNeededValue)
-                        : true;
-                  const droppedProtectedMarkup =
-                    (strictEditNeeded &&
-                      textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText)) ||
-                    (engineScenes !== null &&
-                      textRewriteChangesEngineText(currentResponseForRewrite, sanitizedEditedText, engineScenes));
-                  if (droppedProtectedMarkup) {
-                    logger.warn(
-                      "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",
-                      editorResult.agentType,
-                      messageId,
-                    );
-                  }
-                  const rewriteCharacterId =
-                    typeof (lastSavedMsg as { characterId?: unknown } | null)?.characterId === "string"
-                      ? (lastSavedMsg as { characterId: string }).characterId
-                      : null;
-                  const repeatsPriorConversationResponse =
-                    rewriteAllowed &&
-                    !strictEditNeeded &&
-                    chatMode === "conversation" &&
-                    !input.impersonate &&
-                    !input.regenerateMessageId &&
-                    !input.continueMessageId &&
-                    sanitizedEditedText.trim().length > 0 &&
-                    isRepeatedConversationResponse(
-                      await chats.listMessages(input.chatId),
-                      rewriteCharacterId,
-                      sanitizedEditedText,
-                      { excludeMessageId: messageId },
-                    );
-                  if (repeatsPriorConversationResponse) {
-                    logger.warn(
-                      { chatId: input.chatId, characterId: rewriteCharacterId, messageId },
-                      "[text-rewrite] Skipping custom rewrite because it repeated a prior Conversation response",
-                    );
-                  }
-                  const changedMessage =
-                    rewriteAllowed &&
-                    !droppedProtectedMarkup &&
-                    !repeatsPriorConversationResponse &&
-                    sanitizedEditedText.trim().length > 0 &&
-                    sanitizedEditedText !== currentResponseForRewrite;
-                  if (changedMessage) {
-                    const originalText = strictEditNeeded ? originalResponseBeforeRewrite : null;
-                    currentResponseForRewrite = sanitizedEditedText;
-                    await chats.updateMessageContent(messageId, sanitizedEditedText);
-                    if (originalText) {
-                      await chats.updateMessageExtra(messageId, {
-                        proseGuardianOriginalText: originalText,
-                        proseGuardianRewrittenText: sanitizedEditedText,
-                        proseGuardianRewrittenAt: new Date().toISOString(),
+                    const rewriteCharacterId =
+                      typeof (lastSavedMsg as { characterId?: unknown } | null)?.characterId === "string"
+                        ? (lastSavedMsg as { characterId: string }).characterId
+                        : null;
+                    const repeatsPriorConversationResponse =
+                      rewriteAllowed &&
+                      !strictEditNeeded &&
+                      chatMode === "conversation" &&
+                      !input.impersonate &&
+                      !input.regenerateMessageId &&
+                      !input.continueMessageId &&
+                      sanitizedEditedText.trim().length > 0 &&
+                      isRepeatedConversationResponse(
+                        await chats.listMessages(input.chatId),
+                        rewriteCharacterId,
+                        sanitizedEditedText,
+                        { excludeMessageId: messageId },
+                      );
+                    if (repeatsPriorConversationResponse) {
+                      logger.warn(
+                        { chatId: input.chatId, characterId: rewriteCharacterId, messageId },
+                        "[text-rewrite] Skipping custom rewrite because it repeated a prior Conversation response",
+                      );
+                    }
+                    const changedMessage =
+                      rewriteAllowed &&
+                      !droppedProtectedMarkup &&
+                      !repeatsPriorConversationResponse &&
+                      sanitizedEditedText.trim().length > 0 &&
+                      sanitizedEditedText !== currentResponseForRewrite;
+                    if (changedMessage) {
+                      const originalText = strictEditNeeded ? originalResponseBeforeRewrite : null;
+                      currentResponseForRewrite = sanitizedEditedText;
+                      // A split part keeps its break line on top of the rewritten text.
+                      sanitizedEditedText = sceneBreak + sanitizedEditedText;
+                      await chats.updateMessageContent(messageId, sanitizedEditedText);
+                      if (originalText) {
+                        await chats.updateMessageExtra(messageId, {
+                          proseGuardianOriginalText: originalText,
+                          proseGuardianRewrittenText: sanitizedEditedText,
+                          proseGuardianRewrittenAt: new Date().toISOString(),
+                        });
+                      }
+                      textRewriteApplied = true;
+                      sendSseEvent(reply, {
+                        type: "text_rewrite",
+                        data: {
+                          messageId,
+                          editedText: sanitizedEditedText,
+                          changes,
+                          rewriteApplied: true,
+                          ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
+                        },
                       });
                     }
-                    textRewriteApplied = true;
-                    sendSseEvent(reply, {
-                      type: "text_rewrite",
-                      data: {
-                        editedText: sanitizedEditedText,
-                        changes,
-                        rewriteApplied: true,
-                        ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
-                      },
-                    });
                   }
+                } catch {
+                  // Non-critical — don't fail generation if a rewrite agent errors.
                 }
-              } catch {
-                // Non-critical — don't fail generation if a rewrite agent errors.
               }
             }
-          }
 
-          if (holdForTextRewrite && !textRewriteApplied && !generationSignal.aborted) {
-            sendSseEvent(reply, {
-              type: "text_rewrite",
-              data: {
-                editedText: originalResponseBeforeRewrite,
-                changes: [],
-                rewriteApplied: false,
-              },
-            });
+            if (holdForTextRewrite && !textRewriteApplied && !generationSignal.aborted) {
+              sendSseEvent(reply, {
+                type: "text_rewrite",
+                data: {
+                  messageId,
+                  editedText: originalResponseBeforeRewrite,
+                  changes: [],
+                  rewriteApplied: false,
+                },
+              });
+            }
+          }
+        }
+
+        // No tracker may have written the regenerated swipe's row (manual trackers, a failed run).
+        // It then starts as the state this reply began from, so the user's Tracker Panel edits
+        // stay on screen and carry into the next message.
+        if (
+          input.regenerateMessageId &&
+          chatMode !== "game" &&
+          lastSavedMsg?.id === input.regenerateMessageId &&
+          typeof lastSavedSwipeIndex === "number" &&
+          !generationSignal.aborted
+        ) {
+          try {
+            const regeneratedSwipeRow = await gameStateStore.getByChatAndMessage(
+              input.chatId,
+              input.regenerateMessageId,
+              lastSavedSwipeIndex,
+            );
+            const editedBase = regeneratedSwipeRow
+              ? null
+              : await gameStateStore.applyManualEdits(input.chatId, input.regenerateMessageId, baseGameStateSnapshot);
+            if (editedBase) {
+              await gameStateStore.updateByMessage(
+                input.regenerateMessageId,
+                lastSavedSwipeIndex,
+                input.chatId,
+                {},
+                undefined,
+                { baseSnapshot: editedBase },
+              );
+            }
+          } catch (err) {
+            logger.warn(err, "[generate] Could not keep Tracker Panel edits on the regenerated swipe");
           }
         }
 
@@ -14089,6 +14753,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   characterId,
                   chatId: input.chatId,
                   chats,
+                  characters: chars,
                   sendUpdated: (data) => {
                     sendSseEvent(reply, { type: "schedule_updated", data });
                   },
@@ -14121,6 +14786,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           name: personaName,
                           avatarPath: persona.avatarPath as string | null,
                           appearance: personaFields.appearance,
+                          // #7053: image prompts prefer the card override. The
+                          // resolved identity already exposes it as a ready
+                          // string (separate from `appearance`, which stays the
+                          // narrator's text).
+                          appearanceOverride: persona.imageAppearanceOverride || null,
                         }
                       : null,
                   promptConnection: conn,
@@ -14361,6 +15031,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     sendSseEvent(reply, { type: "advanced_memory_status", data: { chatId: input.chatId, job } }),
                 })
                 .catch((error) => logger.error(error, "[advanced-memory] Background scene check failed"));
+            } else if (input.impersonate && decidesMessageVisibility && !generationSignal.aborted) {
+              // A message written for you is decided once, when it is posted, like one you send (#7349).
+              const impersonatedId = typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null;
+              pendingAdvancedMemory = advancedMemory
+                .settleMessageVisibility(input.chatId, { debugMode: requestDebug, signal: agentSignal })
+                .then(async () => {
+                  // Show the decision now, not when this request's other background work ends.
+                  const decided = impersonatedId ? await chats.getMessage(impersonatedId) : null;
+                  if (decided) sendSseEvent(reply, { type: "message_saved", data: decided });
+                })
+                .catch((error) => logger.error(error, "[advanced-memory] Message visibility failed"));
             }
           } else if (memoryRecallVectorizerAvailable) {
             chunkAndEmbedMessages(

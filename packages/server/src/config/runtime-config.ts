@@ -17,6 +17,13 @@ const DEFAULT_PORT = 7860;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_DATA_DIR = resolve(SERVER_ROOT, "data");
 const DEFAULT_MAX_TOOL_ROUNDS = 100;
+/** The most tool rounds a Game Mode turn gets before it must narrate (MAX_TOOL_ROUNDS when lower). */
+export const GAME_TURN_MAX_TOOL_ROUNDS = 4;
+/** The most tool rounds an agent gets before it must answer (MAX_TOOL_ROUNDS when lower). */
+export const AGENT_MAX_TOOL_ROUNDS = 16;
+/** The most tool rounds a lorebook backfill run gets: it saves one entry a call, a chunk at a time, on a
+ *  backend that may call one tool a round (MAX_TOOL_ROUNDS when lower). */
+export const LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS = 64;
 const MAX_CONFIGURED_TOOL_ROUNDS = 10_000;
 const DEFAULT_CUSTOM_TOOL_TIMEOUT_MS = 60_000;
 export const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 300_000;
@@ -337,6 +344,17 @@ export function getLogLevel() {
 
 export function getLogPreset() {
   return normalizeEnvValue(process.env.LOG_PRESET)?.toLowerCase() ?? "default";
+}
+
+/**
+ * Whether the `claude_subscription` provider may use the host's installed
+ * Claude Code instead of the Agent SDK's bundled build. Default `true`; set
+ * `CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false` (or `0`/`off`/`no`) to always
+ * use the bundled build.
+ */
+export function isClaudeSubscriptionInstalledCliEnabled(value = process.env.CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI) {
+  const raw = normalizeEnvValue(value);
+  return raw === null || !isDisabledFlag(raw);
 }
 
 /**
@@ -695,6 +713,10 @@ export function isImageLocalUrlsEnabled() {
 
 export function isTtsLocalUrlsEnabled() {
   return isEnabledFlag(process.env.TTS_LOCAL_URLS_ENABLED);
+}
+
+export function isSttLocalUrlsEnabled() {
+  return isEnabledFlag(process.env.STT_LOCAL_URLS_ENABLED);
 }
 
 export function isDeeplxLocalUrlsEnabled() {

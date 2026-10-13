@@ -19,6 +19,8 @@ import {
   compileImagePrompt,
   createRegexScriptSchema,
   createDefaultImageStyleProfileSettings,
+  removeCopiedPromptGuidance,
+  resolveImageStyleGuidanceText,
   characterTrackerCustomFieldDefaultsToRecord,
   getDefaultBuiltInAgentSettings,
   mergeBuiltInAgentSettings,
@@ -68,6 +70,7 @@ import {
   normalizeInventoryTrackerRows,
   normalizeInventoryTrackerPlayerStats,
   findInvalidInventoryTrackerRow,
+  nameToXmlTag,
 } from "../../packages/shared/src/index.js";
 import { replaceBuiltInAgentDefinitions as replaceBuiltInAgentDefinitionsDist } from "../../packages/shared/dist/index.js";
 import { buildInventoryTrackerEditPatch } from "../../packages/client/src/features/tracker-panel/lib/inventory-tracker-edit.js";
@@ -253,10 +256,7 @@ const REGRESSION_AGENT_IDS = [
 const regressionAgentDefinitions = REGRESSION_AGENT_IDS.map((id) => ({
   id,
   name: id === "html" ? "Immersive HTML" : id === "illustrator" ? "Illustrator" : id,
-  description:
-    id === "html"
-      ? "Adds HTML/CSS/JS visual effects to AI messages."
-      : `Regression fixture for ${id}`,
+  description: id === "html" ? "Adds HTML/CSS/JS visual effects to AI messages." : `Regression fixture for ${id}`,
   phase: "post_processing" as const,
   enabledByDefault: false,
   category: "misc" as const,
@@ -319,6 +319,7 @@ import {
 import {
   filterPromptHistoryByMessageIds,
   filterPromptMessagesForCharacterAudience,
+  selectHistoryMessagesForRecall,
 } from "../../packages/server/src/services/generation/prompt-message-scope.js";
 import {
   mergeAdjacentMessages,
@@ -677,7 +678,12 @@ import {
   resolveConversationMembershipHistoryEvent,
   selectConversationSummariesForPrompt,
 } from "../../packages/server/src/routes/generate/conversation-history-runtime.js";
-import { formatConversationGroupOutputFormat } from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
+import {
+  formatConversationDateHistoryMessages,
+  formatConversationGroupOutputFormat,
+  formatSentSelfieNotes,
+} from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
+import { captionSentSelfies } from "../../packages/server/src/services/generation/image-captioning-runtime.js";
 import {
   buildConversationCurrentContextBlock,
   replaceConversationContextBlockForTarget,
@@ -713,7 +719,10 @@ import {
   resolveLorebookTokenBudget,
 } from "../../packages/server/src/services/generation/lorebook-generation-runtime.js";
 import { createAgentLorebookTriggerResolver } from "../../packages/server/src/services/generation/agent-lorebook-triggers.js";
+import { readImageAppearanceOverride } from "../../packages/shared/src/utils/image-appearance.js";
 import {
+  addChatPersonaIllustrationAssets,
+  addPersonaIllustrationAssets,
   buildGameIllustratorAppearanceContextBlock,
   buildDynamicGameImagePromptMessages,
   buildIllustrationNarrationSummaryMessages,
@@ -748,7 +757,9 @@ import {
 import {
   buildRuntimeAgentSectionEligibleTypesForTest,
   clearUnusedRuntimeAgentSectionsForTest,
+  formatAgentInjections,
   makeRuntimeAgentSectionTokens,
+  pruneEmptyPromptWrappers,
   splitRuntimeHandledAgentInjectionsForTest,
 } from "../../packages/server/src/services/generation/runtime-agent-sections.js";
 import {
@@ -759,6 +770,7 @@ import {
 } from "../../packages/server/src/services/generation/prose-guardian-settings.js";
 import type { DB } from "../../packages/server/src/db/connection.js";
 import { passThroughLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
+import { wrapContent } from "../../packages/server/src/services/prompt/format-engine.js";
 import {
   escapeStandaloneGameNarrationAngleLines,
   hasVisibleGameNarrationText,
@@ -4734,6 +4746,195 @@ const cases: RegressionCase[] = [
     },
   },
   {
+    name: "Auto style guidance never reaches the final image prompt as text (#7318)",
+    async run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const autoInstruction = /Infer a consistent visual style/iu;
+      const prompt = "1girl, solo, silver hair, red eyes, black coat, rain, night city street";
+      for (const kind of ["avatar", "illustration", "background", "selfie"] as const) {
+        const compiled = compileImagePrompt({ kind, prompt, styleProfiles, styleProfileId: "auto" });
+        assert.doesNotMatch(compiled.prompt, autoInstruction, `${kind}: ${compiled.prompt}`);
+        assert.match(compiled.prompt, /silver hair/u, `${kind} kept the source prompt: ${compiled.prompt}`);
+      }
+
+      const background = await buildBackgroundProviderPrompt({
+        chatId: "auto-style-background",
+        locationSlug: "rainy-street",
+        sceneDescription: "Rain-soaked neon street at night",
+        imgModel: "unused",
+        imgBaseUrl: "",
+        imgApiKey: "",
+        styleProfiles,
+        styleProfileId: "auto",
+      });
+      assert.doesNotMatch(background.prompt, autoInstruction, background.prompt);
+
+      // A real style profile's Style text is still applied when no prompt writer handled it.
+      const anime = compileImagePrompt({ kind: "illustration", prompt, styleProfiles, styleProfileId: "anime" });
+      assert.match(anime.prompt, /Anime illustration with clean character design/u, anime.prompt);
+
+      // Style text the user wrote into a clone of Auto (Clone keeps the auto base style) still applies.
+      const autoProfile = styleProfiles.profiles.find((profile) => profile.id === "auto")!;
+      const autoClone = {
+        ...autoProfile,
+        id: "auto-custom",
+        builtIn: false,
+        styleText: "watercolor, soft pastel palette",
+      };
+      const cloneProfiles = { ...styleProfiles, profiles: [...styleProfiles.profiles, autoClone] };
+      for (const kind of ["avatar", "illustration"] as const) {
+        const custom = compileImagePrompt({
+          kind,
+          prompt,
+          styleProfiles: cloneProfiles,
+          styleProfileId: "auto-custom",
+        });
+        assert.match(custom.prompt, /watercolor, soft pastel palette/u, `${kind}: ${custom.prompt}`);
+      }
+    },
+  },
+  {
+    name: "Image prompt writers follow Style text and Image Prompting Instructions without pasting them (#7357)",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const danbooruStyle = styleProfiles.profiles.find((profile) => profile.id === "danbooru")!.styleText;
+      const instructions = "Write everything in capital letters. Use comma-separated Danbooru tags only.";
+      const quotedStyle = /Danbooru-tagged anime generation/iu;
+
+      // An Illustrator writer told to carry the style into its JSON "style" field echoes the Style
+      // text there and in its prompt. The Engine cleans the writer's own output before it adds
+      // configured text, so none of the guidance reaches the image model, but a configured positive
+      // prompt that happens to repeat an instruction stays as the user wrote it.
+      const writerGuidance = [danbooruStyle, instructions];
+      const echoedStyle = danbooruStyle.replace(/\.$/u, "");
+      const writerStyle = removeCopiedPromptGuidance(`${echoedStyle}, cel shading`, writerGuidance);
+      const writerPrompt = removeCopiedPromptGuidance(
+        `${echoedStyle}, 1GIRL, SOLO, SILVER HAIR, RAIN\n${instructions}`,
+        writerGuidance,
+      );
+      assert.equal(writerStyle, "cel shading");
+      const configuredPositive = "Write everything in capital letters";
+      const written = compileImagePrompt({
+        kind: "illustration",
+        prompt: [writerStyle, writerPrompt, configuredPositive].filter(Boolean).join(", "),
+        generatedStyle: writerStyle,
+        styleProfiles,
+        styleProfileId: "danbooru",
+        omitProfileStyleText: true,
+      });
+      assert.doesNotMatch(written.prompt, quotedStyle, written.prompt);
+      assert.doesNotMatch(written.prompt, /comma-separated Danbooru tags only/iu, written.prompt);
+      assert.match(written.prompt, /1GIRL, SOLO, SILVER HAIR, RAIN/u, written.prompt);
+      assert.match(written.prompt, /Write everything in capital letters$/u, "configured text stays: " + written.prompt);
+      assert.match(written.prompt, /^masterpiece, best quality/u, "literal profile tags stay: " + written.prompt);
+
+      // Tag lists and tag phrases are words for the image model, so a writer that uses them keeps them.
+      const tagGuidance = "masterpiece, best quality, absurdres";
+      assert.equal(removeCopiedPromptGuidance(`${tagGuidance}, 1girl`, [tagGuidance]), `${tagGuidance}, 1girl`);
+      const tagPhrase = "cold lighting with deep shadows, film grain";
+      assert.equal(removeCopiedPromptGuidance(`1girl, ${tagPhrase}`, [tagPhrase]), `1girl, ${tagPhrase}`);
+      assert.equal(
+        removeCopiedPromptGuidance(
+          "1girl, solo\n\nWRITE EVERYTHING IN CAPITAL LETTERS\n\nMira's Appearance: red hair",
+          ["Write everything in capital letters."],
+        ),
+        "1girl, solo\n\nMira's Appearance: red hair",
+      );
+      // A writer that returned nothing but the guidance keeps its text, so the image still has a subject.
+      assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle]), echoedStyle);
+      // A JSON "style" that was only the copied Style text is dropped; the prompt keeps the subject.
+      assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle], { allowEmpty: true }), "");
+      // A sentence the user wrapped over two lines is still one sentence.
+      assert.equal(
+        removeCopiedPromptGuidance("1girl, Use moody lighting and show long shadows in rain., solo", [
+          "Use moody lighting\nand show long shadows in rain.",
+        ]),
+        "1girl, solo",
+      );
+
+      // Every writer path cleans its own output before configured text is added.
+      const routeSource = (path: string) =>
+        readFileSync(new URL(`../../packages/server/src/${path}`, import.meta.url), "utf8");
+      const generateRoute = routeSource("routes/generate.routes.ts");
+      assert.match(generateRoute, /const writerPrompt = removeCopiedPromptGuidance\(imagePrompt, writerGuidance\);/u);
+      assert.match(
+        generateRoute,
+        /let fullPrompt = writerStyle \? `\$\{writerStyle\}, \$\{writerPrompt\}` : writerPrompt;/u,
+      );
+      assert.equal(generateRoute.match(/generatedStyle: writerStyle,/gu)?.length, 2);
+      const retryRoute = routeSource("routes/generate/retry-agents-route.ts");
+      assert.match(
+        retryRoute,
+        /style: writerStyle,\s+imagePrompt: removeCopiedPromptGuidance\(imagePrompt, writerGuidance\),/u,
+      );
+      assert.equal(retryRoute.match(/generatedStyle: writerStyle,/gu)?.length, 2);
+      for (const selfiePath of [
+        "routes/gallery.routes.ts",
+        "services/generation/conversation-selfie-command-runtime.ts",
+      ]) {
+        assert.match(
+          routeSource(selfiePath),
+          /removeCopiedPromptGuidance\(\(promptResult\.content \?\? ""\)\.trim\(\), \[/u,
+        );
+      }
+      assert.match(
+        routeSource("services/generation/illustrator-background-generation.ts"),
+        /sceneDescription: removeCopiedPromptGuidance\(plan\.prompt, \[styleInstruction, imagePromptInstructions\]\)/u,
+      );
+
+      // Without a prompt writer, the profile's Style text still applies as written (#7318).
+      const unwritten = compileImagePrompt({
+        kind: "illustration",
+        prompt: "1girl, solo",
+        styleProfiles,
+        styleProfileId: "danbooru",
+      });
+      assert.match(unwritten.prompt, quotedStyle, unwritten.prompt);
+
+      // Style text a user writes into Auto or a copy of it is guidance for selfie writers too,
+      // instead of being dropped; the built-in Auto sentence is not.
+      const autoProfile = styleProfiles.profiles.find((profile) => profile.id === "auto")!;
+      const cloneProfiles = {
+        ...styleProfiles,
+        profiles: [
+          ...styleProfiles.profiles,
+          { ...autoProfile, id: "auto-custom", builtIn: false, styleText: "watercolor" },
+        ],
+      };
+      assert.equal(resolveImageStyleGuidanceText(cloneProfiles, "auto-custom"), "watercolor");
+      assert.equal(resolveImageStyleGuidanceText(cloneProfiles, "auto"), "");
+
+      // The manual Illustration writer gets the instructions next to its request, as the automatic
+      // Illustrator does, not above the character cards and chat history.
+      const manualMessages = buildManualIllustratorPromptMessages({
+        context: {
+          chatId: "manual-instructions",
+          chatMode: "roleplay",
+          recentMessages: [{ role: "assistant", content: "Mira steps into the rain." }],
+          mainResponse: "Mira steps into the rain.",
+          gameState: null,
+          characters: [],
+          persona: null,
+          memory: {},
+          writableLorebookIds: null,
+          chatSummary: null,
+        },
+        contextSize: 1,
+        styleInstruction: danbooruStyle,
+        imagePromptInstructions: instructions,
+      });
+      const manualRequest = manualMessages.at(-1)!;
+      assert.equal(manualRequest.role, "user");
+      assert.match(manualRequest.content, /<image_prompting_instructions>[\s\S]*capital letters/u);
+      assert.doesNotMatch(manualMessages[0]!.content, /capital letters/u);
+
+      // The scene background writer gets them too.
+      const backgroundSystemPrompt = buildIllustratorBackgroundPlanSystemPrompt(danbooruStyle, instructions);
+      assert.match(backgroundSystemPrompt, /<image_prompting_instructions>[\s\S]*capital letters/u);
+      assert.match(backgroundSystemPrompt, /Visual style instruction for the image prompt you write/u);
+    },
+  },
+  {
     name: "avatar portrait and sprite prompts honor a profile's natural-language grammar",
     run() {
       const styleProfiles = createDefaultImageStyleProfileSettings();
@@ -4962,6 +5163,111 @@ const cases: RegressionCase[] = [
     },
   },
   {
+    name: "A character's sent selfie reaches later prompt history, Illustrator images do not",
+    run() {
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_1.png",
+            prompt: "Maukie grins at the camera,\n  holding a coffee\n\nAppearance notes: auburn hair",
+          },
+          { type: "image", filename: "illustration_1.png", prompt: "A dark forest." },
+          { type: "image/png", filename: "selfie_upload.png", prompt: null },
+        ]),
+        "\n[Sent a selfie: Maukie grins at the camera, holding a coffee]",
+      );
+      assert.equal(formatSentSelfieNotes([{ type: "image", filename: "selfie_maukie_2.png" }]), "\n[Sent a selfie]");
+      // Merged group replies hold several speakers, so the note names who sent each selfie.
+      assert.equal(
+        formatSentSelfieNotes([
+          { type: "image", filename: "selfie_maukie_1.png", prompt: "A mirror selfie.", characterName: "Maukie" },
+          { type: "image", filename: "selfie_dottore_1.png", prompt: "A lab selfie.", characterName: "Dottore" },
+        ]),
+        "\n[Maukie sent a selfie: A mirror selfie.]\n[Dottore sent a selfie: A lab selfie.]",
+      );
+      assert.equal(formatSentSelfieNotes(undefined), "");
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_3.png",
+            prompt: "Prompt text.",
+            imageCaption: "Maukie  in a\nred scarf.",
+            characterName: "Maukie",
+          },
+        ]),
+        "\n[Maukie sent a selfie: Maukie in a red scarf.]",
+      );
+    },
+  },
+  {
+    name: "Selfie captions are made once, cached, and never stop the turn",
+    async run() {
+      const calls: string[] = [];
+      const runtime = {
+        enabled: true,
+        connectionId: "cap-conn",
+        connection: { id: "cap-conn", provider: "openai", model: "vision-1" },
+        provider: {
+          chatComplete: async () => {
+            calls.push("caption");
+            return { content: "A smiling selfie." };
+          },
+        },
+        prompt: null,
+      } as any;
+      const readImageDataUrl = async () => "data:image/png;base64,AAAA";
+      const signal = new AbortController().signal;
+      const attachments = [
+        { type: "image", filename: "selfie_maukie_1.png", galleryId: "g1", prompt: "A selfie." },
+        { type: "image", filename: "illustration_1.png", galleryId: "g2" },
+      ];
+
+      const captioned = await captionSentSelfies({ attachments, imageCaptioning: runtime, readImageDataUrl, signal });
+      assert.ok(Array.isArray(captioned));
+      assert.equal(captioned[0]!.imageCaption, "A smiling selfie.");
+      assert.equal(captioned[0]!.imageCaptionConnectionId, "cap-conn");
+      assert.equal(captioned[1]!.imageCaption, undefined);
+      assert.equal(calls.length, 1);
+
+      assert.equal(
+        await captionSentSelfies({ attachments: captioned, imageCaptioning: runtime, readImageDataUrl, signal }),
+        null,
+      );
+      assert.equal(calls.length, 1);
+
+      const failingRuntime = {
+        ...runtime,
+        provider: {
+          chatComplete: async () => {
+            throw new Error("vision model down");
+          },
+        },
+      };
+      assert.equal(
+        await captionSentSelfies({ attachments, imageCaptioning: failingRuntime, readImageDataUrl, signal }),
+        null,
+      );
+
+      const disabledReads: string[] = [];
+      const disabledRuntime = { ...runtime, enabled: false };
+      assert.equal(
+        await captionSentSelfies({
+          attachments,
+          imageCaptioning: disabledRuntime,
+          readImageDataUrl: async () => {
+            disabledReads.push("read");
+            return null;
+          },
+          signal,
+        }),
+        null,
+      );
+      assert.equal(disabledReads.length, 0);
+    },
+  },
+  {
     name: "Storyboard appearance always reaches the planner and is injected once into render prompts",
     async run() {
       const appearance = "auburn hair, green eyes, leather jacket";
@@ -5017,6 +5323,122 @@ const cases: RegressionCase[] = [
       assert.match(appearanceContextBlock, /^<character_appearance_context>/u);
       assert.match(appearanceContextBlock, new RegExp(appearance, "u"));
       assert.doesNotMatch(appearanceContextBlock, new RegExp(description, "u"));
+
+      // #7053: a persona with the image override enabled must contribute its
+      // override text to the Game illustration appearance context, exactly like a
+      // character. The /game/generate-assets illustration path previously loaded
+      // only character rows, so the persona produced no line at all — with or
+      // without an override.
+      const personaOverrideTags = "1boy, caucasian, tall male, muscular, black hair, green eyes";
+      const personaProse = "Lean-muscular build with a velvety voice and forest-toned wardrobe.";
+      const personaOverrideLine = readImageAppearanceOverride(
+        { imageAppearanceEnabled: true, imageAppearance: personaOverrideTags },
+        personaProse,
+      );
+      assert.equal(personaOverrideLine, personaOverrideTags, "the persona override wins for the game context");
+      const personaContextBlock = buildGameIllustratorAppearanceContextBlock([
+        `Fel Lockheart's Appearance: ${personaOverrideLine}`,
+        `Jessica's Appearance: ${appearance}`,
+      ]);
+      assert.match(personaContextBlock, /Fel Lockheart's Appearance: 1boy, caucasian/u);
+      assert.doesNotMatch(personaContextBlock, /velvety voice/u, "persona prose must not reach the game context");
+
+      // The helper call above would still pass if the route stopped loading the
+      // persona, which is the actual defect. Exercise the shared loader the Game
+      // illustration routes call, so removing that wiring fails this regression.
+      const gamePersonaGallery = { kind: "persona-gallery" } as never;
+      const gamePersonaMaps = () => ({
+        charReferenceByName: new Map<string, string>(),
+        charReferenceSourceByName: new Map<string, string>(),
+        charAvatarByName: new Map<string, string>(),
+        charDescriptionByName: new Map<string, string>(),
+      });
+      const enabledPersonaRow = {
+        id: "persona-fel",
+        name: "Fel Lockheart",
+        appearance: personaProse,
+        imageAppearanceEnabled: "true",
+        imageAppearance: personaOverrideTags,
+      };
+      const disabledPersonaRow = { ...enabledPersonaRow, imageAppearanceEnabled: "false" };
+
+      const enabledMaps = gamePersonaMaps();
+      const enabledName = await addChatPersonaIllustrationAssets({
+        maps: enabledMaps,
+        characters: { getPersona: async () => enabledPersonaRow } as never,
+        personaGallery: gamePersonaGallery,
+        chat: { personaId: "persona-fel" },
+        setupConfig: null,
+      });
+      assert.equal(enabledName, "Fel Lockheart", "the selected persona must resolve by name");
+      // `addNameLookupEntry` keys by normalized aliases (lowercase, per word), not
+      // by the display name, so assert on the stored text rather than the raw key.
+      assert.ok(
+        [...enabledMaps.charDescriptionByName.values()].includes(personaOverrideTags),
+        "the persona's enabled override must reach the Game illustration appearance maps",
+      );
+
+      const disabledMaps = gamePersonaMaps();
+      await addChatPersonaIllustrationAssets({
+        maps: disabledMaps,
+        characters: { getPersona: async () => disabledPersonaRow } as never,
+        personaGallery: gamePersonaGallery,
+        chat: { personaId: "persona-fel" },
+        setupConfig: null,
+      });
+      assert.ok(
+        [...disabledMaps.charDescriptionByName.values()].includes(personaProse),
+        "a disabled persona override must fall back to the persona appearance",
+      );
+      assert.ok(
+        ![...disabledMaps.charDescriptionByName.values()].includes(personaOverrideTags),
+        "a disabled persona override must not leak into the Game illustration maps",
+      );
+
+      // No persona selected -> nothing added, and no throw.
+      const nothingMaps = gamePersonaMaps();
+      assert.equal(
+        await addChatPersonaIllustrationAssets({
+          maps: nothingMaps,
+          characters: { getPersona: async () => enabledPersonaRow } as never,
+          personaGallery: gamePersonaGallery,
+          chat: { personaId: null },
+          setupConfig: null,
+        }),
+        null,
+      );
+      assert.equal(nothingMaps.charDescriptionByName.size, 0, "no persona means no appearance entry");
+
+      // Both Game illustration routes must share the loader, so a fix in one
+      // cannot leave the other behind.
+      const gameRoutesSource = readFileSync(
+        new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url),
+        "utf8",
+      );
+      const listenerCalls = gameRoutesSource.match(/await addChatPersonaIllustrationAssets\(\{/gu) ?? [];
+      assert.equal(
+        listenerCalls.length,
+        2,
+        "both /generate-assets and /generate-assets/preview must load the chat persona",
+      );
+      assert.equal(
+        (gameRoutesSource.match(/addPersonaIllustrationAssets\(/gu) ?? []).length,
+        3,
+        "the persona asset helper should have exactly one definition and two shared-loader call sites",
+      );
+
+      // Disabled or empty persona override falls back to the persona prose.
+      assert.equal(
+        readImageAppearanceOverride(
+          { imageAppearanceEnabled: false, imageAppearance: personaOverrideTags },
+          personaProse,
+        ),
+        personaProse,
+      );
+      assert.equal(
+        readImageAppearanceOverride({ imageAppearanceEnabled: true, imageAppearance: "   " }, personaProse),
+        personaProse,
+      );
 
       assert.deepEqual(
         selectStoryboardAppearanceCharacterNames({
@@ -9173,6 +9595,46 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
+    name: "long-term memory recall input is history only and composes with Advanced Memory filtering",
+    run() {
+      const history = [
+        { id: "h1", role: "user" as const, contextKind: "history" as const, content: "OBSERVATORY_ONE" },
+        { id: "h2", role: "assistant" as const, contextKind: "history" as const, content: "OBSERVATORY_TWO" },
+        { id: "h3", role: "system" as const, contextKind: "history" as const, content: "OBSERVATORY_NARRATOR" },
+        { id: "h4", role: "user" as const, contextKind: "history" as const, content: "OBSERVATORY_LATEST" },
+      ];
+      const nonHistory = [
+        { role: "system" as const, contextKind: "prompt" as const, content: "PINEAPPLE_PROMPT" },
+        { role: "user" as const, contextKind: "injection" as const, content: "PINEAPPLE_INJECTION" },
+        { role: "system" as const, content: "PINEAPPLE_UNTYPED_SYSTEM" },
+        { role: "user" as const, content: "PINEAPPLE_UNTYPED_USER" },
+      ];
+      const expected = history.map(({ role, content }) => ({ role, content }));
+
+      // Prompt text and injections may sit before, after or between history; only history reaches recall.
+      for (const messages of [
+        [...nonHistory, ...history],
+        [...history, ...nonHistory],
+        [...history.slice(0, 2), ...nonHistory, ...history.slice(2)],
+      ]) {
+        const snapshot = structuredClone(messages);
+        assert.deepEqual(selectHistoryMessagesForRecall(messages), expected);
+        assert.deepEqual(messages, snapshot, "recall selection leaves other prompt consumers' input unchanged");
+      }
+
+      // Advanced Memory filtering runs first; excluded history and non-history text stay out.
+      const advancedFiltered = filterPromptHistoryByMessageIds(
+        resolveAdvancedMemoryPrompt([...history, ...nonHistory], [], {}),
+        new Set(["h2", "h3", "h4"]),
+        new Set(history.map((message) => message.id)),
+      );
+      assert.deepEqual(
+        selectHistoryMessagesForRecall(advancedFiltered).map((message) => message.content),
+        ["OBSERVATORY_TWO", "OBSERVATORY_NARRATOR", "OBSERVATORY_LATEST"],
+      );
+    },
+  },
+  {
     name: "advanced memory markers preserve scoped placement, formatting, fallback and empty groups",
     async run() {
       const parts: AdvancedMemoryPromptParts = {
@@ -10636,6 +11098,131 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
+    name: "non-Latin names stay in prompt XML tags and Markdown headings",
+    run() {
+      assert.equal(nameToXmlTag("World Info (Before)"), "world_info_before");
+      assert.equal(nameToXmlTag("홍길동"), "홍길동");
+      assert.equal(nameToXmlTag("Dr. 김 철수"), "dr_김_철수");
+      assert.equal(nameToXmlTag("Amélie"), "amélie");
+      assert.equal(nameToXmlTag("राम"), "राम");
+      assert.equal(nameToXmlTag("\u0301Ana"), "ana");
+      assert.equal(nameToXmlTag("★\u0301Ana"), "ana");
+      assert.equal(wrapContent("Card.", "홍길동", "xml"), "<홍길동>\n    Card.\n</홍길동>");
+      assert.equal(wrapContent("Card.", "Dr. 김 철수", "markdown"), "## Dr 김 철수\nCard.");
+      assert.equal(
+        formatAgentInjections([{ agentType: "custom-memory", agentName: "기억 관리자", text: "Note." }], "xml"),
+        "<기억_관리자>\nNote.\n</기억_관리자>",
+      );
+
+      const messages = [{ content: "<홍길동>\n</홍길동>" }, { content: "<홍길동>\nCard.\n</홍길동>" }];
+      pruneEmptyPromptWrappers(messages);
+      assert.deepEqual(messages, [{ content: "<홍길동>\nCard.\n</홍길동>" }]);
+    },
+  },
+  {
+    name: "emoji in names leave no invisible marks in prompt tags",
+    run() {
+      assert.equal(nameToXmlTag("Luna ❤️"), "luna");
+      assert.equal(nameToXmlTag("1️⃣ Ana"), "1_ana");
+      assert.equal(nameToXmlTag("สมศักดิ์"), "สมศักดิ์");
+      assert.equal(wrapContent("Card.", "Luna ❤️", "markdown"), "## Luna\nCard.");
+      assert.equal(
+        formatAgentInjections(
+          [
+            { agentType: "affection", agentName: "❤️ Affection Tracker", text: "Note." },
+            { agentType: "weather", agentName: "☀️", text: "Sunny." },
+          ],
+          "xml",
+        ),
+        "<affection_tracker>\nNote.\n</affection_tracker>\n\n<weather>\nSunny.\n</weather>",
+      );
+
+      const combatTag = nameToXmlTag("⚔️ Combat");
+      const messages = [{ content: `<${combatTag}>\n</${combatTag}>` }];
+      pruneEmptyPromptWrappers(messages);
+      assert.deepEqual(messages, []);
+
+      for (const format of ["xml", "markdown"] as const) {
+        const scoped = scopeIndividualGroupMessagesForTarget(
+          [
+            {
+              role: "system",
+              content: [
+                wrapContent("Hong card only.", "홍길동", format, 1),
+                wrapContent("Luna card only.", "Luna ❤️ Star", format, 1),
+              ].join("\n"),
+              contextKind: "prompt",
+            },
+          ],
+          "hong",
+          [
+            { id: "hong", name: "홍길동" },
+            { id: "luna", name: "Luna ❤️ Star" },
+          ],
+        );
+
+        assert.match(scoped[0]?.content ?? "", /Hong card only\./u, format);
+        assert.doesNotMatch(scoped[0]?.content ?? "", /Luna card only\./u, format);
+      }
+    },
+  },
+  {
+    name: "individual group turns drop other cards with non-Latin names",
+    run() {
+      for (const format of ["xml", "markdown"] as const) {
+        const scoped = scopeIndividualGroupMessagesForTarget(
+          [
+            {
+              role: "system",
+              content: [
+                wrapContent("Hong card only.", "홍길동", format, 1),
+                wrapContent("Kim card only.", "김 철수", format, 1),
+                wrapContent("Ram card only.", "Dr. राम", format, 1),
+              ].join("\n"),
+              contextKind: "prompt",
+            },
+          ],
+          "hong",
+          [
+            { id: "hong", name: "홍길동" },
+            { id: "kim", name: "김 철수" },
+            { id: "ram", name: "Dr. राम" },
+          ],
+        );
+
+        const content = scoped[0]?.content ?? "";
+        assert.match(content, /Hong card only\./u, format);
+        assert.doesNotMatch(content, /Kim card only\./u, format);
+        assert.doesNotMatch(content, /Ram card only\./u, format);
+      }
+    },
+  },
+  {
+    name: "a non-Latin character card does not hide a non-Latin persona",
+    run() {
+      const messages: ChatMLMessage[] = [
+        { role: "system", content: wrapContent("Hong card only.", "홍길동", "xml", 1) },
+        { role: "user", content: "Hello." },
+      ];
+
+      injectIdentityFallbackMessages({
+        messages,
+        charInfo: [],
+        promptTargetCharacterId: null,
+        promptMacroContext: { user: "김철수", char: "홍길동", characters: ["홍길동"], variables: {} },
+        wrapFormat: "xml",
+        personaName: "김철수",
+        personaDescription: "Kim persona only.",
+        personaFields: {},
+        persona: null,
+        resolvePromptMacros: (value) => value,
+      });
+
+      const promptText = messages.map((message) => message.content).join("\n");
+      assert.match(promptText, /<김철수>[\s\S]*Kim persona only\.[\s\S]*<\/김철수>/u);
+    },
+  },
+  {
     name: "Conversation reaction syntax is advertised only inside Commands",
     run() {
       const routeSource = readFileSync(
@@ -10850,6 +11437,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         connection: { provider: "openai", apiKey: "", model: "regression-model" },
         connectionId: "regression-connection",
         baseUrl: "https://example.invalid/v1",
+        includeRecallHistory: true,
       });
       const promptText = prepared.finalMessages.map((message) => message.content).join("\n");
 
@@ -10860,6 +11448,22 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.match(promptText, new RegExp(authoredSystemInstruction, "u"));
       assert.equal(promptText.includes(legacySetupMembership), false, promptText);
       assert.match(promptText, new RegExp(currentMembership, "u"));
+
+      const recallText = selectHistoryMessagesForRecall(prepared.recallHistoryMessages!)
+        .map((message) => message.content)
+        .join("\n");
+      assert.equal(
+        recallText.includes("Compact day summary."),
+        false,
+        "synthesized day summaries are not recall history",
+      );
+      assert.equal(
+        recallText.includes("COMPACT_WEEK_SUMMARY"),
+        false,
+        "synthesized week summaries are not recall history",
+      );
+      assert.match(recallText, new RegExp(currentSceneSummary, "u"));
+      assert.match(recallText, new RegExp(currentMembership, "u"));
     },
   },
   {
@@ -10878,7 +11482,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         createdAt: "2026-07-15T12:00:00.000Z",
       };
       const chatMessages = [...olderMessages, currentMessage];
-      const prepared = await prepareConversationPromptHistory({
+      const historyInput: Parameters<typeof prepareConversationPromptHistory>[0] = {
         finalMessages: chatMessages.map((message) => ({
           id: message.id,
           role: message.role,
@@ -10916,12 +11520,73 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         connection: { provider: "openai", apiKey: "", model: "regression-model" },
         connectionId: "regression-connection",
         baseUrl: "https://example.invalid/v1",
-      });
+      };
+      const prepared = await prepareConversationPromptHistory(historyInput);
       const promptText = prepared.finalMessages.map((message) => message.content).join("\n");
 
       assert.match(promptText, /UNCAPPED_TAIL_MESSAGE_0/u);
       assert.match(promptText, /UNCAPPED_TAIL_MESSAGE_54/u);
       assert.match(promptText, /CURRENT_CONVERSATION_MESSAGE/u);
+
+      // The recall copy keeps the raw tail and excludes synthesized summaries without touching the main prompt.
+      assert.equal(prepared.recallHistoryMessages, undefined, "disabled LTM does not prepare a recall copy");
+      const withRecall = await prepareConversationPromptHistory({ ...historyInput, includeRecallHistory: true });
+      assert.deepEqual(withRecall.finalMessages, prepared.finalMessages, "LTM does not change the main prompt");
+      assert.ok(withRecall.recallHistoryMessages);
+      const recallText = selectHistoryMessagesForRecall(withRecall.recallHistoryMessages)
+        .map((message) => message.content)
+        .join("\n");
+      assert.equal(
+        recallText.includes("Compact prior-day summary."),
+        false,
+        "synthesized summaries are not recall history",
+      );
+      for (const marker of ["UNCAPPED_TAIL_MESSAGE_0", "UNCAPPED_TAIL_MESSAGE_54", "CURRENT_CONVERSATION_MESSAGE"]) {
+        assert.match(recallText, new RegExp(marker, "u"));
+      }
+      assert.ok(
+        prepared.finalMessages
+          .filter((message) => message.content.includes("UNCAPPED_TAIL_MESSAGE_"))
+          .every((message) => message.contextKind === undefined),
+        "recall tagging does not leak into the main prompt",
+      );
+
+      // Unsummarized date history keeps its wrap format on the recall copy only.
+      for (const wrapFormat of ["xml", "markdown", "none"] as const) {
+        const pastMessages = [
+          {
+            id: "past-narrator",
+            role: "narrator",
+            content: "PAST_DAY_NARRATOR",
+            createdAt: "2026-07-14T10:00:00.000Z",
+          },
+          { id: "past-user", role: "user", content: "PAST_DAY_USER", createdAt: "2026-07-14T11:00:00.000Z" },
+        ];
+        const dateInput = {
+          ...historyInput,
+          chatMeta: { summaryTailMessages: 0 },
+          scopedMessages: [], // Keep this formatting fixture from requesting provider summaries.
+          chatMessages: pastMessages,
+          finalMessages: pastMessages.map((message) => ({
+            id: message.id,
+            role: message.role === "narrator" ? ("system" as const) : ("user" as const),
+            content: message.content,
+            contextKind: "history" as const,
+          })),
+          wrapFormat,
+        };
+        const withRecall = await prepareConversationPromptHistory({ ...dateInput, includeRecallHistory: true });
+        const expected = formatConversationDateHistoryMessages(
+          [
+            { role: "system", author: "Narrator", content: "PAST_DAY_NARRATOR" },
+            { role: "user", author: "User", content: "PAST_DAY_USER" },
+          ],
+          "14.07.2026",
+          wrapFormat,
+        );
+        assert.deepEqual(withRecall.finalMessages, expected, "normal date-history formatting stays unchanged");
+        assert.deepEqual(selectHistoryMessagesForRecall(withRecall.recallHistoryMessages!), expected);
+      }
     },
   },
   {
@@ -12545,6 +13210,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "Updated.",
         "Edit applied.",
         "Done!",
+        "Before you ask: I created the entry.",
       ]) {
         assert.equal(workspaceTextClaimsMutationCompletion(claim), true, claim);
       }
@@ -12557,6 +13223,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "Set its type to Constant",
         "Added fields appear",
         "Removed entries cannot be restored",
+        // Slice 68: feature descriptions from a docs answer are not completion claims.
+        "A chunk needs at least 5 new messages before it's created.",
+        "It is enabled by default in Conversation chats.",
       ]) {
         assert.equal(workspaceTextClaimsMutationCompletion(text), false, text);
       }

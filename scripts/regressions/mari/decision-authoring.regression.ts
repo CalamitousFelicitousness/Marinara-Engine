@@ -198,9 +198,11 @@ try {
     }),
   );
   const bookId = await findId("lorebook.list", "Decision lore");
-  const entries = (await mari.executeAction({ action: "lorebook.entries", lorebookId: bookId })).output as Array<{
-    id: string;
-  }>;
+  const entries = (
+    (await mari.executeAction({ action: "lorebook.entries", lorebookId: bookId })).output as {
+      items: Array<{ id: string }>;
+    }
+  ).items;
   assert.ok(entries.length);
   const entryId = entries[0]!.id;
   const getEntry = async () =>

@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
   androidLocalAuthHook,
+  androidLocalAuthInjectHeaders,
   androidLocalAuthRoutes,
   androidLocalAuthTesting,
   androidLocalLoginRoute,
+  isAndroidLocalAuthSatisfied,
 } from "../../packages/server/src/middleware/android-local-auth.js";
 import { csrfProtectionHook } from "../../packages/server/src/middleware/csrf-protection.js";
 
@@ -25,7 +27,8 @@ app.addHook("onRequest", androidLocalAuthHook);
 await app.register(androidLocalAuthRoutes, { prefix: "/api/android-auth" });
 await androidLocalLoginRoute(app);
 app.get("/", async () => ({ ok: true }));
-app.get("/api/health", async () => ({ status: "ok" }));
+// Mirrors app.ts: the probe stays public, the local model and GPU details need the app's own sign-in.
+app.get("/api/health", async (request) => ({ status: "ok", detailed: isAndroidLocalAuthSatisfied(request) }));
 app.get("/api/private", async () => ({ private: true }));
 app.post("/api/private-mutation", async () => ({ mutated: true }));
 app.get("/api/spotify/callback", async () => ({ callback: true }));
@@ -35,9 +38,16 @@ try {
 
   const rejected = await app.inject({ method: "GET", url: "/api/private" });
   assert.equal(rejected.statusCode, 401, "an unrelated localhost caller must not inherit loopback trust");
+  const serverOwnRequest = await app.inject({
+    method: "POST",
+    url: "/api/private-mutation",
+    headers: androidLocalAuthInjectHeaders(),
+  });
+  assert.equal(serverOwnRequest.statusCode, 200, "the server's own injected calls carry the local secret (#7475)");
 
   const health = await app.inject({ method: "GET", url: "/api/health" });
   assert.equal(health.statusCode, 200, "local readiness checks must remain available without a browser session");
+  assert.equal(health.json().detailed, false, "another app on the device must not read the health details");
 
   const spotifyCallback = await app.inject({
     method: "GET",
@@ -97,6 +107,10 @@ try {
     headers: { cookie: sessionCookie },
   });
   assert.equal(accepted.statusCode, 200);
+  const signedInHealth = await app.inject({ method: "GET", url: "/api/health", headers: { cookie: sessionCookie } });
+  assert.equal(signedInHealth.json().detailed, true, "the Android app's own diagnostics keep the health details");
+  const remoteHealth = await app.inject({ method: "GET", url: "/api/health", remoteAddress: "192.0.2.77" });
+  assert.equal(remoteHealth.json().detailed, true, "LAN callers are left to the normal sign-in rules");
 
   const replay = await app.inject({
     method: "POST",

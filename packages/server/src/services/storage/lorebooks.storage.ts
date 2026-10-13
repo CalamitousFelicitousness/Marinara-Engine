@@ -41,6 +41,7 @@ import {
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
 import { toPaginatedList } from "../../utils/list-pagination.js";
 import { createChatsStorage } from "./chats.storage.js";
+import { createLibraryFoldersStorage } from "./library-folders.storage.js";
 import { parseSourceMessageRefs } from "./lorebook-provenance.js";
 
 function normalizeLorebookEntryLimit(value: unknown): number {
@@ -317,7 +318,7 @@ function parseCharacterName(row: typeof characters.$inferSelect) {
 async function hydrateLorebookRows(db: DB, rows: LorebookRow[], options: { includeLinkedNames?: boolean } = {}) {
   if (rows.length === 0) return [];
   const bookIds = rows.map((row) => row.id);
-  const [characterRows, personaRows] = await Promise.all([
+  const [characterRows, personaRows, entryRows] = await Promise.all([
     db
       .select()
       .from(lorebookCharacterLinks)
@@ -328,7 +329,15 @@ async function hydrateLorebookRows(db: DB, rows: LorebookRow[], options: { inclu
       .from(lorebookPersonaLinks)
       .where(inArray(lorebookPersonaLinks.lorebookId, bookIds))
       .orderBy(asc(lorebookPersonaLinks.lorebookId), asc(lorebookPersonaLinks.personaId)),
+    db
+      .select({ lorebookId: lorebookEntries.lorebookId })
+      .from(lorebookEntries)
+      .where(inArray(lorebookEntries.lorebookId, bookIds)),
   ]);
+  const entryCountByBook = new Map<string, number>();
+  for (const entry of entryRows) {
+    entryCountByBook.set(entry.lorebookId, (entryCountByBook.get(entry.lorebookId) ?? 0) + 1);
+  }
   const characterIdsByBook = new Map<string, string[]>();
   for (const link of characterRows) {
     const ids = characterIdsByBook.get(link.lorebookId) ?? [];
@@ -364,6 +373,7 @@ async function hydrateLorebookRows(db: DB, rows: LorebookRow[], options: { inclu
       ...(row as Record<string, unknown>),
       characterIds,
       personaIds,
+      entryCount: entryCountByBook.get(row.id) ?? 0,
     };
     if (options.includeLinkedNames) {
       hydratedRow.characterNames = characterIds.map((id) => characterNameById.get(id) ?? id);
@@ -667,6 +677,7 @@ export function createLorebooksStorage(db: DB) {
         await tx.delete(lorebookCharacterLinks).where(eq(lorebookCharacterLinks.lorebookId, id));
         await tx.delete(lorebookPersonaLinks).where(eq(lorebookPersonaLinks.lorebookId, id));
         await tx.delete(lorebooks).where(eq(lorebooks.id, id));
+        await createLibraryFoldersStorage(tx).removeItemReferences("lorebooks", [id]);
         return entries.map((entry) => entry.id);
       }, id);
     },

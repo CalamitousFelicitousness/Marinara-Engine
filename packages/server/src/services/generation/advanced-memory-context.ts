@@ -35,6 +35,7 @@ const memorySnapshotSchema = z.object({
     recalledRecordIds: z.array(z.string()),
     receipt: z.object({
       decisionRecall: advancedMemoryDecisionDiagnosticsSchema.optional(),
+      archiveRevision: z.string().optional(),
       sourceEndMessageId: z.string().nullable().optional(),
       sourceFingerprint: z.string(),
       policyRevision: z.string(),
@@ -109,12 +110,15 @@ export async function prepareAdvancedMemoryContext(
     const receiptKey = JSON.stringify(cached.data.prepared.receipt);
     if (rejectedReceipts.has(receiptKey)) continue;
     try {
-      await input.service.validatePrepared(input.chatId, input.sourceMessages, cached.data.prepared.receipt);
+      await input.service.validatePrepared(input.chatId, input.sourceMessages, cached.data.prepared.receipt, {
+        audienceCharacterIds: input.audienceMode === "owner" ? [] : audienceCharacterIds,
+        messageIds: cached.data.prepared.messageIds,
+      });
       input.signal?.throwIfAborted();
       prepared = cached.data.prepared;
       break;
     } catch {
-      // Changed history, access, memory edits or a reset invalidate the old snapshot.
+      // Changed history, access, memory edits, newly saved scenes or a reset invalidate the old snapshot.
       input.signal?.throwIfAborted();
       rejectedReceipts.add(receiptKey);
     }
@@ -154,8 +158,14 @@ export async function prepareAdvancedMemoryContext(
       }
       prepared.receipt.recalledMessageIds = [];
       prepared.receipt.recalledSceneIds = [];
-      if (prepared.receipt.decisionRecall)
+      // No scene is recalled now, so reasons about recalled scenes' excerpts no longer apply.
+      prepared.receipt.reasons = prepared.receipt.reasons.filter(
+        (reason) => !reason.startsWith("excerpt-") && reason !== "decision-excerpt-fallback",
+      );
+      if (prepared.receipt.decisionRecall) {
         for (const result of prepared.receipt.decisionRecall.results) result.selected = false;
+        delete prepared.receipt.decisionRecall.notes;
+      }
       prepared.recalledMessages = null;
       prepared.recalledScenes = null;
       prepared.recalledRecordIds = [];

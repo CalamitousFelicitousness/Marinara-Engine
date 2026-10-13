@@ -3,8 +3,8 @@
 //
 // The Engine's own packs, one per setting family (read only, shipped in src/assets/overworld-tiles),
 // and the packs made in Pixelforge or imported from a file, filed under `local/<id>` so none can take a
-// built-in family's id. Saving and importing are administrative acts behind `requirePrivilegedAccess`,
-// as ruleset imports are; which pack each family is drawn with is a preference.
+// built-in family's id. Saving, importing, removing, and choosing which pack each family is drawn with
+// change what every game draws, so all sit behind `requirePrivilegedAccess`, as ruleset imports do.
 // ──────────────────────────────────────────────
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import { z } from "zod";
 import { TILE_PACK_MAX_BYTES, WORLD_ART_FAMILIES, parseTilePack, type TilePack } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
+import { GAME_TILE_PACKS_RATE_LIMIT } from "../middleware/rate-limit.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import {
   createGameTilePacksStorage,
@@ -74,7 +75,7 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
   };
 
   // ── GET /api/game-tile-packs ── the stored packs, the families with built-in packs, and the choices.
-  app.get("/", async () => ({
+  app.get("/", { config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } }, async () => ({
     packs: (await store.latest()).map((row) => ({
       id: row.packId,
       name: row.name,
@@ -86,21 +87,25 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
   }));
 
   // ── GET /api/game-tile-packs/builtin/:family ──
-  app.get<{ Params: { family: string } }>("/builtin/:family", async (req, reply) => {
-    const family = req.params.family;
-    if (!(WORLD_ART_FAMILIES as readonly string[]).includes(family)) {
-      return reply.status(404).send({ error: "No built-in tile pack for that family." });
-    }
-    const read = parseTilePack(await readFile(`${BUILT_IN_DIR}${family}.json`, "utf8"));
-    if (!read.ok) {
-      logger.error("[game/tile-packs] The built-in %s pack does not read: %s", family, read.issues.join("; "));
-      return reply.status(500).send({ error: "The built-in tile pack does not read." });
-    }
-    return { pack: read.pack };
-  });
+  app.get<{ Params: { family: string } }>(
+    "/builtin/:family",
+    { config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } },
+    async (req, reply) => {
+      const family = req.params.family;
+      if (!(WORLD_ART_FAMILIES as readonly string[]).includes(family)) {
+        return reply.status(404).send({ error: "No built-in tile pack for that family." });
+      }
+      const read = parseTilePack(await readFile(`${BUILT_IN_DIR}${family}.json`, "utf8"));
+      if (!read.ok) {
+        logger.error("[game/tile-packs] The built-in %s pack does not read: %s", family, read.issues.join("; "));
+        return reply.status(500).send({ error: "The built-in tile pack does not read." });
+      }
+      return { pack: read.pack };
+    },
+  );
 
   // ── GET /api/game-tile-packs/pack?id= ── a stored pack's latest version.
-  app.get("/pack", async (req, reply) => {
+  app.get("/pack", { config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } }, async (req, reply) => {
     const { id } = z.object({ id: z.string().min(1).max(80) }).parse(req.query);
     const row = await store.latestOf(id);
     const pack = row ? packOf(row) : null;
@@ -109,26 +114,34 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
   });
 
   // ── POST /api/game-tile-packs ── a pack saved from the maker.
-  app.post("/", { bodyLimit: SAVE_BODY_LIMIT }, async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack save" })) return;
-    const read = parseTilePack(z.object({ pack: z.unknown() }).parse(req.body).pack);
-    if (!read.ok)
-      return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
-    return save(reply, read.pack, read.notes);
-  });
+  app.post(
+    "/",
+    { bodyLimit: SAVE_BODY_LIMIT, config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack save" })) return;
+      const read = parseTilePack(z.object({ pack: z.unknown() }).parse(req.body).pack);
+      if (!read.ok)
+        return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
+      return save(reply, read.pack, read.notes);
+    },
+  );
 
   // ── POST /api/game-tile-packs/import ── a share file.
-  app.post("/import", { bodyLimit: IMPORT_BODY_LIMIT }, async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack import" })) return;
-    const read = parseTilePack(z.object({ definition: z.string().min(1) }).parse(req.body).definition);
-    if (!read.ok)
-      return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
-    return save(reply, read.pack, read.notes);
-  });
+  app.post(
+    "/import",
+    { bodyLimit: IMPORT_BODY_LIMIT, config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack import" })) return;
+      const read = parseTilePack(z.object({ definition: z.string().min(1) }).parse(req.body).definition);
+      if (!read.ok)
+        return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
+      return save(reply, read.pack, read.notes);
+    },
+  );
 
   // ── DELETE /api/game-tile-packs?id= ── every version, and any family it was chosen for goes back to
   // the built-in pack.
-  app.delete("/", async (req, reply) => {
+  app.delete("/", { config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack removal" })) return;
     const { id } = z.object({ id: z.string().min(1).max(80) }).parse(req.query);
     const removed = await store.removeAll(id);
@@ -141,7 +154,8 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
   });
 
   // ── PUT /api/game-tile-packs/selection ── the pack a family is drawn with; none for the built-in one.
-  app.put("/selection", async (req, reply) => {
+  app.put("/selection", { config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } }, async (req, reply) => {
+    if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack selection" })) return;
     const { family, packId } = z
       .object({ family: familySchema, packId: z.string().min(1).max(80).nullable() })
       .parse(req.body);

@@ -273,6 +273,8 @@ function sanitizeImportedMarinaraMetadata(
   // branch/session operate on the exported campaign or an already-closed scene.
   delete sanitized.activeSceneChatId;
   delete sanitized.sceneOriginChatId;
+  delete sanitized.scenePackageOrigin;
+  delete sanitized.scenePackageData;
   delete sanitized.sceneStatus;
   delete sanitized.branchParentChatId;
   delete sanitized.branchParentMessageId;

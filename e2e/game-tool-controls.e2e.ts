@@ -8,6 +8,9 @@ for (const theme of ["dark", "light"] as const) {
     page,
     request,
   }, testInfo) => {
+    // Four reloads, each reopening the settings: well within a minute alone, not always beside the
+    // rest of the game specs on a busy machine.
+    test.setTimeout(120_000);
     const narrator = await (
       await request.post("/api/connections", {
         data: { name: "Subscription narrator", provider: "claude_subscription", model: "fixture", apiKey: "synthetic" },
@@ -53,8 +56,6 @@ for (const theme of ["dark", "light"] as const) {
         { id: chat.id, version },
       );
       const openTools = async () => {
-        if (testInfo.project.name.includes("mobile"))
-          await page.getByRole("button", { name: "Game actions", exact: true }).click();
         await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
         const section = page.locator('[data-chat-settings-section="function-calling"]');
         await section.locator('[role="button"][aria-expanded]').click();

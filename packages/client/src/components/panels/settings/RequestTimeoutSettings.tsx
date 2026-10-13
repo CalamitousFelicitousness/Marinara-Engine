@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { Save } from "lucide-react";
 import { toast } from "sonner";
 import { REQUEST_TIMEOUTS, type RequestTimeoutSettings as Values } from "@marinara-engine/shared";
 import { api, getPrivilegedActionErrorMessage } from "../../../lib/api-client";
 import { DraftNumberInput } from "../../ui/DraftNumberInput";
+import { SETTINGS_PRIMARY_FULL_BUTTON_CLASS } from "./SettingControls";
 
 const queryKey = ["request-timeouts"];
 export function RequestTimeoutSettings() {
@@ -53,8 +55,9 @@ export function RequestTimeoutSettings() {
         type="button"
         disabled={!draft || save.isPending}
         onClick={() => save.mutate(values)}
-        className="mari-chrome-control mari-chrome-control--selected w-full justify-center px-3"
+        className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
       >
+        <Save size="0.8125rem" />
         {t("settings.timeouts.save")}
       </button>
     </div>

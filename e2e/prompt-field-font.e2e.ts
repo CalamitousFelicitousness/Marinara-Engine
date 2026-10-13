@@ -9,7 +9,15 @@ const APP_FONT = "Prompt Font Fixture";
 
 const fontOf = (field: Locator) => field.evaluate((node) => getComputedStyle(node).fontFamily);
 const expectMonospace = (field: Locator) => expect.poll(() => fontOf(field)).toMatch(/^ui-monospace,/u);
-const expectAppFont = (field: Locator) => expect.poll(() => fontOf(field)).toMatch(/^["']?Prompt Font Fixture["']?,/u);
+// The app stack keeps its "Straight Quotes" face first, so ASCII quotes stay straight in prompt fields too.
+const expectAppFont = (field: Locator) =>
+  expect.poll(() => fontOf(field)).toMatch(/^["']?Straight Quotes["']?, ["']?Prompt Font Fixture["']?,/u);
+const openExpanded = async (page: Page, field: Locator) => {
+  // A DOM click: after scrolling, mobile WebKit reports the character editor's metadata section over the button.
+  const expand = field.locator("xpath=..").getByRole("button", { name: "Expand editor" });
+  await expand.evaluate((button: HTMLButtonElement) => button.click());
+  return page.locator('[data-component="ExpandedMacroEditor"]');
+};
 
 async function openDetail(page: Page, kind: "preset" | "character", id: string) {
   await page.evaluate(
@@ -49,8 +57,9 @@ test("prompt fields stay monospace by default and follow the app font once one i
     await page.goto("/");
     const presetEditor = await openDetail(page, "preset", preset.id);
     await presetEditor.locator('[data-editor-section="sections"]').getByText(sectionName, { exact: true }).click();
+    const sectionContent = presetEditor.getByPlaceholder("Prompt content… (supports", { exact: false });
     const presetFields = [
-      presetEditor.getByPlaceholder("Prompt content… (supports", { exact: false }),
+      sectionContent,
       presetEditor.getByPlaceholder("Leave empty to use Marinara's built-in conversation prompt."),
       presetEditor.getByPlaceholder("Leave empty to use Marinara's built-in game prompt."),
     ];
@@ -61,17 +70,19 @@ test("prompt fields stay monospace by default and follow the app font once one i
       useUIStore.getState().setFontFamily(family);
     }, APP_FONT);
     for (const field of presetFields) await expectAppFont(field);
-    await presetEditor
-      .locator('[data-editor-section="prompts"]')
-      .getByRole("button", { name: "Expand editor" })
-      .first()
-      .click();
-    const expanded = page.locator('[data-component="ExpandedMacroEditor"]');
+    const expanded = await openExpanded(page, sectionContent);
     await expectAppFont(expanded.locator("textarea"));
     await expanded.getByRole("button", { name: "Close expanded editor" }).click();
 
     const characterEditor = await openDetail(page, "character", character.id);
     await expectAppFont(characterEditor.getByPlaceholder("〈START〉 {{user}}: Hello!", { exact: false }));
+    // A field that was never monospace inline keeps its monospace Expand window, as before #7438.
+    const firstMessage = characterEditor.getByPlaceholder(
+      "What is the character's first message when a new chat starts?",
+    );
+    const firstMessageExpanded = await openExpanded(page, firstMessage);
+    await expectMonospace(firstMessageExpanded.locator("textarea"));
+    await firstMessageExpanded.getByRole("button", { name: "Close expanded editor" }).click();
   } finally {
     await request.delete(`/api/characters/${character.id}`);
     await request.delete(`/api/prompts/${preset.id}`);

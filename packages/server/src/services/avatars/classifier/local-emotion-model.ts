@@ -108,7 +108,8 @@ export async function downloadLocalEmotionModel(onProgress: (downloadedBytes: nu
 }
 
 /** Starts the worker on the downloaded files and resolves once the model is ready. `onLost` runs if a ready worker
- *  stops without being disposed (a crash), so the caller can forget the model and load it again later. */
+ *  stops without being disposed (a crash, or a text it did not answer in time), so the caller can forget the model
+ *  and load it again later. */
 export function startLocalEmotionModel(onLost?: (error: Error) => void): Promise<AvatarEmotionModel> {
   const worker = new Worker(
     new URL(
@@ -135,9 +136,11 @@ export function startLocalEmotionModel(onLost?: (error: Error) => void): Promise
         if (stopped) return Promise.reject(stopped);
         const id = nextId++;
         return new Promise((resolveText, rejectText) => {
+          // A worker that stops answering would hold every later text behind it: stop it (this text and the
+          // waiting ones fall back to keywords), and the caller forgets the model and loads it again later.
           const timer = setTimeout(() => {
-            pending.delete(id);
-            rejectText(new Error("The local emotion model did not answer in time"));
+            stop(new Error("The local emotion model did not answer in time"));
+            void worker.terminate();
           }, CLASSIFY_TIMEOUT_MS);
           timer.unref?.();
           pending.set(id, {

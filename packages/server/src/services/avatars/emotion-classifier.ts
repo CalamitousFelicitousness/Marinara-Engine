@@ -270,6 +270,8 @@ export async function classifyAvatarEmotions(
   const tier: AvatarClassifierTier = model ? "local-model" : "keywords";
   const results: AvatarClassification[] = [];
   let cached = 0;
+  let failure: unknown = null;
+  let failed = 0;
   for (const text of request.texts) {
     throwIfAborted(options.signal);
     const key = cacheKey(tier, text);
@@ -288,11 +290,19 @@ export async function classifyAvatarEmotions(
       } catch (err) {
         // Not cached: the next request for this text asks the model again.
         answered = false;
-        logger.warn(err, "[avatar-classify] The local emotion model failed on a text; using keywords for it");
+        failure ??= err;
+        failed += 1;
       }
     }
     if (answered) remember(key, result);
     results.push(result);
+  }
+  if (failed > 0) {
+    logger.warn(
+      failure,
+      "[avatar-classify] The local emotion model failed on %d text(s); using keywords for them",
+      failed,
+    );
   }
   if (model) scheduleIdleUnload();
   const latencyMs = Math.round(performance.now() - startedAt);

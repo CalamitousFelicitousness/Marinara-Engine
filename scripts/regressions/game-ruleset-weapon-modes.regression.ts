@@ -606,10 +606,10 @@ try {
       restartRequired: false,
     });
     assert.match(
-      getCapabilityPackageInstallIssue(styledManifest(91) as any, styled) ?? "",
+      getCapabilityPackageInstallIssue(styledManifest(95) as any, styled) ?? "",
       /off hand reads the sheet.*capabilityApi 1\.96/,
     );
-    assert.equal(getCapabilityPackageInstallIssue(styledManifest(92) as any, styled), null);
+    assert.equal(getCapabilityPackageInstallIssue(styledManifest(96) as any, styled), null);
     // An off-hand attack is one blow, whatever strikes the main attack buys.
     const twice = parsedOrThrow(
       variant(gravewatchText, (doc) => (itemEntry(doc, "silver-nail").item.attack.strikes = { const: 2 })),

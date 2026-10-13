@@ -126,11 +126,11 @@ try {
   });
   const gateMessage =
     "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.108 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(103) as never, doc), gateMessage);
-  assert.equal(getCapabilityPackageInstallIssue(manifest(104) as never, doc), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(107) as never, doc), gateMessage);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(108) as never, doc), null);
   const legacy = structuredClone(doc);
   delete legacy.sheet.builder.steps[0].strict;
-  assert.equal(getCapabilityPackageInstallIssue(manifest(103) as never, legacy), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(107) as never, legacy), null);
   const editorSchema = JSON.parse(readFileSync(join(root, "docs/extending/ruleset.schema.json"), "utf8"));
   const findGearStep = (node: any): any => {
     if (!node || typeof node !== "object") return undefined;

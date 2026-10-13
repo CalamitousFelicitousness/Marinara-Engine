@@ -656,9 +656,9 @@ const manifest = (minor: number) => ({
   refused((doc) => (doc.items.currencies[0].units[0].one = "x".repeat(41)), /one/, "a name for one is a short word");
   const gate = (minor: number, doc: Record<string, any>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-  assert.match(gate(83, variant(gravewatchDayText, named)) ?? "", /coins name one of themselves.*1\.88/);
-  assert.equal(gate(84, variant(gravewatchDayText, named)), null);
-  assert.equal(gate(83, variant(gravewatchDayText)), null, "without it, nothing new");
+  assert.match(gate(87, variant(gravewatchDayText, named)) ?? "", /coins name one of themselves.*1\.88/);
+  assert.equal(gate(88, variant(gravewatchDayText, named)), null);
+  assert.equal(gate(87, variant(gravewatchDayText)), null, "without it, nothing new");
 }
 
 // ── Install gate: 1.65 ──

@@ -935,14 +935,14 @@ try {
       restartRequired: false,
     });
     const gate = /bonus to hit read off their holder's sheet.*capabilityApi 1\.94/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(89) as any, withBonus) ?? "", gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(90) as any, withBonus), null);
-    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(89) as any, variant(emberText)) ?? "", gate);
+    assert.match(getCapabilityPackageInstallIssue(manifest(93) as any, withBonus) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(94) as any, withBonus), null);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(93) as any, variant(emberText)) ?? "", gate);
     // An item's use that rolls to hit reads it the same way, and asks the same.
     const onUse = variant(emberText, (doc) => {
       itemEntry(doc, "hand-axe").item.use = { toHit: { sheetBonus: { const: 2 } } };
     });
-    assert.match(getCapabilityPackageInstallIssue(manifest(89) as any, onUse) ?? "", gate, "an item's use");
+    assert.match(getCapabilityPackageInstallIssue(manifest(93) as any, onUse) ?? "", gate, "an item's use");
     const outfitter = itemCatalogOf(withBonus);
     const inFile = {
       ...withBonus,
@@ -955,11 +955,11 @@ try {
     const paths = ["ruleset.json", `catalogs/${outfitter.id}.json`];
     const files = new Map<string, unknown>([[`catalogs/${outfitter.id}.json`, { entries: outfitter.entries }]]);
     assert.match(
-      getCapabilityPackageInstallIssue(manifest(89, paths) as any, inFile, files) ?? "",
+      getCapabilityPackageInstallIssue(manifest(93, paths) as any, inFile, files) ?? "",
       gate,
       "a catalog file",
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(90, paths) as any, inFile, files), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(94, paths) as any, inFile, files), null);
   }
 
   // ── Damage the holder brings off their own sheet, in one hand (1.96: 5e's Dueling) ──
@@ -1040,8 +1040,8 @@ try {
       restartRequired: false,
     });
     const gate = /add damage off the sheet.*capabilityApi 1\.96/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(91) as any, withDamage) ?? "", gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(92) as any, withDamage), null);
+    assert.match(getCapabilityPackageInstallIssue(manifest(95) as any, withDamage) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(96) as any, withDamage), null);
 
     // ── Low damage dice thrown again, two-handed (1.97: 5e's Great Weapon Fighting) ──
     const greatSpear = dueling(spear, { rerollUpTo: { const: 2 } });
@@ -1122,8 +1122,8 @@ try {
     });
     parsedOrThrow(withReroll, "a weapon that rerolls");
     const rerollGate = /reroll low damage dice.*capabilityApi 1\.97/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(92) as any, withReroll) ?? "", rerollGate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(93) as any, withReroll), null);
+    assert.match(getCapabilityPackageInstallIssue(manifest(96) as any, withReroll) ?? "", rerollGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(97) as any, withReroll), null);
   }
 
   console.log(

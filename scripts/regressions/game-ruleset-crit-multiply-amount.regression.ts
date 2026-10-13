@@ -220,15 +220,15 @@ try {
         files as any,
       );
     const critical = variant((doc) => (doc.combat.attackRoll.criticalFrom = { const: 19 }));
-    assert.match(issue(75, critical) ?? "", /critical range.*1\.80/);
-    assert.equal(issue(76, critical), null);
-    assert.match(issue(76, multiplied) ?? "", /multiplies.*1\.81/);
-    assert.equal(issue(77, multiplied), null);
+    assert.match(issue(79, critical) ?? "", /critical range.*1\.80/);
+    assert.equal(issue(80, critical), null);
+    assert.match(issue(80, multiplied) ?? "", /multiplies.*1\.81/);
+    assert.equal(issue(81, multiplied), null);
     const inline = variant((doc) =>
       doc.catalogs.find((catalog: { holds?: string }) => !catalog.holds).entries.push(secondWind),
     );
-    assert.match(issue(77, inline) ?? "", /add a sheet value to their amount.*1\.82/);
-    assert.equal(issue(78, inline), null);
+    assert.match(issue(81, inline) ?? "", /add a sheet value to their amount.*1\.82/);
+    assert.equal(issue(82, inline), null);
     // In a catalog file, read at install.
     const filed = variant((doc) => {
       doc.catalogs[0].asset = "catalogs/one.json";
@@ -237,9 +237,9 @@ try {
     const entries = [...(JSON.parse(fiveEText).catalogs[0].entries ?? []), secondWind];
     const files = new Map<string, unknown>([["catalogs/one.json", { entries }]]);
     const paths = ["ruleset.json", "catalogs/one.json"];
-    assert.match(issue(77, filed, files, paths) ?? "", /1\.82/);
-    assert.equal(issue(78, filed, files, paths), null);
-    assert.equal(issue(74, variant()), null, "an older package still validates");
+    assert.match(issue(81, filed, files, paths) ?? "", /1\.82/);
+    assert.equal(issue(82, filed, files, paths), null);
+    assert.equal(issue(78, variant()), null, "an older package still validates");
     // 1.83: more than 60 derived values, up to 120.
     const many = (count: number) =>
       variant((doc) => {
@@ -251,15 +251,15 @@ try {
     assert.equal(parseRulesetDefinition(many(240)).ok, true, "240 since 1.87");
     assert.equal(parseRulesetDefinition(many(400)).ok, true, "400 since 1.110");
     assert.equal(parseRulesetDefinition(many(401)).ok, false, "401 do not");
-    assert.match(issue(78, many(61)) ?? "", /more than 60 derived values.*1\.83/);
-    assert.equal(issue(79, many(61)), null);
-    assert.equal(issue(78, many(60)), null, "60 is still 1.82's");
+    assert.match(issue(82, many(61)) ?? "", /more than 60 derived values.*1\.83/);
+    assert.equal(issue(83, many(61)), null);
+    assert.equal(issue(82, many(60)), null, "60 is still 1.82's");
     // 1.87: more than 120, up to 240.
-    assert.match(issue(82, many(121)) ?? "", /more than 120 derived values.*1\.87/);
-    assert.equal(issue(83, many(121)), null);
-    assert.equal(issue(82, many(120)), null, "120 is still 1.83's");
-    assert.match(issue(79, rolled({ column: "die" })) ?? "", /list column filled by a roll.*1\.84/);
-    assert.equal(issue(80, rolled({ column: "die" })), null);
+    assert.match(issue(86, many(121)) ?? "", /more than 120 derived values.*1\.87/);
+    assert.equal(issue(87, many(121)), null);
+    assert.equal(issue(86, many(120)), null, "120 is still 1.83's");
+    assert.match(issue(83, rolled({ column: "die" })) ?? "", /list column filled by a roll.*1\.84/);
+    assert.equal(issue(84, rolled({ column: "die" })), null);
   }
 
   console.log(

@@ -1569,30 +1569,30 @@ try {
   const issue = (minor: number, doc: Record<string, any>, files?: Map<string, unknown>, paths?: string[]) =>
     getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files as any);
   for (const doc of [shownFieldsDoc, totalFieldsDoc]) {
-    assert.match(issue(101, doc) ?? "", /1\.106/);
-    assert.equal(issue(102, doc), null);
+    assert.match(issue(105, doc) ?? "", /1\.106/);
+    assert.equal(issue(106, doc), null);
   }
-  assert.match(issue(104, biggerCatalogDoc) ?? "", /more than 20 entries.*1\.109/);
-  assert.equal(issue(105, biggerCatalogDoc), null);
+  assert.match(issue(108, biggerCatalogDoc) ?? "", /more than 20 entries.*1\.109/);
+  assert.equal(issue(109, biggerCatalogDoc), null);
   const maxOnly = variant((doc) => (doc.sheet.builder.steps[0].max = 21));
-  assert.match(issue(104, maxOnly) ?? "", /more than 20 entries.*1\.109/);
-  assert.equal(issue(105, maxOnly), null);
+  assert.match(issue(108, maxOnly) ?? "", /more than 20 entries.*1\.109/);
+  assert.equal(issue(109, maxOnly), null);
   // Read the raw min independently too, even when import would refuse min above max.
   const minOnly = variant((doc) => (doc.sheet.builder.steps[0].min = 21));
-  assert.match(issue(104, minOnly) ?? "", /more than 20 entries.*1\.109/);
-  assert.equal(issue(105, minOnly), null);
-  assert.match(issue(104, manualDoc) ?? "", /bounds manual scores.*1\.109/);
-  assert.equal(issue(105, manualDoc), null);
-  assert.match(issue(105, derivedDoc) ?? "", /more than 240 derived values.*1\.110/);
-  assert.equal(issue(106, derivedDoc), null);
+  assert.match(issue(108, minOnly) ?? "", /more than 20 entries.*1\.109/);
+  assert.equal(issue(109, minOnly), null);
+  assert.match(issue(108, manualDoc) ?? "", /bounds manual scores.*1\.109/);
+  assert.equal(issue(109, manualDoc), null);
+  assert.match(issue(109, derivedDoc) ?? "", /more than 240 derived values.*1\.110/);
+  assert.equal(issue(110, derivedDoc), null);
   const oldDerivedLimit = structuredClone(derivedDoc);
   oldDerivedLimit.sheet.derived.length = 240;
-  assert.equal(issue(105, oldDerivedLimit), null, "240 derived values need no new minor");
-  assert.match(issue(106, moreStepsDoc) ?? "", /more than 16 builder steps.*1\.111/);
-  assert.equal(issue(107, moreStepsDoc), null);
+  assert.equal(issue(109, oldDerivedLimit), null, "240 derived values need no new minor");
+  assert.match(issue(110, moreStepsDoc) ?? "", /more than 16 builder steps.*1\.111/);
+  assert.equal(issue(111, moreStepsDoc), null);
   const oldStepsLimit = structuredClone(moreStepsDoc);
   oldStepsLimit.sheet.builder.steps.length = 16;
-  assert.equal(issue(106, oldStepsLimit), null, "16 steps need no new minor");
+  assert.equal(issue(110, oldStepsLimit), null, "16 steps need no new minor");
   assert.equal(
     issue(
       104,
@@ -1606,14 +1606,14 @@ try {
     doc.catalogs = doc.catalogs.filter((c: { id: string }) => c.id !== "races" && c.id !== "classes");
     doc.sheet.builder.steps = [doc.sheet.builder.steps[3]];
   });
-  assert.match(issue(80, withBuilder) ?? "", /guided builder.*1\.85/);
-  assert.equal(issue(81, withBuilder), null);
+  assert.match(issue(84, withBuilder) ?? "", /guided builder.*1\.85/);
+  assert.equal(issue(85, withBuilder), null);
   const grantsOnly = variant((doc) => {
     delete doc.sheet.builder;
     doc.catalogs = doc.catalogs.filter((c: { id: string }) => c.id !== "classes");
   });
-  assert.match(issue(80, grantsOnly) ?? "", /1\.85/);
-  assert.equal(issue(81, grantsOnly), null);
+  assert.match(issue(84, grantsOnly) ?? "", /1\.85/);
+  assert.equal(issue(85, grantsOnly), null);
   const filed = variant((doc) => {
     delete doc.sheet.builder;
     doc.catalogs = doc.catalogs.filter((c: { id: string }) => c.id !== "classes");
@@ -1623,27 +1623,27 @@ try {
   });
   const files = new Map<string, unknown>([["catalogs/races.json", { entries: races.entries }]]);
   const paths = ["ruleset.json", "catalogs/races.json"];
-  assert.match(issue(80, filed, files, paths) ?? "", /1\.85/);
-  assert.equal(issue(81, filed, files, paths), null);
+  assert.match(issue(84, filed, files, paths) ?? "", /1\.85/);
+  assert.equal(issue(85, filed, files, paths), null);
   const defaulted = variant((doc) => (doc.sheet.builder.steps[4].default = "pointBuy"));
-  assert.match(issue(81, defaulted) ?? "", /starts on a method.*1\.86/);
-  assert.equal(issue(82, defaulted), null);
+  assert.match(issue(85, defaulted) ?? "", /starts on a method.*1\.86/);
+  assert.equal(issue(86, defaulted), null);
   const limited = variant((doc) => {
     doc.catalogs
       .find((c: { id: string }) => c.id === "races")
       .filters.push({ id: "tier", label: "Tier", type: "number" });
     doc.sheet.builder.steps[1].upTo = { filter: "tier", value: { field: "level" } };
   });
-  assert.match(issue(81, limited) ?? "", /1\.86/);
-  assert.equal(issue(82, limited), null);
+  assert.match(issue(85, limited) ?? "", /1\.86/);
+  assert.equal(issue(86, limited), null);
   const countedDoc = variant((doc) =>
     Object.assign(doc.sheet.builder.steps[0], { max: 3, countFrom: { field: "level" } }),
   );
-  assert.match(issue(84, countedDoc) ?? "", /count off the sheet.*1\.89/);
-  assert.equal(issue(85, countedDoc), null);
+  assert.match(issue(88, countedDoc) ?? "", /count off the sheet.*1\.89/);
+  assert.equal(issue(89, countedDoc), null);
   const choosingDoc = variant(tongues);
-  assert.match(issue(85, choosingDoc) ?? "", /catalog entries to choose.*1\.90/);
-  assert.equal(issue(86, choosingDoc), null);
+  assert.match(issue(89, choosingDoc) ?? "", /catalog entries to choose.*1\.90/);
+  assert.equal(issue(90, choosingDoc), null);
   const heldDoc = variant((doc) => {
     doc.catalogs
       .find((c: { id: string }) => c.id === "races")
@@ -1652,14 +1652,14 @@ try {
       choose: [{ what: "skills", count: 2, held: "proficient" }],
     };
   });
-  assert.match(issue(99, heldDoc) ?? "", /build on training already held.*1\.104/);
-  assert.equal(issue(100, heldDoc), null);
+  assert.match(issue(103, heldDoc) ?? "", /build on training already held.*1\.104/);
+  assert.equal(issue(104, heldDoc), null);
   const choiceStepOnly = variant((doc) => {
     tongues(doc);
     for (const catalog of doc.catalogs)
       for (const entry of catalog.entries ?? []) if (entry.grants) delete entry.grants.entries;
   });
-  assert.match(issue(85, choiceStepOnly) ?? "", /1\.90/, "a choices step alone is 1.90's");
+  assert.match(issue(89, choiceStepOnly) ?? "", /1\.90/, "a choices step alone is 1.90's");
   const twoUses = variant((doc) => {
     const raceCatalog = doc.catalogs.find((c: { id: string }) => c.id === "races");
     raceCatalog.feeds.push("counters");
@@ -1695,8 +1695,8 @@ try {
       );
   });
   assert.ok(parseRulesetDefinition(twoUses).ok, "two scaled rows under two names parse");
-  assert.match(issue(86, twoUses) ?? "", /scales a row beside others of its list.*1\.91/);
-  assert.equal(issue(87, twoUses), null);
+  assert.match(issue(90, twoUses) ?? "", /scales a row beside others of its list.*1\.91/);
+  assert.equal(issue(91, twoUses), null);
   const besideOne = variant((doc) => {
     const raceCatalog = doc.catalogs.find((c: { id: string }) => c.id === "races");
     raceCatalog.feeds.push("counters");
@@ -1719,8 +1719,8 @@ try {
         { list: "counters", values: { name: "Deep Song", max: 1, recharge: "long" } },
       );
   });
-  assert.match(issue(86, besideOne) ?? "", /1\.91/, "one scaled row beside an unscaled one is 1.91's too");
-  assert.equal(issue(87, besideOne), null);
+  assert.match(issue(90, besideOne) ?? "", /1\.91/, "one scaled row beside an unscaled one is 1.91's too");
+  assert.equal(issue(91, besideOne), null);
   const repeating = variant((doc) => {
     doc.catalogs
       .find((c: { id: string }) => c.id === "classes")
@@ -1728,11 +1728,11 @@ try {
       choose: [{ count: 2, amount: 1, repeat: true }],
     };
   });
-  assert.match(issue(87, repeating) ?? "", /score choice that repeats.*1\.92/);
-  assert.equal(issue(88, repeating), null);
+  assert.match(issue(91, repeating) ?? "", /score choice that repeats.*1\.92/);
+  assert.equal(issue(92, repeating), null);
   const exclusiveDoc = variant(grouped);
-  assert.match(issue(88, exclusiveDoc) ?? "", /exclusive of each other.*1\.93/);
-  assert.equal(issue(89, exclusiveDoc), null);
+  assert.match(issue(92, exclusiveDoc) ?? "", /exclusive of each other.*1\.93/);
+  assert.equal(issue(93, exclusiveDoc), null);
   const cappedDoc = variant((doc) => {
     doc.catalogs
       .find((c: { id: string }) => c.id === "classes")
@@ -1740,15 +1740,15 @@ try {
       choose: [{ count: 2, amount: 1, repeat: true, upTo: 20 }],
     };
   });
-  assert.match(issue(90, cappedDoc) ?? "", /score choice with a cap.*1\.95/);
-  assert.equal(issue(91, cappedDoc), null);
+  assert.match(issue(94, cappedDoc) ?? "", /score choice with a cap.*1\.95/);
+  assert.equal(issue(95, cappedDoc), null);
   const offeredDoc = variant((doc) => {
     doc.catalogs.find((c: { id: string }) => c.id === "classes").entries[0].offeredWhen = { const: 1 };
   });
-  assert.match(issue(93, offeredDoc) ?? "", /offered only while the sheet allows.*1\.98/);
-  assert.equal(issue(94, offeredDoc), null);
-  assert.equal(issue(81, variant()), null, "a 1.85 builder is still 1.85's");
-  assert.equal(issue(74, JSON.parse(fiveEText)), null, "an older package still validates");
+  assert.match(issue(97, offeredDoc) ?? "", /offered only while the sheet allows.*1\.98/);
+  assert.equal(issue(98, offeredDoc), null);
+  assert.equal(issue(85, variant()), null, "a 1.85 builder is still 1.85's");
+  assert.equal(issue(78, JSON.parse(fiveEText)), null, "an older package still validates");
 
   console.log("Ruleset builder: steps, grants, methods, take-backs, remaining choices and the 1.85 gate.");
 } finally {

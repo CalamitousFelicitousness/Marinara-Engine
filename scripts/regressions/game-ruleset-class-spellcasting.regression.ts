@@ -331,17 +331,17 @@ try {
     else for (const step of doc.sheet.builder.steps) delete step.stamp;
     const issue =
       "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.107 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(102) as any, doc), issue);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(103) as any, doc), null);
-    const missing = manifest(103) as any;
+    assert.equal(getCapabilityPackageInstallIssue(manifest(106) as any, doc), issue);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(107) as any, doc), null);
+    const missing = manifest(107) as any;
     delete missing.capabilityApi;
     assert.match(getCapabilityPackageInstallIssue(missing, doc) ?? "", /requires schemaVersion 2/);
     assert.match(
-      getCapabilityPackageInstallIssue({ ...manifest(103), schemaVersion: 1 } as any, doc) ?? "",
+      getCapabilityPackageInstallIssue({ ...manifest(107), schemaVersion: 1 } as any, doc) ?? "",
       /requires schemaVersion 2/,
     );
   }
-  assert.equal(getCapabilityPackageInstallIssue(manifest(102) as any, legacyDoc), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(106) as any, legacyDoc), null);
 
   // The emitted schema retains the bounds Zod implements as refinements.
   const schema = JSON.parse(read("docs/extending/ruleset.schema.json"));

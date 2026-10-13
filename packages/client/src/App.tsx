@@ -1066,10 +1066,14 @@ export function App() {
   // Apply custom font family via CSS variable
   useEffect(() => {
     const family = fontFamily ? stripFontFamilyQuotes(fontFamily) : "";
+    const rootStyle = document.documentElement.style;
     if (family) {
-      document.documentElement.style.setProperty("--font-user", toCssFontFamilyValue(family));
+      rootStyle.setProperty("--font-user", toCssFontFamilyValue(family));
+      // Prompt fields (mari-prompt-font) stay monospace until a font is picked, then use the full app stack.
+      rootStyle.setProperty("--font-prompt", "var(--font-y2k)");
     } else {
-      document.documentElement.style.removeProperty("--font-user");
+      rootStyle.removeProperty("--font-user");
+      rootStyle.removeProperty("--font-prompt");
     }
   }, [fontFamily]);
 

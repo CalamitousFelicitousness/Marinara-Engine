@@ -214,7 +214,7 @@ export function resolveGenerationParameters(args: GenerationParameterArgs): Reso
   const providerReasoningEffort =
     runtime.enabledParameters?.reasoningEffort === false
       ? undefined
-      : runtime.reasoningEffort === null
+      : runtime.reasoningEffort === null && !resolvedEffort
         ? isCodex
           ? undefined
           : "none"

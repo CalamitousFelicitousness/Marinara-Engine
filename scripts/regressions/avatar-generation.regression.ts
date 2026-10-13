@@ -30,6 +30,7 @@ const { openZipArchive } = await import("../../packages/server/src/lib/zip-reade
 const {
   AvatarGenerationError,
   cardTextForPrompt,
+  plainErrorText,
   drawAvatarImageEdit,
   renderAvatarPromptTemplate,
   withAvatarGenerationJob,
@@ -38,7 +39,9 @@ const { checkMeshRigLayout, deriveMeshRig, extractLayoutJson, scaleMeshRigLayout
   await import("../../packages/server/src/services/avatars/generation/mesh-rig-layout.js");
 const { buildMeshAvatarLayers, cutDrawnSprites, packMeshAvatar, spritesJson } =
   await import("../../packages/server/src/services/avatars/generation/mesh-layer-builder.js");
-const { requestMeshRigLayout } = await import("../../packages/server/src/services/avatars/generation/mesh-rig.js");
+const { generateMeshRig, requestMeshRigLayout } =
+  await import("../../packages/server/src/services/avatars/generation/mesh-rig.js");
+const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
 const { mergePngtuberVariants, pngtuberVariantFilePath } =
   await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
@@ -289,6 +292,9 @@ assert.equal(
 assert.equal(cardTextForPrompt("A\u0007\n\n  B\tC", 100), "A B C");
 assert.equal(cardTextForPrompt("x".repeat(50), 10), "xxxxxxxxxx");
 assert.equal(cardTextForPrompt(42, 10), "");
+assert.equal(plainErrorText(new Error("<html><body><h1>502 Bad Gateway</h1></body></html>"), "x"), "502 Bad Gateway");
+assert.ok(!plainErrorText(new Error("<scr<script>ipt>alert(1)</script>"), "x").includes("<"), "no markup survives");
+assert.equal(plainErrorText(new Error(""), "fallback"), "fallback");
 assert.equal(
   renderAvatarPromptTemplate("${characterName} ${secret} ${appearance}", "avatar-pngtuber-eyes-closed", {
     characterName: "Ann",
@@ -436,6 +442,15 @@ assert.equal(
   const garbage = await post("/mesh-rig/save", { owner, archive: Buffer.from("not a zip").toString("base64") });
   assert.equal(garbage.statusCode, 422, "a kept archive is checked by the 2D importer like an upload");
   assert.equal((await app.inject({ method: "GET", url: "/api/avatar-generation/mesh-rig" })).statusCode, 404);
+  // Until the 2D importer can read .mavatar files, a mesh avatar is refused before any model is asked.
+  const head = new Uint8Array(packMeshAvatar(new Map([["avatar.json", Buffer.from("{}")]])).subarray(0, 64));
+  if (!findAvatarImporter({ filename: "generated.mavatar", head }, "mesh-avatar")) {
+    assert.equal((await post("/mesh-rig", { owner, sourceLabel: "neutral" })).statusCode, 503);
+    await assert.rejects(
+      generateMeshRig({} as never, { owner, sourceLabel: "neutral" }),
+      (error: unknown) => error instanceof AvatarGenerationError && error.statusCode === 503,
+    );
+  }
   await app.close();
 
   let release!: () => void;

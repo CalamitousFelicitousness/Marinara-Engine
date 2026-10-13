@@ -21,7 +21,7 @@ import {
 } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { failureLevel } from "../lib/log-context.js";
-import { AvatarGenerationError } from "../services/avatars/generation/generation-context.js";
+import { AvatarGenerationError, plainErrorText } from "../services/avatars/generation/generation-context.js";
 import { generateMeshRig, saveMeshRig } from "../services/avatars/generation/mesh-rig.js";
 import {
   generatePngtuberVariants,
@@ -90,10 +90,7 @@ function sendFailure(reply: FastifyReply, error: unknown, what: string) {
     return reply.status(error.statusCode).send({ error: error.message });
   }
   logger[failureLevel(error)](error, "%s failed", what);
-  const message = String(error instanceof Error ? error.message : error)
-    .replace(/<[^>]*>/gu, "")
-    .slice(0, 300);
-  return reply.status(500).send({ error: message || `${what} failed.` });
+  return reply.status(500).send({ error: plainErrorText(error, `${what} failed.`) });
 }
 
 export async function avatarGenerationRoutes(app: FastifyInstance) {

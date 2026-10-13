@@ -36,6 +36,7 @@ import {
   compileAvatarImagePrompt,
   drawAvatarImageEdit,
   listAvatarSourceSprites,
+  plainErrorText,
   readAvatarAgentSettings,
   readAvatarOwnerInfo,
   readAvatarSourceSprite,
@@ -293,10 +294,7 @@ export async function generatePngtuberVariants(
           });
         } catch (error) {
           if (options.signal?.aborted || error instanceof AvatarGenerationError) throw error;
-          const message = String(error instanceof Error ? error.message : error)
-            .replace(/<[^>]*>/gu, "")
-            .slice(0, 300);
-          response.failed.push({ label, variant, error: message || "The picture could not be made." });
+          response.failed.push({ label, variant, error: plainErrorText(error, "The picture could not be made.") });
         }
       }
     }

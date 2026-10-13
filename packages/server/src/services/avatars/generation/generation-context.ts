@@ -50,6 +50,18 @@ export class AvatarGenerationError extends Error {
   }
 }
 
+/** A provider or library error as short plain text for the person who asked (an HTML error page
+ *  becomes its words, never markup). */
+export function plainErrorText(error: unknown, fallback: string): string {
+  const text = String(error instanceof Error ? error.message : error)
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/[<>]/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 300);
+  return text || fallback;
+}
+
 export function avatarGenerationDebug(debugMode: boolean | undefined): boolean {
   return debugMode === true || isDebugAgentsEnabled();
 }

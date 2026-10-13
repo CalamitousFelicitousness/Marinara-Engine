@@ -25,6 +25,7 @@ import { getSharp } from "../../image/sharp-runtime.js";
 import type { BaseLLMProvider, ChatMessage } from "../../llm/base-provider.js";
 import { createLLMProvider } from "../../llm/provider-registry.js";
 import { mavatarImporter } from "../formats/mavatar.js";
+import { findAvatarImporter } from "../formats/registry.js";
 import { saveExtractedAvatar } from "../storage.js";
 import {
   AvatarGenerationError,
@@ -256,12 +257,24 @@ async function importMeshArchive(owner: AvatarOwnerRef, bytes: Buffer) {
   }
 }
 
+/** The first bytes of a `.mavatar` this generator writes (a stored ZIP opening with avatar.json). */
+const MAVATAR_HEAD = new Uint8Array(packMeshAvatar(new Map([["avatar.json", Buffer.from("{}")]])).subarray(0, 64));
+
+/** A generated avatar is kept only through the 2D importer, so ask it before paying for any model call:
+ *  an Engine whose importer can't read `.mavatar` files yet refuses at once. */
+function assertMeshImporterReady() {
+  if (!findAvatarImporter({ filename: "generated.mavatar", head: MAVATAR_HEAD }, "mesh-avatar")) {
+    throw new AvatarGenerationError(503, "Mesh avatars can't be made in this version yet.");
+  }
+}
+
 /** Builds a mesh avatar from one sprite and returns it as a draft. */
 export async function generateMeshRig(
   db: DB,
   request: MeshRigGenerateRequest,
   options: AvatarGenerationOptions = {},
 ): Promise<MeshRigDraft> {
+  assertMeshImporterReady();
   return withAvatarGenerationJob(request.owner, "mesh-avatar", async () => {
     const debug = avatarGenerationDebug(request.debugMode);
     const warnings: string[] = [];

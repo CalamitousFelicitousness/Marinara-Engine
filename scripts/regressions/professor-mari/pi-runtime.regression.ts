@@ -34,8 +34,12 @@ const toolMessages = (messages: ChatMessage[]) => messages.filter((message) => m
 
 try {
   const db = await getDB();
-  const { ProfessorMariWorkspaceService, WORKSPACE_TOOL_DEFINITIONS, MAX_REPEATED_COMMAND_FAILURES } =
-    await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
+  const {
+    ProfessorMariWorkspaceService,
+    WORKSPACE_TOOL_DEFINITIONS,
+    MAX_REPEATED_COMMAND_FAILURES,
+    workspaceTextClaimsHeldChange,
+  } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
   const { assertClosedToolSet } = await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
   const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
   const { createAppSettingsStorage } =
@@ -359,6 +363,35 @@ try {
       requests[1]!.messages.filter((m) => m.role === "user").pop()?.content ?? "",
       /no mutating command succeeded/u,
     );
+  }
+
+  // A held-change claim on a run that held nothing is sent back once, then replaced by an honest line.
+  {
+    mode = "auto";
+    for (const text of [
+      "I have changes ready. Review them below and accept to apply them; nothing was applied yet.",
+      "Held for your review — the change card is ready.",
+      "The change is staged and waiting for your approval.",
+    ])
+      assert.equal(workspaceTextClaimsHeldChange(text), true, text);
+    for (const text of [
+      "The character card has a tag field you can edit.",
+      "I read the card and the lorebook; here is what they say.",
+      "Want me to make that change?",
+    ])
+      assert.equal(workspaceTextClaimsHeldChange(text), false, text);
+    const readCall = (id: string) => ({ id, name: "read", args: { path: "hello.txt" } });
+    const { chat, done } = await start("pi held claim", [
+      reply("", [readCall("held-r1")]),
+      reply("Held for your review — the change card is ready."),
+      reply("I read the file; no change was made."),
+    ]);
+    await done;
+    assert.equal(requests.length, 3, "exactly one repair request");
+    assert.match(requests[2]!.messages.filter((m) => m.role === "user").pop()?.content ?? "", /Nothing is held/u);
+    const stored = await lastAssistant(chat.id);
+    assert.equal(stored?.content, "I read the file; no change was made.");
+    assert.doesNotMatch(stored?.content ?? "", /Held for your review/u);
   }
 
   // (d) Abort stops the run immediately: no tool starts, no further request.

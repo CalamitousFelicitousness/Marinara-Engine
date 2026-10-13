@@ -2082,6 +2082,22 @@ export function visibleTextAsksApplyPermission(text: string): boolean {
   );
 }
 
+/**
+ * True when the text says a change is held, staged, ready on a card or waiting for the user's approval. The pi
+ * runtime checks it on a run that held nothing, where such a claim is false.
+ * ponytail: English phrasings only. Upgrade path: have the server state what is held and compare, not read words.
+ */
+export function workspaceTextClaimsHeldChange(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ");
+  return (
+    /\b(held|staged|queued)\b.{0,20}\bfor (your|the user'?s?) (review|approval|accept\w*)/.test(normalized) ||
+    /\bchange cards? (is|are) (ready|staged|waiting|held)\b/.test(normalized) ||
+    /\bchanges? (is|are)? ?(ready|staged|waiting|held)\b.{0,60}\b(review|accept|approv\w*)/.test(normalized) ||
+    /\b(awaiting|waiting for) your (approval|accept\w*|review)\b/.test(normalized) ||
+    /\bnothing was applied yet\b/.test(normalized)
+  );
+}
+
 // Exported for the #5748 regression: the lane pins which phrasings this loose
 // detector catches (same-frame deferral only - it must NOT arm the latch).
 export function visibleTextRequestsUserApproval(text: string): boolean {

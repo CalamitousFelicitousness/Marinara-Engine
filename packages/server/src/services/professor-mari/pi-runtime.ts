@@ -35,6 +35,7 @@ import {
   sanitizePlanSteps,
   sanitizeSuggestionChips,
   visibleTextAsksApplyPermission,
+  workspaceTextClaimsHeldChange,
   workspaceTextClaimsMutationCompletion,
   WORKSPACE_TOOL_DEFINITIONS,
   type PromptEventSink,
@@ -58,6 +59,7 @@ const PI_API = "marinara-chat";
 const UI_TOOLS = ["suggestions", "plan"] as const;
 const HELD_RESULT =
   "HELD for the user's approval; NOT applied. When the user accepts, repeat exactly this call with the same input.";
+const NOTHING_HELD = "I did not make or hold any change. Ask me again if you want it made.";
 const HELD_WITHOUT_WORDS = "I have changes ready. Review them below and accept to apply them; nothing was applied yet.";
 
 /** The run state prompt() persists on the saved message; the pi loop writes it, prompt() copies it back. */
@@ -172,6 +174,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   let providerError: unknown = null;
   let runAskedForApproval = false;
   let armedSpent = false;
+  let heldClaimRepaired = false;
   let toolRounds = 0;
   let round: Round | null = null;
   let session: AgentSession | null = null;
@@ -385,6 +388,21 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     if (decision.kind === "repair") return decision;
     if (decision.kind === "stop") {
       addNote(decision.content, "retry", "warning");
+      stopRequested = true;
+      return "done" as const;
+    }
+    // A final answer that says a change is held, when nothing was held, is false: one repair, then an honest line.
+    if (!hasWorkspaceCalls && !state.endedWithDeferral && workspaceTextClaimsHeldChange(current.text)) {
+      if (!heldClaimRepaired) {
+        heldClaimRepaired = true;
+        return {
+          kind: "repair" as const,
+          prompt:
+            "Nothing is held and no change card exists. Either make the change now with the tools, or say plainly that it was not made.",
+        };
+      }
+      state.assistantText = NOTHING_HELD;
+      emitRoundText(trace, NOTHING_HELD, onEvent);
       stopRequested = true;
       return "done" as const;
     }

@@ -7,7 +7,9 @@
  *     repacked so that mesh-avatar 0.1.1's own unpackAvatar and validateAvatarFiles accept it.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  PNGTUBER_PLUS_DEFAULT_SAVE,
   meshAvatarFiles,
   paintPng,
   plusSave,
@@ -258,6 +260,23 @@ await refused(
   /more than 512 layers/u,
   "too many sprites",
 );
+
+// PNGTuber Plus's own default avatar (a real save): one costume, flattened with its talk and blink layers.
+const realSave = new Uint8Array(readFileSync(PNGTUBER_PLUS_DEFAULT_SAVE));
+const real = await importFile(pngtuberImporter, "defaultAvatar.save", realSave);
+assert.deepEqual(Object.keys(real.data.layers), ["costume_1"]);
+assert.deepEqual(real.warnings, [], "nothing in PNGTuber Plus's own save is skipped");
+assert.deepEqual(real.data.expressionMap.neutral, { target: "costume_1", source: "preset", confidence: 1 });
+const realPictures = new Map(real.files.map((file) => [file.path, Buffer.from(file.bytes)]));
+const realSet = real.data.layers.costume_1!;
+const realVariants = [realSet.base, realSet.mouthOpen, realSet.eyesClosed, realSet.eyesClosedMouthOpen].map((ref) =>
+  realPictures.get((ref as { path: string }).path)!,
+);
+assert.equal(new Set(realVariants.map((png) => png.toString("base64"))).size, 4, "four different pictures");
+for (const png of realVariants) {
+  const size = await sharp(png).metadata();
+  assert.deepEqual([size.width, size.height], [385, 440], "every variant shares the avatar's bounding box");
+}
 
 // ── mesh-avatar ──
 

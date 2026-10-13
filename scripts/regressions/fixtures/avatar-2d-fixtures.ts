@@ -21,6 +21,11 @@ export async function paintPng(width: number, height: number, paint: Paint): Pro
     .toBuffer();
 }
 
+/** PNGTuber Plus's own default avatar, `autoload/defaultAvatar.save` from
+ *  https://github.com/kaiakairos/PNGTuber-Plus at ece4ffd123e19d7b187d13253208cdcfbd6713a1 (The Unlicense,
+ *  public domain; sha256 4a57a933…f0d9ee). A real save as PNGTuber Plus writes it. */
+export const PNGTUBER_PLUS_DEFAULT_SAVE = new URL("./pngtuber-plus-default-avatar.save", import.meta.url);
+
 export const solid =
   (r: number, g: number, b: number, a = 255): Paint =>
   () => [r, g, b, a];

@@ -3655,6 +3655,17 @@ export class ProfessorMariWorkspaceService {
         }
       }
 
+      // Provisional live words for a round (classic below; pi filters its own and calls `onEvent` itself).
+      let drafting = false;
+      const emitDraft = (delta: string) => {
+        drafting = true;
+        args.onEvent({ type: "draft", data: delta });
+      };
+      const endDraft = () => {
+        if (drafting) args.onEvent({ type: "draft", data: null });
+        drafting = false;
+      };
+
       if (usePi && !acceptedCalls) {
         const piState = {
           assistantText,
@@ -3683,7 +3694,7 @@ export class ProfessorMariWorkspaceService {
               },
               settle: settleUnderstood,
             },
-            complete: async (piMessages, tools) => {
+            complete: async (piMessages, tools, onText) => {
               debugLog?.("[debug/professor-mari] pi tools: %s", tools.map((tool) => tool.function.name).join(", "));
               let result: ChatCompletionResult;
               try {
@@ -3691,7 +3702,12 @@ export class ProfessorMariWorkspaceService {
                   provider,
                   piMessages,
                   // A connection without native tool calls gets none: pi writes them into the prompt (textual mode).
-                  tools.length > 0 ? { ...baseOptions, tools, toolChoice: "auto" } : baseOptions,
+                  // Plain text streams raw: pi's own reply has no JSON frame to extract `say` from.
+                  {
+                    ...baseOptions,
+                    ...(tools.length > 0 ? { tools, toolChoice: "auto" as const } : {}),
+                    onToken: onText,
+                  },
                   undefined,
                   debugLog,
                 );
@@ -3735,16 +3751,21 @@ export class ProfessorMariWorkspaceService {
         if (controller.signal.aborted) throw new Error("aborted");
         let result: ChatCompletionResult;
         try {
-          // ponytail: no live text for workspace rounds - the frame's \`say\` is parsed and dropped
-          // here, and only reaches the client after the round is parsed and audited (a protocol repair
-          // or a failed claim audit discards it, so streaming it raw could show words she then takes
-          // back). While a round runs the user sees her streamed thinking, the ticking timer and the
-          // phrase line, and each step row lands the moment it ends. Upgrade path: forward these deltas
-          // as a provisional "draft" event the live headline shows, cleared when the parsed text lands.
-          result = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {}, debugLog);
+          // The frame's `say` streams as a provisional draft only: the audited text still lands as tokens
+          // after the round is parsed (a protocol repair or a failed claim audit can take the words back).
+          // A chips-only round drops its words, so it shows none.
+          result = await this.chatCompleteWorkspace(
+            provider,
+            messages,
+            baseOptions,
+            chipRepairPending ? () => {} : emitDraft,
+            debugLog,
+          );
         } catch (error) {
           // No command was returned or executed: reuse the bounded protocol repair loop below.
           result = recoverMalformedGeminiCall(error, controller.signal);
+        } finally {
+          endDraft();
         }
         latestUsage = result.usage;
         latestFinishReason = result.finishReason ?? null;
@@ -4061,8 +4082,13 @@ export class ProfessorMariWorkspaceService {
             content:
               "You reached the workspace command round limit. Do not issue more commands. Summarize what you learned or what remains blocked.",
           });
-          // ponytail: not streamed either; see the round call above.
-          const finalResult = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {}, debugLog);
+          const finalResult = await this.chatCompleteWorkspace(
+            provider,
+            messages,
+            baseOptions,
+            emitDraft,
+            debugLog,
+          ).finally(endDraft);
           latestUsage = finalResult.usage;
           latestFinishReason = finalResult.finishReason ?? null;
           const finalUsage = mapUsage(finalResult.usage);

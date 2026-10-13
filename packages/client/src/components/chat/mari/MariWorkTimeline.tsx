@@ -38,6 +38,7 @@ import {
 import { fieldLabel } from "../../../lib/mari-edit-diff";
 import { resourceResultType } from "../../../lib/command-icons";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { useChatStore } from "../../../stores/chat.store";
 import {
   WorkspaceTimelineItem,
   WorkspaceToolCall,
@@ -152,6 +153,23 @@ function MariLiveHeadline({ text, subject }: { text: string; subject?: string | 
         </motion.span>
       </AnimatePresence>
     </span>
+  );
+}
+
+/** Longest tail of her draft kept in the DOM; the line shows its last three lines, older words give way. */
+const MARI_DRAFT_TAIL = 280;
+
+/**
+ * Her words while she writes them: provisional, so muted and hidden from screen readers (the real text is
+ * announced once it lands). Subscribes to the store itself, so a streaming draft re-renders only this line.
+ */
+function MariDraftLine({ chatId }: { chatId: string }) {
+  const draft = useChatStore((state) => state.mariDraftByChatId.get(chatId) ?? "").trim();
+  if (!draft) return null;
+  return (
+    <p className="mari-work-timeline__draft" aria-hidden="true">
+      {draft.slice(-MARI_DRAFT_TAIL)}
+    </p>
   );
 }
 
@@ -303,9 +321,12 @@ export function MariWorkTimeline({
   actionResults = [],
   onOpenResource,
   held = false,
+  draftChatId = null,
   children,
 }: {
   items: WorkspaceTimelineItem[];
+  /** The chat whose provisional words show above the live line while the run is active. */
+  draftChatId?: string | null;
   character?: CharacterPreviewModel | null;
   lorebook?: LorebookPreviewModel | null;
   active?: boolean;
@@ -681,6 +702,7 @@ export function MariWorkTimeline({
           </MariAnswer>
         ) : null}
 
+        {active && draftChatId ? <MariDraftLine chatId={draftChatId} /> : null}
         {active ? (
           // The live line is always the last line, and working Mari leads it on the left: new work lands above
           // it and pushes the older lines up, so she is never left behind on an old step or clipped.

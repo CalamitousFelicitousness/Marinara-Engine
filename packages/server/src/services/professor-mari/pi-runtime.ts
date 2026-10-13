@@ -97,7 +97,12 @@ export type PiRunInput = {
   commandResults: WorkspaceCommandResult[];
   onEvent: PromptEventSink;
   /** One provider call through Marinara's provider layer. */
-  complete: (messages: ChatMessage[], tools: LLMToolDefinition[]) => Promise<ChatCompletionResult>;
+  complete: (
+    messages: ChatMessage[],
+    tools: LLMToolDefinition[],
+    /** Streamed reply text, when the provider streams; it feeds the provisional draft only. */
+    onText?: (delta: string) => void,
+  ) => Promise<ChatCompletionResult>;
   setRoundFlags: (flags: { manualSilentMutationBlocked: boolean; askLatchSilentMutationBlocked: boolean }) => void;
   /** Tool rounds allowed in one run; defaults to MAX_PI_TOOL_ROUNDS. Injected only by the regression. */
   maxToolRounds?: number;
@@ -182,6 +187,16 @@ ${docs}
 </text_tool_calls>`;
 }
 
+// The live draft stops at the first textual tool-call marker (<tool_call>, <|tool_call|>, DeepSeek's <｜DSML｜);
+// a trailing "<" still too short to tell is held back until more text arrives.
+const DRAFT_CALL_MARKER_RE = /<(?:tool_call|[|｜])/;
+export function draftVisibleText(text: string): string {
+  const marker = text.search(DRAFT_CALL_MARKER_RE);
+  if (marker >= 0) return text.slice(0, marker);
+  const open = text.lastIndexOf("<");
+  return open >= 0 && text.length - open < "<tool_call".length ? text.slice(0, open) : text;
+}
+
 function parseArguments(raw: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(raw || "{}");
@@ -238,6 +253,27 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     : MAX_PROTOCOL_REPAIR_ROUNDS;
   let round: Round | null = null;
   let session: AgentSession | null = null;
+
+  /**
+   * One provider call whose words stream to the client as a provisional draft (never saved, never the answer;
+   * the audited text still lands as tokens). Internal names are not scrubbed here; the final text is.
+   */
+  const completeWithDraft = async (messages: ChatMessage[], tools: LLMToolDefinition[], draft: boolean) => {
+    let raw = "";
+    let shown = 0;
+    const onText = (delta: string) => {
+      raw += delta;
+      const visible = draftVisibleText(raw);
+      if (visible.length <= shown) return;
+      onEvent({ type: "draft", data: visible.slice(shown) });
+      shown = visible.length;
+    };
+    try {
+      return await input.complete(messages, tools, draft ? onText : undefined);
+    } finally {
+      if (shown > 0) onEvent({ type: "draft", data: null });
+    }
+  };
   const maxToolRounds = input.maxToolRounds ?? MAX_PI_TOOL_ROUNDS;
   // Replay metadata of each tool turn, by its first tool call id (the id is stable across the transcript).
   const metadataByCallId = new Map<string, Record<string, unknown>>();
@@ -353,13 +389,20 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
           },
         }));
         // A textual connection gets no tools in the request: the calls are in the prompt and in the reply text.
-        const result = await input.complete(toChatMessages(context), textualTools ? [] : toolDefs);
-        // A textual reply cut short (a stream that failed, or a tag left open) may hold half a call: run none.
+        // Only the agent's own turns draft; a chips-only round drops its words, so it shows none.
+        const result = await completeWithDraft(
+          toChatMessages(context),
+          textualTools ? [] : toolDefs,
+          isAgentTurn && chipRepair !== "pending",
+        );
+        // A reply cut short (a stream that failed, or a textual tag left open) may hold half a call: run none.
+        // Rounds stream for the live draft, so a failed stream can leave partial words on any connection; an
+        // error with no words at all (the Gemini repair) stays an empty answer and gets its retry.
         const truncated =
           isLengthFinishReason(result.finishReason) ||
+          (result.finishReason === "error" && (textualTools || Boolean(result.content?.trim()))) ||
           (textualTools &&
-            (result.finishReason === "error" ||
-              (result.content ?? "").lastIndexOf("<tool_call>") > (result.content ?? "").lastIndexOf("</tool_call>")));
+            (result.content ?? "").lastIndexOf("<tool_call>") > (result.content ?? "").lastIndexOf("</tool_call>"));
         const reply = textualTools ? textualReply(result.content) : null;
         const parsedCalls = reply?.calls ?? result.toolCalls;
         const shown = scrubInternalNames(reply ? reply.text : (result.content ?? ""));
@@ -624,7 +667,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         contextKind: "history",
       },
     ];
-    const result = await input.complete(messages, []);
+    const result = await completeWithDraft(messages, [], true);
     signal.throwIfAborted();
     // Calls in this turn never run; they only decide which line the user reads.
     const reply = textualTools ? textualReply(result.content) : null;

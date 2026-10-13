@@ -18,7 +18,8 @@ const previousStorageDir = process.env.FILE_STORAGE_DIR;
 process.env.FILE_STORAGE_DIR = storageDir;
 const { getDB, closeDB } = await import("../../../packages/server/src/db/connection.js");
 
-type Scripted = ChatCompletionResult | ((options: ChatOptions) => Promise<ChatCompletionResult>);
+type Scripted =
+  ChatCompletionResult | ((options: ChatOptions, onToken?: (chunk: string) => void) => Promise<ChatCompletionResult>);
 type Call = { id: string; name: string; args: Record<string, unknown> };
 const reply = (content: string, toolCalls: Call[] = [], providerMetadata?: Record<string, unknown>) =>
   ({
@@ -41,7 +42,8 @@ try {
     MAX_REPEATED_COMMAND_FAILURES,
     workspaceTextClaimsHeldChange,
   } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
-  const { assertClosedToolSet } = await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
+  const { assertClosedToolSet, draftVisibleText } =
+    await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
   const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
   const { createAppSettingsStorage } =
     await import("../../../packages/server/src/services/storage/app-settings.storage.js");
@@ -113,11 +115,16 @@ try {
           },
         });
       },
-      chatCompleteWorkspace: async (_provider: unknown, messages: ChatMessage[], options: ChatOptions) => {
+      chatCompleteWorkspace: async (
+        _provider: unknown,
+        messages: ChatMessage[],
+        options: ChatOptions,
+        onToken?: (chunk: string) => void,
+      ) => {
         requests.push({ messages: structuredClone(messages), options });
         const next = script.shift();
         if (!next) throw new Error("The scripted provider ran out of replies.");
-        return typeof next === "function" ? next(options) : next;
+        return typeof next === "function" ? next(options, onToken) : next;
       },
     });
     return made;
@@ -917,6 +924,57 @@ try {
       assert.equal(existsSync(join(workspaceDir, file)), false);
     assert.ok(JSON.stringify(open.events).includes("Continue the task."));
     provider = "custom";
+  }
+
+  // Live draft: streamed words reach the client as provisional "draft" events, stop at a textual call marker
+  // (even one split across deltas), end with a null per round, and are never saved or sent as the answer.
+  {
+    mode = "auto";
+    provider = "claude_subscription";
+    const call = `<tool_call>${JSON.stringify({ name: "read", arguments: { path: "hello.txt" } })}</tool_call>`;
+    const streamed =
+      (deltas: string[], content: string): Scripted =>
+      async (options) => {
+        for (const delta of deltas) options.onToken?.(delta);
+        return reply(content);
+      };
+    const { chat, events, done } = await start("pi draft", [
+      streamed(["Reading ", "it now. <to", "ol_call>", call.slice(11)], `Reading it now. ${call}`),
+      streamed(["Provisional ", "words."], "The file says hi."),
+    ]);
+    await done;
+    provider = "custom";
+    const drafts = events.filter((event) => event.type === "draft").map((event) => event.data);
+    assert.deepEqual(drafts, ["Reading ", "it now. ", null, "Provisional ", "words.", null]);
+    const tokens = events
+      .filter((event) => event.type === "token")
+      .map((event) => event.data)
+      .join("");
+    assert.doesNotMatch(tokens, /Provisional/u, "a draft is never the answer");
+    const saved = await lastAssistant(chat.id);
+    assert.equal(saved?.content, "The file says hi.");
+    assert.doesNotMatch(JSON.stringify(saved), /Provisional|tool_call/u, "no draft text is persisted");
+    assert.equal(draftVisibleText("Hi <｜DSML｜tool_calls>"), "Hi ");
+    assert.equal(draftVisibleText("a < b and then some more"), "a < b and then some more");
+
+    // Classic drafts its frame's `say` through the same event and ends each round with a null.
+    const classic = await start(
+      "classic draft",
+      [
+        async (_options, onToken) => {
+          onToken?.("Classic ");
+          onToken?.("draft.");
+          return reply(JSON.stringify({ say: "Classic answer.", commands: [], stop: true }));
+        },
+      ],
+      "classic",
+    );
+    await classic.done;
+    assert.deepEqual(
+      classic.events.filter((event) => event.type === "draft").map((event) => event.data),
+      ["Classic ", "draft.", null],
+    );
+    assert.equal((await lastAssistant(classic.chat.id))?.content, "Classic answer.");
   }
 
   // The real prompt builder: pi prompt instead of the JSON protocol, and the stored chat as plain text.

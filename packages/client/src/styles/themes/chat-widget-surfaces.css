@@ -679,3 +679,18 @@
   background: transparent;
   border-color: transparent;
 }
+
+/* History pagers sit on the open chat, where the faint chrome focus ring is hard to see. Ring
+   them in the full accent, or in the style's control colour while Apply preset colors is on. */
+.mari-chat-history-pager {
+  --marinara-chat-chrome-focus-ring: var(--marinara-chat-chrome-accent);
+}
+:root[data-chat-widget-apply-colors="true"] .mari-chat-history-pager {
+  --marinara-chat-chrome-focus-ring: var(
+    --mari-chat-control-color,
+    var(
+      --mari-window-control-color,
+      var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-accent)))
+    )
+  );
+}

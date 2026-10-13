@@ -317,6 +317,7 @@ export async function adminRoutes(app: FastifyInstance) {
       filesDeleted.gameSceneVideos = clearDirectory(join(DATA_DIR, "game-scene-videos"));
       filesDeleted.avatars = clearDirectory(join(DATA_DIR, "avatars"));
       filesDeleted.sprites = clearDirectory(join(DATA_DIR, "sprites"));
+      filesDeleted.avatarModels = clearDirectory(join(DATA_DIR, "avatar-models"));
       filesDeleted.gallery = clearDirectory(join(DATA_DIR, "gallery"));
       filesDeleted.fonts = clearDirectory(join(DATA_DIR, "fonts"));
       filesDeleted.knowledgeSources = clearDirectory(join(DATA_DIR, "knowledge-sources"));

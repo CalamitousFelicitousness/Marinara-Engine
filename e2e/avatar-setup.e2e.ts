@@ -4,6 +4,7 @@ import { seedUIState } from "./ui-state-fixture.js";
 
 // #7537 (base lane): the 2D Avatars agent page sets up a PNGTuber avatar from a character's sprites, the
 // faces can be changed by hand, and a Roleplay chat with the agent on mounts the lazy avatar stage for it.
+// On phones the chat stays mounted under the agent's page, and its avatars stop drawing while covered.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -97,8 +98,8 @@ test("2D Avatars builds a PNGTuber from sprites and a chat with the agent on sho
   ).toBeTruthy();
 
   try {
-    // ── The setup on the agent's page ──
-    await preparePage(page, character.id, { agentDetailId: "2d-avatars" });
+    // ── The setup on the agent's page (on phones it covers the chat, which stays mounted under it) ──
+    await preparePage(page, character.id, { agentDetailId: "2d-avatars" }, chat.id);
     await page.goto("/");
     const setup = page.locator('[data-avatar-setup="2d-avatars"]');
     // The first load also compiles the lazy setup chunk on the dev server.
@@ -113,8 +114,18 @@ test("2D Avatars builds a PNGTuber from sprites and a chat with the agent on sho
     await expect(setup.getByLabel("Angry", { exact: true })).toHaveValue("");
     await setup.getByLabel("Angry", { exact: true }).selectOption("happy");
     await expect(setup.getByText("Your choice")).toBeVisible();
+    await expect(setup.getByLabel("Angry", { exact: true })).toHaveAccessibleDescription("Your choice");
+    await expect(setup.getByLabel("Sad", { exact: true })).toHaveAccessibleDescription("Found");
     await expect(setup.getByRole("img", { name: "Preview" })).toBeVisible();
     await page.screenshot({ path: info.outputPath("avatar-setup.png"), animations: "disabled", fullPage: true });
+    if (info.project.name.startsWith("mobile")) {
+      // Only the preview draws: the covered chat's avatars stop.
+      await expect(page.locator(`[data-avatar-stage]:has([data-avatar-owner="${character.id}"])`)).toHaveAttribute(
+        "data-avatar-paused",
+        "true",
+        { timeout: FIRST_LOAD_TIMEOUT_MS },
+      );
+    }
 
     const saved = (await (await request.get(`/api/avatar-models/character/${character.id}`)).json()) as {
       activeKind: string;
@@ -131,6 +142,8 @@ test("2D Avatars builds a PNGTuber from sprites and a chat with the agent on sho
     const avatar = chatPage.locator(`[data-avatar-stage] [data-avatar-owner="${character.id}"]`);
     await expect(avatar).toHaveAttribute("data-avatar-kind", "pngtuber", { timeout: FIRST_LOAD_TIMEOUT_MS });
     await expect(avatar.getByRole("img", { name: "Avatar fixture's avatar" })).toBeVisible();
+    await chatPage.bringToFront();
+    await expect(chatPage.locator("[data-avatar-stage]")).not.toHaveAttribute("data-avatar-paused", "true");
     await chatPage.close();
 
     // ── Removing the character removes its avatar ──

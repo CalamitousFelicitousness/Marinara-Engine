@@ -4,7 +4,7 @@
 // Mounted lazily by the chat surfaces. Picks each participant's kind (AvatarConfig.activeKind, falling
 // back by AVATAR_KIND_AGENT to a kind whose agent is on), loads renderers with loadAvatarRenderer(),
 // creates one director, and runs the single frame loop within AVATAR_RENDER_BUDGET (visible count, DPR
-// cap, fps, pause when hidden, offscreen or effects-paused, reduced motion). It never hides the
+// cap, fps, pause when hidden, offscreen, covered or effects-paused, reduced motion). It never hides the
 // full-body sprite: the user turns that off by hand. Avatars sit where the sprites would and move with
 // the sprites' Arrange mode (placement key `<ownerId>:avatar`).
 import {
@@ -51,7 +51,7 @@ import {
   selectStageAvatars,
   type StageAvatar,
 } from "./avatar-stage-logic";
-import { useAvatarEffectsPaused, useOnScreen } from "./use-avatar-pause";
+import { useAvatarEffectsPaused, useChatCovered, useOnScreen } from "./use-avatar-pause";
 import { useAvatarRenderer } from "./use-avatar-renderer";
 
 /** Where avatars stand, matching the chat's sprite layout. All optional: Game passes only side and scale. */
@@ -140,6 +140,7 @@ export function AvatarStage({
   }, [director, participants]);
 
   const onScreen = useOnScreen(stageRef, shown.length > 0);
+  const covered = useChatCovered(stageRef, shown.length > 0);
 
   // Mounted renderers, keyed by owner id. The loop reads this map; slots add and remove themselves.
   const slotsRef = useRef(new Map<string, StageSlot>());
@@ -150,7 +151,7 @@ export function AvatarStage({
     setSlotsVersion((version) => version + 1);
   }, []);
 
-  const paused = effectsPaused || !onScreen;
+  const paused = effectsPaused || !onScreen || covered;
   useEffect(() => {
     const slots = slotsRef.current;
     for (const slot of slots.values()) slot.renderer.setPaused(paused || !director);
@@ -186,6 +187,7 @@ export function AvatarStage({
     <div
       ref={stageRef}
       data-avatar-stage
+      data-avatar-paused={paused ? "true" : undefined}
       className={`pointer-events-none absolute inset-0 overflow-hidden ${editing ? "z-[35]" : "z-[5]"}`}
     >
       {shown.map((avatar, position) => {

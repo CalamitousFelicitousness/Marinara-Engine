@@ -4,10 +4,12 @@
  *   - imports dispatch to the kind's importer, refuse with the importer's plain message (the stubs say
  *     "can't be imported yet"), and add no size limit below the global upload cap;
  *   - stored files are served only from the owner's folder, with a content type their bytes prove;
- *   - removing a kind or deleting the character or persona removes its files; backups cover the folder.
+ *   - a refused save replaces no stored file, and a file lost since it was saved blocks no later change;
+ *   - removing a kind or deleting (or expunging) the character or persona removes its files, even when the
+ *     delete lands during an import; backups cover the folder.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,11 +24,13 @@ const requireServer = createRequire(new URL("../../packages/server/package.json"
 const Fastify = requireServer("fastify") as typeof import("fastify").default;
 const multipart = requireServer("@fastify/multipart") as typeof import("@fastify/multipart").default;
 const sharp = requireServer("sharp") as typeof import("sharp").default;
-const { characterDataSchema, createAvatarConfig } = await import("../../packages/shared/src/index.js");
+const { PROFESSOR_MARI_ID, characterDataSchema, createAvatarConfig } =
+  await import("../../packages/shared/src/index.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { avatarModelsRoutes } = await import("../../packages/server/src/routes/avatar-models.routes.js");
 const { charactersRoutes } = await import("../../packages/server/src/routes/characters.routes.js");
+const { adminRoutes } = await import("../../packages/server/src/routes/admin.routes.js");
 const { vrmImporter } = await import("../../packages/server/src/services/avatars/formats/vrm.js");
 const storage = await import("../../packages/server/src/services/avatars/storage.js");
 
@@ -37,6 +41,7 @@ app.decorate("db", db);
 await app.register(multipart, { limits: { fileSize: 256 * 1024 * 1024 } });
 await app.register(avatarModelsRoutes, { prefix: "/api/avatar-models" });
 await app.register(charactersRoutes, { prefix: "/api/characters" });
+await app.register(adminRoutes, { prefix: "/api/admin" });
 await app.ready();
 
 const png = await sharp({ create: { width: 4, height: 4, channels: 4, background: "#c33" } })
@@ -249,6 +254,32 @@ try {
     assert.equal(readFileSync(join(ownerDir, "vrm", "imported.vrm")).length, big.length, "the whole file is stored");
     assert.equal(existsSync(join(ownerDir, "vrm", "model.vrm")), false, "files the new data no longer names go");
     assert.equal(existsSync(join(ownerDir, "vrm", "fake.vrm")), false);
+
+    // A character deleted while its import is still being read leaves no avatar folder behind.
+    const doomed = await characters.create(characterDataSchema.parse({ name: "Doomed" }));
+    assert(doomed);
+    let entered!: () => void;
+    let release!: () => void;
+    const validating = new Promise<void>((resolve) => (entered = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const working = vrmImporter.validate;
+    Object.assign(vrmImporter, {
+      validate: async (input: Parameters<typeof working>[0]) => {
+        entered();
+        await gate;
+        return working(input);
+      },
+    });
+    const racing = app.inject({
+      method: "POST",
+      url: `/api/avatar-models/character/${doomed.id}/import`,
+      ...multipartBody({}, { name: "model.vrm", bytes: glb() }),
+    });
+    await validating;
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/characters/${doomed.id}` })).statusCode, 204);
+    release();
+    assert.equal((await racing).statusCode, 404, "the import reports the character is gone");
+    assert.equal(existsSync(join(dir, "avatar-models", "character", doomed.id)), false, "and stores nothing");
   } finally {
     Object.assign(vrmImporter, stub);
   }
@@ -285,6 +316,59 @@ try {
   assert.equal(existsSync(ownerDir), false, "the owner's folder is gone with its last kind");
   assert.equal((await app.inject({ method: "DELETE", url: `${base}/kinds/live2d` })).statusCode, 400);
 
+  // ── A refused save keeps the stored files; a file lost since it was saved blocks nothing ──
+  const vrmData = { file: "vrm/model.vrm", specVersion: "1.0", expressionMap: {}, idleAnimation: null } as never;
+  await storage.saveExtractedAvatar(owner, {
+    kind: "pngtuber",
+    files: [{ path: "pngtuber/neutral.png", bytes: png }],
+    data: pngtuberData("pngtuber/neutral.png") as never,
+    detected: {},
+    warnings: [],
+  });
+  const larger = await sharp({ create: { width: 8, height: 8, channels: 4, background: "#3c3" } })
+    .png()
+    .toBuffer();
+  const tooManyLayers = Object.fromEntries(
+    Array.from({ length: 65 }, (_, index) => [`l${index}`, { base: { source: "file", path: "pngtuber/neutral.png" } }]),
+  );
+  await assert.rejects(
+    storage.saveExtractedAvatar(owner, {
+      kind: "pngtuber",
+      files: [{ path: "pngtuber/neutral.png", bytes: larger }],
+      data: { ...pngtuberData("pngtuber/neutral.png"), layers: tooManyLayers } as never,
+      detected: {},
+      warnings: [],
+    }),
+    /at most 64 layer sets/u,
+  );
+  assert.deepEqual(readFileSync(join(ownerDir, "pngtuber", "neutral.png")), png, "a refused save replaces no file");
+  assert.deepEqual(readdirSync(join(ownerDir, "pngtuber")), ["neutral.png"], "and leaves no temporary file");
+  await storage.saveExtractedAvatar(owner, {
+    kind: "vrm",
+    files: [{ path: "vrm/model.vrm", bytes: glb() }],
+    data: vrmData,
+    detected: {},
+    warnings: [],
+  });
+  rmSync(join(ownerDir, "pngtuber", "neutral.png"));
+  const offWithLostFile = await app.inject({ method: "PUT", url: base, payload: { enabled: false } });
+  assert.equal(offWithLostFile.statusCode, 200, offWithLostFile.payload);
+  await storage.saveExtractedAvatar(owner, {
+    kind: "vrm",
+    files: [{ path: "vrm/other.vrm", bytes: glb() }],
+    data: { file: "vrm/other.vrm", specVersion: "1.0", expressionMap: {}, idleAnimation: null } as never,
+    detected: {},
+    warnings: [],
+  });
+  assert.equal(existsSync(join(ownerDir, "vrm", "other.vrm")), true, "another kind still saves");
+  const removedVrm = await app.inject({ method: "DELETE", url: `${base}/kinds/vrm` });
+  assert.equal(removedVrm.statusCode, 200, removedVrm.payload);
+  assert.deepEqual(Object.keys(removedVrm.json().kinds), ["pngtuber"]);
+  assert.equal(existsSync(join(ownerDir, "vrm")), false);
+  const removedBroken = await app.inject({ method: "DELETE", url: `${base}/kinds/pngtuber` });
+  assert.equal(removedBroken.statusCode, 200, "the kind with the lost file can be removed");
+  assert.equal(existsSync(ownerDir), false);
+
   // ── Deleting the character or persona removes its avatar ──
   await storage.saveExtractedAvatar(owner, {
     kind: "vrm",
@@ -300,6 +384,30 @@ try {
   assert.equal(existsSync(ownerDir), false, "a deleted character's avatar folder is removed");
   assert.equal((await app.inject({ method: "DELETE", url: `/api/characters/personas/${persona.id}` })).statusCode, 204);
   assert.equal(existsSync(personaDir), false, "a deleted persona's avatar folder is removed");
+
+  // ── Expunging every character or persona removes their avatars; Professor Mari's stays ──
+  const swept = await characters.create(characterDataSchema.parse({ name: "Swept" }));
+  const sweptPersona = await characters.createPersona("Swept", "The player.");
+  assert(swept && sweptPersona);
+  const sweptOwners = [
+    { ownerType: "character", ownerId: swept.id },
+    { ownerType: "persona", ownerId: sweptPersona.id },
+    { ownerType: "character", ownerId: PROFESSOR_MARI_ID },
+  ] as const;
+  for (const sweptOwner of sweptOwners) {
+    await storage.updateAvatarConfig(sweptOwner, () => createAvatarConfig(sweptOwner, new Date().toISOString()));
+  }
+  const expunged = await app.inject({
+    method: "POST",
+    url: "/api/admin/expunge",
+    headers: { host: "localhost" },
+    payload: { confirm: true, scopes: ["characters", "personas"] },
+  });
+  assert.equal(expunged.statusCode, 200, expunged.payload);
+  assert.deepEqual(
+    sweptOwners.map((sweptOwner) => existsSync(join(dir, "avatar-models", sweptOwner.ownerType, sweptOwner.ownerId))),
+    [false, false, true],
+  );
 
   // ── Backups and restores cover the folder; Clear media data empties it ──
   const source = (path: string) => readFileSync(new URL(`../../packages/server/src/${path}`, import.meta.url), "utf8");

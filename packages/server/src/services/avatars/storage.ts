@@ -100,33 +100,44 @@ function isMissing(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR";
 }
 
-/** Write through a hidden temporary file in the same folder, then rename over the target. The leading
- *  dot keeps the temporary name outside AVATAR_FILE_PATH_PATTERN, so it is never served or referenced. */
-async function writeFileAtomic(target: string, dir: string, name: string, bytes: Uint8Array | string) {
-  await mkdir(dir, { recursive: true });
-  const temporary = join(dir, `.${name}.${randomUUID()}.tmp`);
+interface PendingWrite {
+  target: string;
+  dir: string;
+  name: string;
+  bytes: Uint8Array | string;
+}
+
+/** Write each file to a hidden temporary file in its folder, and rename them over their targets only once
+ *  all are written, so a failed write replaces nothing. The leading dot keeps temporary names outside
+ *  AVATAR_FILE_PATH_PATTERN, so they are never served or referenced. */
+async function writeFilesAtomic(writes: readonly PendingWrite[]) {
+  const staged: { temporary: string; target: string }[] = [];
   try {
-    await writeFile(temporary, bytes);
-    await rename(temporary, target);
+    for (const { target, dir, name, bytes } of writes) {
+      await mkdir(dir, { recursive: true });
+      const temporary = join(dir, `.${name}.${randomUUID()}.tmp`);
+      staged.push({ temporary, target });
+      await writeFile(temporary, bytes);
+    }
+    for (const { temporary, target } of staged) await rename(temporary, target);
   } catch (error) {
-    await rm(temporary, { force: true }).catch(() => undefined);
+    await Promise.all(staged.map(({ temporary }) => rm(temporary, { force: true }).catch(() => undefined)));
     throw error;
   }
 }
 
 async function writeFilesUnlocked(owner: AvatarOwnerRef, files: readonly AvatarExtractedFile[]) {
-  const targets = files.map((file) => ({ file, target: resolveAvatarFile(owner, file.path) }));
   const ownerDir = avatarOwnerDir(owner);
-  const written: AvatarFilePath[] = [];
-  for (const { file, target } of targets) {
-    const [kind, name] = file.path.split("/") as [string, string];
-    await writeFileAtomic(target, join(ownerDir, kind), name, file.bytes);
-    written.push(file.path);
-  }
-  return written;
+  await writeFilesAtomic(
+    files.map((file) => {
+      const [kind, name] = file.path.split("/") as [string, string];
+      return { target: resolveAvatarFile(owner, file.path), dir: join(ownerDir, kind), name, bytes: file.bytes };
+    }),
+  );
+  return files.map((file) => file.path);
 }
 
-/** Write files into the owner's folder (atomic per file), replacing same-named ones. */
+/** Write files into the owner's folder, replacing same-named ones only once every file is written. */
 export async function writeAvatarFiles(
   owner: AvatarOwnerRef,
   files: readonly AvatarExtractedFile[],
@@ -208,8 +219,16 @@ async function readConfigUnlocked(owner: AvatarOwnerRef): Promise<AvatarConfig |
   return { ...result.data, owner: { ownerType: owner.ownerType, ownerId: owner.ownerId } };
 }
 
-/** Checks a config before it is written: schema, owner, and every file it names exists in its kind's folder. */
-async function validatedConfig(owner: AvatarOwnerRef, candidate: AvatarConfig): Promise<AvatarConfig> {
+/** Checks a config before it is written: schema, owner, every file in its kind's folder, and every file it
+ *  newly names exists (or is in `pending`, written by this save). Files the stored config already named were
+ *  checked when it was written; one lost since (a skipped restore, a hand deletion) must not block turning
+ *  the avatar off, saving another kind or removing the broken one. */
+async function validatedConfig(
+  owner: AvatarOwnerRef,
+  candidate: AvatarConfig,
+  previous: AvatarConfig | null,
+  pending: ReadonlySet<AvatarFilePath> = new Set(),
+): Promise<AvatarConfig> {
   const result = avatarConfigSchema.safeParse({
     ...candidate,
     owner: { ownerType: owner.ownerType, ownerId: owner.ownerId },
@@ -225,10 +244,15 @@ async function validatedConfig(owner: AvatarOwnerRef, candidate: AvatarConfig): 
   for (const kind of AVATAR_KINDS) {
     const data = config.kinds[kind];
     if (!data) continue;
+    const previousData = previous?.kinds[kind];
+    const stored = new Set(
+      previousData ? avatarKindFilePaths(kind, previousData as AvatarKindDataMap[typeof kind]) : [],
+    );
     for (const path of avatarKindFilePaths(kind, data as AvatarKindDataMap[typeof kind])) {
       if (!path.startsWith(`${kind}/`)) {
         throw new AvatarStorageError(400, `${kind} files live in ${kind}/.`);
       }
+      if (stored.has(path) || pending.has(path)) continue;
       try {
         if (!(await stat(resolveAvatarFile(owner, path))).isFile()) throw new Error("not a file");
       } catch {
@@ -241,7 +265,9 @@ async function validatedConfig(owner: AvatarOwnerRef, candidate: AvatarConfig): 
 
 async function writeConfigUnlocked(owner: AvatarOwnerRef, config: AvatarConfig) {
   const dir = avatarOwnerDir(owner);
-  await writeFileAtomic(configPath(owner), dir, AVATAR_CONFIG_FILENAME, `${JSON.stringify(config, null, 2)}\n`);
+  await writeFilesAtomic([
+    { target: configPath(owner), dir, name: AVATAR_CONFIG_FILENAME, bytes: `${JSON.stringify(config, null, 2)}\n` },
+  ]);
 }
 
 /** The owner's parsed and validated `avatar.json`, or null when there is none. */
@@ -253,7 +279,8 @@ async function updateConfigUnlocked(
   owner: AvatarOwnerRef,
   mutate: (current: AvatarConfig | null) => AvatarConfig | Promise<AvatarConfig>,
 ): Promise<AvatarConfig> {
-  const next = await validatedConfig(owner, await mutate(await readConfigUnlocked(owner)));
+  const current = await readConfigUnlocked(owner);
+  const next = await validatedConfig(owner, await mutate(current), current);
   await writeConfigUnlocked(owner, next);
   return next;
 }
@@ -311,21 +338,26 @@ export async function saveExtractedAvatar(
     }
   }
   return withOwnerLock(checked, async () => {
-    await writeFilesUnlocked(checked, extracted.files);
-    let config: AvatarConfig;
+    const current = await readConfigUnlocked(checked);
+    const now = new Date().toISOString();
+    const base = current ?? createAvatarConfig(checked, now);
+    // Checked before any file is written, so a refused save never replaces a file the stored avatar uses.
+    const config = await validatedConfig(
+      checked,
+      {
+        ...base,
+        activeKind: base.activeKind ?? kind,
+        kinds: { ...base.kinds, [kind]: extracted.data },
+        updatedAt: now,
+      },
+      current,
+      new Set(extracted.files.map((file) => file.path)),
+    );
     try {
-      config = await updateConfigUnlocked(checked, (current) => {
-        const base = current ?? createAvatarConfig(checked, new Date().toISOString());
-        return {
-          ...base,
-          activeKind: base.activeKind ?? kind,
-          kinds: { ...base.kinds, [kind]: extracted.data },
-          updatedAt: new Date().toISOString(),
-        };
-      });
+      await writeFilesUnlocked(checked, extracted.files);
+      await writeConfigUnlocked(checked, config);
     } catch (error) {
       // Leave the folder as the stored config describes it: drop the files this attempt wrote.
-      const current = await readConfigUnlocked(checked).catch(() => null);
       const data = current?.kinds[kind];
       await removeUnreferencedFiles(
         checked,
@@ -350,21 +382,30 @@ export async function removeAvatarKind(owner: AvatarOwnerRef, kind: AvatarKind):
   return withOwnerLock(checked, async () => {
     const current = await readConfigUnlocked(checked);
     const ownerDir = avatarOwnerDir(checked);
-    await rm(join(ownerDir, kind), { recursive: true, force: true });
-    if (!current) return null;
-    const kinds = { ...current.kinds };
+    const kinds = { ...current?.kinds };
     delete kinds[kind];
     const remaining = AVATAR_KINDS.filter((candidate) => kinds[candidate] !== undefined);
-    if (remaining.length === 0) {
+    if (current && remaining.length === 0) {
       await rm(ownerDir, { recursive: true, force: true });
       return null;
     }
-    return updateConfigUnlocked(checked, () => ({
-      ...current,
-      kinds,
-      activeKind: current.activeKind && kinds[current.activeKind] ? current.activeKind : remaining[0]!,
-      updatedAt: new Date().toISOString(),
-    }));
+    // The config is written before the kind's files go, so a refusal leaves both as they were.
+    let next: AvatarConfig | null = null;
+    if (current) {
+      next = await validatedConfig(
+        checked,
+        {
+          ...current,
+          kinds,
+          activeKind: current.activeKind && kinds[current.activeKind] ? current.activeKind : remaining[0]!,
+          updatedAt: new Date().toISOString(),
+        },
+        current,
+      );
+      await writeConfigUnlocked(checked, next);
+    }
+    await rm(join(ownerDir, kind), { recursive: true, force: true });
+    return next;
   });
 }
 
@@ -372,4 +413,27 @@ export async function removeAvatarKind(owner: AvatarOwnerRef, kind: AvatarKind):
 export async function removeAvatarOwner(owner: AvatarOwnerRef): Promise<void> {
   const checked = checkedOwner(owner);
   await withOwnerLock(checked, () => rm(avatarOwnerDir(checked), { recursive: true, force: true }));
+}
+
+/** Remove the avatar folders of every character or every persona except `keepOwnerIds`, when all of them are
+ *  deleted at once. Returns how many folders went. */
+export async function removeAvatarOwnersOfType(
+  ownerType: AvatarOwnerRef["ownerType"],
+  keepOwnerIds: readonly string[] = [],
+): Promise<number> {
+  let ownerIds: string[];
+  try {
+    ownerIds = await readdir(join(AVATAR_MODELS_DIR, ownerType));
+  } catch (error) {
+    if (isMissing(error)) return 0;
+    throw error;
+  }
+  let removed = 0;
+  for (const ownerId of ownerIds) {
+    const owner = { ownerType, ownerId };
+    if (keepOwnerIds.includes(ownerId) || !avatarOwnerRefSchema.safeParse(owner).success) continue;
+    await removeAvatarOwner(owner);
+    removed += 1;
+  }
+  return removed;
 }

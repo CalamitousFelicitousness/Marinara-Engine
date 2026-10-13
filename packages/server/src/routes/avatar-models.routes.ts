@@ -121,6 +121,15 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
       : Boolean(await characters.getPersona(owner.ownerId));
   }
 
+  /** After a write: when the character or persona was deleted while the request ran, its delete may have
+   *  removed the folder before this write landed, so remove it again. Deletes drop the row before the folder,
+   *  so a later delete still finds the folder. */
+  async function ownerGoneAfterWrite(owner: AvatarOwnerRef): Promise<boolean> {
+    if (await ownerExists(owner)) return false;
+    await removeAvatarOwner(owner);
+    return true;
+  }
+
   app.get("/", routeOptions, async () => listAvatarOwners());
 
   app.get<{ Params: OwnerParams }>("/:ownerType/:ownerId", routeOptions, async (req, reply) => {
@@ -144,7 +153,7 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
       if (!(await ownerExists(owner))) return reply.status(404).send({ error: "Character or persona not found" });
       const update = parsed.data;
       try {
-        return await updateAvatarConfig(owner, (current): AvatarConfig => {
+        const config = await updateAvatarConfig(owner, (current): AvatarConfig => {
           const now = new Date().toISOString();
           const base = current ?? createAvatarConfig(owner, now);
           return {
@@ -156,6 +165,10 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
             updatedAt: now,
           };
         });
+        if (await ownerGoneAfterWrite(owner)) {
+          return reply.status(404).send({ error: "Character or persona not found" });
+        }
+        return config;
       } catch (error) {
         return sendStorageError(reply, error);
       }
@@ -176,9 +189,13 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
       const owner = parseOwner(req.params);
       if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
       if (!isAvatarKind(req.params.kind)) return reply.status(400).send({ error: "Unknown avatar kind" });
-      const config = await removeAvatarKind(owner, req.params.kind);
-      // JSON null when nothing remains, so the client always gets a body to parse.
-      return reply.type("application/json").send(JSON.stringify(config));
+      try {
+        const config = await removeAvatarKind(owner, req.params.kind);
+        // JSON null when nothing remains, so the client always gets a body to parse.
+        return reply.type("application/json").send(JSON.stringify(config));
+      } catch (error) {
+        return sendStorageError(reply, error);
+      }
     },
   );
 
@@ -234,6 +251,9 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
       const extracted = await importer.extract(validated, input);
       if (extracted.kind !== importer.kind) throw new AvatarImportError("invalid-file", "This file couldn't be read.");
       const result = await saveExtractedAvatar(owner, extracted);
+      if (await ownerGoneAfterWrite(owner)) {
+        return reply.status(404).send({ error: "Character or persona not found" });
+      }
       logger.info("[avatars] Imported a %s avatar for %s %s", result.kind, owner.ownerType, owner.ownerId);
       return result;
     } catch (error) {

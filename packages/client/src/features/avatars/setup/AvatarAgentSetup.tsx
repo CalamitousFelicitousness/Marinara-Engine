@@ -4,7 +4,7 @@
 // Pick a character or persona, turn its avatar on or off, choose the active kind and the lip sync,
 // blink and idle-motion switches, preview it, then show AVATAR_KIND_SETUP_PANELS for the kinds this
 // agent owns (AVATAR_KIND_AGENT) and, on the 2D page, AVATAR_GENERATION_PANEL. Not in Sprite Cards.
-import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Loader2, Trash2, Upload, Wand2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -485,6 +485,7 @@ function ExpressionBindings<K extends AvatarKind>({
   onChange: (data: AvatarKindDataMap[K]) => void;
 }) {
   const { t } = useTranslation();
+  const idPrefix = useId();
   const targets = avatarBindingTargets(kind, data);
   return (
     <section className="space-y-2">
@@ -499,6 +500,7 @@ function ExpressionBindings<K extends AvatarKind>({
           const sourceKey = SOURCE_LABEL_KEYS[!binding || binding.target === null ? "missing" : binding.source];
           const options = target && !targets.includes(target) ? [...targets, target] : targets;
           const slotLabel = t(`avatars.setup.slot.${slot}`);
+          const sourceId = `${idPrefix}-${slot}-source`;
           return (
             <div key={slot} className={cn("flex min-w-0 items-center gap-2 px-3 py-2", CARD_CLASS)}>
               <span className="w-20 shrink-0 text-xs text-[var(--foreground)]">{slotLabel}</span>
@@ -506,6 +508,7 @@ function ExpressionBindings<K extends AvatarKind>({
                 value={target}
                 disabled={disabled}
                 aria-label={slotLabel}
+                aria-describedby={sourceId}
                 onChange={(event) => onChange(withBindingOverride(data, slot, event.target.value || null))}
                 className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-2 py-1 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
               >
@@ -516,7 +519,9 @@ function ExpressionBindings<K extends AvatarKind>({
                   </option>
                 ))}
               </select>
-              <span className="shrink-0 text-[0.5625rem] text-[var(--muted-foreground)]">{t(sourceKey)}</span>
+              <span id={sourceId} className="shrink-0 text-[0.5625rem] text-[var(--muted-foreground)]">
+                {t(sourceKey)}
+              </span>
             </div>
           );
         })}

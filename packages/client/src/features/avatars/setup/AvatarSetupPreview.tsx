@@ -18,8 +18,7 @@ import {
 import type { SpriteInfo } from "../../../hooks/use-characters";
 import { useMatchMedia } from "../../../hooks/use-match-media";
 import { useReducedAmbientEffects } from "../../../hooks/use-reduced-ambient-effects";
-import { AVATAR_RENDER_BUDGET } from "../contract";
-import { applyAvatarFeatures, resolveAvatarImage } from "../stage/avatar-stage-logic";
+import { applyAvatarFeatures, avatarTargetFps, resolveAvatarImage } from "../stage/avatar-stage-logic";
 import { useAvatarEffectsPaused, useOnScreen } from "../stage/use-avatar-pause";
 import { useAvatarRenderer } from "../stage/use-avatar-renderer";
 import { DEMO_AVATAR_CONFIG, DEMO_AVATAR_OWNER, resolveDemoAvatarImage } from "./demo-avatar";
@@ -78,7 +77,7 @@ export function AvatarSetupPreview({
     if (paused) return;
     let frameRequest = 0;
     let lastDraw = performance.now();
-    const interval = 1000 / AVATAR_RENDER_BUDGET.fps.talking;
+    const interval = 1000 / avatarTargetFps({ talking, phone, underLoad: false });
     const tick = (now: number) => {
       frameRequest = requestAnimationFrame(tick);
       if (now - lastDraw < interval - 1) return;
@@ -97,7 +96,7 @@ export function AvatarSetupPreview({
     };
     frameRequest = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameRequest);
-  }, [face, features, paused, reducedMotion, renderer, talking]);
+  }, [face, features, paused, phone, reducedMotion, renderer, talking]);
 
   return (
     <div ref={boxRef} className="flex flex-col items-center gap-2">

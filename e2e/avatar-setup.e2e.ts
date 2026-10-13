@@ -52,6 +52,12 @@ const AGENT = {
 async function preparePage(page: Page, characterId: string, ui: Record<string, unknown>, chatId?: string) {
   await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [PACKAGE] }));
   await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [AGENT] }));
+  // The real list, without avatars other workers save on the same server (the setup page would open on one).
+  await page.route("**/api/avatar-models", async (route) => {
+    const response = await route.fetch();
+    const owners = (await response.json()) as Array<{ owner: { ownerId: string } }>;
+    await route.fulfill({ response, json: owners.filter((summary) => summary.owner.ownerId === characterId) });
+  });
   await page.route(`**/api/sprites/${characterId}`, (route) =>
     route.fulfill({
       json: ["neutral", "neutral_talk", "happy", "happy_talk", "crying", "full_idle"].map((expression) => ({
@@ -166,6 +172,17 @@ test("2D Avatars shows a character's sprites as its avatar and saves them as a P
     expect(saved.activeKind).toBe("pngtuber");
     expect(Object.keys(saved.kinds.pngtuber.layers).sort()).toEqual(["crying", "happy", "neutral"]);
     expect(saved.kinds.pngtuber.layers.happy?.mouthOpen).toEqual({ source: "sprite", label: "happy_talk" });
+
+    // ── The chat shows the saved avatar ──
+    const savedChatPage = await page.context().newPage();
+    await preparePage(savedChatPage, character.id, {}, chat.id);
+    await savedChatPage.goto("/");
+    const savedAvatar = savedChatPage.locator(`[data-avatar-stage] [data-avatar-owner="${character.id}"]`);
+    await expect(savedAvatar).toHaveAttribute("data-avatar-kind", "pngtuber", { timeout: FIRST_LOAD_TIMEOUT_MS });
+    await expect(savedAvatar.getByRole("img", { name: "Avatar fixture's avatar" })).toBeVisible();
+    await savedChatPage.bringToFront();
+    await expect(savedChatPage.locator("[data-avatar-stage]")).not.toHaveAttribute("data-avatar-paused", "true");
+    await savedChatPage.close();
 
     // ── Removing the character removes its avatar ──
     expect((await request.delete(`/api/characters/${character.id}`)).status()).toBe(204);

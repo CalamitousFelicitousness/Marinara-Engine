@@ -382,16 +382,11 @@ try {
   assert.deepEqual(await capabilityPackageManager.installed(), [], "A missing registry remains a fresh installation");
   writeRegistry([validInstalled]);
 
-  const { createRequire } = await import("node:module");
-  const serverRequire = createRequire(new URL("../../packages/server/src/app.ts", import.meta.url));
-  const AdmZipCtor = serverRequire("adm-zip") as new () => {
-    addFile: (name: string, data: Buffer) => void;
-    toBuffer: () => Buffer;
-  };
-  const directoryFloodArchive = new AdmZipCtor();
-  for (let index = 0; index < 8_193; index++) directoryFloodArchive.addFile(`dir-${index}/`, Buffer.alloc(0));
+  const directoryFloodArchive = {
+    getEntries: () => Array.from({ length: 8_193 }, (_, index) => ({ isDirectory: true, entryName: `dir-${index}/` })),
+  } as unknown as Parameters<typeof validatePackageArchiveEntries>[0];
   assert.throws(
-    () => validatePackageArchiveEntries(directoryFloodArchive.toBuffer()),
+    () => validatePackageArchiveEntries(directoryFloodArchive),
     /Package contains too many files/u,
     "directory-only ZIP entries count toward the archive entry limit",
   );
@@ -400,11 +395,18 @@ try {
   // an artifact carrying both casings is rejected before extraction. (The
   // manifest-level case-folded guard sits BEHIND this one in the live install
   // flow — a zip cannot reach it with a case collision the entry guard missed.)
+  const { createRequire } = await import("node:module");
+  const serverRequire = createRequire(new URL("../../packages/server/src/app.ts", import.meta.url));
+  const AdmZipCtor = serverRequire("adm-zip") as new () => {
+    addFile: (name: string, data: Buffer) => void;
+    toBuffer: () => Buffer;
+  };
+  const { openZipArchive } = await import("../../packages/server/src/lib/zip-reader.js");
   const collisionZip = new AdmZipCtor();
   collisionZip.addFile("art/tiles.png", Buffer.from("first casing"));
   collisionZip.addFile("art/Tiles.PNG", Buffer.from("second casing"));
   assert.throws(
-    () => validatePackageArchiveEntries(collisionZip.toBuffer()),
+    () => validatePackageArchiveEntries(openZipArchive(collisionZip.toBuffer())),
     /duplicate file/u,
     "case-only filename collisions must be rejected at archive validation",
   );

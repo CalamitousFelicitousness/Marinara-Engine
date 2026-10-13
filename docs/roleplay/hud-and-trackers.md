@@ -120,6 +120,8 @@ The controls in the panel header also let you customize tracker structure:
 
 Custom field names define the structure and remain stable across tracker runs. Tracker agents update their values when the story changes them, while omitted agent output does not erase fields you created.
 
+A character's large card can make a new portrait once the Character Tracker has an image connection. On a compact card, click **Feature character card** to open the large one. The Trackers window on a computer always shows large cards. Hover the portrait and click the eye button to make a new portrait from the **Look**, or the shirt button to make one from the **Look** and **Outfit**. The shirt button appears only when the character has an outfit. The old portrait stays until the new one is ready, and stays if making it fails. Characters shown with their card's avatar or an expression sprite don't have these buttons.
+
 These settings control it:
 
 - **Tracker Panel**: the master on or off toggle, the same one the die in Chat Settings turns on and off. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.

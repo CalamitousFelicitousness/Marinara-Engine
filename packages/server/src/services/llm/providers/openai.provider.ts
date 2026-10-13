@@ -19,6 +19,7 @@ import { parseTextualToolCalls } from "../textual-tool-call-parser.js";
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
+  isGeminiArgonModel,
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
   isOpenAIGpt56Model,
@@ -871,6 +872,8 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (m.startsWith("gpt-5") && reasoningEffort && reasoningEffort !== "none") return true;
     // Claude adaptive-only models forbid all sampling params (covers reverse proxies).
     if (isClaudeAdaptiveOnlyNoSamplingModel(m)) return true;
+    // Gemini 4 Argon ignores sampling and rejects penalties (OpenRouter, NanoGPT).
+    if (isGeminiArgonModel(m)) return true;
     return false;
   }
 

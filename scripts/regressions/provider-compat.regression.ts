@@ -3348,6 +3348,19 @@ try {
         generationConfig: { maxOutputTokens: 4096 },
         safety_settings: [...ownSafety, ...safetySettings.slice(1)],
       });
+      // Both spellings at once are sent exactly as the user wrote them, so nothing contradicts either list.
+      const ownCamelSafety = [{ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" }];
+      await collectProviderOutput(provider, {
+        model: "gemini-4-argon",
+        reasoningEffort: "none",
+        customParameters: { safety_settings: ownSafety, safetySettings: ownCamelSafety },
+      });
+      assert.deepEqual(body(1), {
+        contents: [{ role: "user", parts: [{ text: "test" }] }],
+        generationConfig: { maxOutputTokens: 4096 },
+        safety_settings: ownSafety,
+        safetySettings: ownCamelSafety,
+      });
 
       // Gemini 3 is unchanged, byte for byte, apart from the safety settings every Gemini request now carries:
       // samplers, penalties, its trailing model turn and its levels all stay.

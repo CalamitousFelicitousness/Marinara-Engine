@@ -101,9 +101,11 @@ const GEMINI_SAFETY_SETTINGS_OFF = [
 /**
  * Runs after custom parameters. A user's own safety settings (in either spelling) win for the categories they
  * name; every other category is still sent as Off, under the user's spelling so the field is never doubled.
+ * A body where the user wrote both spellings is left exactly as written, so nothing contradicts either list.
  */
 function applyGeminiSafetySettingsOff(body: Record<string, unknown>): void {
-  const key = "safety_settings" in body && !("safetySettings" in body) ? "safety_settings" : "safetySettings";
+  if ("safetySettings" in body && "safety_settings" in body) return;
+  const key = "safety_settings" in body ? "safety_settings" : "safetySettings";
   const own = Array.isArray(body[key]) ? (body[key] as Array<{ category?: unknown } | null>) : [];
   const named = new Set(own.map((setting) => setting?.category));
   body[key] = [...own, ...GEMINI_SAFETY_SETTINGS_OFF.filter(({ category }) => !named.has(category))];

@@ -87,6 +87,22 @@ const GEMINI_ARGON_UNSENT = new Set<GenerationParameterSendKey>([
   "presencePenalty",
 ]);
 
+// Gemini's adjustable safety filters are always off (#7542). Google documents Off as the default only for
+// Gemini 2.5 and 3, so newer models need it said out loud. Core protections still apply and still block.
+// CIVIC_INTEGRITY is deprecated and JAILBREAK is not in the adjustable list, so neither is sent.
+// https://ai.google.dev/gemini-api/docs/safety-settings
+const GEMINI_SAFETY_SETTINGS_OFF = [
+  "HARM_CATEGORY_HARASSMENT",
+  "HARM_CATEGORY_HATE_SPEECH",
+  "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+  "HARM_CATEGORY_DANGEROUS_CONTENT",
+].map((category) => ({ category, threshold: "OFF" }));
+
+/** Runs after custom parameters, so a user's own safety settings (in either spelling) are kept and never doubled. */
+function applyGeminiSafetySettingsOff(body: Record<string, unknown>): void {
+  if (!("safetySettings" in body) && !("safety_settings" in body)) body.safetySettings = GEMINI_SAFETY_SETTINGS_OFF;
+}
+
 export function resolveGoogleFunctionCallingMode(toolChoice: ChatOptions["toolChoice"]): "AUTO" | "ANY" {
   return toolChoice === "required" ? "ANY" : "AUTO";
 }
@@ -702,6 +718,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    applyGeminiSafetySettingsOff(body);
     applyGoogleFunctionCallingMode(body, options.toolChoice);
     logDebugOverride(
       options.debugMode === true || isDebugAgentsEnabled(),
@@ -1005,6 +1022,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    applyGeminiSafetySettingsOff(body);
 
     const authHeaders =
       this.providerKind === "google_vertex"

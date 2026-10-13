@@ -3182,6 +3182,8 @@ try {
 // off, ignores temperature, top-p and top-k, and rejects penalties and a prefilled final model turn.
 // https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
 // The Gemini 3 bodies are pinned byte for byte so none of this leaks into them.
+// Every Gemini request on both hosts turns the four adjustable safety filters off (#7542):
+// https://ai.google.dev/gemini-api/docs/safety-settings
 {
   const originalFetch = globalThis.fetch;
   const originalLocalUrls = process.env.PROVIDER_LOCAL_URLS_ENABLED;
@@ -3216,6 +3218,12 @@ try {
         { name: "roll_dice", description: "Roll dice", parameters: { type: "object", properties: {} } },
       ],
     },
+  ];
+  const safetySettings = [
+    { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" },
+    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
+    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
+    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
   ];
   const hosts = [
     ["google", "https://generativelanguage.googleapis.com", "https://generativelanguage.googleapis.com/v1beta/models"],
@@ -3256,6 +3264,7 @@ try {
               maxOutputTokens: 4096,
               ...(level ? { thinkingConfig: { thinkingLevel: level, includeThoughts: true } } : {}),
             },
+            safetySettings,
           },
           `${kind} Argon effort ${effort} must send only its own thinking level, with no samplers or thinking budget`,
         );
@@ -3281,6 +3290,7 @@ try {
             { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] },
           ],
           generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "high", includeThoughts: true } },
+          safetySettings,
         },
         `${kind} Argon must never end on a prefilled model turn`,
       );
@@ -3304,6 +3314,7 @@ try {
             thinkingConfig: { thinkingLevel: "medium", includeThoughts: true },
           },
           tools: diceDeclarations,
+          safetySettings,
           toolConfig: { functionCallingConfig: { mode: "AUTO" } },
         },
         `${kind} Argon tools round must send no samplers`,
@@ -3321,7 +3332,24 @@ try {
       finishReason = "STOP";
       assert.equal(usage?.finishReason, "length");
 
-      // Gemini 3 is unchanged, byte for byte: samplers, penalties, its trailing model turn and its levels all stay.
+      // A user's own safety settings in custom parameters are kept, in either spelling, and never sent twice.
+      requests.length = 0;
+      const ownSafety = [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" }];
+      await collectProviderOutput(provider, {
+        model: "gemini-4-argon",
+        stream: true,
+        reasoningEffort: "none",
+        customParameters: { safety_settings: ownSafety },
+      });
+      assert.equal(requests[0]?.url, `${modelsUrl}/gemini-4-argon:streamGenerateContent?alt=sse`);
+      assert.deepEqual(body(0), {
+        contents: [{ role: "user", parts: [{ text: "test" }] }],
+        generationConfig: { maxOutputTokens: 4096 },
+        safety_settings: ownSafety,
+      });
+
+      // Gemini 3 is unchanged, byte for byte, apart from the safety settings every Gemini request now carries:
+      // samplers, penalties, its trailing model turn and its levels all stay.
       requests.length = 0;
       await collectProviderOutputForMessages(provider, prefilled, {
         model: "gemini-3.5-flash",
@@ -3357,9 +3385,9 @@ try {
       assert.deepEqual(
         requests.map(({ raw }) => raw),
         [
-          '{"contents":[{"role":"user","parts":[{"text":"test"}]},{"role":"model","parts":[{"text":"Once"}]}],"generationConfig":{"maxOutputTokens":4096,"temperature":0.7,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4,"thinkingConfig":{"thinkingLevel":"high","includeThoughts":true}}}',
-          '{"contents":[{"role":"user","parts":[{"text":"test"}]}],"generationConfig":{"maxOutputTokens":4096,"temperature":0.7,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4}}',
-          '{"contents":[{"role":"user","parts":[{"text":"test"}]}],"generationConfig":{"temperature":0.7,"maxOutputTokens":4096,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4,"thinkingConfig":{"thinkingLevel":"medium","includeThoughts":true}},"tools":[{"functionDeclarations":[{"name":"roll_dice","description":"Roll dice","parameters":{"type":"object","properties":{}}}]}],"toolConfig":{"functionCallingConfig":{"mode":"AUTO"}}}',
+          '{"contents":[{"role":"user","parts":[{"text":"test"}]},{"role":"model","parts":[{"text":"Once"}]}],"generationConfig":{"maxOutputTokens":4096,"temperature":0.7,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4,"thinkingConfig":{"thinkingLevel":"high","includeThoughts":true}},"safetySettings":[{"category":"HARM_CATEGORY_HARASSMENT","threshold":"OFF"},{"category":"HARM_CATEGORY_HATE_SPEECH","threshold":"OFF"},{"category":"HARM_CATEGORY_SEXUALLY_EXPLICIT","threshold":"OFF"},{"category":"HARM_CATEGORY_DANGEROUS_CONTENT","threshold":"OFF"}]}',
+          '{"contents":[{"role":"user","parts":[{"text":"test"}]}],"generationConfig":{"maxOutputTokens":4096,"temperature":0.7,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4},"safetySettings":[{"category":"HARM_CATEGORY_HARASSMENT","threshold":"OFF"},{"category":"HARM_CATEGORY_HATE_SPEECH","threshold":"OFF"},{"category":"HARM_CATEGORY_SEXUALLY_EXPLICIT","threshold":"OFF"},{"category":"HARM_CATEGORY_DANGEROUS_CONTENT","threshold":"OFF"}]}',
+          '{"contents":[{"role":"user","parts":[{"text":"test"}]}],"generationConfig":{"temperature":0.7,"maxOutputTokens":4096,"topP":0.9,"topK":40,"frequencyPenalty":0.3,"presencePenalty":0.4,"thinkingConfig":{"thinkingLevel":"medium","includeThoughts":true}},"tools":[{"functionDeclarations":[{"name":"roll_dice","description":"Roll dice","parameters":{"type":"object","properties":{}}}]}],"safetySettings":[{"category":"HARM_CATEGORY_HARASSMENT","threshold":"OFF"},{"category":"HARM_CATEGORY_HATE_SPEECH","threshold":"OFF"},{"category":"HARM_CATEGORY_SEXUALLY_EXPLICIT","threshold":"OFF"},{"category":"HARM_CATEGORY_DANGEROUS_CONTENT","threshold":"OFF"}],"toolConfig":{"functionCallingConfig":{"mode":"AUTO"}}}',
         ],
         `${kind} Gemini 3 request bodies must not change`,
       );

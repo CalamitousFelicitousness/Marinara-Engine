@@ -644,7 +644,7 @@ assert.match(
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.getData\(\)/u,
+  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.read\(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES\)/u,
   "native package imports must validate ZIP entry sizes before extraction",
 );
 assert.match(

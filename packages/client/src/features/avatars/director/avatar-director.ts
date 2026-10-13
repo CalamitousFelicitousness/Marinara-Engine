@@ -140,6 +140,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   let lastTickMs: number | null = null;
   let now = 0;
   let disposed = false;
+  let gameLinesSubscribed = false;
 
   // One generation, from send to the last token.
   let turn = 0;
@@ -408,6 +409,15 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
         }
         owners.set(participant.owner.ownerId, existing ?? newOwner(participant));
       }
+      // Game lines once there is someone to give them to: the line already on screen arrives right away.
+      if (mode === "game" && !gameLinesSubscribed && !disposed) {
+        gameLinesSubscribed = true;
+        unsubscribers.push(
+          subscribeAvatarGameLines((lineChatId, line) => {
+            if (lineChatId === chatId) director.pushGameLine(line);
+          }),
+        );
+      }
     },
     pushStreamText(update: AvatarStreamUpdate) {
       if (update.chatId !== chatId || mode !== "roleplay") return;
@@ -564,11 +574,6 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   }
 
   unsubscribers.push(subscribeAvatarAudio((ownerId, source) => director.setAudioSource(ownerId, source)));
-  unsubscribers.push(
-    subscribeAvatarGameLines((lineChatId, line) => {
-      if (lineChatId === chatId) director.pushGameLine(line);
-    }),
-  );
 
   return director;
 }

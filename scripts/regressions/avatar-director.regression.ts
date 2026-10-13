@@ -386,6 +386,21 @@ assert.equal(gameFrame.state, "talking", "the line is spoken");
 assert.equal(game.frame("me", t).state, "listening");
 store().setAbortController(gameChatId, null);
 game.dispose();
+
+// The stage usually mounts after the line it should show: the line on screen arrives with the participants.
+const late = director.createAvatarDirector(
+  { chatId: gameChatId, mode: "game", reducedMotion: false },
+  { classify: async () => Promise.reject(new Error("unused")) },
+);
+late.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+t += 16;
+gameFrame = late.frame("alice", t);
+assert.deepEqual(
+  [gameFrame.emotion, gameFrame.label],
+  ["angry", "furious_glare"],
+  "a stage that mounts after the line still shows it",
+);
+late.dispose();
 await flush();
 
 console.log("avatar director regression passed");

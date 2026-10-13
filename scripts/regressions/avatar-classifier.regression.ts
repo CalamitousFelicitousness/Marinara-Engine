@@ -75,6 +75,23 @@ assert.ok(
   "nervous still reaches a scared sprite when there is no worried one",
 );
 
+// The Expression Engine's fill-in for a character the model skipped picks from the same list.
+const { completeRequiredSpriteExpressionEntries } =
+  await import("../../packages/server/src/routes/generate/expression-agent-utils.js");
+const fillIn = (expressions: string[], text: string) =>
+  completeRequiredSpriteExpressionEntries([], [{ characterId: "c1", characterName: "Mia", expressions }], ["c1"], {
+    defaultSourceText: text,
+  }).expressions[0]?.expression;
+assert.equal(fillIn(["blush", "neutral"], "She blushes and looks away."), "blush", "an alias fills a missing label");
+assert.equal(
+  fillIn(["happy", "blush", "neutral"], "She blushes and smiles."),
+  "happy",
+  "a general mood comes before a blush",
+);
+assert.equal(fillIn(["scared", "neutral"], "He is nervous."), "scared", "nervous reaches a scared sprite");
+assert.equal(fillIn(["sad", "neutral"], "Łzy spływają jej po policzkach."), "sad", "other languages fill in too");
+assert.equal(fillIn(["angry", "neutral"], "The yellow lantern sways."), "neutral", "no mood word, a calm face");
+
 const sumOf = (scores: Record<string, number>) => Object.values(scores).reduce((sum, value) => sum + value, 0);
 const strong = classifyExpressionKeywords("She smiles.");
 assert.equal(strong.emotion, "happy");

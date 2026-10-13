@@ -3185,8 +3185,10 @@ export function GameNarration({
     onActiveSpeakerChange(next);
   }, [active, speakerAvatarInfos, spriteMap, onActiveSpeakerChange]);
 
-  // Avatars show the line on screen with the Game Master's expression for it.
-  useEffect(() => publishAvatarGameLine(latestAssistant?.chatId ?? null, active), [active, latestAssistant?.chatId]);
+  // Avatars show the line on screen with the Game Master's expression for it (not while reviewing past turns).
+  useEffect(() => {
+    if (messageOffset === 0) publishAvatarGameLine(latestAssistant?.chatId ?? null, active);
+  }, [active, latestAssistant?.chatId, messageOffset]);
 
   // How many segments are prepended before the actual GM narration segments
   const playerSegmentOffset = latestUserMessage?.content && latestAssistant ? 1 : 0;

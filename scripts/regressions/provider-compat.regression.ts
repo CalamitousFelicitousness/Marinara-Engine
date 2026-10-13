@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { logger } from "../../packages/server/src/lib/logger.js";
 import {
@@ -3560,11 +3559,7 @@ try {
 
     // Regenerating U2 as a swipe drops it from history. The route passes isGeminiModel(conn.model), so the request ends
     // on the rewrite instruction, not on A1 with a continuation turn that would save the AI's prose as the user's swipe.
-    const generateRoutes = readFileSync(
-      new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
-      "utf8",
-    );
-    assert.match(generateRoutes, /isGoogleProvider: isGoogleProvider \|\| isGeminiModel\(conn\.model\),/);
+    // gemini-user-regeneration.regression.ts proves that wiring through the real route.
     const rewrite = buildUserMessageRegenerationPromptFromSource({ role: "user", content: "U2" });
     for (const [provider, model] of [
       [openRouter, "google/gemini-3.8-flash"],

@@ -251,6 +251,7 @@ try {
         "x-ai/grok-4.3",
         "google/gemini-3.5-flash",
         "google/gemini-4-argon",
+        "google/gemini-4-argon:online",
         "google/gemini-3.8-flash",
       ],
       make: registry("openrouter", `${base}/openrouter.ai/api/v1`),

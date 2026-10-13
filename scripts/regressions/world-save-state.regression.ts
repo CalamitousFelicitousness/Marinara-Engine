@@ -300,6 +300,14 @@ for (const raw of WORLD_STARTER_KITS) {
     resources,
   );
   assert.equal(current.config.worldSnapshot, undefined, "this generator's world is made from its recipe");
+  // An existing game takes no world from a setup file, so it takes none of the world's parts either.
+  const existing = resolveGameSetupImport(parseGameSetupShareFileJson(setupText({ worldSnapshot: older })), {
+    ...resources,
+    isNewGame: false,
+  });
+  for (const field of ["worldKit", "world", "story", "worldSnapshot"] as const) {
+    assert.equal(existing.config[field], undefined, `an existing game takes no ${field} from a setup file`);
+  }
 }
 
 // ── Two worlds of one recipe keep their own present: one read from its snapshot, one made now ──

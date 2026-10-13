@@ -628,6 +628,7 @@ export function resolveGameSetupImport(
     worldKit: _worldKit,
     world: _world,
     story: _story,
+    worldSnapshot: _worldSnapshot,
     ...ordinaryConfig
   } = sourceConfig;
 

@@ -19,6 +19,7 @@ const requireServer = createRequire(new URL("../../packages/server/package.json"
 const Fastify = requireServer("fastify") as typeof import("fastify").default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { galleryRoutes } = await import("../../packages/server/src/routes/gallery.routes.js");
+const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
@@ -51,6 +52,7 @@ const db = await getDB();
 const app = Fastify();
 app.decorate("db", db);
 await app.register(galleryRoutes, { prefix: "/api/gallery" });
+await app.register(connectionsRoutes, { prefix: "/api/connections" });
 
 try {
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
@@ -59,7 +61,7 @@ try {
   const baseUrl = `http://127.0.0.1:${address.port}/v1`;
   const connections = createConnectionsStorage(db);
 
-  // The field round-trips through create, update and duplicate.
+  // The field round-trips through create, the editor's update route and duplicate.
   const video = await connections.create({
     name: "Video fixture",
     provider: "video_generation",
@@ -72,12 +74,28 @@ try {
   });
   assert.ok(video);
   assert.equal((await connections.getWithKey(video.id))?.videoPromptInstructions, INSTRUCTIONS);
-  await connections.update(video.id, { videoPromptInstructions: null });
+  // The connection editor saves through PATCH /connections/:id, which must keep the field.
+  const patch = (videoPromptInstructions: string | null) =>
+    app.inject({ method: "PATCH", url: `/api/connections/${video.id}`, payload: { videoPromptInstructions } });
+  const cleared = await patch(null);
+  assert.equal(cleared.statusCode, 200, cleared.body);
   assert.equal((await connections.getWithKey(video.id))?.videoPromptInstructions, null);
-  await connections.update(video.id, { videoPromptInstructions: INSTRUCTIONS });
-  const copy = await connections.duplicate(video.id);
-  assert.ok(copy);
-  assert.equal((await connections.getWithKey(copy.id))?.videoPromptInstructions, INSTRUCTIONS);
+  const saved = await patch(INSTRUCTIONS);
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.equal((saved.json() as { videoPromptInstructions?: string }).videoPromptInstructions, INSTRUCTIONS);
+  assert.equal((await connections.getWithKey(video.id))?.videoPromptInstructions, INSTRUCTIONS);
+  // Saving another field leaves the instructions alone.
+  const renamed = await app.inject({
+    method: "PATCH",
+    url: `/api/connections/${video.id}`,
+    payload: { name: "Video fixture (renamed)" },
+  });
+  assert.equal(renamed.statusCode, 200, renamed.body);
+  assert.equal((await connections.getWithKey(video.id))?.videoPromptInstructions, INSTRUCTIONS);
+  const duplicated = await app.inject({ method: "POST", url: `/api/connections/${video.id}/duplicate` });
+  assert.equal(duplicated.statusCode, 200, duplicated.body);
+  const copyId = (duplicated.json() as { id: string }).id;
+  assert.equal((await connections.getWithKey(copyId))?.videoPromptInstructions, INSTRUCTIONS);
 
   // Through the real gallery route, the Roleplay animation director gets the instructions next to its
   // request, and the prompt it returns no longer carries the sentence it copied.

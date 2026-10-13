@@ -166,6 +166,8 @@ export function rulesetCellEnterCost(grid: TacticalGrid, x: number, y: number): 
   // A saved board can arrive through an import, and a terrain word this Engine does not know must
   // cost an ordinary step rather than throw in the middle of a turn.
   const cost = (terrain === undefined ? undefined : TERRAIN_DATA[terrain]?.moveCost) ?? 1;
+  // Growth is hard going (1.313), and does not make hard going harder.
+  if (grid.ground?.[`${x},${y}`]?.growth) return Math.max(2, Math.round(cost));
   return Math.max(1, Math.round(cost));
 }
 

@@ -48,11 +48,42 @@ export interface RulesetBoardCell {
   laid?: true;
   /** The labels of the lasting areas covering it (1.171), first cast first. */
   zones?: string[];
-  /** A wall's section standing here (1.199): whose wall, and what it has left of what; 0 is broken. */
+  /** Their looks in the board's pack (1.328), first cast first, for those that have one. */
+  zoneArt?: string[];
+  /** A wall's section standing here (1.195): whose wall, and what it has left of what; 0 is broken. */
   section?: { wall: string; health: number; max: number };
-  /** Set while a target is being chosen and the attack may strike the section here (1.199). */
+  /** Growth here (1.313): hard going, lightly obscuring. */
+  growth?: true;
+  /** The season on this cell (1.313), when it has one of its own. */
+  season?: string;
+  /** A prop standing here (1.311): what it is, and what it has left of what; 0 is broken. */
+  prop?: {
+    label: string;
+    health: number;
+    max: number;
+    /** Its sprite (1.328), and where this cell sits in the box its cells fill, from its top-left. */
+    art?: string;
+    dx: number;
+    dy: number;
+  };
+  /** Set while a target is being chosen and the attack may strike the section here (1.195). */
   strikable?: true;
+  /** The light here when it is not bright: sunlight, dim light or darkness. */
+  light?: "sunlight" | "dim" | "dark";
+  /** A fog or haze covering it: heavy unless it only lightly obscures. */
+  fog?: "light" | "heavy";
 }
+
+/** What a square's light and fog are called, said aloud and in its tooltip. */
+export const RULESET_BOARD_LIGHT_KEYS = {
+  sunlight: "game.combat.ruleset.board.light.sunlight",
+  dim: "game.combat.ruleset.board.light.dim",
+  dark: "game.combat.ruleset.board.light.dark",
+} as const;
+export const RULESET_BOARD_FOG_KEYS = {
+  light: "game.combat.ruleset.board.fog.light",
+  heavy: "game.combat.ruleset.board.fog.heavy",
+} as const;
 
 export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cell.x},${cell.y}`;
 
@@ -181,7 +212,21 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
   const strikable = new Set(step?.stage === "target" ? (step.option.walls ?? []).map(rulesetCellKey) : []);
   const sections = new Map<string, { wall: string; health: number; max: number }>();
+  const props = new Map<string, NonNullable<RulesetBoardCell["prop"]>>();
+  for (const prop of view.props ?? []) {
+    const [left, top] = [Math.min(...prop.cells.map((cell) => cell.x)), Math.min(...prop.cells.map((cell) => cell.y))];
+    for (const cell of prop.cells)
+      props.set(rulesetCellKey(cell), {
+        label: prop.label,
+        health: prop.health,
+        max: prop.max,
+        ...(prop.art ? { art: prop.art } : {}),
+        dx: cell.x - left,
+        dy: cell.y - top,
+      });
+  }
   const zoned = new Map<string, string[]>();
+  const zoneArt = new Map<string, string[]>();
   for (const zone of view.zones ?? []) {
     for (const section of zone.sections ?? []) {
       for (const cell of section.cells) {
@@ -191,6 +236,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
     for (const cell of zone.cells) {
       const key = rulesetCellKey(cell);
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
+      if (zone.art) zoneArt.set(key, [...(zoneArt.get(key) ?? []), zone.art]);
     }
     // A wall's side (1.176) is drawn as the zone's too: walking there is caught as it says.
     for (const cell of zone.side ?? []) {
@@ -221,8 +267,14 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(aim ? { aim } : {}),
         ...(laid.has(key) ? { laid: true as const } : {}),
         ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
+        ...(zoneArt.has(key) ? { zoneArt: zoneArt.get(key)! } : {}),
         ...(sections.has(key) ? { section: sections.get(key)! } : {}),
+        ...(props.has(key) ? { prop: props.get(key)! } : {}),
+        ...(grid.ground?.[key]?.growth ? { growth: true as const } : {}),
+        ...(grid.ground?.[key]?.season ? { season: grid.ground[key]!.season! } : {}),
         ...(strikable.has(key) ? { strikable: true as const } : {}),
+        ...(grid.light?.[key] ? { light: grid.light[key] } : {}),
+        ...(grid.fog?.[key] ? { fog: grid.fog[key] } : {}),
       });
     }
   }
@@ -331,6 +383,17 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
         : t("game.combat.ruleset.board.sectionBroken", { wall: cell.section.wall }),
     );
   }
+  if (cell.growth) said.push(t("game.combat.ruleset.board.growth"));
+  if (cell.season) said.push(t("game.combat.ruleset.board.season", { season: cell.season }));
+  if (cell.prop) {
+    said.push(
+      cell.prop.health > 0
+        ? t("game.combat.ruleset.board.prop", { label: cell.prop.label, health: cell.prop.health, max: cell.prop.max })
+        : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label }),
+    );
+  }
+  if (cell.light) said.push(t(RULESET_BOARD_LIGHT_KEYS[cell.light]));
+  if (cell.fog) said.push(t(RULESET_BOARD_FOG_KEYS[cell.fog]));
   if (cell.targetable) said.push(t("game.combat.ruleset.board.targetable"));
   if (cell.strikable) said.push(t("game.combat.ruleset.board.strikable"));
   if (cell.aim?.teleport) said.push(t("game.combat.ruleset.board.teleportable"));

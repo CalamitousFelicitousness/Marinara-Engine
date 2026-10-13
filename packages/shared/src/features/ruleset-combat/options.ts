@@ -2,6 +2,7 @@
 // forecast - picks an id from here, so legality is decided in exactly one place and a client never
 // computes it.
 
+import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
   RulesetDefinition,
@@ -47,6 +48,7 @@ import {
 } from "./pool.js";
 import {
   currentRulesetActor,
+  rulesetActedThisRound,
   rulesetActiveConditions,
   rulesetWardsOn,
   rulesetTargetHasSenses,
@@ -63,6 +65,7 @@ import {
   rulesetCheckMode,
   rulesetConditionModifiers,
   rulesetDamageInEffect,
+  rulesetLairRound,
   rulesetSealed,
   rulesetSealedApart,
   rulesetSizeRank,
@@ -76,6 +79,9 @@ import {
   rulesetModeRuleHolds,
   rulesetMovesOnly,
   rulesetMovementAllowance,
+  rulesetLightMatches,
+  rulesetNearProp,
+  rulesetPropNamed,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -103,7 +109,7 @@ import {
   rulesetFills,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
-import { rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
+import { rulesetStandingProps, rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
 import {
   rulesetCanSee,
   rulesetCarriesLight,
@@ -114,6 +120,7 @@ import {
   rulesetStandsObscured,
 } from "./sight.js";
 import type {
+  RulesetBoardProp,
   RulesetAfterAttack,
   RulesetCombatAmount,
   RulesetCombatAgainst,
@@ -402,6 +409,19 @@ export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 export const RULESET_STAND_OPTION = "move:stand";
 /** A flier going up a level, or down one, where it stands (1.113). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
+/** Lighting a prop again (1.327), followed by its id. */
+export const RULESET_RELIGHT_OPTION_PREFIX = "relight:";
+
+/** Every cell a prop that may be lit again lights (1.327): within its `squares` of it. */
+export function rulesetRelightCells(state: RulesetEncounterState, prop: RulesetBoardProp): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  if (!grid || !prop.relight) return [];
+  const cells: RulesetCombatCell[] = [];
+  for (let y = 0; y < grid.height; y++)
+    for (let x = 0; x < grid.width; x++)
+      if (prop.cells.some((cell) => rulesetCellDistance(cell, { x, y }) <= prop.relight!.squares)) cells.push({ x, y });
+  return cells;
+}
 export const RULESET_FLY_DOWN_OPTION = "move:fly-down";
 /** How high above the ground under it a flier may go, in levels. A board's own heights are a handful
  *  of levels, so this is well above anything worth being out of reach over. */
@@ -423,7 +443,12 @@ export interface RulesetOptionReach {
 
 /** The actor's own action behind an option id, when the option is one of theirs. */
 function actionOf(actor: RulesetCombatant, optionId: string): RulesetCombatAction | undefined {
-  return actor.actions.find((entry) => entry.id === optionId);
+  // A lair action as its window offers it (1.310) is aimed as the action itself: without this an area
+  // lair action had nowhere to be aimed, and an opponent the Engine runs let every one go by.
+  const id = optionId.startsWith(RULESET_LAIR_OPTION_PREFIX)
+    ? optionId.slice(RULESET_LAIR_OPTION_PREFIX.length)
+    : optionId;
+  return actor.actions.find((entry) => entry.id === id);
 }
 
 /**
@@ -519,7 +544,8 @@ export function rulesetTargetRefusal(
 }
 
 /**
- * The cells of standing wall sections an attack may be pointed at instead of a creature (1.199):
+ * The cells of standing wall sections, and of props (1.311), an attack may be pointed at instead of a
+ * creature (1.195):
  * one aimed at a single foe or anybody, dealing damage, not an area, a contest or a sequence, with the
  * section within its reach and seen from where its maker stands.
  */
@@ -532,21 +558,40 @@ export function rulesetWallTargets(
   if (!grid || !rulesetPositionOf(actor)) return [];
   if (action.toHit === undefined || !action.damage || action.area || action.contest || action.sequence) return [];
   if (action.targets.count < 1 || (action.targets.side !== "enemy" && action.targets.side !== "any")) return [];
-  const sections = rulesetStandingSections(state);
-  if (sections.length === 0) return [];
+  // And what stands on the board that may be broken (1.311).
+  const cells = [
+    ...rulesetStandingSections(state).flatMap(({ section }) => section.cells),
+    ...rulesetStandingProps(state).flatMap((prop) => prop.cells),
+    // Growth an edge that cuts may cut back (1.313).
+    ...(cutsGrowth(state, action)
+      ? Object.entries(grid.ground ?? {}).flatMap(([at, here]) => {
+          if (!here.growth) return [];
+          const [x, y] = at.split(",").map(Number);
+          return [{ x: x!, y: y! }];
+        })
+      : []),
+  ];
+  if (cells.length === 0) return [];
   const reach = rulesetOptionReach(state, actor.id, action.id);
   if (!reach) return [];
-  return sections.flatMap(({ section }) =>
-    section.cells
-      .filter(
-        (cell) =>
-          rulesetDistanceTo(cell, actor) <= reach.max &&
-          rulesetFootprint(actor).some(
-            (from) => rulesetCellDistance(from, cell) <= 1 || rulesetLineOfSight(grid, from, cell),
-          ),
-      )
-      .map((cell) => ({ x: cell.x, y: cell.y })),
-  );
+  return cells
+    .filter(
+      (cell) =>
+        rulesetDistanceTo(cell, actor) <= reach.max &&
+        rulesetFootprint(actor).some(
+          (from) => rulesetCellDistance(from, cell) <= 1 || rulesetLineOfSight(grid, from, cell),
+        ),
+    )
+    .map((cell) => ({ x: cell.x, y: cell.y }));
+}
+
+/** Whether an action's damage is of a kind that cuts growth back (1.313): slashing, unless the board
+ *  says otherwise. */
+function cutsGrowth(state: RulesetEncounterState, action: RulesetCombatAction): boolean {
+  if (!state.board?.grid.ground) return false;
+  const cut = state.board.growth?.cutBy ?? ["slashing"];
+  const types = [action.damage?.type, ...(action.damage?.plus ?? []).map((clause) => clause.type)];
+  return types.some((type) => !!type && cut.includes(type.trim().toLowerCase()));
 }
 
 /** Whether an area option may be aimed at this cell: on the board, within the distance it carries,
@@ -684,7 +729,23 @@ export function rulesetAimedCells(
   const from = rulesetPositionOf(actor);
   if (!grid || !actor || !action?.area || !from) return [];
   const area = action.area;
-  // Laid from whichever cell the actor fills nearest the aim (1.193).
+  // Around the props with its label (1.326), wherever it was aimed: every cell within its size of
+  // one, behind them too.
+  if (area.aroundProp) {
+    const named = area.aroundProp;
+    const props = (state.board?.props ?? [])
+      .filter((prop) => prop.health > 0 && rulesetPropNamed(prop, named))
+      .flatMap((prop) => prop.cells);
+    const reach = Math.max(1, Math.round(area.size));
+    const cells: RulesetCombatCell[] = [];
+    for (let y = 0; y < grid.height; y++) {
+      for (let x = 0; x < grid.width; x++) {
+        if (props.some((cell) => rulesetCellDistance(cell, { x, y }) <= reach)) cells.push({ x, y });
+      }
+    }
+    return cells;
+  }
+  // Laid from whichever cell the actor fills nearest the aim (1.189).
   const one = (aim: RulesetCombatCell) => {
     const origin = rulesetNearestCell(actor, aim) ?? from;
     return area.shape === "wall"
@@ -1582,7 +1643,9 @@ export function rulesetOptionTargets(
           return false;
         // Only somebody at no health and still alive (1.310): Consume Life.
         if (cure?.dyingOnly && !(combatant.down && !combatant.defeated)) return false;
-        // "A creature you can see" (1.177).
+        // Only somebody who has taken their turn this round (1.322): the Hour Bell.
+        if (cure?.actedOnly && !rulesetActedThisRound(state, combatant.id)) return false;
+        // "A creature you can see" (1.173).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
         // Only on somebody holding what it names (1.234): grappled by its maker, or restrained.
         if (cure?.targetHolds && !rulesetHoldsFor(definition, combatant, actor.id, cure.targetHolds)) return false;
@@ -1781,7 +1844,10 @@ export function rulesetActionAvailable(
     if (!definition || !state || !at) return false;
     if (!action.usableIn.light.includes(rulesetLightAt(definition, state, at))) return false;
   }
-  // A light only while they carry one, and for nothing once a turn (1.294).
+  // Only beside a prop (1.327): Fennick's Hymnal at the Year-Wheel.
+  if (action.usableNear && !(state && rulesetNearProp(state, actor, action.usableNear.prop, action.usableNear.within)))
+    return false;
+  // A light only while they carry one, and for nothing once a turn (1.290).
   if (action.switches && "carried" in action.switches) {
     if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
     if (action.free && actor.flags.lightSwitched) return false;
@@ -2159,6 +2225,8 @@ function optionFrom(
   // A signature action is bought with points at the end of somebody else's turn, so it is never on
   // the actor's own menu. `rulesetSignatureOptions` is where it is offered.
   if (action.signature) return null;
+  // Nor a lair action (1.310), but on the turn lent for it.
+  if (action.lair && !lairLent) return null;
   // A reaction waits for its moment, which is never a turn. `rulesetWindowOptions` is where the
   // moment offers it.
   if (action.reaction && !atItsMoment) return null;
@@ -2244,10 +2312,12 @@ function optionFrom(
   const paid = planRulesetCombatCost(definition, actor, action);
   const payments = [...rulesetPaymentPools(definition, actor, action), ...chargePayments(actor, action)];
   if (!paid && payments.length === 0) return null;
+  const icons = rulesetEntryIcons(definition, action.entry ?? (action.id.includes("/") ? action.id : undefined));
   const option: RulesetCombatOption = {
     id: action.id,
     kind: action.kind,
     label: action.label,
+    ...(icons.length ? { icons } : {}),
     ...(free ? {} : { budget }),
     ...(following ? { followUp: true as const } : {}),
     ...(oneStrike ? { oneStrike: true as const } : {}),
@@ -2770,6 +2840,17 @@ function movementOptions(
   // A condition that pins somebody takes their movement away the moment it lands, not at the start
   // of their next turn.
   if (rulesetCombatEffects(definition, combat, actor, state).has("speed-zero")) return [];
+  // Held where it stands by the light it is in (1.314): Lantern-Shy in bright light.
+  const still = actor.block?.stillIn;
+  if (
+    still &&
+    rulesetFootprint(actor).some((cell) => {
+      const light = rulesetLightAt(definition, state, cell);
+      return still.some((wanted) => rulesetLightMatches(light, wanted));
+    })
+  ) {
+    return [];
+  }
   const left = Math.max(0, Math.floor(actor.movementLeft ?? 0));
   const prone = rulesetProneCondition(definition, combat, actor);
   if (prone) {
@@ -3026,10 +3107,24 @@ export function rulesetUncompelledOptions(
     });
   }
   for (const holder of state.combatants) {
-    if (holder.id === actor.id || holder.side !== actor.side || holder.defeated) continue;
+    if (holder.side !== actor.side || holder.defeated) continue;
     for (const condition of rulesetCombatConditions(definition, holder)) {
       const shake = combat.conditions?.find((entry) => entry.condition === condition)?.shakeOff;
       if (!shake || (actor.budgets[shake.budget] ?? 0) < 1) continue;
+      // Its holder tears free of it themselves where it says so (1.315): the Seed Hopper.
+      if (holder.id === actor.id) {
+        if (!shake.self) continue;
+        const label = definition.sheet.live.conditions.find((entry) => entry.id === condition)?.label ?? condition;
+        options.push({
+          id: `shake:${condition}@${holder.id}`,
+          kind: "standard",
+          label: `Tear free of ${label}`,
+          budget: shake.budget,
+          targets: { side: "self", count: 0 },
+          shakeOff: { holderId: holder.id, condition, name: holder.name, label },
+        });
+        continue;
+      }
       const reach = shake.reach === undefined ? 1 : shake.reach / (combat.distance?.perCell ?? 1);
       if (positioned(state) && rulesetCombatantDistance(state, actor, holder) > reach) continue;
       const label = definition.sheet.live.conditions.find((entry) => entry.id === condition)?.label ?? condition;
@@ -3043,7 +3138,23 @@ export function rulesetUncompelledOptions(
       });
     }
   }
-  // A sphere (1.313): rolled by the one shut in it, picked up or put down by somebody next to it.
+  // Lighting a prop again (1.327): somebody beside it, while anywhere it lights is not lit so.
+  for (const prop of state.board?.props ?? []) {
+    const relight = prop.relight;
+    if (!relight || prop.health <= 0 || (actor.budgets[relight.budget] ?? 0) < 1) continue;
+    if (!rulesetNearProp(state, actor, prop.id, 1)) continue;
+    if (rulesetRelightCells(state, prop).every((cell) => rulesetLightAt(definition, state, cell) === relight.light))
+      continue;
+    options.push({
+      id: `${RULESET_RELIGHT_OPTION_PREFIX}${prop.id}`,
+      kind: "standard",
+      label: `Light ${prop.label} again`,
+      budget: relight.budget,
+      targets: { side: "self", count: 0 },
+      relights: { propId: prop.id, label: prop.label },
+    });
+  }
+  // A sphere (1.309): rolled by the one shut in it, picked up or put down by somebody next to it.
   if (positioned(state)) {
     const own = rulesetSealed(definition, actor, state);
     if (own?.rolls && (actor.budgets[own.rolls.budget] ?? 0) >= 1) {
@@ -3217,10 +3328,12 @@ export function rulesetSignatureOptions(
   const combat = definition.combat;
   const actor = rulesetCombatant(state, actorId);
   const points = actor?.signature?.points;
-  if (!combat || !actor || points === undefined) return [];
-  if (currentRulesetActor(state)?.id === actorId) return [];
-  if (!rulesetCombatStanding(actor) || actor.surprised || blocked(definition, combat, state, actor)) return [];
-  const options: RulesetCombatOption[] = [];
+  // Its lair's actions first (1.310), on the lair's own count, whosever turn has just ended.
+  const lair = rulesetLairOptions(definition, state, actorId);
+  if (!combat || !actor || points === undefined) return lair;
+  if (currentRulesetActor(state)?.id === actorId) return lair;
+  if (!rulesetCombatStanding(actor) || actor.surprised || blocked(definition, combat, state, actor)) return lair;
+  const options: RulesetCombatOption[] = [...lair];
   for (const action of actor.actions) {
     if (!action.signature || action.signature.cost > points) continue;
     if (!rulesetActionAvailable(actor, action, state, definition) || !rulesetSequenceCanHappen(actor, action)) continue;
@@ -3253,6 +3366,60 @@ export function rulesetSignatureOptions(
   }
   return options;
 }
+
+/** Set while a lair's turn is lent (1.310), the only menu its lair actions are on. */
+let lairLent = false;
+
+/** The menu as a turn lent for a lair action shows it (1.310): its lair actions on it. */
+export function rulesetLentLairTurn<T>(read: () => T): T {
+  const was = lairLent;
+  lairLent = true;
+  try {
+    return read();
+  } finally {
+    lairLent = was;
+  }
+}
+
+/**
+ * The lair actions this combatant may take right now (Capability API 1.310): on its lair's count,
+ * once a round, not the one it took the round before, each aimed as it would be on its own turn with the budget
+ * it is taken with lent for it. None while it is down or cannot act.
+ */
+export function rulesetLairOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+): RulesetCombatOption[] {
+  const combat = definition.combat;
+  const actor = rulesetCombatant(state, actorId);
+  const round = actor?.lair ? rulesetLairRound(definition, state, actor) : null;
+  if (!combat || !actor?.lair || round === null) return [];
+  // Down, it takes none; held from acting, its lent turn's menu offers none.
+  if (!rulesetCombatStanding(actor)) return [];
+  // Not the one it took the round before; only the one it must take next, when one is (1.322).
+  const last = actor.lair.last?.round === round - 1 ? actor.lair.last.id : undefined;
+  const next = actor.lair.next;
+  const wanted = next === undefined ? [] : typeof next === "string" ? [next] : next;
+  const forced = wanted.filter((id) => actor.actions.some((action) => action.lair && action.id === id));
+  const lairs = actor.actions.filter(
+    (action) => action.lair && (forced.length ? forced.includes(action.id) : action.id !== last),
+  );
+  const options: RulesetCombatOption[] = [];
+  for (const budget of new Set(lairs.map((action) => action.budget))) {
+    const view = rulesetBorrowedTurn(state, actor.id, budget);
+    for (const option of rulesetLentLairTurn(() => rulesetCombatOptions(definition, view, actor.id))) {
+      const own = lairs.find((action) => action.id === option.id);
+      if (!own || option.budget !== budget) continue;
+      const { budget: _budget, ...rest } = option;
+      options.push({ ...rest, id: `${RULESET_LAIR_OPTION_PREFIX}${option.id}`, lairOf: option.id });
+    }
+  }
+  return options;
+}
+
+/** What a lair action's option id starts with (1.310), before the option it takes. */
+export const RULESET_LAIR_OPTION_PREFIX = "lair>";
 
 /**
  * The fight as its maker's own turn would show it, for a legendary cast (1.283): no window open,

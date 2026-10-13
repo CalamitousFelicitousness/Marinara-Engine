@@ -150,6 +150,8 @@ export interface CombatPartyMember {
 export interface RulesetEncounterBlueprint {
   /** Caught unaware as the fight begins (1.236); a ruleset fight reads it. */
   surprised?: boolean;
+  /** Fights in its own lair (1.310): its lair actions are taken. A ruleset fight reads it. */
+  inLair?: boolean;
   creature?: string;
   tier?: string;
   proposed?: unknown;

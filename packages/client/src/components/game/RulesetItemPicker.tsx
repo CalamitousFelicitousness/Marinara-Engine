@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
+  artIconFor,
   defaultRulesetSheetBuild,
   type RulesetDefinition,
   type RulesetItemBook,
@@ -16,6 +17,7 @@ import {
   type RulesetItemEffectFact,
   type RulesetItemFacts,
 } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { useRulesetCatalog } from "../../hooks/use-capability-packages";
 import {
   CATALOG_FILTER_ANY,
@@ -342,6 +344,7 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
   }
   if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
   if (fact.to === "attacks-taken") return t("ui.game.gameinventory.effectOnAttacksTaken", { change });
+  if (fact.to === "save-difficulty") return t("ui.game.gameinventory.effectSaveDifficulty", { change });
   if (fact.to === "checks-taken") {
     return names
       ? t("ui.game.gameinventory.effectOnNamedChecksTaken", { change, names })
@@ -550,6 +553,14 @@ export function RulesetItemPicker({
                   />
                   <span className="min-w-0 flex-1 space-y-1">
                     <span className="flex flex-wrap items-center gap-1.5">
+                      <ArtIcon
+                        ids={[
+                          each.entry.icon,
+                          artIconFor({ catalog: each.catalogId, entry: each.entry.id, item: true }),
+                          artIconFor({ item: each.name }),
+                        ]}
+                        className="h-5 w-5"
+                      />
                       <span className="text-xs font-medium text-[var(--foreground)]">{each.name}</span>
                       {kind.map((word) => (
                         <span key={word} className={chipClass}>

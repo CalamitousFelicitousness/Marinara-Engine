@@ -3,7 +3,13 @@
 // Turn order, the round, every combatant's conditions in the ruleset's own words, what is left of
 // each budget for the actor on turn, and the log with the real arithmetic in it. Every number here
 // was sent by the server; this file reads the view and prints it.
-import { rulesetHideLines, type DirectedRulesetView, type RulesetDefinition } from "@marinara-engine/shared";
+import {
+  rulesetConditionIcons,
+  rulesetHideLines,
+  type DirectedRulesetView,
+  type RulesetDefinition,
+} from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -184,6 +190,17 @@ export function RulesetCombatStatus({
                       {source.name}: {source.facts.map((fact) => rulesetEffectPhrase(fact, t)).join("; ")}
                     </span>
                   ))}
+                  {combatant.conditions.length > 0 && (
+                    <span className="mt-0.5 flex flex-wrap gap-0.5" aria-hidden="true">
+                      {combatant.conditions.map((condition) => (
+                        <ArtIcon
+                          key={condition.id}
+                          ids={rulesetConditionIcons(definition, condition.id)}
+                          className="h-4 w-4"
+                        />
+                      ))}
+                    </span>
+                  )}
                   {(state || conditions.length > 0 || combatant.concentrating) && (
                     <span className="mt-0.5 block text-[0.65rem] text-[var(--muted-foreground)]">
                       {[

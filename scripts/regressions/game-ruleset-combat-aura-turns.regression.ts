@@ -343,7 +343,7 @@ try {
   {
     refused(
       document((doc) => delete conditionsOf(doc, "countercharm").auras[0].conditions),
-      /An aura spreads conditions, harms, or asks for a save/,
+      /An aura spreads conditions, harms, asks for a save, or feeds/,
     );
     refused(
       document((doc) => (conditionsOf(doc, "fear_aura").auras[0].save.save = "luck_save")),

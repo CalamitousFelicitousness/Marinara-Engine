@@ -37,6 +37,8 @@ import {
   rulesetAimTurning,
   rulesetBoardCells,
   type RulesetCellChoice,
+  RULESET_BOARD_FOG_KEYS,
+  RULESET_BOARD_LIGHT_KEYS,
   rulesetCellKey,
   rulesetCellSentences,
   rulesetDistanceText,
@@ -52,6 +54,7 @@ import {
   type RulesetMenuStep,
 } from "../../lib/ruleset-combat-menu";
 import { RulesetCombatMenu } from "./RulesetCombatMenu";
+import { boardCellArt, boardSliceStyle, useBoardArt } from "../../lib/board-art";
 import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 import { cn } from "../../lib/utils";
 
@@ -257,6 +260,20 @@ export function RulesetCombatBoard({
   const palette = TERRAIN_PALETTES[environment ?? "default"] ?? TERRAIN_PALETTES.default;
   const tintAlpha = environment && TERRAIN_PALETTES[environment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
   const sprites = useMemo(() => new Map(units.map((unit) => [unit.id, unit.sprite])), [units]);
+  // Board art (1.328): the pack the board names, else its environment's, and the props pack. Without
+  // one, every square is drawn as before.
+  const boardArt = useBoardArt(grid.pack, grid.scene ?? grid.environment ?? environment);
+  const cellArt = useMemo(
+    () =>
+      new Map(
+        cells.map((cell) => [
+          rulesetCellKey(cell),
+          boardCellArt(boardArt, cell, (x, y) => grid.tiles[y]?.[x] ?? "plains", grid.width, grid.height),
+        ]),
+      ),
+    [cells, boardArt, grid],
+  );
+  const drawn = !!boardArt.board;
   // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
   const creaturePack = useCreaturePack();
   const facings = useCreatureFacings(
@@ -326,7 +343,7 @@ export function RulesetCombatBoard({
           }}
         >
           <div
-            className="absolute inset-0 grid gap-[2px]"
+            className={cn("absolute inset-0 grid", drawn ? "gap-0" : "gap-[2px]")}
             style={{
               gridTemplateColumns: `repeat(${grid.width}, 1fr)`,
               gridTemplateRows: `repeat(${grid.height}, 1fr)`,
@@ -340,6 +357,7 @@ export function RulesetCombatBoard({
               const isCursor = cursor.x === cell.x && cursor.y === cell.y;
               const isActor = actor?.x === cell.x && actor?.y === cell.y;
               const isAimed = !!aimed && reading?.x === cell.x && reading?.y === cell.y;
+              const art = cellArt.get(key);
               return (
                 <button
                   type="button"
@@ -374,21 +392,41 @@ export function RulesetCombatBoard({
                   )}
                   style={{ backgroundColor: palette[cell.terrain] + TILE_ALPHA, boxShadow: tileShadow(cell.terrain) }}
                 >
-                  <span
-                    className="pointer-events-none absolute inset-0"
-                    style={{
-                      backgroundImage: `url(${TILE_TEXTURES[cell.terrain]})`,
-                      backgroundSize: "cover",
-                      backgroundPosition: "center",
-                      transform: `rotate(${((cell.x * 7 + cell.y * 13) % 4) * 90}deg) scale(1.03)`,
-                    }}
-                  />
-                  <span
-                    className="pointer-events-none absolute inset-0"
-                    style={{ backgroundColor: palette[cell.terrain] + tintAlpha }}
-                  />
-                  <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/25" />
-                  {cell.terrain === "water" && (
+                  {art?.ground ? (
+                    // The pack's ground (1.328), then its edge blocks over it, a quarter of a corner each.
+                    <>
+                      <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ground)} />
+                      {art.edges.map(({ quarter, slice }) => (
+                        <span
+                          key={quarter}
+                          className={cn(
+                            "pointer-events-none absolute h-1/2 w-1/2",
+                            quarter % 2 ? "left-1/2" : "left-0",
+                            quarter > 1 ? "top-1/2" : "top-0",
+                          )}
+                          style={boardSliceStyle(slice)}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        className="pointer-events-none absolute inset-0"
+                        style={{
+                          backgroundImage: `url(${TILE_TEXTURES[cell.terrain]})`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                          transform: `rotate(${((cell.x * 7 + cell.y * 13) % 4) * 90}deg) scale(1.03)`,
+                        }}
+                      />
+                      <span
+                        className="pointer-events-none absolute inset-0"
+                        style={{ backgroundColor: palette[cell.terrain] + tintAlpha }}
+                      />
+                      <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/25" />
+                    </>
+                  )}
+                  {cell.terrain === "water" && !art?.ground && (
                     <span
                       className="pointer-events-none absolute inset-0"
                       style={{
@@ -400,7 +438,10 @@ export function RulesetCombatBoard({
                     />
                   )}
                   {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
-                  {cell.height > 0 && (
+                  {cell.height > 0 && art?.rim && (
+                    <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.rim)} />
+                  )}
+                  {cell.height > 0 && !art?.rim && (
                     <span className="pointer-events-none absolute inset-0" style={heightWash(cell.height)}>
                       <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
                         {"▲".repeat(Math.min(cell.height, 3))}
@@ -409,12 +450,23 @@ export function RulesetCombatBoard({
                   )}
                   {/* Nothing walks in and nothing sees through: drawn solid rather than merely dark. */}
                   {cell.solid && (
-                    <span className="pointer-events-none absolute inset-0 bg-black/45 ring-1 ring-inset ring-white/25" />
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/25",
+                        !art?.ground && "bg-black/45",
+                      )}
+                    />
                   )}
-                  {icon && (
+                  {icon && !art?.ground && (
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[0.7em] opacity-45">
                       {icon}
                     </span>
+                  )}
+                  {cell.reach && art?.reach && (
+                    <span
+                      className="pointer-events-none absolute inset-0"
+                      style={{ ...boardSliceStyle(art.reach), animation: "tc-move-range 1.5s ease-in-out infinite" }}
+                    />
                   )}
                   {cell.reach && (
                     <span
@@ -422,7 +474,7 @@ export function RulesetCombatBoard({
                         "pointer-events-none absolute inset-0 ring-1 ring-inset",
                         provokes
                           ? "bg-amber-400/35 ring-amber-300/70"
-                          : "bg-[var(--primary)]/40 ring-[var(--primary)]/60",
+                          : cn(!art?.reach && "bg-[var(--primary)]/40", "ring-[var(--primary)]/60"),
                       )}
                       style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
                     />
@@ -444,17 +496,96 @@ export function RulesetCombatBoard({
                       {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
                     </span>
                   )}
-                  {/* A lasting area (1.171): tinted, with its name in the tooltip of the square. */}
-                  {cell.zones && (
+                  {/* The light on the square when it is not bright, and a fog or haze over it. */}
+                  {cell.light && (
                     <span
-                      className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"
-                      title={cell.zones.join(", ")}
+                      className={cn(
+                        "pointer-events-none absolute inset-0",
+                        !art?.light && cell.light === "dark" && "bg-black/60",
+                        !art?.light && cell.light === "dim" && "bg-black/30",
+                        !art?.light && cell.light === "sunlight" && "bg-yellow-200/20",
+                      )}
+                      style={art?.light ? boardSliceStyle(art.light) : undefined}
+                      title={t(RULESET_BOARD_LIGHT_KEYS[cell.light])}
                     />
                   )}
-                  {/* A wall's section (1.199): how much it has left, and a ring while it may be struck. */}
+                  {cell.fog && (
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-0",
+                        !art?.fog && (cell.fog === "heavy" ? "bg-slate-200/50" : "bg-slate-200/25"),
+                      )}
+                      style={art?.fog ? boardSliceStyle(art.fog) : undefined}
+                      title={t(RULESET_BOARD_FOG_KEYS[cell.fog])}
+                    />
+                  )}
+                  {art?.ice && (
+                    <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ice)} />
+                  )}
+                  {/* A lasting area (1.167): tinted, with its name in the tooltip of the square. */}
+                  {cell.zones &&
+                    (art?.zones.length ? (
+                      art.zones.map((slice, n) => (
+                        <span
+                          key={n}
+                          className="pointer-events-none absolute inset-0"
+                          style={boardSliceStyle(slice)}
+                          title={cell.zones!.join(", ")}
+                        />
+                      ))
+                    ) : (
+                      <span
+                        className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"
+                        title={cell.zones.join(", ")}
+                      />
+                    ))}
+                  {/* A wall's section (1.195): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (
                     <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-sky-100">
                       {cell.section.health}
+                    </span>
+                  )}
+                  {/* Growth (1.313): a green tangle over the square. */}
+                  {cell.growth && (
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-0",
+                        !art?.growth && "bg-emerald-700/40 ring-1 ring-inset ring-emerald-400/40",
+                      )}
+                      style={art?.growth ? boardSliceStyle(art.growth) : undefined}
+                      title={t("game.combat.ruleset.board.growth")}
+                    />
+                  )}
+                  {/* A prop (1.311): drawn as a crate standing in the square, its health in the corner;
+                      broken, as its rubble. */}
+                  {cell.prop && (
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute",
+                        art?.prop
+                          ? "inset-0"
+                          : cn(
+                              "inset-[18%] rounded-[2px] border",
+                              cell.prop.health > 0
+                                ? "border-amber-900/80 bg-amber-700/70"
+                                : "border-dashed border-amber-900/50 bg-transparent",
+                            ),
+                      )}
+                      style={art?.prop ? boardSliceStyle(art.prop) : undefined}
+                      title={
+                        cell.prop.health > 0
+                          ? t("game.combat.ruleset.board.prop", {
+                              label: cell.prop.label,
+                              health: cell.prop.health,
+                              max: cell.prop.max,
+                            })
+                          : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label })
+                      }
+                    />
+                  )}
+                  {cell.prop && cell.prop.health > 0 && (
+                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-amber-100">
+                      {cell.prop.health}
                     </span>
                   )}
                   {cell.strikable && (
@@ -466,8 +597,9 @@ export function RulesetCombatBoard({
                         "pointer-events-none absolute inset-0 ring-1 ring-inset",
                         isAimed || cell.laid
                           ? "bg-amber-400/55 ring-2 ring-amber-200"
-                          : "bg-amber-400/20 ring-amber-300/40",
+                          : cn(!art?.aim && "bg-amber-400/20", "ring-amber-300/40"),
                       )}
+                      style={art?.aim && !isAimed && !cell.laid ? boardSliceStyle(art.aim) : undefined}
                     />
                   )}
                   {isActor && (

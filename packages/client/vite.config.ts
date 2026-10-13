@@ -55,6 +55,12 @@ function manualChunks(id: string) {
   // So is the world a game is set in (its kit, places, people, history and story), which grows with
   // every part of worldgen, rather than weight on the game tag parser's chunk.
   if (/\/shared\/(?:dist|src)\/features\/world\//u.test(id)) return "game-world";
+  // The ruleset sheet grows with every part of a sheet a ruleset can describe, and the art the game draws
+  // from board, icon and portrait packs is shared by several screens: each is its own chunk rather than
+  // weight on GameSurface's budget.
+  if (id.endsWith("/components/game/GameRulesetSheet.tsx")) return "game-ruleset-sheet";
+  if (/\/lib\/(?:board-art|board-art-cells|art-pack)\.ts$/u.test(id) || id.endsWith("/components/game/ArtIcon.tsx"))
+    return "game-art";
   if (!id.includes("/node_modules/")) return undefined;
   // Ignore checkout names, but keep pnpm peer suffixes so React and its consumers stay together.
   // Removing those suffixes splits eager React imports across chunks and creates startup cycles.

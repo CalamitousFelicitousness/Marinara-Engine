@@ -145,7 +145,13 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   }
   const rest = values.get("rest")?.trim();
   if (!rest) return parsed;
-  return { ...parsed, op: { op: "rest", rest } };
+  // Dice spent to heal on it (1.330): a count, or the tag does not say what it means.
+  const rawDice = values.get("dice");
+  const dice = rawDice === undefined ? null : readInteger(rawDice);
+  if (rawDice !== undefined && (dice === null || dice < 0)) return parsed;
+  // From one pool of several (1.332): 5e's d8 hit dice.
+  const pool = dice ? values.get("pool")?.trim() : undefined;
+  return { ...parsed, op: { op: "rest", rest, ...(dice ? { dice } : {}), ...(pool ? { pool } : {}) } };
 }
 
 /** The outcome summary (`now`) of a command for the whole party lists one value per member, so it
@@ -217,6 +223,8 @@ export function serializeSheetCommandTag(
       if (op.pool) attribute("pool", op.pool);
     } else if (op.op === "rest") {
       attribute("rest", op.rest);
+      if (op.dice) attribute("dice", op.dice);
+      if (op.dice && op.pool) attribute("pool", op.pool);
     }
   }
   if (outcome.ok) {

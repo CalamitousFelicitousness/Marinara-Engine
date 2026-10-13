@@ -476,6 +476,13 @@ export function rulesetCombatEventLine(
     }
     // Hiding given away (1.286).
     case "revealed":
+      // Given away by a chime (1.314).
+      if (event.reason === "alerted") {
+        return key("revealedAlerted", {
+          actor: names.combatant(event.actorId),
+          holder: names.combatant(event.alertedBy ?? ""),
+        });
+      }
       return key(
         event.reason === "attack"
           ? "revealedAttack"
@@ -658,6 +665,121 @@ export function rulesetCombatEventLine(
         dealt: event.dealt,
         health: event.health,
       });
+    // A prop lit again (1.327).
+    case "relit":
+      return key("relit", { actor: names.combatant(event.actorId), label: event.label });
+    // Held Ground let go mid-fight (1.325), and the marks coming due.
+    case "heldGroundReleased": {
+      const line = key(event.label ? "heldGroundReleasedNamed" : "heldGroundReleased", { label: event.label ?? "" });
+      const died = event.died.map((id) => names.combatant(id)).join(", ");
+      const down = (event.down ?? []).map((id) => names.combatant(id)).join(", ");
+      return [
+        line,
+        died ? key("heldGroundDied", { names: died }) : "",
+        down ? key("heldGroundDown", { names: down }) : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    case "owing":
+      return key(event.result === "dead" ? "owingDead" : "owingSafe", {
+        actor: names.combatant(event.actorId),
+        count: event.rolls.length,
+        rolls: event.rolls.map((roll) => roll + event.bonus).join(", "),
+      });
+    // Felled on Held Ground, and reaped (1.318).
+    case "felled":
+      return key(event.label ? "felledNamed" : "felled", {
+        actor: names.combatant(event.actorId),
+        label: event.label ?? "",
+      });
+    case "reaped":
+      return key("reaped", {
+        actor: names.combatant(event.actorId),
+        source: event.sourceId ? names.combatant(event.sourceId) : "",
+      });
+    // Drawn toward whoever spoke to them (1.321): Whisper a Name.
+    case "drawn":
+      return key("drawn", { actor: names.combatant(event.actorId), target: names.combatant(event.targetId) });
+    // Creatures called into the fight (1.320): Jars Burst.
+    case "called":
+      return key(event.ids.length ? "called" : "calledNone", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        names: event.ids.map((id) => names.combatant(id)).join(", "),
+      });
+    // Hanging on at 1 (1.315): the Hourglass.
+    case "hangsOn":
+      return key(event.label ? "hangsOnNamed" : "hangsOn", {
+        actor: names.combatant(event.actorId),
+        label: event.label ?? "",
+        left: event.left,
+      });
+    // An aura grown (1.315).
+    case "auraGrows":
+      return key("auraGrows", {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        distance: event.distance,
+      });
+    // A board's light rule catching somebody (1.314).
+    case "lightRule": {
+      // With its save (1.316), whether it was made.
+      const named = !!event.label;
+      const name = !event.save
+        ? named
+          ? "lightRuleNamed"
+          : "lightRule"
+        : event.save.saved
+          ? named
+            ? "lightRuleSavedNamed"
+            : "lightRuleSaved"
+          : named
+            ? "lightRuleFailedNamed"
+            : "lightRuleFailed";
+      return key(name, {
+        actor: names.combatant(event.actorId),
+        label: event.label ?? "",
+        rounds: event.rounds,
+        total: event.save?.total ?? 0,
+      });
+    }
+    // The board doing something on its own (1.313), and growth taken off it.
+    case "boardEvent": {
+      const line = event.tell
+        ? key("boardEventTell", { tell: event.tell })
+        : key("boardEvent", { label: event.label ?? event.id, cells: event.cells });
+      // Who it carried (1.324).
+      if (!event.pushed?.length) return line;
+      const carried = event.pushed.map((one) => names.combatant(one.id)).join(", ");
+      return `${line} ${key("boardEventCarried", { names: carried })}`;
+    }
+    case "growth":
+      return key(event.by === "cut" ? "growthCut" : event.by === "burnt" ? "growthBurnt" : "growthCleared", {
+        actor: event.actorId ? names.combatant(event.actorId) : "",
+        label: event.label ?? "",
+        count: event.cells,
+      });
+    // A prop struck or caught in an area (1.311).
+    case "prop":
+      return key(
+        event.outcome === "miss"
+          ? "propMiss"
+          : event.broken
+            ? event.outcome === "area"
+              ? "propAreaBroken"
+              : "propBroken"
+            : event.outcome === "area"
+              ? "propArea"
+              : "prop",
+        {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          prop: event.prop,
+          dealt: event.dealt,
+          health: event.health,
+        },
+      );
     case "pushed":
       return key("pushed", {
         actor: names.combatant(event.actorId),
@@ -826,6 +948,15 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText({ ...event, modifier: 0, total: event.kept }, t),
         from: event.from,
       });
+    // A failed save turned into a success (1.312).
+    case "legendaryResistance":
+      return key("legendaryResistance", {
+        actor: names.combatant(event.actorId),
+        save: names.save(event.save),
+        left: event.left,
+      });
+    case "lair":
+      return key("lair", { actor: names.combatant(event.actorId), label: event.label });
     case "signature":
       return key("signature", {
         actor: names.combatant(event.actorId),

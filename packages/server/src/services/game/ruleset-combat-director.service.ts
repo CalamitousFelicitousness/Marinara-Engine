@@ -28,6 +28,8 @@ import {
   holdRulesetCombatant,
   holdRulesetSheetHealth,
   settleRulesetFledFight,
+  rulesetReleaseHeldGround,
+  type RulesetHeldGroundRelease,
   normalizeCharacterLookupName,
   normalizeGameDifficulty,
   normalizeTacticalEnvironment,
@@ -76,6 +78,8 @@ import {
   rulesetTierStatBlock,
   rulesetWindowMoment,
   rulesetZonesShown,
+  rulesetBoardShading,
+  rulesetOpenLairWindow,
   rulesetWindowOptions,
   rulesetAreaCells,
   rulesetZoneCatches,
@@ -101,6 +105,7 @@ import {
   type RulesetCombatantInput,
   type RulesetDefinition,
   type RulesetEncounterState,
+  type RulesetHeldGround,
   type RulesetLiveState,
   type RulesetLiveStates,
   type TacticalBattlefieldBrief,
@@ -204,6 +209,8 @@ export interface RulesetFightSeed {
   battlefield?: TacticalBattlefieldBrief;
   /** A board painted for the fight's place (worldgen W9g), fought on as painted: the brief is not used. */
   made?: TacticalMadeBattlefield;
+  /** The board pack it is drawn with (1.328), by library id: this one, else the painted board's. */
+  pack?: string;
   /** The chat's own party cards, which is where a sheet build lives. */
   cards: unknown;
   playerName: string | null;
@@ -217,7 +224,12 @@ export interface RulesetFightSeed {
   bestiary: RulesetCatalogEntriesById;
   /** Who is caught unaware as it begins (1.236), by id, as the Game Master set the scene. */
   surprised?: string[];
-  /** The scene's time of day as the game tracks it (1.290), which sets the light outdoors. */
+  /** Who fights in its own lair (1.310), by id: its lair actions are taken on its lair's count. */
+  inLair?: string[];
+  /** Held Ground (1.318): whoever reaches no health in this fight is felled instead. The story's
+   *  region rule decides it; the fight only keeps it. */
+  heldGround?: RulesetHeldGround;
+  /** The scene's time of day as the game tracks it (1.286), which sets the light outdoors. */
   time?: string | null;
 }
 
@@ -377,19 +389,23 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
 
   const board = buildRulesetBoard(input, combatants);
   if (board && "error" in board) return { ok: false, error: board.error };
-  const encounter = createRulesetEncounter({
+  let encounter = createRulesetEncounter({
     definition,
     seed: input.seed,
     combatants,
     bestiary: input.bestiary,
     ...(board ? { board } : {}),
     ...(input.surprised?.length ? { surprised: input.surprised } : {}),
+    ...(input.inLair?.length ? { inLair: input.inLair } : {}),
+    ...(input.heldGround ? { heldGround: input.heldGround } : {}),
   });
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
     if (!built) continue;
     for (const line of holdRulesetCombatant(definition, built, tier)) adjustments.push(`${built.name}: ${line}`);
   }
+  // A lair whose count comes before everybody's acts before the first turn (1.310).
+  encounter = rulesetOpenLairWindow(definition, encounter);
   const fight: RulesetFightState = {
     encounter,
     eventSeq: 0,
@@ -426,6 +442,10 @@ function buildRulesetBoard(
       battlefield?: unknown;
       light?: RulesetBoardLight;
       environment?: string;
+      props?: NonNullable<TacticalMadeBattlefield["props"]>;
+      events?: NonNullable<TacticalMadeBattlefield["events"]>;
+      ground?: Record<string, { growth?: true; season?: string }>;
+      lightRule?: NonNullable<TacticalMadeBattlefield["lightRule"]>;
     }
   | { error: string }
   | null {
@@ -472,7 +492,26 @@ function buildRulesetBoard(
     battlefield: generated.battlefield,
     ...(light ? { light } : {}),
     ...(environment ? { environment } : {}),
+    // The art it is drawn with (1.328).
+    ...((input.pack ?? input.made?.pack) ? { pack: (input.pack ?? input.made?.pack)! } : {}),
+    // What its painter stood on it that may be broken (1.311).
+    ...(input.made?.props?.length ? { props: input.made.props } : {}),
+    // What it does each round, and the growth and seasons on its cells (1.313).
+    ...(input.made?.events?.length ? { events: input.made.events } : {}),
+    ...(madeGround(input.made) ? { ground: madeGround(input.made)! } : {}),
+    // What standing in its light does (1.314).
+    ...(input.made?.lightRule ? { lightRule: input.made.lightRule } : {}),
   };
+}
+
+/** The growth and seasons a painted board's cells start with (1.313), or null. */
+function madeGround(
+  made: TacticalMadeBattlefield | undefined,
+): Record<string, { growth?: true; season?: string }> | null {
+  const ground: Record<string, { growth?: true; season?: string }> = {};
+  for (const cell of made?.growth ?? []) ground[`${cell.x},${cell.y}`] = { growth: true };
+  for (const [at, season] of Object.entries(made?.seasons ?? {})) ground[at] = { ...ground[at], season };
+  return Object.keys(ground).length ? ground : null;
 }
 
 /** Places a fight's light comes from its own lamps rather than the sky. */
@@ -528,8 +567,12 @@ export function rulesetController(
   combatant: RulesetCombatant | undefined,
 ): "manual" | "ai" | "gm" {
   if (!combatant) return "ai";
-  // A party member is the player's to play unless they handed them over.
-  if (combatant.side === "party") return fight.controllers[combatant.id] === "ai" ? "ai" : "manual";
+  // A party member is the player's to play unless they handed them over. Whoever was called to the
+  // party's side (1.320) is the Engine's unless the player took them.
+  if (combatant.side === "party") {
+    const chosen = fight.controllers[combatant.id];
+    return chosen === "ai" || (combatant.calledBy && chosen !== "manual") ? "ai" : "manual";
+  }
   return state.gm && fight.bosses.includes(combatant.id) ? "gm" : "ai";
 }
 
@@ -747,6 +790,16 @@ export function directedRulesetView(
   const distance = definition.combat.distance;
   const grid = encounter.board?.grid;
   const made = encounter.board?.battlefield?.kind === "hand-made" ? encounter.board.battlefield : null;
+  // Light and fog drawn on the board: only cells that are not bright and clear.
+  const shading = grid && distance ? rulesetBoardShading(definition, encounter) : null;
+  const shaded = shading
+    ? {
+        ...(Object.keys(shading.light).length > 0
+          ? { light: shading.light as Record<string, "sunlight" | "dim" | "dark"> }
+          : {}),
+        ...(Object.keys(shading.fog).length > 0 ? { fog: shading.fog } : {}),
+      }
+    : {};
   return {
     ruleset: { ...encounter.ruleset },
     round: encounter.round,
@@ -759,8 +812,32 @@ export function directedRulesetView(
             tiles: grid.tiles.map((row) => [...row]),
             ...(grid.elevation ? { elevation: grid.elevation.map((row) => [...row]) } : {}),
             ...(grid.walls ? { walls: { ...grid.walls } } : {}),
+            // Growth and seasons on its cells (1.313); light and fog come with the shading.
+            ...(grid.ground && Object.values(grid.ground).some((here) => here.growth || here.season)
+              ? {
+                  ground: Object.fromEntries(
+                    Object.entries(grid.ground).flatMap(([at, here]) =>
+                      here.growth || here.season
+                        ? [
+                            [
+                              at,
+                              {
+                                ...(here.growth ? { growth: true as const } : {}),
+                                ...(here.season ? { season: here.season } : {}),
+                              },
+                            ],
+                          ]
+                        : [],
+                    ),
+                  ),
+                }
+              : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
+            // The board pack it is drawn with (1.328), and its environment's when it names none.
+            ...(encounter.board?.pack ? { pack: encounter.board.pack } : {}),
+            ...(encounter.board?.environment ? { environment: encounter.board.environment } : {}),
+            ...shaded,
           },
         }
       : {}),
@@ -769,6 +846,19 @@ export function directedRulesetView(
     combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
     // The areas spells left standing (1.171), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
+    // What stands on the board that may be broken (1.311), broken ones too.
+    ...(grid && distance && encounter.board?.props?.length
+      ? {
+          props: encounter.board.props.map((prop) => ({
+            id: prop.id,
+            label: prop.label,
+            cells: prop.cells.map((cell) => ({ x: cell.x, y: cell.y })),
+            health: prop.health,
+            max: prop.max,
+            ...(prop.art ? { art: prop.art } : {}),
+          })),
+        }
+      : {}),
     // A window is answered by the one it asks, so while it is open the menu on screen is THEIRS.
     // The actor's own turn is standing still behind it and has nothing to offer until it closes.
     ...(held && !over
@@ -1820,13 +1910,50 @@ function pickRulesetChoice(
   menu?: RulesetCombatOption[],
 ): RulesetCandidate | null {
   const candidates = menu
-    ? rulesetCandidatesFrom(definition, encounter, actorId, null, menu)
+    ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
     : rulesetCandidates(definition, encounter, actorId);
   if (candidates.length === 0) return null;
   const unit = [...state.party, ...state.enemies].find((entry) => entry.id === actorId);
   if (!unit) return candidates[0]!.action;
   unit.tactics ??= assignCombatTactics(unit, state.seed);
   return chooseCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
+}
+
+/**
+ * A concentration broken into one of a list of lair actions (1.331): the one taken is whichever would
+ * catch the most foes, the shelves leaning onto the side of the room the party stands in. The others
+ * leave the menu; equal ones, and letting the moment go, stay for the usual picker to weigh.
+ */
+function brokenLairMenu(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  menu: RulesetCombatOption[],
+): RulesetCombatOption[] {
+  const actor = rulesetCombatant(encounter, actorId);
+  const lairs = menu.filter((option) => option.lairOf);
+  if (!actor || !Array.isArray(actor.lair?.next) || lairs.length < 2) return menu;
+  const foes = (ids: string[]) =>
+    new Set(
+      ids.filter((id) => {
+        const one = rulesetCombatant(encounter, id);
+        return !!one && one.side !== actor.side && !one.down;
+      }),
+    ).size;
+  const catches = new Map(
+    lairs.map((option) => {
+      const aims = rulesetAimCells(encounter, actorId, option.id);
+      let best = 0;
+      for (const candidate of rulesetCandidatesFrom(definition, encounter, actorId, null, [option])) {
+        const { at, targetIds } = candidate.action.choice;
+        const caught = at ? (aims.find((aim) => aim.x === at.x && aim.y === at.y)?.targetIds ?? []) : targetIds;
+        best = Math.max(best, foes(caught));
+      }
+      return [option.id, best] as const;
+    }),
+  );
+  const most = Math.max(...catches.values());
+  return menu.filter((option) => !option.lairOf || catches.get(option.id) === most);
 }
 
 // ── One step ──
@@ -2225,6 +2352,27 @@ function continueBossTurn(
   if (currentRulesetActor(fight.encounter)?.id === actorId) advanceTurn(definition, state, fight);
 }
 
+/**
+ * Held Ground let go in a running fight (1.325), as the story says the year has turned: the felled
+ * die (or go down), the marks come due, and the log tells the Game Master. Refused when the battle
+ * is not a ruleset's, is over, or is not on Held Ground.
+ */
+export function releaseRulesetHeldGround(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  release: RulesetHeldGroundRelease = {},
+): RulesetCommandResult {
+  const fight = fightOf(state);
+  if (!fight) return refuse("This battle is not resolved by a ruleset.", "ruleset_combat_not_a_ruleset_fight");
+  if (!definition.combat)
+    return refuse("This game's ruleset no longer resolves its own fights.", "ruleset_combat_no_block");
+  if (state.outcome) return refuse("Battle already finished.", "ruleset_combat_encounter-over");
+  if (!fight.encounter.heldGround) return refuse("This battle is not on Held Ground.", "ruleset_combat_not_held");
+  absorb(definition, state, fight, rulesetReleaseHeldGround(definition, fight.encounter, rollerFor(fight), release));
+  return settled(state);
+}
+
+// ── Commands ──
 // ── Commands ──
 
 /**

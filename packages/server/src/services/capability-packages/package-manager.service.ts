@@ -1559,7 +1559,228 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
-/** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.313). */
+/** An aura that grows, lingers or harms on its targets' turns, a holder who tears free, a hold with a
+ *  most, or a creature that hangs on at 1 (1.315). */
+function carriesBossAsks(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBossAsks(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // An aura's own `grows`, not a delayed blast's (1.178).
+  if ((record.grows !== undefined && record.side !== undefined) || record.lingers !== undefined) return true;
+  if (record.heldAtMost !== undefined) return true;
+  if (record.hangsOn !== undefined) return true;
+  if (plainRecord(record.harms)?.on !== undefined || plainRecord(record.shakeOff)?.self !== undefined) return true;
+  return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
+}
+
+/** A use only beside a prop, or a ground change whose occupants stay in it (1.327). */
+/** An item's use that gives its user more of the turn (1.329): the Time-Flour Loaf. */
+function carriesItemGives(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemGives(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // A use's, or one of its `moreUses`' as the walk reaches each.
+  if (plainRecord(record.use)?.gives !== undefined) return true;
+  return Object.values(record).some((one) => carriesItemGives(one, depth + 1));
+}
+
+/** A lasting area with a look of its own on a fight's board (1.328). */
+function carriesBoardArt(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBoardArt(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof plainRecord(record.zone)?.art === "string") return true;
+  return Object.values(record).some((one) => carriesBoardArt(one, depth + 1));
+}
+
+function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesNearUseOrFall(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.usableNear !== undefined) return true;
+  if (plainRecord(record.ground)?.occupants !== undefined) return true;
+  return Object.values(record).some((one) => carriesNearUseOrFall(one, depth + 1));
+}
+
+/** Props and felling in a condition or a creature action (1.326): a condition held only near a
+ *  prop, an aura that feeds, an area around props. */
+function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPropsAndFeeding(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.whileNearProp !== undefined || record.aroundProp !== undefined || typeof record.feeds === "number")
+    return true;
+  return Object.values(record).some((one) => carriesPropsAndFeeding(one, depth + 1));
+}
+
+/** A condition that moves the difficulty of the saves its holder calls for (1.323). */
+function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSaveDifficulty(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.to === "save-difficulty") return true;
+  return Object.values(record).some((one) => carriesSaveDifficulty(one, depth + 1));
+}
+
+/** Whether a catalog entry or a condition names its icon (1.333). */
+function carriesArtIcon(value: unknown, depth = 0): boolean {
+  if (depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesArtIcon(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.icon === "string" && record.icon.startsWith("ic_")) return true;
+  return Object.values(record).some((one) => carriesArtIcon(one, depth + 1));
+}
+
+/** Whether anything names a list of lair actions for a broken concentration to pick from (1.331). */
+function carriesBrokenLairList(value: unknown, depth = 0): boolean {
+  if (depth > 8) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBrokenLairList(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.brokenNextLair)) return true;
+  return Object.values(record).some((one) => carriesBrokenLairList(one, depth + 1));
+}
+
+/** Lair timing (1.322): a creature action only at whoever has acted this round, one whose broken
+ *  concentration picks the next lair action, or a condition lasting until the next lair action. */
+function carriesLairTiming(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLairTiming(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.duration)?.untilLair !== undefined) return true;
+  const creature = plainRecord(record.creature);
+  if (
+    Array.isArray(creature?.actions) &&
+    creature.actions.some((one) => {
+      const action = plainRecord(one);
+      return action?.actedOnly !== undefined || action?.brokenNextLair !== undefined;
+    })
+  )
+    return true;
+  return Object.values(record).some((one) => carriesLairTiming(one, depth + 1));
+}
+
+/** A creature's action that draws whoever it lands on toward it (1.321). */
+function carriesDraws(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDraws(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const creature = plainRecord(record.creature);
+  if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.draws !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesDraws(one, depth + 1));
+}
+
+/** A creature's action that calls creatures into the fight (1.320). */
+function carriesCalls(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCalls(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const creature = plainRecord(record.creature);
+  if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.calls !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesCalls(one, depth + 1));
+}
+
+/** A creature's action that leaves an area standing or changes the ground, or an area that lasts
+ *  until the next lair action (1.319). */
+function carriesCreatureZones(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureZones(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.untilLair !== undefined) return true;
+  const creature = plainRecord(record.creature);
+  if (
+    Array.isArray(creature?.actions) &&
+    creature.actions.some((one) => {
+      const action = plainRecord(one);
+      return action?.zone !== undefined || action?.ground !== undefined;
+    })
+  )
+    return true;
+  return Object.values(record).some((one) => carriesCreatureZones(one, depth + 1));
+}
+
+/** A blow that reaps what it fells on Held Ground (1.318): the Reaping Hook. */
+function carriesReaps(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesReaps(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.reaps !== undefined) return true;
+  return Object.values(record).some((one) => carriesReaps(one, depth + 1));
+}
+
+/** An item's use taken as a reaction (1.317): Liesl's Coffin, the Straw Proxy. */
+function carriesItemReactions(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemReactions(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // A use's, or one of its `moreUses`' as the walk reaches each.
+  const reaction = plainRecord(record.use)?.reaction;
+  if (reaction !== undefined && reaction !== false) return true;
+  return Object.values(record).some((one) => carriesItemReactions(one, depth + 1));
+}
+
+/** A light that sheds shade, something that gives the unseen away, or a creature light holds still
+ *  (1.314). */
+function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesShadeOrAlerts(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.shade !== undefined || record.alerts !== undefined || record.stillIn !== undefined) return true;
+  return Object.values(record).some((one) => carriesShadeOrAlerts(one, depth + 1));
+}
+
+/** An entry or an item's use that clears growth (1.313). */
+function carriesClears(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesClears(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.clears !== undefined) return true;
+  return Object.values(record).some((one) => carriesClears(one, depth + 1));
+}
+
+/** A creature's legendary resistances, and an item's use no bigger than it reaches (1.312). */
+function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLegendaryResistance(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.legendaryResistance !== undefined) return true;
+  // An item's use no bigger than it reaches (1.312); an entry's own came with 1.309.
+  const use = plainRecord(record.use);
+  if (use?.targetsUpTo !== undefined) return true;
+  if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.targetsUpTo !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesLegendaryResistance(one, depth + 1));
+}
+
+/** Lair actions and a lair's count (1.310). */
+function carriesLair(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLair(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.lair !== undefined || record.lairInitiative !== undefined) return true;
+  return Object.values(record).some((one) => carriesLair(one, depth + 1));
+}
+
+/** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.309). */
 function carriesSphere(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSphere(one, depth + 1));
@@ -4246,7 +4467,152 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.181 or newer";
   }
-  // Resilient Sphere, 1.313.
+  // Creature zones and ground, and areas until the next lair action, 1.319.
+  if (
+    !declaresApi(319) &&
+    (carriesCreatureZones(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureZones(document)))
+  ) {
+    return "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.319 or newer";
+  }
+  // Creatures called into the fight, 1.320.
+  if (
+    !declaresApi(320) &&
+    (carriesCalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls(document)))
+  ) {
+    return "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.320 or newer";
+  }
+  // Drawn toward a creature, 1.321.
+  if (
+    !declaresApi(321) &&
+    (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
+  ) {
+    return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.321 or newer";
+  }
+  // Icons named by a catalog entry or a condition, 1.333.
+  if (!declaresApi(333) && carriesArtIcon(ruleset)) {
+    return "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.333 or newer";
+  }
+  // Rest dice over several pools, 1.332.
+  if (
+    !declaresApi(332) &&
+    Array.isArray(plainRecord(ruleset)?.rests) &&
+    (plainRecord(ruleset)!.rests as unknown[]).some((rest) => Array.isArray(plainRecord(rest)?.dice))
+  ) {
+    return "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.332 or newer";
+  }
+  // A broken concentration that picks one of a list of lair actions, 1.331.
+  if (!declaresApi(331) && carriesBrokenLairList(ruleset)) {
+    return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.331 or newer";
+  }
+  // Dice a rest spends to heal, 1.330.
+  if (
+    !declaresApi(330) &&
+    Array.isArray(plainRecord(ruleset)?.rests) &&
+    (plainRecord(ruleset)!.rests as unknown[]).some((rest) => plainRecord(rest)?.dice !== undefined)
+  ) {
+    return "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.330 or newer";
+  }
+  // An item use that gives more of the turn, 1.329.
+  if (
+    !declaresApi(329) &&
+    (carriesItemGives(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemGives(document)))
+  ) {
+    return "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.329 or newer";
+  }
+  // A lasting area with its own art on the board, 1.328.
+  if (
+    !declaresApi(328) &&
+    (carriesBoardArt(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBoardArt(document)))
+  ) {
+    return "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.328 or newer";
+  }
+  // A use only beside a prop, or occupants that stay, 1.327.
+  if (
+    !declaresApi(327) &&
+    (carriesNearUseOrFall(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesNearUseOrFall(document)))
+  ) {
+    return "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.327 or newer";
+  }
+  // Near a prop, around props, an aura that feeds, 1.326.
+  if (
+    !declaresApi(326) &&
+    (carriesPropsAndFeeding(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPropsAndFeeding(document)))
+  ) {
+    return "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Save difficulty moved by a condition, 1.323.
+  if (
+    !declaresApi(323) &&
+    (carriesSaveDifficulty(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveDifficulty(document)))
+  ) {
+    return "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.323 or newer";
+  }
+  // Lair timing, 1.322.
+  if (
+    !declaresApi(322) &&
+    (carriesLairTiming(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLairTiming(document)))
+  ) {
+    return "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.322 or newer";
+  }
+  // Blows that reap, 1.318.
+  if (
+    !declaresApi(318) &&
+    (carriesReaps(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesReaps(document)))
+  ) {
+    return "A ruleset with a blow that reaps requires schemaVersion 2 and capabilityApi 1.318 or newer";
+  }
+  // Item uses taken as reactions, 1.317.
+  if (
+    !declaresApi(317) &&
+    (carriesItemReactions(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemReactions(document)))
+  ) {
+    return "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.317 or newer";
+  }
+  // Growing auras, holds with a most, tearing free and hanging on, 1.315.
+  if (
+    !declaresApi(315) &&
+    (carriesBossAsks(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBossAsks(document)))
+  ) {
+    return "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.315 or newer";
+  }
+  // Shade and chimes, 1.314.
+  if (
+    !declaresApi(314) &&
+    (carriesShadeOrAlerts(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesShadeOrAlerts(document)))
+  ) {
+    return "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.314 or newer";
+  }
+  // Clearing growth, 1.313.
+  if (
+    !declaresApi(313) &&
+    (carriesClears(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesClears(document)))
+  ) {
+    return "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.313 or newer";
+  }
+  // Legendary Resistance, 1.312.
+  if (
+    !declaresApi(312) &&
+    (carriesLegendaryResistance(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryResistance(document)))
+  ) {
+    return "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.312 or newer";
+  }
+  // Lair actions, 1.310.
+  if (
+    !declaresApi(310) &&
+    (carriesLair(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesLair(document)))
+  ) {
+    return "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.310 or newer";
+  }
+  // Resilient Sphere, 1.309.
   if (
     !declaresApi(313) &&
     (carriesSphere(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSphere(document)))

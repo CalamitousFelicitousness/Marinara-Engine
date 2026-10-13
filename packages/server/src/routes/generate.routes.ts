@@ -209,6 +209,7 @@ import {
   readToldLedger,
   refuseStoryTags,
   readStoryLedger,
+  storyFightBroken,
   storyFightOutcome,
   storyState,
   storyTurn,
@@ -2046,6 +2047,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     added: present.places,
                     day: present.day,
                     fight: storyFightOutcome(replies.player),
+                    broke: storyFightBroken(replies.player),
                     playerName: personaName,
                   }),
                 };

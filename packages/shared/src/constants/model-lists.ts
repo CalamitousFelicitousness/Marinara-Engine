@@ -122,9 +122,17 @@ export function resolveProviderReasoningEffort(args: {
   model: string;
   reasoningEffort: StoredReasoningEffort | undefined;
 }): ProviderReasoningEffort {
+  const providerLower = args.provider.toLowerCase();
+  // Argon cannot turn thinking off; without a level it thinks at Google's default, medium, so name that level.
+  if (
+    (!args.reasoningEffort || args.reasoningEffort === "none") &&
+    (providerLower === "google" || providerLower === "google_vertex") &&
+    isGeminiArgonModel(args.model)
+  ) {
+    return "medium";
+  }
   if (!args.reasoningEffort || args.reasoningEffort === "none") return null;
   const modelLower = args.model.toLowerCase();
-  const providerLower = args.provider.toLowerCase();
 
   const xaiUsesAutoReasoning =
     (providerLower === "xai" && isXaiAutoReasoningModel(modelLower)) ||
@@ -163,6 +171,19 @@ export function resolveProviderReasoningEffort(args: {
   // honest: without this, "Medium" and "High" would be two buttons that send a different value yet behave the same.
   if (providerLower === "deepseek" && args.reasoningEffort === "medium") return "high";
   return args.reasoningEffort;
+}
+
+/** Gemini 3 and later set thinking with `thinkingLevel`; Gemini 2.5 and older take `thinkingBudget`. */
+export function isGeminiThinkingLevelModel(model: string): boolean {
+  return /gemini-(?:[3-9]|[1-9]\d)(?!\d)/i.test(model);
+}
+
+/**
+ * Gemini 4 Argon ignores temperature, top-p and top-k, rejects penalties and a prefilled final model turn, and cannot
+ * turn thinking off. https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+ */
+export function isGeminiArgonModel(model: string): boolean {
+  return /(?:^|\/)gemini-4-argon(?:$|-)/i.test(model);
 }
 
 export function isXaiConfigurableReasoningModel(model: string): boolean {
@@ -380,8 +401,10 @@ export const OPENAI_CHATGPT_MODELS: KnownModel[] = [
 // ── Google AI Studio (from #model_google_select) ──
 
 export const GOOGLE_MODELS: KnownModel[] = [
-  // Gemini 3.8
+  // Gemini 3.8. New Google and Vertex connections start on the first entry, so keep a widely available Flash here.
   { id: "gemini-3.8-flash", name: "gemini-3.8-flash", context: 1000000, maxOutput: 65536 },
+  // Gemini 4. Argon needs a paid tier and, on Vertex, the global, us or eu location.
+  { id: "gemini-4-argon", name: "gemini-4-argon", context: 1000000, maxOutput: 65536 },
   // Gemini 3.7
   { id: "gemini-3.7-flash", name: "gemini-3.7-flash", context: 1000000, maxOutput: 65536 },
   // Gemini 3.6

@@ -3436,7 +3436,7 @@
   "omnibar.settings.mari.label": "Ask Professor Mari from Search",
   "omnibar.settings.mariRuntime.couldNotChange": "Could not change the runtime.",
   "omnibar.settings.mariRuntime.fallback": "This connection cannot run Pi, so Professor Mari uses Classic.",
-  "omnibar.settings.mariRuntime.help": "Pi is a trial: Professor Mari uses the model's built-in tool calls and keeps reasoning on. A change applies to her next run.",
+  "omnibar.settings.mariRuntime.help": "Pi is a trial that lets Professor Mari think more before she acts, starting with her next answer.",
   "omnibar.settings.mariRuntime.label": "Runtime",
   "omnibar.settings.mariRuntime.option.classic": "Classic",
   "omnibar.settings.mariRuntime.option.pi": "Pi (experimental)",

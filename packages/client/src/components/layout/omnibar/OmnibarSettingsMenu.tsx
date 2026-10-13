@@ -238,7 +238,7 @@ const MARI_RUNTIME_LABEL_KEYS: Record<MariRuntime, string> = {
   pi: "omnibar.settings.mariRuntime.option.pi",
 };
 
-type MariRuntimeStatus = Pick<MariWorkspaceStatus, "runtimeSelected" | "runtimeActive" | "runtimeNote">;
+type MariRuntimeStatus = Pick<MariWorkspaceStatus, "runtimeSelected" | "runtimeActive">;
 
 // Professor Mari's runtime ("classic" or "pi"), the same server-authoritative pattern as the
 // Permissions Mode row above. The workspace status answers for her connection, so it also says
@@ -273,7 +273,7 @@ function RuntimeRow() {
   const change = async (next: MariRuntime) => {
     const previous = status;
     const writeSeq = ++writeSeqRef.current;
-    setStatus({ runtimeSelected: next, runtimeActive: next, runtimeNote: null });
+    setStatus({ runtimeSelected: next, runtimeActive: next });
     try {
       // The Permissions Mode chain is the one a run awaits before it posts a prompt, so a runtime
       // change made here also lands before her next run.
@@ -309,9 +309,7 @@ function RuntimeRow() {
       <span id={helpId} aria-live="polite" className="omnibar-settings-menu__description">
         {t("omnibar.settings.mariRuntime.help")}
         {fellBack ? (
-          <span className="mt-1 block text-[var(--foreground)]">
-            {status.runtimeNote || t("omnibar.settings.mariRuntime.fallback")}
-          </span>
+          <span className="mt-1 block text-[var(--foreground)]">{t("omnibar.settings.mariRuntime.fallback")}</span>
         ) : null}
       </span>
     </div>

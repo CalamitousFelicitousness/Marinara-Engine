@@ -246,8 +246,9 @@ export function useTrackerMutations({
       try {
         const response = await api.post<{ avatarPath: string }>(`/avatars/npc/${activeChatId}/generate`, {
           name: character.name,
-          appearance: character.appearance,
-          outfit: character.outfit,
+          // Tracker fields are raw model output; send only text.
+          appearance: typeof character.appearance === "string" ? character.appearance : null,
+          outfit: typeof character.outfit === "string" ? character.outfit : null,
           includeOutfit,
           debugMode: useUIStore.getState().debugMode,
         });

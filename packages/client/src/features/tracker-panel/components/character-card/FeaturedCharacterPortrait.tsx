@@ -82,7 +82,10 @@ export function FeaturedCharacterPortrait({
   };
   const portraitActions =
     canUploadTrackerArt && onGeneratePortrait
-      ? (character.outfit?.trim() ? (["look", "outfit"] as const) : (["look"] as const)).map((mode) => {
+      ? (typeof character.outfit === "string" && character.outfit.trim()
+          ? (["look", "outfit"] as const)
+          : (["look"] as const)
+        ).map((mode) => {
           const Icon = generating === mode ? Loader2 : mode === "look" ? Eye : Shirt;
           return {
             key: mode,

@@ -35,6 +35,8 @@ const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
 const imagePrompts: string[] = [];
 const providerErrors: unknown[] = [];
 let failImages = false;
+// Holds the next image request open until released, so a test can act while a portrait is being made.
+let holdImages: { reached: () => void; released: Promise<void> } | null = null;
 const provider = createServer(async (request, response) => {
   if (failImages) {
     response.writeHead(500);
@@ -48,6 +50,12 @@ const provider = createServer(async (request, response) => {
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { prompt?: unknown };
     assert.equal(typeof body.prompt, "string");
     imagePrompts.push(body.prompt as string);
+    const hold = holdImages;
+    holdImages = null;
+    if (hold) {
+      hold.reached();
+      await hold.released;
+    }
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ data: [{ b64_json: png }] }));
   } catch (error) {
@@ -162,6 +170,13 @@ try {
   assert.ok(!lookOnly.includes("tunic"), "Look leaves the outfit out");
   assert.equal(buildTrackerPortraitPrompt({ ...npc, outfit: null }, true), lookOnly, "no outfit adds nothing");
   assert.equal(buildTrackerPortraitPrompt({ ...npc, outfit: "  " }, true), lookOnly, "a blank outfit adds nothing");
+  // Tracker fields are raw model output; a list instead of text must not stop the portrait.
+  assert.equal(buildTrackerPortraitPrompt({ ...npc, outfit: ["red tunic"] }, true), lookOnly, "a non-text outfit");
+  // An outfit of several sentences stays one labeled line, or tag profiles keep only its first sentence.
+  const layeredOutfit = buildTrackerPortraitPrompt(
+    { ...npc, outfit: "Barefoot. Loose linen trousers and a sleeveless grey vest!" },
+    true,
+  );
   for (const profile of DEFAULT_IMAGE_STYLE_PROFILES) {
     const compile = (prompt: string) =>
       compileImagePrompt({
@@ -173,6 +188,8 @@ try {
     assert.match(compile(lookAndOutfit), /simple red tunic/, `${profile.id}: the outfit reaches the image prompt`);
     assert.match(compile(lookAndOutfit), /brown beard/, `${profile.id}: so does the look`);
     assert.doesNotMatch(compile(lookOnly), /tunic/, `${profile.id}: Look stays without the outfit`);
+    assert.match(compile(layeredOutfit), /Barefoot/, `${profile.id}: the first outfit sentence`);
+    assert.match(compile(layeredOutfit), /linen trousers.*grey vest/, `${profile.id}: and the next one`);
   }
 
   // The portrait buttons: the route needs the tracker's image connection, sends the chosen prompt,
@@ -208,10 +225,41 @@ try {
   assert.equal(failed.statusCode, 502, failed.body);
   assert.equal(readFileSync(portraitFile, "utf8"), "old portrait", "a failed portrait keeps the old one");
 
+  // While a portrait is being made, a second request for it is refused (no second paid image),
+  // and a portrait the user uploads meanwhile is kept, not overwritten when the first one arrives.
+  let releaseImage = () => {};
+  const imageReached = new Promise<void>((reached) => {
+    holdImages = { reached, released: new Promise<void>((release) => (releaseImage = release)) };
+  });
+  // inject() only sends once awaited, so start it now.
+  const pending = Promise.resolve(
+    app.inject({ method: "POST", url: portraitUrl, payload: { ...npc, includeOutfit: true } }),
+  );
+  await imageReached;
+  const callsWhileBusy = imagePrompts.length;
+  const busy = await app.inject({ method: "POST", url: portraitUrl, payload: { ...npc, includeOutfit: false } });
+  assert.equal(busy.statusCode, 409, busy.body);
+  assert.equal(imagePrompts.length, callsWhileBusy, "the refused request never reaches the provider");
+  const uploadedPng = Buffer.concat([Buffer.from(png, "base64"), Buffer.from("user upload")]);
+  const upload = await app.inject({
+    method: "POST",
+    url: `/api/avatars/npc/${trackerChat.id}`,
+    payload: { name: npc.name, avatar: `data:image/png;base64,${uploadedPng.toString("base64")}` },
+  });
+  assert.equal(upload.statusCode, 200, upload.body);
+  releaseImage();
+  const late = await pending;
+  assert.equal(late.statusCode, 409, late.body);
+  assert.ok(readFileSync(portraitFile).equals(uploadedPng), "the upload made meanwhile is kept");
+  const afterwards = await app.inject({ method: "POST", url: portraitUrl, payload: { ...npc, includeOutfit: true } });
+  assert.equal(afterwards.statusCode, 200, afterwards.body);
+  assert.ok(readFileSync(portraitFile).equals(Buffer.from(png, "base64")), "a later portrait replaces it again");
+
   console.info("Game image appearance route regression passed (preview and generation, 5 scenarios).");
   console.info("Character Tracker portrait regression passed (prompt assembly and the portrait route).");
 } finally {
   await app.close();
+  provider.closeAllConnections(); // a failed assertion can leave a held image request open
   await new Promise<void>((resolve, reject) => provider.close((error) => (error ? reject(error) : resolve())));
   await closeDB();
   rmSync(fixtureDir, { recursive: true, force: true });

@@ -11,7 +11,11 @@ import { DATA_DIR } from "../utils/data-dir.js";
 import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
 import { sendValidatedMediaFile, validateImageAssetFile } from "../utils/media-file-security.js";
 import { npcAvatarSlug } from "../services/game/npc-avatar-utils.js";
-import { generateTrackerPortrait, trackerPortraitStyleProfileId } from "../services/image/tracker-portrait.js";
+import {
+  generateTrackerPortrait,
+  TrackerPortraitConflictError,
+  trackerPortraitStyleProfileId,
+} from "../services/image/tracker-portrait.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 
@@ -142,7 +146,7 @@ export async function avatarsRoutes(app: FastifyInstance) {
       const avatarPath = await generateTrackerPortrait({
         db: app.db,
         connectionId,
-        chatId,
+        chatId: chat.id,
         styleProfileId: trackerPortraitStyleProfileId(parseAgentSettingsRecord(chat.metadata)),
         character: body.data,
         includeOutfit: body.data.includeOutfit,
@@ -151,7 +155,9 @@ export async function avatarsRoutes(app: FastifyInstance) {
       return reply.send({ avatarPath: `${avatarPath}?v=${Date.now()}` });
     } catch (err) {
       logger.warn(err, '[character-tracker] Failed to generate a portrait for "%s"', body.data.name);
-      return reply.status(502).send({ error: err instanceof Error ? err.message : "Portrait generation failed" });
+      return reply
+        .status(err instanceof TrackerPortraitConflictError ? 409 : 502)
+        .send({ error: err instanceof Error ? err.message : "Portrait generation failed" });
     }
   });
 }

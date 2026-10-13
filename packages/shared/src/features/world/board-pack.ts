@@ -15,7 +15,7 @@
 //   bz_<name>             a lasting area's look, per cell, in place of bo_zone
 //   ic_<name>             an icon (Capability API 1.337), in an `icons` pack: a condition's, an item's,
 //                         a spell's or any catalog entry's, in place of today's letter or text
-//   pt_<name>[@<mood>]    a portrait (Capability API 1.338), in a `portraits` pack: a pixel bust, with its
+//   pt_<name>[@<mood>]    a portrait (Capability API 1.337), in a `portraits` pack: a pixel bust, with its
 //                         expressions as pt_<name>@happy and so on; one without an expression is neutral
 //
 // A board names its pack with `pack`; with none, the library's pack for its environment, then the built-in
@@ -56,7 +56,7 @@ export const BOARD_PROP_ART = /^bp_[a-z0-9]+(?:_[a-z0-9]+)*$/;
 export const BOARD_ZONE_ART = /^bz_[a-z0-9]+(?:_[a-z0-9]+)*$/;
 /** An icon (1.337): `ic_` then lowercase words joined by _. */
 export const ART_ICON = /^ic_[a-z0-9]+(?:_[a-z0-9]+)*$/;
-/** A portrait (1.338): `pt_` then lowercase words joined by _, and its expression after @ when it has one. */
+/** A portrait (1.337): `pt_` then lowercase words joined by _, and its expression after @ when it has one. */
 export const ART_PORTRAIT = /^pt_[a-z0-9]+(?:_[a-z0-9]+)*(?:@[a-z]+(?:_[a-z]+)*)?$/;
 /** The expressions a portrait is drawn with, the first five the core set (W5); any other word is allowed. */
 export const ART_PORTRAIT_EXPRESSIONS = Object.freeze([
@@ -109,7 +109,7 @@ export function artIconFor(
   return parts.length > 1 && id.length <= 60 && ART_ICON.test(id) ? id : null;
 }
 
-/** The portrait a person is drawn with when they name none (1.338): `pt_` and their name's words, and the
+/** The portrait a person is drawn with when they name none (1.337): `pt_` and their name's words, and the
  *  expression after @ ("Brenna Hale", happy: pt_brenna_hale@happy). Null for a name with no letters. */
 export function artPortraitFor(name: string, expression?: string): string | null {
   const words = artWords(name);
@@ -172,7 +172,7 @@ export const boardPackSchema = z
     author: z.string().trim().max(80).optional(),
     /** The environment it is drawn for (forest, dungeon ...), which boards of it are drawn with when they
      *  name no pack; `props` for a pack of props every board reads; `icons` and `portraits` for the
-     *  game's icons (1.337) and portraits (1.338). Left out: only boards naming it. */
+     *  game's icons (1.337) and portraits (1.337). Left out: only boards naming it. */
     environment: z.enum([...TACTICAL_ENVIRONMENTS, "props", ...ART_PACK_KINDS]).optional(),
     /** One cell, in pixels (as an image tile pack's and a creature pack's). */
     tileSize: z

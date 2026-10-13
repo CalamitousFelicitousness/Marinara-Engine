@@ -4,6 +4,7 @@ import { logger } from "../../packages/server/src/lib/logger.js";
 import {
   findKnownModel,
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isGeminiModel,
   isGeminiThinkingLevelModel,
   resolveProviderReasoningEffort,
   shouldSuppressUnknownModelParameters,
@@ -77,6 +78,7 @@ import {
 import { resolveMainGenerationToolChoice } from "../../packages/server/src/services/generation/tool-resolution-runtime.js";
 import {
   appendGenerationTailMessages,
+  buildUserMessageRegenerationPromptFromSource,
   hasProviderMessagePayload,
   parseStoredGenerationParameters,
   type SimpleMessage,
@@ -3407,8 +3409,8 @@ try {
         `${kind} Gemini 3 request bodies must not change`,
       );
 
-      // Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject a final model turn and both penalties too (#7558). They keep
-      // the samplers they ignore and their thinking levels, which stay Argon's rules only.
+      // Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject a final model turn and both penalties and ignore temperature,
+      // top-p and top-k, like Argon (#7558). They keep their thinking levels, which stay Argon's rules only.
       // https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.6
       // https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-8-flash
       for (const model of ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"]) {
@@ -3425,15 +3427,9 @@ try {
                 { role: "model", parts: [{ text: "Once" }] },
                 { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] },
               ],
-              {
-                maxOutputTokens: 4096,
-                temperature: 0.7,
-                topP: 0.9,
-                topK: 40,
-                thinkingConfig: { thinkingLevel: "high", includeThoughts: true },
-              },
+              { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "high", includeThoughts: true } },
             ],
-            `${kind} ${model} ${index ? "tools round" : "chat"} must not end on a model turn or send penalties`,
+            `${kind} ${model} ${index ? "tools round" : "chat"} must not end on a model turn or send samplers`,
           );
         }
       }
@@ -3468,11 +3464,12 @@ try {
 }
 
 // ── Gemini on OpenRouter and other OpenAI-compatible connections (#7558) ──
-// Argon, Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject a request ending on a model turn and both penalties, so a
-// prefill or an empty Send after a reply gets the continuation turn native Google adds, and penalties stay out (a custom
-// endpoint keeps them, as it keeps Argon's samplers). Mid-chat system messages (Post-Processing: Don't Apply) go to any
-// Gemini as user turns in place. OpenRouter Gemini tool rounds send back the call's reasoning_details, while saved chat
-// reasoning still stays out (#1097). Other bodies are pinned byte for byte.
+// Argon, Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject a request ending on a model turn and both penalties and
+// ignore temperature, top-p and top-k, so a prefill or an empty Send after a reply gets the continuation turn native
+// Google adds, and the samplers stay out (a custom endpoint keeps them). A user-message regeneration ends on its rewrite
+// instruction, as on native Google. Mid-chat system messages (Post-Processing: Don't Apply) go to any Gemini as user
+// turns in place. OpenRouter Gemini tool rounds send back the call's reasoning_details, while saved chat reasoning still
+// stays out (#1097). Other bodies are pinned byte for byte.
 // https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
 // https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
 {
@@ -3525,10 +3522,11 @@ try {
     const cases = [
       [openRouter, "google/gemini-4-argon", {}],
       [nanoGpt, "google/gemini-4-argon", {}],
+      [openRouter, "google/gemini-4-argon:online", {}],
       [custom, "gemini-4-argon", allSamplers],
-      [openRouter, "google/gemini-3.8-flash", { temperature: 0.7, top_p: 0.9 }],
-      [openRouter, "google/gemini-3.6-flash:online", { temperature: 0.7, top_p: 0.9 }],
-      [nanoGpt, "gemini-3.7-flash", { temperature: 0.7, top_p: 0.9 }],
+      [openRouter, "google/gemini-3.8-flash", {}],
+      [openRouter, "google/gemini-3.6-flash:online", {}],
+      [nanoGpt, "gemini-3.7-flash", {}],
       [custom, "gemini-3.5-flash-lite", allSamplers],
     ] as const;
     for (const [provider, model, sampling] of cases) {
@@ -3558,6 +3556,45 @@ try {
       { role: "user", content: "U2" },
       { role: "user", content: "post" },
     ]);
+
+    // Regenerating U2 as a swipe drops it from history. The route passes isGeminiModel(conn.model), so the request ends
+    // on the rewrite instruction, not on A1 with a continuation turn that would save the AI's prose as the user's swipe.
+    // gemini-user-regeneration.regression.ts proves that wiring through the real route.
+    const rewrite = buildUserMessageRegenerationPromptFromSource({ role: "user", content: "U2" });
+    for (const [provider, model] of [
+      [openRouter, "google/gemini-3.8-flash"],
+      [nanoGpt, "google/gemini-4-argon"],
+      [custom, "gemini-3.6-flash"],
+      [openRouter, "google/gemini-3.5-flash"],
+    ] as const) {
+      const regeneration: ChatMessage[] = [
+        { role: "system", content: "main" },
+        { role: "user", content: "U1" },
+        { role: "assistant", content: "A1" },
+      ];
+      const tail = appendGenerationTailMessages(regeneration, {
+        assistantPrefill: "",
+        assistantReasoningPrefill: "",
+        supportsAssistantReasoningPrefill: false,
+        followUpIteration: 0,
+        impersonate: false,
+        isGoogleProvider: isGeminiModel(model),
+        regenerateUserMessage: rewrite,
+      });
+      assert.equal(tail.googleUserRegenerationInjected, true, `${model} must take the rewrite instruction`);
+      raws.length = 0;
+      await collectProviderOutputForMessages(provider, regeneration, { model, ...options });
+      assert.deepEqual(
+        (sent(0).messages as unknown[]).slice(2),
+        [
+          { role: "assistant", content: "A1" },
+          { role: "user", content: rewrite.content },
+        ],
+        `${model} user-message regeneration must end on the rewrite instruction`,
+      );
+    }
+    assert.equal(isGeminiModel("meta-llama/llama-3.3-70b-instruct"), false);
+    assert.equal(isGeminiModel("anthropic/claude-opus-5"), false);
 
     // Gemini 3.5 Flash, 3.1 Pro and other models keep their bodies, byte for byte.
     raws.length = 0;

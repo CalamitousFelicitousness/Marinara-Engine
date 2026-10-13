@@ -126,6 +126,7 @@ import {
   formatSkillCheckResultSummary,
   unwrapConversationInstructions,
   findKnownModel,
+  isGeminiModel,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -7269,7 +7270,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           followUpIteration,
           impersonate: input.impersonate,
-          isGoogleProvider,
+          // Gemini on OpenRouter, NanoGPT or custom also ends on the rewrite instruction. Ending on the AI's reply would
+          // continue that reply into the user's swipe (#7558).
+          isGoogleProvider: isGoogleProvider || isGeminiModel(conn.model),
           regenerateUserMessage,
         });
         if (tailMessages.assistantPrefillInjected) {
@@ -8144,7 +8147,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             providerMacroContext,
             historyMacroProfilesById,
           );
-          if (chatMode === "conversation" && conversationIsGroup && !input.impersonate) {
+          // The group reply format is for the characters' replies. Impersonation and a user-message rewrite write the
+          // user's message, and the rewrite instruction stays last.
+          if (
+            chatMode === "conversation" &&
+            conversationIsGroup &&
+            !input.impersonate &&
+            !tailMessages.googleUserRegenerationInjected
+          ) {
             const turnCharacterName =
               usesIndividualGroupGeneration && groupTurnPromptEnabled && speaksOnlyTargetCharacter && targetCharId
                 ? (charInfo.find((character) => character.id === targetCharId)?.name ?? null)
@@ -11714,6 +11724,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ? input.forCharacterId
               : ((chatMode === "conversation" ? availableGroupCharacters[0]?.id : characterIds[0]) ?? null);
           const sentMessages = [...finalMessages];
+          // A user-message rewrite instruction stays last. A guide ("do not include a reply from {{user}}") after it
+          // can turn the user's swipe into a character's reply.
+          const userRewrite = tailMessages.googleUserRegenerationInjected ? sentMessages.pop() : undefined;
 
           if (generationGuideInstruction) {
             sentMessages.push({ role: "system", content: generationGuideInstruction });
@@ -11755,6 +11768,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               sentMessages.push({ role: "system", content: charInstruction });
             }
           }
+          if (userRewrite) sentMessages.push(userRewrite);
 
           // A merged group generation may voice several characters unless a regen
           // target or a single explicit @mention pins it to exactly one speaker.

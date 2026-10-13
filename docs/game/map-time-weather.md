@@ -103,14 +103,14 @@ This is a manual override. You set the day and time yourself, apart from the aut
 
 The game clock runs on its own. It uses fixed math, not the AI, so it is always consistent. Every new game starts at Day 1, 08:00 in the morning. Each action you take moves the clock forward by a set amount.
 
-| Action | Time added |
-|---|---|
-| Talking | 15 minutes |
-| Exploring | 30 minutes |
-| A combat round | 5 minutes |
-| A short rest | 1 hour |
-| A long rest | 8 hours |
-| Travel | 2 hours |
+| Action         | Time added |
+| -------------- | ---------- |
+| Talking        | 15 minutes |
+| Exploring      | 30 minutes |
+| A combat round | 5 minutes  |
+| A short rest   | 1 hour     |
+| A long rest    | 8 hours    |
+| Travel         | 2 hours    |
 
 When the clock passes midnight, the day number goes up by one.
 

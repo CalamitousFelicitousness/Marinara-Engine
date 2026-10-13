@@ -6310,12 +6310,10 @@ export const capabilityPackageManager = {
   async mapPackFiles(packageId: string): Promise<{
     version: string;
     name: string;
-    /** The Capability API the package declares (null when it declares none). */
-    capabilityApi: { major: number; minor: number } | null;
     kit: Buffer;
     worlds: Array<{ path: string; data: Buffer }>;
     tiles: Buffer | null;
-    /** The tiles file's pinned hash, and the Capability API the package declares (image tiles need 1.75). */
+    /** The tiles file's pinned hash, and the Capability API the package declares (image tiles need 1.79, a story intro 1.338). */
     tilesSha256: string | null;
     capabilityApi: { major: number; minor: number } | null;
   } | null> {
@@ -6335,7 +6333,6 @@ export const capabilityPackageManager = {
     return {
       version: installed.version,
       name: installed.manifest.name,
-      capabilityApi: installed.manifest.schemaVersion === 2 ? installed.manifest.capabilityApi : null,
       kit: await read(mapPack.kit),
       worlds: await Promise.all((mapPack.worlds ?? []).map(async (path) => ({ path, data: await read(path) }))),
       tiles: mapPack.tiles ? await read(mapPack.tiles) : null,

@@ -170,13 +170,13 @@ const installed = [
     },
     { kit: "kit.worldkit.json", worlds: ["huge.world.json"] },
   ),
-  // Image tiles (tile pack v2) need Capability API 1.75.
+  // Image tiles (tile pack v2) need Capability API 1.79.
   install(
     "imagetiles",
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
     { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
     undefined,
-    75,
+    79,
   ),
   // Whole as a PNG, but its pixels do not decode: refused where the Engine decodes sheets.
   install(
@@ -189,14 +189,14 @@ const installed = [
     },
     { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
     undefined,
-    75,
+    79,
   ),
   install(
     "oldimagetiles",
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
     { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
     undefined,
-    74,
+    78,
   ),
   install(
     "badtiles",
@@ -285,7 +285,7 @@ try {
   }
   const oldImageTiles = await readMapPack("oldimagetiles");
   assert.ok(
-    oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.75/.test(oldImageTiles.reason),
+    oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.79/.test(oldImageTiles.reason),
     JSON.stringify(oldImageTiles),
   );
   assert.equal(await readMapPack("plain"), null, "an Experience without a pack");

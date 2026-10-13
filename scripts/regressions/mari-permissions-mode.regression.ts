@@ -63,7 +63,8 @@ assert.match(
 // ── Enforcement seams (source pins) ─────────────────────────────────────────
 const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
   readSource("packages/server/src/services/professor-mari/workspace-commands.ts") +
-  readSource("packages/server/src/services/professor-mari/workspace-round-review.ts");
+  readSource("packages/server/src/services/professor-mari/workspace-round-review.ts") +
+  readSource("packages/server/src/services/professor-mari/workspace-message-store.ts");
 // Mode read fresh per run and per status call - never latched at construction.
 assert.match(
   workspaceAgent,
@@ -99,13 +100,13 @@ assert.match(
   workspaceAgent,
   /const manualApprovalArmed = parseExtra\(lastAssistant\?\.extra\)\.mariDeferredMutations === true;/u,
 );
-assert.match(workspaceAgent, /if \(runEndedWithDeferral\) extraUpdate\.mariDeferredMutations = true;/u);
+assert.match(workspaceAgent, /if \(run\.endedWithDeferral\) extraUpdate\.mariDeferredMutations = true;/u);
 // The deferral marker is retryable: the row is retained across a failed extra
 // write and the persisted flag flips only after the extras land.
 assert.match(workspaceAgent, /persistedAssistantMessage \?\?/u);
 const persistIdx = workspaceAgent.indexOf("persistedAssistantMessage ??");
 const persistedFlagIdx = workspaceAgent.indexOf("assistantMessagePersisted = true;", persistIdx);
-const extraWriteIdx = workspaceAgent.indexOf("updateMessageExtra(message.id, extraUpdate)", persistIdx);
+const extraWriteIdx = workspaceAgent.indexOf("saveAssistantMessageExtra(chatStorage, message.id,", persistIdx);
 assert.ok(
   extraWriteIdx > 0 && persistedFlagIdx > extraWriteIdx,
   "assistantMessagePersisted must flip only after the extra writes land",

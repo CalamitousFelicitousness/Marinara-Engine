@@ -312,7 +312,7 @@ try {
 
   // ── Wiring: Mari's commands name their chat, status filters, deletion keeps ──
   {
-    const agent = source("services/professor-mari/workspace-agent.service.ts") + source("services/professor-mari/workspace-commands.ts");
+    const agent = source("services/professor-mari/workspace-agent.service.ts") + source("services/professor-mari/workspace-commands.ts") + source("services/professor-mari/workspace-message-store.ts");
     assert.equal(
       (agent.match(/sessionId: this\.runSessionId\(\)/gu) ?? []).length,
       6,
@@ -327,7 +327,7 @@ try {
     );
     assert.match(
       agent,
-      /if \(runEndedWithDeferral && runHeldChanges\.length > 0\) extraUpdate\.mariHeldChanges = runHeldChanges;/u,
+      /if \(run\.endedWithDeferral && run\.heldChanges\.length > 0\) extraUpdate\.mariHeldChanges = run\.heldChanges;/u,
       "a held change is saved on her turn for the card",
     );
     const chats = source("routes/chats.routes.ts");

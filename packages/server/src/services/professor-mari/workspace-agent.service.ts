@@ -64,8 +64,6 @@ import {
   MODEL_LISTS,
   buildMariChangeExcerpts,
   mariReceiptReason,
-  mergeMariActionResults,
-  PROFESSOR_MARI_ID,
   sanitizeMariGuidedPlan,
   sanitizeMariSuggestionChips,
   type APIProvider,
@@ -105,6 +103,7 @@ import {
   workspacePathAccessPolicy,
 } from "./workspace-change-review.service.js";
 import { WorkspaceCommands } from "./workspace-commands.js";
+import { createAssistantMessage, saveAssistantMessageExtra, saveRunStart } from "./workspace-message-store.js";
 import {
   newRoundReviewState,
   reviewRepeatedFailures,
@@ -1254,7 +1253,7 @@ export function upsertTraceTool(trace: MariWorkspaceTraceItem[], update: MariWor
   };
 }
 
-function sanitizeTraceForStorage(trace: MariWorkspaceTraceItem[]): MariWorkspaceTraceItem[] {
+export function sanitizeTraceForStorage(trace: MariWorkspaceTraceItem[]): MariWorkspaceTraceItem[] {
   return trace
     .map((item): MariWorkspaceTraceItem | null => {
       if (item.type === "text") {
@@ -1812,7 +1811,7 @@ function formatContinuityResult(result: WorkspaceCommandResult, index: number): 
   return `${index + 1}. ${result.name} ${result.success ? "succeeded" : "failed"} input=${input}\n${output}`;
 }
 
-function buildWorkspaceContinuitySnapshot(args: {
+export function buildWorkspaceContinuitySnapshot(args: {
   userText: string;
   assistantText: string;
   commandResults: WorkspaceCommandResult[];
@@ -3273,16 +3272,7 @@ export class ProfessorMariWorkspaceService {
     }
     const promptText = userMessage.content;
     const runStartedAt = Date.now();
-    const userMessageExtra = {
-      ...(attachments.length > 0 ? { attachments } : {}),
-      professorMariContext: args.context ?? null,
-      // A retry reuses this message: its earlier failure is answered now.
-      mariRunError: null,
-      // The run's clock, on the server, so a reload mid-run resumes from the true start.
-      mariRunStartedAt: runStartedAt,
-    };
-    await chatStorage.updateMessageExtra(userMessage.id, userMessageExtra);
-    await chatStorage.updateSwipeExtra(userMessage.id, 0, userMessageExtra);
+    await saveRunStart(chatStorage, userMessage.id, { attachments, context: args.context, runStartedAt });
 
     const controller = new AbortController();
     this.abortController?.abort();
@@ -3343,49 +3333,28 @@ export class ProfessorMariWorkspaceService {
       // dis-arms the user's approval) - retain the row and retry the extras
       // instead of early-returning past them or creating a duplicate.
       const message =
-        persistedAssistantMessage ??
-        (await chatStorage.createMessage({
-          chatId: args.chatId,
-          role: "assistant",
-          characterId: PROFESSOR_MARI_ID,
-          content: persistedText,
-        }));
+        persistedAssistantMessage ?? (await createAssistantMessage(chatStorage, args.chatId, persistedText));
       if (!message) return null;
       persistedAssistantMessage = message;
 
-      const extraUpdate: Record<string, unknown> = {};
-      if (runEndedWithDeferral) extraUpdate.mariDeferredMutations = true;
-      if (runEndedWithDeferral && runHeldChanges.length > 0) extraUpdate.mariHeldChanges = runHeldChanges;
-      const storedTrace = sanitizeTraceForStorage(workspaceTrace);
-      if (thinkingText.trim()) extraUpdate.thinking = thinkingText;
-      if (storedTrace.length > 0) extraUpdate.mariWorkspaceTimeline = storedTrace;
-      if (workspaceActionResults.length > 0) {
-        extraUpdate.mariWorkspaceActionResults = mergeMariActionResults(workspaceActionResults);
-      }
-      if (runError) extraUpdate.mariRunError = runError;
-      extraUpdate.mariRunStartedAt = runStartedAt;
-      extraUpdate.mariRunFinishedAt = Date.now();
-      const savedChips = runSuggestions.filter((chip) => chip.id !== MARI_AUTHORIZATION_ACCEPT_CHIP.id);
-      if (savedChips.length > 0) extraUpdate.mariSuggestions = savedChips;
-      extraUpdate.professorMariContext = args.context ?? null;
-      const continuity = buildWorkspaceContinuitySnapshot({
-        userText: promptText,
+      await saveAssistantMessageExtra(chatStorage, message.id, {
+        context: args.context,
+        promptText,
         assistantText: persistedText,
+        thinkingText,
+        trace: workspaceTrace,
+        actionResults: workspaceActionResults,
         commandResults: commandResultsForContinuity,
+        endedWithDeferral: runEndedWithDeferral,
+        heldChanges: runHeldChanges,
+        runError,
+        runStartedAt,
+        suggestions: runSuggestions,
+        connection,
+        latestUsage,
+        latestFinishReason,
+        totalUsage,
       });
-      if (continuity) extraUpdate.mariWorkspaceContinuity = continuity;
-      extraUpdate.generationInfo = {
-        provider: connection.provider,
-        model: connection.model,
-        temperature: null,
-        tokensPrompt: latestUsage?.promptTokens ?? null,
-        tokensCompletion: latestUsage?.completionTokens ?? null,
-        durationMs: null,
-        finishReason: latestFinishReason,
-        usage: totalUsage,
-      };
-      await chatStorage.updateMessageExtra(message.id, extraUpdate);
-      await chatStorage.updateSwipeExtra(message.id, 0, extraUpdate);
       assistantMessagePersisted = true;
       // #5740: bind the understood-request record to the message it belongs
       // to so the client can anchor the "Acting on" line to that reply. Only

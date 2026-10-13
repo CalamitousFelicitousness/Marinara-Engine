@@ -135,6 +135,7 @@ try {
     assert.equal(voiceVisemeAt(envelope, 0.4), "ou", "a dark sound rounds the lips");
     const closing = voiceLevelAt(envelope, 0.61);
     assert.ok(closing > 0.4 && closing < 0.9, `the mouth closes smoothly, not at once (${closing})`);
+    assert.equal(voiceVisemeAt(envelope, 0.61), "ou", "a closing mouth keeps the shape of the last sound");
     assert.ok(voiceLevelAt(envelope, 0.78) < 0.1, "and is nearly shut a moment later");
     const quiet = voiceLevelAt(envelope, 0.95);
     assert.ok(quiet > 0.15 && quiet < 0.5, `a quieter part opens the mouth less (${quiet})`);

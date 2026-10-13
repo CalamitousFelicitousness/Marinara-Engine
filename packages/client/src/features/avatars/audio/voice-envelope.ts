@@ -83,12 +83,16 @@ export function computeVoiceEnvelope(samples: VoiceSamples): VoiceEnvelope {
   const attack = 1 - Math.exp(-STEP_SECONDS / ATTACK_SECONDS);
   const release = 1 - Math.exp(-STEP_SECONDS / RELEASE_SECONDS);
   let level = 0;
+  let shape: AvatarViseme | null = null;
   for (let step = 0; step < steps; step += 1) {
     const relative = Math.min(1, (rms[step] ?? 0) / reference);
     const target = relative <= NOISE_GATE ? 0 : (relative - NOISE_GATE) / (1 - NOISE_GATE);
     level += (target - level) * (target > level ? attack : release);
     levels[step] = level < 0.01 ? 0 : level;
-    if (target > 0) visemes[step] = coarseViseme(effectiveHz[step] ?? 0);
+    // While the mouth closes after a sound it keeps that sound's shape.
+    if (target > 0) shape = coarseViseme(effectiveHz[step] ?? 0);
+    else if (levels[step] === 0) shape = null;
+    visemes[step] = shape;
   }
   return { stepSeconds: STEP_SECONDS, levels, visemes };
 }

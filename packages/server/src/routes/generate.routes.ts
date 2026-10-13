@@ -126,6 +126,7 @@ import {
   formatSkillCheckResultSummary,
   unwrapConversationInstructions,
   findKnownModel,
+  isGeminiModel,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -7269,7 +7270,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           followUpIteration,
           impersonate: input.impersonate,
-          isGoogleProvider,
+          // Gemini on OpenRouter, NanoGPT or custom also ends on the rewrite instruction. Ending on the AI's reply would
+          // continue that reply into the user's swipe (#7558).
+          isGoogleProvider: isGoogleProvider || isGeminiModel(conn.model),
           regenerateUserMessage,
         });
         if (tailMessages.assistantPrefillInjected) {

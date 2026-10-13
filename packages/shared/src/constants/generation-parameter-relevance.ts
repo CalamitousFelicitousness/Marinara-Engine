@@ -1,6 +1,5 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
-  isGeminiArgonModel,
   isGeminiStrictRequestModel,
   isGeminiThinkingLevelModel,
   isMistralAdjustableReasoningModel,
@@ -260,11 +259,9 @@ export function relevantGenerationParameters(context: GenerationParameterContext
       }
     }
 
-    // Argon ignores temperature, top-p and top-k and rejects penalties, so every request but a custom endpoint's
-    // leaves them out, including OpenRouter's and NanoGPT's.
-    if (isGeminiArgonModel(model) && provider !== "custom") hide(...SAMPLING);
-    // Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject penalties too.
-    if (isGeminiStrictRequestModel(model) && provider !== "custom") hide("frequencyPenalty", "presencePenalty");
+    // Argon and the newer Gemini Flash models ignore temperature, top-p and top-k and reject penalties, so every
+    // request but a custom endpoint's leaves them out, including OpenRouter's and NanoGPT's.
+    if (isGeminiStrictRequestModel(model) && provider !== "custom") hide(...SAMPLING);
 
     if (provider === "custom") {
       // Custom endpoints keep sampling unless the model is GPT-5.5 or 5.6, which reject it.

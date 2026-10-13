@@ -209,7 +209,7 @@ export async function registerRawRoute(app: FastifyInstance) {
     const providerReasoningEffort: ChatOptions["reasoningEffort"] =
       enabledParameters?.reasoningEffort === false
         ? undefined
-        : reasoningEffortConfigured && reasoningEffort === null
+        : reasoningEffortConfigured && reasoningEffort === null && !resolvedEffort
           ? "none"
           : (resolvedEffort ?? undefined);
 

@@ -8,7 +8,10 @@ import { createRequire } from "node:module";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { crc32, deflateRawSync } from "node:zlib";
+import type { ZipEntryBudget } from "../../packages/server/src/lib/zip-reader.js";
 
 process.env.NODE_ENV = "test";
 process.env.LOG_LEVEL = "silent";
@@ -197,9 +200,9 @@ function assertReadsAsBefore(bytes: Buffer, label: string) {
   corpus.push(`${label} (${before.length})`);
 }
 
-function assertRefused(bytes: Buffer, message: RegExp, label: string) {
+function assertRefused(bytes: Buffer, message: RegExp, label: string, budget?: ZipEntryBudget) {
   assert.throws(
-    () => openZipArchive(bytes),
+    () => openZipArchive(bytes, budget),
     (error: unknown) => error instanceof ZipArchiveError && message.test(error.message),
     label,
   );
@@ -280,8 +283,20 @@ for await (const chunk of streamZip(
   streamed.push(chunk);
 }
 assertReadsAsBefore(Buffer.concat(streamed), "Marinara streamed exports");
+/** The archive followed by zero bytes up to a whole number of blocks, as libarchive writes to a pipe. */
+function blockPadded(bytes: Buffer, block = 10_240) {
+  return Buffer.concat([bytes, Buffer.alloc(block - (bytes.length % block))]);
+}
+assertReadsAsBefore(blockPadded(buildZip(honest).bytes), "zero padding after the end record");
+assertReadsAsBefore(blockPadded(buildZip(honest, { comment: "archive comment" }).bytes, 512), "comment, then padding");
+assertReadsAsBefore(Buffer.concat([buildZip(honest).bytes, Buffer.from("\r\n")]), "a line break after the archive");
 
 // ── Archives from the tools available here. ──
+
+const { PACKAGE_ARCHIVE_BUDGET, validatePackageArchiveEntries } =
+  await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+const { parseCustomAgentRepositoryContents } =
+  await import("../../packages/server/src/services/agents/custom-agent-repositories.service.js");
 
 const scratch = mkdtempSync(join(tmpdir(), "marinara-zip-reader-"));
 try {
@@ -383,6 +398,34 @@ sys.stdout.write(json.dumps(out))
     console.info("Info-ZIP is not installed; its archives were skipped.");
   }
 
+  // libarchive is the tar on macOS and Windows; written to a pipe, its ZIP is padded to whole blocks.
+  const libarchiveTar = ["bsdtar", "tar"].find((command) =>
+    /libarchive/u.test(spawnSync(command, ["--version"]).stdout?.toString() ?? ""),
+  );
+  if (libarchiveTar) {
+    const repositoryFiles = ["agents.json", "rulesets", "large.bin", "README.md"].map((file) => `repository/${file}`);
+    const libarchive = (...flags: string[]) =>
+      execFileSync(libarchiveTar, ["--format", "zip", ...flags, "-cf", "-", ...repositoryFiles], {
+        cwd: scratch,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+    for (const [label, flags] of [
+      ["libarchive written to a pipe", []],
+      ["libarchive written to a pipe, stored", ["--options", "zip:compression=store"]],
+      ["libarchive written to a pipe, ZIP64", ["--options", "zip:zip64"]],
+    ] as const) {
+      const piped = libarchive(...flags);
+      assertReadsAsBefore(piped, label);
+      assert.deepEqual(
+        parseCustomAgentRepositoryContents(piped).definitions.map((definition) => definition.id),
+        [agentDefinition.id],
+        `${label}: a repository archive is imported`,
+      );
+    }
+  } else {
+    console.info("libarchive's tar is not installed; its archives were skipped.");
+  }
+
   let jszipPath: string | null = null;
   try {
     jszipPath = createRequire(join(repositoryRoot, "package.json")).resolve("jszip");
@@ -425,6 +468,29 @@ sys.stdout.write(json.dumps(out))
     edited(Buffer.concat([base.bytes, innerEnd]), (copy) => copy.writeUInt16LE(innerEnd.length, base.endOffset + 20)),
     /more than one end record/,
     "two end records that both close the file",
+  );
+  assertRefused(
+    blockPadded(
+      edited(Buffer.concat([base.bytes, innerEnd]), (copy) => copy.writeUInt16LE(innerEnd.length, base.endOffset + 20)),
+    ),
+    /more than one end record/,
+    "two end records that are both followed only by padding",
+  );
+  const innerToEnd = edited(innerEnd, (copy) => copy.writeUInt16LE(256, 20));
+  assertRefused(
+    Buffer.concat([
+      edited(Buffer.concat([base.bytes, innerToEnd]), (copy) =>
+        copy.writeUInt16LE(innerToEnd.length, base.endOffset + 20),
+      ),
+      Buffer.alloc(256),
+    ]),
+    /more than one end record/,
+    "an end record that closes the file and another followed only by padding",
+  );
+  assertRefused(
+    Buffer.concat([base.bytes, Buffer.from("trailing"), Buffer.alloc(64)]),
+    /not a readable ZIP archive/,
+    "other bytes between the end record and the padding",
   );
   assertRefused(
     edited(base.bytes, (copy) => copy.writeUInt16LE(1, base.endOffset + 4)),
@@ -584,12 +650,50 @@ sys.stdout.write(json.dumps(out))
     "a shorter result than declared",
   );
 
+  // ── A caller's entry limit is checked before the file list is read. ──
+
+  const crowded = buildZip(Array.from({ length: 9 }, (_, index) => ({ name: `entry-${index}.txt`, data: text })));
+  const crowdedDamaged = edited(crowded.bytes, (copy) => copy.writeUInt32LE(0, crowded.centralOffsets[0]!));
+  const budget = { maxEntries: 8, tooManyEntries: "This caller allows eight files" };
+  assertRefused(crowdedDamaged, /file list is damaged/, "a damaged file list is refused");
+  assertRefused(crowded.bytes, /^This caller allows eight files$/, "an archive over the entry limit", budget);
+  assertRefused(
+    crowdedDamaged,
+    /^This caller allows eight files$/,
+    "the entry limit comes before the file list",
+    budget,
+  );
+  assert.equal(
+    openZipArchive(crowded.bytes, { ...budget, maxEntries: 9 }).getEntries().length,
+    9,
+    "an archive within the entry limit opens",
+  );
+
+  // ── Opening an archive indexes its file list; entries are built when a caller asks for them. ──
+
+  setFlagsFromString("--expose-gc");
+  const collectGarbage = runInNewContext("gc") as () => void;
+  const longList = buildZip(
+    Array.from({ length: 0xffff }, (_, index) => ({
+      name: `e/${index.toString(36).padStart(4, "0")}`,
+      data: Buffer.alloc(0),
+      method: 0 as const,
+    })),
+  ).bytes;
+  collectGarbage();
+  const heapBefore = process.memoryUsage().heapUsed;
+  const indexed = openZipArchive(longList);
+  collectGarbage();
+  const heapHeld = process.memoryUsage().heapUsed - heapBefore;
+  assert.ok(
+    heapHeld < longList.length,
+    `the index of a long file list takes less memory than the archive (${heapHeld} of ${longList.length} bytes)`,
+  );
+  assert.equal(indexed.getEntry("e/0000")?.entryName, "e/0000");
+  assert.equal(indexed.getEntries().length, 0xffff);
+
   // ── Entry points: Agent packages and custom Agent repositories. ──
 
-  const { validatePackageArchiveEntries } =
-    await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
-  const { parseCustomAgentRepositoryContents } =
-    await import("../../packages/server/src/services/agents/custom-agent-repositories.service.js");
   const packageArchive = buildZip([
     { name: "manifest.json", data: Buffer.from("{}") },
     { name: "assets/", data: Buffer.alloc(0), method: 0 },
@@ -613,6 +717,33 @@ sys.stdout.write(json.dumps(out))
   );
   assert.deepEqual(repository.rulesets, [{ file: "sample.json", text: JSON.stringify({ id: "sample" }) }]);
   assert.throws(() => parseCustomAgentRepositoryContents(overlapping), ZipArchiveError);
+  assert.deepEqual(
+    parseCustomAgentRepositoryContents(blockPadded(githubArchive)),
+    repository,
+    "a padded repository archive is imported",
+  );
+  assert.deepEqual(
+    validatePackageArchiveEntries(openZipArchive(blockPadded(packageArchive), PACKAGE_ARCHIVE_BUDGET)).map(
+      (entry) => entry.entryName,
+    ),
+    ["manifest.json", "assets/icon.png"],
+    "a padded package archive is read",
+  );
+  const overLimit = buildZip(
+    Array.from({ length: PACKAGE_ARCHIVE_BUDGET.maxEntries + 1 }, (_, index) => ({
+      name: `example-main/${index}.txt`,
+      data: Buffer.alloc(0),
+      method: 0 as const,
+    })),
+  );
+  assert.throws(
+    () =>
+      parseCustomAgentRepositoryContents(
+        edited(overLimit.bytes, (copy) => copy.writeUInt32LE(0, overLimit.centralOffsets[0]!)),
+      ),
+    /Package contains too many files/u,
+    "a repository archive over the entry limit is refused before its file list is read",
+  );
 
   const sources = Object.fromEntries(
     [
@@ -634,7 +765,15 @@ sys.stdout.write(json.dumps(out))
     /async function installCatalogPackage[\s\S]*?\n\}\n/u,
   )?.[0];
   assert.ok(install, "the package install path stays discoverable");
-  assert.match(install, /openZipArchive\(archive\)[\s\S]*?validatePackageArchiveEntries\(zip\)/u);
+  assert.match(
+    install,
+    /openZipArchive\(archive, PACKAGE_ARCHIVE_BUDGET\)[\s\S]*?validatePackageArchiveEntries\(zip\)/u,
+  );
+  assert.match(
+    sources["custom-agent-repositories.service.ts"]!,
+    /openZipArchive\(archive, PACKAGE_ARCHIVE_BUDGET\)[\s\S]*?validatePackageArchiveEntries\(zip, MAX_EXPANDED_BYTES\)/u,
+    "a repository archive is opened with the package entry limit",
+  );
   assert.match(install, /manifestEntry\.size > MAX_MANIFEST_BYTES[\s\S]*?manifestEntry\.read\(MAX_MANIFEST_BYTES\)/u);
   assert.match(install, /item\.size !== declaration\.bytes[\s\S]*?item\.read\(declaration\.bytes\)/u);
 
@@ -717,6 +856,12 @@ sys.stdout.write(json.dumps(out))
     };
     const preview = await inspect(charx.bytes);
     assert.deepEqual([preview.success, preview.name], [true, "Archive Card"], "a .charx is inspected");
+    const paddedPreview = await inspect(blockPadded(charx.bytes));
+    assert.deepEqual(
+      [paddedPreview.success, paddedPreview.name],
+      [true, "Archive Card"],
+      "a padded .charx is inspected",
+    );
     const declaredCard = (size: number) =>
       edited(charx.bytes, (copy) => copy.writeUInt32LE(size, charx.centralOffsets[0]! + 24));
     assert.match(
@@ -797,6 +942,24 @@ sys.stdout.write(json.dumps(out))
       [413, ".marinara package entry is too large"],
       "the existing per-entry limit still applies",
     );
+    assert.deepEqual(
+      await packageResponse(crowded.bytes),
+      [400, ".marinara package has too many entries"],
+      "the existing entry limit keeps its message",
+    );
+    assert.deepEqual(
+      await packageResponse(crowdedDamaged),
+      [400, ".marinara package has too many entries"],
+      "the entry limit is checked before the file list is read",
+    );
+    const paddedPackage = await upload(
+      "/api/import/marinara-package",
+      "file",
+      "Archive Card.marinara",
+      blockPadded(marinaraPackage),
+    );
+    assert.equal(paddedPackage.statusCode, 200, paddedPackage.body);
+    assert.equal(paddedPackage.json().success, true, "a padded .marinara package is imported");
   } finally {
     await app.close();
     await closeDB();

@@ -36,7 +36,11 @@ import {
   RulesetVersionConflictError,
   type GameRulesetRow,
 } from "../storage/game-rulesets.storage.js";
-import { normalizeArchivePath, validatePackageArchiveEntries } from "../capability-packages/package-manager.service.js";
+import {
+  normalizeArchivePath,
+  PACKAGE_ARCHIVE_BUDGET,
+  validatePackageArchiveEntries,
+} from "../capability-packages/package-manager.service.js";
 
 const REGISTRY_FILE = join(DATA_DIR, "agents", "custom-repositories.json");
 const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
@@ -247,7 +251,7 @@ function readRepositoryRulesets(entries: ZipEntry[]): RepositoryRulesetFile[] {
  *  refused so the user is told rather than shown an empty preview. Pure, so the regression covers it
  *  without reaching the network. */
 export function parseCustomAgentRepositoryContents(archive: Buffer): CustomAgentRepositoryContents {
-  const zip = openZipArchive(archive);
+  const zip = openZipArchive(archive, PACKAGE_ARCHIVE_BUDGET);
   const entries = validatePackageArchiveEntries(zip, MAX_EXPANDED_BYTES);
   const definitions = readAgentDefinitions(entries);
   const rulesets = readRepositoryRulesets(entries);

@@ -1,68 +1,40 @@
 // ──────────────────────────────────────────────
 // Avatar setup on each avatar agent's Agent editor page (lane: base)
 // ──────────────────────────────────────────────
-// Pick a character or persona, turn its avatar on or off, choose the active kind and the lip sync,
-// blink and idle-motion switches, preview it, then show AVATAR_KIND_SETUP_PANELS for the kinds this
-// agent owns (AVATAR_KIND_AGENT) and, on the 2D page, AVATAR_GENERATION_PANEL. Not in Sprite Cards.
-import { Suspense, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, Loader2, Trash2, Upload, Wand2 } from "lucide-react";
+// Pick a character or persona, turn its avatar on or off, choose the kind chats show and the lip sync,
+// blink and idle-motion switches, and preview it. Below that, AVATAR_KIND_SETUP_PANELS for the focused kind
+// (AVATAR_KIND_AGENT) import, remove and map faces, and on the 2D page AVATAR_GENERATION_PANEL makes one
+// from a sprite. Not in Sprite Cards.
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import {
   AVATAR_2D_AGENT_ID,
-  AVATAR_IMPORT_EXTENSIONS,
+  AVATAR_AGENT_IDS,
+  AVATAR_KINDS,
   type AvatarAgentId,
   type AvatarConfigUpdate,
   type AvatarFeatureFlags,
-  type AvatarImportResult,
   type AvatarKind,
-  type AvatarKindDataMap,
   type AvatarOwnerRef,
   type AvatarOwnerType,
 } from "@marinara-engine/shared";
 import { SettingsSwitch } from "../../../components/panels/settings/SettingControls";
-import {
-  useAvatarModel,
-  useAvatarModelList,
-  useDeleteAvatarKind,
-  useImportAvatarModel,
-  useUpdateAvatarModel,
-} from "../../../hooks/use-avatar-models";
+import { useAvatarModel, useAvatarModelList, useUpdateAvatarModel } from "../../../hooks/use-avatar-models";
 import { useCharacterSprites, useCharacters, usePersonas } from "../../../hooks/use-characters";
-import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { parseCharacterDisplayData } from "../../../lib/character-display";
 import { cn } from "../../../lib/utils";
 import { AVATAR_GENERATION_PANEL, AVATAR_KIND_SETUP_PANELS, type AvatarAgentSetupProps } from "../contract";
-import {
-  avatarAgentKinds,
-  avatarBindingTargets,
-  avatarEditableSlots,
-  buildPngtuberFromSprites,
-  withBindingOverride,
-} from "./avatar-setup-logic";
+import { buildPngtuberLayersFromSprites } from "../renderers/pngtuber/pngtuber-layers";
+import { pickAvatarKind, withSpriteAvatar } from "../stage/avatar-stage-logic";
+import { avatarAgentKinds } from "./avatar-setup-logic";
 import { AvatarSetupPreview } from "./AvatarSetupPreview";
 
-const KIND_LABEL_KEYS: Record<AvatarKind, { name: string; help: string; import: string }> = {
-  pngtuber: {
-    name: "avatars.setup.kind.pngtuber",
-    help: "avatars.setup.kind.pngtuberHelp",
-    import: "avatars.setup.import.pngtuber",
-  },
-  "mesh-avatar": {
-    name: "avatars.setup.kind.meshAvatar",
-    help: "avatars.setup.kind.meshAvatarHelp",
-    import: "avatars.setup.import.meshAvatar",
-  },
-  vrm: { name: "avatars.setup.kind.vrm", help: "avatars.setup.kind.vrmHelp", import: "avatars.setup.import.vrm" },
+const KIND_LABEL_KEYS: Record<AvatarKind, { name: string; help: string }> = {
+  pngtuber: { name: "avatars.setup.kind.pngtuber", help: "avatars.setup.kind.pngtuberHelp" },
+  "mesh-avatar": { name: "avatars.setup.kind.meshAvatar", help: "avatars.setup.kind.meshAvatarHelp" },
+  vrm: { name: "avatars.setup.kind.vrm", help: "avatars.setup.kind.vrmHelp" },
 };
-
-const SOURCE_LABEL_KEYS = {
-  preset: "avatars.setup.expressions.source.found",
-  "name-match": "avatars.setup.expressions.source.found",
-  "sprite-label": "avatars.setup.expressions.source.found",
-  user: "avatars.setup.expressions.source.user",
-  missing: "avatars.setup.expressions.source.missing",
-} as const;
 
 const FEATURE_KEYS: ReadonlyArray<readonly [keyof AvatarFeatureFlags, string, string]> = [
   ["lipSync", "avatars.setup.features.lipSync", "avatars.setup.features.lipSyncHelp"],
@@ -162,7 +134,8 @@ export function AvatarAgentSetup({ agentId }: AvatarAgentSetupProps) {
   );
 }
 
-/** One character's or persona's setup; remounted per owner, so its focus, messages and import notes reset. */
+/** One character's or persona's setup; remounted per owner, so its focus and messages reset. The kind panels
+ *  below it own importing, removing and the faces; this part holds what applies to every kind. */
 function OwnerAvatarSetup({
   agentId,
   kinds,
@@ -177,17 +150,28 @@ function OwnerAvatarSetup({
   const spritesQuery = useCharacterSprites(owner.ownerId);
   const sprites = spritesQuery.data ?? (spritesQuery.isLoading ? null : []);
   const update = useUpdateAvatarModel();
-  const importAvatar = useImportAvatarModel();
-  const removeKind = useDeleteAvatarKind();
   const [chosenKind, setChosenKind] = useState<AvatarKind | null>(null);
-  const [importResult, setImportResult] = useState<AvatarImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingKind, setPendingKind] = useState<AvatarKind | null>(null);
 
-  // Until the user picks one: the kind that shows in chats when it belongs to this page, else the first set up.
-  const activeHere = config?.activeKind && kinds.includes(config.activeKind) ? config.activeKind : null;
-  const focusedKind = chosenKind ?? activeHere ?? kinds.find((kind) => config?.kinds[kind]) ?? kinds[0]!;
+  // On the 2D page, expression sprites are a PNGTuber avatar until one is saved, as they are in chats.
+  const spriteList = spritesQuery.data;
+  const fromSprites = useMemo(
+    () => (kinds.includes("pngtuber") && spriteList ? buildPngtuberLayersFromSprites(spriteList) : null),
+    [kinds, spriteList],
+  );
+  const avatar = useMemo(() => withSpriteAvatar(owner, config, fromSprites), [config, fromSprites, owner]);
+  // The kind chats show when every avatar agent is on.
+  const shownKind = avatar
+    ? pickAvatarKind(
+        { activeKind: avatar.activeKind, kinds: AVATAR_KINDS.filter((kind) => avatar.kinds[kind]) },
+        AVATAR_AGENT_IDS,
+      )
+    : null;
+  const focusedKind =
+    chosenKind ??
+    (shownKind && kinds.includes(shownKind) ? shownKind : null) ??
+    kinds.find((kind) => avatar?.kinds[kind]) ??
+    kinds[0]!;
 
   const save = async (change: AvatarConfigUpdate) => {
     setError(null);
@@ -195,64 +179,6 @@ function OwnerAvatarSetup({
       await update.mutateAsync({ owner, update: change });
     } catch (saveError) {
       setError(errorMessage(saveError, t("avatars.setup.saveFailed")));
-    }
-  };
-
-  const startImport = (kind: AvatarKind, extensions: readonly string[]) => {
-    const input = fileInputRef.current;
-    if (!input) return;
-    setPendingKind(kind);
-    // Set the file types directly and open the picker in the same tap (Safari needs the click in the gesture).
-    input.accept = extensions.join(",");
-    input.click();
-  };
-
-  const handleFile = async (file: File | undefined) => {
-    if (!file || !pendingKind) {
-      // Picking the same file again must still fire a change.
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-    setError(null);
-    setImportResult(null);
-    try {
-      const result = await importAvatar.mutateAsync({ owner, file, kind: pendingKind });
-      setImportResult(result);
-      setChosenKind(result.kind);
-      toast.success(t("avatars.setup.import.done"));
-    } catch (importError) {
-      setError(errorMessage(importError, t("avatars.setup.import.failed")));
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
-  const buildFromSprites = async () => {
-    const data = buildPngtuberFromSprites(
-      (sprites ?? []).map((sprite) => sprite.expression),
-      config?.kinds.pngtuber,
-    );
-    if (!data) {
-      setError(t("avatars.setup.noSprites"));
-      return;
-    }
-    await save({ kinds: { pngtuber: data }, ...(config?.activeKind ? {} : { activeKind: "pngtuber" }) });
-  };
-
-  const remove = async (kind: AvatarKind) => {
-    const confirmed = await showConfirmDialog({
-      title: t("avatars.setup.removeConfirmTitle"),
-      message: t("avatars.setup.removeConfirmMessage"),
-      confirmLabel: t("avatars.setup.remove"),
-      tone: "destructive",
-    });
-    if (!confirmed) return;
-    setError(null);
-    try {
-      await removeKind.mutateAsync({ owner, kind });
-      setImportResult(null);
-    } catch (removeError) {
-      setError(errorMessage(removeError, t("avatars.setup.saveFailed")));
     }
   };
 
@@ -266,27 +192,20 @@ function OwnerAvatarSetup({
     );
   }
 
-  const busy = update.isPending || importAvatar.isPending || removeKind.isPending;
-  const focusedData = config?.kinds[focusedKind];
+  const busy = update.isPending;
+  const focusedData = avatar?.kinds[focusedKind];
   const KindPanel = AVATAR_KIND_SETUP_PANELS[focusedKind];
   const GenerationPanel = AVATAR_GENERATION_PANEL;
-  const onChanged = () => setImportResult(null);
+  const onChanged = () => setError(null);
 
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem]">
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={(event) => void handleFile(event.target.files?.[0])}
-      />
-
       <div className="min-w-0 space-y-4">
-        {config ? (
+        {avatar ? (
           <SettingsSwitch
             label={t("avatars.setup.enabled.label")}
             description={t("avatars.setup.enabled.description")}
-            checked={config.enabled}
+            checked={avatar.enabled}
             disabled={busy}
             onChange={(enabled) => void save({ enabled })}
             labelPosition="start"
@@ -298,94 +217,62 @@ function OwnerAvatarSetup({
           <legend className="mb-1.5 text-xs font-semibold text-[var(--foreground)]">
             {t("avatars.setup.kind.label")}
           </legend>
-          {kinds.map((kind) => {
-            const setUp = Boolean(config?.kinds[kind]);
-            return (
-              <label
-                key={kind}
-                className={cn(
-                  "flex cursor-pointer items-start gap-2.5 rounded-xl p-3 ring-1 transition-colors",
-                  focusedKind === kind
-                    ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
-                    : "bg-[var(--secondary)]/55 ring-[var(--border)] hover:bg-[var(--accent)]",
-                )}
-              >
-                <input
-                  type="radio"
-                  name={`avatar-kind-${agentId}`}
-                  value={kind}
-                  checked={focusedKind === kind}
-                  onChange={() => setChosenKind(kind)}
-                  className="mt-0.5 accent-[var(--primary)]"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs font-semibold text-[var(--foreground)]">
-                    {t(KIND_LABEL_KEYS[kind].name)}
-                  </span>
-                  <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
-                    {t(KIND_LABEL_KEYS[kind].help)}
-                  </span>
+          {kinds.map((kind) => (
+            <label
+              key={kind}
+              className={cn(
+                "flex cursor-pointer items-start gap-2.5 rounded-xl p-3 ring-1 transition-colors",
+                focusedKind === kind
+                  ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                  : "bg-[var(--secondary)]/55 ring-[var(--border)] hover:bg-[var(--accent)]",
+              )}
+            >
+              <input
+                type="radio"
+                name={`avatar-kind-${agentId}`}
+                value={kind}
+                checked={focusedKind === kind}
+                onChange={() => setChosenKind(kind)}
+                className="mt-0.5 accent-[var(--primary)]"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-[var(--foreground)]">
+                  {t(KIND_LABEL_KEYS[kind].name)}
                 </span>
-                <span className="shrink-0 rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
-                  {config?.activeKind === kind
-                    ? t("avatars.setup.kind.shown")
-                    : setUp
-                      ? t("avatars.setup.kind.setUp")
-                      : t("avatars.setup.kind.notSetUp")}
+                <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
+                  {t(KIND_LABEL_KEYS[kind].help)}
                 </span>
-              </label>
-            );
-          })}
+              </span>
+              <span className="shrink-0 rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
+                {shownKind === kind
+                  ? t("avatars.setup.kind.shown")
+                  : avatar?.kinds[kind]
+                    ? t("avatars.setup.kind.setUp")
+                    : t("avatars.setup.kind.notSetUp")}
+              </span>
+            </label>
+          ))}
         </fieldset>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {focusedKind === "pngtuber" ? (
-            <ActionButton
-              icon={<Wand2 size="0.8125rem" />}
-              disabled={busy || sprites === null}
-              onClick={() => void buildFromSprites()}
-            >
-              {t("avatars.setup.useSprites")}
-            </ActionButton>
-          ) : null}
-          <ActionButton
-            icon={<Upload size="0.8125rem" />}
-            disabled={busy}
-            onClick={() =>
-              startImport(
-                focusedKind,
-                AVATAR_IMPORT_EXTENSIONS[focusedKind].filter((extension) => extension !== ".vrma"),
-              )
-            }
-          >
-            {t(KIND_LABEL_KEYS[focusedKind].import)}
-          </ActionButton>
-          {focusedKind === "vrm" && focusedData ? (
-            <ActionButton
-              icon={<Upload size="0.8125rem" />}
+        {focusedData && shownKind !== focusedKind ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
               disabled={busy}
-              onClick={() => startImport("vrm", [".vrma"])}
+              // A sprite avatar is saved as it shows, so the kind chats switch to is set up.
+              onClick={() =>
+                void save({
+                  activeKind: focusedKind,
+                  ...(config?.kinds[focusedKind] ? {} : { kinds: { [focusedKind]: focusedData } }),
+                })
+              }
+              className="mari-editor-action mari-editor-action--compact px-3"
             >
-              {t("avatars.setup.import.vrmAnimation")}
-            </ActionButton>
-          ) : null}
-          {focusedData && config?.activeKind !== focusedKind ? (
-            <ActionButton disabled={busy} onClick={() => void save({ activeKind: focusedKind })}>
               {t("avatars.setup.kind.makeActive")}
-            </ActionButton>
-          ) : null}
-          {focusedData ? (
-            <ActionButton
-              icon={<Trash2 size="0.8125rem" />}
-              disabled={busy}
-              danger
-              onClick={() => void remove(focusedKind)}
-            >
-              {t("avatars.setup.remove")}
-            </ActionButton>
-          ) : null}
-          {busy ? <Loader2 size="1rem" className="animate-spin text-[var(--muted-foreground)]" /> : null}
-        </div>
+            </button>
+            {busy ? <Loader2 size="1rem" className="animate-spin text-[var(--muted-foreground)]" /> : null}
+          </div>
+        ) : null}
 
         {error ? (
           <p
@@ -396,27 +283,8 @@ function OwnerAvatarSetup({
             <span className="min-w-0">{error}</span>
           </p>
         ) : null}
-        {importResult?.warnings.length ? (
-          <div className={cn("px-3 py-2", CARD_CLASS)}>
-            <p className="text-xs font-semibold text-[var(--foreground)]">{t("avatars.setup.warnings")}</p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[0.6875rem] text-[var(--muted-foreground)]">
-              {importResult.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
 
-        {focusedData ? (
-          <ExpressionBindings
-            kind={focusedKind}
-            data={focusedData}
-            disabled={busy}
-            onChange={(data) => void save({ kinds: { [focusedKind]: data } })}
-          />
-        ) : null}
-
-        {config ? (
+        {avatar ? (
           <section className="space-y-2">
             <h4 className="text-xs font-semibold text-[var(--foreground)]">{t("avatars.setup.features.title")}</h4>
             {FEATURE_KEYS.map(([key, label, description]) => (
@@ -424,7 +292,7 @@ function OwnerAvatarSetup({
                 key={key}
                 label={t(label)}
                 description={t(description)}
-                checked={config.features[key]}
+                checked={avatar.features[key]}
                 disabled={busy}
                 onChange={(value) => void save({ features: { [key]: value } })}
                 labelPosition="start"
@@ -444,92 +312,8 @@ function OwnerAvatarSetup({
 
       <div className="order-first md:order-none">
         <p className="mb-1.5 text-xs font-semibold text-[var(--foreground)]">{t("avatars.setup.preview.title")}</p>
-        <AvatarSetupPreview owner={owner} config={config} kind={focusedKind} sprites={sprites} />
+        <AvatarSetupPreview owner={owner} config={avatar} kind={focusedKind} sprites={sprites} />
       </div>
     </div>
-  );
-}
-
-function ActionButton({
-  icon,
-  disabled,
-  danger,
-  onClick,
-  children,
-}: {
-  icon?: ReactNode;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={cn("mari-editor-action mari-editor-action--compact px-3", danger && "mari-editor-action--danger")}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-/** Which of the model's faces shows for each feeling, with where each binding came from. */
-function ExpressionBindings<K extends AvatarKind>({
-  kind,
-  data,
-  disabled,
-  onChange,
-}: {
-  kind: K;
-  data: AvatarKindDataMap[K];
-  disabled: boolean;
-  onChange: (data: AvatarKindDataMap[K]) => void;
-}) {
-  const { t } = useTranslation();
-  const idPrefix = useId();
-  const targets = avatarBindingTargets(kind, data);
-  return (
-    <section className="space-y-2">
-      <div>
-        <h4 className="text-xs font-semibold text-[var(--foreground)]">{t("avatars.setup.expressions.title")}</h4>
-        <p className="text-[0.625rem] text-[var(--muted-foreground)]">{t("avatars.setup.expressions.help")}</p>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {avatarEditableSlots(kind).map((slot) => {
-          const binding = data.expressionMap[slot];
-          const target = binding?.target ?? "";
-          const sourceKey = SOURCE_LABEL_KEYS[!binding || binding.target === null ? "missing" : binding.source];
-          const options = target && !targets.includes(target) ? [...targets, target] : targets;
-          const slotLabel = t(`avatars.setup.slot.${slot}`);
-          const sourceId = `${idPrefix}-${slot}-source`;
-          return (
-            <div key={slot} className={cn("flex min-w-0 items-center gap-2 px-3 py-2", CARD_CLASS)}>
-              <span className="w-20 shrink-0 text-xs text-[var(--foreground)]">{slotLabel}</span>
-              <select
-                value={target}
-                disabled={disabled}
-                aria-label={slotLabel}
-                aria-describedby={sourceId}
-                onChange={(event) => onChange(withBindingOverride(data, slot, event.target.value || null))}
-                className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-2 py-1 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-              >
-                <option value="">{t("avatars.setup.expressions.none")}</option>
-                {options.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <span id={sourceId} className="shrink-0 text-[0.5625rem] text-[var(--muted-foreground)]">
-                {t(sourceKey)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
   );
 }

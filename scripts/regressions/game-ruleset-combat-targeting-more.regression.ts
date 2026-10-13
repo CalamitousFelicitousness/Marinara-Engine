@@ -1,6 +1,6 @@
 /**
  * Targeting by any sense, targets near each other, growing areas, more uses and held things
- * (Capability API 1.262).
+ * (Capability API 1.266).
  *
  *   - `needsAny`: Turn Undead's "each undead that can see or hear you": one sense kept is enough.
  *   - `targetsWithin`: Command's higher-slot creatures "within 30 feet of each other".
@@ -467,7 +467,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with senses any one of which serves, targets kept near each other, an area that grows with its cost, more uses on an item, or things a stat block holds, requires schemaVersion 2 and capabilityApi 1.262 or newer";
+      "A ruleset with senses any one of which serves, targets kept near each other, an area that grows with its cost, more uses on an item, or things a stat block holds, requires schemaVersion 2 and capabilityApi 1.266 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const only = (keep: (doc: Record<string, any>) => void) =>
@@ -484,7 +484,7 @@ try {
         only(() => {}),
       ),
       gate,
-      "nothing of 1.262 left",
+      "nothing of 1.266 left",
     );
     const cases: Array<[string, (doc: Record<string, any>) => void]> = [
       ["needsAny", (doc) => (doc.catalogs.at(-1).entries[0].mechanics.needsAny = true)],
@@ -516,8 +516,8 @@ try {
     for (const [name, keep] of cases) {
       const doc = only(keep);
       parsed(doc);
-      assert.equal(issue(261, doc), gate, name);
-      assert.notEqual(issue(262, doc), gate, name);
+      assert.equal(issue(265, doc), gate, name);
+      assert.notEqual(issue(266, doc), gate, name);
     }
     assert.equal(
       issue(
@@ -530,7 +530,7 @@ try {
   }
 
   console.log(
-    "Ruleset targeting: Turn reaches whoever sees or hears, Command's extra targets stand within 30 feet, Confuse grows with the slot, a wand's two spells share charges and fall together, a guard's shield drops with its sword (its 2 with it) and is picked up, a multiattack strikes with what is left; gated at 1.262.",
+    "Ruleset targeting: Turn reaches whoever sees or hears, Command's extra targets stand within 30 feet, Confuse grows with the slot, a wand's two spells share charges and fall together, a guard's shield drops with its sword (its 2 with it) and is picked up, a multiattack strikes with what is left; gated at 1.266.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Disease stages (Capability API 1.256), and qualities on a stat block's action (1.257).
+ * Disease stages (Capability API 1.260), and qualities on a stat block's action (1.261).
  *
  *   - `onDamaged`: Slimy Doom stuns its holder each time they take damage.
  *   - `cannot-heal-nonmagical`: a diseased giant rat's bite keeps off every heal but a magical one,
@@ -341,7 +341,7 @@ try {
           qualities: ["magical"],
           targets: "ally",
         },
-        // Heals only: magical or not decides it on a holder of the rat's fever (1.257).
+        // Heals only: magical or not decides it on a holder of the rat's fever (1.261).
         {
           id: "mend",
           name: "Mending Touch",
@@ -439,7 +439,7 @@ try {
     );
   }
 
-  // ── The install gate: 1.256 ──
+  // ── The install gate: 1.260 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -455,7 +455,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions brought on by damage, onsets that turn into another, cures only some level ends, rest losses a cure gives back, heals only magic gets through, or cures on a creature's action requires schemaVersion 2 and capabilityApi 1.256 or newer";
+      "A ruleset with conditions brought on by damage, onsets that turn into another, cures only some level ends, rest losses a cure gives back, heals only magic gets through, or cures on a creature's action requires schemaVersion 2 and capabilityApi 1.260 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
@@ -469,32 +469,32 @@ try {
     ]) {
       const doc = structuredClone(without);
       doc.extra = { entry: extra };
-      assert.equal(issue(255, doc), gate, JSON.stringify(extra));
-      assert.notEqual(issue(256, doc), gate);
+      assert.equal(issue(259, doc), gate, JSON.stringify(extra));
+      assert.notEqual(issue(260, doc), gate);
     }
     // A catalog entry's ends is older.
     const older = structuredClone(without);
     older.extra = { entry: { label: "Cure", mechanics: { budget: "action", ends: { conditions: ["x"] } } } };
-    assert.notEqual(issue(255, older), gate);
-    assert.notEqual(issue(255, without), gate);
+    assert.notEqual(issue(259, older), gate);
+    assert.notEqual(issue(259, without), gate);
     assert.equal(
-      issue(255, without, new Map([["c.json", { entries: [{ condition: "x", expires: { becomes: "y" } }] }]])),
+      issue(259, without, new Map([["c.json", { entries: [{ condition: "x", expires: { becomes: "y" } }] }]])),
       gate,
     );
     const qualityGate =
-      "A ruleset with qualities on a creature's action requires schemaVersion 2 and capabilityApi 1.257 or newer";
+      "A ruleset with qualities on a creature's action requires schemaVersion 2 and capabilityApi 1.261 or newer";
     const blessed = structuredClone(without);
     blessed.extra = { entry: { name: "Healing Touch", budget: "action", qualities: ["magical"] } };
-    assert.equal(issue(256, blessed), qualityGate);
-    assert.notEqual(issue(257, blessed), qualityGate);
+    assert.equal(issue(260, blessed), qualityGate);
+    assert.notEqual(issue(261, blessed), qualityGate);
     const catalogQualities = structuredClone(without);
     catalogQualities.extra = { entry: { label: "Bolt", mechanics: { budget: "action", qualities: ["magical"] } } };
-    assert.notEqual(issue(256, catalogQualities), qualityGate, "a catalog entry's are older");
-    assert.equal(issue(256, without, new Map([["c.json", { entries: [blessed.extra.entry] }]])), qualityGate);
+    assert.notEqual(issue(260, catalogQualities), qualityGate, "a catalog entry's are older");
+    assert.equal(issue(260, without, new Map([["c.json", { entries: [blessed.extra.entry] }]])), qualityGate);
   }
 
   console.log(
-    "Ruleset disease stages: damage brings Slimy Doom's stun, only magic (a spell, a magical potion, a magical Healing Touch) heals a rat's fever, an onset turns into its later stage that only a 6th-level cure ends, a cure gives Mummy Rot's loss back, and Healing Touch cures; gated at 1.256 and 1.257.",
+    "Ruleset disease stages: damage brings Slimy Doom's stun, only magic (a spell, a magical potion, a magical Healing Touch) heals a rat's fever, an onset turns into its later stage that only a 6th-level cure ends, a cure gives Mummy Rot's loss back, and Healing Touch cures; gated at 1.260 and 1.261.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

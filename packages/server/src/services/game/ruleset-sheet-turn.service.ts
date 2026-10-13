@@ -212,7 +212,7 @@ export function applyGameRulesetSheetTurn(
       ...context,
       live: baseLive ?? {},
       catalogs,
-      // A rest that brings on what a condition does with it (1.255) rolls real dice.
+      // A rest that brings on what a condition does with it (1.259) rolls real dice.
       roll: (sides) => 1 + Math.floor(Math.random() * sides),
     });
     for (const outcome of applied.outcomes) {

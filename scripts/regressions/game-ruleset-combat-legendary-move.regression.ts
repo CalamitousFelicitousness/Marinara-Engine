@@ -1,5 +1,5 @@
 /**
- * Legendary moves (Capability API 1.278).
+ * Legendary moves (Capability API 1.282).
  *
  *   - `move` on a creature's signature action: a tarrasque "moves up to half its speed" between
  *     turns, walking a path the menu offers, struck at as it leaves somebody's reach, with the window
@@ -428,7 +428,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with a legendary move requires schemaVersion 2 and capabilityApi 1.278 or newer";
+    const gate = "A ruleset with a legendary move requires schemaVersion 2 and capabilityApi 1.282 or newer";
     const doc = fiveE((doc) =>
       doc.catalogs.push({
         id: "x",
@@ -436,9 +436,9 @@ try {
         entries: [{ id: "a", label: "A", creature: { actions: [legendary({ share: 0.5 })] } }],
       }),
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(277) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(278) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(277) as never, fiveE()), gate, "the plain 5e example");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(281) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(282) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(281) as never, fiveE()), gate, "the plain 5e example");
     // A lasting area's own move names its budget, and is not one.
     const moonbeam = fiveE((doc) =>
       doc.catalogs.push({
@@ -456,7 +456,7 @@ try {
         ],
       }),
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(277) as never, moonbeam), gate, "a moving zone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(281) as never, moonbeam), gate, "a moving zone");
   }
 
   console.log(

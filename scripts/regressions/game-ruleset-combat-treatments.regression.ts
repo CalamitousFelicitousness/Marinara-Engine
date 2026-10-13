@@ -1,5 +1,5 @@
 /**
- * Treatments and wounds only a rest closes (Capability API 1.188).
+ * Treatments and wounds only a rest closes (Capability API 1.192).
  *
  *   - A contest rolled against a fixed `difficulty`: nobody rolls against the actor, who wins on
  *     meeting it. 5e's DC 15 Wisdom (Medicine) check that closes a sword of wounding's wounds.
@@ -514,7 +514,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with contests rolled against a fixed number, taken on allies, the wounded or the dying, contests that stabilize, or weapons whose damage only a rest restores requires schemaVersion 2 and capabilityApi 1.188 or newer";
+      "A ruleset with contests rolled against a fixed number, taken on allies, the wounded or the dying, contests that stabilize, or weapons whose damage only a rest restores requires schemaVersion 2 and capabilityApi 1.192 or newer";
     const withContest = (extra: Record<string, unknown>, onWin?: Record<string, unknown>) => {
       const doc = JSON.parse(fiveE);
       const grapple = doc.combat.contests[0];
@@ -548,10 +548,10 @@ try {
       ["a weapon", withItem({ healedOnlyByRest: true })],
       ["a harm", withHarm()],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(187) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(188) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(191) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(192) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, JSON.parse(fiveE)), gate, "plain 5e");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(191) as never, JSON.parse(fiveE)), gate, "plain 5e");
   }
 
   console.log(

@@ -235,7 +235,7 @@ export function rulesetRefusalText(code: string | undefined, serverText: string,
   return translated || serverText;
 }
 
-/** A check thrown on its own (1.282), as one side of a contest is written. */
+/** A check thrown on its own (1.286), as one side of a contest is written. */
 function checkRollText(roll: RulesetContestSide, names: RulesetCombatNames, t: TFunction): string {
   return roll.pool
     ? rulesetPoolRollText({ ...roll, pool: roll.pool }, t, bonusNamer(names, t))
@@ -274,7 +274,7 @@ export function rulesetCombatEventLine(
   names: RulesetCombatNames,
   t: TFunction,
 ): string | null {
-  // Those a search looked for with a throw of their own (1.285): a Cloak of Elvenkind's wearer.
+  // Those a search looked for with a throw of their own (1.289): a Cloak of Elvenkind's wearer.
   const searchApart = (apart: RulesetSearchApart[] | undefined) =>
     (apart ?? [])
       .map(
@@ -429,7 +429,7 @@ export function rulesetCombatEventLine(
         maxHealth: event.maxHealth,
       });
     case "temporary":
-      // Lost with the condition that gave them (1.269): Heroism's.
+      // Lost with the condition that gave them (1.273): Heroism's.
       if (event.lost) return key("temporaryLost", { target: names.combatant(event.targetId), amount: event.amount });
       return key("temporary", { target: names.combatant(event.targetId), amount: event.amount });
     case "restored":
@@ -446,7 +446,7 @@ export function rulesetCombatEventLine(
         condition: names.condition(event.condition),
         ...(event.stacks !== undefined ? { stacks: event.stacks } : {}),
       });
-    // Readying (1.283).
+    // Readying (1.287).
     case "ready":
       return key(
         event.outcome === "readied"
@@ -460,7 +460,7 @@ export function rulesetCombatEventLine(
               : "readyLost",
         { actor: names.combatant(event.actorId), label: event.label },
       );
-    // A legendary search (1.282).
+    // A legendary search (1.286).
     case "search": {
       const roll = checkRollText(event.check, names, t);
       const line =
@@ -474,7 +474,7 @@ export function rulesetCombatEventLine(
           : key("searchNone", { actor: names.combatant(event.actorId), label: event.label, roll });
       return `${line}${searchApart(event.apart)}`;
     }
-    // Hiding given away (1.282).
+    // Hiding given away (1.286).
     case "revealed":
       return key(
         event.reason === "attack"
@@ -519,7 +519,7 @@ export function rulesetCombatEventLine(
           dc: event.escapeDc,
         });
       }
-      // A treatment against its own number (1.188): nobody else rolled.
+      // A treatment against its own number (1.192): nobody else rolled.
       if (event.difficulty !== undefined) {
         return key(event.winner === "actor" ? "contestDifficultyWon" : "contestDifficultyLost", {
           actor: names.combatant(event.actorId),
@@ -562,7 +562,7 @@ export function rulesetCombatEventLine(
         alters: event.alters.join(", "),
       });
     case "lowered":
-      // Off a check or a damage roll (1.252), or else an attack roll.
+      // Off a check or a damage roll (1.256), or else an attack roll.
       return key(event.roll === "checks" ? "loweredCheck" : event.roll === "damage" ? "loweredDamage" : "lowered", {
         actor: names.combatant(event.actorId),
         label: event.label,
@@ -595,7 +595,7 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
-    // A check made to end a condition (1.308): Maze's way out.
+    // A check made to end a condition (1.312): Maze's way out.
     case "checkEnded":
       return key(event.automatic ? "checkEndedAutomatic" : event.success ? "checkEnded" : "checkEndedFailed", {
         actor: names.combatant(event.actorId),
@@ -735,18 +735,18 @@ export function rulesetCombatEventLine(
           target: names.combatant(event.targetId ?? ""),
         });
       }
-      // Going off, and catching fire (1.178).
+      // Going off, and catching fire (1.182).
       if (event.outcome === "detonated" || event.outcome === "burning") {
         return key(event.outcome === "detonated" ? "zoneDetonated" : "zoneBurning", {
           actor: names.combatant(event.actorId),
           label: event.label,
         });
       }
-      // Blown away by a strong wind (1.281).
+      // Blown away by a strong wind (1.285).
       if (event.outcome === "dispersed") {
         return key("zoneDispersed", { actor: names.combatant(event.actorId), label: event.label });
       }
-      // Magical darkness a light met (1.292).
+      // Magical darkness a light met (1.296).
       if (event.outcome === "dispelled") {
         return key("zoneDispelled", { actor: names.combatant(event.actorId), label: event.label });
       }
@@ -896,7 +896,7 @@ export function rulesetCombatEventLine(
     case "window":
       // Who the fight stopped for. The window between two turns is nobody's interruption, so it is
       // said as a pause rather than as somebody being caught out.
-      // What somebody readied, set off (1.283).
+      // What somebody readied, set off (1.287).
       if (event.readied) {
         return key(event.readied === "comes" ? "windowReadiedComes" : "windowReadiedActs", {
           actor: names.combatant(event.waiting[0] ?? ""),
@@ -1004,7 +1004,7 @@ export function rulesetCombatEventLine(
       if (!STANDARD_ACTIONS.has(event.action)) {
         return key("standardOther", { actor: names.combatant(event.actorId), action: event.action });
       }
-      // A real Hide or Search (1.282): the check, and whom it hid from or found.
+      // A real Hide or Search (1.286): the check, and whom it hid from or found.
       if (event.check) {
         const roll = checkRollText(event.check, names, t);
         const list = (ids: string[] | undefined) => (ids ?? []).map((id) => names.combatant(id)).join(", ");

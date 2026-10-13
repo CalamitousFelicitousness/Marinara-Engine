@@ -1,5 +1,5 @@
 /**
- * Creatures that push, and a scroll's wide line (Capability API 1.179).
+ * Creatures that push, and a scroll's wide line (Capability API 1.183).
  *
  *   - A creature action's `push`: whoever it lands on is pushed away from the creature, and with a
  *     save only on a failed one (a bronze dragon's Repulsion Breath, a dragon turtle's Tail, whose
@@ -220,7 +220,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creature actions that push or item uses whose line has a width requires schemaVersion 2 and capabilityApi 1.179 or newer";
+      "A ruleset with creature actions that push or item uses whose line has a width requires schemaVersion 2 and capabilityApi 1.183 or newer";
     const creatureDoc = fiveE((doc) => {
       doc.catalogs.push({
         id: "beasts",
@@ -233,10 +233,10 @@ try {
       ["creature push", creatureDoc],
       ["scroll width", withItem({ ...scroll, use: { ...scroll.use, push: undefined } })],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(178) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(179) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(182) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(183) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(178) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(182) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

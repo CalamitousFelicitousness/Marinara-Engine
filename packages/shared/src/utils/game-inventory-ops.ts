@@ -329,7 +329,7 @@ export function applyGameInventoryOps(
           const held = chargesOf(stack)!;
           const spentTo = left(stack) - held.cost;
           const face = spentTo === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) : undefined;
-          // A high face gives charges back (1.266): a Staff of the Magi's 20.
+          // A high face gives charges back (1.270): a Staff of the Magi's 20.
           const regains = held.breaksOn?.regains;
           const now =
             face !== undefined && regains && roll && face >= regains.atLeast
@@ -346,7 +346,7 @@ export function applyGameInventoryOps(
               : spentTo;
           const cracks =
             face !== undefined && now === 0 && held.breaksOn?.atMost !== undefined && face <= held.breaksOn.atMost;
-          // Or it becomes another item instead (1.267), under that item's name.
+          // Or it becomes another item instead (1.271), under that item's name.
           const into = cracks && held.breaksOn?.becomes ? rules?.itemOf(held.breaksOn.becomes) : undefined;
           if (into) {
             const { charges: _charges, ...plain } = stack;
@@ -516,7 +516,7 @@ export function applyGameInventoryOps(
       }
     }
   }
-  // A binding whose needed items went elsewhere, or came off, is undone (1.308).
+  // A binding whose needed items went elsewhere, or came off, is undone (1.312).
   return { stacks: releaseGameInventoryUnmetBindings(current, rules), results, journal };
 }
 

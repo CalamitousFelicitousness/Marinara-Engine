@@ -448,7 +448,7 @@ try {
     side: "enemy",
     block: { health: 30, defense: 6, initiativeModifier: -5, actions: [] },
   };
-  // Less the tags each carries for what follows the attack action (1.241), checked once below.
+  // Less the tags each carries for what follows the attack action (1.245), checked once below.
   const weaponsOf = (state: RulesetEncounterState, id = "juno"): RulesetCombatAction[] =>
     rulesetCombatant(state, id)!
       .actions.filter((action) => action.id.startsWith("item:"))

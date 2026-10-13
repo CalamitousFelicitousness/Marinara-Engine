@@ -1,5 +1,5 @@
 /**
- * A legendary move after what its action does, and on one named speed (Capability API 1.280).
+ * A legendary move after what its action does, and on one named speed (Capability API 1.284).
  *
  *   - A dragon's Wing Attack: a burst around it, then "the dragon can then fly up to half its flying
  *     speed": `move: { share: 0.5, speed: "fly" }` on the same signature action. The burst lands
@@ -421,7 +421,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a legendary move after its action or on one speed requires schemaVersion 2 and capabilityApi 1.280 or newer";
+      "A ruleset with a legendary move after its action or on one speed requires schemaVersion 2 and capabilityApi 1.284 or newer";
     const docOf = (action: Record<string, unknown>) =>
       fiveE((doc) =>
         doc.catalogs.push({ id: "x", label: "X", entries: [{ id: "a", label: "A", creature: { actions: [action] } }] }),
@@ -430,12 +430,12 @@ try {
       ["after", wing({ share: 0.5 })],
       ["on one speed", { id: "g", name: "G", budget: "action", signature: { cost: 1 }, move: { speed: "fly" } }],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(279) as never, docOf(action)), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(280) as never, docOf(action)), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(283) as never, docOf(action)), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(284) as never, docOf(action)), gate, label);
     }
     const plain = docOf({ id: "m", name: "M", budget: "action", signature: { cost: 1 }, move: { share: 0.5 } });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(279) as never, plain), gate, "a 1.278 move");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(279) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(283) as never, plain), gate, "a 1.282 move");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(283) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

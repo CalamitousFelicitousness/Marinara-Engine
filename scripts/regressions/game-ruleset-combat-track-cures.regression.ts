@@ -1,5 +1,5 @@
 /**
- * Tracks moved and sealed health given back (Capability API 1.196).
+ * Tracks moved and sealed health given back (Capability API 1.200).
  *
  *   - `mechanics.tracks`: a cure takes levels off a live track (5e's Greater Restoration, one level
  *     of exhaustion), held to the track's floor; harm adds them on a failed save (Sickening
@@ -320,30 +320,30 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with entries that move live tracks by levels or give back sealed health, or broken wall sections with their own cost step, requires schemaVersion 2 and capabilityApi 1.196 or newer";
+      "A ruleset with entries that move live tracks by levels or give back sealed health, or broken wall sections with their own cost step, requires schemaVersion 2 and capabilityApi 1.200 or newer";
     const withCures = fiveE();
-    assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, withCures), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(196) as never, withCures), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(199) as never, withCures), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(200) as never, withCures), gate);
     const without = JSON.parse(fiveEText);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(195) as never, without), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(199) as never, without), gate);
     // A creature's own levels are no move.
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(195) as never, { ...without, extra: { tracks: { exhaustion: 2 } } }),
+      getCapabilityPackageInstallIssue(manifest(199) as never, { ...without, extra: { tracks: { exhaustion: 2 } } }),
       gate,
     );
     for (const entry of [mend, rest]) {
       const files = new Map([["spells.json", { entries: [entry] }]]);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, without, files as never), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(199) as never, without, files as never), gate);
     }
     const ice = {
       zone: { sections: { every: 10, health: 30, defense: 12, broken: { perCostStep: { dice: "1d6" } } } },
     };
     const files = new Map([["walls.json", { entries: [{ mechanics: ice }] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, without, files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(199) as never, without, files as never), gate);
   }
 
   console.log(
-    "Ruleset track cures: Greater Restoration takes exhaustion off and unseals the maximum, Sickening Radiance adds it on a failed save, halving and slaying at once; gated at 1.196.",
+    "Ruleset track cures: Greater Restoration takes exhaustion off and unseals the maximum, Sickening Radiance adds it on a failed save, halving and slaying at once; gated at 1.200.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

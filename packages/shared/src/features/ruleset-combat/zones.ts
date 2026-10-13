@@ -22,7 +22,7 @@ import type {
   RulesetReachableCell,
 } from "./types.js";
 
-// Worked out beside the walking they slow (1.168), and said here too, where a zone is read.
+// Worked out beside the walking they slow (1.172), and said here too, where a zone is read.
 export { rulesetZoneCatches, rulesetZoneCells, rulesetZoneMiddles } from "./grid.js";
 
 /** Every zone standing, with whose it is. */
@@ -42,7 +42,7 @@ export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: Rule
   return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);
 }
 
-/** Whether a zone's cells hold any cell somebody fills (1.189). */
+/** Whether a zone's cells hold any cell somebody fills (1.193). */
 export function rulesetZoneHoldsOne(cells: readonly RulesetCombatCell[], combatant: RulesetCombatant): boolean {
   return rulesetFootprint(combatant).some((cell) => rulesetZoneHolds(cells, cell));
 }
@@ -87,7 +87,7 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
     const blocks = action.zone?.blocks;
     if (!blocks || zone.anchor !== "point") continue;
     const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
-    // A broken section closes nothing (1.195).
+    // A broken section closes nothing (1.199).
     const broken = new Set(
       (zone.sections ?? [])
         .filter((section) => section.health <= 0)
@@ -118,7 +118,7 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
     rounds: zone.rounds,
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
     ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
-    // Each section and what it has left (1.195).
+    // Each section and what it has left (1.199).
     ...(zone.sections?.length && action.zone?.sections
       ? {
           sections: zone.sections.map((section) => ({
@@ -131,7 +131,7 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   }));
 }
 
-/** The standing sections of walls that may be struck (1.195), each with its zone. */
+/** The standing sections of walls that may be struck (1.199), each with its zone. */
 export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   caster: RulesetCombatant;
   zone: RulesetCombatZone;
@@ -147,7 +147,7 @@ export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   );
 }
 
-/** Where a zone may be moved to (1.168): any cell of the board within its `move` distance of where
+/** Where a zone may be moved to (1.172): any cell of the board within its `move` distance of where
  *  it is centred, its own cell aside. Priced as the distance, so a board draws it as a walk. */
 export function rulesetZoneMoveCells(
   state: RulesetEncounterState,
@@ -166,7 +166,7 @@ export function rulesetZoneMoveCells(
   return cells;
 }
 
-/** The ways a line or cone its caster carries may be turned to face (1.177): toward any cell next
+/** The ways a line or cone its caster carries may be turned to face (1.181): toward any cell next
  *  to them on the board but the one it faces now, each a step away. */
 export function rulesetZoneTurnCells(
   state: RulesetEncounterState,
@@ -189,7 +189,7 @@ export function rulesetZoneTurnCells(
   return cells;
 }
 
-/** Where a drifting zone goes next (1.168): `distance` cells straight away from its caster, stopping
+/** Where a drifting zone goes next (1.172): `distance` cells straight away from its caster, stopping
  *  at the board's edge. A zone centred on its caster's own cell has no "away" and stays. */
 export function rulesetZoneDriftCell(
   state: RulesetEncounterState,

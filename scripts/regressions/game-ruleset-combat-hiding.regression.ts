@@ -1,5 +1,5 @@
 /**
- * Hiding for real, Search and Detect (Capability API 1.282).
+ * Hiding for real, Search and Detect (Capability API 1.286).
  *
  *   - `combat.hiding`: Hide throws Stealth, and its user is hidden from each opponent that does not
  *     see them clearly and whose passive Perception the total meets (lightly obscured: 5 less).
@@ -70,7 +70,7 @@ try {
   // The same cloud spoken aloud, and with only a gesture.
   const spoken = spell("spoken", cloud(["verbal"]));
   const silent = spell("silent", cloud(["somatic"]));
-  // A haze that only lightly obscures (1.281).
+  // A haze that only lightly obscures (1.285).
   const haze = spell("haze", {
     area: { shape: "burst", size: 5 },
     range: 120,
@@ -502,7 +502,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset that hides for real, searches, or has a creature that detects requires schemaVersion 2 and capabilityApi 1.282 or newer";
+      "A ruleset that hides for real, searches, or has a creature that detects requires schemaVersion 2 and capabilityApi 1.286 or newer";
     const plain = JSON.parse(fiveEText) as Record<string, any>;
     const cases: Array<[string, Record<string, any>]> = [
       ["hiding", fiveE()],
@@ -534,14 +534,14 @@ try {
       ],
     ];
     for (const [name, doc] of cases) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(281) as never, doc), gate, name);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(282) as never, doc), gate, name);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(285) as never, doc), gate, name);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(286) as never, doc), gate, name);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(281) as never, plain), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(285) as never, plain), gate, "the plain 5e example");
   }
 
   console.log(
-    "Hiding: Hide throws Stealth against each unseeing opponent's passive Perception; the hidden are unseen and untargetable by them; attacks (with advantage) and spoken spells give them away, and so does being seen, on a walk too; Search and Detect find them; the director looks; refusals; gated at 1.282.",
+    "Hiding: Hide throws Stealth against each unseeing opponent's passive Perception; the hidden are unseen and untargetable by them; attacks (with advantage) and spoken spells give them away, and so does being seen, on a walk too; Search and Detect find them; the director looks; refusals; gated at 1.286.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

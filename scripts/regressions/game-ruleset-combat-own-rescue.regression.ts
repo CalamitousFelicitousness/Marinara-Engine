@@ -1,5 +1,5 @@
 /**
- * A holder's own rescues, not-self targets and one-at-a-time conditions (Capability API 1.251).
+ * A holder's own rescues, not-self targets and one-at-a-time conditions (Capability API 1.255).
  *
  *   - An entry's `rescue` by `twenty`: a failed check's d20 counts as a 20, spent only where that
  *     makes it (Stroke of Luck). By `die`: a die of the holder's own added where it could make up the
@@ -549,7 +549,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with rescues counting a d20 as 20 or adding a holder's own die, entries never on their user, or conditions one of a kind at a time, requires schemaVersion 2 and capabilityApi 1.251 or newer";
+      "A ruleset with rescues counting a d20 as 20 or adding a holder's own die, entries never on their user, or conditions one of a kind at a time, requires schemaVersion 2 and capabilityApi 1.255 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -561,18 +561,18 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(250, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(251, document), gate);
+      assert.equal(issue(254, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(255, document), gate);
     }
     const older = structuredClone(without);
     older.extra = { entry: { mechanics: { rescue: { roll: "saves", by: "reroll" } } } };
-    assert.notEqual(issue(250, older), gate, "a reroll is older");
-    assert.notEqual(issue(250, without), gate);
-    assert.equal(issue(250, without, new Map([["heroic.json", { entries: [peerless] }]])), gate);
+    assert.notEqual(issue(254, older), gate, "a reroll is older");
+    assert.notEqual(issue(254, without), gate);
+    assert.equal(issue(254, without, new Map([["heroic.json", { entries: [peerless] }]])), gate);
   }
 
   console.log(
-    "Ruleset own rescues: Stroke of Luck counts a check's d20 as 20, Peerless Skill and Dark One's Own Luck add the holder's own die, Bardic Inspiration is never on the bard and one die at a time; gated at 1.251.",
+    "Ruleset own rescues: Stroke of Luck counts a check's d20 as 20, Peerless Skill and Dark One's Own Luck add the holder's own die, Bardic Inspiration is never on the bard and one die at a time; gated at 1.255.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

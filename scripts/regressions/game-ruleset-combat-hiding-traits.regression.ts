@@ -1,5 +1,5 @@
 /**
- * Somebody's own ways of hiding and of finding the hidden (Capability API 1.287).
+ * Somebody's own ways of hiding and of finding the hidden (Capability API 1.291).
  *
  *   - `hiding.behindLarger`: hidden behind somebody at least one size larger (Naturally Stealthy).
  *   - `hiding.still`: added to the Stealth total until its holder moves or acts (Hide in Plain Sight).
@@ -409,24 +409,24 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with somebody's own ways of hiding or of finding the hidden requires schemaVersion 2 and capabilityApi 1.287 or newer";
+      "A ruleset with somebody's own ways of hiding or of finding the hidden requires schemaVersion 2 and capabilityApi 1.291 or newer";
     const only = (entry: RulesetCatalogEntry) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "feats").entries.push(entry);
       return doc;
     };
     for (const entry of traits) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(286) as never, only(entry)), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(287) as never, only(entry)), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(290) as never, only(entry)), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(291) as never, only(entry)), gate, entry.id);
     }
     // The fight's own hiding is not one.
     const own = JSON.parse(fiveEText) as Record<string, any>;
     own.combat.hiding = { stealth: "sneak", perception: "look" };
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(286) as never, own), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(290) as never, own), gate);
   }
 
   console.log(
-    "Hiding traits: hidden behind somebody larger, +10 while standing still, advantage after half a move, nobody hidden within Blindsense, a Transparent cube hidden from the start until it moves; refusals; gated at 1.287.",
+    "Hiding traits: hidden behind somebody larger, +10 while standing still, advantage after half a move, nobody hidden within Blindsense, a Transparent cube hidden from the start until it moves; refusals; gated at 1.291.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

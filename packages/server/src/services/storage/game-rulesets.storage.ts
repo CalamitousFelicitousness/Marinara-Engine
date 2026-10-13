@@ -193,8 +193,8 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
     })),
   };
   for (const catalog of complete.catalogs ?? []) {
-    // What names entries of other catalogs: a creature's spells, an entry's amends (1.297), the
-    // weapons it conjures (1.301).
+    // What names entries of other catalogs: a creature's spells, an entry's amends (1.301), the
+    // weapons it conjures (1.305).
     if (
       !catalog.entries?.some(
         (entry) => entry.creature?.spellcasting || entry.mechanics?.amends || entry.mechanics?.conjures,

@@ -104,7 +104,7 @@ const directedCombatantFields = z.object({
   id: key,
   name: z.string().min(1).max(200),
   side: z.enum(["player", "enemy"]),
-  /** Caught unaware as the fight begins (1.232): read by a ruleset fight only. */
+  /** Caught unaware as the fight begins (1.236): read by a ruleset fight only. */
   surprised: z.boolean().optional(),
   hp: num,
   maxHp: num.min(1),
@@ -217,17 +217,17 @@ const command = z.discriminatedUnion("type", [
     side: z.enum(["near", "far"]).optional(),
     ring: z.boolean().optional(),
     also: z.array(coord).max(9).optional(),
-    /** A wall's section struck at instead of a creature (1.195), checked by the resolver. */
+    /** A wall's section struck at instead of a creature (1.199), checked by the resolver. */
     wall: coord.optional(),
-    /** Who goes along on a teleport (1.271), checked against the menu by the resolver. */
+    /** Who goes along on a teleport (1.275), checked against the menu by the resolver. */
     carries: z.array(key).max(8).optional(),
-    /** How many uses it spends (1.246), checked against the menu by the resolver. */
+    /** How many uses it spends (1.250), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
-    /** The alterations it is used with (1.248), checked against the action by the resolver. */
+    /** The alterations it is used with (1.252), checked against the action by the resolver. */
     alters: z.array(z.string().min(1).max(200)).max(8).optional(),
-    /** Who of its user's side it spares (1.249), checked against the alterations by the resolver. */
+    /** Who of its user's side it spares (1.253), checked against the alterations by the resolver. */
     spares: z.array(z.string().min(1).max(200)).max(20).optional(),
-    /** Who it heightens (1.250), checked against the alterations by the resolver. */
+    /** Who it heightens (1.254), checked against the alterations by the resolver. */
     heightens: z.string().min(1).max(200).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
@@ -904,9 +904,9 @@ export async function combatDirectorRoutes(
             ...(fightItems ? { items: fightItems } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
-            // Who the scene caught unaware (1.232).
+            // Who the scene caught unaware (1.236).
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
-            // The scene's time of day, for the light it is fought in (1.286).
+            // The scene's time of day, for the light it is fought in (1.290).
             time: (await visibleLiveRow(input.chatId)).row?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });

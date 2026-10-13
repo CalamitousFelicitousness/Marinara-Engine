@@ -1,5 +1,5 @@
 /**
- * A creature's blow that lowers the health maximum (Capability API 1.198).
+ * A creature's blow that lowers the health maximum (Capability API 1.202).
  *
  *   - `reducesMax`: on a failed save the damage taken comes off the maximum too (5e's Life Drain),
  *     no heal gives it back, a rest does; with `lasting` (a clay golem's Slam) only an unsealing
@@ -251,18 +251,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creature actions that lower the health maximum on a failed save requires schemaVersion 2 and capabilityApi 1.198 or newer";
+      "A ruleset with creature actions that lower the health maximum on a failed save requires schemaVersion 2 and capabilityApi 1.202 or newer";
     const without = JSON.parse(fiveEText);
     const withDrain = { ...without, extra: { creature: { actions: wraith.actions } } };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(197) as never, withDrain), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(198) as never, withDrain), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(197) as never, without), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(201) as never, withDrain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(202) as never, withDrain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(201) as never, without), gate);
     const files = new Map([["creatures.json", { entries: [{ creature: { actions: wraith.actions } }] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(197) as never, without, files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(201) as never, without, files as never), gate);
   }
 
   console.log(
-    "Ruleset reduces max: Life Drain lowers the maximum on a failed save until a rest, a golem's Slam until an unsealing, and kills at 0; gated at 1.198.",
+    "Ruleset reduces max: Life Drain lowers the maximum on a failed save until a rest, a golem's Slam until an unsealing, and kills at 0; gated at 1.202.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

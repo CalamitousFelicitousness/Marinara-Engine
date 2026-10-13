@@ -1096,7 +1096,7 @@ export function generatedPartyMemberToCombatant(
     element,
     combatClass,
     movementMode,
-    // Caught unaware as the scene set it (1.232), read by a ruleset fight only.
+    // Caught unaware as the scene set it (1.236), read by a ruleset fight only.
     ...(member.surprised === true ? { surprised: true } : {}),
   };
 }

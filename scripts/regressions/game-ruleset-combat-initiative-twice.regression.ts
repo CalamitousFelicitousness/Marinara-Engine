@@ -1,5 +1,5 @@
 /**
- * Initiative thrown twice (Capability API 1.235).
+ * Initiative thrown twice (Capability API 1.239).
  *
  *   - A catalog entry's `initiativeMode` held on a sheet's list: 5e's Feral Instinct, advantage.
  *   - `combat.initiative.checkAbility`: initiative is a check made with that ability, so what rolls
@@ -227,23 +227,23 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose initiative is a check made with an ability, or with uses that throw initiative twice, requires schemaVersion 2 and capabilityApi 1.235 or newer";
+      "A ruleset whose initiative is a check made with an ability, or with uses that throw initiative twice, requires schemaVersion 2 and capabilityApi 1.239 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     const checked = structuredClone(without);
     checked.combat.initiative.checkAbility = "dex";
-    assert.equal(issue(234, checked), gate);
-    assert.notEqual(issue(235, checked), gate);
+    assert.equal(issue(238, checked), gate);
+    assert.notEqual(issue(239, checked), gate);
     const leaning = { ...without, extra: { feral: { mechanics: { initiativeMode: "advantage" } } } };
-    assert.equal(issue(234, leaning), gate);
-    assert.notEqual(issue(235, leaning), gate);
-    assert.notEqual(issue(234, without), gate);
-    assert.equal(issue(234, without, new Map([["instincts.json", { entries: [feral] }]])), gate);
+    assert.equal(issue(238, leaning), gate);
+    assert.notEqual(issue(239, leaning), gate);
+    assert.notEqual(issue(238, without), gate);
+    assert.equal(issue(238, without, new Map([["instincts.json", { entries: [feral] }]])), gate);
   }
 
   console.log(
-    "Ruleset initiative twice: Feral Instinct, Foresight and Cat's Grace throw initiative with advantage, disadvantage cancels it, every round too; gated at 1.235.",
+    "Ruleset initiative twice: Feral Instinct, Foresight and Cat's Grace throw initiative with advantage, disadvantage cancels it, every round too; gated at 1.239.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

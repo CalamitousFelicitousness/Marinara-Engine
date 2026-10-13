@@ -1,5 +1,5 @@
 /**
- * Uses only in some light, and conditions moving or acting ends (Capability API 1.298).
+ * Uses only in some light, and conditions moving or acting ends (Capability API 1.302).
  *
  *   - An entry's `usableIn.light`: offered only while its user stands in one of those lights, as the
  *     fight reads it where they stand: 5e's One with Shadows, in dim light or darkness.
@@ -270,17 +270,17 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with uses only in some light, or conditions that moving or acting ends, requires schemaVersion 2 and capabilityApi 1.298 or newer";
+      "A ruleset with uses only in some light, or conditions that moving or acting ends, requires schemaVersion 2 and capabilityApi 1.302 or newer";
     for (const entry of [shadows, still, dusk]) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "invocations", label: "Invocations", feeds: ["features"], entries: [entry] });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(297) as never, doc), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(298) as never, doc), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(301) as never, doc), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(302) as never, doc), gate, entry.id);
     }
   }
 
   console.log(
-    "Shadow uses: One with Shadows offered only in dim light or darkness and ended by moving or acting, another only by moving; refusals; gated at 1.298.",
+    "Shadow uses: One with Shadows offered only in dim light or darkness and ended by moving or acting, another only by moving; refusals; gated at 1.302.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

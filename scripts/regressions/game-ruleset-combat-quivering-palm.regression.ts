@@ -1,5 +1,5 @@
 /**
- * Quivering Palm and Hurl Through Hell (Capability API 1.240).
+ * Quivering Palm and Hurl Through Hell (Capability API 1.244).
  *
  *   - `usesSpent`: one use spends several of its row's uses: Quivering Palm's 3 ki.
  *   - A "hit" reaction's `names`: only a hit by those attacks opens it (an unarmed strike).
@@ -342,7 +342,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with uses that spend several uses at once or drop a target that fails its save to 0, reactions to hits by named attacks, or conditions that harm as they end, requires schemaVersion 2 and capabilityApi 1.240 or newer";
+      "A ruleset with uses that spend several uses at once or drop a target that fails its save to 0, reactions to hits by named attacks, or conditions that harm as they end, requires schemaVersion 2 and capabilityApi 1.244 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -355,15 +355,15 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(239, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(240, document), gate);
+      assert.equal(issue(243, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(244, document), gate);
     }
-    assert.notEqual(issue(239, without), gate);
-    assert.equal(issue(239, without, new Map([["monkish.json", { entries: [palm] }]])), gate);
+    assert.notEqual(issue(243, without), gate);
+    assert.equal(issue(243, without, new Map([["monkish.json", { entries: [palm] }]])), gate);
   }
 
   console.log(
-    "Ruleset quivering palm: 3 ki at once on an unarmed strike's hit, a failed save drops to 0 and a made one takes 10d10, and Hurl Through Hell's return harms all but fiends; gated at 1.240.",
+    "Ruleset quivering palm: 3 ki at once on an unarmed strike's hit, a failed save drops to 0 and a made one takes 10d10, and Hurl Through Hell's return harms all but fiends; gated at 1.244.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

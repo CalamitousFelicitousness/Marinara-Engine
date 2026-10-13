@@ -1,5 +1,5 @@
 /**
- * Reckless Attack and Brutal Critical (Capability API 1.242).
+ * Reckless Attack and Brutal Critical (Capability API 1.246).
  *
  *   - `beforeAttack`: an entry offered only on its holder's own turn before they have attacked in it.
  *   - A change to attacks narrowed by `attacks` (weapon or spell) and `blow` (melee or ranged), with
@@ -283,7 +283,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with uses offered only before the holder's first attack, changes to attacks narrowed to a kind of blow, or more dice on a critical requires schemaVersion 2 and capabilityApi 1.242 or newer";
+      "A ruleset with uses offered only before the holder's first attack, changes to attacks narrowed to a kind of blow, or more dice on a critical requires schemaVersion 2 and capabilityApi 1.246 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -295,19 +295,19 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(241, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(242, document), gate);
+      assert.equal(issue(245, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(246, document), gate);
     }
     // A damage change narrowed to a blow is older than this.
     const older = structuredClone(without);
     older.extra = { entry: { modifiers: [{ to: "damage", flat: 2, blow: "melee" }] } };
-    assert.notEqual(issue(241, older), gate);
-    assert.notEqual(issue(241, without), gate);
-    assert.equal(issue(241, without, new Map([["barbarian.json", { entries: [reckless] }]])), gate);
+    assert.notEqual(issue(245, older), gate);
+    assert.notEqual(issue(245, without), gate);
+    assert.equal(issue(245, without, new Map([["barbarian.json", { entries: [reckless] }]])), gate);
   }
 
   console.log(
-    "Ruleset reckless: Reckless Attack before the first attack gives advantage on Strength melee weapon attacks this turn and to attacks against the barbarian until their next, and Brutal Critical adds a weapon die to criticals; gated at 1.242.",
+    "Ruleset reckless: Reckless Attack before the first attack gives advantage on Strength melee weapon attacks this turn and to attacks against the barbarian until their next, and Brutal Critical adds a weapon die to criticals; gated at 1.246.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

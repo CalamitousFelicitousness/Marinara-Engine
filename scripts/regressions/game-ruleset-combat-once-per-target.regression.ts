@@ -1,5 +1,5 @@
 /**
- * Once a creature until a rest (Capability API 1.299).
+ * Once a creature until a rest (Capability API 1.303).
  *
  *   - `oncePerTarget: { until }`: used on a creature, an entry is not offered against that one again
  *     until its user takes that rest, however many fights come between: 5e's Chains of Carceri.
@@ -194,14 +194,14 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with uses once a creature until a rest requires schemaVersion 2 and capabilityApi 1.299 or newer";
+      "A ruleset with uses once a creature until a rest requires schemaVersion 2 and capabilityApi 1.303 or newer";
     const doc = fiveE();
-    assert.equal(getCapabilityPackageInstallIssue(manifest(298) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(299) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(302) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(303) as never, doc), gate);
   }
 
   console.log(
-    "Once per target: Chains of Carceri not on the same creature again until a long rest, across fights; refusals; gated at 1.299.",
+    "Once per target: Chains of Carceri not on the same creature again until a long rest, across fights; refusals; gated at 1.303.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

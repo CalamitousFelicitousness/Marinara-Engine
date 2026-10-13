@@ -1,5 +1,5 @@
 /**
- * Weapon riders and areas that catch everybody (Capability API 1.187).
+ * Weapon riders and areas that catch everybody (Capability API 1.191).
  *
  *   - An item attack's `ignoresResistance`: a vorpal sword's slashing through resistance, resistance to
  *     everything included, while a clause of another kind is still halved.
@@ -413,7 +413,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with weapons that ignore resistance, slays that frighten on a made save, or weapons that hinder their wielder's others while a mark stands requires schemaVersion 2 and capabilityApi 1.187 or newer";
+      "A ruleset with weapons that ignore resistance, slays that frighten on a made save, or weapons that hinder their wielder's others while a mark stands requires schemaVersion 2 and capabilityApi 1.191 or newer";
     const withItem = (attack: Record<string, unknown>) => {
       const doc = JSON.parse(fiveE);
       doc.catalogs.push({
@@ -440,18 +440,18 @@ try {
       ],
       ["others while marked", withItem({ othersWhileMarked: { condition: "poisoned", mode: "disadvantage" } })],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(186) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(190) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(191) as never, doc), gate, label);
     }
-    // A 1.182 slay is not this minor's.
+    // A 1.186 slay is not this minor's.
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(186) as never,
+        manifest(190) as never,
         withItem({ slay: [{ healthAtMost: 5, save: { save: "wis_save", difficulty: 15 } }] }),
       ),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(186) as never, JSON.parse(fiveE)), gate, "plain 5e");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(190) as never, JSON.parse(fiveE)), gate, "plain 5e");
   }
 
   console.log(

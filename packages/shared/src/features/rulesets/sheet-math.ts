@@ -249,7 +249,7 @@ function itemAbilityChanges(
     for (const [id, change] of Object.entries(effect.abilities)) {
       const current = changes.get(id) ?? { add: 0, topped: [] };
       if ("set" in change) current.set = Math.max(current.set ?? change.set, change.set);
-      // On top of the score sets leave, up to its most (1.308).
+      // On top of the score sets leave, up to its most (1.312).
       else if (change.max !== undefined) current.topped.push({ add: change.add, max: change.max });
       else current.add += change.add;
       changes.set(id, current);
@@ -436,7 +436,7 @@ export function evaluateRulesetSheet(
     let score = change
       ? Math.min(ability.max, Math.max(ability.min, Math.max(base + change.add, change.set ?? -Infinity)))
       : base;
-    // An add with a most goes on top of that, never past its most, nor lowering a score above it (1.308).
+    // An add with a most goes on top of that, never past its most, nor lowering a score above it (1.312).
     for (const top of change?.topped ?? []) {
       score = Math.max(score, Math.min(score + top.add, top.max, ability.max));
     }

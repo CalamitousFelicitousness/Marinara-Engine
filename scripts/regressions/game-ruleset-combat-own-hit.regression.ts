@@ -1,5 +1,5 @@
 /**
- * Answers to one's own hit (Capability API 1.236), opportunity attacks' included (1.238).
+ * Answers to one's own hit (Capability API 1.240), opportunity attacks' included (1.242).
  *
  *   - A `"hit"` reaction with `"by": "self"` is offered to the attacker once their roll has hit,
  *     after the one it hit has answered, aimed at whoever it hit; `"weapon": true` narrows it to a
@@ -332,7 +332,7 @@ try {
     );
   }
 
-  // ── An opportunity attack's hit is held too (1.238): smite and stun it, then the walk goes on ──
+  // ── An opportunity attack's hit is held too (1.242): smite and stun it, then the walk goes on ──
   {
     //    0 1 2 3 4 5 6
     //  0 Q . . . . . .     The squire is out of everybody's reach.
@@ -537,7 +537,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with reactions to their holder's own hit or to a weapon's, uses added to that blow, or a most for a higher cost's steps, requires schemaVersion 2 and capabilityApi 1.236 or newer";
+      "A ruleset with reactions to their holder's own hit or to a weapon's, uses added to that blow, or a most for a higher cost's steps, requires schemaVersion 2 and capabilityApi 1.240 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -550,15 +550,15 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: { mechanics } };
-      assert.equal(issue(235, document), gate, JSON.stringify(mechanics));
-      assert.notEqual(issue(236, document), gate);
+      assert.equal(issue(239, document), gate, JSON.stringify(mechanics));
+      assert.notEqual(issue(240, document), gate);
     }
-    assert.notEqual(issue(235, without), gate);
-    assert.equal(issue(235, without, new Map([["paladin.json", { entries: [smite] }]])), gate);
+    assert.notEqual(issue(239, without), gate);
+    assert.equal(issue(239, without, new Map([["paladin.json", { entries: [smite] }]])), gate);
   }
 
   console.log(
-    "Ruleset own hit: a weapon's hit is held for its maker, who may smite (added to the blow, doubled by a critical, 5d8 at most, more against fiends) and stun it; gated at 1.236.",
+    "Ruleset own hit: a weapon's hit is held for its maker, who may smite (added to the blow, doubled by a critical, 5d8 at most, more against fiends) and stun it; gated at 1.240.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

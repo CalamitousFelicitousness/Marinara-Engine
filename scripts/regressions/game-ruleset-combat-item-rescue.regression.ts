@@ -1,5 +1,5 @@
 /**
- * A rescue on a worn item's use (Capability API 1.254): a ring of evasion, its Dexterity saves made
+ * A rescue on a worn item's use (Capability API 1.258): a ring of evasion, its Dexterity saves made
  * for the reaction and one of the ring's own charges, only while it is worn and has one left.
  */
 import assert from "node:assert/strict";
@@ -158,7 +158,7 @@ try {
       items?: RulesetSheetItem[];
       /** The bard on the hero's own side. */
       ally?: boolean;
-      /** Cutting Words off attack rolls only, as before 1.252. */
+      /** Cutting Words off attack rolls only, as before 1.256. */
       plain?: boolean;
       /** Cutting Words pointed at anybody, either side. */
       anybody?: boolean;
@@ -315,7 +315,7 @@ try {
     refused(scroll({ rescue: { roll: "saves", by: "success", budget: "nope" } }), /Unknown budget "nope"/);
   }
 
-  // ── The install gate: 1.254 ──
+  // ── The install gate: 1.258 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -330,19 +330,19 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with rescues on an item's use requires schemaVersion 2 and capabilityApi 1.254 or newer";
+    const gate = "A ruleset with rescues on an item's use requires schemaVersion 2 and capabilityApi 1.258 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, undefined as never);
     const document = structuredClone(without);
     document.extra = { item: { use: { rescue: { roll: "saves", by: "reroll" } } } };
-    assert.equal(issue(253, document), gate);
-    assert.notEqual(issue(254, document), gate);
-    assert.notEqual(issue(253, without), gate);
+    assert.equal(issue(257, document), gate);
+    assert.notEqual(issue(258, document), gate);
+    assert.notEqual(issue(257, without), gate);
   }
 
   console.log(
-    "Ruleset item rescues: a worn ring of evasion makes a failed Dexterity save for the reaction and a charge; gated at 1.254.",
+    "Ruleset item rescues: a worn ring of evasion makes a failed Dexterity save for the reaction and a charge; gated at 1.258.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

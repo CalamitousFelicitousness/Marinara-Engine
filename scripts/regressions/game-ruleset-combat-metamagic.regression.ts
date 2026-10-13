@@ -1,5 +1,5 @@
 /**
- * Metamagic (Capability API 1.248).
+ * Metamagic (Capability API 1.252).
  *
  *   - An entry's `alters`: never on a menu, offered with each spell it fits and paid for with its
  *     own uses as the spell is cast. One per spell unless it `joins` another.
@@ -502,22 +502,22 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with entries that change how another is used requires schemaVersion 2 and capabilityApi 1.248 or newer";
+      "A ruleset with entries that change how another is used requires schemaVersion 2 and capabilityApi 1.252 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     for (const extra of [{ mechanics: { alters: { catalogs: ["spells"] } } }, { usesSpentByLevel: true }]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(247, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(248, document), gate);
+      assert.equal(issue(251, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(252, document), gate);
     }
-    assert.notEqual(issue(247, without), gate);
-    assert.equal(issue(247, without, new Map([["sorcery.json", { entries: sorcery }]])), gate);
+    assert.notEqual(issue(251, without), gate);
+    assert.equal(issue(251, without, new Map([["sorcery.json", { entries: sorcery }]])), gate);
   }
 
   console.log(
-    "Ruleset Metamagic: offered with the spells it fits and paid in Sorcery Points; Careful, Distant, Empowered, Extended, Heightened, Quickened, Subtle and Twinned each change the cast; gated at 1.248.",
+    "Ruleset Metamagic: offered with the spells it fits and paid in Sorcery Points; Careful, Distant, Empowered, Extended, Heightened, Quickened, Subtle and Twinned each change the cast; gated at 1.252.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

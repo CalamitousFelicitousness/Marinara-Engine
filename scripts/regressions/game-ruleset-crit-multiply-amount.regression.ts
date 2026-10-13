@@ -100,7 +100,7 @@ try {
       issues({ ...secondWind, mechanics: { ...secondWind.mechanics, amountAdd: { field: "nope" } } }),
       /nope/,
     );
-    // An item's use adds a value off its holder's sheet too since 1.266 (a Staff of Healing's), and
+    // An item's use adds a value off its holder's sheet too since 1.270 (a Staff of Healing's), and
     // still only beside an amount.
     const gravewatch = JSON.parse(read("../../docs/examples/rulesets/gravewatch.json"));
     const tonicUse = gravewatch.catalogs

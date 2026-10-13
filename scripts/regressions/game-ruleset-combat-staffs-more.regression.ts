@@ -1,5 +1,5 @@
 /**
- * More of what staffs and rings do (Capability API 1.266).
+ * More of what staffs and rings do (Capability API 1.270).
  *
  *   - `use.label`: an item's first use is named on the menu as its `moreUses` are.
  *   - `use.amountAdd`: a Staff of Healing's Cure Wounds plus its holder's spellcasting modifier, in a
@@ -448,7 +448,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an item whose first use is named, an item use adding a value off its holder's sheet, more charges that push farther, or a last charge's die that gives charges back, requires schemaVersion 2 and capabilityApi 1.266 or newer";
+      "A ruleset with an item whose first use is named, an item use adding a value off its holder's sheet, more charges that push farther, or a last charge's die that gives charges back, requires schemaVersion 2 and capabilityApi 1.270 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const only = (keep: (doc: Record<string, any>) => void) =>
@@ -467,7 +467,7 @@ try {
         only(() => {}),
       ),
       gate,
-      "nothing of 1.266 left",
+      "nothing of 1.270 left",
     );
     const cases: Array<[string, (doc: Record<string, any>) => void]> = [
       ["label", (doc) => (gearOf(doc, "staff").use.label = "Fireball")],
@@ -488,8 +488,8 @@ try {
     for (const [name, keep] of cases) {
       const doc = only(keep);
       parsed(doc);
-      assert.equal(issue(265, doc), gate, name);
-      assert.notEqual(issue(266, doc), gate, name);
+      assert.equal(issue(269, doc), gate, name);
+      assert.notEqual(issue(270, doc), gate, name);
     }
     assert.equal(
       issue(
@@ -502,7 +502,7 @@ try {
   }
 
   console.log(
-    "Ruleset staffs more: an item's first use is named on the menu, a Staff of Healing adds its holder's spellcasting modifier, a Ring of the Ram pushes 5 feet farther a charge, and a last charge's 20 gives 1d12 + 1 charges back in a fight, outside one and in the inventory; gated at 1.266.",
+    "Ruleset staffs more: an item's first use is named on the menu, a Staff of Healing adds its holder's spellcasting modifier, a Ring of the Ram pushes 5 feet farther a charge, and a last charge's 20 gives 1d12 + 1 charges back in a fight, outside one and in the inventory; gated at 1.270.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

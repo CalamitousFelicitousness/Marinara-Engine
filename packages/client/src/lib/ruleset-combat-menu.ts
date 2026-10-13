@@ -56,20 +56,20 @@ export interface RulesetMenuStep {
   /** The weapon's mode it is made in. */
   mode?: string;
   payWith?: string;
-  /** How many uses it spends, where its user chooses (1.246): Lay on Hands' points. */
+  /** How many uses it spends, where its user chooses (1.250): Lay on Hands' points. */
   amount?: number;
-  /** The alterations it is used with (1.248): Metamagic. */
+  /** The alterations it is used with (1.252): Metamagic. */
   alters?: string[];
   targets: string[];
   /** How a shape is being laid while it is aimed (1.176, 1.177). */
   lay?: RulesetAimLay;
-  /** Where it was aimed, held while who it spares is picked (1.249). */
+  /** Where it was aimed, held while who it spares is picked (1.253). */
   cell?: RulesetCellChoice;
-  /** Who of its user's side it could spare and how many at most, while that is picked (1.249). */
+  /** Who of its user's side it could spare and how many at most, while that is picked (1.253). */
   spare?: { ids: string[]; most: number };
-  /** Who it spares, once that was picked (1.249). */
+  /** Who it spares, once that was picked (1.253). */
   spared?: string[];
-  /** Who it could heighten, while that is picked (1.250). */
+  /** Who it could heighten, while that is picked (1.254). */
   heighten?: { ids: string[] };
 }
 
@@ -116,7 +116,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       name: option.shakeOff.name,
       condition: option.shakeOff.label,
     });
-  // A sphere rolled, picked up or put down (1.309).
+  // A sphere rolled, picked up or put down (1.313).
   if (option.rollsSealed) return t("game.combat.ruleset.menu.rollSphere", { condition: option.rollsSealed.label });
   if (option.lifts)
     return t(option.lifts.down ? "game.combat.ruleset.menu.putDownSphere" : "game.combat.ruleset.menu.liftSphere", {
@@ -128,7 +128,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // Which is which comes off the two exported ids, never off the spelling of one: the ids belong to
   // the resolver and have already changed once.
   if (option.kind === "move") {
-    // Moving a lasting area (1.168), or turning one (1.177), is named by the area the ruleset named.
+    // Moving a lasting area (1.172), or turning one (1.181), is named by the area the ruleset named.
     if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX))
       return t("game.combat.ruleset.menu.turnZone", { zone: option.label });
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX))
@@ -140,23 +140,23 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // blow with a weapon in the off hand.
   if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
   if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
-  // Putting away a weapon put in hand (1.303).
+  // Putting away a weapon put in hand (1.307).
   if (option.dismiss) return t("game.combat.ruleset.menu.dismiss", { item: option.label });
-  // A concentration entry made again (1.305): Vampiric Touch's later touches.
+  // A concentration entry made again (1.309): Vampiric Touch's later touches.
   if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
   // A switch says which way it turns the item, which is the Engine's own word too.
   if (option.kind === "switch")
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {
       item: option.label,
     });
-  // Picking up what was dropped (1.261) is the Engine's own move too.
+  // Picking up what was dropped (1.265) is the Engine's own move too.
   if (option.pickUp) return t("game.combat.ruleset.menu.pickUp", { item: option.label });
-  // Averting the eyes from a gaze (1.263), and looking again.
+  // Averting the eyes from a gaze (1.267), and looking again.
   if (option.avert)
     return t(option.avert.back ? "game.combat.ruleset.menu.lookBack" : "game.combat.ruleset.menu.avert", {
       target: option.label,
     });
-  // Readying one of the others (1.283), and taking what was readied.
+  // Readying one of the others (1.287), and taking what was readied.
   if (option.ready)
     return t(
       option.ready.on === "comes" ? "game.combat.ruleset.menu.readyComes" : "game.combat.ruleset.menu.readyActs",
@@ -169,7 +169,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }
 
-/** The name a readied option goes by (1.283): a walk is the Engine's own word. */
+/** The name a readied option goes by (1.287): a walk is the Engine's own word. */
 function rulesetMenuReadyName(label: string, optionId: string, t: TFunction): string {
   return optionId === RULESET_MOVE_OPTION ? t("game.combat.ruleset.board.walk", { defaultValue: label }) : label;
 }
@@ -189,7 +189,7 @@ export function rulesetOptionCostText(
   else if (typeof option.strikes === "number") {
     parts.push(t("game.combat.ruleset.option.freeStrike", { count: option.strikes }));
   }
-  // The other half of an action already made this turn (1.275): a blink dog's bite after its teleport.
+  // The other half of an action already made this turn (1.279): a blink dog's bite after its teleport.
   else if (option.followUp) parts.push(t("game.combat.ruleset.option.followUp"));
   // A walk is priced in the ruleset's own distance rather than in a budget, so it is said beside
   // whichever of the two above applied.
@@ -283,7 +283,7 @@ export function rulesetStyleForecastText(
 export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolean {
   // Something aimed at the actor themselves is not a choice, so it is never a picking step.
   if (option.targets.side === "self") return false;
-  // A wall's section it may strike instead counts (1.195).
+  // A wall's section it may strike instead counts (1.199).
   return option.targets.count > 0 && (option.targetIds.length > 0 || (option.walls?.length ?? 0) > 0);
 }
 
@@ -291,7 +291,7 @@ export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolea
  *  be picked, clicking a picked one takes it off again, and the option's own count is the ceiling. */
 export function rulesetPickTarget(option: DirectedRulesetOption, picked: string[], id: string): string[] {
   if (!option.targetIds.includes(id)) return picked;
-  // One that may be pointed at the same one again (1.300) adds another while there is room, and
+  // One that may be pointed at the same one again (1.304) adds another while there is room, and
   // once full a click on one already picked takes one of theirs off.
   if (option.targets.repeat) {
     if (picked.length < option.targets.count) return [...picked, id];
@@ -304,7 +304,7 @@ export function rulesetPickTarget(option: DirectedRulesetOption, picked: string[
 }
 
 /**
- * Who of its user's side an alteration it is used with could spare (1.249): Careful Spell. Null when
+ * Who of its user's side an alteration it is used with could spare (1.253): Careful Spell. Null when
  * there is nothing to pick, because no alteration spares anybody or it catches no more of them than
  * it spares. An aimed shape catches who its aim says; a wall, whose aim the board does not hold,
  * could catch any of them.
@@ -354,7 +354,7 @@ function rulesetCaught(
 }
 
 /**
- * Who an alteration it is used with could give disadvantage on their first save (1.250): Heightened
+ * Who an alteration it is used with could give disadvantage on their first save (1.254): Heightened
  * Spell. Null when there is nothing to pick: none heightens, or it catches one at most besides its
  * user.
  */
@@ -375,7 +375,7 @@ export function rulesetHeightenPick(
 }
 
 /**
- * The step a use goes to once it is aimed or pointed, before it is sent (1.249, 1.250): who it
+ * The step a use goes to once it is aimed or pointed, before it is sent (1.253, 1.254): who it
  * spares, then who it heightens. Null when there is nothing left to pick and it is sent.
  */
 export function rulesetPicksStep(

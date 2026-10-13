@@ -1,9 +1,9 @@
 /**
  * What a higher cost adds only every so many steps, and on what a condition gives (Capability API
- * 1.295).
+ * 1.299).
  *
  *   - `perCostStepsEvery`: `perCostStep` once for every that many steps of a higher cost.
- *   - An action a condition gives (1.231) grows by the cost the spell that put the condition on was
+ *   - An action a condition gives (1.235) grows by the cost the spell that put the condition on was
  *     paid at: 5e's Flame Blade, 3d6 and 1d6 more for every two slot levels above 2nd.
  *   - Import refusals and the install gate.
  */
@@ -213,15 +213,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with what a higher cost adds only every so many steps requires schemaVersion 2 and capabilityApi 1.295 or newer";
+      "A ruleset with what a higher cost adds only every so many steps requires schemaVersion 2 and capabilityApi 1.299 or newer";
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [bolt] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(294) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(295) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(298) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(299) as never, doc), gate);
   }
 
   console.log(
-    "Steps every: a bolt's 1d6 more every two slot levels, Flame Blade's strike grown by the slot it was cast with; refusals; gated at 1.295.",
+    "Steps every: a bolt's 1d6 more every two slot levels, Flame Blade's strike grown by the slot it was cast with; refusals; gated at 1.299.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

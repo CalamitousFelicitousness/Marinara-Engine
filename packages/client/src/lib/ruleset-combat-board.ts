@@ -33,9 +33,9 @@ export interface RulesetBoardCell {
   solid: boolean;
   /** How high the cell stands (combat C6b), 0 on level ground. */
   height: number;
-  /** Who is standing here, defeated or not: on every cell they fill (1.189). */
+  /** Who is standing here, defeated or not: on every cell they fill (1.193). */
   occupant?: DirectedRulesetCombatant;
-  /** The cell their token is drawn from, the top-left one they fill (1.189). */
+  /** The cell their token is drawn from, the top-left one they fill (1.193). */
   anchor?: true;
   /** Set while a walk is being chosen: what ending here costs of the allowance, in cells, and the
    *  ids of the standing enemies the path would be struck at by. */
@@ -44,13 +44,13 @@ export interface RulesetBoardCell {
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
   aim?: { targetIds: string[]; teleport?: true };
-  /** A cell the shape being laid has already been set down on (1.172, 1.173). */
+  /** A cell the shape being laid has already been set down on (1.176, 1.177). */
   laid?: true;
   /** The labels of the lasting areas covering it (1.171), first cast first. */
   zones?: string[];
-  /** A wall's section standing here (1.195): whose wall, and what it has left of what; 0 is broken. */
+  /** A wall's section standing here (1.199): whose wall, and what it has left of what; 0 is broken. */
   section?: { wall: string; health: number; max: number };
-  /** Set while a target is being chosen and the attack may strike the section here (1.195). */
+  /** Set while a target is being chosen and the attack may strike the section here (1.199). */
   strikable?: true;
 }
 
@@ -60,7 +60,7 @@ export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cel
  *  Every shape does, one with nowhere to land included: the server refuses a shape sent with no
  *  cell, so the step opens and says nobody would be caught instead of sending a choice that fails. */
 export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
-  // A teleport is aimed at where it goes (1.271).
+  // A teleport is aimed at where it goes (1.275).
   return !!option.area || (option.teleport?.cells.length ?? 0) > 0;
 }
 
@@ -83,7 +83,7 @@ export interface RulesetAimChoice {
 export type RulesetCellChoice = {
   to?: RulesetCombatCell;
   wall?: RulesetCombatCell;
-  /** Who goes along on a teleport (1.271). */
+  /** Who goes along on a teleport (1.275). */
   carries?: string[];
 } & Partial<RulesetAimChoice>;
 
@@ -133,7 +133,7 @@ export function rulesetAimTake(
 }
 
 /** Whether taking this option asks the player to pick a cell to walk to: a walk, or a legendary
- *  move (1.278). Getting back up spends movement and goes nowhere, so it is sent straight off the
+ *  move (1.282). Getting back up spends movement and goes nowhere, so it is sent straight off the
  *  menu. */
 export function rulesetOptionNeedsCell(option: DirectedRulesetOption): boolean {
   return (option.kind === "move" || !!option.signature) && (option.cells?.length ?? 0) > 0;
@@ -152,9 +152,9 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const standing = new Map<string, DirectedRulesetCombatant>();
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
-    // Sent away (1.231): not on the board at all.
+    // Sent away (1.235): not on the board at all.
     if (combatant.away) continue;
-    // Every cell they fill (1.189).
+    // Every cell they fill (1.193).
     const span = Math.max(1, combatant.span ?? 1);
     for (let dy = 0; dy < span; dy++) {
       for (let dx = 0; dx < span; dx++) {
@@ -171,7 +171,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const aims = new Map<string, { targetIds: string[]; teleport?: true }>();
   const laid = new Set<string>();
   if (step?.stage === "aim") {
-    // A teleport's cells are where it may go (1.271), not what it would catch.
+    // A teleport's cells are where it may go (1.275), not what it would catch.
     const teleport = step.option.teleport ? { teleport: true as const } : {};
     for (const entry of step.option.aim ?? []) {
       aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds], ...teleport });

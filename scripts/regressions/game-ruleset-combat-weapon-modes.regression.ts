@@ -1,5 +1,5 @@
 /**
- * Weapon modes of their own (Capability API 1.185): a javelin of lightning.
+ * Weapon modes of their own (Capability API 1.189): a javelin of lightning.
  *
  *   - A mode's `range` is how far it reaches, in place of the weapon's: aimed, rolled and refused by it.
  *   - Its `plus` clauses are added to a hit in that mode only.
@@ -327,7 +327,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with weapon modes that reach their own distance, add damage, send a bolt along the way, or spend charges requires schemaVersion 2 and capabilityApi 1.185 or newer";
+      "A ruleset with weapon modes that reach their own distance, add damage, send a bolt along the way, or spend charges requires schemaVersion 2 and capabilityApi 1.189 or newer";
     const withMode = (mode: Record<string, unknown>) => {
       const doc = JSON.parse(fiveE);
       doc.catalogs.push({
@@ -344,15 +344,15 @@ try {
       ["line", { line: bolt.line }],
       ["charges", { charges: 1 }],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(184) as never, withMode(mode)), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(185) as never, withMode(mode)), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(188) as never, withMode(mode)), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(189) as never, withMode(mode)), gate, label);
     }
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(184) as never, withMode({ toHit: 1 })),
+      getCapabilityPackageInstallIssue(manifest(188) as never, withMode({ toHit: 1 })),
       gate,
       "an older mode",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(184) as never, JSON.parse(fiveE)), gate, "plain 5e");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(188) as never, JSON.parse(fiveE)), gate, "plain 5e");
   }
 
   console.log(

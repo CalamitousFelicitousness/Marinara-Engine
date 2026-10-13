@@ -1,6 +1,6 @@
 /**
  * Numbers fixed off whoever put a condition on, Sympathy's pull, and a scroll's chosen kind
- * (Capability API 1.269).
+ * (Capability API 1.273).
  *
  *   - An aura save's `appliedDifficulty`: Antipathy/Sympathy's save is against its caster's spell
  *     save DC, fixed as it was cast, with `difficulty` for an aura nothing put on.
@@ -398,7 +398,7 @@ try {
       "not yet within reach: free to walk",
     );
     // Drawn toward the friend too, as Sympathy is: outside the ring only nearer, inside it free to
-    // move about within it (1.271 follow-up).
+    // move about within it (1.275 follow-up).
     const rule = definition.combat!.conditions!.find((one) => one.condition === "attracted")!;
     rule.behavior = { ...rule.behavior!, moves: "toward" };
     try {
@@ -476,7 +476,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a condition put on with a value off its applier, temporary points a condition gives each turn, an aura save against its applier's difficulty, a save on harm from a condition's source, a walk kept within reach, or a kind chosen as an item is used, requires schemaVersion 2 and capabilityApi 1.269 or newer";
+      "A ruleset with a condition put on with a value off its applier, temporary points a condition gives each turn, an aura save against its applier's difficulty, a save on harm from a condition's source, a walk kept within reach, or a kind chosen as an item is used, requires schemaVersion 2 and capabilityApi 1.273 or newer";
     const issue = (minor: number, doc: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, undefined as never);
     const plain = document((doc) => {
@@ -487,13 +487,13 @@ try {
       delete doc.catalogs.at(-2).entries[1].mechanics.applies[0].value;
       doc.catalogs.pop();
     });
-    assert.notEqual(issue(268, plain), gate, "nothing of 1.269 left");
-    assert.equal(issue(268, document()), gate);
-    assert.notEqual(issue(269, document()), gate);
+    assert.notEqual(issue(272, plain), gate, "nothing of 1.273 left");
+    assert.equal(issue(272, document()), gate);
+    assert.notEqual(issue(273, document()), gate);
     const one = (edit: (doc: Record<string, any>) => void) => {
       const doc = structuredClone(plain);
       edit(doc);
-      assert.equal(issue(268, doc), gate, JSON.stringify(edit.toString()));
+      assert.equal(issue(272, doc), gate, JSON.stringify(edit.toString()));
     };
     one((doc) => (conditionOf(doc, "repugnant").auras[0].save.appliedDifficulty = true));
     one((doc) => (conditionOf(doc, "heroic").temporary = { at: "turn-start", flat: 1 }));
@@ -518,7 +518,7 @@ try {
   }
 
   console.log(
-    "Ruleset source numbers: Antipathy's save against its caster's DC, Heroism's temporary points each turn from its caster's modifier and lost as it ends, Sympathy's save only on harm from the target and its walk kept within 5 feet, a scroll naming its kind; gated at 1.269.",
+    "Ruleset source numbers: Antipathy's save against its caster's DC, Heroism's temporary points each turn from its caster's modifier and lost as it ends, Sympathy's save only on harm from the target and its walk kept within 5 feet, a scroll naming its kind; gated at 1.273.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

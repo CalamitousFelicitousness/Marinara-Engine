@@ -1,5 +1,5 @@
 /**
- * Resilient Sphere (Capability API 1.309).
+ * Resilient Sphere (Capability API 1.313).
  *
  *   - A condition's `sealed`: nobody else aims at its holder or catches them in an area, nothing from
  *     anybody else harms, heals or puts a condition on them (auras included), nothing of theirs reaches
@@ -533,7 +533,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a condition that shuts its holder away from everybody else, or an entry aimed only at creatures up to a size, requires schemaVersion 2 and capabilityApi 1.309 or newer";
+      "A ruleset with a condition that shuts its holder away from everybody else, or an entry aimed only at creatures up to a size, requires schemaVersion 2 and capabilityApi 1.313 or newer";
     const onlySize = document((doc) => {
       delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "sphered").sealed;
     });
@@ -545,14 +545,14 @@ try {
       delete doc.catalogs.at(-1).entries[0].mechanics.targetsUpTo;
     });
     for (const doc of [document(), onlySize, onlySeal]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(308) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(309) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(312) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(313) as never, doc), gate);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(308) as never, neither), gate, "nothing new, no gate");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(312) as never, neither), gate, "nothing new, no gate");
   }
 
   console.log(
-    "Sphere: nothing reaches in or out (aim, areas, auras, harm, opportunity strikes), rolled at half speed, carried by whoever picks it up, broken by Disintegrate with its concentration; Large or smaller; refusals; gated at 1.309.",
+    "Sphere: nothing reaches in or out (aim, areas, auras, harm, opportunity strikes), rolled at half speed, carried by whoever picks it up, broken by Disintegrate with its concentration; Large or smaller; refusals; gated at 1.313.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

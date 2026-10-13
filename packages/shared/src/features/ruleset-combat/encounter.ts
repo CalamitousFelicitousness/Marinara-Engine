@@ -309,9 +309,9 @@ function sourceInSight(
   if (!sourceId || !state || !grid) return true;
   const source = rulesetCombatant(state, sourceId);
   if (!source || !rulesetPositionOf(combatant) || !rulesetPositionOf(source)) return true;
-  // Any cell of one to any cell of the other (1.189).
+  // Any cell of one to any cell of the other (1.193).
   if (!rulesetFootprintsSee(grid, combatant, source)) return false;
-  // And seen with the holder's own eyes and senses (1.272): blindness, a fog, the dark past what
+  // And seen with the holder's own eyes and senses (1.276): blindness, a fog, the dark past what
   // they see in, or a source unseen to them break it as a wall does. What they see with is read off
   // their conditions, which is what is being gated here, so while that is read the line is enough.
   if (sightGated.has(combatant.id)) return true;
@@ -325,7 +325,7 @@ function sourceInSight(
 /** Holders whose sight a gate is reading right now, so reading it never asks itself again. */
 const sightGated = new Set<string>();
 
-/** Whether whoever applied a condition stands within this distance of its holder (1.270). Without
+/** Whether whoever applied a condition stands within this distance of its holder (1.274). Without
  *  a board, or a source to measure to, it is near: a fight that measures nothing gates nothing. */
 function sourceWithin(
   combatant: RulesetCombatant,
@@ -358,7 +358,7 @@ export function rulesetActiveConditions(
   const active = new Set(rulesetCombatConditions(definition, combatant));
   // Standing in a zone that says so (1.178): its conditions are on whoever is there, and what it
   // keeps off or stops reads as one more source, named for the zone.
-  // Nor through a sphere (1.309), into it or out of it: read off what holds each of them, as a zone's
+  // Nor through a sphere (1.313), into it or out of it: read off what holds each of them, as a zone's
   // own conditions could never seal anybody.
   const inside = state
     ? zonesStoodIn(state, combatant).filter(
@@ -385,7 +385,7 @@ export function rulesetActiveConditions(
     if (!active.has(entry.condition)) return [];
     const gate = entry.whileSourceInSight;
     if (!gate || sourceInSight(definition, combatant, entry.condition, state)) return [entry];
-    // Or near enough, seen or not (1.270): Antipathy's 60 feet.
+    // Or near enough, seen or not (1.274): Antipathy's 60 feet.
     if (
       entry.orSourceWithin !== undefined &&
       sourceWithin(combatant, entry.condition, state, combat, entry.orSourceWithin)
@@ -399,7 +399,7 @@ export function rulesetActiveConditions(
     // fright you fail a save against whether or not you can see it is exactly what the list is for.
     return [{ ...entry, effects: entry.effects.filter((effect) => !gate.includes(effect)) }];
   });
-  // Held off, not ended, by another that holds (1.270): Calm Emotions' charm and fright.
+  // Held off, not ended, by another that holds (1.274): Calm Emotions' charm and fright.
   const suppressed = new Set(conditions.flatMap((entry) => entry.suppresses ?? []));
   if (suppressed.size) {
     for (let at = conditions.length - 1; at >= 0; at -= 1) {
@@ -426,8 +426,8 @@ export function rulesetActiveConditions(
   return [...conditions, ...levels, ...items, ...zoned];
 }
 
-/** The standing zones whose cells this combatant is in now, or that hold them off a board (1.174). */
-/** Whether a condition of this combatant's own seals them (1.309), zones aside. */
+/** The standing zones whose cells this combatant is in now, or that hold them off a board (1.178). */
+/** Whether a condition of this combatant's own seals them (1.313), zones aside. */
 function sealedByOwn(definition: RulesetDefinition, combat: RulesetCombat, combatant: RulesetCombatant): boolean {
   if (!combat.conditions?.some((entry) => entry.sealed)) return false;
   const own = new Set(rulesetCombatConditions(definition, combatant));
@@ -450,7 +450,7 @@ function zonesStoodIn(
     (caster.zones ?? []).flatMap((zone) => {
       const rule = caster.actions.find((entry) => entry.id === zone.actionId)?.zone;
       if (!rule || (!rule.inside && !rule.forbids && !rule.wards)) return [];
-      // Any cell they fill (1.189).
+      // Any cell they fill (1.193).
       const inIt =
         grid && at
           ? rulesetZoneCells(state, caster, zone).some((cell) => rulesetFills(combatant, cell))
@@ -487,7 +487,7 @@ export function rulesetTargetHasSenses(
   state: RulesetEncounterState,
   target: RulesetCombatant,
   needs: readonly string[] | undefined,
-  /** Any one of them is enough (1.262): "can see or hear you". */
+  /** Any one of them is enough (1.266): "can see or hear you". */
   any?: boolean,
 ): boolean {
   const combat = definition.combat;
@@ -547,17 +547,17 @@ export function rulesetTargetTypesAllow(
   if (!targetTypes) return true;
   if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
   if (targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not)) return false;
-  // Its ability scores at most these (1.180); a score nobody wrote down keeps nobody out.
+  // Its ability scores at most these (1.184); a score nobody wrote down keeps nobody out.
   for (const [ability, most] of Object.entries(targetTypes.abilityAtMost ?? {})) {
     const score = rulesetAbilityScore(definition, combatant, ability);
     if (score !== undefined && score > most) return false;
   }
-  // And at least these (1.186), read the same way.
+  // And at least these (1.190), read the same way.
   for (const [ability, least] of Object.entries(targetTypes.abilityAtLeast ?? {})) {
     const score = rulesetAbilityScore(definition, combatant, ability);
     if (score !== undefined && score < least) return false;
   }
-  // And not immune to any of these conditions (1.180).
+  // And not immune to any of these conditions (1.184).
   if (targetTypes.notImmuneTo?.length) {
     const immune = rulesetCombatHide(definition, combatant).conditionImmunities.map((id) => id.trim().toLowerCase());
     if (targetTypes.notImmuneTo.some((id) => immune.includes(id.trim().toLowerCase()))) return false;
@@ -565,7 +565,7 @@ export function rulesetTargetTypesAllow(
   return true;
 }
 
-/** One of a combatant's ability scores (1.180): off their sheet, or as their stat block writes it.
+/** One of a combatant's ability scores (1.184): off their sheet, or as their stat block writes it.
  *  Undefined for a creature written without it. */
 export function rulesetAbilityScore(
   definition: RulesetDefinition,
@@ -584,7 +584,7 @@ export function rulesetAbilityScore(
 function heldSources(definition: RulesetDefinition, combatant: RulesetCombatant): RulesetCheckSource[] {
   const sheet = combatant.sheet;
   if (!sheet?.items?.length) return [];
-  // What lies where it was dropped (1.261) does nothing for them.
+  // What lies where it was dropped (1.265) does nothing for them.
   const dropped = rulesetDroppedItems(combatant);
   const items = dropped.size ? sheet.items.filter((_, index) => !dropped.has(index)) : sheet.items;
   let evaluated: EvaluatedRulesetSheet | undefined;
@@ -725,10 +725,10 @@ export function rulesetConditionModifiers(
    *  narrowed to it counts (a contest names none, and reads only what is narrowed to nothing). */
   save?: string,
   against?: RulesetSaveAgainst,
-  /** The ability an attack or a check is made with (1.183), so what is narrowed to it counts; with
+  /** The ability an attack or a check is made with (1.187), so what is narrowed to it counts; with
    *  none, a change narrowed to an ability reads nothing. */
   ability?: string,
-  /** Only the changes held back until a roll falls short (1.244), rather than only the others. */
+  /** Only the changes held back until a roll falls short (1.248), rather than only the others. */
   rescue = false,
 ): RulesetConditionModifier[] {
   // A ruleset with no items and no condition or level that changes a number has nothing to read. One
@@ -780,12 +780,12 @@ export function rulesetCombatEffects(
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
     for (const effect of entry.effects) effects.add(effect);
   }
-  // Caught unaware (1.232): no reaction until their first turn ends.
+  // Caught unaware (1.236): no reaction until their first turn ends.
   if (combatant.surprised) effects.add("cannot-react");
   return effects;
 }
 
-/** What shuts this combatant away from everybody else (1.309): the `sealed` of a condition that holds
+/** What shuts this combatant away from everybody else (1.313): the `sealed` of a condition that holds
  *  on them, with that condition's name. */
 export function rulesetSealed(
   definition: RulesetDefinition,
@@ -798,7 +798,7 @@ export function rulesetSealed(
   return entry?.sealed ? { ...entry.sealed, condition: entry.condition } : undefined;
 }
 
-/** Whether a sphere stands between these two (1.309): either is sealed, and they are not the same.
+/** Whether a sphere stands between these two (1.313): either is sealed, and they are not the same.
  *  Nothing of one reaches the other. */
 export function rulesetSealedApart(
   definition: RulesetDefinition,
@@ -833,7 +833,7 @@ export function rulesetSaveMode(
   save: string,
   state?: RulesetEncounterState,
   against?: RulesetSaveAgainst,
-  /** What the save itself says about who rolls it twice (1.180): Sunbeam, against an undead. */
+  /** What the save itself says about who rolls it twice (1.184): Sunbeam, against an undead. */
   lean?: "advantage" | "disadvantage",
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
@@ -859,7 +859,7 @@ export function rulesetSaveMode(
   return advantage ? "advantage" : "disadvantage";
 }
 
-/** Whether a change narrowed to an ability reaches a roll made with this one (1.183): attacks by
+/** Whether a change narrowed to an ability reaches a roll made with this one (1.187): attacks by
  *  `ability`, checks by `abilities`. A roll that names no ability reaches only what is not narrowed. */
 export function rulesetAbilityNarrowing(
   modifier: { to: string; ability?: string; abilities?: string[] },
@@ -871,7 +871,7 @@ export function rulesetAbilityNarrowing(
   return true;
 }
 
-/** The ability a check is made with (1.183): an ability by its own id, a skill's ability, or the one
+/** The ability a check is made with (1.187): an ability by its own id, a skill's ability, or the one
  *  a fight's check reads its number off. Nothing when none of them says. */
 export function rulesetCheckAbility(definition: RulesetDefinition, check: string | undefined): string | undefined {
   if (!check) return undefined;
@@ -885,7 +885,7 @@ export function rulesetCheckAbility(definition: RulesetDefinition, check: string
   return value?.skillMod ? sheet.skills.find((entry) => entry.id === value.skillMod)?.ability : undefined;
 }
 
-/** The skill a check of the fight's is rolled with (1.285): a skill itself, or a `combat.checks`
+/** The skill a check of the fight's is rolled with (1.289): a skill itself, or a `combat.checks`
  *  entry read off one (`skillMod`), so what is narrowed to that skill counts on it: 5e's Stealth in
  *  heavy armor. */
 export function rulesetCheckSkill(definition: RulesetDefinition, check: string | undefined): string | undefined {
@@ -896,7 +896,7 @@ export function rulesetCheckSkill(definition: RulesetDefinition, check: string |
   return value?.skillMod;
 }
 
-/** The modes `holder` puts on checks made to find them (1.285), with the skill rolled: 5e's Cloak
+/** The modes `holder` puts on checks made to find them (1.289), with the skill rolled: 5e's Cloak
  *  of Elvenkind, disadvantage on Perception to see its wearer. */
 export function rulesetCheckTakenModes(
   definition: RulesetDefinition,
@@ -918,7 +918,7 @@ export function rulesetCheckTakenModes(
   return modes;
 }
 
-/** The ability an item's gate is rolled with (1.183): a raw ability check's own, or a skill's as it is
+/** The ability an item's gate is rolled with (1.187): a raw ability check's own, or a skill's as it is
  *  rolled. A value off the sheet names none. */
 function gateAbility(target: RulesetCheckTarget | null | undefined): string | undefined {
   if (target?.type === "ability") return target.id;
@@ -936,9 +936,9 @@ export function rulesetCheckMode(
   state?: RulesetEncounterState,
   /** The skill rolled, where a check names one (an item's gate), so what is narrowed to it counts. */
   skill?: string,
-  /** The ability the check is made with (1.183), so what is narrowed to it counts. */
+  /** The ability the check is made with (1.187), so what is narrowed to it counts. */
   ability?: string,
-  /** What whoever it is made against puts on it (1.285): `rulesetCheckTakenModes`. */
+  /** What whoever it is made against puts on it (1.289): `rulesetCheckTakenModes`. */
   taken?: { advantage: boolean; disadvantage: boolean },
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
@@ -957,7 +957,7 @@ export function rulesetCheckMode(
     if (entry.effects.includes("own-checks-advantage")) advantage = true;
     if (entry.effects.includes("own-checks-disadvantage")) disadvantage = true;
   }
-  // A creature's own (1.286): keen senses, sensitivity to light, camouflage, where they hold.
+  // A creature's own (1.290): keen senses, sensitivity to light, camouflage, where they hold.
   for (const rule of combatant.block?.checkModes ?? []) {
     if (skill === undefined || !rule.skills.includes(skill)) continue;
     if (!rulesetModeRuleHolds(definition, combat, combatant, state, rule)) continue;
@@ -968,7 +968,7 @@ export function rulesetCheckMode(
   return advantage ? "advantage" : "disadvantage";
 }
 
-/** Whether a creature's own mode on checks (1.286) or attacks (1.288) holds where it is now: it can see, where `sight`
+/** Whether a creature's own mode on checks (1.290) or attacks (1.292) holds where it is now: it can see, where `sight`
  *  says so; the light it stands in is one `light` names; it stands on a tile, or the board is a
  *  place, `terrain` names. Off a board, only `sight` can hold. */
 export function rulesetModeRuleHolds(
@@ -988,7 +988,7 @@ export function rulesetModeRuleHolds(
       return false;
   }
   const board = state?.board;
-  // The light where it stands, where the dark is real (1.289); else the board's.
+  // The light where it stands, where the dark is real (1.293); else the board's.
   const at = rulesetPositionOf(combatant);
   const here = state && at ? rulesetLightAt(definition, state, at) : board?.light;
   if (rule.light && !rule.light.some((light) => rulesetLightMatches(here, light))) return false;
@@ -1003,7 +1003,7 @@ export function rulesetModeRuleHolds(
   return true;
 }
 
-/** Whether the light a board is fought in is `wanted` (1.286): sunlight is bright light too, and a
+/** Whether the light a board is fought in is `wanted` (1.290): sunlight is bright light too, and a
  *  board that says nothing is in bright light that is not the sun's. */
 export function rulesetLightMatches(light: RulesetBoardLight | undefined, wanted: RulesetBoardLight): boolean {
   const is = light ?? "bright";
@@ -1149,16 +1149,16 @@ function abilityAndSkill(
   return rulesetCheckModifier(evaluated, target) + fightAdjust(definition, build, evaluated, target);
 }
 
-/** What the entries a sheet holds do to its attack rows (1.237). */
+/** What the entries a sheet holds do to its attack rows (1.241). */
 type RulesetAttackRowRule = NonNullable<RulesetCatalogMechanics["attackRows"]>[number];
 
-/** Whether an attack is one of these, by the name its row gives it (1.237). */
+/** Whether an attack is one of these, by the name its row gives it (1.241). */
 export function rulesetAttackNamed(label: string, names: readonly string[]): boolean {
   const own = label.trim().toLowerCase();
   return names.some((name) => name.trim().toLowerCase() === own);
 }
 
-/** Whether a held weapon, its attack going by `label`, is one of these (1.239): by that name, or by
+/** Whether a held weapon, its attack going by `label`, is one of these (1.243): by that name, or by
  *  every one of `tags` and none of `notTags`. */
 export function rulesetItemMatches(
   item: { tags?: readonly string[] },
@@ -1182,7 +1182,7 @@ function itemAttackLabel(definition: RulesetDefinition, held: RulesetSheetItem):
   );
 }
 
-/** Whether a sheet's bounds and weapons let a held entry's rule hold (1.237, 1.239): its `when` on the
+/** Whether a sheet's bounds and weapons let a held entry's rule hold (1.241, 1.243): its `when` on the
  *  sheet, and every weapon held being one of `wielding.only`, or none held at all. */
 function rulesetHeldRuleHolds(
   definition: RulesetDefinition,
@@ -1210,7 +1210,7 @@ function rulesetHeldRuleHolds(
 }
 
 /**
- * One attack row as the entries its sheet holds change it (1.237), while each one's `when` holds:
+ * One attack row as the entries its sheet holds change it (1.241), while each one's `when` holds:
  * the best of its own ability and theirs, to hit and, where the row's damage adds the same ability,
  * to damage; their die in place of the row's dice where it is the better; and their qualities.
  */
@@ -1224,7 +1224,7 @@ function applyAttackRowRules(
   pooled: boolean,
   /** Whether the blow's damage adds the ability it is made with. */
   dealtWith: (ability: string | undefined) => boolean,
-  /** A held weapon's own item, which `items` reads (1.239). */
+  /** A held weapon's own item, which `items` reads (1.243). */
   item?: RulesetCatalogItem,
 ): void {
   for (const rule of rules) {
@@ -1274,11 +1274,11 @@ function attackActions(
   build: RulesetSheetBuild,
   evaluated: EvaluatedRulesetSheet,
   perCell: number | undefined,
-  /** What the entries the sheet holds do to its rows (1.237). */
+  /** What the entries the sheet holds do to its rows (1.241). */
   rules: readonly RulesetAttackRowRule[] = [],
 ): RulesetCombatAction[] {
   const own = build.lists?.[source.list];
-  // The rows every sheet has (1.239), after its own and only where it has none of the same name.
+  // The rows every sheet has (1.243), after its own and only where it has none of the same name.
   const ownNames = new Set(
     (Array.isArray(own) ? own : []).flatMap((row) => {
       const name = row && typeof row === "object" ? textFromColumn(row as Record<string, unknown>, source.name) : "";
@@ -1457,7 +1457,7 @@ function itemUseActions(
   items.forEach((held, index) => {
     const { item } = held;
     if (!item.use) return;
-    // Its first use, then any more it has (1.262), each its own choice paid from the same charges.
+    // Its first use, then any more it has (1.266), each its own choice paid from the same charges.
     useOf(held, index, `use:${index}`, item.use, item.use.label);
     item.moreUses?.forEach((more, n) => useOf(held, index, `use:${index}:${n + 1}`, more.use, more.label));
   });
@@ -1514,7 +1514,7 @@ function itemUseActions(
                       max: use.chargeStep.max,
                       ...(amountOf(use.chargeStep.amount) ? { amount: amountOf(use.chargeStep.amount)! } : {}),
                       ...(use.chargeStep.targets ? { targets: use.chargeStep.targets } : {}),
-                      // Farther pushed a charge (1.266), in cells: a Ring of the Ram's.
+                      // Farther pushed a charge (1.270), in cells: a Ring of the Ram's.
                       ...(use.chargeStep.push !== undefined && perCell !== undefined
                         ? { push: rulesetInCells(use.chargeStep.push, perCell) }
                         : {}),
@@ -1540,7 +1540,7 @@ function itemUseActions(
   }
 }
 
-/** An item's last-charge die as a fight holds it (1.266): what breaks it, and what it gives back. */
+/** An item's last-charge die as a fight holds it (1.270): what breaks it, and what it gives back. */
 function lastChargeDie(
   breaks: NonNullable<NonNullable<RulesetCatalogItem["charges"]>["breaksOn"]>,
 ): NonNullable<NonNullable<NonNullable<RulesetCombatAction["itemUse"]>["charges"]>["breaksOn"]> {
@@ -1594,7 +1594,7 @@ function itemUseMechanics(
   perCell: number | undefined,
   pooled: boolean,
 ): RulesetCombatAction | null {
-  // Its own number, or its holder's read off their sheet (1.264): "using your spell save DC".
+  // Its own number, or its holder's read off their sheet (1.268): "using your spell save DC".
   const read = use.sheetDifficulty
     ? resolveRulesetValueRef(definition, build, use.sheetDifficulty, evaluated)
     : itemAttackValue(item, use.saveDifficulty);
@@ -1613,7 +1613,7 @@ function itemUseMechanics(
     perCell,
   });
   if (!action) return null;
-  // What the item is, its use is too (1.256): a potion tagged magical heals as magic.
+  // What the item is, its use is too (1.260): a potion tagged magical heals as magic.
   if (item.tags?.length) action.qualities = [...new Set([...(action.qualities ?? []), ...item.tags])];
   if (aim.target !== undefined) action.target = aim.target;
   if (use.casts) action.casts = use.casts;
@@ -1662,7 +1662,7 @@ function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): Rule
   });
 }
 
-/** Putting out and lighting again the light a fighter carries (1.290), on its budget or for nothing.
+/** Putting out and lighting again the light a fighter carries (1.294), on its budget or for nothing.
  *  On the menu only while they carry one. */
 function carriedSwitchActions(combat: RulesetCombat): RulesetCombatAction[] {
   const carried = combat.sight?.darkness?.carried;
@@ -1695,7 +1695,7 @@ function itemAttackActions(
   build: RulesetSheetBuild,
   evaluated: EvaluatedRulesetSheet,
   perCell: number | undefined,
-  /** What the entries the sheet holds do to its weapons' attacks (1.239). */
+  /** What the entries the sheet holds do to its weapons' attacks (1.243). */
   rules: readonly RulesetAttackRowRule[] = [],
 ): RulesetCombatAction[] {
   if (!items?.some((held) => held.worn && held.item.attack)) return [];
@@ -1831,7 +1831,7 @@ function itemAttackActions(
         ];
       });
     const plus = clausesOf(attack.plus);
-    // The item's own charges, which a slay spends (1.182): a stat holds its own range, held to the
+    // The item's own charges, which a slay spends (1.186): a stat holds its own range, held to the
     // most a written count may be. One that reads nothing never slays.
     const counted = item.charges ? read(item.charges.max) : undefined;
     const chargesMax =
@@ -1848,7 +1848,7 @@ function itemAttackActions(
         },
       ];
     });
-    // A mode's own reach, clauses, bolt and charges (1.185). One that spends charges the item cannot
+    // A mode's own reach, clauses, bolt and charges (1.189). One that spends charges the item cannot
     // count is never offered; a reach or a bolt needs a board's cells.
     const modeOf = (mode: NonNullable<typeof attack.modes>[number]): RulesetCombatMode[] => {
       if (mode.charges !== undefined && !(chargesMax !== undefined && chargesMax >= 1)) return [];
@@ -1881,7 +1881,7 @@ function itemAttackActions(
             }
           : {}),
         ...(charges !== undefined ? { charges: { cost: charges, max: chargesMax!, item: index } } : {}),
-        // Around the one it hit (1.307), measured in cells.
+        // Around the one it hit (1.311), measured in cells.
         ...(aroundHit
           ? {
               aroundHit: {
@@ -1925,10 +1925,10 @@ function itemAttackActions(
       ...(attack.ignoresResistance ? { ignoresResistance: true as const } : {}),
       ...(attack.healedOnlyByRest ? { healedOnlyByRest: true as const } : {}),
       ...(attack.othersWhileMarked ? { othersWhileMarked: { ...attack.othersWhileMarked, item: index } } : {}),
-      // What comes after the attack action reads the weapon's tags (1.241).
+      // What comes after the attack action reads the weapon's tags (1.245).
       ...(item.tags?.length ? { itemTags: [...item.tags] } : {}),
     };
-    // What the sheet's entries do to it (1.239), as they do to a row: a monk's quarterstaff.
+    // What the sheet's entries do to it (1.243), as they do to a row: a monk's quarterstaff.
     const ruled = (action: RulesetCombatAction, full: boolean) => {
       if (rules.length && dice)
         applyAttackRowRules(
@@ -1946,7 +1946,7 @@ function itemAttackActions(
     };
     // The off hand: the same weapon, struck with again on the off-hand budget: one blow, whatever
     // strikes its main attack buys, and with the damage ability the ruleset lets an off hand keep.
-    // The off hand keeps the full ability for a fighter whose sheet says so (1.92: Two-Weapon
+    // The off hand keeps the full ability for a fighter whose sheet says so (1.96: Two-Weapon
     // Fighting), whatever the ruleset's rule for everyone else.
     const clipped =
       !!offHand &&
@@ -1965,7 +1965,7 @@ function itemAttackActions(
     ruled(weapon, true);
     actions.push(offHand ? { ...weapon, pairs: index } : weapon);
     if (off) actions.push(ruled(off, !clipped));
-    // Charges spent once it hits (1.268), each its holder's own answer to a hit with it: more harm
+    // Charges spent once it hits (1.272), each its holder's own answer to a hit with it: more harm
     // with the blow, more for each charge more, and what it puts on the one hit. One the item cannot
     // count charges for is never offered.
     attack.spends?.forEach((spend, n) => {
@@ -2048,7 +2048,7 @@ function clausesOf(
   return clauses.length > 0 ? clauses : null;
 }
 
-/** More of them as the sheet grows, and the same one more than once (1.300): eldritch blast's beams. */
+/** More of them as the sheet grows, and the same one more than once (1.304): eldritch blast's beams. */
 function grownTargets(
   targets: RulesetCombatAction["targets"],
   mechanics: Pick<RulesetCatalogMechanics, "targetsScale" | "targetsRepeat">,
@@ -2064,15 +2064,15 @@ function grownTargets(
 /** Who a catalog entry may be pointed at. What it does decides it when the entry says nothing: a
  *  heal or a buff goes to the actor's own side, anything else to the other one. */
 function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["targets"] {
-  // A burst centred on its user (1.277) is pointed at nobody: it catches whom it reaches.
+  // A burst centred on its user (1.281) is pointed at nobody: it catches whom it reaches.
   if (mechanics.area?.around) return { side: "self", count: 0 };
   // A `utility` entry is only ever here because it changes what the turn may hold, and what it
   // changes is the holder's own economy: there is nobody to point it at. One that cures (1.175) is
   // pointed at whom it cures, an ally unless it says otherwise.
-  // Moving a track or giving back sealed health is one too (1.196).
+  // Moving a track or giving back sealed health is one too (1.200).
   const cures =
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
-  // One that leaves an area standing (1.173: Fog Cloud, Darkness) is set down wherever its caster
+  // One that leaves an area standing (1.177: Fog Cloud, Darkness) is set down wherever its caster
   // likes, and off a board held on whoever it is cast on.
   if (mechanics.kind === "utility" && mechanics.zone && mechanics.area) {
     return { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
@@ -2081,7 +2081,7 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   if (mechanics.kind === "utility") {
     return { side: mechanics.targets ?? "ally", count: Math.max(1, mechanics.targetCount ?? 1) };
   }
-  // An area catches each creature in it (1.187), so off a board, where it is pointed at people by
+  // An area catches each creature in it (1.191), so off a board, where it is pointed at people by
   // name, it may be pointed at either side unless it spares its caster's own.
   const side =
     mechanics.targets ??
@@ -2125,7 +2125,7 @@ function abilityAction(
   });
 }
 
-/** A teleport's distances in cells (1.271). */
+/** A teleport's distances in cells (1.275). */
 function rulesetTeleportInCells(teleport: RulesetTeleport, perCell: number): RulesetTeleport {
   return {
     distance: rulesetInCells(teleport.distance, perCell),
@@ -2179,17 +2179,17 @@ function mechanicsAction(
   // something from happening at all. Calling something off IS what such an entry does.
   const cancels = moment?.cancels === true;
   // Taking a condition off, steadying the dying or bringing back the dead is something to resolve.
-  // Moving a track or giving back sealed health is one too (1.196).
+  // Moving a track or giving back sealed health is one too (1.200).
   const cures =
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
-  // And so is leaving an area standing that only hides or blocks (1.173).
+  // And so is leaving an area standing that only hides or blocks (1.177).
   const places = !!mechanics.zone && !!mechanics.area;
-  // Spent when its holder's roll fails is something to resolve too (1.244): Indomitable.
+  // Spent when its holder's roll fails is something to resolve too (1.248): Indomitable.
   if (
     mechanics.kind === "utility" &&
     !mechanics.gives &&
     !mechanics.standard &&
-    // A way of hiding or finding that is its holder's own (1.287) is read off it.
+    // A way of hiding or finding that is its holder's own (1.291) is read off it.
     !mechanics.hiding &&
     !cancels &&
     !cures &&
@@ -2248,7 +2248,7 @@ function mechanicsAction(
     ...(from.kind === "ability"
       ? {
           use: {
-            // Another entry's uses, by their row's name (1.234): Frenzy spends a rage.
+            // Another entry's uses, by their row's name (1.238): Frenzy spends a rage.
             name: mechanics.usesOf ?? from.label,
             // Paying for it is this entry's own price plus that one counter, not the other entry's.
             ...(mechanics.usesOf
@@ -2263,11 +2263,11 @@ function mechanicsAction(
               ? { perCostStep: amountOf(mechanics.perCostStep) ?? { count: 0, sides: 0, flat: 0 } }
               : {}),
             ...(mechanics.targetsPerCostStep ? { targetsPerStep: mechanics.targetsPerCostStep } : {}),
-            // No more steps count than this (1.236): Divine Smite stops at 5d8.
+            // No more steps count than this (1.240): Divine Smite stops at 5d8.
             ...(mechanics.perCostStepsMax ? { stepsMax: mechanics.perCostStepsMax } : {}),
-            // Once for every this many steps (1.295): Flame Blade's two slot levels.
+            // Once for every this many steps (1.299): Flame Blade's two slot levels.
             ...(mechanics.perCostStepsEvery ? { stepsEvery: mechanics.perCostStepsEvery } : {}),
-            // More than one of them at once (1.240): Quivering Palm's 3 ki.
+            // More than one of them at once (1.244): Quivering Palm's 3 ki.
             ...(mechanics.usesSpent ? { count: mechanics.usesSpent } : {}),
           },
         }
@@ -2296,12 +2296,12 @@ function mechanicsAction(
   }
   if (mechanics.healthAtMost !== undefined) action.healthAtMost = mechanics.healthAtMost;
   if (mechanics.kills) action.kills = true;
-  // Its damage joins its holder's own blow that just hit (1.236).
+  // Its damage joins its holder's own blow that just hit (1.240).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
-  // Dice off somebody else's roll that hit (1.245): Cutting Words, its die sized by a level.
-  // As many uses as its user chooses, healing that many times over (1.246): Lay on Hands.
+  // Dice off somebody else's roll that hit (1.249): Cutting Words, its die sized by a level.
+  // As many uses as its user chooses, healing that many times over (1.250): Lay on Hands.
   if (mechanics.usesChosen) action.usesChosen = true;
-  // Changes how another action is used (1.248): Metamagic, its sheet values read now.
+  // Changes how another action is used (1.252): Metamagic, its sheet values read now.
   if (mechanics.alters) {
     const alters = mechanics.alters;
     action.alters = {
@@ -2327,7 +2327,7 @@ function mechanicsAction(
     };
   }
   if (mechanics.usesSpentByLevel) action.usesSpentByLevel = true;
-  // Gives back to a pool (1.247): Font of Magic's Sorcery Points, or a slot past its maximum.
+  // Gives back to a pool (1.251): Font of Magic's Sorcery Points, or a slot past its maximum.
   const restored = amountOf(mechanics.restore?.amount);
   if (mechanics.restore && restored) {
     action.restore = {
@@ -2346,21 +2346,21 @@ function mechanicsAction(
         count: dice.count,
         sides: dice.sides,
         flat: dice.flat,
-        // Off ability checks and damage rolls too (1.252).
+        // Off ability checks and damage rolls too (1.256).
         ...(lowers.also ? { also: [...lowers.also] } : {}),
       };
     }
   }
-  // A failed save drops its target to 0 instead (1.240): Quivering Palm.
+  // A failed save drops its target to 0 instead (1.244): Quivering Palm.
   if (mechanics.dropsOnFailedSave) action.dropsOnFailedSave = true;
-  // Only once the attack action has been taken this turn (1.237): Flurry of Blows.
+  // Only once the attack action has been taken this turn (1.241): Flurry of Blows.
   if (mechanics.afterAttack) action.afterAttack = structuredClone(mechanics.afterAttack);
-  // Only before the holder's first attack of their turn (1.242): Reckless Attack.
+  // Only before the holder's first attack of their turn (1.246): Reckless Attack.
   if (mechanics.beforeAttack) action.beforeAttack = true;
-  // Spent when its holder's own roll has failed, never chosen from a menu (1.244): Indomitable.
+  // Spent when its holder's own roll has failed, never chosen from a menu (1.248): Indomitable.
   if (mechanics.rescue) {
     const rescue = mechanics.rescue;
-    // A die of its own (1.251), sized off its holder's sheet as Martial Arts' is: Peerless Skill.
+    // A die of its own (1.255), sized off its holder's sheet as Martial Arts' is: Peerless Skill.
     const dice = rescue.dice
       ? parseRulesetCombatDice(rescue.dice)
       : rescue.die
@@ -2376,14 +2376,14 @@ function mechanicsAction(
         : {}),
     };
   }
-  // Never on its own user (1.251).
+  // Never on its own user (1.255).
   if (mechanics.notSelf) action.notSelf = true;
   if (mechanics.targetsUpTo) action.targetsUpTo = mechanics.targetsUpTo;
   if (mechanics.oncePerTarget) action.oncePerTarget = { until: mechanics.oncePerTarget.until };
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
-  // Half its damage on a miss (1.250): Acid Arrow.
+  // Half its damage on a miss (1.254): Acid Arrow.
   if (mechanics.halfOnMiss && mechanics.attackRoll) action.halfOnMiss = true;
   if (mechanics.needs) action.needs = [...mechanics.needs];
   if (mechanics.needs && mechanics.needsAny) action.needsAny = true;
@@ -2409,36 +2409,36 @@ function mechanicsAction(
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));
-  // What it puts on its own user (1.302): Sunbeam's mote.
+  // What it puts on its own user (1.306): Sunbeam's mote.
   if (mechanics.appliesSelf?.length) action.appliesSelf = mechanics.appliesSelf.map((entry2) => ({ ...entry2 }));
-  // The standard actions taken with it (1.308): Expeditious Retreat's Dash.
+  // The standard actions taken with it (1.312): Expeditious Retreat's Dash.
   if ("takes" in mechanics && mechanics.takes?.length) action.takes = [...mechanics.takes];
   if (mechanics.concentration) action.concentration = true;
   if (mechanics.ends) {
     action.ends = {
-      // A kind named in place of conditions is every condition of that kind (1.253): one disease.
+      // A kind named in place of conditions is every condition of that kind (1.257): one disease.
       conditions: rulesetKindConditions(definition, mechanics.ends.conditions),
       ...(mechanics.ends.count !== undefined ? { count: mechanics.ends.count } : {}),
       ...(mechanics.ends.from ? { from: structuredClone(mechanics.ends.from) } : {}),
     };
   }
-  // Used, it ends a condition on its user (1.231): the spell that gave it.
+  // Used, it ends a condition on its user (1.235): the spell that gave it.
   if (mechanics.endsCondition) action.endsCondition = mechanics.endsCondition;
-  // Made again while concentrated on (1.305): Vampiric Touch.
+  // Made again while concentrated on (1.309): Vampiric Touch.
   if ("repeats" in mechanics && mechanics.repeats) action.repeats = { ...mechanics.repeats };
   if (mechanics.usableIn) action.usableIn = { light: [...mechanics.usableIn.light] };
-  // Sent out of the fight (1.231): Dismissal, Banishment.
+  // Sent out of the fight (1.235): Dismissal, Banishment.
   if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
   if (mechanics.stabilizes) action.stabilizes = true;
   if (mechanics.tracks) action.tracks = mechanics.tracks.map((entry) => ({ ...entry }));
   if (mechanics.unseals) action.unseals = true;
-  // A lowered maximum, a floor and whom it may be pointed at (1.230): 5e's Harm.
+  // A lowered maximum, a floor and whom it may be pointed at (1.234): 5e's Harm.
   if (mechanics.reducesMax) action.reducesMax = { ...mechanics.reducesMax };
-  // What it dealt comes back to its user (1.276): Vampiric Touch.
+  // What it dealt comes back to its user (1.280): Vampiric Touch.
   if (mechanics.drain) action.drain = { ...mechanics.drain };
   if (mechanics.leavesAtLeast !== undefined) action.leavesAtLeast = mechanics.leavesAtLeast;
   if (mechanics.targetHolds) action.targetHolds = structuredClone(mechanics.targetHolds);
-  // One cure of several (1.199), picked like a weapon's mode: a condition, a track, or the maximum.
+  // One cure of several (1.203), picked like a weapon's mode: a condition, a track, or the maximum.
   if (mechanics.cureOneOf) {
     action.cureOneOf = true;
     const conditionLabel = (id: string) => definition.sheet.live.conditions.find((one) => one.id === id)?.label ?? id;
@@ -2461,10 +2461,10 @@ function mechanicsAction(
       ...(mechanics.unseals ? [{ id: "unseals", label: healthLabel, cure: { unseals: true as const } }] : []),
     ];
   }
-  // A weapon put in hand (1.301): which one is picked as it is used, its modes filled in once the
+  // A weapon put in hand (1.305): which one is picked as it is used, its modes filled in once the
   // sheet's items and entries are known.
   if (mechanics.conjures) action.conjures = true;
-  // A creature type named as it is used (1.265), picked like a weapon's mode: Antipathy/Sympathy.
+  // A creature type named as it is used (1.269), picked like a weapon's mode: Antipathy/Sympathy.
   const creatureTypes = definition.combat?.creatureTypes;
   if (mechanics.kindChoice && creatureTypes) {
     action.kindChoice = true;
@@ -2485,7 +2485,7 @@ function mechanicsAction(
     };
   }
   if (mechanics.push !== undefined) action.push = rulesetInCells(mechanics.push, perCell ?? 1);
-  // Measured on a board (1.271): a fight without one has nowhere to go, but out of it (1.274).
+  // Measured on a board (1.275): a fight without one has nowhere to go, but out of it (1.278).
   if (mechanics.teleport && (perCell !== undefined || mechanics.teleport.leaves))
     action.teleport = rulesetTeleportInCells(mechanics.teleport, perCell ?? 1);
   if (mechanics.zone) {
@@ -2576,7 +2576,7 @@ function mechanicsAction(
         ...(mechanics.zone.obscures.darkness ? { darkness: true as const } : {}),
       };
     }
-    // The light it sheds (1.292), in cells; and the magical darkness it ends.
+    // The light it sheds (1.296), in cells; and the magical darkness it ends.
     const lights = mechanics.zone.lights;
     if (lights) {
       action.zone.lights = {
@@ -2642,7 +2642,7 @@ function mechanicsAction(
   if (mechanics.standard) {
     action.standard = { actions: [...mechanics.standard.actions], budget: mechanics.standard.budget };
   }
-  // Its holder's own ways of hiding and finding (1.287): a permission, its distances in cells.
+  // Its holder's own ways of hiding and finding (1.291): a permission, its distances in cells.
   if (mechanics.hiding) {
     const { aware, ...rest } = mechanics.hiding;
     action.hiding = {
@@ -2681,7 +2681,7 @@ function mechanicsAction(
       };
     }
   }
-  // Centred on its user (1.277), measured with or without a board: off one it catches everybody.
+  // Centred on its user (1.281), measured with or without a board: off one it catches everybody.
   if (mechanics.area?.around) {
     action.around = {
       size: rulesetInCells(mechanics.area.size, perCell ?? 1),
@@ -2919,7 +2919,7 @@ function innateActions(
   });
 }
 
-/** What the conditions of the fight let their holder use while they hold (1.231), put on everybody's
+/** What the conditions of the fight let their holder use while they hold (1.235), put on everybody's
  *  list now and offered only while they hold it: 5e's Dispel Evil and Good, whose Break Enchantment
  *  and Dismissal are its caster's. Their numbers are the holder's own, as their spells' are; a
  *  creature that casts reads its casting's. */
@@ -2963,7 +2963,7 @@ function conditionActions(
       action.catalog = catalogId;
       action.entry = ref;
       action.whileHolds = condition.condition;
-      // Grown by the cost the condition was put on with (1.295), not one of its own.
+      // Grown by the cost the condition was put on with (1.299), not one of its own.
       const per = action.use?.perCostStep;
       if (per) {
         action.heldSteps = {
@@ -3001,8 +3001,8 @@ function narrowCatalogs(build: RulesetSheetBuild, catalogs: RulesetCatalogEntrie
   return narrowed;
 }
 
-/** A legendary move that does nothing else (1.278); one that does something first moves after it
- *  (1.280). */
+/** A legendary move that does nothing else (1.282); one that does something first moves after it
+ *  (1.284). */
 export function rulesetMovesOnly(action: {
   move?: unknown;
   damage?: unknown;
@@ -3060,7 +3060,7 @@ function blockActions(
     // A sequence may be pointed at as many targets as all of its parts together, so a caller can
     // send each strike somewhere else. Fewer is legal too: every part takes the ones it was given.
     // One that lands on the creature itself points at nobody: its effect is its own.
-    // So does a teleport (1.271): where it goes is its choice, not whom.
+    // So does a teleport (1.275): where it goes is its choice, not whom.
     targets:
       action.self ||
       action.teleport ||
@@ -3072,7 +3072,7 @@ function blockActions(
       action.sheds !== undefined
         ? { side: "self" as const, count: 0 }
         : {
-            // An area catches each creature in it, the creature's allies too (1.187): off a board it may
+            // An area catches each creature in it, the creature's allies too (1.191): off a board it may
             // be pointed at either side, unless it spares its own.
             side: action.targets ?? (action.area && action.area.friendlyFire !== false ? "any" : ("enemy" as const)),
             count: action.sequence
@@ -3101,7 +3101,7 @@ function blockActions(
       : {}),
     ...(action.heal ? { heal: { ...action.heal } } : {}),
     ...(action.qualities ? { qualities: [...action.qualities] } : {}),
-    // A kind is every condition of it (1.253), as a catalog entry's cure reads it.
+    // A kind is every condition of it (1.257), as a catalog entry's cure reads it.
     ...(action.ends
       ? {
           ends: {
@@ -3114,9 +3114,9 @@ function blockActions(
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
-    // Held by its maker's concentration (1.302): an imp's Invisibility.
+    // Held by its maker's concentration (1.306): an imp's Invisibility.
     ...(action.concentration ? { concentration: true } : {}),
-    // Consume Life (1.306).
+    // Consume Life (1.310).
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
@@ -3156,7 +3156,7 @@ function blockActions(
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
     ...(action.drain ? { drain: { ...action.drain } } : {}),
-    // A legendary move (1.278): a board's business, so its distance is in cells.
+    // A legendary move (1.282): a board's business, so its distance is in cells.
     ...(action.move
       ? {
           move: {
@@ -3167,13 +3167,13 @@ function blockActions(
           },
         }
       : {}),
-    // A legendary cast (1.279): its maker's own spells, offered between turns.
+    // A legendary cast (1.283): its maker's own spells, offered between turns.
     ...(action.casting ? { casting: { ...action.casting } } : {}),
-    // A legendary Detect (1.282).
+    // A legendary Detect (1.286).
     ...(action.search ? { search: true as const } : {}),
-    // Its light lit or put out (1.291), in the ruleset's distance as every light is.
+    // Its light lit or put out (1.295), in the ruleset's distance as every light is.
     ...(action.sheds !== undefined ? { sheds: action.sheds === "out" ? ("out" as const) : { ...action.sheds } } : {}),
-    // A permission (1.286): standard actions taken with this action's own budget.
+    // A permission (1.290): standard actions taken with this action's own budget.
     ...(action.standard
       ? {
           standard: {
@@ -3188,7 +3188,7 @@ function blockActions(
     ...(action.teleport && (perCell !== undefined || action.teleport.leaves)
       ? { teleport: rulesetTeleportInCells(action.teleport, perCell ?? 1) }
       : {}),
-    // A run is measured on a board (1.181), so a fight with none never charges.
+    // A run is measured on a board (1.185), so a fight with none never charges.
     ...(perCell !== undefined && action.charge
       ? {
           charge: {
@@ -3204,7 +3204,7 @@ function blockActions(
       ? { reach: rulesetInCells(action.reach, perCell) }
       : {}),
     ...(rangeOf(action.range) ? { range: rangeOf(action.range)! } : {}),
-    // Centred on the creature itself (1.277): never aimed, so not an area anything is pointed with.
+    // Centred on the creature itself (1.281): never aimed, so not an area anything is pointed with.
     ...(action.area?.around
       ? {
           around: {
@@ -3225,7 +3225,7 @@ function blockActions(
         }
       : {}),
   }));
-  // A teleport with a strike before or after it (1.275): the teleport lets the strike follow, and the
+  // A teleport with a strike before or after it (1.279): the teleport lets the strike follow, and the
   // strike made first is an action of its own, on the teleport's budget, that lets the teleport follow.
   block.actions.forEach((action, index) => {
     const strikeIndex = action.teleport?.strike ? indexById.get(action.teleport.strike) : undefined;
@@ -3318,7 +3318,7 @@ function sheetCombatant(
   const abilities = (combat.abilities ?? []).map((source, index) =>
     abilityActions(definition, combat, source, index, build, catalogs, evaluated, perCell, input.items),
   );
-  // The entries the sheet's rows came from (1.237): what they do to its attacks, and the strikes they
+  // The entries the sheet's rows came from (1.241): what they do to its attacks, and the strikes they
   // let it buy with another budget.
   const byRef = rulesetCatalogEntriesByRef({
     ...Object.fromEntries((definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []])),
@@ -3340,7 +3340,7 @@ function sheetCombatant(
     const entry = byRef.get(ref);
     return entry?.mechanics ? [entry.mechanics] : [];
   });
-  // Only while the sheet and the weapons it holds let each one hold (1.239): read once, for the fight.
+  // Only while the sheet and the weapons it holds let each one hold (1.243): read once, for the fight.
   const holds = (rule: Parameters<typeof rulesetHeldRuleHolds>[4]) =>
     rulesetHeldRuleHolds(definition, build, evaluated, input.items, rule);
   const rowRules = held.flatMap((mechanics) => (mechanics.attackRows ?? []).filter(holds));
@@ -3359,7 +3359,7 @@ function sheetCombatant(
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
   ];
-  // What a conjuring entry puts in hand (1.301), read now like everything else: each weapon it may
+  // What a conjuring entry puts in hand (1.305), read now like everything else: each weapon it may
   // make, and each held weapon it may bind, as attacks of that entry's, so what amends it amends them.
   const conjurable: NonNullable<RulesetCombatant["conjurable"]> = {};
   for (const action of actions) {
@@ -3405,7 +3405,7 @@ function sheetCombatant(
     });
     if (conjures.binds) {
       const items = input.items ?? [];
-      // Bound out of the fight (1.304): only the weapon its live text names, and none while it is empty.
+      // Bound out of the fight (1.308): only the weapon its live text names, and none while it is empty.
       const boundName =
         conjures.boundIn !== undefined ? (input.live.text?.[conjures.boundIn] ?? "").trim().toLowerCase() : undefined;
       items.forEach((held, index) => {
@@ -3423,7 +3423,7 @@ function sheetCombatant(
     }
     action.modes = modes;
   }
-  // Held, what changes one named entry of theirs each time they use it (1.297): 5e's invocations.
+  // Held, what changes one named entry of theirs each time they use it (1.301): 5e's invocations.
   const amends = held.flatMap((mechanics) => mechanics.amends ?? []);
   const amendAll = (list: RulesetCombatAction[]) => {
     for (const amend of amends) {
@@ -3432,7 +3432,7 @@ function sheetCombatant(
         if (amend.damageAdd && action.damage) {
           action.damage.flat += Math.round(resolveRulesetValueRef(definition, build, amend.damageAdd, evaluated));
         }
-        // More of its own type on a hit (1.301): Lifedrinker.
+        // More of its own type on a hit (1.305): Lifedrinker.
         if (amend.damagePlus && action.damage) {
           const added = Math.round(resolveRulesetValueRef(definition, build, amend.damagePlus.add, evaluated));
           action.damage.plus = [
@@ -3445,7 +3445,7 @@ function sheetCombatant(
             },
           ];
         }
-        // As many strikes for one spend as it says, where that is more (1.301): Thirsting Blade.
+        // As many strikes for one spend as it says, where that is more (1.305): Thirsting Blade.
         if (amend.strikes !== undefined && action.damage) action.strikes = Math.max(action.strikes ?? 1, amend.strikes);
         if (amend.range !== undefined && perCell !== undefined) {
           const range = rulesetInCells(amend.range, perCell);
@@ -3475,7 +3475,7 @@ function sheetCombatant(
   amendAll(actions);
   for (const made of Object.values(conjurable)) amendAll(made.actions);
   const riders = abilities.flatMap((entry) => entry.riders);
-  // What an item becomes on its last charge (1.267), read now with what it would do then.
+  // What an item becomes on its last charge (1.271), read now with what it would do then.
   const becomes: NonNullable<RulesetCombatant["becomes"]> = {};
   input.items?.forEach((held, index) => {
     const ref = held.item.charges?.breaksOn?.becomes;
@@ -3530,7 +3530,7 @@ function sheetCombatant(
     stable: false,
     defeated: false,
     defense: Math.round(resolveRulesetValueRef(definition, build, combat.defense, evaluated)),
-    // What each item that may be dropped adds to their defense (1.261), read once without it.
+    // What each item that may be dropped adds to their defense (1.265), read once without it.
     ...(() => {
       const falls = (combat.conditions ?? []).flatMap((entry) => (entry.behavior?.drops ? [entry.behavior.drops] : []));
       if (!falls.length || !input.items?.length) return {};
@@ -3700,7 +3700,7 @@ export function rulesetConditionEconomy(
       economy.attacksPerTurn = Math.min(economy.attacksPerTurn ?? entry.attacksPerTurn, entry.attacksPerTurn);
     }
   }
-  // What the entries their rows came from let them strike with (1.237).
+  // What the entries their rows came from let them strike with (1.241).
   for (const grant of combatant.strikeGrants ?? []) economy.grants.push({ ...grant, attacks: true });
   return economy;
 }
@@ -3726,13 +3726,13 @@ export function rulesetMovementAllowance(
   state?: RulesetEncounterState,
   /** One way of moving's own speed (1.112). Their fastest when left out. */
   base: number = rulesetFastestSpeed(combatant),
-  /** As though nothing sealed them (1.309): how far rolling a sphere is measured from. */
+  /** As though nothing sealed them (1.313): how far rolling a sphere is measured from. */
   unsealed = false,
 ): number {
   const perCell = combat.distance?.perCell;
   if (perCell === undefined || !(perCell > 0)) return 0;
   if (rulesetCombatEffects(definition, combat, combatant, state).has("speed-zero")) return 0;
-  // Shut in a sphere (1.309): it goes only where it is rolled or carried.
+  // Shut in a sphere (1.313): it goes only where it is rolled or carried.
   if (!unsealed && rulesetSealed(definition, combatant, state)) return 0;
   // What a condition does to speed: every flat change first, then halving or doubling, so "10 feet
   // slower, and half speed" is half of what is left.
@@ -3833,11 +3833,11 @@ export interface RulesetEncounterInput {
     grid: TacticalGrid;
     placements: Record<string, { x: number; y: number }>;
     battlefield?: unknown;
-    /** The light it is fought in, and the kind of place it is (1.286). */
+    /** The light it is fought in, and the kind of place it is (1.290). */
     light?: RulesetBoardLight;
     environment?: string;
   };
-  /** Who is caught unaware as it begins (1.232): no move or action on their first turn, and no
+  /** Who is caught unaware as it begins (1.236): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
   surprised?: string[];
 }
@@ -4054,7 +4054,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     handedByRef = rulesetCatalogEntriesByRef(all);
     return handedByRef;
   };
-  // What a condition lets its holder use (1.231).
+  // What a condition lets its holder use (1.235).
   if (combat.conditions?.some((condition) => condition.actions?.length)) {
     for (const combatant of state.combatants) {
       combatant.actions = [...combatant.actions, ...conditionActions(definition, combatant, handed(), perCell)];
@@ -4074,7 +4074,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     );
     return [...refs].flatMap((ref) => handed().get(ref) ?? []);
   };
-  // Caught unaware (1.232), unless what they hold says they never are: 5e's Foresight. What shakes it
+  // Caught unaware (1.236), unless what they hold says they never are: 5e's Foresight. What shakes it
   // off is read off their own rows: Feral Instinct's rage.
   const surprised: string[] = [];
   const surprise = (id: string) => {
@@ -4101,7 +4101,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     }
   }
 
-  // A concentration entry's effect made again (1.305), offered while its user concentrates on it: on
+  // A concentration entry's effect made again (1.309), offered while its user concentrates on it: on
   // its own budget, paid for already, with no concentration of its own and nothing on its user again.
   for (const combatant of state.combatants) {
     const again = combatant.actions.flatMap((action): RulesetCombatAction[] => {
@@ -4120,7 +4120,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       delete copy.appliesSelf;
       delete copy.reaction;
       delete copy.free;
-      // Grown by what the cast was paid at, as a condition's action grows (1.295).
+      // Grown by what the cast was paid at, as a condition's action grows (1.299).
       const per = copy.use?.perCostStep;
       if (per) {
         copy.heldSteps = {
@@ -4135,7 +4135,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (again.length) combatant.actions = [...combatant.actions, ...again];
   }
 
-  // Kept on through the fight by what they hold or what their block says (1.258): 5e's paladin
+  // Kept on through the fight by what they hold or what their block says (1.262): 5e's paladin
   // auras, Holy Nimbus. Held for the whole fight and never written back to a sheet.
   for (const combatant of state.combatants) {
     const kept = [
@@ -4149,12 +4149,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     }
   }
 
-  // Grown or shrunk by what they held as the fight began (1.190), before anybody is set down.
+  // Grown or shrunk by what they held as the fight began (1.194), before anybody is set down.
   rulesetSyncSizes(definition, state);
   placeRulesetCombatants(definition, combat, state, input.board);
-  // What auras spread from where everybody stands (1.258).
+  // What auras spread from where everybody stands (1.262).
   rulesetSyncAuras(definition, state);
-  // Hidden in plain sight from the start (1.287), from whoever's passive Perception does not beat
+  // Hidden in plain sight from the start (1.291), from whoever's passive Perception does not beat
   // it: a gelatinous cube's Transparent.
   if (combat.hiding) {
     for (const combatant of state.combatants) {
@@ -4165,7 +4165,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         .filter((viewer) => rulesetStaysHidden(definition, state, viewer, combatant, total, true))
         .map((viewer) => viewer.id);
       if (from.length > 0) combatant.hiding = { total, from, plain: true };
-      // Unaware of it, caught by surprise (1.304): a gelatinous cube's Transparent.
+      // Unaware of it, caught by surprise (1.308): a gelatinous cube's Transparent.
       if (traits.surprises) for (const id of from) surprise(id);
     }
   }
@@ -4176,7 +4176,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (economy.budgets.size) refreshRulesetBudgets(combat, combatant.budgets, "turn", economy.budgets);
   }
 
-  // Initiative thrown twice (1.235), by what the sheet holds or the conditions say of the check it
+  // Initiative thrown twice (1.239), by what the sheet holds or the conditions say of the check it
   // is: Feral Instinct, Foresight. Thrown once more here, after everything they hold is known.
   for (const combatant of state.combatants) {
     const lean = heldEntries(combatant).find((entry) => entry.mechanics?.initiativeMode)?.mechanics?.initiativeMode;
@@ -4186,7 +4186,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
 
   const leveled = openLevels(definition, combat, state);
   state.order = rulesetInitiativeOrder(state.combatants);
-  // A second turn this first round (1.233), placed at its own number among everybody's: 5e's
+  // A second turn this first round (1.237), placed at its own number among everybody's: 5e's
   // Thief's Reflexes. The order holds them twice until the round is over.
   const extraTurns: RulesetCombatEvent[] = [];
   {
@@ -4270,7 +4270,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   return state;
 }
 
-/** Conditions named outright, or by a kind they are (1.253), each once and in the order named. */
+/** Conditions named outright, or by a kind they are (1.257), each once and in the order named. */
 export function rulesetKindConditions(definition: RulesetDefinition, names: readonly string[]): string[] {
   const kinds = definition.combat?.conditions ?? [];
   const out: string[] = [];
@@ -4288,7 +4288,7 @@ export function rulesetImmuneToCondition(
   /** Given, what the fighter's items keep off counts too. */
   definition?: RulesetDefinition,
   state?: RulesetEncounterState,
-  /** Given, who would put it on, which a condition's `conditionImmunitiesFrom` reads (1.186). */
+  /** Given, who would put it on, which a condition's `conditionImmunitiesFrom` reads (1.190). */
   source?: RulesetCombatant,
 ): boolean {
   const wanted = condition.trim().toLowerCase();
@@ -4297,7 +4297,7 @@ export function rulesetImmuneToCondition(
     ? rulesetCombatHide(definition, combatant, state, true).conditionImmunities
     : (combatant.block?.conditionImmunities ?? []);
   if (immunities.some((entry) => entry.trim().toLowerCase() === wanted)) return true;
-  // Or to a kind it is (1.253): Divine Health, to every disease.
+  // Or to a kind it is (1.257): Divine Health, to every disease.
   const kinds = definition?.combat?.conditions?.find((entry) => entry.condition.trim().toLowerCase() === wanted)?.kinds;
   if (kinds?.some((kind) => immunities.some((entry) => entry.trim().toLowerCase() === kind.trim().toLowerCase())))
     return true;
@@ -4410,7 +4410,7 @@ export function rulesetInitiativeModifierNow(
 }
 
 /** The initiative dice of a ruleset that adds them up, thrown; none for one that throws a pool. */
-/** How a combatant's initiative is thrown now (1.235): their sheet's lean, and what their conditions
+/** How a combatant's initiative is thrown now (1.239): their sheet's lean, and what their conditions
  *  say of the check it is, cancelling each other out as everywhere else. */
 export function rulesetInitiativeMode(
   definition: RulesetDefinition,
@@ -4428,7 +4428,7 @@ export function rulesetInitiativeMode(
   return advantage ? "advantage" : "disadvantage";
 }
 
-/** The initiative dice thrown once more and the better or the worse kept (1.235), when the
+/** The initiative dice thrown once more and the better or the worse kept (1.239), when the
  *  combatant's initiative is thrown twice; their number follows. Nothing is thrown otherwise. */
 export function rulesetThrowInitiativeAgain(
   definition: RulesetDefinition,
@@ -4451,7 +4451,7 @@ export function rulesetThrowInitiativeAgain(
   combatant.initiative = sumOf(kept) + combatant.initiativeModifier;
 }
 
-/** What an initiative entry says of a throw made twice (1.235). */
+/** What an initiative entry says of a throw made twice (1.239). */
 export function rulesetInitiativeTwice(combatant: RulesetCombatant): {
   mode?: "advantage" | "disadvantage";
   dropped?: number[];
@@ -4478,13 +4478,13 @@ export function rulesetPoolInitiative(
   return { roll: thrown.rolls, modifier: dice, total: thrown.successes + (combat.initiative.plus ?? 0) };
 }
 
-/** How many cells a side this combatant's size fills (1.189), one when nothing says more. */
+/** How many cells a side this combatant's size fills (1.193), one when nothing says more. */
 export function rulesetSizeSpan(combat: RulesetCombat, combatant: RulesetCombatant): number {
   if (combatant.size === undefined) return 1;
   return combat.sizes?.order.find((size) => size.id === combatant.size)?.cells ?? 1;
 }
 
-/** The nearest top-left cell to `at` where `span` cells a side fit (1.189): inside the board, on
+/** The nearest top-left cell to `at` where `span` cells a side fit (1.193): inside the board, on
  *  nothing solid and on nobody in `taken`. Null when nowhere on the board will do. */
 export function rulesetFitCell(
   grid: TacticalGrid,
@@ -4517,7 +4517,7 @@ function fitsAt(grid: TacticalGrid, at: { x: number; y: number }, span: number, 
 }
 
 /**
- * Everybody's size as the conditions they hold now say (1.190): each condition's `size.steps` moves
+ * Everybody's size as the conditions they hold now say (1.194): each condition's `size.steps` moves
  * them along `combat.sizes`, never past its ends, and with none they are their own size again.
  *
  * On a board somebody who grows fills their new size over every cell they stood on, where it fits
@@ -4526,12 +4526,12 @@ function fitsAt(grid: TacticalGrid, at: { x: number; y: number }, span: number, 
  * keeps their top-left cell. Returns who changed, each once.
  */
 /**
- * What auras spread, brought up to date (Capability API 1.258): on whoever is now near a holder who
+ * What auras spread, brought up to date (Capability API 1.262): on whoever is now near a holder who
  * is up and able to act, off whoever is not. Worked out from scratch each time, so moving, falling
  * or waking says what it should without anybody telling it. A condition an aura spread carries no
  * aura of its own, so nothing here chains. Returns what went on and came off, for a log.
  */
-/** Who spreads what right now (1.258): a holder down, out or unable to act spreads nothing. */
+/** Who spreads what right now (1.262): a holder down, out or unable to act spreads nothing. */
 export function rulesetAuraSpreaders(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -4556,8 +4556,8 @@ export function rulesetAuraSpreaders(
 }
 
 /**
- * Whether one holder's aura reaches this combatant now (1.258): the side it names (the holder only
- * with `self`), within its distance on a board, and with the senses it `needs` (1.260), neither of
+ * Whether one holder's aura reaches this combatant now (1.262): the side it names (the holder only
+ * with `self`), within its distance on a board, and with the senses it `needs` (1.264), neither of
  * them standing in a zone that takes those away (Silence). Without a board it reaches its side.
  */
 export function rulesetAuraReaches(
@@ -4566,24 +4566,24 @@ export function rulesetAuraReaches(
   holder: RulesetCombatant,
   aura: RulesetConditionAura,
   target: RulesetCombatant,
-  /** The condition on the holder that spreads it, which a chosen kind is remembered by (1.265). */
+  /** The condition on the holder that spreads it, which a chosen kind is remembered by (1.269). */
   condition?: string,
 ): boolean {
   if (target.defeated) return false;
-  // Nor through a sphere (1.309), either way.
+  // Nor through a sphere (1.313), either way.
   if (rulesetSealedApart(definition, state, holder, target)) return false;
   const same = holder.side === target.side;
   if (holder.id === target.id ? !aura.self : aura.side === (same ? "enemies" : "allies")) return false;
   const perCell = definition.combat?.distance?.perCell;
   if (state.board?.grid && perCell !== undefined && holder.id !== target.id) {
-    // Past its distance, it still reaches whoever can see its holder where it says so (1.265).
+    // Past its distance, it still reaches whoever can see its holder where it says so (1.269).
     if (
       rulesetGap(holder, target) > rulesetInCells(aura.distance, perCell) &&
       !(aura.orSeen && rulesetCanSee(definition, state, target, holder))
     )
       return false;
   }
-  // Only the kind named as it was put on (1.265): Antipathy/Sympathy's.
+  // Only the kind named as it was put on (1.269): Antipathy/Sympathy's.
   if (aura.chosenKind) {
     const kind = holder.tracked.find((entry) => entry.condition === condition && entry.kind)?.kind;
     const what = rulesetCreatureKind(definition, target);
@@ -4593,9 +4593,9 @@ export function rulesetAuraReaches(
     if (!rulesetTargetHasSenses(definition, state, target, aura.needs)) return false;
     if (zoneTakesSenses(definition, state, holder, aura.needs)) return false;
   }
-  // Only who is this (1.263): a sea hag's humanoids.
+  // Only who is this (1.267): a sea hag's humanoids.
   if (!rulesetTargetTypesAllow(definition, target, aura.targetTypes)) return false;
-  // Only who has put one of these on its holder (1.263): whoever grapples a barbed devil.
+  // Only who has put one of these on its holder (1.267): whoever grapples a barbed devil.
   if (aura.sourcesOf?.length) {
     const named = aura.sourcesOf;
     if (!holder.tracked.some((entry) => entry.source === target.id && named.includes(entry.condition))) return false;
@@ -4762,7 +4762,7 @@ function placeRulesetCombatants(
     }
     placed.push({ combatant, at });
   }
-  // Somebody bigger than one cell fills as many a side as their size says (1.189), set down where
+  // Somebody bigger than one cell fills as many a side as their size says (1.193), set down where
   // all of them fit: on the board, on open ground and clear of whoever was set down first, the
   // nearest such place to where they were asked to stand.
   // The big are set down first, and anybody of one cell asked to stand inside one of them steps
@@ -4808,7 +4808,7 @@ function readStoredLive(stored: unknown): RulesetLiveState {
   return stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as RulesetLiveState) : {};
 }
 
-/** A copy of what disperses a fog (1.281, 1.284): at once, or after it stands in a wind a while. */
+/** A copy of what disperses a fog (1.285, 1.288): at once, or after it stands in a wind a while. */
 export function rulesetCopyDispersed(dispersed: true | { after: number }): true | { after: number } {
   return dispersed === true ? true : { after: dispersed.after };
 }

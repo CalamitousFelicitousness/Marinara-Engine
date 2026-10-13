@@ -1,5 +1,5 @@
 /**
- * Left over from 1.302 and 1.304 (Capability API 1.306).
+ * Left over from 1.306 and 1.308 (Capability API 1.310).
  *
  *   - An item's use may put conditions on its own reader (`appliesSelf`): a scroll of Sunbeam leaves
  *     the mote in its reader's hand.
@@ -347,7 +347,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an item use that puts conditions on its reader, creature actions that slay the dying, or conditions a rule ends when their holder moves or acts requires schemaVersion 2 and capabilityApi 1.306 or newer";
+      "A ruleset with an item use that puts conditions on its reader, creature actions that slay the dying, or conditions a rule ends when their holder moves or acts requires schemaVersion 2 and capabilityApi 1.310 or newer";
     const base = () => JSON.parse(fiveEText) as Record<string, any>;
     const withEntries = (doc: Record<string, any>, catalog: Record<string, unknown>) => {
       doc.catalogs.push(catalog);
@@ -368,20 +368,20 @@ try {
       withEntries(base(), { id: "fey", label: "Fey", holds: "creatures", entries: [wisp] }),
       ruled,
     ]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(306) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(309) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(310) as never, doc), gate);
     }
     for (const doc of [
       base(),
       withEntries(itemDoc(), { id: "gear", label: "Gear", holds: "items", entries: [plainScroll] }),
       withEntries(base(), { id: "fey", label: "Fey", holds: "creatures", entries: [quietWisp] }),
     ]) {
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate, "nothing new, no gate");
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(309) as never, doc), gate, "nothing new, no gate");
     }
   }
 
   console.log(
-    "Leftovers 306: a scroll of Sunbeam's mote on its reader, a will-o'-wisp's Consume Life at the dying only, killing on a failed save and feeding it, camouflage gone on a step or an action; refusals; gated at 1.306.",
+    "Leftovers 306: a scroll of Sunbeam's mote on its reader, a will-o'-wisp's Consume Life at the dying only, killing on a failed save and feeding it, camouflage gone on a step or an action; refusals; gated at 1.310.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

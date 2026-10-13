@@ -1,5 +1,5 @@
 /**
- * Weapons that know what they hit (Capability API 1.182).
+ * Weapons that know what they hit (Capability API 1.186).
  *
  *   - `against`: a mace of smiting is more accurate against constructs, in the roll and the forecast.
  *   - `plus` clauses: `not` (a sword of life stealing feeds on no construct), `tempHp` (and its wielder
@@ -376,7 +376,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with weapons that hit harder by what they hit, slay, drain, add only when thrown, or wound once a turn requires schemaVersion 2 and capabilityApi 1.182 or newer";
+      "A ruleset with weapons that hit harder by what they hit, slay, drain, add only when thrown, or wound once a turn requires schemaVersion 2 and capabilityApi 1.186 or newer";
     const withItem = (item: RulesetSheetItem["item"]) =>
       document((doc) => {
         doc.catalogs.push({ id: "gear", label: "Gear", holds: "items", entries: [{ id: "w", label: "W", item }] });
@@ -389,20 +389,20 @@ try {
       ["oncePerTurn", wounding],
       ["slay", vorpal],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(181) as never, withItem(one.item)), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(182) as never, withItem(one.item)), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(185) as never, withItem(one.item)), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(186) as never, withItem(one.item)), gate, label);
     }
     for (const [label, plus] of [
       ["not", { dice: "1d6", not: { types: ["beast"] } }],
       ["tempHp", { dice: "1d6", tempHp: true }],
     ] as const) {
       assert.equal(
-        getCapabilityPackageInstallIssue(manifest(181) as never, withItem(weapon("X", { plus: [plus] }).item)),
+        getCapabilityPackageInstallIssue(manifest(185) as never, withItem(weapon("X", { plus: [plus] }).item)),
         gate,
         label,
       );
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(181) as never, document()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(185) as never, document()), gate, "the plain 5e example");
   }
 
   console.log(

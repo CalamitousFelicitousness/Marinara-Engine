@@ -312,9 +312,9 @@ try {
       damageType: "radiant",
       fromSource: true,
     })) {
-      // Attacks are narrowed by ability since 1.183 (game-ruleset-combat-ability-narrowing).
+      // Attacks are narrowed by ability since 1.187 (game-ruleset-combat-ability-narrowing).
       if (key === "ability" && to === "attacks") continue;
-      // Attacks are narrowed by kind of attack and blow since 1.242 (game-ruleset-combat-reckless).
+      // Attacks are narrowed by kind of attack and blow since 1.246 (game-ruleset-combat-reckless).
       if ((key === "attacks" || key === "blow") && to === "attacks") continue;
       const doc = document((one) => {
         one.combat.conditions.at(-1).modifiers = [

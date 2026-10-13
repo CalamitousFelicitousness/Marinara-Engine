@@ -1,5 +1,5 @@
 /**
- * A cure that does one of its cures (Capability API 1.199).
+ * A cure that does one of its cures (Capability API 1.203).
  *
  *   - `mechanics.cureOneOf`: 5e's Greater Restoration ends a charm or a petrification, takes a level
  *     of exhaustion off, or gives the lowered maximum back: ONE of them. Each is a mode of the
@@ -228,18 +228,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with cures that do one of their cures requires schemaVersion 2 and capabilityApi 1.199 or newer";
+      "A ruleset with cures that do one of their cures requires schemaVersion 2 and capabilityApi 1.203 or newer";
     const without = JSON.parse(fiveEText);
     const withOne = fiveE((doc) => (doc.catalogs.at(-1).entries = [greater]));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(198) as never, withOne), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(199) as never, withOne), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(198) as never, without), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(202) as never, withOne), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(203) as never, withOne), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(202) as never, without), gate);
     const files = new Map([["spells.json", { entries: [greater] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(198) as never, without, files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(202) as never, without, files as never), gate);
   }
 
   console.log(
-    "Ruleset cure one of: Greater Restoration does one of its cures, picked as a mode or else the first the target needs; gated at 1.199.",
+    "Ruleset cure one of: Greater Restoration does one of its cures, picked as a mode or else the first the target needs; gated at 1.203.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

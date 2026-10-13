@@ -1,5 +1,5 @@
 /**
- * Heightened's target and Acid Arrow (Capability API 1.250).
+ * Heightened's target and Acid Arrow (Capability API 1.254).
  *
  *   - Heightened gives the target its user picks (`heightens`) disadvantage on their first save,
  *     the pick holding through a window; left out, the first it catches.
@@ -427,22 +427,22 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with entries dealing half on a miss, or conditions harming more at a higher cost, requires schemaVersion 2 and capabilityApi 1.250 or newer";
+      "A ruleset with entries dealing half on a miss, or conditions harming more at a higher cost, requires schemaVersion 2 and capabilityApi 1.254 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     for (const extra of [{ mechanics: { halfOnMiss: true } }, { applies: [{ harmsPerCostStep: { dice: "1d4" } }] }]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(249, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(250, document), gate);
+      assert.equal(issue(253, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(254, document), gate);
     }
-    assert.notEqual(issue(249, without), gate);
-    assert.equal(issue(249, without, new Map([["spells.json", { entries: spells }]])), gate);
+    assert.notEqual(issue(253, without), gate);
+    assert.equal(issue(253, without, new Map([["spells.json", { entries: spells }]])), gate);
   }
 
   console.log(
-    "Ruleset Heightened and Acid Arrow: Heightened's target is picked, through a window; Acid Arrow halves on a miss and its later acid grows with the slot; gated at 1.250.",
+    "Ruleset Heightened and Acid Arrow: Heightened's target is picked, through a window; Acid Arrow halves on a miss and its later acid grows with the slot; gated at 1.254.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * A second turn in a fight's first round (Capability API 1.233): 5e's Thief's Reflexes.
+ * A second turn in a fight's first round (Capability API 1.237): 5e's Thief's Reflexes.
  *
  *   - A sheet row whose entry has `extraFirstTurn` takes a second turn in round 1, at its own
  *     initiative plus the entry's number, after everybody at that number or above it.
@@ -202,19 +202,19 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with uses that give a second turn in a fight's first round requires schemaVersion 2 and capabilityApi 1.233 or newer";
+      "A ruleset with uses that give a second turn in a fight's first round requires schemaVersion 2 and capabilityApi 1.237 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     const giving = fiveE(reflexes);
-    assert.equal(issue(232, giving), gate);
-    assert.notEqual(issue(233, giving), gate);
-    assert.notEqual(issue(232, without), gate);
-    assert.equal(issue(232, without, new Map([["rogue.json", { entries: [reflexes] }]])), gate);
+    assert.equal(issue(236, giving), gate);
+    assert.notEqual(issue(237, giving), gate);
+    assert.notEqual(issue(236, without), gate);
+    assert.equal(issue(236, without, new Map([["rogue.json", { entries: [reflexes] }]])), gate);
   }
 
   console.log(
-    "Ruleset extra turn: Thief's Reflexes takes a second first-round turn at initiative - 10, not when surprised, one turn a round after; gated at 1.233.",
+    "Ruleset extra turn: Thief's Reflexes takes a second first-round turn at initiative - 10, not when surprised, one turn a round after; gated at 1.237.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

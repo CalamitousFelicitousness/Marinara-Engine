@@ -1,5 +1,5 @@
 /**
- * The dark keeping eyes from seeing (Capability API 1.289).
+ * The dark keeping eyes from seeing (Capability API 1.293).
  *
  *   - `combat.sight.darkness`: in darkness nobody is seen, in dim light nobody clearly, but by a
  *     sense of `seeIn` (darkvision, one step brighter) or a blind or `pierced` sense (whatever the
@@ -311,7 +311,7 @@ try {
     // Obscured where they stand: in the dark, not in the torchlight.
     assert.equal(rulesetStandsObscured(night, who(night, "goblin"), definition), true);
     assert.equal(rulesetStandsObscured(night, who(night, "hero"), definition), false);
-    // Without the definition, the board's own light as before (1.286).
+    // Without the definition, the board's own light as before (1.290).
     assert.equal(rulesetStandsObscured(night, who(night, "hero")), true);
     // A creature's mode in bright light reads the light where it stands.
     const owl = (at: [number, number]) =>
@@ -437,19 +437,19 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose fights are kept dark, or with things that shed light, requires schemaVersion 2 and capabilityApi 1.289 or newer";
+      "A ruleset whose fights are kept dark, or with things that shed light, requires schemaVersion 2 and capabilityApi 1.293 or newer";
     const dark = JSON.parse(fiveEText) as Record<string, any>;
     dark.combat.sight = { darkness: { seeIn: ["darkvision"] } };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(288) as never, dark), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(289) as never, dark), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(292) as never, dark), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(293) as never, dark), gate);
     const torch = JSON.parse(fiveEText) as Record<string, any>;
     torch.combat.conditions.push({ condition: "prone", light: { bright: 20, dim: 20 } });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(288) as never, torch), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(288) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(292) as never, torch), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(292) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Darkness: nobody seen in the dark and nobody clearly in dim light but by darkvision, blindsight or truesight within range; torches carried, the Light cantrip, a creature's own light, walls keeping it out; attacks, hiding, standing obscured and creature modes read it; refusals; gated at 1.289.",
+    "Darkness: nobody seen in the dark and nobody clearly in dim light but by darkvision, blindsight or truesight within range; torches carried, the Light cantrip, a creature's own light, walls keeping it out; attacks, hiding, standing obscured and creature modes read it; refusals; gated at 1.293.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

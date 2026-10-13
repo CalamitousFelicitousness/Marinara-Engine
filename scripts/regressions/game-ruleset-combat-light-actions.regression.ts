@@ -1,5 +1,5 @@
 /**
- * Lights switched in a fight (Capability API 1.291).
+ * Lights switched in a fight (Capability API 1.295).
  *
  *   - A creature action that `sheds` a light, or `"out"`, and nothing else: the magmin's Ignited
  *     Illumination, a will-o'-wisp's Variable Illumination. A creature `unlit` begins with its light
@@ -267,7 +267,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creatures that light or put out their own light, or items that shed light while switched off, requires schemaVersion 2 and capabilityApi 1.291 or newer";
+      "A ruleset with creatures that light or put out their own light, or items that shed light while switched off, requires schemaVersion 2 and capabilityApi 1.295 or newer";
     for (const thing of [
       creature("a", {}, [{ id: "x", name: "X", budget: "bonus", sheds: "out" }]),
       creature("b", { unlit: true }, []),
@@ -279,13 +279,13 @@ try {
     ]) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures").entries.push(thing);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(290) as never, doc), gate, thing.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(291) as never, doc), gate, thing.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(294) as never, doc), gate, thing.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(295) as never, doc), gate, thing.id);
     }
   }
 
   console.log(
-    "Light actions: a magmin unlit, set ablaze and put out with its bonus action, a will-o'-wisp's light made smaller and put out, a hooded lantern's dim light with its hood down; refusals; gated at 1.291.",
+    "Light actions: a magmin unlit, set ablaze and put out with its bonus action, a will-o'-wisp's light made smaller and put out, a hooded lantern's dim light with its hood down; refusals; gated at 1.295.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

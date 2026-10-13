@@ -1,5 +1,5 @@
 /**
- * Legendary casts (Capability API 1.279).
+ * Legendary casts (Capability API 1.283).
  *
  *   - `casting` on a creature's signature action: a lich's Cantrip (`cantripsOnly`) and a sphinx's
  *     Cast a Spell, offered between turns as each of its spells its own turn would offer, aimed the
@@ -460,16 +460,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with a legendary cast requires schemaVersion 2 and capabilityApi 1.279 or newer";
+    const gate = "A ruleset with a legendary cast requires schemaVersion 2 and capabilityApi 1.283 or newer";
     const doc = fiveE((doc) =>
       doc.catalogs.push({ id: "x", label: "X", entries: [{ id: "a", label: "A", creature: { actions: [cantrip] } }] }),
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(278) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(279) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(278) as never, fiveE()), gate, "the plain 5e example");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(282) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(283) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(282) as never, fiveE()), gate, "the plain 5e example");
     // A builder's stamp of a "casting" column is not one.
     const stamp = fiveE((doc) => (doc.sheet.stampExample = { stamp: { casting: { fromWithin: "ability" } } }));
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(278) as never, stamp), gate, "a casting stamp");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(282) as never, stamp), gate, "a casting stamp");
   }
 
   console.log(

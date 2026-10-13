@@ -116,13 +116,13 @@ export interface GameInventoryRulesetItem {
   slots?: Readonly<Record<string, number>>;
   /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. Its bearer
    *  binds it only with one item of each `needsWorn` group worn, and it comes unbound when one comes
-   *  off (1.308). */
+   *  off (1.312). */
   binds?: { cursed?: boolean; needsWorn?: ReadonlyArray<{ anyOf: readonly string[] }> };
   /** Bought and never carried (#6917): nothing adds it to a bag. */
   service?: true;
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
    *  one spent rolls a d`die` that breaks it at `atMost` or under, or at `regains.atLeast` or over
-   *  gives back `count`d`sides` + `flat` charges (1.266). */
+   *  gives back `count`d`sides` + `flat` charges (1.270). */
   charges?: {
     cost: number;
     max: number;
@@ -130,11 +130,11 @@ export interface GameInventoryRulesetItem {
       die: number;
       atMost?: number;
       regains?: { atLeast: number; count: number; sides: number; flat: number };
-      /** What it becomes in place of breaking (1.267), "<catalog>/<entry>". */
+      /** What it becomes in place of breaking (1.271), "<catalog>/<entry>". */
       becomes?: string;
     };
   };
-  /** It has a switch (Capability API 1.165): what turning it on does, in the ruleset's words. */
+  /** It has a switch (Capability API 1.169): what turning it on does, in the ruleset's words. */
   toggle?: { label: string };
 }
 
@@ -1241,7 +1241,7 @@ export function wearGameInventoryStack(
     if (!stack[flag]) return { stacks, id };
     if (keptByCurse(stack, rules)) return { refused: "cursed" };
     const { [flag]: _dropped, ...rest } = stack;
-    // Whatever its binding needed worn, it no longer is (1.308).
+    // Whatever its binding needed worn, it no longer is (1.312).
     return {
       stacks: releaseGameInventoryUnmetBindings(
         stacks.map((each, i) => (i === index ? rest : each)),
@@ -1312,7 +1312,7 @@ export function gameInventoryWearNeeds(item: { slots?: Readonly<Record<string, n
   return { ...(takesSlots ? { equipped: true as const } : {}), ...(item.binds ? { bound: true as const } : {}) };
 }
 
-/** Whether what a stack's binding needs worn is worn (1.308): for each group of its item's
+/** Whether what a stack's binding needs worn is worn (1.312): for each group of its item's
  *  `binds.needsWorn`, another stack in its bearer's bag of one of the items named, worn and bound as
  *  that item asks. */
 function bindingNeedsMet(
@@ -1334,7 +1334,7 @@ function bindingNeedsMet(
   );
 }
 
-/** The stacks with every binding whose needed items are no longer worn undone (1.308): the hammer
+/** The stacks with every binding whose needed items are no longer worn undone (1.312): the hammer
  *  unbound once its belt or gauntlets come off, or leave its bearer's bag. */
 export function releaseGameInventoryUnmetBindings(
   stacks: GameInventoryStack[],

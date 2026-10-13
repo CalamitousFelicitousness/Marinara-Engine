@@ -1,5 +1,5 @@
 /**
- * Charges spent on a hit (Capability API 1.268).
+ * Charges spent on a hit (Capability API 1.272).
  *
  *   - A weapon's `attack.spends`: once a blow with it has hit, its holder may spend the item's
  *     charges for more harm with the blow (a Staff of Power's Power Strike), more for each charge
@@ -413,20 +413,20 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a weapon whose charges are spent on its hits requires schemaVersion 2 and capabilityApi 1.268 or newer";
+      "A ruleset with a weapon whose charges are spent on its hits requires schemaVersion 2 and capabilityApi 1.272 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const plain = document((doc) => {
       doc.catalogs.pop();
     });
-    assert.notEqual(issue(267, plain), gate, "nothing of 1.268 left");
-    assert.equal(issue(267, document()), gate);
-    assert.notEqual(issue(268, document()), gate);
-    assert.equal(issue(267, plain, new Map([["extra.json", [{ id: "x", item: { attack: { spends: [] } } }]]])), gate);
+    assert.notEqual(issue(271, plain), gate, "nothing of 1.272 left");
+    assert.equal(issue(271, document()), gate);
+    assert.notEqual(issue(272, document()), gate);
+    assert.equal(issue(271, plain, new Map([["extra.json", [{ id: "x", item: { attack: { spends: [] } } }]]])), gate);
   }
 
   console.log(
-    "Ruleset charged hits: a staff's charges spent on its own hit (Power Strike's 1d6 force, Striking's 1d6 a charge up to three, Withering's 2d10 necrotic and its Constitution save), only on that weapon's hit and while it holds them, its last charge rolling its die; facts, refusals and the gate at 1.268.",
+    "Ruleset charged hits: a staff's charges spent on its own hit (Power Strike's 1d6 force, Striking's 1d6 a charge up to three, Withering's 2d10 necrotic and its Constitution save), only on that weapon's hit and while it holds them, its last charge rolling its die; facts, refusals and the gate at 1.272.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -215,9 +215,9 @@ export interface RulesetFightSeed {
   partyCatalogs: RulesetCatalogEntriesById;
   /** Every catalog of this ruleset that holds creatures. */
   bestiary: RulesetCatalogEntriesById;
-  /** Who is caught unaware as it begins (1.232), by id, as the Game Master set the scene. */
+  /** Who is caught unaware as it begins (1.236), by id, as the Game Master set the scene. */
   surprised?: string[];
-  /** The scene's time of day as the game tracks it (1.286), which sets the light outdoors. */
+  /** The scene's time of day as the game tracks it (1.290), which sets the light outdoors. */
   time?: string | null;
 }
 
@@ -462,7 +462,7 @@ function buildRulesetBoard(
   }
   const placements: Record<string, { x: number; y: number }> = {};
   for (const stand of stands) placements[stand.id] = { x: stand.x, y: stand.y };
-  // The light it is fought in and the kind of place it is (1.286): what keen eyes, a sensitivity
+  // The light it is fought in and the kind of place it is (1.290): what keen eyes, a sensitivity
   // to light, camouflage and hiding in shadows read.
   const environment = input.environment ? normalizeTacticalEnvironment(input.environment) : undefined;
   const light = rulesetBoardLightFor(input.time, environment);
@@ -477,14 +477,14 @@ function buildRulesetBoard(
 
 /** Places a fight's light comes from its own lamps rather than the sky. */
 const INDOOR_ENVIRONMENTS = new Set(["dungeon", "cave", "castle", "mansion", "spaceship"]);
-/** Places with no lamps of their own (1.289): dark whatever the hour, lit only by what is carried. */
+/** Places with no lamps of their own (1.293): dark whatever the hour, lit only by what is carried. */
 const DARK_ENVIRONMENTS = new Set(["dungeon", "cave"]);
 
 /**
- * The light a fight is fought in (1.286), off the scene's time of day: outdoors, the sun by day,
+ * The light a fight is fought in (1.290), off the scene's time of day: outdoors, the sun by day,
  * dim light at dawn and dusk, darkness at night; indoors, or when the time says nothing it
  * understands, bright light that is not the sun's (nothing said). A clock reading ("14:30",
- * "7pm") is read by its hour. A cave or a dungeon is dark at any hour (1.289).
+ * "7pm") is read by its hour. A cave or a dungeon is dark at any hour (1.293).
  */
 export function rulesetBoardLightFor(
   time: string | null | undefined,
@@ -562,7 +562,7 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
   // The ruleset decides who won, not the Engine's own hit points. They agree, because the numbers
   // below are the same numbers, but the ruleset is the one that is read.
   const outcome = rulesetEncounterOutcome(fight.encounter);
-  // A party gone from the fight alive (1.274) got away, as fleeing does.
+  // A party gone from the fight alive (1.278) got away, as fleeing does.
   if (!state.outcome && outcome !== "ongoing") state.outcome = outcome === "fled" ? "flee" : outcome;
   // The Engine's own round is the ruleset's round here, so the shell's header and the recap's
   // "after N rounds" report the fight that was actually fought rather than staying on round one.
@@ -706,7 +706,7 @@ export function rulesetMenu(
     ? rulesetWindowOptions(definition, encounter, actorId)
     : rulesetCombatOptions(definition, encounter, actorId);
   return menu.map((option) => {
-    // A teleport is aimed as a shape is (1.271): at a cell it may go to, catching nobody.
+    // A teleport is aimed as a shape is (1.275): at a cell it may go to, catching nobody.
     const aim = option.area
       ? rulesetAimCells(encounter, actorId, option.id, RULESET_AIM_LIMIT)
       : (option.teleport?.cells.map((cell) => ({ x: cell.x, y: cell.y, targetIds: [] as string[] })) ?? []);
@@ -883,7 +883,7 @@ export function rulesetWalkableCells(
   const foes = encounter.combatants.filter(
     (combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant) && rulesetPositionOf(combatant),
   );
-  // Footprint to footprint (1.189).
+  // Footprint to footprint (1.193).
   const span = rulesetSpanOf(actor);
   const away = (cell: { x: number; y: number }) =>
     foes.reduce((closest, foe) => Math.min(closest, rulesetGapFrom(cell, span, foe)), Infinity);
@@ -939,7 +939,7 @@ const paying = (way: { payWith?: string; style?: string; mode?: string; option?:
   ...(way.payWith === undefined ? {} : { payWith: way.payWith }),
   ...(way.style === undefined ? {} : { style: way.style }),
   ...(way.mode === undefined ? {} : { mode: way.mode }),
-  // One castable now only with an alteration (1.248) is cast with it: Quickened once the action is spent.
+  // One castable now only with an alteration (1.252) is cast with it: Quickened once the action is spent.
   ...(way.option?.alterNeeded ? { alters: [way.option.alterNeeded] } : {}),
 });
 
@@ -1157,25 +1157,25 @@ function rulesetCandidatesFrom(
   }
   for (const way of priced(definition, encounter, actor, menu)) {
     const { option, price } = way;
-    // Turning a line or cone the actor carries (1.177) is weighed the same way, before any walk.
+    // Turning a line or cone the actor carries (1.181) is weighed the same way, before any walk.
     if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
       const turned = standing ? null : zoneTurnCandidate(encounter, actor, option, price);
       if (turned) candidates.push(turned);
       continue;
     }
-    // Moving a lasting area (1.168) is weighed from where the actor stands, by whom it would catch.
+    // Moving a lasting area (1.172) is weighed from where the actor stands, by whom it would catch.
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
       const moved = standing ? null : zoneMoveCandidate(encounter, actor, option, price);
       if (moved) candidates.push(moved);
       continue;
     }
-    // A teleport (1.271) is weighed from where the actor stands, by where it would take them.
+    // A teleport (1.275) is weighed from where the actor stands, by where it would take them.
     if (option.teleport) {
       const gone = standing ? null : teleportCandidate(definition, combat, encounter, actor, option, way, price);
       if (gone) candidates.push(gone);
       continue;
     }
-    // A legendary move (1.278) the same way, by where it would take them.
+    // A legendary move (1.282) the same way, by where it would take them.
     if (option.signature && option.cells && !option.moveAfter) {
       const moved = standing ? null : legendaryMoveCandidate(definition, combat, encounter, actor, option, price);
       if (moved) candidates.push(moved);
@@ -1186,7 +1186,7 @@ function rulesetCandidatesFrom(
     if (option.kind === "move") continue;
     // Averting the eyes is settled as the turn starts (see `playRulesetTurn`).
     if (option.avert) continue;
-    // Putting away a weapon put in hand (1.303) is its player's own call: the Engine keeps it.
+    // Putting away a weapon put in hand (1.307) is its player's own call: the Engine keeps it.
     if (option.dismiss) continue;
     // From another cell, only what the actor would do THERE is worth enumerating: everything it
     // could do without moving is already on the list.
@@ -1195,7 +1195,7 @@ function rulesetCandidatesFrom(
       candidates.push({ action: { choice: { actorId, optionId: option.id, targetIds: [] }, option }, hold: true });
       continue;
     }
-    // A weapon put in hand (1.301), once, before it fights: the one that hits hardest of those it
+    // A weapon put in hand (1.305), once, before it fights: the one that hits hardest of those it
     // may make or bind. With one in hand already it is never taken again.
     const conjuring = actor.actions.find((entry) => entry.id === option.id);
     if (conjuring?.conjures) {
@@ -1240,7 +1240,7 @@ function rulesetCandidatesFrom(
       for (const targetId of rulesetOptionTargets(definition, encounter, actorId, option)) {
         const target = rulesetCombatant(encounter, targetId);
         if (!target) continue;
-        // Treating somebody (1.188): steadying a friend who is dying, or ending what holds a friend.
+        // Treating somebody (1.192): steadying a friend who is dying, or ending what holds a friend.
         const ally = target.side === actor.side;
         const steadies = ally && !!contest.stabilizes && target.dying && !target.stable && !target.defeated;
         if (target.down && !steadies) continue;
@@ -1282,7 +1282,7 @@ function rulesetCandidatesFrom(
       });
       continue;
     }
-    // A burst centred on the actor (1.277) is worth whom it catches from where it stands: the other
+    // A burst centred on the actor (1.281) is worth whom it catches from where it stands: the other
     // side for it, its own against it, or the other way round for one that mends.
     const aroundAction = fallingAction?.around ? fallingAction : undefined;
     if (aroundAction) {
@@ -1379,7 +1379,7 @@ function rulesetCandidatesFrom(
               .filter((other): other is RulesetCombatant => !!other && other.side !== actor.side && !other.down)
               .slice(0, option.targets.count - 1)
           : [];
-        // What is left of one that may be pointed at the same one again (1.300) goes at this one:
+        // What is left of one that may be pointed at the same one again (1.304) goes at this one:
         // eldritch blast's every beam.
         const again = option.targets.repeat ? Math.max(0, option.targets.count - 1 - others.length) : 0;
         if (!lands)
@@ -1399,7 +1399,7 @@ function rulesetCandidatesFrom(
       candidates.push(candidate);
     }
   }
-  // A legendary action that moves after what it does (1.280): on to where a teleport would go, or
+  // A legendary action that moves after what it does (1.284): on to where a teleport would go, or
   // nowhere when nowhere is worth it.
   for (const candidate of standing ? [] : candidates) {
     const { option, choice } = candidate.action;
@@ -1474,7 +1474,7 @@ function areaCandidates(
   return candidates;
 }
 
-/** What a shape is worth by whom it catches (an aimed one, or one centred on its maker, 1.277): the
+/** What a shape is worth by whom it catches (an aimed one, or one centred on its maker, 1.281): the
  *  harm to the other side less the harm to its own, healing for its own, or a setup or a support.
  *  False when it is worth nothing. */
 function weighCaught(
@@ -1542,7 +1542,7 @@ function zoneMoveCandidate(
     let total = 0;
     for (const one of encounter.combatants) {
       if (typeof one.x !== "number" || typeof one.y !== "number" || one.down) continue;
-      // Caught by any cell they fill (1.189).
+      // Caught by any cell they fill (1.193).
       const inside = rulesetFootprint(one).some((cell) => cells.has(`${cell.x},${cell.y}`));
       if (!inside || !rulesetZoneCatches(actor, zone, action, one)) continue;
       total += one.side === actor.side ? -1 : 1;
@@ -1567,7 +1567,7 @@ function zoneMoveCandidate(
 }
 
 /**
- * Where an opponent teleports to (1.271), if anywhere: away from the enemies beside it when it is
+ * Where an opponent teleports to (1.275), if anywhere: away from the enemies beside it when it is
  * hurt badly enough (half its health or less), as far from the nearest of them as it can get, or,
  * when it fights in reach and has nobody in reach, next to the nearest enemy. Otherwise nowhere:
  * spending it to stand somewhere else for nothing is an opponent played badly.
@@ -1582,7 +1582,7 @@ function teleportCandidate(
   price: number,
 ): CombatAiCandidate<RulesetCandidate> | null {
   const cells = option.teleport?.cells ?? [];
-  // Out of the fight (1.274), when it is going badly: at a quarter of its health or less, with
+  // Out of the fight (1.278), when it is going badly: at a quarter of its health or less, with
   // whoever may go along.
   if (option.teleport?.leaves) {
     const health = rulesetCombatHealth(definition, combat, actor);
@@ -1622,7 +1622,7 @@ function teleportCandidate(
   };
 }
 
-/** A legendary move (1.278), weighed as a teleport is: away when hurt and beside an enemy, or into
+/** A legendary move (1.282), weighed as a teleport is: away when hurt and beside an enemy, or into
  *  reach of one when none is. */
 function legendaryMoveCandidate(
   definition: RulesetDefinition,
@@ -1685,7 +1685,7 @@ function repositionCell(
 }
 
 /**
- * Which way to turn a line or cone its actor carries (1.177): the facing that would catch the most
+ * Which way to turn a line or cone its actor carries (1.181): the facing that would catch the most
  * standing opponents less friends, and only when that beats the way it faces now.
  */
 function zoneTurnCandidate(
@@ -1703,7 +1703,7 @@ function zoneTurnCandidate(
     let total = 0;
     for (const one of encounter.combatants) {
       if (typeof one.x !== "number" || typeof one.y !== "number" || one.down) continue;
-      // Caught by any cell they fill (1.189).
+      // Caught by any cell they fill (1.193).
       const inside = rulesetFootprint(one).some((cell) => cells.has(`${cell.x},${cell.y}`));
       if (!inside || !rulesetZoneCatches(actor, zone, action, one)) continue;
       total += one.side === actor.side ? -1 : 1;
@@ -1743,7 +1743,7 @@ export function rulesetClosingMove(
   const actor = rulesetCombatant(encounter, actorId);
   const from = rulesetPositionOf(actor);
   if (!actor || !from || !encounter.board?.grid) return null;
-  // Driven away from, or toward, whoever put a condition on (1.259): as far off, or as near, as the
+  // Driven away from, or toward, whoever put a condition on (1.263): as far off, or as near, as the
   // walk goes. The cells offered already only go that way.
   const driven = rulesetDrivenFrom(definition, encounter, actor);
   if (driven) {
@@ -1761,11 +1761,11 @@ export function rulesetClosingMove(
   }
   const foes = encounter.combatants
     .filter((combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant))
-    // Every cell an opponent fills (1.189).
+    // Every cell an opponent fills (1.193).
     .flatMap((combatant) => rulesetFootprint(combatant));
   if (foes.length === 0) return null;
   const walking = rulesetWalkingDistances(encounter.board.grid, foes, actor);
-  // Somebody bigger than one cell is as near as the nearest cell they would fill (1.189).
+  // Somebody bigger than one cell is as near as the nearest cell they would fill (1.193).
   const span = rulesetSpanOf(actor);
   const nearest = (cell: { x: number; y: number }) =>
     Math.min(...rulesetFootprintAt(cell, span).map((one) => walking.get(`${one.x},${one.y}`) ?? Infinity));
@@ -1791,7 +1791,7 @@ export function rulesetClosingMove(
   };
 }
 
-/** Whoever a condition on this actor drives them away from or toward (1.259), standing on the board. */
+/** Whoever a condition on this actor drives them away from or toward (1.263), standing on the board. */
 function rulesetDrivenFrom(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
@@ -1904,7 +1904,7 @@ function answerRulesetWindows(
     if (controller === "manual") return;
     if (controller === "gm" && openRulesetWindowDecision(definition, state, fight, asking)) return;
     const menu = rulesetWindowOptions(definition, fight.encounter, asking);
-    // Somebody hidden from it, and a Detect to look for them with (1.282).
+    // Somebody hidden from it, and a Detect to look for them with (1.286).
     const looking = searchOption(definition, fight.encounter, asking, menu, false);
     const picked = looking
       ? null
@@ -1968,12 +1968,12 @@ function playRulesetTurn(
     (option) => option.id === RULESET_STAND_OPTION,
   );
   if (stand) applyChoice(definition, state, fight, { actorId, optionId: stand.id, targetIds: [] });
-  // And picks up what it dropped (1.261), with the turn's free pick-up.
+  // And picks up what it dropped (1.265), with the turn's free pick-up.
   const pickUp = rulesetCombatOptions(definition, fight.encounter, actorId).find(
     (option) => option.pickUp && !option.budget,
   );
   if (pickUp) applyChoice(definition, state, fight, { actorId, optionId: pickUp.id, targetIds: [] });
-  // A gaze it may keep its eyes from (1.263): kept from while anybody else is left to fight, looked
+  // A gaze it may keep its eyes from (1.267): kept from while anybody else is left to fight, looked
   // at again once its holder is all that is left.
   for (const option of rulesetCombatOptions(definition, fight.encounter, actorId)) {
     if (!option.avert) continue;
@@ -1984,11 +1984,11 @@ function playRulesetTurn(
     if (option.avert.back ? !others : others)
       applyChoice(definition, state, fight, { actorId, optionId: option.id, targetIds: [] });
   }
-  // Driven away or toward somebody (1.259), the walk comes first, sprinting where it may.
+  // Driven away or toward somebody (1.263), the walk comes first, sprinting where it may.
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
     walkTowardsTrouble(definition, state, fight, actorId);
-  // Everybody it could fight is hidden from it (1.282): it looks for them first.
+  // Everybody it could fight is hidden from it (1.286): it looks for them first.
   const looking = searchOption(
     definition,
     fight.encounter,
@@ -2019,7 +2019,7 @@ function playRulesetTurn(
 }
 
 /**
- * The option that looks for whoever hides from this actor (1.282), when it should: on its turn the
+ * The option that looks for whoever hides from this actor (1.286), when it should: on its turn the
  * Search, once every opponent still standing is hidden from it; between turns a Detect, once any is.
  */
 function searchOption(

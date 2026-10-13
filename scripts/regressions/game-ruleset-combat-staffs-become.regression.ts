@@ -1,5 +1,5 @@
 /**
- * An item that becomes another on its last charge (Capability API 1.267).
+ * An item that becomes another on its last charge (Capability API 1.271).
  *
  *   - `charges.breaksOn.becomes`: on the faces that would break it, a Staff of Striking becomes a
  *     plain quarterstaff instead: in a fight its uses go and it strikes as the quarterstaff from
@@ -305,15 +305,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an item that becomes another when its last charge is spent requires schemaVersion 2 and capabilityApi 1.267 or newer";
+      "A ruleset with an item that becomes another when its last charge is spent requires schemaVersion 2 and capabilityApi 1.271 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const plain = document((doc) => delete striking(doc).charges.breaksOn.becomes);
-    assert.notEqual(issue(266, plain), gate, "nothing of 1.267 left");
-    assert.equal(issue(266, document()), gate);
-    assert.notEqual(issue(267, document()), gate);
+    assert.notEqual(issue(270, plain), gate, "nothing of 1.271 left");
+    assert.equal(issue(270, document()), gate);
+    assert.notEqual(issue(271, document()), gate);
     assert.equal(
-      issue(266, plain, new Map([["extra.json", [{ id: "x", item: { charges: { breaksOn: { becomes: "a/b" } } } }]]])),
+      issue(270, plain, new Map([["extra.json", [{ id: "x", item: { charges: { breaksOn: { becomes: "a/b" } } } }]]])),
       gate,
     );
     assert.equal(
@@ -326,7 +326,7 @@ try {
   }
 
   console.log(
-    "Ruleset staffs become: on its last charge's 1 a Staff of Striking becomes a plain quarterstaff, in a fight (its uses gone, struck as the quarterstaff, written back as it), outside one and in the inventory; gated at 1.267.",
+    "Ruleset staffs become: on its last charge's 1 a Staff of Striking becomes a plain quarterstaff, in a fight (its uses gone, struck as the quarterstaff, written back as it), outside one and in the inventory; gated at 1.271.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

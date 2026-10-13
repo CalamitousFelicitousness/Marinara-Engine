@@ -1,5 +1,5 @@
 /**
- * A clap around whoever a weapon's mode hits (Capability API 1.307): a Hammer of Thunderbolts.
+ * A clap around whoever a weapon's mode hits (Capability API 1.311): a Hammer of Thunderbolts.
  *
  *   - A mode's `aroundHit` makes the one it hit, and everybody within its reach of them (the wielder
  *     and allies too), save or take its condition, counted on the wielder's turns with `of`.
@@ -251,20 +251,20 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a weapon mode whose hit claps around the one it hit requires schemaVersion 2 and capabilityApi 1.307 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(306) as never, withMode(hurl())), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(307) as never, withMode(hurl())), gate);
+      "A ruleset with a weapon mode whose hit claps around the one it hit requires schemaVersion 2 and capabilityApi 1.311 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(310) as never, withMode(hurl())), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(311) as never, withMode(hurl())), gate);
     const plain = hurl();
     delete (plain as Record<string, unknown>).aroundHit;
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(306) as never, withMode(plain)),
+      getCapabilityPackageInstallIssue(manifest(310) as never, withMode(plain)),
       gate,
       "no clap, no gate",
     );
   }
 
   console.log(
-    "Thunderclap: a hurled Hammer of Thunderbolts stuns whoever is within 30 feet of the one it hit on a failed save, counted on its wielder's turns; only on a hit in that mode; refusals; gated at 1.307.",
+    "Thunderclap: a hurled Hammer of Thunderbolts stuns whoever is within 30 feet of the one it hit on a failed save, counted on its wielder's turns; only on a hit in that mode; refusals; gated at 1.311.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * More forced behavior (Capability API 1.261).
+ * More forced behavior (Capability API 1.265).
  *
  *   - `behavior.drops`: Fear's "drops whatever it is holding" as the condition goes on (a sheet's
  *     worn items in a hand, a shield's share of its defense with them), and Command's "drop" as the
@@ -521,7 +521,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun stuck, a save rolled only out of sight, or a condition that destroys by threat tier, requires schemaVersion 2 and capabilityApi 1.261 or newer";
+      "A ruleset with a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun stuck, a save rolled only out of sight, or a condition that destroys by threat tier, requires schemaVersion 2 and capabilityApi 1.265 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
@@ -538,7 +538,7 @@ try {
         keep(doc);
       });
     const plain = only(() => {});
-    assert.notEqual(issue(260, plain), gate, "nothing of 1.261 left");
+    assert.notEqual(issue(264, plain), gate, "nothing of 1.265 left");
     const cases: Array<[string, (doc: Record<string, any>) => void]> = [
       ["drops", (doc) => (conditionsOf(doc, "kept").behavior.drops = { slots: ["hands"], at: "applied" })],
       ["keepsOut", (doc) => (conditionsOf(doc, "kept").behavior.keepsOut = 30)],
@@ -571,18 +571,18 @@ try {
     for (const [name, keep] of cases) {
       const doc = only(keep);
       parsed(doc);
-      assert.equal(issue(260, doc), gate, name);
-      assert.notEqual(issue(261, doc), gate, name);
+      assert.equal(issue(264, doc), gate, name);
+      assert.notEqual(issue(265, doc), gate, name);
     }
-    assert.notEqual(issue(260, without), gate);
+    assert.notEqual(issue(264, without), gate);
     assert.equal(
-      issue(260, without, new Map([["extra.json", { applies: [{ condition: "x", destroysUpTo: [] }] }]])),
+      issue(264, without, new Map([["extra.json", { applies: [{ condition: "x", destroysUpTo: [] }] }]])),
       gate,
     );
   }
 
   console.log(
-    "Ruleset drops: Fear lets fall what is in the hands (a shield's defense with it), Command's drop falls as the turn starts, picked up from where it lies once a turn or for an action; a turn begun stuck is free; Fear's save only out of sight; kept out of 30 feet; Destroy Undead by tier and level; gated at 1.261.",
+    "Ruleset drops: Fear lets fall what is in the hands (a shield's defense with it), Command's drop falls as the turn starts, picked up from where it lies once a turn or for an action; a turn begun stuck is free; Fear's save only out of sight; kept out of 30 feet; Destroy Undead by tier and level; gated at 1.265.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

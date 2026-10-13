@@ -1,5 +1,5 @@
 /**
- * A teleport with a strike before or after it (Capability API 1.275).
+ * A teleport with a strike before or after it (Capability API 1.279).
  *
  *   - A creature's teleport may name one of its own actions as `strike`: a blink dog's "Before or
  *     after teleporting, the dog can make one bite attack." Teleporting lets the bite follow for
@@ -410,7 +410,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a creature's teleport that strikes before or after it requires schemaVersion 2 and capabilityApi 1.275 or newer";
+      "A ruleset with a creature's teleport that strikes before or after it requires schemaVersion 2 and capabilityApi 1.279 or newer";
     const doc = fiveE((one) => {
       one.catalogs.push({
         id: "x",
@@ -418,9 +418,9 @@ try {
         entries: [{ id: "dog", label: "Dog", creature: { actions: [bite, blink()] } }],
       });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(274) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(275) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(274) as never, fiveE()), gate, "the plain 5e example");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(278) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(279) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(278) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

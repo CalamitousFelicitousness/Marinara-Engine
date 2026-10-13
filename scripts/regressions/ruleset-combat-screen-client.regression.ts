@@ -897,7 +897,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       "switch",
       say({ type: "switch", actorId: "brenna", optionId: "switch:0", label: "Flame Tongue: Flames", on: true }),
     ],
-    // Hiding, and looking (1.282).
+    // Hiding, and looking (1.286).
     [
       "search",
       say({
@@ -909,7 +909,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["revealed", say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "attack" })],
-    // Ready (1.283).
+    // Ready (1.287).
     ["ready", say({ type: "ready", actorId: "brenna", label: "Sword", on: "comes", outcome: "readied" })],
   ];
   const printed = new Map(table);
@@ -1072,7 +1072,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("heal"), "Corwin recovers 9, and is on 29 of 38.");
   assert.equal(printed.get("temporary"), "Brenna gains 5 temporary points.");
-  // Lost with the condition that gave them (1.269).
+  // Lost with the condition that gave them (1.273).
   assert.equal(
     say({ type: "temporary", targetId: "brenna", rolls: [], flat: 0, amount: 4, lost: true }),
     "Brenna loses the last 4 temporary points.",
@@ -1194,7 +1194,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
   assert.equal(printed.get("teleported"), "Brenna teleports with Misty Step, to 6, 1.");
-  // Carried along (1.271).
+  // Carried along (1.275).
   assert.equal(
     say({
       type: "teleported",
@@ -1251,7 +1251,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Brenna's Banishment sends Thorn Lurker away for as long as they are Prone.",
   );
   assert.equal(printed.get("returned"), "Thorn Lurker comes back into the fight.");
-  // Out of the fight by a teleport (1.274), and along with whoever went.
+  // Out of the fight by a teleport (1.278), and along with whoever went.
   assert.equal(printed.get("left"), "Thorn Lurker leaves the fight with Teleport.");
   assert.equal(
     say({ type: "left", actorId: "brenna", label: "Teleport", by: "lurker" }),
@@ -1427,7 +1427,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     rulesetOptionCostText({ ...sword, budget: undefined, strikes: 1 }, budgetLabel, t),
     "Free, 1 strike left",
   );
-  // The other half of an action already made this turn (1.275): a blink dog's bite after its teleport.
+  // The other half of an action already made this turn (1.279): a blink dog's bite after its teleport.
   assert.equal(
     rulesetOptionCostText({ ...sword, budget: undefined, followUp: true }, budgetLabel, t),
     "Free, part of the same action",
@@ -1479,7 +1479,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.deepEqual(rulesetPickTarget(sword, [], "lurker"), ["lurker"]);
   assert.deepEqual(rulesetPickTarget(sword, [], "brenna"), [], "an id the option does not list cannot be picked");
   assert.deepEqual(rulesetPickTarget(sword, ["lurker"], "lurker"), [], "picking it again takes it off");
-  // One that may be pointed at the same one again (1.300) adds another while there is room, and
+  // One that may be pointed at the same one again (1.304) adds another while there is room, and
   // once full a click on a picked one takes one of theirs off.
   const beams = {
     ...sword,
@@ -1513,7 +1513,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.deepEqual(rulesetDefaultTargets(sword), [], "something that IS a choice sends nothing until it is made");
 }
 
-// ── Who Careful Spell spares is picked when it catches more of its user's side than it spares (1.249) ──
+// ── Who Careful Spell spares is picked when it catches more of its user's side than it spares (1.253) ──
 {
   const view = {
     actorId: "sorc",
@@ -1562,7 +1562,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   ]);
 }
 
-// ── Who Heightened Spell heightens is picked when it catches more than one (1.250), after who is spared ──
+// ── Who Heightened Spell heightens is picked when it catches more than one (1.254), after who is spared ──
 {
   const view = {
     actorId: "sorc",
@@ -1719,7 +1719,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Sheets: the 5e (SRD 5.1) sheets were kept up to date while the fight ran, so every cost is already paid. Do not change those numbers again.",
   ]);
 
-  // Gone from the fight alive by a teleport (1.274): neither beaten nor still standing.
+  // Gone from the fight alive by a teleport (1.278): neither beaten nor still standing.
   const away = {
     ...summary,
     party: [{ ...summary.party[0]!, left: true as const }, summary.party[1]!],
@@ -1820,7 +1820,7 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.equal(at(plain, 0, 1).occupant?.name, "Brenna");
   assert.equal(at(plain, 6, 1).occupant?.name, "Thorn Lurker");
   assert.equal(at(plain, 3, 0).occupant, undefined);
-  // Sent away (1.231), it is on no square at all.
+  // Sent away (1.235), it is on no square at all.
   const awayView = {
     ...view,
     combatants: view.combatants.map((one) => (one.name === "Thorn Lurker" ? { ...one, away: true as const } : one)),
@@ -1855,7 +1855,7 @@ function drawn(...rows: string[]): TacticalGrid {
     "Costs 15 ft",
   );
   assert.ok(!rulesetOptionNeedsCell(stand), "it goes nowhere, so nothing is picked on the board");
-  // A legendary move (1.278) is walked the same way, bought between turns.
+  // A legendary move (1.282) is walked the same way, bought between turns.
   const legendaryMove = { ...walk, id: "move", kind: "ability" as const, signature: { cost: 1, points: 3 } };
   assert.ok(rulesetOptionNeedsCell(legendaryMove), "a legendary move asks for a square");
   assert.ok(!rulesetOptionNeedsCell({ ...legendaryMove, cells: undefined }), "one with nowhere to go does not");
@@ -1878,7 +1878,7 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.deepEqual(path.at(-1), { x: 3, y: 0 }, "and the way ends where it was going");
   assert.deepEqual(rulesetPathTo(step, { x: 2, y: 1 }), [], "a square nobody offered has no way to it");
   assert.deepEqual(rulesetPathTo(null, { x: 1, y: 1 }), [], "and neither has any square without a step");
-  // A teleport is aimed at where it goes (1.271), and each square it may go to says so.
+  // A teleport is aimed at where it goes (1.275), and each square it may go to says so.
   const blink: DirectedRulesetOption = {
     ...walk,
     id: "teleport",
@@ -1975,7 +1975,7 @@ function drawn(...rows: string[]): TacticalGrid {
   const onTurn = rulesetBoardCells(near, null).find((cell) => cell.occupant?.id === "brenna")!;
   assert.ok(rulesetCellSentences(onTurn, near, t).includes("On turn."));
 
-  // A wall's sections (1.195): what each has left, and the ones an attack may strike instead.
+  // A wall's sections (1.199): what each has left, and the ones an attack may strike instead.
   const iced: DirectedRulesetView = {
     ...near,
     zones: [

@@ -646,7 +646,7 @@ export function applyGameInventoryTags(
     if (drops.length === 0) return serializeLootTag(request);
     return drops.map((drop) => addAnswered(drop.name, { item: drop.item }, drop.count, request.who, who.bag)).join(" ");
   });
-  // A binding whose needed items went elsewhere, or came off, is undone (1.308).
+  // A binding whose needed items went elsewhere, or came off, is undone (1.312).
   return { content: looted, stacks: releaseGameInventoryUnmetBindings(current, rules), journal, tags };
 }
 

@@ -1,5 +1,5 @@
 /**
- * Left over from 1.298 to 1.300 (Capability API 1.303).
+ * Left over from 1.302 to 1.304 (Capability API 1.307).
  *
  *   - A reaction is acting: a condition that `acts` ends comes off on any reaction its holder takes,
  *     Cutting Words included (One with Shadows' "or a reaction").
@@ -323,7 +323,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an item use whose targets grow with the sheet, or that takes the same target more than once, requires schemaVersion 2 and capabilityApi 1.303 or newer";
+      "A ruleset with an item use whose targets grow with the sheet, or that takes the same target more than once, requires schemaVersion 2 and capabilityApi 1.307 or newer";
     const docWith = (entry: Record<string, unknown>) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.items = { categories: [{ id: "gear", label: "Gear" }] };
@@ -340,14 +340,14 @@ try {
       },
     };
     for (const doc of [docWith(scroll(scrollUse(beams))), docWith(more)]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(302) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(303) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(306) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(307) as never, doc), gate);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(302) as never, docWith(scroll(scrollUse({})))), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(306) as never, docWith(scroll(scrollUse({})))), gate);
   }
 
   console.log(
-    "Leftovers 1.303: a reaction ends what acting ends; two imps told apart by Chains; a scroll's beams grow with its reader; refusals; gated at 1.303.",
+    "Leftovers 1.307: a reaction ends what acting ends; two imps told apart by Chains; a scroll's beams grow with its reader; refusals; gated at 1.307.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

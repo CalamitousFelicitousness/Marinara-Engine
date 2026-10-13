@@ -1,5 +1,5 @@
 /**
- * Zones carried with somebody, and copies spaced apart and moved together (Capability API 1.296).
+ * Zones carried with somebody, and copies spaced apart and moved together (Capability API 1.300).
  *
  *   - A zone's `carried`: a burst put on a cell somebody stands on (its caster's own for `own`,
  *     anybody's for `any`) is centred on them wherever they go: 5e's Darkness on a held object.
@@ -318,22 +318,22 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with zones carried with somebody, or copies set down apart, requires schemaVersion 2 and capabilityApi 1.296 or newer";
+      "A ruleset with zones carried with somebody, or copies set down apart, requires schemaVersion 2 and capabilityApi 1.300 or newer";
     for (const entry of [shadow, dancing]) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [entry] });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(295) as never, doc), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(296) as never, doc), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(299) as never, doc), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(300) as never, doc), gate, entry.id);
     }
     // The ruleset's own carried light is no zone carried with somebody.
     const torch = JSON.parse(fiveEText) as Record<string, any>;
     torch.combat.senses = [{ id: "darkvision", label: "Darkvision" }];
     torch.combat.sight = { darkness: { seeIn: ["darkvision"], carried: { bright: 20, dim: 20 } } };
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(295) as never, torch), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(299) as never, torch), gate);
   }
 
   console.log(
-    "Carried zones: Darkness on a foe's held thing follows them, on its caster's own only for own, Dancing Lights' four lights each within 20 feet of another and moved together; refusals; gated at 1.296.",
+    "Carried zones: Darkness on a foe's held thing follows them, on its caster's own only for own, Dancing Lights' four lights each within 20 feet of another and moved together; refusals; gated at 1.300.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

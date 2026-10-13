@@ -1,5 +1,5 @@
 /**
- * Magical darkness against light (Capability API 1.294).
+ * Magical darkness against light (Capability API 1.298).
  *
  *   - A darkness zone's `dispelsLight`: light a spell of that level or lower made ends where the two
  *     meet, a zone's `lights` or a condition's `light`, whichever came first: 5e's Darkness.
@@ -301,7 +301,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with darkness that puts out spell light, magical light, or a dispelling reach, requires schemaVersion 2 and capabilityApi 1.294 or newer";
+      "A ruleset with darkness that puts out spell light, magical light, or a dispelling reach, requires schemaVersion 2 and capabilityApi 1.298 or newer";
     const only = (entry: unknown) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [entry] });
@@ -310,16 +310,16 @@ try {
     const blade = { id: "blade", label: "Blade", rows: [], light: { bright: 15, dim: 15, magical: true } };
     for (const entry of [darkness, daylight, blade]) {
       assert.equal(
-        getCapabilityPackageInstallIssue(manifest(293) as never, only(entry)),
+        getCapabilityPackageInstallIssue(manifest(297) as never, only(entry)),
         gate,
         (entry as { id: string }).id,
       );
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(294) as never, only(entry)), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(298) as never, only(entry)), gate);
     }
   }
 
   console.log(
-    "Darkness dispels: Darkness puts out lesser spell light on a zone or a holder (and its concentration), only magical light lights it, Daylight ends only darkness near its middle; refusals; gated at 1.294.",
+    "Darkness dispels: Darkness puts out lesser spell light on a zone or a holder (and its concentration), only magical light lights it, Daylight ends only darkness near its middle; refusals; gated at 1.298.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

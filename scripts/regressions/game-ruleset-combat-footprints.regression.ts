@@ -1,5 +1,5 @@
 /**
- * Creatures that fill more than one cell (Capability API 1.189).
+ * Creatures that fill more than one cell (Capability API 1.193).
  *
  *   - A size's `cells`: a Large ogre fills two cells a side, its own cell the top-left one.
  *   - Set down where all of it fits, the nearest such place, and anybody asked to stand inside it
@@ -869,11 +869,11 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with sizes that fill more than one cell requires schemaVersion 2 and capabilityApi 1.189 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(188) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(189) as never, document()), gate);
+      "A ruleset with sizes that fill more than one cell requires schemaVersion 2 and capabilityApi 1.193 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(192) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(193) as never, document()), gate);
     const plain = document((doc) => doc.combat.sizes.order.forEach((size: any) => delete size.cells));
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(188) as never, plain), gate, "sizes alone are 1.98's");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(192) as never, plain), gate, "sizes alone are 1.102's");
   }
 
   console.log(

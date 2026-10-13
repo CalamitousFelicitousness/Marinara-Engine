@@ -462,7 +462,7 @@ try {
     assert.equal(await liveOf(1), null, "and the telling the player swiped away from is untouched");
   }
 
-  // ── Who the scene caught unaware starts the fight surprised (1.232) ──
+  // ── Who the scene caught unaware starts the fight surprised (1.236) ──
   {
     const ambushed = await newGame({ ruleset: true });
     const opened = await post("/combat/start", {
@@ -945,7 +945,7 @@ try {
     assert.equal(keptEnemy.creature, "thorn-lurker");
     assert.equal(keptEnemy.tier, "cr_1_4");
     assert.ok(keptEnemy.proposed, "a stat block in the shared form survives");
-    // Who the scene caught unaware (1.232) survives on both sides, and a bad value only drops it.
+    // Who the scene caught unaware (1.236) survives on both sides, and a bad value only drops it.
     const caught = encounterBlueprintSchema.safeParse({
       party: [{ name: "Brenna", hp: 10, maxHp: 10, surprised: true }],
       enemies: [{ name: "Goblin", hp: 7, maxHp: 7, surprised: "yes" }],

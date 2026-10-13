@@ -1,5 +1,5 @@
 /**
- * A creature type named as it is cast, and auras reaching only that kind (Capability API 1.265).
+ * A creature type named as it is cast, and auras reaching only that kind (Capability API 1.269).
  *
  *   - `mechanics.kindChoice`: Antipathy names its kind as a mode, `kind-<id>`, and what it puts on
  *     remembers it; cast with no kind named, it is refused.
@@ -362,7 +362,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a catalog entry whose creature type is chosen as it is used, an aura reaching only that kind or whoever sees its holder, or a save that ends a condition only from far enough away, requires schemaVersion 2 and capabilityApi 1.265 or newer";
+      "A ruleset with a catalog entry whose creature type is chosen as it is used, an aura reaching only that kind or whoever sees its holder, or a save that ends a condition only from far enough away, requires schemaVersion 2 and capabilityApi 1.269 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const only = (keep: (doc: Record<string, any>) => void) =>
@@ -380,7 +380,7 @@ try {
         only(() => {}),
       ),
       gate,
-      "nothing of 1.265 left",
+      "nothing of 1.269 left",
     );
     const cases: Array<[string, (doc: Record<string, any>) => void]> = [
       ["kindChoice", (doc) => (doc.catalogs.at(-1).entries[0].mechanics.kindChoice = true)],
@@ -391,8 +391,8 @@ try {
     for (const [name, keep] of cases) {
       const doc = only(keep);
       parsed(doc);
-      assert.equal(issue(264, doc), gate, name);
-      assert.notEqual(issue(265, doc), gate, name);
+      assert.equal(issue(268, doc), gate, name);
+      assert.notEqual(issue(269, doc), gate, name);
     }
     assert.equal(
       issue(
@@ -405,7 +405,7 @@ try {
   }
 
   console.log(
-    "Ruleset antipathy: Antipathy names its creature type as it is cast and its aura asks only that kind, within 60 feet or in sight; its repeated save is rolled only from farther than 60 feet and out of sight; gated at 1.265.",
+    "Ruleset antipathy: Antipathy names its creature type as it is cast and its aura asks only that kind, within 60 feet or in sight; its repeated save is rolled only from farther than 60 feet and out of sight; gated at 1.269.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

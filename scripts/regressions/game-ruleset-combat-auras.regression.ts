@@ -1,5 +1,5 @@
 /**
- * Auras (Capability API 1.258).
+ * Auras (Capability API 1.262).
  *
  *   - A combat condition's `auras`: 5e's Aura of Protection spreads a save bonus to allies within
  *     10 feet, the paladin included, picked by the paladin's Charisma (`when`); it follows them as
@@ -362,25 +362,25 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with auras on a condition, or conditions kept on through a fight, requires schemaVersion 2 and capabilityApi 1.258 or newer";
+      "A ruleset with auras on a condition, or conditions kept on through a fight, requires schemaVersion 2 and capabilityApi 1.262 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const aura = document();
-    assert.equal(issue(257, aura), gate);
-    assert.notEqual(issue(258, aura), gate);
+    assert.equal(issue(261, aura), gate);
+    assert.notEqual(issue(262, aura), gate);
     // Auras alone, nothing kept on.
     const spreading = document((doc) => delete doc.catalogs.at(-1).entries[0].mechanics.keepsOn);
-    assert.equal(issue(257, spreading), gate);
+    assert.equal(issue(261, spreading), gate);
     const kept = { ...without, extra: { protection: { mechanics: { keepsOn: ["aura_holder"] } } } };
-    assert.equal(issue(257, kept), gate);
-    assert.notEqual(issue(258, kept), gate);
-    assert.notEqual(issue(257, without), gate);
-    assert.equal(issue(257, without, new Map([["auras.json", { entries: [protection] }]])), gate);
+    assert.equal(issue(261, kept), gate);
+    assert.notEqual(issue(262, kept), gate);
+    assert.notEqual(issue(261, without), gate);
+    assert.equal(issue(261, without, new Map([["auras.json", { entries: [protection] }]])), gate);
   }
 
   console.log(
-    "Ruleset auras: Aura of Protection kept on and spread to allies within 10 feet by Charisma, following moves, stopped while the paladin is down; Holy Nimbus harms foes at turn start; block keepsOn; gone at fight end; gated at 1.258.",
+    "Ruleset auras: Aura of Protection kept on and spread to allies within 10 feet by Charisma, following moves, stopped while the paladin is down; Holy Nimbus harms foes at turn start; block keepsOn; gone at fight end; gated at 1.262.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

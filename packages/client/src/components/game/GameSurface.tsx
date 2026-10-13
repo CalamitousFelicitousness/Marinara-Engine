@@ -27,6 +27,7 @@ import {
   type RulesetLiveStates,
   rulesetCardItems,
   rulesetReadsItems,
+  gameDungeonMapFromMetadata,
 } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Main Surface (rendered by ChatArea when mode === "game")
@@ -1573,6 +1574,11 @@ const WorldOverworld = lazy(async () => {
   return { default: module.WorldOverworld };
 });
 
+const DungeonMapView = lazy(async () => {
+  const module = await import("./DungeonMapView");
+  return { default: module.DungeonMapView };
+});
+
 const TownView = lazy(async () => {
   const module = await import("./TownView");
   return { default: module.TownView };
@@ -2321,9 +2327,12 @@ function GameSurfaceComponent({
   const experienceOwnsGame =
     experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
   // A game made without a world may be given one from the journal (worldgen W12), written for its own
-  // setting with its own connection; never one an Experience decides.
+  // setting with its own connection; never one an Experience decides, nor one made as Classic Game Mode.
   const canMakeWorld =
-    chatMeta.gameWorld == null && gameExperienceId === null && chatMeta.gameSessionStatus !== "concluded";
+    chatMeta.gameWorld == null &&
+    gameExperienceId === null &&
+    chatMeta.gameStyle !== "classic" &&
+    chatMeta.gameSessionStatus !== "concluded";
   const makeWorldRequest = useMemo(() => {
     const setup = chatMeta.gameSetupConfig as GameSetupConfig | undefined;
     if (!chat.connectionId) return null;
@@ -8794,7 +8803,18 @@ function GameSurfaceComponent({
   const combatUiActive = gameState === "combat" && !!combatParty && !!combatEnemies;
   // The overworld (worldgen W8): a game with a world opens on it, and the player can switch to the scene
   // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
+  // A dungeon, cave or station map the Game Master opened with [map:] is shown over everything else,
+  // until the player switches to the scene or the party leaves by the way out.
+  // Read as the Engine reads it, so a map that does not read is no map and never hides the scene.
+  const dungeonMapOpen = useMemo(() => gameDungeonMapFromMetadata(chatMeta) !== null, [chatMeta]);
+  const dungeonShown =
+    dungeonMapOpen && chatMeta.gameDungeonView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
+  const handleToggleDungeonView = useCallback(
+    () => updateChatMetadata.mutate({ id: activeChatId, gameDungeonView: dungeonShown ? "scene" : "map" }),
+    [activeChatId, dungeonShown, updateChatMetadata],
+  );
   const overworldShown =
+    !dungeonShown &&
     (gameWorld !== null || gameWorldPending) &&
     chatMeta.gameWorldView !== "scene" &&
     !experienceOwnsGame &&
@@ -12738,8 +12758,8 @@ function GameSurfaceComponent({
           <div
             className="transition-opacity duration-700 ease-in-out"
             style={{
-              opacity: spriteVisible && !overworldShown ? 1 : 0,
-              pointerEvents: spriteVisible && !overworldShown ? "auto" : "none",
+              opacity: spriteVisible && !overworldShown && !dungeonShown ? 1 : 0,
+              pointerEvents: spriteVisible && !overworldShown && !dungeonShown ? "auto" : "none",
             }}
           >
             {displaySpriteIds.length > 0 && (
@@ -12782,7 +12802,7 @@ function GameSurfaceComponent({
               {!replayActive && pendingReaction && (
                 <GameElementReaction
                   reaction={pendingReaction}
-                  elements={gameElements}
+                  elements={gameKit ? gameElements : undefined}
                   onDismiss={() => setPendingReaction(null)}
                 />
               )}
@@ -12793,6 +12813,17 @@ function GameSurfaceComponent({
                 data-chat-resource-drop-surface
                 className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden", experienceSurfaceClass)}
               >
+                {dungeonShown && (
+                  <Suspense fallback={null}>
+                    <DungeonMapView
+                      chatId={activeChatId}
+                      turnKey={narrationTurnKey(latestAssistantMsg)}
+                      canWalk={!isStreaming && narrationDone && sessionInteractive}
+                      onLeft={() => undefined}
+                      hour={typeof gameTimeMeta?.hour === "number" ? normalizeGameHour(gameTimeMeta.hour) : undefined}
+                    />
+                  </Suspense>
+                )}
                 {overworldShown &&
                   gameWorld &&
                   (() => {
@@ -13196,7 +13227,7 @@ function GameSurfaceComponent({
                             />
                           ) : (
                             <GameCombatUI
-                              elements={gameElements}
+                              elements={gameKit ? gameElements : undefined}
                               chatId={activeChatId}
                               party={combatParty}
                               enemies={combatEnemies}
@@ -13226,7 +13257,7 @@ function GameSurfaceComponent({
                     return (
                       <GameTravelView>
                         <GameNarration
-                          passThrough={overworldShown}
+                          passThrough={overworldShown || dungeonShown}
                           messages={narrationMessages}
                           isStreaming={isStreaming}
                           characterMap={characterMap}
@@ -13325,7 +13356,7 @@ function GameSurfaceComponent({
                   }
                   return (
                     <GameNarration
-                      passThrough={overworldShown}
+                      passThrough={overworldShown || dungeonShown}
                       messages={narrationMessages}
                       isStreaming={isStreaming}
                       characterMap={characterMap}
@@ -13832,7 +13863,14 @@ function GameSurfaceComponent({
           >
             <div className="flex flex-col gap-1 p-1.5">
               {/* The overworld and the scene (worldgen W8): a game with a world switches between them. */}
-              {gameWorld && (
+              {/* A dungeon, cave or station map the Game Master opened, and the scene. */}
+              {dungeonMapOpen && (
+                <button onClick={handleToggleDungeonView} className={GAME_ACTION_MENU_ITEM}>
+                  {dungeonShown ? <Film size={13} /> : <MapIcon size={13} />}
+                  <span>{dungeonShown ? t("game.dungeon.showScene") : t("game.dungeon.show")}</span>
+                </button>
+              )}
+              {gameWorld && !dungeonShown && (
                 <button onClick={handleToggleWorldView} className={GAME_ACTION_MENU_ITEM}>
                   {overworldShown ? <Film size={13} /> : <MapIcon size={13} />}
                   <span>{overworldShown ? t("game.overworld.showScene") : t("game.overworld.show")}</span>

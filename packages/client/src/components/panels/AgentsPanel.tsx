@@ -2332,7 +2332,10 @@ function TilePacksSection() {
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium">{pack.name}</div>
             <div className="mt-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
-              {t("game.tilePacks.packFor", { family: familyLabel(pack.family), version: pack.version })}
+              {t(pack.tilePackVersion === 2 ? "game.tilePacks.imagePackFor" : "game.tilePacks.packFor", {
+                family: familyLabel(pack.family),
+                version: pack.version,
+              })}
             </div>
           </div>
           <button

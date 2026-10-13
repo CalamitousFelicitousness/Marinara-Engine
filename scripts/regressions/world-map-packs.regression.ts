@@ -28,6 +28,7 @@ import {
   worldKitFile,
   type TilePack,
 } from "../../packages/shared/src/index.js";
+import { imageTilePack, undecodablePng } from "./fixtures/image-tile-pack.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-map-packs-"));
 process.env.DATA_DIR = dataDir;
@@ -76,6 +77,7 @@ function install(
   contents: Record<string, string>,
   mapPack: Record<string, unknown> | null,
   tamper?: string,
+  minor = 72,
 ) {
   const root = join(dataDir, "capability-packages", "versions", id, "1.0.0");
   mkdirSync(root, { recursive: true });
@@ -91,7 +93,7 @@ function install(
     legacy: false,
     manifest: {
       schemaVersion: 2,
-      capabilityApi: { major: 1, minor: 72 },
+      capabilityApi: { major: 1, minor },
       builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
       id,
       name: `${id} Experience`,
@@ -168,6 +170,34 @@ const installed = [
     },
     { kit: "kit.worldkit.json", worlds: ["huge.world.json"] },
   ),
+  // Image tiles (tile pack v2) need Capability API 1.75.
+  install(
+    "imagetiles",
+    { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+    undefined,
+    75,
+  ),
+  // Whole as a PNG, but its pixels do not decode: refused where the Engine decodes sheets.
+  install(
+    "badimagetiles",
+    {
+      "kit.worldkit.json": text(worldKitFile(kit)),
+      "tiles.tilepack.json": text(
+        imageTilePack({ sheets: [{ ...imageTilePack().sheets[0]!, png: undecodablePng() }] }),
+      ),
+    },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+    undefined,
+    75,
+  ),
+  install(
+    "oldimagetiles",
+    { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+    undefined,
+    74,
+  ),
   install(
     "badtiles",
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": "{}" },
@@ -236,6 +266,28 @@ try {
   );
   const badTiles = await readMapPack("badtiles");
   assert.ok(badTiles && !badTiles.ok && /tiles do not read/.test(badTiles.reason), JSON.stringify(badTiles));
+  const imageTiles = await readMapPack("imagetiles");
+  assert.ok(imageTiles?.ok && imageTiles.pack.tiles?.tilePackVersion === 2, JSON.stringify(imageTiles));
+  assert.deepEqual(await readMapPack("imagetiles"), imageTiles, "read again from what was checked");
+  // Only an Engine that can decode sheets (sharp) finds that out.
+  const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
+  if (
+    await getSharp().then(
+      () => true,
+      () => false,
+    )
+  ) {
+    const badImageTiles = await readMapPack("badimagetiles");
+    assert.ok(
+      badImageTiles && !badImageTiles.ok && /does not decode/.test(badImageTiles.reason),
+      JSON.stringify(badImageTiles),
+    );
+  }
+  const oldImageTiles = await readMapPack("oldimagetiles");
+  assert.ok(
+    oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.75/.test(oldImageTiles.reason),
+    JSON.stringify(oldImageTiles),
+  );
   assert.equal(await readMapPack("plain"), null, "an Experience without a pack");
   assert.equal(await readMapPack("nowhere"), null, "not installed");
 

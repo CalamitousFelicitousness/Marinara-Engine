@@ -11,6 +11,8 @@ import type { GameWorld } from "./game-world.js";
 import { WORLD_DEED_KINDS, readWorldLedger, type WorldDeed, type WorldLedgerEntry } from "./ledger.js";
 import { worldPlaceNamed } from "./edits.js";
 import { worldCast, type WorldPerson } from "./people.js";
+import { worldPlaceMap, worldPlaceMapReach } from "./place-maps.js";
+import { worldTown, worldTownReach } from "./town.js";
 
 export const STORY_VERSION = 1;
 export const STORY_MAX = Object.freeze({
@@ -77,6 +79,16 @@ const trigger = z.discriminatedUnion("on", [
     .strict(),
   z.object({ on: z.literal("flags") }).strict(),
   z.object({ on: z.literal("gm") }).strict(),
+  /** The party walks onto a cell (map editor item 4): of a settlement's town, or of a place's hand-made map
+   *  (`place` says which: a settlement never has one). From the map's top-left, 0-based. */
+  z
+    .object({
+      on: z.literal("step"),
+      place: z.string().min(1).max(120),
+      x: z.number().int().min(0).max(255),
+      y: z.number().int().min(0).max(255),
+    })
+    .strict(),
 ]);
 
 const worldDeed = z
@@ -312,6 +324,10 @@ export function checkStoryScript(
       );
       if (!painted) issues.push(`${where}: no battlefield of this world has a prop called "${when.prop}".`);
     }
+    if (when.on === "step") {
+      const issue = storyStepIssue(game, when);
+      if (issue) issues.push(`${where}: ${issue}`);
+    }
     for (const action of event.do) {
       if ("set" in action) {
         const flag = flagOf(action.set, where);
@@ -383,6 +399,49 @@ export function checkStoryScript(
   }
   const unique20 = [...new Set(issues)].slice(0, 20);
   return unique20.length ? { ok: false, issues: unique20 } : { ok: true, story };
+}
+
+/**
+ * Why a step event's cell is not one the party can walk onto, or null. A town's cell (the town as play
+ * lays it out, a snapshot's own town included) is walkable ground a walk from the square reaches, and not on
+ * a free lot, where the story's added places can be built. A place's cell is floor of its hand-made map that
+ * a walk from its entry reaches; a place with no hand-made map has no cells to name (its generated map's
+ * cells change with its layout).
+ */
+export function storyStepIssue(game: GameWorld, step: { place: string; x: number; y: number }): string | null {
+  const place = game.world.places.find((each) => each.id === step.place);
+  if (!place) return `no place "${step.place}" in this world.`;
+  const cell = `column ${step.x + 1}, row ${step.y + 1}`;
+  if (place.rank !== undefined) {
+    const town = worldTown(game, place.id);
+    if (!town) return `${place.name} has no town.`;
+    if (step.x >= town.width || step.y >= town.height)
+      return `${cell} is outside ${place.name} (${town.width} by ${town.height}).`;
+    const at = step.y * town.width + step.x;
+    if (!worldTownReach(town).has(at)) return `${cell} of ${place.name} is not ground a walk from the square reaches.`;
+    const under = (box: { x: number; y: number; w: number; h: number }) =>
+      step.x >= box.x && step.y >= box.y && step.x < box.x + box.w && step.y < box.y + box.h;
+    const freeLot = town.lots.find(
+      (lot) =>
+        under(lot) &&
+        !town.buildings.some(
+          (building) =>
+            building.x < lot.x + lot.w &&
+            lot.x < building.x + building.w &&
+            building.y < lot.y + lot.h &&
+            lot.y < building.y + building.h,
+        ),
+    );
+    if (freeLot) return `${cell} of ${place.name} is on a free lot, where the story may build.`;
+    return null;
+  }
+  const map = worldPlaceMap(game, place.id);
+  if (!map) return `${place.name} has no map made by hand, so its cells cannot be named.`;
+  if (step.x >= map.width || step.y >= map.height)
+    return `${cell} is outside ${place.name}'s map (${map.width} by ${map.height}).`;
+  if (!worldPlaceMapReach(map).has(step.y * map.width + step.x))
+    return `${cell} of ${place.name}'s map is not floor a walk from its entry reaches.`;
+  return null;
 }
 
 // ── What the story did: folded from the answered [story:] tags of the replies ──
@@ -578,6 +637,9 @@ export interface StoryTurnWorld {
   broke?: readonly string[];
   /** The player's name, for a page the player speaks. */
   playerName?: string;
+  /** The cells this turn's walk went over (a town visit's path, a map walk's path, the end cell included):
+   *  a step event on one of them trips. */
+  steps?: ReadonlyArray<{ place: string; x: number; y: number }>;
 }
 
 export interface StoryTurn {
@@ -832,6 +894,12 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
         return times === 0 || (event.repeat === true && risen.get(event.id) === true);
       case "gm":
         return false;
+      case "step":
+        // Walked onto this turn: once, or each turn the walk goes over it when it repeats.
+        return (
+          (times === 0 || event.repeat === true) &&
+          (world.steps ?? []).some((step) => step.place === when.place && step.x === when.x && step.y === when.y)
+        );
     }
   };
 

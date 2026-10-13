@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { WORLD_DEFAULT_ELEMENTS, worldElementId, type WorldElementSet } from "@marinara-engine/shared";
+import { worldElementId, type WorldElementSet } from "@marinara-engine/shared";
 
 interface ReactionDisplay {
   reaction: string;
@@ -78,8 +78,8 @@ export function GameElementReaction({ reaction, elements, onDismiss }: GameEleme
     };
   }, [reaction]);
 
-  const set = elements ?? WORLD_DEFAULT_ELEMENTS;
-  const own = set.elements.find((element) => element.id === worldElementId(set, reaction.element));
+  // A setting kit's own colours and signs come first; a game without one draws them as it always did.
+  const own = elements?.elements.find((element) => element.id === worldElementId(elements, reaction.element));
   const glowColor = own?.color ?? (reaction.element ? (ELEMENT_COLORS[reaction.element] ?? "#ffffff") : "#ffffff");
   const emoji = own?.emoji ?? (reaction.element ? (ELEMENT_EMOJI[reaction.element] ?? "💥") : "💥");
   const multiplierText =

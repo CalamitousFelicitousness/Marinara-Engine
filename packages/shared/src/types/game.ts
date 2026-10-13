@@ -35,6 +35,23 @@ export type GameCombatStyle = "classic" | "tactical";
 /** Status of a game session. */
 export type GameSessionStatus = "setup" | "active" | "concluded";
 
+/**
+ * Which Game Mode a game is played in, chosen when it is created and fixed for its lifetime.
+ * - `classic`: the story-led Game Mode as it always was: narration, the scene map, menu or grid
+ *   battles. No setting kit, no generated world, no overworld, towns or dungeon maps.
+ * - `overworld`: the Overworld RPG: a setting kit and a generated world walked on an overworld, with
+ *   its towns, sites and dungeon maps.
+ */
+export type GameStyle = "classic" | "overworld";
+
+/** A game's style. A game made before the choice existed has none stored: it is Overworld when it
+ *  has a world and Classic when it has none, so every older game plays exactly as it did. */
+export function gameStyleFromMetadata(metadata: Record<string, unknown> | null | undefined): GameStyle {
+  const stored = metadata?.gameStyle;
+  if (stored === "classic" || stored === "overworld") return stored;
+  return metadata?.gameWorld != null ? "overworld" : "classic";
+}
+
 /** Which system owns the campaign-scale map when a new game begins. */
 export type GameWorldMapMode = "standard" | "hierarchical";
 
@@ -223,6 +240,9 @@ export interface GameSetupConfig {
   gmMode: GameGmMode;
   /** Content rating: sfw or nsfw */
   rating: "sfw" | "nsfw";
+  /** Classic Game Mode or the Overworld RPG (see `GameStyle`), stored as `chat.metadata.gameStyle`.
+   *  Absent in setups made before the choice: read as Overworld with a world, Classic without. */
+  gameStyle?: GameStyle;
   /** The Game Master's intro message (Capability API 1.338), stored as `chat.metadata.gameIntro`: defined
    *  (the first message, exactly) or guided, or `{ mode: "none" }`. Absent is the Experience's own. An
    *  Experience's locked intro wins over it. */

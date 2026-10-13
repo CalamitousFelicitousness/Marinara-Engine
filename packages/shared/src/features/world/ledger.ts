@@ -110,7 +110,8 @@ const FORTUNE_OF: Record<WorldProsperity, number> = { struggling: 20, modest: 50
 // make every start scan to the end of the reply.
 const WORLD_TAG = /\[world:([^[\]]*)\]/gi;
 const LEDGER_TAG = /\[(world|place):([^[\]]*)\]/gi;
-const CARRIED_TAG = /\[(world|place|story):[^[\]]*\]/gi;
+// A site the Game Master opened (`[map: reveal ...]`) stays open in the sessions after.
+const CARRIED_TAG = /\[(?:(?:world|place|story):|map:\s*reveal\b)[^[\]]*\]/gi;
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp = (value: number) => Math.max(-100, Math.min(100, value));
 
@@ -320,7 +321,7 @@ export function worldLedgerCarry(value: unknown): WorldLedgerCarry | null {
 
 /** The carry into the next session: what this one carried in, then its own Game Master's replies. */
 export function carryWorldLedger(carried: WorldLedgerCarry | null, replies: readonly string[]): WorldLedgerCarry {
-  // The world's tags, and the story's (worldgen W10), which fold the same way.
+  // The world's tags, and the story's (worldgen W10), which fold the same way, and the sites opened.
   const tags = replies.flatMap((reply) => [...reply.matchAll(CARRIED_TAG)].map((match) => match[0]));
   const lastReply = [...replies].reverse().find((reply) => reply.trim());
   const last = lastReply ? [...lastReply.matchAll(CARRIED_TAG)].map((match) => match[0]).join("") : carried?.last;

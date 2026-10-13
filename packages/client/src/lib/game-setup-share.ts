@@ -1,5 +1,5 @@
 import {
-  WORLD_GENERATOR_VERSION,
+  worldGeneratorReads,
   gameWorldSchema,
   normalizeGameDifficulty,
   parseWorldKit,
@@ -311,6 +311,9 @@ function parseShareConfig(value: unknown): GameSetupConfig {
   ) {
     throw new Error("This file has an invalid Spatial Map Grounding Mode value.");
   }
+  if (value.gameStyle !== undefined && value.gameStyle !== "classic" && value.gameStyle !== "overworld") {
+    throw new Error("This file has an invalid Game Mode style.");
+  }
   if (
     value.spotifySourceType !== undefined &&
     value.spotifySourceType !== "liked" &&
@@ -363,7 +366,7 @@ function parseShareConfig(value: unknown): GameSetupConfig {
   ) {
     throw new Error(translate("game.world.setup.invalidImport"));
   }
-  if (world?.success && world.data.generatorVersion !== WORLD_GENERATOR_VERSION && !worldSnapshot?.ok) {
+  if (world?.success && !worldGeneratorReads(world.data.generatorVersion) && !worldSnapshot?.ok) {
     throw new Error(translate("game.world.setup.otherGeneratorImport"));
   }
   // And its story (worldgen W10), only ever with its world; whether it fits that world is the wizard's check.
@@ -389,7 +392,7 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     worldKit: worldKit?.ok ? worldKit.kit : undefined,
     world: world?.success ? world.data : undefined,
     worldSnapshot:
-      world?.success && world.data.generatorVersion !== WORLD_GENERATOR_VERSION && worldSnapshot?.ok
+      world?.success && !worldGeneratorReads(world.data.generatorVersion) && worldSnapshot?.ok
         ? worldSnapshot.snapshot
         : undefined,
     story: story?.success ? story.data : undefined,

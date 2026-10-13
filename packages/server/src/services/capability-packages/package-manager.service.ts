@@ -6315,6 +6315,9 @@ export const capabilityPackageManager = {
     kit: Buffer;
     worlds: Array<{ path: string; data: Buffer }>;
     tiles: Buffer | null;
+    /** The tiles file's pinned hash, and the Capability API the package declares (image tiles need 1.75). */
+    tilesSha256: string | null;
+    capabilityApi: { major: number; minor: number } | null;
   } | null> {
     const installed = (await readRegistry()).packages.find((item) => item.id === packageId);
     if (!installed || !isInstalledCapabilityReady(installed)) return null;
@@ -6336,6 +6339,12 @@ export const capabilityPackageManager = {
       kit: await read(mapPack.kit),
       worlds: await Promise.all((mapPack.worlds ?? []).map(async (path) => ({ path, data: await read(path) }))),
       tiles: mapPack.tiles ? await read(mapPack.tiles) : null,
+      tilesSha256: mapPack.tiles
+        ? (installed.manifest.files.find(
+            (item) => tryNormalizeArchivePath(item.path) === tryNormalizeArchivePath(mapPack.tiles!),
+          )?.sha256 ?? null)
+        : null,
+      capabilityApi: installed.manifest.schemaVersion === 2 ? installed.manifest.capabilityApi : null,
     };
   },
 

@@ -111,6 +111,10 @@ An event happens once, unless it has `"repeat": true` (which `start`, `turn` and
 | `broke`  | When a fight broke the prop called `prop` (Capability API 1.315), matched without case. Only a prop painted on one of the world's battlefields can be named.                                                                                   |
 | `flags`  | When its conditions hold. With `repeat`, again each time they come true after being false.                                                                                                                                                     |
 | `gm`     | Only when the Game Master trips it (the event needs `"gm": true`).                                                                                                                                                                             |
+| `step` | When a walk goes over the cell `x`, `y` (0-based from the top-left) of `place`: a settlement's town (a visit's path, door to door), or a place's map made by hand (a walk on it). The cell must be one the party can walk onto: in a town, ground the square reaches and not a free lot, where the story may build; on a map, floor its entry reaches. A generated map has no cells to name. With `repeat`, again on each turn whose walk goes over it. |
+
+Hand edits that take a step event's cell away (a building put on it, a map's floor walled) are refused
+when saved, naming the event.
 
 A repeating `meet` event whose own scene names that person, or a repeating `deed` event that does the
 deed it waits for, would set itself off every turn, so the Engine refuses it.

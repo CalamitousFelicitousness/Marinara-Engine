@@ -3,6 +3,8 @@ import {
   gameWorldFromSnapshot,
   normalizeGameDifficulty,
   parseWorldKit,
+  WORLD_STARTER_KITS,
+  type GameStyle,
   worldSpatialDraft,
   type GenerateSpatialMapDraftResponse,
   type WorldKitInput,
@@ -95,7 +97,14 @@ import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupR
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
-import { GameSetupWorldChooser, worldDraftConfig, worldDraftFromWorld, type WorldDraft } from "./GameSetupWorldChooser";
+import {
+  GameSetupWorldChooser,
+  newWorldDraft,
+  worldDraftConfig,
+  worldDraftFromWorld,
+  type WorldDraft,
+} from "./GameSetupWorldChooser";
+import { GameSetupStyleChooser } from "./GameSetupStyleChooser";
 import { GameSetupGmIntro, gameIntroForSetup } from "./GameSetupGmIntro";
 import {
   GAME_SETUP_FIELD_LABEL,
@@ -562,8 +571,12 @@ export function GameSetupWizard({
     ? restoredRulesetLayers(activeRuleset.definition, rulesetLayerOptions(rulesetLayerIds))
     : [];
   const [rulesetImportNotice, setRulesetImportNotice] = useState<string | null>(null);
-  // The setting kit (worldgen W0): off unless the player picks one, and only for a new game.
+  // Classic Game Mode or the Overworld RPG, chosen once for a new game; new games start on the Overworld.
+  const [gameStyle, setGameStyle] = useState<GameStyle>("overworld");
+  // The setting kit (worldgen W0): only for a new game on the Overworld, where it is needed for its world.
   const [worldKit, setWorldKit] = useState<WorldKitInput | null>(null);
+  // Whether the player picked the kit: until they do, the Overworld's kit follows the chosen genre.
+  const kitChosenRef = useRef(false);
   // An Experience's map pack (worldgen W9e) owns the kit, and the world when it ships maps, while the
   // Experience is on. The player's own choices stay untouched underneath and come back once it is off.
   const mapPackQuery = useExperienceMapPack(
@@ -579,10 +592,12 @@ export function GameSetupWizard({
   const mapPackWorld = mapPack
     ? (mapPack.worlds.find((world) => world.path === mapPackWorldPath) ?? mapPack.worlds[0] ?? null)
     : null;
-  // Overworld games are locked on this server unless it says otherwise: no kit, no world, no map pack.
+  // An Experience's map pack is always played on the Overworld; Classic has no kit or world at all. Overworld
+  // games locked on this server (MARINARA_OVERWORLD_GAMES) leave every new game Classic.
   const overworldEnabled = useOverworldGamesEnabled();
-  const effectiveWorldKit: WorldKitInput | null = !overworldEnabled ? null : mapPack ? mapPack.kit : worldKit;
-  const checkedWorldKit = isNewGame && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
+  const overworldChosen = overworldEnabled && (Boolean(mapPack) || gameStyle === "overworld");
+  const effectiveWorldKit: WorldKitInput | null = mapPack ? mapPack.kit : worldKit;
+  const checkedWorldKit = isNewGame && overworldChosen && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
   const mapPackDraft = useMemo(
@@ -946,8 +961,12 @@ export function GameSetupWizard({
     (keys: string[]) => [SURPRISE_SUGGESTION, ...keys.map((key) => localizeUi(key))],
     [localizeUi],
   );
-  const settingSuggestions = suggestionText(setupSuggestionKeys("setting", effectiveWorldKit?.id, suggestionOffset));
-  const goalSuggestions = suggestionText(setupSuggestionKeys("goal", effectiveWorldKit?.id, suggestionOffset));
+  const settingSuggestions = suggestionText(
+    setupSuggestionKeys("setting", overworldChosen ? effectiveWorldKit?.id : undefined, suggestionOffset),
+  );
+  const goalSuggestions = suggestionText(
+    setupSuggestionKeys("goal", overworldChosen ? effectiveWorldKit?.id : undefined, suggestionOffset),
+  );
   const allSettingSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("setting")), [suggestionText]);
   const allGoalSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("goal")), [suggestionText]);
   const learnedSettings = useMemo(
@@ -975,10 +994,28 @@ export function GameSetupWizard({
   // A picked starter kit brings its genre while the player has not chosen one (no cyberpunk kit told
   // the Game Master it is "Fantasy").
   const chooseWorldKit = (kit: WorldKitInput | null) => {
+    kitChosenRef.current = true;
     setWorldKit(kit);
     const genre = kit ? SETTING_GENRE[kit.id] : undefined;
     if (genre && !genresChosenRef.current) setGenres([genre]);
   };
+
+  // On the Overworld a world needs a kit: until the player picks one, the starter kit of the first chosen
+  // genre that has one (High Fantasy otherwise), and a world rolled for it, so the game always has one.
+  const genreKitId = useMemo(() => {
+    const genre = genres.find((each) => Object.values(SETTING_GENRE).includes(each));
+    return Object.entries(SETTING_GENRE).find(([, each]) => each === genre)?.[0] ?? WORLD_STARTER_KITS[0]?.id;
+  }, [genres]);
+  useEffect(() => {
+    if (!isNewGame || mapPack || gameStyle !== "overworld" || kitChosenRef.current) return;
+    if (worldKit?.id === genreKitId) return;
+    setWorldKit(WORLD_STARTER_KITS.find((kit) => kit.id === genreKitId) ?? null);
+  }, [isNewGame, mapPack, gameStyle, genreKitId, worldKit?.id]);
+  useEffect(() => {
+    if (isNewGame && !mapPack && gameStyle === "overworld" && checkedWorldKit?.ok && !worldDraft) {
+      setWorldDraft(newWorldDraft());
+    }
+  }, [isNewGame, mapPack, gameStyle, checkedWorldKit?.ok, worldDraft]);
 
   const addCustomGenre = () => {
     const trimmed = customGenre.trim();
@@ -1236,6 +1273,9 @@ export function GameSetupWizard({
       });
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
+      // A file with a kit is an Overworld game's; one without is Classic unless it says otherwise.
+      setGameStyle(config.worldKit ? "overworld" : (config.gameStyle ?? "classic"));
+      kitChosenRef.current = Boolean(config.worldKit);
       setWorldKit(config.worldKit ?? null);
       setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story, config.worldSnapshot) : null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
@@ -1462,6 +1502,7 @@ export function GameSetupWizard({
       setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
       tone: tones.join(", ") || "Heroic",
       difficulty: normalizeGameDifficulty(difficulty),
+      ...(isNewGame ? { gameStyle: overworldChosen ? ("overworld" as const) : ("classic" as const) } : {}),
       combatStyle,
       ...(activeRuleset
         ? {
@@ -1480,8 +1521,9 @@ export function GameSetupWizard({
       // A world another generator made goes with its snapshot (W11), played as it was made.
       ...(checkedWorld?.ok && checkedWorld.snapshot ? { worldSnapshot: checkedWorld.snapshot } : {}),
       combatDirector: true,
-      // New games take tactical turns one unit at a time in a rolled order (combat C6c).
-      tacticalTurnOrder: "initiative",
+      // New Overworld games take tactical turns one unit at a time in a rolled order (combat C6c); Classic
+      // keeps the party's phase then the enemies', as it always has.
+      ...(overworldChosen ? { tacticalTurnOrder: "initiative" as const } : {}),
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
       spatialMapInstructions:
@@ -1818,6 +1860,15 @@ export function GameSetupWizard({
                         </p>
                       )}
                     </div>
+
+                    {isNewGame && !mapPack && (
+                      <GameSetupStyleChooser
+                        value={overworldEnabled ? gameStyle : "classic"}
+                        onChange={setGameStyle}
+                        disabled={isLoading}
+                        overworldLocked={!overworldEnabled}
+                      />
+                    )}
 
                     {/* Absent when nothing provides an experience, leaving this step exactly as it was. */}
                     {isNewGame && !multiplayerPlayers && (
@@ -2257,47 +2308,39 @@ export function GameSetupWizard({
                         {rulesetImportNotice}
                       </p>
                     )}
-                    {isNewGame && !overworldEnabled && (
-                      <p role="note" className="text-xs text-[var(--muted-foreground)]">
-                        {localizeUi("game.worldKit.setup.overworldLocked")}
-                      </p>
+                    {isNewGame && (mapPack || mapPackUnreadable) && (
+                      <MapPackLock
+                        name={activeExperience?.manifest.name ?? ""}
+                        pack={mapPack}
+                        error={mapPackQuery.error instanceof Error ? mapPackQuery.error.message : null}
+                        worldPath={mapPackWorld?.path ?? null}
+                        onPickWorld={(path) =>
+                          activeExperience && setMapPackPick({ experienceId: activeExperience.id, path })
+                        }
+                      />
                     )}
-                    <fieldset
-                      disabled={!overworldEnabled}
-                      className={cn("m-0 min-w-0 space-y-4 border-0 p-0", !overworldEnabled && "opacity-50")}
-                    >
-                      {isNewGame && (mapPack || mapPackUnreadable) && (
-                        <MapPackLock
-                          name={activeExperience?.manifest.name ?? ""}
-                          pack={mapPack}
-                          error={mapPackQuery.error instanceof Error ? mapPackQuery.error.message : null}
-                          worldPath={mapPackWorld?.path ?? null}
-                          onPickWorld={(path) =>
-                            activeExperience && setMapPackPick({ experienceId: activeExperience.id, path })
-                          }
-                        />
-                      )}
-                      {isNewGame && !mapPack && !mapPackUnreadable && !mapPackPending && (
-                        <GameSetupWorldKitChooser
-                          kit={worldKit}
-                          onChange={chooseWorldKit}
-                          onImportWorld={(kit, world, story, snapshot) => {
-                            chooseWorldKit(kit);
-                            setWorldDraft(worldDraftFromWorld(world, story, snapshot));
-                          }}
-                          writeRequest={worldWriteRequest}
-                        />
-                      )}
-                      {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && !mapPackPending && (
-                        <GameSetupWorldChooser
-                          kit={checkedWorldKit.kit}
-                          draft={worldDraft}
-                          onChange={setWorldDraft}
-                          lorebooks={lorebooks}
-                          request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
-                        />
-                      )}
-                    </fieldset>
+                    {isNewGame && overworldChosen && !mapPack && !mapPackUnreadable && !mapPackPending && (
+                      <GameSetupWorldKitChooser
+                        required
+                        kit={worldKit}
+                        onChange={chooseWorldKit}
+                        onImportWorld={(kit, world, story, snapshot) => {
+                          chooseWorldKit(kit);
+                          setWorldDraft(worldDraftFromWorld(world, story, snapshot));
+                        }}
+                        writeRequest={worldWriteRequest}
+                      />
+                    )}
+                    {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && !mapPackPending && (
+                      <GameSetupWorldChooser
+                        required
+                        kit={checkedWorldKit.kit}
+                        draft={worldDraft}
+                        onChange={setWorldDraft}
+                        lorebooks={lorebooks}
+                        request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
+                      />
+                    )}
 
                     {/* Content Rating */}
                     <div>

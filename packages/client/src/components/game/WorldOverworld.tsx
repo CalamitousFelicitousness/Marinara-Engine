@@ -18,16 +18,27 @@ import { DoorOpen, Footprints, MapPin, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
+  WORLD_EDGE_PIECE_BY_MASK,
   worldGroundCells,
+  worldRoadCells,
+  worldEdgePiece,
+  worldEdgeMask,
+  WORLD_FRINGE_ORDER,
   worldGroundLooks,
-  worldRoute,
+  worldSites,
+  worldTrip,
   type GameWorld,
+  characterFacing,
+  characterFrameAt,
+  type CharacterFacing,
   type TilePack,
   type WorldPlace,
+  worldSeason,
 } from "@marinara-engine/shared";
-import { useOverworld, useOverworldWalk } from "../../hooks/use-game";
+import { useDungeonEnter, useOverworld, useOverworldWalk } from "../../hooks/use-game";
 import {
   overworldCamera,
+  overworldBaseResolution,
   useOverworldAtlas,
   useOverworldClock,
   type OverworldClockHandle,
@@ -40,6 +51,7 @@ import {
   paintGround,
   paintParty,
   paintSettlement,
+  paintSite,
   paintShore,
   paintWay,
 } from "../../lib/overworld-paint";
@@ -98,6 +110,7 @@ export function WorldOverworld({
   const { t } = useTranslation();
   const { data: overworld } = useOverworld(chatId, turnKey, true);
   const walkMutation = useOverworldWalk();
+  const enterMutation = useDungeonEnter();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -117,15 +130,30 @@ export function WorldOverworld({
   const here = overworld?.here ?? null;
   const ruined = useMemo(() => new Set(overworld?.ruined ?? []), [overworld?.ruined]);
   const scale = Math.max(2, Math.min(4, Math.floor(Math.min(size.width / 400, size.height / 260))));
-  // Settlements nearest the party first, by the days the way takes; those no way reaches last.
+  // The world's sites (a cave, a mine, a ruin out in the world), gone to and into as settlements are.
+  // A hidden site is not drawn or listed until the Game Master reveals it; a sealed one is, but closed.
+  const hiddenKey = (overworld?.hidden ?? []).join(",");
+  const siteIds = useMemo(() => {
+    const hidden = new Set(hiddenKey ? hiddenKey.split(",") : []);
+    return new Set(
+      worldSites(game)
+        .map((place) => place.id)
+        .filter((id) => !hidden.has(id)),
+    );
+  }, [game, hiddenKey]);
+  const sealed = (id: string) => overworld?.locked?.[id] === "sealed";
+  const sealedKey = Object.keys(overworld?.locked ?? {})
+    .sort()
+    .join(",");
+  // Settlements and sites nearest the party first, by the days the way takes; those no way reaches last.
   const settlements = useMemo(() => {
     const days = (place: WorldPlace) =>
-      place.id === here ? -1 : here ? (worldRoute(world, here, place.id)?.days ?? Infinity) : 0;
+      place.id === here ? -1 : here ? (worldTrip(game, here, place.id)?.days ?? Infinity) : 0;
     return world.places
-      .filter((place) => place.rank !== undefined)
+      .filter((place) => place.rank !== undefined || siteIds.has(place.id))
       .map((place) => ({ place, days: days(place) }))
       .sort((a, b) => a.days - b.days || a.place.name.localeCompare(b.place.name));
-  }, [here, world]);
+  }, [game, here, siteIds, world]);
 
   // ── The clock (Pixelforge's): a game minute every five real seconds while the overworld waits ──
   const { pendingMinutes, flush } = useOverworldClock(chatId, clockRunning, () => walkingRef.current, handleRef);
@@ -135,15 +163,28 @@ export function WorldOverworld({
   const lit = darkness > 0.25;
 
   // ── The family's tiles: drawn plain until (and unless) they load ──
-  const drawTile = useOverworldAtlas(family, tilePack);
+  // Drawn in the season of the game's day (seasonal tiles, where the pack has them).
+  const drawTile = useOverworldAtlas(family, tilePack, time ? worldSeason(time.day) : undefined);
 
   // ── What is drawn once: the ground and its ways, then the settlements ──
+  // In world units (16 a cell) at `resolution` canvas pixels a unit (an image pack's detail, as far as
+  // the two canvases' size allows).
+  const worldSize = { width: world.width * OVERWORLD_TILE, height: world.height * OVERWORLD_TILE };
+  const resolution = overworldBaseResolution(
+    drawTile,
+    2 * worldSize.width * worldSize.height,
+    scale * (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1),
+  );
   const ground = useMemo(() => {
     const canvas = document.createElement("canvas");
-    canvas.width = world.width * OVERWORLD_TILE;
-    canvas.height = world.height * OVERWORLD_TILE;
+    if (drawTile.loading) return canvas;
+    canvas.width = world.width * OVERWORLD_TILE * resolution;
+    canvas.height = world.height * OVERWORLD_TILE * resolution;
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
+    ctx.scale(resolution, resolution);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     const looks = worldGroundLooks(game);
     const cells = worldGroundCells(world);
     const water = world.terrain.map(
@@ -151,14 +192,33 @@ export function WorldOverworld({
     );
     const wet = (x: number, y: number) =>
       x < 0 || y < 0 || x >= world.width || y >= world.height ? true : water[cells[y * world.width + x]!]!;
-    for (let y = 0; y < world.height; y++) {
-      for (let x = 0; x < world.width; x++) {
-        const cell = cells[y * world.width + x]!;
+    const { width, height } = world;
+    // With water edge tiles, a water cell is under-painted with the land most of its neighbours are, and
+    // the water itself is drawn by the edge pieces (so a rounded shore shows land under it).
+    const waterEdges = drawTile.hasEdges("water");
+    const landUnder = (x: number, y: number) => {
+      const count = new Map<number, number>();
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const [nx, ny] = [x + dx, y + dy];
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const cell = cells[ny * width + nx]!;
+          if (!water[cell]) count.set(cell, (count.get(cell) ?? 0) + 1);
+        }
+      return [...count].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+    };
+    // The look each cell is drawn with (a water cell under its edge pieces: the land under it).
+    const drawnLook: string[] = new Array(width * height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const own = cells[y * width + x]!;
+        const cell = waterEdges && water[own] ? (landUnder(x, y) ?? own) : own;
+        drawnLook[y * width + x] = looks[cell]!;
         const noise = cellNoise(x, y);
         if (!drawTile(ctx, looks[cell]!, x * OVERWORLD_TILE, y * OVERWORLD_TILE, noise(99))) {
           paintGround(ctx, looks[cell]!, x * OVERWORLD_TILE, y * OVERWORLD_TILE, noise);
         }
-        if (water[cell]) {
+        if (water[own] && !waterEdges) {
           paintShore(ctx, x * OVERWORLD_TILE, y * OVERWORLD_TILE, {
             n: !wet(x, y - 1),
             s: !wet(x, y + 1),
@@ -168,20 +228,77 @@ export function WorldOverworld({
         }
       }
     }
+    // Fringes: where the pack has one for a look, the look spills past its cells onto the ground beside it,
+    // taller ground drawn last so it overhangs.
+    for (const look of WORLD_FRINGE_ORDER) {
+      if (!drawTile.hasFringe(look) || !drawnLook.includes(look)) continue;
+      const isLook = (x: number, y: number) => drawnLook[y * width + x] === look;
+      for (let y = 0; y <= height; y++)
+        for (let x = 0; x <= width; x++) {
+          const mask = worldEdgeMask(isLook, x, y, width, height);
+          if (mask === 0 || mask === 15) continue;
+          drawTile.fringe(
+            ctx,
+            look,
+            WORLD_EDGE_PIECE_BY_MASK[mask]!,
+            x * OVERWORLD_TILE,
+            y * OVERWORLD_TILE,
+            (cx, cy) => cellNoise(cx, cy)(99),
+            cellNoise(x, y)(79),
+          );
+        }
+    }
+    /** A dual-grid pass: every corner of the map whose four cells are partly or wholly the terrain. */
+    const edgePass = (terrain: "water" | "road", filled: (x: number, y: number) => boolean) => {
+      const rows = drawTile.edgeRows(terrain);
+      for (let y = 0; y <= height; y++)
+        for (let x = 0; x <= width; x++) {
+          const piece = worldEdgePiece(filled, x, y, width, height, rows);
+          if (piece >= 0)
+            drawTile.edge(
+              ctx,
+              terrain,
+              piece,
+              x * OVERWORLD_TILE,
+              y * OVERWORLD_TILE,
+              cellNoise(x, y)(terrain === "water" ? 71 : 73),
+            );
+        }
+    };
+    if (waterEdges) edgePass("water", (x, y) => water[cells[y * width + x]!]!);
+    // Ways over open ground: as road cells with road edge tiles, else drawn as lines.
+    const roadEdges = drawTile.hasEdges("road");
+    const roads = new Set<number>();
+    // Settlements' own cells (from the world, not the list sorted by where the party is, so an arrival
+    // never draws the ground again).
+    const settled = new Set(
+      world.places.filter((place) => place.rank !== undefined).map((place) => place.at.y * width + place.at.x),
+    );
     for (const link of world.links) {
       const from = byId.get(link.from);
       const to = byId.get(link.to);
       if (!from || !to) continue;
-      paintWay(ctx, from.at, to.at, kit.travel.find((way) => way.id === link.way)?.crosses ?? "open");
+      const crosses = kit.travel.find((way) => way.id === link.way)?.crosses ?? "open";
+      if (roadEdges && crosses === "open") {
+        const cellsOn = worldRoadCells(from.at, to.at, (x, y) => wet(x, y) || settled.has(y * width + x));
+        for (const { x, y } of cellsOn) roads.add(y * width + x);
+        continue;
+      }
+      paintWay(ctx, from.at, to.at, crosses);
     }
+    if (roads.size) edgePass("road", (x, y) => roads.has(y * width + x));
     return canvas;
-  }, [byId, drawTile, game, kit.travel, world]);
+  }, [byId, drawTile, game, kit.travel, resolution, world]);
   const markers = useMemo(() => {
     const canvas = document.createElement("canvas");
-    canvas.width = world.width * OVERWORLD_TILE;
-    canvas.height = world.height * OVERWORLD_TILE;
+    if (drawTile.loading) return canvas;
+    canvas.width = world.width * OVERWORLD_TILE * resolution;
+    canvas.height = world.height * OVERWORLD_TILE * resolution;
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
+    ctx.scale(resolution, resolution);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     for (const { place } of settlements) {
       const [x, y] = [place.at.x * OVERWORLD_TILE, place.at.y * OVERWORLD_TILE];
       // After dark, a warm glow of lit windows under each place still standing.
@@ -192,13 +309,22 @@ export function WorldOverworld({
         ctx.fillStyle = glow;
         ctx.fillRect(x - 6, y - 5, 28, 28);
       }
+      if (siteIds.has(place.id)) {
+        // A pack's site marker, one of its variants by the place (one per kind of site), else a cave mouth.
+        const pick = ([...place.id].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 100) / 100;
+        // A sealed site is drawn faded: on the map, but not to be gone to yet.
+        ctx.globalAlpha = sealedKey.split(",").includes(place.id) ? 0.45 : 1;
+        if (!drawTile(ctx, "site", x, y, pick)) paintSite(ctx, place.at.x, place.at.y);
+        ctx.globalAlpha = 1;
+        continue;
+      }
       const tier = settlementTier(place, top);
       if (!drawTile(ctx, ruined.has(place.id) ? "ruin" : `marker${tier}`, x, y)) {
         paintSettlement(ctx, place.at.x, place.at.y, tier, ruined.has(place.id), lit);
       }
     }
     return canvas;
-  }, [drawTile, lit, ruined, settlements, top, world.height, world.width]);
+  }, [drawTile, lit, resolution, ruined, sealedKey, settlements, siteIds, top, world.height, world.width]);
 
   // Beyond the world's edge, the ground its edge has most of (the sea around an island, open space).
   const beyond = useMemo(() => {
@@ -217,7 +343,15 @@ export function WorldOverworld({
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = OVERWORLD_TILE;
     const ctx = canvas.getContext("2d");
-    if (ctx && !drawTile(ctx, look, 0, 0)) paintGround(ctx, look as (typeof looks)[number], 0, 0, cellNoise(0, 0));
+    if (!ctx) return canvas;
+    // Water beyond the edge, with water edge tiles, is their middle piece, as the water inside the map is.
+    const lookIndex = looks.indexOf(look as (typeof looks)[number]);
+    const wetLook =
+      lookIndex >= 0 &&
+      (game.kit.terrain?.find((entry) => entry.id === world.terrain[lookIndex])?.kind ?? "open") === "water";
+    if (wetLook && drawTile.edge(ctx, "water", WORLD_EDGE_PIECE_BY_MASK[15]!, OVERWORLD_TILE / 2, OVERWORLD_TILE / 2))
+      return canvas;
+    if (!drawTile(ctx, look, 0, 0)) paintGround(ctx, look as (typeof looks)[number], 0, 0, cellNoise(0, 0));
     return canvas;
   }, [drawTile, game, world]);
 
@@ -225,12 +359,19 @@ export function WorldOverworld({
   const homeAt = here ? byId.get(here) : undefined;
   const partyRef = useRef<Point | null>(null);
   if (!walkingRef.current) partyRef.current = homeAt ? centre(homeAt) : null;
-  const camera = useCallback((at: Point) => overworldCamera(at, ground, size, scale), [ground, scale, size]);
-  const restingCamera = camera(lookAt ?? partyRef.current ?? { x: ground.width / 2, y: ground.height / 2 });
+  /** Which way the party faces: the way it last walked. */
+  const facingRef = useRef<CharacterFacing>("down");
+  const camera = useCallback(
+    (at: Point) => overworldCamera(at, worldSize, size, scale),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [worldSize.width, worldSize.height, scale, size],
+  );
+  const restingCamera = camera(lookAt ?? partyRef.current ?? { x: worldSize.width / 2, y: worldSize.height / 2 });
   const [cameraX, cameraY] = [restingCamera.x, restingCamera.y];
 
   const draw = useCallback(
-    (cam: Point, step = false) => {
+    (cam: Point, frame = 1) => {
+      const step = frame !== 1;
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx || size.width === 0) return;
@@ -256,12 +397,23 @@ export function WorldOverworld({
           size.height / scale + OVERWORLD_TILE * 3,
         );
       }
-      ctx.drawImage(ground, 0, 0);
-      ctx.drawImage(markers, 0, 0);
+      // Smooth only where the base is shown smaller than it was drawn (an image pack's art).
+      ctx.imageSmoothingEnabled = drawTile.image && resolution > scale * dpr;
+      ctx.drawImage(ground, 0, 0, ground.width / resolution, ground.height / resolution);
+      ctx.drawImage(markers, 0, 0, markers.width / resolution, markers.height / resolution);
+      ctx.imageSmoothingEnabled = false;
       const party = partyRef.current;
       if (party) {
         const [x, y] = [Math.round(party.x) - 8, Math.round(party.y) - 14 - (step ? 1 : 0)];
-        if (!drawTile(ctx, "party", x, y)) paintParty(ctx, x + 1, y + 1, step);
+        const drawn = drawTile.character(
+          ctx,
+          "party",
+          Math.round(party.x) - 8,
+          Math.round(party.y) - 8,
+          facingRef.current,
+          frame,
+        );
+        if (!drawn && !drawTile(ctx, "party", x, y)) paintParty(ctx, x + 1, y + 1, step);
       }
       if (darkness > 0) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -272,7 +424,7 @@ export function WorldOverworld({
       }
       if (layerRef.current) layerRef.current.style.transform = `translate(${-cam.x}px, ${-cam.y}px)`;
     },
-    [beyond, darkness, drawTile, ground, markers, scale, size.height, size.width],
+    [beyond, darkness, drawTile, ground, markers, resolution, scale, size.height, size.width],
   );
 
   useEffect(() => {
@@ -319,7 +471,7 @@ export function WorldOverworld({
   const dragRef = useRef<{ x: number; y: number; from: Point; moved: boolean } | null>(null);
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (walkingRef.current) return;
-    const from = lookAt ?? partyRef.current ?? { x: ground.width / 2, y: ground.height / 2 };
+    const from = lookAt ?? partyRef.current ?? { x: worldSize.width / 2, y: worldSize.height / 2 };
     dragRef.current = { x: event.clientX, y: event.clientY, from, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -341,8 +493,8 @@ export function WorldOverworld({
 
   // ── Walking ──
   const route = useMemo(
-    () => (here && selected && selected !== here ? worldRoute(world, here, selected) : null),
-    [here, selected, world],
+    () => (here && selected && selected !== here ? worldTrip(game, here, selected) : null),
+    [game, here, selected],
   );
   const startWalk = useCallback(
     async (to: string) => {
@@ -395,6 +547,8 @@ export function WorldOverworld({
             const share = length === 0 ? 1 : Math.min(1, along / length);
             const [a, b] = [points[index]!, points[index + 1]!];
             at = { x: a.x + (b.x - a.x) * share, y: a.y + (b.y - a.y) * share };
+            // Facing the way the leg goes, by its larger axis.
+            facingRef.current = characterFacing(b.x - a.x, b.y - a.y, facingRef.current);
             break;
           }
           along -= length;
@@ -404,7 +558,7 @@ export function WorldOverworld({
           const day = fromDay + Math.floor((fromMinutes + result.route.days * 24 * 60 * progress) / (24 * 60));
           walkChipRef.current.textContent = t("game.overworld.walking", { day });
         }
-        drawRef.current(cameraOfRef.current(at), Math.floor(now / 180) % 2 === 0);
+        drawRef.current(cameraOfRef.current(at), characterFrameAt(now));
         if (progress < 1) {
           frameRef.current = requestAnimationFrame(frame);
           return;
@@ -426,7 +580,9 @@ export function WorldOverworld({
   const sizeLabel = (place: WorldPlace) =>
     kit.sizes.find((entry) => entry.id === place.size)?.label ?? place.size ?? "";
   const placeWords = (place: WorldPlace) =>
-    [sizeLabel(place), ...(ruined.has(place.id) ? [t("game.overworld.ruined")] : [])].join(", ");
+    siteIds.has(place.id)
+      ? t("game.overworld.siteWords")
+      : [sizeLabel(place), ...(ruined.has(place.id) ? [t("game.overworld.ruined")] : [])].join(", ");
   const walkedTo = overworld?.walk ? byId.get(overworld.walk.to) : undefined;
   const chosen = selected ? byId.get(selected) : undefined;
   const cell = OVERWORLD_TILE * scale;
@@ -448,6 +604,7 @@ export function WorldOverworld({
         role="region"
         aria-label={t("game.overworld.region")}
         data-component="WorldOverworld"
+        data-tiles={drawTile.loading ? "loading" : drawTile.image ? "image" : "drawn"}
       >
         <canvas
           ref={canvasRef}
@@ -464,7 +621,7 @@ export function WorldOverworld({
         >
           {settlements.map(({ place }) => {
             const isHere = place.id === here && !walking;
-            const tier = settlementTier(place, top);
+            const tier = siteIds.has(place.id) ? 0 : settlementTier(place, top);
             const words = placeWords(place);
             return (
               <div
@@ -532,18 +689,43 @@ export function WorldOverworld({
             {chosen.id === here ? (
               <>
                 <div className="mt-2 text-white/60">{t("game.overworld.here")}</div>
-                {onEnterTown && (
+                {siteIds.has(chosen.id) ? (
                   <button
                     type="button"
-                    disabled={walking}
-                    onClick={onEnterTown}
+                    disabled={!canWalk || walking || enterMutation.isPending}
+                    onClick={() =>
+                      enterMutation.mutate(
+                        { chatId, place: chosen.id },
+                        {
+                          onSuccess: () => setSelected(null),
+                          onError: (error) =>
+                            toast.error(
+                              error instanceof Error && error.message ? error.message : t("game.overworld.enterFailed"),
+                            ),
+                        },
+                      )
+                    }
                     className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
                   >
                     <DoorOpen size={13} />
                     {t("game.overworld.enter", { name: chosen.name })}
                   </button>
+                ) : (
+                  onEnterTown && (
+                    <button
+                      type="button"
+                      disabled={walking}
+                      onClick={onEnterTown}
+                      className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      <DoorOpen size={13} />
+                      {t("game.overworld.enter", { name: chosen.name })}
+                    </button>
+                  )
                 )}
               </>
+            ) : sealed(chosen.id) ? (
+              <div className="mt-2 text-white/60">{t("game.overworld.sealed")}</div>
             ) : route ? (
               <>
                 <div className="mt-2">{tripText(route.days)}</div>

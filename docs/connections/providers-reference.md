@@ -51,6 +51,10 @@ The **API Key** field accepts any one of these three credential types, and Marin
 2. An OAuth access token, for example from `gcloud auth print-access-token`.
 3. A Vertex API key.
 
+**Gemini 4 Argon** runs only in the `global`, `us` and `eu` locations, not in a single region such as `us-central1`. To use it, set the **Base URL** to `https://aiplatform.googleapis.com/v1/projects/YOUR_PROJECT_ID/locations/global`. With any other location, Google returns an error and Marinara shows it.
+
+Argon can take several minutes to answer, on either Google connection. If chat replies time out, raise `CHAT_GENERATION_TIMEOUT_MS`. If agent calls time out, raise `AGENT_CALL_TIMEOUT_MS` (see [Configuration](../CONFIGURATION.md)). Google suggests allowing at least 15 minutes, which is `900000`.
+
 ## Mistral
 
 - Where to get a key: `https://console.mistral.ai/api-keys`

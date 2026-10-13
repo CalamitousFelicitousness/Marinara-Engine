@@ -257,9 +257,11 @@ export function relevantGenerationParameters(context: GenerationParameterContext
       if (!isGeminiThinkingLevelModel(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) {
         hide("reasoningEffort");
       }
-      // Argon ignores temperature, top-p and top-k and rejects penalties, so the request leaves them out.
-      if (isGeminiArgonModel(model)) hide(...SAMPLING);
     }
+
+    // Argon ignores temperature, top-p and top-k and rejects penalties, so every request but a custom endpoint's
+    // leaves them out, including OpenRouter's and NanoGPT's.
+    if (isGeminiArgonModel(model) && provider !== "custom") hide(...SAMPLING);
 
     if (provider === "custom") {
       // Custom endpoints keep sampling unless the model is GPT-5.5 or 5.6, which reject it.
@@ -353,7 +355,7 @@ export function reasoningEffortChoices(
     .trim()
     .toLowerCase();
   const caps = context.capabilities ?? null;
-  // ChatGPT (Codex) and Gemini 4 Argon have no off level; sending nothing keeps the model's own default.
+  // ChatGPT (Codex) has no off level; sending nothing keeps the model's own default.
   const off: GenerationParameterChoice<null> =
     provider === "openai_chatgpt"
       ? {
@@ -364,15 +366,7 @@ export function reasoningEffortChoices(
             ? { description: `Provider default: ${caps.defaultEffort}`, providerDefault: caps.defaultEffort }
             : {}),
         }
-      : (provider === "google" || provider === "google_vertex") && isGeminiArgonModel(model)
-        ? {
-            value: null,
-            label: null,
-            kind: "default",
-            description: "Provider default: medium",
-            providerDefault: "medium",
-          }
-        : { value: null, label: null };
+      : { value: null, label: null };
 
   if (caps?.effortLevels && caps.effortLevels.length > 0) {
     const levels = caps.effortLevels.map((level) => ({
@@ -397,7 +391,9 @@ export function reasoningEffortChoices(
     group.push(level);
     groups.set(sent, group);
   }
-  const choices: Array<GenerationParameterChoice<StoredEffortLevel | null>> = [off];
+  // A model that cannot turn thinking off (Gemini 4 Argon) sends a level for Off too, so Off is not offered.
+  const offSendsLevel = !!resolveProviderReasoningEffort({ provider, model, reasoningEffort: null });
+  const choices: Array<GenerationParameterChoice<StoredEffortLevel | null>> = offSendsLevel ? [] : [off];
   for (const [sent, levels] of groups) {
     const keep = context.selected && levels.includes(context.selected) ? context.selected : levels[0]!;
     choices.push({ value: keep, label: sent });

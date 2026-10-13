@@ -116,9 +116,13 @@ const GOOGLE_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platf
 const serviceAccountTokenCache = new Map<string, { accessToken: string; expiresAtMs: number }>();
 const LINKAPI_CONSOLE_HOSTS = new Set(["linkapi.ai", "www.linkapi.ai", "home.linkapi.ai"]);
 
-function supportsGoogleThinkingStreaming(baseUrl: string): boolean {
+function supportsGoogleThinkingStreaming(baseUrl: string, model: string): boolean {
   try {
-    return new URL(baseUrl).hostname === "generativelanguage.googleapis.com";
+    const host = new URL(baseUrl).hostname;
+    if (host === "generativelanguage.googleapis.com") return true;
+    // Argon stops a non-streamed reply at 32,768 tokens, half its streamed limit, so it streams on Vertex too.
+    // ponytail: other models still buffer thinking on Vertex; drop the model check once Vertex is verified for them.
+    return isGeminiArgonModel(model) && host.endsWith(".googleapis.com");
   } catch {
     return false;
   }
@@ -659,7 +663,9 @@ export class GoogleProvider extends BaseLLMProvider {
     // the buffered path it uses today. Only the official endpoint streams thinking;
     // unrecognized proxies retain the workaround for stripped thought parts.
     const useStream =
-      !!options.onToken && options.stream !== false && (!thinkingConfig || supportsGoogleThinkingStreaming(base));
+      !!options.onToken &&
+      options.stream !== false &&
+      (!thinkingConfig || supportsGoogleThinkingStreaming(base, model));
     const endpoint = useStream ? "streamGenerateContent" : "generateContent";
     const url =
       this.providerKind === "google_vertex"
@@ -923,7 +929,7 @@ export class GoogleProvider extends BaseLLMProvider {
 
     // Proxies can strip thought parts from SSE; keep their buffered workaround.
     // Google's official endpoint carries those parts in its stream.
-    const useStreaming = options.stream && (!thinkingConfig || supportsGoogleThinkingStreaming(base));
+    const useStreaming = options.stream && (!thinkingConfig || supportsGoogleThinkingStreaming(base, model));
     const endpoint = useStreaming ? "streamGenerateContent" : "generateContent";
     const url =
       this.providerKind === "google_vertex"

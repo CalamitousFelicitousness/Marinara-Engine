@@ -200,7 +200,7 @@ try {
     assert.notEqual(issue(274, document()), gate);
     assert.equal(
       issue(
-        269,
+        273,
         document((doc) => delete conditionOf(doc, "calmed").suppresses),
       ),
       gate,
@@ -208,7 +208,7 @@ try {
     );
     assert.equal(
       issue(
-        269,
+        273,
         document((doc) => delete conditionOf(doc, "repelled").orSourceWithin),
       ),
       gate,

@@ -463,10 +463,10 @@ export function TacticalCombatUI({
   // Stronger palette tint over the painted textures when a themed environment applies.
   const tileTintAlpha =
     activeEnvironment && TERRAIN_PALETTES[activeEnvironment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
+  const liveBattlefield = liveState?.battlefield;
   const battlefieldSummary = useMemo(() => {
     const seed = liveState?.seed;
-    const size = liveState?.battlefield?.size;
-    const landmarks = liveState?.battlefield?.brief?.features?.length ?? 0;
+    const size = liveBattlefield?.size;
     const parts = [
       typeof seed === "number" ? localizeUi("ui.game.tacticalcombatui.seedValue1", { value1: seed }) : null,
       size
@@ -474,10 +474,15 @@ export function TacticalCombatUI({
             value1: localizeUi(battlefieldSizeLabelKey(size)),
           })
         : null,
-      localizeUi("ui.game.tacticalcombatui.landmarks", { count: landmarks }),
+      // A board painted for the place (worldgen W9g) is named; a generated one counts its landmarks.
+      liveBattlefield?.kind === "hand-made"
+        ? localizeUi("ui.game.tacticalcombatui.madeMapValue1", { value1: liveBattlefield.name })
+        : localizeUi("ui.game.tacticalcombatui.landmarks", {
+            count: liveBattlefield?.brief?.features?.length ?? 0,
+          }),
     ].filter((value): value is string => Boolean(value));
     return parts.join(" · ");
-  }, [liveState?.battlefield?.brief?.features?.length, liveState?.battlefield?.size, liveState?.seed, localizeUi]);
+  }, [liveBattlefield, liveState?.seed, localizeUi]);
 
   const selectedUnitId = ui.kind === "idle" ? null : ui.unitId;
   const selectedUnit = useMemo(
@@ -817,7 +822,11 @@ export function TacticalCombatUI({
     actionMenuY.set(0);
     endedRef.current = false;
     const restartSeed = state?.seed;
-    const restartBattlefield = state ? (state.battlefield?.brief ?? null) : (battlefield ?? null);
+    const restartBattlefield = state
+      ? state.battlefield?.kind === "generated"
+        ? (state.battlefield.brief ?? null)
+        : null
+      : (battlefield ?? null);
     const restartEnvironment = state?.environment ?? environment ?? null;
     const restartFormation = state?.formation ?? formation ?? null;
     setState(null);

@@ -1,6 +1,7 @@
 import { currentRoomGeneration, roomHostIdentity } from "../multiplayer/generation-policy.js";
 import {
   GAME_GM_BUILT_IN_PROMPT_TEMPLATES,
+  gameStoryFromMetadata,
   gameWorldFromMetadata,
   gameWorldKitFromMetadata,
   gameWorldBattlefields,
@@ -374,6 +375,7 @@ export async function injectGameGmPromptRuntime(args: {
     /* non-fatal */
   }
 
+  const promptWorld = gameWorldFromMetadata(args.chatMetadata);
   const gmCtx: GmPromptContext = {
     gameActiveState: gameActiveState as GameActiveState,
     storyArc,
@@ -434,7 +436,8 @@ export async function injectGameGmPromptRuntime(args: {
         ? args.chatMetadata.gameSpecialInstructions.trim()
         : null,
     worldKit: gameWorldKitFromMetadata(args.chatMetadata),
-    world: gameWorldFromMetadata(args.chatMetadata),
+    world: promptWorld,
+    story: gameStoryFromMetadata(args.chatMetadata, promptWorld),
   };
 
   const builtGmPrompt = buildGmSystemPrompt(gmCtx);

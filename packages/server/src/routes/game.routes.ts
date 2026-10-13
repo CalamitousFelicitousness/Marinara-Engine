@@ -14,10 +14,17 @@ import {
   readImageAppearanceOverride,
 } from "@marinara-engine/shared";
 import {
+  checkStoryScript,
   compileGameWorld,
-  worldCast,
+  gameStoryFromMetadata,
+  readStoryLedger,
+  storyObjectives,
+  storyScriptSchema,
+  storyState,
+  type StoryScript,
   worldEditsEmpty,
   worldEditIssues,
+  worldTownEditIssues,
   worldEditsSchema,
   worldFile,
   worldKitFile,
@@ -25,11 +32,7 @@ import {
   parseWorldKit,
   WORLD_STARTER_KITS,
   WORLD_SHARE_FILE_MAX_BYTES,
-  worldGroundLooks,
-  worldPersonByHand,
   worldKitArtFamily,
-  worldTerrainEntries,
-  type CompiledWorld,
 } from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
@@ -48,6 +51,13 @@ import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
 import { mapPackLockIssue, readMapPack, type MapPack } from "../services/game/map-pack.service.js";
+import {
+  editsStoryRefusal,
+  storyNamesOf,
+  worldForEditor,
+  worldPeopleOf,
+  worldTownForEditor,
+} from "../services/game/world-editor.service.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
   buildWorldKitWritingPrompt,
@@ -79,6 +89,7 @@ import {
 } from "../services/storage/game-engine-state.storage.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { formatOwnerSpatialBreadcrumb, resolveOwnerSpatialProjection } from "../services/spatial-context/projection.js";
+import { gameBattlefieldHere } from "../services/game/made-battlefield.service.js";
 import {
   parseStoredSpatialDefinition,
   resolveEffectiveSpatialState,
@@ -249,6 +260,8 @@ import {
   gameWorldFromMetadata,
   lastGamePlace,
   readWorldLedger,
+  carryWorldLedger,
+  worldLedgerCarry,
   worldJournal,
   worldPlaceInForce,
   worldPresent,
@@ -446,7 +459,7 @@ import {
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
 import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
-import { gameRepliesBefore } from "../services/game/game-market.service.js";
+import { gameRepliesBefore, isGameMasterReply } from "../services/game/game-market.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
   normalizeIllustratorAppearance,
@@ -1975,6 +1988,8 @@ const gameSetupConfigSchema = z.object({
     .optional(),
   worldKit: worldKitSchema.optional(),
   world: gameWorldSchema.optional(),
+  /** The world's story script (worldgen W10): read here, checked against the world once it is read. */
+  story: storyScriptSchema.optional(),
   /** Opaque config owned by that experience — persisted verbatim, never read by the host. */
   experienceConfig: z
     .record(z.string().max(120), z.unknown())
@@ -6097,43 +6112,10 @@ export type SetupGameRequest = z.input<typeof setupSchema>;
 function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): string[] {
   const parsed = worldEditsSchema.safeParse(edits);
   if (!parsed.success) return [parsed.error.issues[0]?.message ?? "The edits do not read."];
-  return worldEditIssues(game, parsed.data);
-}
-
-/** A game's world as compiled, in the shape a world editor draws: the ground and its classes (with the
- *  look each is drawn as), the places, and the kit's words for layers, sizes and tags. */
-function worldForEditor(game: GameWorld) {
-  const compiled: CompiledWorld = compileGameWorld({ ...game, edits: undefined });
-  const looks = worldGroundLooks({ ...game, world: compiled });
-  const terrain = worldTerrainEntries(game.kit);
-  return {
-    width: compiled.width,
-    height: compiled.height,
-    ground: compiled.ground,
-    terrain: compiled.terrain.map((id, index) => {
-      const entry = terrain.find((each) => each.id === id);
-      return { id, label: entry?.label ?? id, kind: entry?.kind ?? "open", look: looks[index] };
-    }),
-    places: compiled.places.map((place) => ({
-      id: place.id,
-      name: place.name,
-      layer: place.layer,
-      depth: place.depth,
-      parentId: place.parentId,
-      at: place.at,
-      ...(place.size ? { size: place.size, rank: place.rank } : {}),
-      tags: place.tags,
-    })),
-    startId: compiled.startId,
-    layers: game.kit.layers.map((layer) => ({
-      id: layer.id,
-      label: layer.label,
-      settlements: Boolean(layer.settlements),
-    })),
-    sizes: game.kit.sizes.map((size) => ({ id: size.id, label: size.label })),
-    placeTags: game.kit.placeTags.map((tag) => ({ id: tag.id, label: tag.label })),
-    family: worldKitArtFamily(game.kit) ?? null,
-  };
+  const issues = worldEditIssues(game, parsed.data);
+  // And its towns laid out by hand (worldgen W9h), against the towns the world with these edits makes.
+  if (issues.length || !parsed.data.towns?.length) return issues;
+  return worldTownEditIssues({ ...game, world: compileGameWorld(game) }, parsed.data);
 }
 
 export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions = {}) {
@@ -6753,6 +6735,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       gameWorld = { ...requestedWorld, brief: checked.brief };
     }
+    // A story script (worldgen W10) names the world's places and people, so it is checked against it.
+    let gameStory: StoryScript | null = null;
+    const requestedStory = parsedCreateGameInput.setupConfig.story;
+    if (requestedStory != null) {
+      const kit = parsedCreateGameInput.setupConfig.worldKit;
+      const inputs = gameWorld && kit ? { kit, ...gameWorld, edits: gameWorld.edits } : null;
+      const checked = inputs ? checkStoryScript({ ...inputs, world: compileGameWorld(inputs) }, requestedStory) : null;
+      if (!checked?.ok) {
+        return rejectGenerationOutput(reply, 400, {
+          error: checked ? `The world's story does not fit it: ${checked.issues[0]}` : "A story needs a world.",
+          code: "story_invalid",
+        });
+      }
+      gameStory = checked.story;
+    }
     // An Experience's map pack (worldgen W9e) locks the game to its kit, and to one of its worlds when
     // it ships any; a pack that does not read keeps the Experience from starting a game, with the reason.
     let mapPack: MapPack | null = null;
@@ -6769,6 +6766,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const issue = mapPackLockIssue(read.pack, {
           worldKit: parsedCreateGameInput.setupConfig.worldKit,
           world: gameWorld,
+          story: gameStory,
         });
         if (issue) return rejectGenerationOutput(reply, 400, { error: issue, code: "map_pack_locked" });
         mapPack = read.pack;
@@ -6779,6 +6777,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       ...(gameRuleset ? { ruleset: gameRuleset } : {}),
       // The setup's own copy carries the world as read, never the brief as sent.
       world: gameWorld ?? undefined,
+      story: gameStory ?? undefined,
       gameWorldMapMode:
         requestedWorldMapMode === "hierarchical" && parsedCreateGameInput.setupConfig.enableAgents === true
           ? "hierarchical"
@@ -6929,6 +6928,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       ...(gameWorld ? { gameWorld } : {}),
       // The game draws with its map pack's tiles while the Experience is installed.
       ...(mapPack?.tiles ? { gameMapPack: { packageId: mapPack.packageId } } : {}),
+      ...(gameStory ? { gameStory } : {}),
       gameNpcs: [],
       enableAgents: setupConfig.enableAgents === true,
       activeAgentIds: setupActiveAgentIds,
@@ -7760,6 +7760,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         gameActiveState: "exploration",
         gamePartyChatId: null,
         gamePreviousSessionSummaries: summaries,
+        // What the world's ledger read in the sessions before, and in this one: the new one goes on from it.
+        gameLedgerCarry: carryWorldLedger(
+          worldLedgerCarry(prevMeta.gameLedgerCarry),
+          latestSessionMessages.filter(isGameMasterReply).map((message) => message.content),
+        ),
         gameDialogueChatId: null,
         gameCombatChatId: null,
         gameSceneBackground: null,
@@ -10673,10 +10678,6 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
     const meta = parseMeta(chat.metadata);
-    // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
-    const environment =
-      worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, parsed.data.environment) ??
-      parsed.data.environment;
     const setupConfig = meta.gameSetupConfig as Record<string, unknown> | undefined;
     const difficulty = normalizeGameDifficulty(setupConfig?.difficulty);
     const preferences = resolveTacticalStartPreferences({
@@ -10686,6 +10687,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       randomSeed: () => randomInt(0, 0x1_0000_0000),
     });
     if (!preferences.ok) return reply.status(400).send({ error: preferences.error });
+    // A board painted for where the fight starts (worldgen W9g) is fought on as painted, in its own scene;
+    // the brief's terrain is not used.
+    const here = await gameBattlefieldHere(app.db, chatId, meta, preferences.seed);
+    // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
+    const environment =
+      here?.scene ??
+      worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, parsed.data.environment) ??
+      parsed.data.environment;
 
     let state: TacticalCombatState;
     try {
@@ -10698,13 +10707,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               resolveCombatWeather(
                 meta.gameWeather ?? (await createGameStateStorage(app.db).getLatestCommitted(chatId))?.weather,
                 environment,
-                preferences.battlefield?.exposure,
+                here ? undefined : preferences.battlefield?.exposure,
               )),
         difficulty,
         ...(gameWorldElementSet(meta) ? { elements: gameWorldElementSet(meta) } : {}),
         environment,
         formation,
-        battlefield: preferences.battlefield,
+        ...(here ? { made: here } : { battlefield: preferences.battlefield }),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate the requested battlefield.";
@@ -11021,8 +11030,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       lastGamePlace(replies.scoped),
       (await resolveOwnerSpatialProjection(req.params.chatId, {}, meta))?.currentLocationId,
     );
+    // The story's objectives (worldgen W10), as the replies have left its flags.
+    const story = gameStoryFromMetadata(meta, world);
     return {
-      journal: worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
+      journal: {
+        ...worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
+        ...(story ? { story: storyObjectives(story, storyState(story, readStoryLedger(replies.all))) } : {}),
+      },
     };
   });
 
@@ -11162,6 +11176,17 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     return { world: worldForEditor(game), edits: game.edits ?? null, links: game.world.links };
   });
 
+  // GET /game/:chatId/world/town?settlement=: a settlement's town for a town editor (worldgen W9h).
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/town", async (req, reply) => {
+    const { settlement } = z.object({ settlement: z.string().min(1).max(16) }).parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    const found = worldTownForEditor(game, settlement);
+    return found ?? reply.status(404).send({ error: "No such settlement in this world." });
+  });
+
   // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.
   app.put<{ Params: { chatId: string } }>("/:chatId/world/edits", async (req, reply) => {
     const { chatId } = req.params;
@@ -11175,18 +11200,27 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    const issues = worldEditIssues(game, parsed.data);
+    // The layer against the world, then its towns laid out by hand against the towns it makes (W9h).
+    const worldIssues = worldEditIssues(game, parsed.data);
+    const issues = worldIssues.length ? worldIssues : worldTownEditIssues(game, parsed.data);
     if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
     const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+    // The game's story (worldgen W10) names places and people: edits that take one away are refused, as
+    // the story stands when the edits are written (one saved meanwhile counts).
+    let storyRefusal = null as { error: string; issues: string[] } | null;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
       // The world is the same one the edits were checked against: a world is written once, at creation.
       if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
         throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
       }
+      const now = gameWorldFromMetadata(fresh);
+      storyRefusal = now ? editsStoryRefusal(now, edits, gameStoryFromMetadata(fresh, now)) : null;
+      if (storyRefusal) return {};
       const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
       return { gameWorld: edits ? { ...stored, edits } : stored };
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    if (storyRefusal) return reply.status(400).send(storyRefusal);
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };
@@ -11262,13 +11296,83 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    return worldFile(chat.name, game.kit, {
-      seed: game.seed,
-      generatorVersion: WORLD_GENERATOR_VERSION,
-      grounding: game.grounding,
-      brief: game.brief,
-      ...(game.edits ? { edits: game.edits } : {}),
+    return worldFile(
+      chat.name,
+      game.kit,
+      {
+        seed: game.seed,
+        generatorVersion: WORLD_GENERATOR_VERSION,
+        grounding: game.grounding,
+        brief: game.brief,
+        ...(game.edits ? { edits: game.edits } : {}),
+      },
+      gameStoryFromMetadata(parseMeta(chat.metadata), game),
+    );
+  });
+
+  // ── A game's story script (worldgen W10), for a maker: read, saved (checked against the game's world,
+  // its hand edits included) and taken away. What the story has done so far is folded from the replies,
+  // so a script changed mid-game never rewrites it. ──
+
+  // GET /game/:chatId/story
+  app.get<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const game = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    const story = gameStoryFromMetadata(meta, game);
+    const replies = await gameRepliesBefore(app.db, req.params.chatId);
+    return {
+      story,
+      // For a story maker: what the story has done in this game so far, and what a story can name here
+      // (the world as edited; its people come from /world/people).
+      state: story ? storyState(story, readStoryLedger(replies.all)) : null,
+      names: storyNamesOf(game),
+    };
+  });
+
+  // PUT /game/:chatId/story {story}
+  app.put<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
+    const { chatId } = req.params;
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    const input = (req.body as { story?: unknown } | undefined)?.story;
+    // Checked against the world as it is when the story is written: hand edits saved meanwhile count.
+    let refusal = null as { error: string; issues: string[] } | null;
+    let story = null as StoryScript | null;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const now = gameWorldFromMetadata(fresh);
+      const checked = now ? checkStoryScript(now, input) : null;
+      if (!checked?.ok) {
+        const issues = checked?.issues ?? ["the game has no world"];
+        refusal = { error: `The story does not fit this world: ${issues[0]}`, issues };
+        return {};
+      }
+      story = checked.story;
+      return { gameStory: checked.story };
     });
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    if (refusal) return reply.status(400).send(refusal);
+    logger.info("[game/story] %s: story saved", chatId);
+    return { story };
+  });
+
+  // DELETE /game/:chatId/story
+  app.delete<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    if (chat.mode !== "game" || !gameWorldFromMetadata(parseMeta(chat.metadata))) {
+      return reply.status(404).send({ error: "This game has no world." });
+    }
+    const updated = await chats.patchMetadata(req.params.chatId, () => ({ gameStory: null }));
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    logger.info("[game/story] %s: story taken away", req.params.chatId);
+    return { story: null };
   });
 
   // GET /game/:chatId/world/people?place=: a place's people as the game has them, edits applied.
@@ -11278,15 +11382,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    return {
-      people: worldCast(game, place).map((person) => ({
-        id: person.id,
-        name: person.name,
-        named: person.named,
-        role: person.role,
-        byHand: worldPersonByHand(person.id),
-      })),
-    };
+    return { people: worldPeopleOf(game, place) };
   });
 
   // ── GET /game/:chatId/overworld ──

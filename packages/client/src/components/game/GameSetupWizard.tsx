@@ -582,7 +582,10 @@ export function GameSetupWizard({
   const checkedWorldKit = isNewGame && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
-  const mapPackDraft = useMemo(() => (mapPackWorld ? worldDraftFromWorld(mapPackWorld.world) : null), [mapPackWorld]);
+  const mapPackDraft = useMemo(
+    () => (mapPackWorld ? worldDraftFromWorld(mapPackWorld.world, mapPackWorld.story) : null),
+    [mapPackWorld],
+  );
   const effectiveWorldDraft = mapPackDraft ?? worldDraft;
   const checkedWorld =
     checkedWorldKit?.ok && effectiveWorldDraft ? worldDraftConfig(checkedWorldKit.kit, effectiveWorldDraft) : null;
@@ -1229,7 +1232,7 @@ export function GameSetupWizard({
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
       setWorldKit(config.worldKit ?? null);
-      setWorldDraft(config.world ? worldDraftFromWorld(config.world) : null);
+      setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story) : null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);
@@ -1467,6 +1470,7 @@ export function GameSetupWizard({
         : {}),
       ...(checkedWorldKit?.ok ? { worldKit: checkedWorldKit.kit } : {}),
       ...(checkedWorld?.ok ? { world: checkedWorld.world } : {}),
+      ...(checkedWorld?.ok && checkedWorld.story ? { story: checkedWorld.story } : {}),
       combatDirector: true,
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
@@ -2264,9 +2268,9 @@ export function GameSetupWizard({
                         <GameSetupWorldKitChooser
                           kit={worldKit}
                           onChange={chooseWorldKit}
-                          onImportWorld={(kit, world) => {
+                          onImportWorld={(kit, world, story) => {
                             chooseWorldKit(kit);
-                            setWorldDraft(worldDraftFromWorld(world));
+                            setWorldDraft(worldDraftFromWorld(world, story));
                           }}
                           writeRequest={worldWriteRequest}
                         />

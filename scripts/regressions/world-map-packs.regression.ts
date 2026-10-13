@@ -20,6 +20,7 @@ import {
   WORLD_STARTER_KITS,
   capabilityPackageManifestSchema,
   checkWorldBrief,
+  checkStoryScript,
   compileGameWorld,
   parseWorldKit,
   worldFile,
@@ -49,6 +50,13 @@ const worldOf = (seed: number) => ({
 });
 const ashford = compileGameWorld({ kit, ...worldOf(9) }).places.find((place) => place.name === "Ashford")!;
 const edits = { editsVersion: 1 as const, places: [{ id: ashford.id, name: "Newhaven" }] };
+// A map may ship its story (worldgen W10): it is part of the map the game is locked to.
+const parsedStory = checkStoryScript(
+  { kit, ...worldOf(9), edits, world: compileGameWorld({ kit, ...worldOf(9), edits }) },
+  { storyVersion: 1, events: [{ id: "home", when: { on: "arrive", place: ashford.id }, do: [{ tell: "Home." }] }] },
+);
+assert.ok(parsedStory.ok);
+const story = parsedStory.story;
 const rows = (char: string) => Array.from({ length: 16 }, () => char.repeat(16));
 const tiles: TilePack = {
   tilePackVersion: 1,
@@ -109,7 +117,7 @@ function install(
 
 const good = {
   "kit.worldkit.json": text(worldKitFile(kit)),
-  "upriver.world.json": text(worldFile("Upriver", kit, { ...worldOf(9), edits })),
+  "upriver.world.json": text(worldFile("Upriver", kit, { ...worldOf(9), edits }, story)),
   "downriver.world.json": text(worldFile("Downriver", kit, worldOf(10))),
   "tiles.tilepack.json": text(tiles),
 };
@@ -207,10 +215,10 @@ try {
   assert.ok(read?.ok, JSON.stringify(read));
   assert.deepEqual(read.pack.kit, kit);
   assert.deepEqual(
-    read.pack.worlds.map((world) => [world.name, world.world.seed, world.world.edits ?? null]),
+    read.pack.worlds.map((world) => [world.name, world.world.seed, world.world.edits ?? null, world.story ?? null]),
     [
-      ["Upriver", 9, edits],
-      ["Downriver", 10, null],
+      ["Upriver", 9, edits, story],
+      ["Downriver", 10, null, null],
     ],
   );
   assert.equal(read.pack.tiles?.name, "Riverlands tiles");
@@ -278,11 +286,19 @@ try {
       world: reordered({ ...worldOf(10), brief: reordered(checked.brief) }),
     });
     assert.equal(shuffled.statusCode, 200, shuffled.body);
-    const made = await create({ gameExperienceId: "mapfixture", worldKit: kit, world: { ...worldOf(9), edits } });
+    const noStory = await create({ gameExperienceId: "mapfixture", worldKit: kit, world: { ...worldOf(9), edits } });
+    assert.equal(noStory.statusCode, 400, "its map, but without the map's story");
+    const made = await create({
+      gameExperienceId: "mapfixture",
+      worldKit: kit,
+      world: { ...worldOf(9), edits },
+      story,
+    });
     assert.equal(made.statusCode, 200, made.body);
     const meta = JSON.parse(made.json().sessionChat.metadata);
     assert.deepEqual(meta.gameMapPack, { packageId: "mapfixture" }, "it draws with the pack's tiles");
     assert.deepEqual(meta.gameWorld.edits, edits);
+    assert.deepEqual(meta.gameStory, story, "and its story");
     assert.equal(meta.gameWorldKit.id, "riverlands");
     const kitOnly = await create({ gameExperienceId: "kitonly", worldKit: kit, world: { ...worldOf(12) } });
     assert.equal(kitOnly.statusCode, 200, "a pack without maps leaves the world to the player");

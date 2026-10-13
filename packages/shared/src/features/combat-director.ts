@@ -7,7 +7,12 @@ import type {
   RulesetCombatSide,
   RulesetEncounterSummary,
 } from "./ruleset-combat/types.js";
-import type { TacticalAction, TacticalCombatState, TacticalTerrain } from "./tactical-combat/types.js";
+import type {
+  TacticalAction,
+  TacticalCombatState,
+  TacticalEnvironment,
+  TacticalTerrain,
+} from "./tactical-combat/types.js";
 
 /** Explicit capabilities: names and prose never grant interrupts or boss privileges. */
 export const combatBossSchema = z.object({
@@ -148,7 +153,14 @@ export interface DirectedRulesetView {
   /** The board, when the fight is on one, with what this ruleset calls one cell's worth of
    *  distance. Absent from a fight that is theatre of the mind, which is every fight until a
    *  ruleset declares `combat.distance` and the game asks for a positioned one. */
-  grid?: { width: number; height: number; tiles: TacticalTerrain[][]; distance: { label: string; perCell: number } };
+  grid?: {
+    width: number;
+    height: number;
+    tiles: TacticalTerrain[][];
+    distance: { label: string; perCell: number };
+    /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
+    scene?: TacticalEnvironment;
+  };
   actorId?: string;
   /** Who plays the actor whose turn it is. */
   controller: "manual" | "ai" | "gm";

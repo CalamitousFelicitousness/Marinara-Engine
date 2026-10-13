@@ -790,6 +790,28 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
   );
   return (
     <div className="flex flex-col gap-4">
+      {shown.story?.length
+        ? section(
+            localizeUi("ui.game.worldview.story"),
+            shown.story.map((each) => (
+              <div key={each.flag} className={cn(row, each.done && "text-white/45")}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={cn("font-medium text-white/85", each.done && "line-through text-white/45")}>
+                    {each.title}
+                  </span>
+                  <span className="shrink-0 text-white/45">
+                    {each.done
+                      ? localizeUi("ui.game.worldview.storyDone")
+                      : each.progress
+                        ? localizeUi("ui.game.worldview.storyProgress", each.progress)
+                        : null}
+                  </span>
+                </div>
+                <div>{each.text}</div>
+              </div>
+            )),
+          )
+        : null}
       {section(
         localizeUi("ui.game.worldview.where"),
         <div className={row}>

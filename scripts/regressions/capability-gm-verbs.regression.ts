@@ -258,6 +258,7 @@ for (const file of [
   "packages/shared/src/features/world/game-world.ts",
   "packages/shared/src/features/world/history.ts",
   "packages/shared/src/features/world/ledger.ts",
+  "packages/shared/src/features/world/story.ts",
 ]) {
   for (const match of withoutComments(sourceOf(file), file).matchAll(/\[([A-Za-z_][A-Za-z0-9_]*)\s*:/g)) {
     reminderTags.add(match[1]!.toLowerCase());

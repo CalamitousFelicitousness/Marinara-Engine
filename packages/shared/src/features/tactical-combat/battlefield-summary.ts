@@ -17,15 +17,28 @@ function isKnownTerrain(value: unknown): value is keyof typeof TERRAIN_DATA {
 }
 
 /**
- * Creates bounded GM context from an accepted generated tactical board. The
- * unknown input keeps this safe for persisted snapshots at the server boundary.
+ * Creates bounded GM context from an accepted tactical board, generated or painted by hand for the
+ * fight's place (worldgen W9g). The unknown input keeps this safe for persisted snapshots at the server
+ * boundary.
  */
 export function summarizeTacticalBattlefield(value: unknown): string | undefined {
   if (!isRecord(value) || !isRecord(value.battlefield) || !isRecord(value.grid)) return undefined;
   const provenance = value.battlefield;
+  // A hand-made board's name, as the Game Master may be told it: one plain line, with nothing a macro or a
+  // prompt tag is made of (a round-tripped snapshot is the client's JSON).
+  const madeName =
+    provenance.kind === "hand-made" && typeof provenance.name === "string"
+      ? provenance.name
+          .replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029"[\]{}<>]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 60)
+      : undefined;
   if (
-    provenance.kind !== "generated" ||
-    provenance.generatorVersion !== TACTICAL_BATTLEFIELD_GENERATOR_VERSION ||
+    !(
+      madeName ||
+      (provenance.kind === "generated" && provenance.generatorVersion === TACTICAL_BATTLEFIELD_GENERATOR_VERSION)
+    ) ||
     !BATTLEFIELD_SIZES.has(provenance.size as string)
   ) {
     return undefined;
@@ -51,11 +64,15 @@ export function summarizeTacticalBattlefield(value: unknown): string | undefined
     `Environment: ${typeof value.environment === "string" && /^[a-z]+$/.test(value.environment) ? value.environment : "unspecified"}`,
     `Board size: ${provenance.size}`,
   ];
-  const briefResult = validateTacticalBattlefieldBrief(provenance.brief);
-  const features = briefResult.ok ? briefResult.brief?.features : undefined;
-  lines.push(
-    `Accepted features: ${features?.length ? features.map((feature) => `${feature.terrain} ${feature.placement} ${feature.shape}`).join("; ") : "none"}`,
-  );
+  if (madeName) {
+    lines.push(`Board: "${madeName}", made by hand for this place (fought on exactly as made)`);
+  } else {
+    const briefResult = validateTacticalBattlefieldBrief(provenance.brief);
+    const features = briefResult.ok ? briefResult.brief?.features : undefined;
+    lines.push(
+      `Accepted features: ${features?.length ? features.map((feature) => `${feature.terrain} ${feature.placement} ${feature.shape}`).join("; ") : "none"}`,
+    );
+  }
 
   if (counts.size) {
     lines.push(

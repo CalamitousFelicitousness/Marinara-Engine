@@ -4,10 +4,15 @@
 // its landmark, then the workplaces of the people whose trade fits what the place is known for, then
 // homes for everyone. Each person has a home and, by day, a place to be. Lots are claimed nearest the
 // crossroads first, as Pixelforge lays its towns out. Pure: the same world gives the same town.
+//
+// A town can also be laid out by hand (W9h), in the world's hand edits: buildings moved between its lots
+// (a lot faces a street, its door on it, so a moved building always does too), and its ground painted.
+// The hand layout is applied after the town is laid out, so the story's places, people and ids hold.
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { worldStream, type WorldPlace } from "./compile.js";
-import { worldPersonByHand } from "./edits.js";
+import { compileGameWorld } from "./game-world.js";
+import { worldPersonByHand, type WorldEdits } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
@@ -49,7 +54,21 @@ export interface WorldTown {
   people: WorldPerson[];
   /** Market stalls in the square, by cell. */
   stalls: Array<{ x: number; y: number }>;
+  /** Every lot a building can stand on (worldgen W9h): where a building may be moved by hand. */
+  lots: WorldTownLot[];
 }
+
+/** A lot: its cells (the roof the top rows, the front the bottom row) and the street cell before its door. */
+export interface WorldTownLot {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  door: { x: number; y: number };
+}
+
+/** A town laid out by hand (W9h). */
+export type WorldTownEdit = NonNullable<WorldEdits["towns"]>[number];
 
 /** Town cells across and down by size tier (a hamlet .. a city). */
 const SIZES: ReadonlyArray<readonly [number, number]> = [
@@ -80,8 +99,49 @@ export function worldTownTier(game: GameWorld, place: WorldPlace): number {
   return Math.min(3, Math.floor(((place.rank ?? 0) * 3) / top));
 }
 
-/** The town a settlement is, laid out from the seed; null for a place that is not a settlement. */
-export function worldTown(game: GameWorld, settlementId: string, present?: WorldPresent): WorldTown | null {
+/**
+ * The town a settlement is, laid out from the seed and then as the world's hand edits lay it out (unless
+ * `byHand` is false); null for a place that is not a settlement. A hand layout that no longer fits is
+ * applied as far as it does.
+ */
+export function worldTown(
+  game: GameWorld,
+  settlementId: string,
+  present?: WorldPresent,
+  { byHand = true }: { byHand?: boolean } = {},
+): WorldTown | null {
+  const entry = byHand ? game.edits?.towns?.find((each) => each.settlement === settlementId) : undefined;
+  return layOutTown(game, settlementId, present, entry)?.town ?? null;
+}
+
+/**
+ * Why towns laid out by hand do not fit, or nothing: each against its town as the world with these edits
+ * lays it out (the story's places aside). The edits are a world's whole layer, as a world editor saves it.
+ */
+export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[] {
+  const next: GameWorld = { ...game, edits, world: compileGameWorld({ ...game, edits }) };
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of edits.towns ?? []) {
+    const settlement = next.world.places.find((place) => place.id === entry.settlement);
+    if (seen.has(entry.settlement)) issues.push(`The town of "${entry.settlement}" is laid out twice.`);
+    seen.add(entry.settlement);
+    const laidOut = settlement?.rank === undefined ? null : layOutTown(next, entry.settlement, undefined, entry);
+    if (!laidOut) {
+      issues.push(`No settlement "${entry.settlement}" to lay out.`);
+      continue;
+    }
+    for (const issue of laidOut.issues) issues.push(`${settlement!.name}: ${issue}`);
+  }
+  return [...new Set(issues)].slice(0, 20);
+}
+
+function layOutTown(
+  game: GameWorld,
+  settlementId: string,
+  present: WorldPresent | undefined,
+  entry: WorldTownEdit | undefined,
+): { town: WorldTown; issues: string[] } | null {
   const { world } = game;
   const settlement = world.places.find((place) => place.id === settlementId);
   if (!settlement || settlement.rank === undefined) return null;
@@ -256,18 +316,103 @@ export function worldTown(game: GameWorld, settlementId: string, present?: World
     }
   }
 
+  // Every lot a building could stand on: in the town and clear of its streets and square.
+  const standable = ordered
+    .map(({ lot }) => lot)
+    .filter((lot) => {
+      if (lot.x < 1 || lot.y < 1 || lot.x + lot.w > width - 1 || lot.y + lot.h > height - 1) return false;
+      for (let yy = lot.y; yy < lot.y + lot.h; yy++)
+        for (let xx = lot.x; xx < lot.x + lot.w; xx++) if (at(xx, yy) !== ".") return false;
+      return true;
+    });
+  const issues = entry ? layOutByHand(entry, buildings, standable, cells, width, [square, ...stalls]) : [];
+
   return {
-    settlementId,
-    width,
-    height,
-    ground: cells.join(""),
-    square,
-    buildings,
-    homeOf,
-    workOf,
-    people,
-    stalls,
+    town: {
+      settlementId,
+      width,
+      height,
+      ground: cells.join(""),
+      square,
+      buildings,
+      homeOf,
+      workOf,
+      people,
+      stalls,
+      lots: standable.map(({ x, y, w, h, door }) => ({ x, y, w, h, door: { ...door } })),
+    },
+    issues,
   };
+}
+
+/**
+ * A town's hand layout applied to it as laid out: each move in turn (a building to a free lot, or the
+ * two swapped when another stands on it; a building may move again later), then the painted ground,
+ * sparing every building and the street before its door, the middle of the square (its well, where walks
+ * to it end) and the market's stalls. What does not fit is skipped, and said. Places count from 1.
+ */
+function layOutByHand(
+  entry: WorldTownEdit,
+  buildings: WorldTownBuilding[],
+  lots: WorldTownLot[],
+  cells: string[],
+  width: number,
+  [square, ...stalls]: [WorldTown["square"], ...WorldTown["stalls"]],
+): string[] {
+  const issues: string[] = [];
+  const overlaps = (a: WorldTownLot, b: WorldTownLot) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const where = (x: number, y: number) => `column ${x + 1}, row ${y + 1}`;
+  for (const move of entry.moves ?? []) {
+    const building = buildings.find((each) => each.id === move.building);
+    if (!building) {
+      issues.push(`no building "${move.building}" in town.`);
+      continue;
+    }
+    const lot = lots.find((each) => each.x === move.x && each.y === move.y && each.w === move.w);
+    if (!lot) {
+      issues.push(`no lot ${move.w} wide at ${where(move.x, move.y)}.`);
+      continue;
+    }
+    const there = buildings.find((each) => each !== building && overlaps(each, lot));
+    if (there && !(there.x === lot.x && there.y === lot.y && there.w === lot.w && there.h === lot.h)) {
+      issues.push(`the lot at ${where(lot.x, lot.y)} is partly under "${there.name ?? there.id}".`);
+      continue;
+    }
+    const from = { x: building.x, y: building.y, w: building.w, h: building.h, door: { ...building.door } };
+    Object.assign(building, { x: lot.x, y: lot.y, w: lot.w, h: lot.h, door: { ...lot.door } });
+    if (there) Object.assign(there, from);
+  }
+  const ground = entry.ground;
+  if (ground) {
+    if (ground.length !== cells.length) {
+      issues.push(
+        `the painted ground has ${ground.length} cell${ground.length === 1 ? "" : "s"}; the town has ${cells.length}.`,
+      );
+      return issues;
+    }
+    const kept = new Set<number>();
+    for (const building of buildings) {
+      for (let yy = building.y; yy < building.y + building.h; yy++)
+        for (let xx = building.x; xx < building.x + building.w; xx++) kept.add(yy * width + xx);
+      kept.add(building.door.y * width + building.door.x);
+    }
+    kept.add((square.y + Math.floor(square.h / 2)) * width + square.x + Math.floor(square.w / 2));
+    for (const stall of stalls) kept.add(stall.y * width + stall.x);
+    for (let cell = 0; cell < cells.length; cell++) {
+      const painted = ground[cell]!;
+      if (painted === ".") continue;
+      if (kept.has(cell)) {
+        if (!issues.some((issue) => issue.startsWith("a building, the street before a door")))
+          issues.push(
+            `a building, the street before a door, the middle of the square or a stall is painted over at ${where(cell % width, Math.floor(cell / width))}.`,
+          );
+        continue;
+      }
+      cells[cell] = painted;
+    }
+  }
+  return issues;
 }
 
 /** Where a person is at an hour: at work by day (07-18), in the square at dusk (18-21), home at night.

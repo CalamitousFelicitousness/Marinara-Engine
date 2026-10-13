@@ -61,6 +61,15 @@ export const GAME_TILE_PACKS_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/**
+ * The world library: listing, reading and editing kept worlds, and making or importing one, which compiles
+ * a whole world. A person building worlds stays far below this; a scripted loop does not.
+ */
+export const GAME_WORLDS_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const ADMIN_RESTART_RATE_LIMIT = {
   max: 5,
   timeWindow: 60_000,
@@ -163,6 +172,14 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
       key: "greeting-image-bake",
       limit: GREETING_IMAGE_BAKE_RATE_LIMIT.max,
       windowMs: GREETING_IMAGE_BAKE_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
+    pattern: /^\/api\/game-worlds(?:\/|$)/,
+    rule: {
+      key: "game-worlds",
+      limit: GAME_WORLDS_RATE_LIMIT.max,
+      windowMs: GAME_WORLDS_RATE_LIMIT.timeWindow,
     },
   },
   {

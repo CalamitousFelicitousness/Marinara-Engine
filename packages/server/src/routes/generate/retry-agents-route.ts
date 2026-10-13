@@ -106,7 +106,11 @@ import { createCharacterGalleryStorage } from "../../services/storage/character-
 import { createPersonaGalleryStorage } from "../../services/storage/persona-gallery.storage.js";
 import { createPromptsStorage } from "../../services/storage/prompts.storage.js";
 import { findLastUserMessageIdBefore } from "../../services/generation/message-history.js";
-import { textRewriteDropsProtectedMarkup } from "../../services/generation/text-rewrite-safety.js";
+import {
+  storyScenesOf,
+  textRewriteChangesEngineText,
+  textRewriteDropsProtectedMarkup,
+} from "../../services/generation/text-rewrite-safety.js";
 import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
@@ -2487,8 +2491,13 @@ async function resolveRetryImagePromptContext(args: {
   return { ...args.context, memory };
 }
 
-/** What a retried text rewrite does to `currentText`. The rewrite chain and the apply step must agree. */
-function readRetryTextRewrite(result: AgentResult, currentText: string | null | undefined) {
+/** What a retried text rewrite does to `currentText`. The rewrite chain and the apply step must agree.
+ *  `engineScenes` is set for a game reply: the scenes it shows as written (worldgen W10). */
+function readRetryTextRewrite(
+  result: AgentResult,
+  currentText: string | null | undefined,
+  engineScenes: readonly string[] | null = null,
+) {
   const rewriteData = result.data as Record<string, unknown>;
   const editedText = typeof rewriteData.editedText === "string" ? rewriteData.editedText : "";
   const changes = Array.isArray(rewriteData.changes)
@@ -2498,7 +2507,10 @@ function readRetryTextRewrite(result: AgentResult, currentText: string | null | 
   const strictEditNeeded = isBuiltInTextRewriteAgentType(result.agentType);
   const rewriteAllowed =
     editNeededValue === false ? false : strictEditNeeded ? explicitlyRequestsTextRewrite(editNeededValue) : true;
-  const droppedProtectedMarkup = strictEditNeeded && textRewriteDropsProtectedMarkup(currentText, editedText);
+  const droppedProtectedMarkup =
+    (strictEditNeeded && textRewriteDropsProtectedMarkup(currentText, editedText)) ||
+    // A game reply keeps what the Engine wrote into it (worldgen W10), as a rewrite after a turn does.
+    (engineScenes !== null && textRewriteChangesEngineText(currentText, editedText, engineScenes));
   const changedMessage =
     rewriteAllowed && !droppedProtectedMarkup && editedText.trim().length > 0 && editedText !== currentText;
   return { editedText, changes, strictEditNeeded, droppedProtectedMarkup, changedMessage };
@@ -2514,6 +2526,7 @@ async function executeRetryBatches(
   customLorebookReadBehindContexts: ReadonlyMap<string, AgentContext> = new Map(),
   preparedCapabilityContexts: Map<string, AgentContext> = new Map(),
   agentMainResponse?: string,
+  engineScenes: readonly string[] | null = null,
 ) {
   const retryAgents = mergeRetryPairedBuiltInRewriteAgents(resolvedAgents);
   const effectiveChatMode: ChatMode = chatMode ?? (agentContext.chatMode as ChatMode);
@@ -2629,7 +2642,7 @@ async function executeRetryBatches(
           });
           for (const result of entryResults) {
             if (result.success && result.type === "text_rewrite" && result.data && typeof result.data === "object") {
-              const rewrite = readRetryTextRewrite(result, mainResponse);
+              const rewrite = readRetryTextRewrite(result, mainResponse, engineScenes);
               if (rewrite.changedMessage) mainResponse = rewrite.editedText;
             }
           }
@@ -3064,6 +3077,11 @@ async function applyRetryResultEffects(args: {
     return updated;
   };
 
+  // A game reply's scenes shown as written (worldgen W10), which no rewrite may change.
+  const engineScenes =
+    chat?.mode === "game"
+      ? storyScenesOf(retryMessageId ? (await chats.getMessage(retryMessageId))?.extra : null)
+      : null;
   for (const result of sortedResults) {
     if (signal.aborted) return;
     if (result.success && result.type === "text_rewrite" && result.data && typeof result.data === "object") {
@@ -3071,6 +3089,7 @@ async function applyRetryResultEffects(args: {
         const { editedText, changes, strictEditNeeded, droppedProtectedMarkup, changedMessage } = readRetryTextRewrite(
           result,
           currentResponseForRewrite,
+          engineScenes,
         );
         if (droppedProtectedMarkup) {
           logger.warn(
@@ -5384,6 +5403,10 @@ export async function registerRetryAgentsRoute(
                   agentWhisperNames
                     ? roleplayAgentText(agentContext.mainResponse ?? "", lastAssistant, agentWhisperNames)
                     : undefined,
+                  // The rewrite chain keeps a game reply's Engine text as the apply step does.
+                  chatMode === "game"
+                    ? storyScenesOf(retryMessageId ? (await chats.getMessage(retryMessageId))?.extra : null)
+                    : null,
                 )
               : [];
       if (abortController.signal.aborted) return;

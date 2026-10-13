@@ -41,7 +41,8 @@ export interface TacticalBattlefieldFeature {
 
 /**
  * Structured terrain input for a generated battlefield. It cannot express
- * arbitrary coordinates; exact authored maps remain a later contract.
+ * arbitrary coordinates; an exact board is painted by hand for a world's place
+ * instead (`TacticalMadeBattlefield`).
  */
 export interface TacticalBattlefieldBrief {
   exposure?: CombatWeather["exposure"];
@@ -49,12 +50,26 @@ export interface TacticalBattlefieldBrief {
   features?: TacticalBattlefieldFeature[];
 }
 
-/** Saved provenance for a generated grid. `grid` remains the resolved authority. */
-export interface TacticalBattlefieldProvenance {
-  kind: "generated";
-  generatorVersion: 1;
+/** Saved provenance for a grid: generated from a brief, or painted by hand for a world's place (worldgen
+ *  W9g). `grid` remains the resolved authority. */
+export type TacticalBattlefieldProvenance =
+  | {
+      kind: "generated";
+      generatorVersion: 1;
+      size: TacticalBattlefieldSize;
+      brief?: TacticalBattlefieldBrief;
+    }
+  | { kind: "hand-made"; size: TacticalBattlefieldSize; id: string; name: string; scene: TacticalEnvironment };
+
+/** A board painted by hand (worldgen W9g), already checked: one of the standard sizes, its deployment
+ *  strips plains and every tile a fighter can stand on connected. Used exactly as painted. */
+export interface TacticalMadeBattlefield {
+  id: string;
+  name: string;
   size: TacticalBattlefieldSize;
-  brief?: TacticalBattlefieldBrief;
+  /** The battlefield it looks like: its colours, and the weather's reach. */
+  scene: TacticalEnvironment;
+  grid: TacticalGrid;
 }
 
 export interface TerrainInfo {

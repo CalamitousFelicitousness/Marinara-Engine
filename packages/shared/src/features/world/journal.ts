@@ -36,6 +36,8 @@ export interface WorldJournal {
   brewing: Array<{ groups: [string, string]; weeks: number; close: boolean }>;
   /** The past any local would tell, oldest first. */
   past: string[];
+  /** The world's story's objectives the player can see (worldgen W10), when it has a story. */
+  story?: import("./story.js").StoryObjective[];
 }
 
 /** How many of each the tab shows. */

@@ -3,7 +3,8 @@
 // compile so every reader of the world (the Game Master's prompt, the World tab, the overworld, towns,
 // the atlas) sees the edited world. A world stays its seed, kit and brief plus this small layer: the
 // ground painted cell by cell, compiled places renamed or moved, places added, drawn people renamed,
-// people added. Nothing compiled is removed.
+// people added, tactical boards painted for places (W9g), and towns laid out by hand (W9h). Nothing
+// compiled is removed.
 //
 // A layer is checked strictly when it is saved (an unknown place, a cell off the map, a name another
 // place has is refused with the reason), and again when its world is read: one that does not fit (written
@@ -14,6 +15,7 @@ import { z } from "zod";
 import type { WorldKit } from "../../schemas/world-kit.schema.js";
 import { promptSafeText } from "../../schemas/ruleset.schema.js";
 import { compileLinks, worldTerrainEntries, type CompiledWorld, type WorldPlace } from "./compile.js";
+import { WORLD_BATTLEFIELDS_MAX, worldBattlefieldIssues, worldBattlefieldMapSchema } from "./battlefield-maps.js";
 
 /** The most places a layer adds, people it renames or adds, and compiled places it changes. */
 export const WORLD_EDITS_MAX_ADDED = 200;
@@ -81,6 +83,40 @@ export const worldEditsSchema = z
       )
       .max(WORLD_EDITS_MAX_PEOPLE)
       .optional(),
+    /** Tactical boards painted for places (worldgen W9g): `b<n>` ids. */
+    battlefields: z.array(worldBattlefieldMapSchema).max(WORLD_BATTLEFIELDS_MAX).optional(),
+    /** Towns laid out by hand (worldgen W9h): buildings moved between the town's lots (a lot by its
+     *  top-left corner and its width, as two lots can share a corner), in turn, and its ground painted: "." as laid out, else s street, q square, o open ground, t a
+     *  tree, w a well. Checked against the town when saved (`worldTownEditIssues`). */
+    towns: z
+      .array(
+        z
+          .object({
+            settlement: placeId,
+            moves: z
+              .array(
+                z
+                  .object({
+                    building: z.string().min(1).max(16),
+                    x: z.number().int().min(0).max(255),
+                    y: z.number().int().min(0).max(255),
+                    w: z.number().int().min(1).max(16),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_EDITS_MAX_PEOPLE)
+              .optional(),
+            ground: z
+              .string()
+              // The biggest town, a city's 52 by 36 cells.
+              .max(52 * 36)
+              .regex(/^[.sqotw]*$/, "A town's painted ground is one of . s q o t w per cell")
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(WORLD_EDITS_MAX_ADDED)
+      .optional(),
   })
   .strict();
 export type WorldEdits = z.infer<typeof worldEditsSchema>;
@@ -97,7 +133,9 @@ export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {
       !edits.places?.length &&
       !edits.added?.length &&
       !edits.people?.length &&
-      !edits.addedPeople?.length)
+      !edits.addedPeople?.length &&
+      !edits.battlefields?.length &&
+      !edits.towns?.length)
   );
 }
 
@@ -187,6 +225,13 @@ export function checkWorldEdits(
       issues.push(`"${person.name}": the id must start with its place's.`);
     if (peopleSeen.has(person.id)) issues.push(`Person "${person.id}" is added twice.`);
     peopleSeen.add(person.id);
+  }
+  const battlefieldsSeen = new Set<string>();
+  for (const map of edits.battlefields ?? []) {
+    if (!byId.has(map.place) && !added.has(map.place)) issues.push(`"${map.name}": no place "${map.place}".`);
+    if (battlefieldsSeen.has(map.id)) issues.push(`Battlefield "${map.id}" is given twice.`);
+    battlefieldsSeen.add(map.id);
+    for (const issue of worldBattlefieldIssues(map)) issues.push(`"${map.name}": ${issue}`);
   }
   return [...new Set(issues)].slice(0, 20);
 }

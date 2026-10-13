@@ -27,7 +27,14 @@ let lastShown: { key: string; chatId: string; line: AvatarGameLine } | null = nu
 
 /** Called whenever the active narration segment changes; repeats of the same line are ignored. */
 export function publishAvatarGameLine(chatId: string | null, segment: ShownSegment | null): void {
-  if (!chatId || !segment || segment.type !== "dialogue" || !segment.speaker?.trim()) return;
+  if (!chatId || !segment) return;
+  if (segment.type !== "dialogue" || !segment.speaker?.trim()) {
+    // Narration is on screen now: a stage that mounts later keeps the last face but does not speak the old line.
+    if (lastShown?.chatId === chatId && lastShown.line.text) {
+      lastShown = { key: `${lastShown.key}\nmuted`, chatId, line: { ...lastShown.line, text: "" } };
+    }
+    return;
+  }
   const key = `${chatId}\n${segment.id}\n${segment.content}`;
   if (key === lastShown?.key) return;
   // The same lines GameNarration's voice skips (shouldSkipGameVoiceSegment).

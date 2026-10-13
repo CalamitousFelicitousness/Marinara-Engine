@@ -442,6 +442,24 @@ assert.deepEqual(
 late.dispose();
 await flush();
 
+// Once narration follows that line, a stage that mounts later keeps the face but does not speak the old line.
+publishAvatarGameLine(gameChatId, { id: "n2", type: "narration", content: "The fire crackles." });
+const afterNarration = director.createAvatarDirector(
+  { chatId: gameChatId, mode: "game", reducedMotion: false },
+  { classify: async () => Promise.reject(new Error("unused")) },
+);
+afterNarration.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+let staleTalking = 0;
+for (let index = 0; index < 60; index += 1) {
+  t += 16;
+  gameFrame = afterNarration.frame("alice", t);
+  if (gameFrame.state === "talking") staleTalking += 16;
+}
+assert.equal(gameFrame.label, "furious_glare", "the last line's face stays");
+assert.equal(staleTalking, 0, "an old line is not spoken while narration shows");
+afterNarration.dispose();
+await flush();
+
 // A Game thought (or the player's own input) changes the face, never the mouth: Game voices skip those lines too.
 const thoughts = director.createAvatarDirector(
   { chatId: gameChatId, mode: "game", reducedMotion: false },

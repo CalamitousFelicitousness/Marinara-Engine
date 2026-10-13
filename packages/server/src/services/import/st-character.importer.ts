@@ -29,11 +29,14 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { isAllowedImageBuffer } from "../../utils/security.js";
-import AdmZip from "adm-zip";
+import { openZipArchive, type ZipArchive } from "../../lib/zip-reader.js";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "./import-timestamps.js";
 import { restoreSprites } from "./marinara.importer.js";
 
 const AVATAR_DIR = join(DATA_DIR, "avatars");
+/** The import routes' upload limit. A .charx reads its card and icon up to the same size, so raising
+ *  the limit raises both. */
+export const IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const IMPORT_METADATA_KEY = "importMetadata";
 
 /** Remove Marinara sprite binaries from card metadata before the normalized card is stored. */
@@ -416,7 +419,7 @@ export function inspectSTCharacter(raw: Record<string, unknown>): STCharacterImp
  * Extracts card.json and the main icon asset from the zip.
  */
 export async function importCharX(buf: Buffer, db: DB, options?: STCharacterImportOptions) {
-  const zip = new AdmZip(buf);
+  const zip = openZipArchive(buf);
 
   // Extract card.json from root of the zip
   const cardJson = readCharXCardJson(zip);
@@ -449,7 +452,7 @@ export async function importCharX(buf: Buffer, db: DB, options?: STCharacterImpo
       const entry = zip.getEntry(fallback);
       if (entry) {
         const ext = fallback.split(".").pop() ?? "png";
-        const data = entry.getData();
+        const data = entry.read(IMPORT_BODY_LIMIT_BYTES);
         const imageInfo = isAllowedImageBuffer(data, `.${ext}`);
         if (imageInfo) {
           avatarDataUrl = `data:${imageInfo.mimeType};base64,${data.toString("base64")}`;
@@ -471,7 +474,7 @@ export async function importCharX(buf: Buffer, db: DB, options?: STCharacterImpo
 
 export function inspectCharX(buf: Buffer): STCharacterImportPreview {
   try {
-    const zip = new AdmZip(buf);
+    const zip = openZipArchive(buf);
     const cardJson = readCharXCardJson(zip);
     if (!cardJson) {
       return {
@@ -492,10 +495,10 @@ export function inspectCharX(buf: Buffer): STCharacterImportPreview {
   }
 }
 
-function readCharXCardJson(zip: AdmZip): Record<string, unknown> | null {
+function readCharXCardJson(zip: ZipArchive): Record<string, unknown> | null {
   const cardEntry = zip.getEntry("card.json");
   if (!cardEntry) return null;
-  return JSON.parse(cardEntry.getData().toString("utf-8")) as Record<string, unknown>;
+  return JSON.parse(cardEntry.read(IMPORT_BODY_LIMIT_BYTES).toString("utf-8")) as Record<string, unknown>;
 }
 
 function normalizeCharacterData(raw: Record<string, unknown>): CharacterData {
@@ -672,7 +675,7 @@ async function filterImportedTags(
 }
 
 /** Resolve an asset URI from a CharX zip to a data URL. */
-function resolveCharXAsset(zip: AdmZip, uri: string, ext?: string): string | null {
+function resolveCharXAsset(zip: ZipArchive, uri: string, ext?: string): string | null {
   // Handle embeded:// URIs (note: spec uses "embeded" not "embedded")
   let zipPath: string | null = null;
 
@@ -694,7 +697,7 @@ function resolveCharXAsset(zip: AdmZip, uri: string, ext?: string): string | nul
   const entry = zip.getEntry(zipPath);
   if (!entry) return null;
 
-  const data = entry.getData();
+  const data = entry.read(IMPORT_BODY_LIMIT_BYTES);
   const fileExt = ext ?? zipPath.split(".").pop() ?? "png";
   const imageInfo = isAllowedImageBuffer(data, `.${fileExt}`);
   if (!imageInfo) return null;

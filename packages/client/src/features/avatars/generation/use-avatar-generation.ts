@@ -5,6 +5,7 @@
 // owner's avatar stays as it was. Draft shapes mirror packages/server/src/services/avatars/generation/.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   AVATAR_API_PREFIXES,
   type AvatarGenerationResponse,
@@ -62,6 +63,27 @@ function errorMessage(error: unknown): string {
 
 function isAbort(error: unknown): boolean {
   return !!error && typeof error === "object" && "name" in error && error.name === "AbortError";
+}
+
+/** Runs one async action at a time: a second call while one runs (a fast double click) does nothing.
+ *  A failure is shown as a toast. */
+export function useOneAtATime() {
+  const runningRef = useRef(false);
+  const [pending, setPending] = useState(false);
+  const run = useCallback(async (action: () => Promise<void>) => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setPending(true);
+    try {
+      await action();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      runningRef.current = false;
+      setPending(false);
+    }
+  }, []);
+  return { pending, run };
 }
 
 export function variantJobId(label: string, variant: AvatarPngtuberVariant): string {

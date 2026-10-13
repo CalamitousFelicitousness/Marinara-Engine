@@ -207,7 +207,11 @@ export const EYE_SAMPLES = 24;
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
-/** An almond outline inside the opening box, from the outer corner along the upper lid and back along
+/** How round the eye outline is: lower is boxier. Drawn eyes, anime ones most of all, fill their box,
+ *  and an outline that misses part of the iris leaves it showing when the eye closes. */
+const EYE_OUTLINE_FULLNESS = 0.45;
+
+/** An eye outline filling the opening box, from the outer corner along the upper lid and back along
  *  the lower lid. ponytail: a box-shaped guess, not a traced outline; tilted or narrowed eyes close a
  *  little off their real lid line. Upgrade: refine the outline from the eye-white pixels. */
 export function almondEyeOutline(opening: Box, points = 18): Point[] {
@@ -215,14 +219,15 @@ export function almondEyeOutline(opening: Box, points = 18): Point[] {
   const cy = (y0 + y1) / 2;
   const half = (y1 - y0) / 2;
   const steps = Math.max(4, Math.floor(points / 2));
+  const lid = (t: number) => half * Math.sin(Math.PI * t) ** EYE_OUTLINE_FULLNESS;
   const outline: Point[] = [];
   for (let i = 0; i <= steps; i += 1) {
     const t = i / steps;
-    outline.push([round2(x0 + (x1 - x0) * t), round2(cy - half * Math.sin(Math.PI * t) ** 0.7)]);
+    outline.push([round2(x0 + (x1 - x0) * t), round2(cy - lid(t))]);
   }
   for (let i = steps - 1; i >= 1; i -= 1) {
     const t = i / steps;
-    outline.push([round2(x0 + (x1 - x0) * t), round2(cy + half * Math.sin(Math.PI * t) ** 0.7)]);
+    outline.push([round2(x0 + (x1 - x0) * t), round2(cy + lid(t))]);
   }
   return outline;
 }

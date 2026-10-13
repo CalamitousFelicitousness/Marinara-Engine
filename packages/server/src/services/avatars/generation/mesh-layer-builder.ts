@@ -36,6 +36,8 @@ export type MeshAvatarFiles = Map<string, Buffer>;
 const LUMA = [0.3, 0.59, 0.11] as const;
 /** Room around an eye for the skin samples and the fill around the hole. */
 const WORK_MARGIN = 40;
+/** Relaxation steps of the skin fill; it starts from the skin colour, so it settles quickly. */
+const MEMBRANE_ITERATIONS = 200;
 
 // ── Pixel helpers ──
 
@@ -216,45 +218,41 @@ function fillSkin(area: Pixels, hole: Mask): Float32Array {
     skin[i] = !hole[i] && data[i * 4 + 3]! > 200 && maxChannelDifference(data, i * 4, colour) < tolerance ? 1 : 0;
   }
   const solve = or(hole, and(dilate(hole, width, height, 8), not(skin)));
-  let x0 = width;
-  let y0 = height;
-  let x1 = -1;
-  let y1 = -1;
+  // Each solved pixel's neighbours (3x3, clipped at the edge), listed once so the loop below only adds.
+  const pixels: number[] = [];
+  const neighbours: number[] = [];
+  const starts: number[] = [0];
   for (let i = 0; i < solve.length; i += 1) {
     if (!solve[i]) continue;
+    for (let c = 0; c < 3; c += 1) rgb[i * 3 + c] = colour[c]!;
     const col = i % width;
     const row = (i - col) / width;
-    x0 = Math.min(x0, col);
-    x1 = Math.max(x1, col);
-    y0 = Math.min(y0, row);
-    y1 = Math.max(y1, row);
-    for (let c = 0; c < 3; c += 1) rgb[i * 3 + c] = colour[c]!;
+    for (let r = Math.max(0, row - 1); r <= Math.min(height - 1, row + 1); r += 1) {
+      for (let k = Math.max(0, col - 1); k <= Math.min(width - 1, col + 1); k += 1) neighbours.push(r * width + k);
+    }
+    pixels.push(i);
+    starts.push(neighbours.length);
   }
   let current = rgb;
-  for (let iteration = 0; iteration < 300; iteration += 1) {
-    const next = current.slice();
-    for (let row = y0; row <= y1; row += 1) {
-      for (let col = x0; col <= x1; col += 1) {
-        const i = row * width + col;
-        if (!solve[i]) continue;
-        for (let c = 0; c < 3; c += 1) {
-          let sum = 0;
-          let count = 0;
-          for (let dy = -1; dy <= 1; dy += 1) {
-            const r = row + dy;
-            if (r < 0 || r >= height) continue;
-            for (let dx = -1; dx <= 1; dx += 1) {
-              const k = col + dx;
-              if (k < 0 || k >= width) continue;
-              sum += current[(r * width + k) * 3 + c]!;
-              count += 1;
-            }
-          }
-          next[i * 3 + c] = sum / count;
-        }
+  let next = rgb.slice();
+  for (let iteration = 0; iteration < MEMBRANE_ITERATIONS; iteration += 1) {
+    for (let p = 0; p < pixels.length; p += 1) {
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      for (let n = starts[p]!; n < starts[p + 1]!; n += 1) {
+        const at = neighbours[n]! * 3;
+        red += current[at]!;
+        green += current[at + 1]!;
+        blue += current[at + 2]!;
       }
+      const count = starts[p + 1]! - starts[p]!;
+      const at = pixels[p]! * 3;
+      next[at] = red / count;
+      next[at + 1] = green / count;
+      next[at + 2] = blue / count;
     }
-    current = next;
+    [current, next] = [next, current];
   }
   return current;
 }
@@ -451,6 +449,8 @@ export async function buildMeshAvatarLayers(source: MeshLayerSource, rig: MeshRi
 
   for (const [index, eye] of rig.eyes.entries()) {
     const layers = classifyEye(image, eye, index);
+    // The pixel work runs on the server's main thread; let other requests through between steps.
+    await new Promise<void>((resolve) => setImmediate(resolve));
     const area = layers.area;
     const under = fillSkin(area, layers.hole);
     const edge = softEdge(layers.hole, area.width, area.height);

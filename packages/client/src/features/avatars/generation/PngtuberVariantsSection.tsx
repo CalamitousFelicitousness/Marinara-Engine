@@ -9,7 +9,12 @@ import { cn } from "../../../lib/utils";
 import { useUIStore } from "../../../stores/ui.store";
 import type { ImagePromptOverride, ImagePromptReviewItem } from "../../../components/ui/ImagePromptReviewModal";
 import { SpritePicker } from "./SpritePicker";
-import { previewVariantPrompts, usePngtuberVariantJob, useSavePngtuberVariants } from "./use-avatar-generation";
+import {
+  previewVariantPrompts,
+  useOneAtATime,
+  usePngtuberVariantJob,
+  useSavePngtuberVariants,
+} from "./use-avatar-generation";
 
 const VARIANT_KEYS: Record<AvatarPngtuberVariant, string> = {
   "eyes-closed": "avatars.generation.eyesClosed",
@@ -33,62 +38,54 @@ export function PngtuberVariantsSection({
   const { t } = useTranslation();
   const [labels, setLabels] = useState<string[]>([]);
   const [variants, setVariants] = useState<AvatarPngtuberVariant[]>([...AVATAR_PNGTUBER_VARIANTS]);
-  const [preparing, setPreparing] = useState(false);
+  const preparing = useOneAtATime();
+  const saving = useOneAtATime();
   const job = usePngtuberVariantJob(owner);
   const save = useSavePngtuberVariants(owner);
   const count = labels.length * variants.length;
-  const busy = job.running || preparing;
+  const busy = job.running || preparing.pending;
   const kept = useMemo(() => job.items.filter((item) => item.kept && item.draft), [job.items]);
   const current = job.items.findIndex((item) => item.status === "running") + 1;
 
-  const options = async (queueLabels: string[], queueVariants: AvatarPngtuberVariant[]) => {
+  /** The run's connection and, with the image prompt review on, the prompts the user confirmed. Null
+   *  when the review was cancelled. */
+  const runOptions = async (queueLabels: string[], queueVariants: AvatarPngtuberVariant[]) => {
     if (!useUIStore.getState().reviewImagePromptsBeforeSend) return { connectionId: imageConnectionId };
     const preview = await previewVariantPrompts(owner, queueLabels, queueVariants, imageConnectionId);
     const overrides = await reviewPrompts(preview.items);
     return overrides ? { connectionId: imageConnectionId, promptOverrides: overrides } : null;
   };
 
-  const start = async () => {
-    if (busy || !count || !imageConnectionId) return;
-    setPreparing(true);
-    try {
-      const runOptions = await options(labels, variants);
-      if (runOptions) job.start(labels, variants, runOptions);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPreparing(false);
-    }
-  };
+  const start = () =>
+    preparing.run(async () => {
+      if (job.running || !count || !imageConnectionId) return;
+      const options = await runOptions(labels, variants);
+      if (options) job.start(labels, variants, options);
+    });
 
-  const retry = async (id: string, label: string, variant: AvatarPngtuberVariant) => {
-    if (busy || !imageConnectionId) return;
-    setPreparing(true);
-    try {
-      const runOptions = await options([label], [variant]);
-      if (runOptions) job.retry(id, runOptions);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPreparing(false);
-    }
-  };
+  const retry = (id: string, label: string, variant: AvatarPngtuberVariant) =>
+    preparing.run(async () => {
+      if (job.running || !imageConnectionId) return;
+      const options = await runOptions([label], [variant]);
+      if (options) job.retry(id, options);
+    });
 
-  const saveKept = async () => {
-    if (!kept.length || save.isPending) return;
-    try {
-      await save.mutateAsync(
-        kept.map((item) => ({ label: item.label, variant: item.variant, image: item.draft!.image })),
-      );
-      toast.success(t("avatars.generation.pngtuberSaved", { count: kept.length }));
-      job.removeSaved(kept.map((item) => item.id));
-      onChanged();
-    } catch (error) {
-      toast.error(
-        t("avatars.generation.saveFailed", { error: error instanceof Error ? error.message : String(error) }),
-      );
-    }
-  };
+  const saveKept = () =>
+    saving.run(async () => {
+      if (!kept.length) return;
+      try {
+        await save.mutateAsync(
+          kept.map((item) => ({ label: item.label, variant: item.variant, image: item.draft!.image })),
+        );
+        toast.success(t("avatars.generation.pngtuberSaved", { count: kept.length }));
+        job.removeSaved(kept.map((item) => item.id));
+        onChanged();
+      } catch (error) {
+        toast.error(
+          t("avatars.generation.saveFailed", { error: error instanceof Error ? error.message : String(error) }),
+        );
+      }
+    });
 
   return (
     <section className="space-y-3" aria-labelledby="avatar-generation-pngtuber">

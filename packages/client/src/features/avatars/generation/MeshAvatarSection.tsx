@@ -8,7 +8,7 @@ import type { SpriteInfo } from "../../../hooks/use-characters";
 import { useUIStore } from "../../../stores/ui.store";
 import type { ImagePromptOverride, ImagePromptReviewItem } from "../../../components/ui/ImagePromptReviewModal";
 import { SpritePicker } from "./SpritePicker";
-import { previewVariantPrompts, useMeshRigJob, useSaveMeshRig } from "./use-avatar-generation";
+import { previewVariantPrompts, useMeshRigJob, useOneAtATime, useSaveMeshRig } from "./use-avatar-generation";
 
 export interface ConnectionOption {
   id: string;
@@ -36,53 +36,48 @@ export function MeshAvatarSection({
   const [label, setLabel] = useState<string | null>(null);
   const [visionConnectionId, setVisionConnectionId] = useState("");
   const [drawVariants, setDrawVariants] = useState(true);
-  const [preparing, setPreparing] = useState(false);
+  const preparing = useOneAtATime();
+  const saving = useOneAtATime();
   const job = useMeshRigJob(owner);
   const save = useSaveMeshRig(owner);
-  const busy = job.running || preparing;
+  const busy = job.running || preparing.pending;
   const draws = drawVariants && !!imageConnectionId;
 
-  const start = async () => {
-    if (busy || !label) return;
-    setPreparing(true);
-    let overrides: ImagePromptOverride[] | undefined;
-    try {
+  const start = () =>
+    preparing.run(async () => {
+      if (job.running || !label) return;
+      let overrides: ImagePromptOverride[] | undefined;
       if (draws && useUIStore.getState().reviewImagePromptsBeforeSend) {
         const preview = await previewVariantPrompts(owner, [label], [...AVATAR_PNGTUBER_VARIANTS], imageConnectionId);
         const reviewed = await reviewPrompts(preview.items);
         if (!reviewed) return;
         overrides = reviewed;
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
-      return;
-    } finally {
-      setPreparing(false);
-    }
-    void job.start(
-      {
-        sourceLabel: label,
-        connectionId: visionConnectionId || null,
-        imageConnectionId: draws ? imageConnectionId : null,
-        drawVariants: draws,
-      },
-      overrides,
-    );
-  };
-
-  const keep = async () => {
-    if (!job.draft || save.isPending) return;
-    try {
-      await save.mutateAsync(job.draft.archive);
-      toast.success(t("avatars.generation.meshSaved"));
-      job.discard();
-      onChanged();
-    } catch (error) {
-      toast.error(
-        t("avatars.generation.saveFailed", { error: error instanceof Error ? error.message : String(error) }),
+      void job.start(
+        {
+          sourceLabel: label,
+          connectionId: visionConnectionId || null,
+          imageConnectionId: draws ? imageConnectionId : null,
+          drawVariants: draws,
+        },
+        overrides,
       );
-    }
-  };
+    });
+
+  const keep = () =>
+    saving.run(async () => {
+      if (!job.draft) return;
+      try {
+        await save.mutateAsync(job.draft.archive);
+        toast.success(t("avatars.generation.meshSaved"));
+        job.discard();
+        onChanged();
+      } catch (error) {
+        toast.error(
+          t("avatars.generation.saveFailed", { error: error instanceof Error ? error.message : String(error) }),
+        );
+      }
+    });
 
   return (
     <section className="space-y-3" aria-labelledby="avatar-generation-mesh">

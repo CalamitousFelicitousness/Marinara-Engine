@@ -13,7 +13,7 @@
 // Bodies are validated with the schemas in packages/shared/src/schemas/avatars.schema.ts; imports go
 // through services/avatars/formats/registry.ts and add no size limit below the global upload cap.
 import { open, realpath, type FileHandle } from "node:fs/promises";
-import { extname } from "node:path";
+import { extname, resolve, sep } from "node:path";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   AVATAR_IMPORT_EXTENSIONS,
@@ -44,13 +44,15 @@ import {
   updateAvatarConfig,
 } from "../services/avatars/storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
-import {
-  isCanonicalMediaPathInsideRoot,
-  sendValidatedMediaFile,
-  validateImageAssetFile,
-} from "../utils/media-file-security.js";
+import { sendValidatedMediaFile, validateImageAssetFile } from "../utils/media-file-security.js";
+import type { MarinaraRouteRateLimit } from "../middleware/rate-limit.js";
 
 type OwnerParams = { ownerType: string; ownerId: string };
+
+/** The global default bucket (rate-limit.ts DEFAULT_RULE), declared on each route. A PNGTuber avatar loads
+ *  one file per layer picture, so the file route needs the full default rather than a tighter limit. */
+const AVATAR_MODELS_RATE_LIMIT = { max: 600, timeWindow: 60_000 } as const satisfies MarinaraRouteRateLimit;
+const routeOptions = { config: { rateLimit: AVATAR_MODELS_RATE_LIMIT } };
 
 /** Detection reads at most this much of an upload (AvatarFormatImporter.detect). */
 const IMPORT_HEAD_BYTES = 64 * 1024;
@@ -85,12 +87,17 @@ function sendStorageError(reply: FastifyReply, error: unknown) {
   throw error;
 }
 
-/** Opens a stored model file whose first bytes match its kind, or null. Symlinks may not leave the folder. */
+/** Opens a stored model file whose first bytes match its kind, or null. The path must stay inside the avatar
+ *  folder both as written and after resolving symlinks (resolveAvatarFile already checked the first; the
+ *  prefix checks here repeat it where code scanning can see it). */
 async function openModelFile(filePath: string, kind: Exclude<AvatarKind, "pngtuber">) {
   let handle: FileHandle | null = null;
   try {
-    const [canonicalPath, canonicalRoot] = await Promise.all([realpath(filePath), realpath(AVATAR_MODELS_DIR)]);
-    if (!isCanonicalMediaPathInsideRoot(canonicalPath, canonicalRoot)) return null;
+    const resolvedPath = resolve(filePath);
+    if (!resolvedPath.startsWith(`${resolve(AVATAR_MODELS_DIR)}${sep}`)) return null;
+    const canonicalRoot = await realpath(AVATAR_MODELS_DIR);
+    const canonicalPath = await realpath(resolvedPath);
+    if (!canonicalPath.startsWith(`${canonicalRoot}${sep}`)) return null;
     handle = await open(canonicalPath, "r");
     const info = await handle.stat();
     if (!info.isFile()) throw new Error("not a file");
@@ -114,9 +121,9 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
       : Boolean(await characters.getPersona(owner.ownerId));
   }
 
-  app.get("/", async () => listAvatarOwners());
+  app.get("/", routeOptions, async () => listAvatarOwners());
 
-  app.get<{ Params: OwnerParams }>("/:ownerType/:ownerId", async (req, reply) => {
+  app.get<{ Params: OwnerParams }>("/:ownerType/:ownerId", routeOptions, async (req, reply) => {
     const owner = parseOwner(req.params);
     if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
     const config = await readAvatarConfig(owner);
@@ -124,50 +131,58 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
     return config;
   });
 
-  app.put<{ Params: OwnerParams; Body: AvatarConfigUpdate }>("/:ownerType/:ownerId", async (req, reply) => {
-    const owner = parseOwner(req.params);
-    if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
-    const parsed = avatarConfigUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid avatar settings" });
-    }
-    if (!(await ownerExists(owner))) return reply.status(404).send({ error: "Character or persona not found" });
-    const update = parsed.data;
-    try {
-      return await updateAvatarConfig(owner, (current): AvatarConfig => {
-        const now = new Date().toISOString();
-        const base = current ?? createAvatarConfig(owner, now);
-        return {
-          ...base,
-          ...(update.enabled !== undefined ? { enabled: update.enabled } : {}),
-          ...(update.activeKind !== undefined ? { activeKind: update.activeKind } : {}),
-          features: { ...base.features, ...update.features },
-          kinds: { ...base.kinds, ...update.kinds },
-          updatedAt: now,
-        };
-      });
-    } catch (error) {
-      return sendStorageError(reply, error);
-    }
-  });
+  app.put<{ Params: OwnerParams; Body: AvatarConfigUpdate }>(
+    "/:ownerType/:ownerId",
+    routeOptions,
+    async (req, reply) => {
+      const owner = parseOwner(req.params);
+      if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
+      const parsed = avatarConfigUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid avatar settings" });
+      }
+      if (!(await ownerExists(owner))) return reply.status(404).send({ error: "Character or persona not found" });
+      const update = parsed.data;
+      try {
+        return await updateAvatarConfig(owner, (current): AvatarConfig => {
+          const now = new Date().toISOString();
+          const base = current ?? createAvatarConfig(owner, now);
+          return {
+            ...base,
+            ...(update.enabled !== undefined ? { enabled: update.enabled } : {}),
+            ...(update.activeKind !== undefined ? { activeKind: update.activeKind } : {}),
+            features: { ...base.features, ...update.features },
+            kinds: { ...base.kinds, ...update.kinds },
+            updatedAt: now,
+          };
+        });
+      } catch (error) {
+        return sendStorageError(reply, error);
+      }
+    },
+  );
 
-  app.delete<{ Params: OwnerParams }>("/:ownerType/:ownerId", async (req, reply) => {
+  app.delete<{ Params: OwnerParams }>("/:ownerType/:ownerId", routeOptions, async (req, reply) => {
     const owner = parseOwner(req.params);
     if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
     await removeAvatarOwner(owner);
     return reply.status(204).send();
   });
 
-  app.delete<{ Params: OwnerParams & { kind: string } }>("/:ownerType/:ownerId/kinds/:kind", async (req, reply) => {
-    const owner = parseOwner(req.params);
-    if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
-    if (!isAvatarKind(req.params.kind)) return reply.status(400).send({ error: "Unknown avatar kind" });
-    const config = await removeAvatarKind(owner, req.params.kind);
-    // JSON null when nothing remains, so the client always gets a body to parse.
-    return reply.type("application/json").send(JSON.stringify(config));
-  });
+  app.delete<{ Params: OwnerParams & { kind: string } }>(
+    "/:ownerType/:ownerId/kinds/:kind",
+    routeOptions,
+    async (req, reply) => {
+      const owner = parseOwner(req.params);
+      if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
+      if (!isAvatarKind(req.params.kind)) return reply.status(400).send({ error: "Unknown avatar kind" });
+      const config = await removeAvatarKind(owner, req.params.kind);
+      // JSON null when nothing remains, so the client always gets a body to parse.
+      return reply.type("application/json").send(JSON.stringify(config));
+    },
+  );
 
-  app.post<{ Params: OwnerParams }>("/:ownerType/:ownerId/import", async (req, reply) => {
+  app.post<{ Params: OwnerParams }>("/:ownerType/:ownerId/import", routeOptions, async (req, reply) => {
     const owner = parseOwner(req.params);
     if (!owner) return reply.status(400).send({ error: "Invalid character or persona" });
     if (!(await ownerExists(owner))) return reply.status(404).send({ error: "Character or persona not found" });
@@ -235,6 +250,7 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
 
   app.get<{ Params: OwnerParams & { kind: string; name: string } }>(
     "/:ownerType/:ownerId/files/:kind/:name",
+    routeOptions,
     async (req, reply) => {
       const owner = parseOwner(req.params);
       const { kind, name } = req.params;

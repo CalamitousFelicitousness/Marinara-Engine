@@ -20,7 +20,7 @@ import { renderWithStickerBlocks } from "../../lib/sticker-render";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ImagePromptPanel } from "./ImagePromptPanel";
 import { ChatImagePreview } from "./ChatImagePreview";
-import { ChatVideoAttachment, isVideoAttachment } from "./ChatVideoAttachment";
+import { ChatVideoAttachment, isAttachmentHiddenByImageText, isVideoAttachment } from "./ChatVideoAttachment";
 import { MessageActionButton } from "./MessageActionButton";
 import { SwipeJumpControl } from "./SwipeJumpControl";
 import { useUIStore } from "../../stores/ui.store";
@@ -569,11 +569,12 @@ export function ConversationMessageAttachments({
   onRemove: (i: number) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  if (!attachments.length || IMAGE_URL_RE.test(renderedContent.trim())) return null;
+  const textIsImageUrl = IMAGE_URL_RE.test(renderedContent.trim());
+  if (!attachments.some((att) => !isAttachmentHiddenByImageText(att, textIsImageUrl))) return null;
   return (
     <div className="mt-1.5 flex flex-col items-start gap-2">
       {attachments.map((att, i) =>
-        isVideoAttachment(att) && att.url ? (
+        isAttachmentHiddenByImageText(att, textIsImageUrl) ? null : isVideoAttachment(att) && att.url ? (
           <ChatVideoAttachment
             key={att.videoId ?? att.url}
             src={att.url}

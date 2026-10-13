@@ -49,3 +49,8 @@ export function ChatVideoAttachment({
 export function isVideoAttachment(att: { type?: string } | null | undefined): boolean {
   return att?.type === "video" || !!att?.type?.startsWith("video/");
 }
+
+/** A message whose text is an image link already shows that picture, so only its videos still show below it. */
+export function isAttachmentHiddenByImageText(att: { type?: string } | null | undefined, textIsImageUrl: boolean) {
+  return textIsImageUrl && !isVideoAttachment(att);
+}

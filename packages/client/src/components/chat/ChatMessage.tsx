@@ -35,7 +35,7 @@ import { useCharacterSummaries, useChatGalleryFilenameIndex } from "../../hooks/
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import { PendingTypingDots } from "./PendingTypingDots";
 import { ChatImagePreview } from "./ChatImagePreview";
-import { ChatVideoAttachment, isVideoAttachment } from "./ChatVideoAttachment";
+import { ChatVideoAttachment, isAttachmentHiddenByImageText, isVideoAttachment } from "./ChatVideoAttachment";
 import { recordClientRuntimeEvent } from "../../lib/client-runtime-diagnostics";
 import { isDiceRollResult, readRoleplayDiceRolls } from "../../lib/dice-roll-result";
 import { DiceMessageContent, diceRollReplacesMessageContent } from "./ConversationMessageShared";
@@ -3410,13 +3410,16 @@ export const ChatMessage = memo(function ChatMessage({
   const hasVnMediaTarget = visualNovel && !!visualNovelMediaTarget;
   const renderRoleplayImage = (image: ReactNode, key: number) =>
     hasVnMediaTarget ? createPortal(image, visualNovelMediaTarget!, `${message.id}:${key}`) : image;
+  // Text that is an image link already shows that picture; only videos still show below it.
+  const textIsImageUrl = IMAGE_URL_RE.test(message.content.trim());
+  const skipAttachment = (att: any) => att.roleplaySound === true || isAttachmentHiddenByImageText(att, textIsImageUrl);
   const roleplayAttachments = isRoleplay &&
     !editing &&
     extra.attachments?.length > 0 &&
-    !IMAGE_URL_RE.test(message.content.trim()) && (
+    extra.attachments.some((att: any) => !skipAttachment(att)) && (
       <div className={hasVnMediaTarget ? "contents" : "mt-1.5 flex flex-col items-center gap-2 px-3 pb-2"}>
         {extra.attachments.map((att: any, i: number) =>
-          att.roleplaySound === true ? null : isVideoAttachment(att) && att.url ? (
+          skipAttachment(att) ? null : isVideoAttachment(att) && att.url ? (
             renderRoleplayImage(
               <ChatVideoAttachment
                 key={att.videoId ?? att.url}
@@ -4493,10 +4496,10 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
 
           {/* Attachments (illustrations, selfies, uploaded files) */}
-          {!editing && extra.attachments?.length > 0 && !IMAGE_URL_RE.test(message.content.trim()) && (
+          {!editing && extra.attachments?.some((att: any) => !skipAttachment(att)) && (
             <div className="mt-1.5 flex flex-col items-center gap-2 px-3 pb-2">
               {extra.attachments.map((att: any, i: number) =>
-                att.roleplaySound === true ? null : isVideoAttachment(att) && att.url ? (
+                skipAttachment(att) ? null : isVideoAttachment(att) && att.url ? (
                   <ChatVideoAttachment
                     key={att.videoId ?? att.url}
                     src={att.url}

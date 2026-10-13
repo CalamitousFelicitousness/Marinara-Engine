@@ -1,5 +1,7 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isGeminiArgonModel,
+  isGeminiThinkingLevelModel,
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
   isOpenAIGpt56Model,
@@ -252,7 +254,11 @@ export function relevantGenerationParameters(context: GenerationParameterContext
     if (provider === "openai_chatgpt" && !isOpenAIReasoningModel(model)) hide("reasoningEffort");
 
     if (provider === "google" || provider === "google_vertex") {
-      if (!/gemini-3/.test(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) hide("reasoningEffort");
+      if (!isGeminiThinkingLevelModel(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) {
+        hide("reasoningEffort");
+      }
+      // Argon ignores temperature, top-p and top-k and rejects penalties, so the request leaves them out.
+      if (isGeminiArgonModel(model)) hide(...SAMPLING);
     }
 
     if (provider === "custom") {
@@ -347,7 +353,7 @@ export function reasoningEffortChoices(
     .trim()
     .toLowerCase();
   const caps = context.capabilities ?? null;
-  // ChatGPT (Codex) has no off level; sending nothing keeps the model's own default.
+  // ChatGPT (Codex) and Gemini 4 Argon have no off level; sending nothing keeps the model's own default.
   const off: GenerationParameterChoice<null> =
     provider === "openai_chatgpt"
       ? {
@@ -358,7 +364,15 @@ export function reasoningEffortChoices(
             ? { description: `Provider default: ${caps.defaultEffort}`, providerDefault: caps.defaultEffort }
             : {}),
         }
-      : { value: null, label: null };
+      : (provider === "google" || provider === "google_vertex") && isGeminiArgonModel(model)
+        ? {
+            value: null,
+            label: null,
+            kind: "default",
+            description: "Provider default: medium",
+            providerDefault: "medium",
+          }
+        : { value: null, label: null };
 
   if (caps?.effortLevels && caps.effortLevels.length > 0) {
     const levels = caps.effortLevels.map((level) => ({

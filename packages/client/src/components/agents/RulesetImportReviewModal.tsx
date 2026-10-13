@@ -48,7 +48,7 @@ export function RulesetImportReviewModal({
   importing: boolean;
   /** Why the last attempt failed, shown here because the panel's banner sits behind the dialog. */
   failure: string | null;
-  /** Its catalogs and how many entries each holds (a package zip's files included). */
+  /** Its catalogs and how many entries each holds (a package file's files included). */
   catalogs?: Array<{ label: string; count: number }>;
   onCancel: () => void;
   onConfirm: () => void;

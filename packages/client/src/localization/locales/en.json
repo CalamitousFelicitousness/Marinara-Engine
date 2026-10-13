@@ -96,7 +96,7 @@
   "agents.progress.unreported": "Not reported",
   "app.documentTitle": "Marinara Engine",
   "avatars.director.model.downloading": "Downloading the mood reader: {{percent}}%.",
-  "avatars.director.model.failed": "The mood reader did not download. It tries again by itself in a few minutes.",
+  "avatars.director.model.failed": "The mood reader did not download. It tries again by itself in about 10 minutes.",
   "avatars.director.model.loading": "Getting the mood reader ready.",
   "avatars.director.model.notDownloaded": "The mood reader (about {{size}}) downloads the first time you open a Roleplay chat with this agent on.",
   "avatars.director.model.progressLabel": "Mood reader download",

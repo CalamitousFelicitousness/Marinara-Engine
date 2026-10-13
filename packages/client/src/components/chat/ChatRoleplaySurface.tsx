@@ -75,7 +75,7 @@ import { TrackerPanelBubble } from "./TrackerPanelBubble";
 import { PHONE_BUBBLE_SIZE_PX, WINDOW_BUBBLE_SIZE_PX, WINDOW_MARGIN_PX } from "../../lib/floating-window-layout";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { CHAT_TOOLBAR_ICON_GAP_CLASS, getChatToolbarButtonClass } from "./ChatToolbarControls";
-import { TranscriptWindowControls } from "./TranscriptWindowControls";
+import { HISTORY_PAGER_BUTTON_CLASS, TranscriptWindowControls } from "./TranscriptWindowControls";
 import { EndSceneBar } from "./SceneBanner";
 import { ChatCommonOverlays, type ChatSettingsTools } from "./ChatCommonOverlays";
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
@@ -1865,7 +1865,7 @@ export function ChatRoleplaySurface({
                     <button
                       onClick={handleLoadMoreClick}
                       disabled={isFetchingNextPage}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-foreground/70 backdrop-blur-sm transition-all hover:bg-[var(--accent)] hover:text-foreground/90 disabled:opacity-50"
+                      className={HISTORY_PAGER_BUTTON_CLASS}
                     >
                       {isFetchingNextPage ? (
                         <Loader2 size="0.75rem" className="animate-spin" />

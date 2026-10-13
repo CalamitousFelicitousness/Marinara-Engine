@@ -607,6 +607,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.72: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
 //        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
 //        its declared assets. A new game with the Experience on is locked to them.
+// 1.73: the Engine hosts the 2D and 3D avatar agents (`2d-avatars`, `3d-avatars`, types/avatars.ts): it
+//        owns their storage, import, lazy renderers, setup on the Agent editor page, stream director,
+//        classifier and generation routes, and merges the 2D agent's `avatarGenerationTemplates`. No new
+//        manifest field; an avatar package declares 1.73 so an Engine without these surfaces refuses it.
 // 1.73: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
 //        creatures in the way (`creatures`), and a save (an entry's, a creature action's or an item use's)
 //        may ignore cover (`ignoresCover`); cover is read from the attacker's position by corner lines

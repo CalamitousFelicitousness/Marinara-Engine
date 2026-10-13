@@ -206,7 +206,7 @@ export function AvatarStage({
             key={`${ownerId}:${avatar.kind}`}
             avatar={avatar}
             config={config && config.enabled ? config : null}
-            sprites={sprites ? (sprites.data ?? null) : undefined}
+            sprites={sprites ? (sprites.data ?? (sprites.isError ? [] : null)) : undefined}
             placementKey={key}
             placement={placement}
             count={shown.length}
@@ -384,11 +384,13 @@ function usePlacementDrag({
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; origin: SpritePlacement } | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  // Follow the saved place (by value: the stage builds a new object each render) unless a drag is running.
+  const { x, y } = placement;
   useEffect(() => {
     if (dragging) return;
-    currentRef.current = placement;
-    setCurrent(placement);
-  }, [dragging, placement]);
+    currentRef.current = { x, y };
+    setCurrent({ x, y });
+  }, [dragging, x, y]);
 
   useEffect(() => {
     if (!editing && dragRef.current) {

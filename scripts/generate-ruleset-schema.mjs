@@ -594,7 +594,20 @@ function spendOnlyOnAPool(node) {
   if (kind !== undefined && kind !== "dice-pool") delete properties.spend;
 }
 
+// Step stamps and per-column spellcasting tables have bounded keys, which Zod refines at import.
+function boundSpellcastingRecords(node) {
+  if (Array.isArray(node)) return node.forEach(boundSpellcastingRecords);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(boundSpellcastingRecords);
+  const properties = node.properties;
+  if (properties?.stamp && properties.catalog) Object.assign(properties.stamp, { minProperties: 1, maxProperties: 4 });
+  if (properties?.column && properties.values?.additionalProperties?.properties?.toHit) {
+    Object.assign(properties.values, { minProperties: 1, maxProperties: 20 });
+  }
+}
+
 const schema = zodToJsonSchema(rulesetDefinitionSchema, { $refStrategy: "none", target: "jsonSchema7" });
+boundSpellcastingRecords(schema);
 requireLevelsWithKinds(schema);
 requireSpendBuysSomething(schema);
 requireCheckEffectDoesSomething(schema);

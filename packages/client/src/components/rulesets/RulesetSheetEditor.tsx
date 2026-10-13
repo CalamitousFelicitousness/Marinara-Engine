@@ -18,34 +18,32 @@ import {
   rulesetUntrainedRule,
   scaledRowColumns,
   RULESET_CATALOG_ROW_KEY,
+  rulesetListRollNotation,
+  readRulesetBuilderState,
+  applyRulesetBuilder,
+  rulesetBuilderCatalogIds,
+  type RulesetBuilderState,
+  type DiceRollResult,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
   type RulesetDefinition,
-  type RulesetField,
   type RulesetLayerOptions,
-  type RulesetListColumn,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
 import { RulesetCatalogPicker } from "./RulesetCatalogPicker";
+import { RulesetSheetBuilder } from "./RulesetSheetBuilder";
 import { RulesetCatalogRefreshModal } from "./RulesetCatalogRefreshModal";
 import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
 import { applyCatalogRefresh, planCatalogRefresh, type CatalogRefreshRow } from "../../lib/ruleset-catalog";
+import { rulesetRowSpellcastingText } from "../../lib/ruleset-sheet-view";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
-import { DraftTextarea } from "../ui/DraftTextarea";
+import { api } from "../../lib/api-client";
+import { clamp, inputClass, labelClass, TypedInput, type Scalar } from "./RulesetTypedInput";
 
-type Scalar = number | string | boolean;
 type ListRow = Record<string, Scalar>;
-
-const inputClass =
-  "w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs text-[var(--foreground)]";
-const labelClass = "text-[0.6875rem] font-medium text-[var(--muted-foreground)]";
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
 
 /** The build an envelope carries, on this version's layout (migrated as the stored sheet, before
  *  any default fills a gap a migration would have filled), completed with the ruleset's defaults for
@@ -63,115 +61,6 @@ function readBuild(definition: RulesetDefinition, envelope: RulesetSheetEnvelope
     fields: { ...defaults.fields, ...build.fields },
     lists: { ...build.lists },
   };
-}
-
-function TypedInput({
-  spec,
-  value,
-  onChange,
-  ariaLabel,
-  disabled = false,
-  title,
-  describedBy,
-}: {
-  spec: RulesetField | RulesetListColumn;
-  value: Scalar | undefined;
-  onChange: (value: Scalar) => void;
-  ariaLabel: string;
-  /** Set for a cell the ruleset keeps itself. The control stays in place and stops taking edits. */
-  disabled?: boolean;
-  /** The hint behind such a cell, for a pointer. */
-  title?: string;
-  /** The id of the visible text that says the same thing. A disabled control cannot be focused, so
-   *  a `title` alone never reaches a keyboard or a screen reader. */
-  describedBy?: string;
-}) {
-  if (spec.type === "number") {
-    return (
-      <DraftNumberInput
-        value={
-          typeof value === "number" && Number.isFinite(value) ? value : (spec.default ?? clamp(0, spec.min, spec.max))
-        }
-        onCommit={(next) => onChange(clamp(next, spec.min, spec.max))}
-        min={spec.min}
-        max={spec.max}
-        integer={spec.integer}
-        disabled={disabled}
-        title={title}
-        ariaLabel={ariaLabel}
-        ariaDescribedBy={describedBy}
-        className={`${inputClass} text-center`}
-      />
-    );
-  }
-  if (spec.type === "boolean") {
-    return (
-      <input
-        type="checkbox"
-        checked={value === true}
-        onChange={(event) => onChange(event.target.checked)}
-        disabled={disabled}
-        title={title}
-        aria-label={ariaLabel}
-        aria-describedby={describedBy}
-        className="h-4 w-4 accent-[var(--primary)]"
-      />
-    );
-  }
-  if (spec.type === "enum") {
-    // On purpose the control shows the value the sheet EVALUATES to. A stored string the ruleset
-    // no longer offers reads as the default in the sheet math, so showing the stale string beside
-    // modifiers computed from the default would misreport them. The stored string itself is left
-    // untouched until the user picks a value.
-    const current = typeof value === "string" && spec.values.includes(value) ? value : (spec.default ?? spec.values[0]);
-    return (
-      <select
-        value={current}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        title={title}
-        aria-label={ariaLabel}
-        aria-describedby={describedBy}
-        className={inputClass}
-      >
-        {spec.values.map((option) => (
-          <option key={option} value={option}>
-            {spec.valueLabels?.[option] ?? option}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  if (spec.type === "longtext") {
-    return (
-      <DraftTextarea
-        value={typeof value === "string" ? value : ""}
-        onCommit={(next) => onChange(next.slice(0, spec.maxLength))}
-        maxLength={spec.maxLength}
-        rows={2}
-        disabled={disabled}
-        title={title}
-        aria-label={ariaLabel}
-        aria-describedby={describedBy}
-        className={inputClass}
-      />
-    );
-  }
-  const maxLength = spec.type === "text" ? spec.maxLength : 40;
-  return (
-    <input
-      type="text"
-      value={typeof value === "string" ? value : ""}
-      onChange={(event) => onChange(event.target.value.slice(0, maxLength))}
-      maxLength={maxLength}
-      placeholder={spec.type === "dice" ? spec.example : undefined}
-      disabled={disabled}
-      title={title}
-      aria-label={ariaLabel}
-      aria-describedby={describedBy}
-      className={inputClass}
-    />
-  );
 }
 
 /** Entries under the section headings the ruleset puts them in, each group drawn by `render`. A sheet
@@ -302,6 +191,58 @@ function TrainedRows({
   );
 }
 
+/** A rolled list cell's button (Capability API 1.80): the Engine's own dice, so the number is thrown,
+ *  not typed. Disabled while the row does not say what to throw (its die is not picked yet). */
+function RollCellButton({
+  notation,
+  ariaLabel,
+  onRolled,
+}: {
+  notation: string | null;
+  /** The cell it fills, which its accessible name says. */
+  ariaLabel: string;
+  onRolled: (total: number) => void;
+}) {
+  const { t } = useUiTranslation();
+  const [rolling, setRolling] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={!notation || rolling}
+        onClick={async () => {
+          if (!notation) return;
+          setRolling(true);
+          setFailed(false);
+          try {
+            const { result } = await api.post<{ result: DiceRollResult }>("/game/dice/roll", { notation });
+            onRolled(result.total);
+          } catch {
+            // Nothing is written when the roll did not happen, and the button says so.
+            setFailed(true);
+          } finally {
+            setRolling(false);
+          }
+        }}
+        aria-label={
+          notation
+            ? t("ui.rulesets.sheet.rollCell", { cell: ariaLabel, notation })
+            : t("ui.rulesets.sheet.rollNeedsDieFor", { cell: ariaLabel })
+        }
+        className="self-start rounded-lg border border-[var(--border)] px-2 py-0.5 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
+      >
+        {notation ? t("ui.rulesets.sheet.roll", { notation }) : t("ui.rulesets.sheet.rollNeedsDie")}
+      </button>
+      {failed && (
+        <span role="status" className="text-[0.625rem] text-[var(--destructive)]">
+          {t("ui.rulesets.sheet.rollFailed")}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function RulesetSheetEditor({
   definition,
   layerOptions,
@@ -366,15 +307,72 @@ export function RulesetSheetEditor({
   const editedRef = useRef(false);
   const hintBaseId = useId();
 
+  // The sheet as it stands now, for a change that lands after an await (a rolled cell): the render that
+  // started it may be stale by then.
+  const latest = useRef({ build, envelope });
+  latest.current = { build, envelope };
+  /** A rolled total written into its cell, on the sheet as it stands when the roll comes back; nothing
+   *  when that row or cell has gone meanwhile. */
+  const writeRolled = (listId: string, index: number, columnId: string, value: number) => {
+    const now = latest.current;
+    const rows = (now.build.lists[listId] as ListRow[] | undefined) ?? [];
+    if (!rows[index]) return;
+    editedRef.current = true;
+    const patched = {
+      ...now.build,
+      lists: {
+        ...now.build.lists,
+        [listId]: rows.map((row, i) => (i === index ? { ...row, [columnId]: value } : row)),
+      },
+    };
+    onChange({
+      ...now.envelope,
+      v: rulesetSheetStamp(definition, now.envelope),
+      build: recomputeScaledRows(definition, patched, loadedCatalogs),
+    });
+  };
+
+  // A builder whose steps are limited by a sheet value (`upTo`, 1.82) is applied again on an edit here,
+  // so lowering a level takes back at once what a pick above it gave. Its catalogs share the Guided
+  // view's cache; while they load, an edit waits for the builder's next change as before.
+  const builderLimits = sheet.builder?.steps.some((step) => step.kind === "catalog" && step.upTo) ?? false;
+  const builderCatalogIds = useMemo(
+    () => (builderLimits ? rulesetBuilderCatalogIds(definition) : []),
+    [builderLimits, definition],
+  );
+  const combineBuilderCatalogs = useCallback(
+    (results: readonly { data: RulesetCatalogPayload | undefined }[]) => {
+      const loaded: RulesetCatalogEntriesById = {};
+      results.forEach((result, index) => {
+        const catalogId = builderCatalogIds[index];
+        if (catalogId && result.data) loaded[catalogId] = result.data.entries;
+      });
+      return { catalogs: loaded, ready: results.every((result) => !!result.data) };
+    },
+    [builderCatalogIds],
+  );
+  const builderCatalogs = useQueries({
+    queries: builderCatalogIds.map((catalogId) => rulesetCatalogQuery(definition.id, catalogId, definition.version)),
+    combine: combineBuilderCatalogs,
+  });
+
   const commit = (patch: Partial<RulesetSheetBuild>) => {
     editedRef.current = true;
     // The one change path, so every edit leaves the ruleset's own cells right. The helper hands
     // back the very build it was given when nothing scaled changes, which is what today's editor
     // stored, so an ordinary edit behaves exactly as it always has.
-    const patched = { ...build, ...patch };
+    let patched = { ...build, ...patch };
+    const state = readRulesetBuilderState(envelope);
+    let builder: RulesetBuilderState | undefined;
+    if (builderLimits && state.applied && !state.describing && builderCatalogs.ready) {
+      const applied = applyRulesetBuilder(definition, patched, state, builderCatalogs.catalogs);
+      patched = applied.build;
+      builder = applied.state;
+    }
     onChange({
       ...envelope,
       v: rulesetSheetStamp(definition, envelope),
+      ...(builder ? { builder } : {}),
       build: recomputeScaledRows(definition, patched, loadedCatalogs),
     });
   };
@@ -390,6 +388,23 @@ export function RulesetSheetEditor({
     onChange({ ...envelope, v: rulesetSheetStamp(definition, envelope), build: next });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedCatalogs]);
+
+  // The guided builder (1.81), beside the full form when the ruleset declares one. Its choices ride in
+  // the envelope next to the build, so a step can be reopened.
+  const builderState = useMemo(() => readRulesetBuilderState(envelope), [envelope]);
+  const [view, setView] = useState<"guided" | "all">(sheet.builder ? "guided" : "all");
+  const viewBaseId = useId();
+  // Read off the sheet as it stands now: the builder's dice land after an await.
+  const commitBuilder = (next: RulesetSheetBuild, state: RulesetBuilderState) => {
+    editedRef.current = true;
+    const now = latest.current.envelope;
+    onChange({
+      ...now,
+      v: rulesetSheetStamp(definition, now),
+      builder: state,
+      build: recomputeScaledRows(definition, next, loadedCatalogs),
+    });
+  };
 
   const hidden = (item: Parameters<typeof isRulesetItemHidden>[0]) => isRulesetItemHidden(item, build, definition);
   const offered = (ids: string[] | undefined) =>
@@ -461,225 +476,299 @@ export function RulesetSheetEditor({
       lists: { ...build.lists, [listId]: rows.map((row, i) => (i === index ? { ...row, [columnId]: value } : row)) },
     });
 
+  const tabs = sheet.builder ? (
+    <div role="tablist" aria-label={t("ui.rulesets.builder.views")} className="flex gap-1.5">
+      {(["guided", "all"] as const).map((each) => (
+        <button
+          key={each}
+          type="button"
+          role="tab"
+          id={`${viewBaseId}-${each}`}
+          aria-selected={view === each}
+          aria-controls={`${viewBaseId}-panel`}
+          tabIndex={view === each ? 0 : -1}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const other = each === "guided" ? "all" : "guided";
+            setView(other);
+            document.getElementById(`${viewBaseId}-${other}`)?.focus();
+          }}
+          onClick={() => setView(each)}
+          className={`rounded-lg border px-2 py-1 text-[0.6875rem] ${
+            view === each
+              ? "border-[var(--primary)] bg-[var(--primary)]/15 text-[var(--foreground)]"
+              : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+          }`}
+        >
+          {t(each === "guided" ? "ui.rulesets.builder.guided" : "ui.rulesets.builder.allFields")}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  if (sheet.builder && view === "guided") {
+    return (
+      <div className="space-y-3">
+        {tabs}
+        <div role="tabpanel" id={`${viewBaseId}-panel`} aria-labelledby={`${viewBaseId}-guided`}>
+          <RulesetSheetBuilder
+            definition={definition}
+            layerOptions={layerOptions}
+            build={build}
+            state={builderState}
+            evaluated={evaluated}
+            onApply={commitBuilder}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {sheet.abilities.length > 0 && (
-        <SectionedEntries
-          definition={definition}
-          entries={sheet.abilities}
-          render={(group) => (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-              {group.map((ability) => (
-                <label
-                  key={ability.id}
-                  className="flex min-w-0 flex-col items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
-                >
-                  <span className={`${labelClass} max-w-full truncate`} title={ability.label}>
-                    {ability.short ?? ability.label}
-                  </span>
-                  <DraftNumberInput
-                    value={evaluated.abilityScores[ability.id] ?? ability.default}
-                    onCommit={(next) =>
-                      commit({ abilities: { ...build.abilities, [ability.id]: clamp(next, ability.min, ability.max) } })
-                    }
-                    min={ability.min}
-                    max={ability.max}
-                    integer
-                    ariaLabel={ability.label}
-                    className={`${inputClass} text-center`}
-                  />
-                  <span className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
-                    {rulesetCheckValueText(definition, evaluated.abilityMods[ability.id] ?? 0, t)}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-        />
-      )}
-
-      {sectionGroups.map(({ section, fields, derived, lists }) => (
-        <div key={section.id || "other"} className="space-y-2">
-          <h4 className="text-xs font-semibold text-[var(--foreground)]">{section.label}</h4>
-          {(fields.length > 0 || derived.length > 0) && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {fields.map((field) => (
-                <label
-                  key={field.id}
-                  className={`flex min-w-0 flex-col gap-1 ${field.type === "longtext" ? "col-span-full" : ""}`}
-                >
-                  <span className={labelClass}>{field.label}</span>
-                  <TypedInput
-                    spec={field}
-                    value={build.fields[field.id]}
-                    onChange={(value) => commit({ fields: { ...build.fields, [field.id]: value } })}
-                    ariaLabel={field.label}
-                  />
-                </label>
-              ))}
-              {derived.map((entry) => (
-                <div key={entry.id} className="flex min-w-0 flex-col gap-1">
-                  <span className={labelClass}>{entry.label}</span>
-                  <span className="rounded-lg border border-dashed border-[var(--border)] px-2 py-1 text-center text-xs font-semibold tabular-nums text-[var(--foreground)]">
-                    {evaluated.derived[entry.id] ?? 0}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          {lists.map((list) => {
-            const rows = (Array.isArray(build.lists[list.id]) ? build.lists[list.id] : []) as ListRow[];
-            // A catalog of creatures feeds no list, so the picker never offers it anywhere.
-            const feeding = catalogs.filter((catalog) => catalog.feeds?.includes(list.id));
-            const atLimit = rows.length >= list.maxItems;
-            const locked = scaledCells.get(list.id);
-            const stale = refreshByList.get(list.id) ?? [];
-            return (
-              <div key={list.id} className="space-y-1.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className={labelClass}>
-                    {list.label} ({rows.length}/{list.maxItems})
-                  </span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {/* One button per catalog that feeds this list, named when there is more than one. */}
-                    {feeding.map((catalog) => (
-                      <button
-                        key={catalog.id}
-                        type="button"
-                        disabled={atLimit}
-                        title={
-                          atLimit
-                            ? t("game.ruleset.catalog.listFull", { list: list.label, max: list.maxItems })
-                            : undefined
-                        }
-                        onClick={() => setPickerId(catalog.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
-                      >
-                        <BookOpen size={12} aria-hidden="true" />
-                        {feeding.length > 1
-                          ? t("game.ruleset.catalog.addFromNamed", { name: catalog.label })
-                          : t("game.ruleset.catalog.addFrom")}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={atLimit}
-                      onClick={() =>
+      {tabs}
+      <div
+        className="space-y-4"
+        {...(sheet.builder
+          ? { role: "tabpanel", id: `${viewBaseId}-panel`, "aria-labelledby": `${viewBaseId}-all` }
+          : {})}
+      >
+        {sheet.abilities.length > 0 && (
+          <SectionedEntries
+            definition={definition}
+            entries={sheet.abilities}
+            render={(group) => (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                {group.map((ability) => (
+                  <label
+                    key={ability.id}
+                    className="flex min-w-0 flex-col items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+                  >
+                    <span className={`${labelClass} max-w-full truncate`} title={ability.label}>
+                      {ability.short ?? ability.label}
+                    </span>
+                    <DraftNumberInput
+                      value={evaluated.abilityScores[ability.id] ?? ability.default}
+                      onCommit={(next) =>
                         commit({
-                          lists: {
-                            ...build.lists,
-                            [list.id]: [
-                              ...rows,
-                              Object.fromEntries(
-                                list.columns
-                                  .filter((column) => column.default !== undefined)
-                                  .map((column) => [column.id, column.default as Scalar]),
-                              ),
-                            ],
-                          },
+                          abilities: { ...build.abilities, [ability.id]: clamp(next, ability.min, ability.max) },
                         })
                       }
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
-                    >
-                      <Plus size={12} aria-hidden="true" />
-                      {t("ui.rulesets.sheet.addRow")}
-                    </button>
-                  </div>
-                </div>
-                {/* Deliberately not a live region: it is recounted as the sheet is typed in, and a
-                    notice that re-announces on every keystroke is worse than one that waits. */}
-                {stale.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
-                      {t("ui.rulesets.sheet.refreshNotice", { count: stale.length })}
+                      min={ability.min}
+                      max={ability.max}
+                      integer
+                      ariaLabel={ability.label}
+                      className={`${inputClass} text-center`}
+                    />
+                    <span className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
+                      {rulesetCheckValueText(definition, evaluated.abilityMods[ability.id] ?? 0, t)}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setRefreshListId(list.id)}
-                      aria-label={t("ui.rulesets.sheet.refreshReviewFor", { list: list.label })}
-                      className="rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)]"
-                    >
-                      {t("ui.rulesets.sheet.refreshReview")}
-                    </button>
-                  </div>
-                )}
-                {rows.map((row, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+                  </label>
+                ))}
+              </div>
+            )}
+          />
+        )}
+
+        {sectionGroups.map(({ section, fields, derived, lists }) => (
+          <div key={section.id || "other"} className="space-y-2">
+            <h4 className="text-xs font-semibold text-[var(--foreground)]">{section.label}</h4>
+            {(fields.length > 0 || derived.length > 0) && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {fields.map((field) => (
+                  <label
+                    key={field.id}
+                    className={`flex min-w-0 flex-col gap-1 ${field.type === "longtext" ? "col-span-full" : ""}`}
                   >
-                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3">
-                      {list.columns.map((column) => {
-                        // A cell the ruleset keeps follows this character's own numbers, so it is
-                        // shown where it always was and simply does not take edits.
-                        const setByRuleset = locked?.get(index)?.includes(column.id) ?? false;
-                        const hintId = setByRuleset ? `${hintBaseId}-${list.id}-${index}-${column.id}` : undefined;
-                        return (
-                          <label
-                            key={column.id}
-                            className={`flex min-w-0 flex-col gap-0.5 ${column.type === "longtext" ? "col-span-full" : ""}`}
-                          >
-                            <span className={labelClass}>{column.label}</span>
-                            <TypedInput
-                              spec={column}
-                              value={row[column.id]}
-                              onChange={(value) => updateRow(list.id, rows, index, column.id, value)}
-                              ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
-                              disabled={setByRuleset}
-                              title={setByRuleset ? t("ui.rulesets.sheet.scaledHint") : undefined}
-                              describedBy={hintId}
-                            />
-                            {hintId && (
-                              <span id={hintId} className="text-[0.625rem] text-[var(--muted-foreground)]">
-                                {t("ui.rulesets.sheet.scaledHint")}
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        commit({ lists: { ...build.lists, [list.id]: rows.filter((_, i) => i !== index) } })
-                      }
-                      aria-label={t("ui.rulesets.sheet.removeRow", { list: list.label, index: index + 1 })}
-                      className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--destructive)]"
-                    >
-                      <Trash2 size={14} aria-hidden="true" />
-                    </button>
+                    <span className={labelClass}>{field.label}</span>
+                    <TypedInput
+                      spec={field}
+                      value={build.fields[field.id]}
+                      onChange={(value) => commit({ fields: { ...build.fields, [field.id]: value } })}
+                      ariaLabel={field.label}
+                    />
+                  </label>
+                ))}
+                {derived.map((entry) => (
+                  <div key={entry.id} className="flex min-w-0 flex-col gap-1">
+                    <span className={labelClass}>{entry.label}</span>
+                    <span className="rounded-lg border border-dashed border-[var(--border)] px-2 py-1 text-center text-xs font-semibold tabular-nums text-[var(--foreground)]">
+                      {evaluated.derived[entry.id] ?? 0}
+                    </span>
                   </div>
                 ))}
               </div>
-            );
-          })}
-        </div>
-      ))}
+            )}
+            {lists.map((list) => {
+              const rows = (Array.isArray(build.lists[list.id]) ? build.lists[list.id] : []) as ListRow[];
+              // A catalog of creatures feeds no list, so the picker never offers it anywhere.
+              const feeding = catalogs.filter((catalog) => catalog.feeds?.includes(list.id));
+              const atLimit = rows.length >= list.maxItems;
+              const locked = scaledCells.get(list.id);
+              const stale = refreshByList.get(list.id) ?? [];
+              return (
+                <div key={list.id} className="space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className={labelClass}>
+                      {list.label} ({rows.length}/{list.maxItems})
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* One button per catalog that feeds this list, named when there is more than one. */}
+                      {feeding.map((catalog) => (
+                        <button
+                          key={catalog.id}
+                          type="button"
+                          disabled={atLimit}
+                          title={
+                            atLimit
+                              ? t("game.ruleset.catalog.listFull", { list: list.label, max: list.maxItems })
+                              : undefined
+                          }
+                          onClick={() => setPickerId(catalog.id)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
+                        >
+                          <BookOpen size={12} aria-hidden="true" />
+                          {feeding.length > 1
+                            ? t("game.ruleset.catalog.addFromNamed", { name: catalog.label })
+                            : t("game.ruleset.catalog.addFrom")}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={atLimit}
+                        onClick={() =>
+                          commit({
+                            lists: {
+                              ...build.lists,
+                              [list.id]: [
+                                ...rows,
+                                Object.fromEntries(
+                                  list.columns
+                                    .filter((column) => column.default !== undefined)
+                                    .map((column) => [column.id, column.default as Scalar]),
+                                ),
+                              ],
+                            },
+                          })
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
+                      >
+                        <Plus size={12} aria-hidden="true" />
+                        {t("ui.rulesets.sheet.addRow")}
+                      </button>
+                    </div>
+                  </div>
+                  {/* Deliberately not a live region: it is recounted as the sheet is typed in, and a
+                    notice that re-announces on every keystroke is worse than one that waits. */}
+                  {stale.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                        {t("ui.rulesets.sheet.refreshNotice", { count: stale.length })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setRefreshListId(list.id)}
+                        aria-label={t("ui.rulesets.sheet.refreshReviewFor", { list: list.label })}
+                        className="rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)]"
+                      >
+                        {t("ui.rulesets.sheet.refreshReview")}
+                      </button>
+                    </div>
+                  )}
+                  {rows.map((row, index) => {
+                    const spellcasting = rulesetRowSpellcastingText(definition, build, list.id, row, evaluated, t);
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-start gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+                      >
+                        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3">
+                          {list.columns.map((column) => {
+                            // A cell the ruleset keeps follows this character's own numbers, so it is
+                            // shown where it always was and simply does not take edits.
+                            const setByRuleset = locked?.get(index)?.includes(column.id) ?? false;
+                            const hintId = setByRuleset ? `${hintBaseId}-${list.id}-${index}-${column.id}` : undefined;
+                            return (
+                              <label
+                                key={column.id}
+                                className={`flex min-w-0 flex-col gap-0.5 ${column.type === "longtext" ? "col-span-full" : ""}`}
+                              >
+                                <span className={labelClass}>{column.label}</span>
+                                <TypedInput
+                                  spec={column}
+                                  value={row[column.id]}
+                                  onChange={(value) => updateRow(list.id, rows, index, column.id, value)}
+                                  ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
+                                  disabled={setByRuleset}
+                                  title={setByRuleset ? t("ui.rulesets.sheet.scaledHint") : undefined}
+                                  describedBy={hintId}
+                                />
+                                {column.type === "number" && column.roll && !setByRuleset && (
+                                  <RollCellButton
+                                    notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
+                                    ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
+                                    onRolled={(total) =>
+                                      writeRolled(list.id, index, column.id, clamp(total, column.min, column.max))
+                                    }
+                                  />
+                                )}
+                                {hintId && (
+                                  <span id={hintId} className="text-[0.625rem] text-[var(--muted-foreground)]">
+                                    {t("ui.rulesets.sheet.scaledHint")}
+                                  </span>
+                                )}
+                              </label>
+                            );
+                          })}
+                          {spellcasting && (
+                            <span className="col-span-full text-xs text-[var(--muted-foreground)]">{spellcasting}</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            commit({ lists: { ...build.lists, [list.id]: rows.filter((_, i) => i !== index) } })
+                          }
+                          aria-label={t("ui.rulesets.sheet.removeRow", { list: list.label, index: index + 1 })}
+                          className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--destructive)]"
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ))}
 
-      <TrainedRows
-        title={t("ui.rulesets.sheet.skills")}
-        entries={sheet.skills}
-        tiers={offered(sheet.skillTiers)}
-        chosen={evaluated.skillTiers}
-        modifiers={evaluated.skillMods}
-        bonuses={build.bonuses}
-        bonusRange={sheet.bonusRange}
-        definition={definition}
-        onTier={(id, tier) => commit({ skills: { ...build.skills, [id]: tier } })}
-        onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
-      />
-      <TrainedRows
-        title={t("ui.rulesets.sheet.saves")}
-        entries={sheet.saves}
-        tiers={offered(sheet.saveTiers)}
-        chosen={evaluated.saveTiers}
-        modifiers={evaluated.saveMods}
-        bonuses={build.bonuses}
-        bonusRange={sheet.bonusRange}
-        definition={definition}
-        onTier={(id, tier) => commit({ saves: { ...build.saves, [id]: tier } })}
-        onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
-      />
+        <TrainedRows
+          title={t("ui.rulesets.sheet.skills")}
+          entries={sheet.skills}
+          tiers={offered(sheet.skillTiers)}
+          chosen={evaluated.skillTiers}
+          modifiers={evaluated.skillMods}
+          bonuses={build.bonuses}
+          bonusRange={sheet.bonusRange}
+          definition={definition}
+          onTier={(id, tier) => commit({ skills: { ...build.skills, [id]: tier } })}
+          onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
+        />
+        <TrainedRows
+          title={t("ui.rulesets.sheet.saves")}
+          entries={sheet.saves}
+          tiers={offered(sheet.saveTiers)}
+          chosen={evaluated.saveTiers}
+          modifiers={evaluated.saveMods}
+          bonuses={build.bonuses}
+          bonusRange={sheet.bonusRange}
+          definition={definition}
+          onTier={(id, tier) => commit({ saves: { ...build.saves, [id]: tier } })}
+          onBonus={(id, bonus) => commit({ bonuses: { ...build.bonuses, [id]: bonus } })}
+        />
+      </div>
 
       {openPicker && (
         <RulesetCatalogPicker

@@ -10,6 +10,7 @@ import {
   catalogRowRef,
   rowsFromCatalogEntry,
   rulesetListRowIssues,
+  rulesetValueRefLabel,
   RULESET_CATALOG_ROW_KEY,
   type RulesetCatalogEntry,
   type RulesetCatalogEntryRow,
@@ -21,6 +22,7 @@ import {
   type RulesetList,
   type RulesetListColumn,
   type RulesetSheetBuild,
+  type RulesetValueRef,
   sheetFieldMatchTexts,
 } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
@@ -482,6 +484,8 @@ export type CatalogMechanicsLabels = {
   /** Action-economy budget id to the name the ruleset gives it, for the entries that hand a budget
    *  back or buy a standard action with one. Empty for a ruleset that resolves no combat. */
   budgets: Readonly<Record<string, string>>;
+  /** A sheet value by the ruleset's own name, for an amount that adds one (1.78). */
+  value?: (ref: RulesetValueRef) => string;
 };
 
 /** The ruleset's own names for everything a mechanics block can point at. A pool group has no label
@@ -499,7 +503,8 @@ export function catalogMechanicsLabels(
   }
   const budgets: Record<string, string> = {};
   for (const budget of definition.combat?.economy.budgets ?? []) budgets[budget.id] = budget.label;
-  return { units: catalog.units, saves, pools, budgets };
+  const value = (ref: RulesetValueRef) => rulesetValueRefLabel(definition, ref).what;
+  return { units: catalog.units, saves, pools, budgets, value };
 }
 
 /** Dice and a flat adjustment read as one die expression (`1d8+3`), which every system writes the
@@ -604,7 +609,15 @@ export function formatCatalogMechanics(
   if (mechanics.friendlyFire) parts.push(t("game.ruleset.catalog.mechanics.friendlyFire"));
   if (mechanics.attackRoll) parts.push(t("game.ruleset.catalog.mechanics.attackRoll"));
 
-  const amount = formatAmount(mechanics.amount);
+  const declared = formatAmount(mechanics.amount);
+  // What the sheet adds is named, not worked out: the catalog shows the entry, not anybody's sheet.
+  const amount =
+    declared && mechanics.amountAdd
+      ? t("game.ruleset.catalog.mechanics.amountAdd", {
+          amount: declared,
+          value: labels.value?.(mechanics.amountAdd) ?? "",
+        })
+      : declared;
   if (amount) {
     parts.push(
       mechanics.damageType

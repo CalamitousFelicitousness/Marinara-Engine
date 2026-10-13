@@ -7,6 +7,7 @@
 // needs one of its options.
 
 import type {
+  RulesetBuilderStep,
   RulesetDefinition,
   RulesetSheetBuild,
   RulesetStartingGear,
@@ -35,7 +36,7 @@ export interface RulesetStartingGearAdd {
   equip?: true;
 }
 
-export type RulesetStartingGearRefusal = "unknown-gear" | "choice" | "pick" | "unknown-item" | "empty";
+export type RulesetStartingGearRefusal = "unknown-gear" | "does-not-fit" | "choice" | "pick" | "unknown-item" | "empty";
 
 export type RulesetStartingGearResolution =
   | {
@@ -84,7 +85,8 @@ export function rulesetStartingGearCoins(
   const unit = kept.units.some((each) => each.id === named.id)
     ? named
     : [...kept.units].sort((a, b) => b.value - a.value).find((each) => (line.count * named.value) % each.value === 0)!;
-  return { unit: unit.id, label: unit.label, count: (line.count * named.value) / unit.value };
+  const count = (line.count * named.value) / unit.value;
+  return { unit: unit.id, label: count === 1 && unit.one ? unit.one : unit.label, count };
 }
 
 /** Whether a character's sheet is what the gear is for. Gear that names nobody fits nobody in
@@ -96,6 +98,27 @@ export function rulesetStartingGearFits(
 ): boolean {
   if (!gear.fits || !build) return false;
   return resolveRulesetValueRef(definition, build, gear.fits.value) >= gear.fits.atLeast;
+}
+
+/** A strict builder step holds gear to the sheet in legal-only mode (1.104). Gear without `fits`
+ *  belongs to everyone. No live state is read, as when the inventory ranks fitting gear first. */
+export function rulesetBuilderStartingGearOptions(
+  definition: RulesetDefinition,
+  step: Extract<RulesetBuilderStep, { kind: "startingGear" }>,
+  build: RulesetSheetBuild | undefined,
+  freeEdit = false,
+): readonly RulesetStartingGear[] {
+  const gear = rulesetStartingGear(definition);
+  return step.strict && !freeEdit
+    ? gear.filter((each) => !each.fits || rulesetStartingGearFits(definition, each, build))
+    : gear;
+}
+
+/** The builder's mode is local to the client, not part of a saved sheet or an inventory request. */
+export interface RulesetStartingGearBuilderContext {
+  step: Extract<RulesetBuilderStep, { kind: "startingGear" }>;
+  build: RulesetSheetBuild | undefined;
+  freeEdit?: boolean;
 }
 
 /** The lines a selection takes, each with the key a pick names it by. */
@@ -127,9 +150,18 @@ export function resolveRulesetStartingGear(
   book: RulesetItemBook,
   selection: RulesetStartingGearSelection,
   layerOptions?: RulesetLayerOptions | null,
+  builder?: RulesetStartingGearBuilderContext,
 ): RulesetStartingGearResolution {
   const gear = rulesetStartingGear(definition).find((entry) => entry.id === selection.gear);
   if (!gear) return { ok: false, reason: "unknown-gear", detail: `No starting gear "${selection.gear}"` };
+  if (
+    builder &&
+    !rulesetBuilderStartingGearOptions(definition, builder.step, builder.build, builder.freeEdit).some(
+      (each) => each.id === gear.id,
+    )
+  ) {
+    return { ok: false, reason: "does-not-fit", detail: `Starting gear "${gear.label}" does not fit this sheet` };
+  }
   const selected = selectedLines(gear, selection.choices);
   if ("refused" in selected) return { ok: false, reason: "choice", detail: selected.refused };
 

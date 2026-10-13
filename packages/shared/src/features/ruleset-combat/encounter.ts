@@ -39,6 +39,7 @@ import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
 import {
   lookupStepTable,
   resolveRulesetValueRef,
+  resolveRulesetAbilityValues,
   rulesetCheckAdjust,
   rulesetCheckModifier,
   type EvaluatedRulesetSheet,
@@ -706,8 +707,17 @@ function itemToHit(
   const proficient =
     toHit.proficiency !== undefined && resolveRulesetValueRef(definition, build, toHit.proficiency, evaluated) > 0;
   const target = read(toHit.target);
+  // What the holder brings to it off their own sheet (Capability API 1.90: an archer's +2 to ranged).
+  const fromSheet =
+    toHit.sheetBonus !== undefined
+      ? Math.trunc(resolveRulesetValueRef(definition, build, toHit.sheetBonus, evaluated))
+      : 0;
   return {
-    toHit: base + (proficient ? evaluated.proficiencyBonus : 0) + number(read(toHit.bonus)),
+    toHit:
+      base +
+      (proficient ? evaluated.proficiencyBonus : 0) +
+      number(read(toHit.bonus)) +
+      (Number.isFinite(fromSheet) ? fromSheet : 0),
     ...(pooled && typeof target === "number" && Number.isFinite(target) ? { target } : {}),
   };
 }
@@ -929,7 +939,15 @@ function itemAttackActions(
     const damageAbility = dealtWith.length
       ? Math.max(...dealtWith.map((ability) => evaluated.abilityMods[ability] ?? ABILITY_COLUMN_MISS))
       : 0;
-    const bonus = number(read(attack.damage.bonus));
+    // What the holder brings to the damage off their own sheet (1.92: a duelist's +2), only while the
+    // weapon is held in one hand when it says so: a versatile weapon wielded two-handed, or one that
+    // takes two of a slot, is not.
+    const twoHanded = free || Object.values(item.slots ?? {}).some((count) => count >= 2);
+    const sheetDamage =
+      attack.damage.sheetBonus !== undefined && !(attack.damage.oneHanded && twoHanded)
+        ? Math.trunc(resolveRulesetValueRef(definition, build, attack.damage.sheetBonus, evaluated))
+        : 0;
+    const bonus = number(read(attack.damage.bonus)) + (Number.isFinite(sheetDamage) ? sheetDamage : 0);
     const typeRead = read(attack.damage.type);
     const type = typeof typeRead === "string" && typeRead.trim() ? typeRead.trim() : undefined;
     const strikes = attack.strikes
@@ -964,6 +982,14 @@ function itemAttackActions(
         ...(ammo ? { ammo } : {}),
       });
     }
+    // Low damage dice thrown again once, off the holder's sheet, only while the weapon is wielded
+    // two-handed (1.93: Great Weapon Fighting's 1s and 2s). A pool fight's damage is successes, not
+    // faces, so it has none.
+    const rerollRead =
+      !pooled && attack.damage.rerollUpTo !== undefined && twoHanded
+        ? Math.trunc(resolveRulesetValueRef(definition, build, attack.damage.rerollUpTo, evaluated))
+        : 0;
+    const rerollUpTo = Number.isFinite(rerollRead) ? Math.max(0, Math.min(rerollRead, dice.sides - 1)) : 0;
     const floorRead = read(attack.floor);
     const floor = typeof floorRead === "number" && Number.isFinite(floorRead) && floorRead >= 1 ? floorRead : 0;
     // A damage ability read as the off hand reads it where the ruleset says so: added only when it
@@ -979,6 +1005,7 @@ function itemAttackActions(
       ...(type ? { type } : {}),
       ...(item.tags?.length ? { qualities: [...item.tags] } : {}),
       ...(floor ? { floor: Math.trunc(floor) } : {}),
+      ...(rerollUpTo > 0 ? { reroll: rerollUpTo } : {}),
     });
     const offHand = attack.offHand && combat.offHand ? combat.offHand : undefined;
     const weapon: RulesetCombatAction = {
@@ -1007,7 +1034,17 @@ function itemAttackActions(
         ...single,
         id: `offhand:${index}`,
         budget: offHand.budget,
-        damage: damageOf(offHand.ability === "penalty-only" ? Math.min(0, damageAbility) : damageAbility),
+        // The off hand keeps the full ability for a fighter whose sheet says so (1.92: Two-Weapon
+        // Fighting), whatever the ruleset's rule for everyone else.
+        damage: damageOf(
+          offHand.ability === "penalty-only" &&
+            !(
+              offHand.fullWhen !== undefined &&
+              resolveRulesetValueRef(definition, build, offHand.fullWhen, evaluated) > 0
+            )
+            ? Math.min(0, damageAbility)
+            : damageAbility,
+        ),
         offHandOf: index,
       });
     }
@@ -1058,6 +1095,7 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
 function abilityAction(
   definition: RulesetDefinition,
   source: RulesetCombatAbilitySource,
+  row: Record<string, unknown>,
   sourceIndex: number,
   rowIndex: number,
   name: string,
@@ -1068,15 +1106,15 @@ function abilityAction(
 ): RulesetCombatAction | null {
   const mechanics = entry.mechanics;
   if (!mechanics) return null;
-  const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
+  const values = resolveRulesetAbilityValues(definition, build, source, row, evaluated);
   return mechanicsAction(definition, mechanics, {
     id: `ability:${sourceIndex}:${rowIndex}`,
     kind: "ability",
     label: name,
     budget: mechanics.budget ?? source.budget,
     // An entry that rolls to hit always rolls: a source that names no bonus adds nothing to the dice.
-    toHit: (source.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source.toHit),
-    ...(source.saveDifficulty ? { saveDifficulty: resolve(source.saveDifficulty) } : {}),
+    toHit: values.toHit + fightAdjust(definition, build, evaluated, values.toHitRef),
+    ...(values.saveDifficulty !== undefined ? { saveDifficulty: values.saveDifficulty } : {}),
     build,
     evaluated,
     perCell,
@@ -1117,7 +1155,10 @@ function mechanicsAction(
   if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels) return null;
   const { build, evaluated, perCell } = from;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
-  const amount = amountOf(mechanics.amount);
+  // What the sheet adds to it (1.78), read as the entry is put on the menu: 1d10 plus a level.
+  const added = mechanics.amountAdd ? Math.trunc(resolve(mechanics.amountAdd)) : 0;
+  const declared = amountOf(mechanics.amount);
+  const amount = declared && added ? { ...declared, flat: declared.flat + added } : declared;
   // A scaling amount grows in DICE: the table says how many to add at each step of what it reads.
   const extra = mechanics.scales
     ? Math.max(0, Math.trunc(lookupStepTable(mechanics.scales.table, resolve(mechanics.scales.from))))
@@ -1361,7 +1402,18 @@ function abilityActions(
       riders.push(rider);
       return;
     }
-    const action = abilityAction(definition, source, index, rowIndex, name, entry, build, evaluated, perCellOf(ref));
+    const action = abilityAction(
+      definition,
+      source,
+      row,
+      index,
+      rowIndex,
+      name,
+      entry,
+      build,
+      evaluated,
+      perCellOf(ref),
+    );
     if (!action) return;
     // Which catalog it came from, which is what a reaction that answers only some entries reads.
     action.catalog = ref.slice(0, ref.indexOf("/"));
@@ -1597,6 +1649,12 @@ function sheetCombatant(
     stable: false,
     defeated: false,
     defense: Math.round(resolveRulesetValueRef(definition, build, combat.defense, evaluated)),
+    // A sheet that reads under 2 (a field left at 0 for whoever has no range) is no range at all.
+    ...(() => {
+      const ref = combat.attackRoll?.criticalFrom;
+      const from = ref ? Math.round(resolveRulesetValueRef(definition, build, ref, evaluated)) : NaN;
+      return Number.isFinite(from) && from >= 2 ? { criticalFrom: from } : {};
+    })(),
     saves,
     ...(checks ? { checks } : {}),
     ...(soak ? { soak } : {}),

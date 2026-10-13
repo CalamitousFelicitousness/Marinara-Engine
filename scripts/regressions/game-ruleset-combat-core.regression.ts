@@ -922,6 +922,113 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.equal(eventsOf(flub.events, "damage").length, 0);
 }
 
+// ── A critical range off the sheet (Capability API 1.76) ──
+{
+  // A Champion's sheet says 19: a natural 19 is a critical, with the critical's damage; without the
+  // range it is a plain hit. A sheet reading past the die's top face is held to it.
+  const champion = (from: unknown) =>
+    parsedOrThrow(
+      variant(fiveEText, (doc) => {
+        doc.combat.attackRoll.criticalFrom = from;
+      }),
+      "5e with a critical range",
+    );
+  const swing = (definition: RulesetDefinition, natural: number) => {
+    const state = fight(definition, [fighter(), mote()], 20, 1);
+    const sword = rulesetCombatOptions(definition, state, "brenna").find((option) => option.label === "Longsword")!;
+    return firstOf(
+      act(definition, state, { actorId: "brenna", optionId: sword.id, targetIds: ["mote"] }, natural, 5, 6, 5, 6)
+        .events,
+      "attack",
+    ).outcome;
+  };
+  assert.equal(swing(champion({ const: 19 }), 19), "critical");
+  assert.equal(swing(champion({ const: 19 }), 18), "hit");
+  assert.equal(swing(fiveE, 19), "hit", "without a range a 19 is a plain hit");
+  assert.equal(swing(champion({ const: 25 }), 19), "hit", "held to the die's top face");
+  assert.equal(swing(champion({ const: 25 }), 20), "critical");
+  assert.equal(swing(champion({ const: 0 }), 19), "hit", "a sheet reading under 2 has no range");
+  assert.equal(who(fight(champion({ const: 0 }), [fighter(), mote()], 20, 1), "brenna").criticalFrom, undefined);
+  assert.equal(who(fight(champion({ const: 19 }), [fighter(), mote()], 20, 1), "brenna").criticalFrom, 19);
+  // Held for a reaction to the hit, a natural 19 that would miss the defense stays the critical it was.
+  {
+    const definition = champion({ const: 19 });
+    // A stat block behind a defense no 19 meets, who parries what hits it.
+    const warded = foe("warded", "Warded", {
+      health: 60,
+      defense: 30,
+      initiativeModifier: -2,
+      actions: [
+        {
+          id: "parry",
+          name: "Parry",
+          budget: "reaction",
+          self: true,
+          reaction: { on: "hit" },
+          applies: [{ condition: "prone", duration: { rounds: 1 } }],
+        },
+      ],
+    } as RulesetStatBlock);
+    const state = fight(definition, [fighter(), warded], 20, 1);
+    const sword = rulesetCombatOptions(definition, state, "brenna").find((option) => option.label === "Longsword")!;
+    assert.ok(
+      (sword.forecast?.hitChance ?? 0) >= 0.1,
+      `the range is in the forecast: ${JSON.stringify(sword.forecast)}`,
+    );
+    const held = act(definition, state, { actorId: "brenna", optionId: sword.id, targetIds: ["warded"] }, 19);
+    assert.ok(held.state.window, JSON.stringify(held.events));
+    const through = act(
+      definition,
+      held.state,
+      { actorId: "warded", optionId: RULESET_PASS_OPTION, targetIds: [], window: held.state.window!.id },
+      5,
+      6,
+      5,
+      6,
+    );
+    assert.equal(eventsOf(through.events, "damage")[0]?.critical, true, JSON.stringify(through.events));
+  }
+  // Refused where it means nothing: no critical face, or several dice.
+  assert.match(
+    refusal(
+      variant(fiveEText, (doc) => {
+        doc.combat.attackRoll.criticalFrom = { const: 19 };
+        doc.combat.attackRoll.naturals.max = "hit";
+      }),
+    ),
+    /A critical range needs a single attack die/,
+  );
+  assert.match(
+    refusal(
+      variant(fiveEText, (doc) => {
+        doc.combat.attackRoll.criticalFrom = { derived: "no_such_value" };
+      }),
+    ),
+    /no_such_value/,
+  );
+}
+
+// ── A sheet value added to an amount (Capability API 1.78) ──
+{
+  // Mending Light adding the caster's level to its 1d8+4: the menu's action carries it in its flat.
+  const added = {
+    ...wizard(),
+    catalogs: {
+      spells: spellEntries.map((entry) =>
+        entry.id === "mending-light"
+          ? { ...entry, mechanics: { ...entry.mechanics, amountAdd: { field: "level" } } }
+          : entry,
+      ),
+    },
+  } as RulesetCombatantInput;
+  const heal = (input: RulesetCombatantInput) =>
+    who(fight(fiveE, [input, mote()], 20, 1), "corwin").actions.find((action) => action.label === "Mending Light")!
+      .heal;
+  const level = Number((wizardBuild().fields as Record<string, unknown>).level);
+  assert.deepEqual(heal(added), { ...heal(wizard())!, flat: 4 + level });
+  assert.equal(heal(wizard())!.flat, 4, "without it, the amount as written");
+}
+
 // ── Advantage, disadvantage, and the two cancelling out ──
 {
   // Dodging: the next attack against the dodger is rolled twice and the worse one is kept.

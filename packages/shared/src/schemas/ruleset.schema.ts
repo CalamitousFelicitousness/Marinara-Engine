@@ -554,8 +554,24 @@ export const rulesetFieldSchema = z.discriminatedUnion("type", [
 const sheetScalar = z.union([z.number().finite(), z.string().max(4000), z.boolean()]);
 
 const columnBase = { id: sheetId, label, required: z.boolean().default(false) };
+/** A number column a player fills by rolling (Capability API 1.80): `count` dice of `sides`, where
+ *  sides is a number, another column of the same row (a number, or an enum whose values read as
+ *  numbers such as "d8"), or a value read off the sheet. The sheet editor rolls them with the Engine's
+ *  own dice and writes the total, held to the column's min and max. */
+export interface RulesetListRoll {
+  count: number;
+  sides: number | { column: string } | RulesetValueRef;
+}
+// Typed by hand: inferred, the value ref inside it makes every type holding a list column too long for
+// the compiler to write out.
+export const rulesetListRollSchema: z.ZodType<RulesetListRoll, z.ZodTypeDef, unknown> = z
+  .object({
+    count: z.number().int().min(1).max(10).default(1),
+    sides: z.union([z.number().int().min(2).max(100), z.object({ column: sheetId }).strict(), rulesetValueRefSchema]),
+  })
+  .strict();
 export const rulesetListColumnSchema = z.discriminatedUnion("type", [
-  z.object({ ...columnBase, ...numberFieldShape }).strict(),
+  z.object({ ...columnBase, ...numberFieldShape, roll: rulesetListRollSchema.optional() }).strict(),
   z.object({ ...columnBase, ...textFieldShape }).strict(),
   z.object({ ...columnBase, ...longtextFieldShape }).strict(),
   z.object({ ...columnBase, ...booleanFieldShape }).strict(),
@@ -601,6 +617,12 @@ const skillSchema = z
 const saveSchema = skillSchema;
 
 const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen: hideWhenSchema.optional() };
+/** The most derived values a sheet may have: 400 since Capability API 1.106 (240 since 1.83,
+ *  120 since 1.79), which a package exceeding the corresponding older limit declares. */
+export const RULESET_DERIVED_MAX = 400;
+export const RULESET_DERIVED_MAX_BEFORE_1106 = 240;
+export const RULESET_DERIVED_MAX_BEFORE_183 = 120;
+export const RULESET_DERIVED_MAX_BEFORE_179 = 60;
 export const rulesetDerivedSchema = z.discriminatedUnion("op", [
   z.object({ ...derivedBase, op: z.literal("sum"), of: z.array(rulesetValueRefSchema).min(1).max(12) }).strict(),
   z
@@ -615,6 +637,9 @@ export const rulesetDerivedSchema = z.discriminatedUnion("op", [
       round: roundingSchema.default("down"),
     })
     .strict(),
+  /** The values multiplied together (Capability API 1.77): a 5e hit point maximum's Constitution
+   *  modifier times the level. */
+  z.object({ ...derivedBase, op: z.literal("multiply"), of: z.array(rulesetValueRefSchema).min(2).max(6) }).strict(),
   z.object({ ...derivedBase, op: z.literal("min"), of: z.array(rulesetValueRefSchema).min(2).max(12) }).strict(),
   z.object({ ...derivedBase, op: z.literal("max"), of: z.array(rulesetValueRefSchema).min(2).max(12) }).strict(),
   /** A number for each value of an enum field or a live state. A field's value is fixed when the
@@ -640,7 +665,15 @@ export const rulesetDerivedSchema = z.discriminatedUnion("op", [
     })
     .strict(),
 ]);
-export const RULESET_DERIVED_OPS = Object.freeze(["sum", "stepTable", "scale", "min", "max", "enumTable"] as const);
+export const RULESET_DERIVED_OPS = Object.freeze([
+  "sum",
+  "stepTable",
+  "scale",
+  "multiply",
+  "min",
+  "max",
+  "enumTable",
+] as const);
 
 const listSchema = z
   .object({
@@ -845,6 +878,229 @@ const sheetMigrationSchema = z
   })
   .strict();
 
+// ── The guided builder (Capability API 1.81) ──
+
+/** How many steps one guided builder may have. */
+export const RULESET_BUILDER_STEPS_MAX = 24;
+export const RULESET_BUILDER_STEPS_MAX_BEFORE_1107 = 16;
+
+/** Point buy: every score a player may buy and what it costs, lowest score first. The lowest is
+ *  where every score starts, and the highest the most one score may be bought up to. */
+const builderPointBuySchema = z
+  .object({
+    budget: z.number().int().min(1).max(200),
+    costs: z
+      .array(z.tuple([z.number().int(), z.number().int().min(0).max(100)]))
+      .min(2)
+      .max(40)
+      .superRefine((costs, ctx) => {
+        costs.forEach(([score, cost], index) => {
+          const before = costs[index - 1];
+          if (before && (score !== before[0] + 1 || cost < before[1])) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [index],
+              message: "Costs go up one score at a time, and never cost less than the score below",
+            });
+          }
+        });
+      }),
+  })
+  .strict();
+
+/** A catalog step's limit by a sheet value (1.82). */
+export interface RulesetBuilderUpTo {
+  filter: string;
+  value: RulesetValueRef;
+}
+// Typed by hand: inferred, the value ref inside it makes every type holding a builder step too long for
+// the compiler to write out.
+const rulesetBuilderUpToSchema: z.ZodType<RulesetBuilderUpTo, z.ZodTypeDef, unknown> = z
+  .object({ filter: sheetId, value: rulesetValueRefSchema })
+  .strict();
+
+const builderStepBase = { id: sheetId, label: promptSafeText(40) };
+
+/** One step of the guided builder. The steps are offered in order, each says how many choices it
+ *  still waits on, and none of them blocks the next. */
+const builderStepSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("catalog"),
+      /** A catalog of rows whose entries are offered as cards. */
+      catalog: sheetId,
+      /** How many entries the step asks for, and at most takes. */
+      min: z.number().int().min(0).max(40).default(1),
+      max: z.number().int().min(1).max(40).default(1),
+      /** A text or enum field the picked entries' labels are written to (a race, a class). */
+      field: sheetId.optional(),
+      /** Values written onto every row this step adds (1.103). Later edits remain the player's. */
+      stamp: z
+        .record(sheetId, sheetScalar)
+        .refine((stamp) => Object.keys(stamp).length >= 1 && Object.keys(stamp).length <= 4, {
+          message: "A step stamps 1 to 4 columns",
+        })
+        .optional(),
+      /** Fixed values of the catalog's filters: only entries that match are offered. */
+      filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
+      /** Only entries whose `filter` names an entry picked at an earlier step (a subrace by its race). */
+      within: z.object({ step: sheetId, filter: sheetId }).strict().optional(),
+      /** Only entries whose number `filter` is at most `value`, read off the sheet as it stands (features
+       *  up to the character's level; Capability API 1.82). An entry without the filter is offered. */
+      upTo: rulesetBuilderUpToSchema.optional(),
+      /** How many entries the step asks for and at most takes, read off the sheet as it stands, in
+       *  place of `min` and never above `max` (spells known at the character's level; Capability API
+       *  1.85). Picks past it are kept but count for nothing. */
+      countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("fields"),
+      fields: z.array(sheetId).min(1).max(20),
+      /** Fields of the step its badge does not wait on, such as a subclass chosen at a later level. */
+      optional: z.array(sheetId).min(1).max(20).optional(),
+      /** Fields shown only while their value reference reads above 0 on the sheet (1.102). */
+      shownWhen: z
+        .record(sheetId, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>)
+        .optional(),
+      /** Number fields held to a combined maximum (1.102). */
+      total: z
+        .object({ fields: z.array(sheetId).min(2).max(20), max: z.number().int().min(1).max(1000) })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("abilities"),
+      /** The scores the step sets. All of them when left out. */
+      abilities: z.array(sheetId).min(1).max(20).optional(),
+      methods: z
+        .object({
+          pointBuy: builderPointBuySchema.optional(),
+          /** Values to hand out, one to each score. */
+          standardArray: z.array(z.number().int()).min(1).max(20).optional(),
+          /** One roll per score: `count` dice of `sides`, keeping the highest `keep`. */
+          roll: z
+            .object({
+              count: z.number().int().min(1).max(10),
+              sides: z.number().int().min(2).max(100),
+              keep: z.number().int().min(1).max(10),
+            })
+            .strict()
+            .refine((roll) => roll.keep <= roll.count, { message: "A roll keeps at most the dice it throws" })
+            .optional(),
+          /** Typed in: `true` keeps each score's own bounds; an object bounds the base (1.105). */
+          manual: z
+            .union([
+              z.literal(true),
+              z
+                .object({ min: z.number().int().min(-100), max: z.number().int().max(1000) })
+                .strict()
+                .refine((bounds) => bounds.min <= bounds.max, { message: "Manual bounds have min at most max" }),
+            ])
+            .optional(),
+        })
+        .strict()
+        .refine((methods) => Object.keys(methods).length > 0, { message: "An abilities step offers a method" }),
+      /** The method a new character starts on, until the player picks another (Capability API 1.82). */
+      default: z.enum(["pointBuy", "standardArray", "roll", "manual"]).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("trained"),
+      /** Skills or saves of the player's own choosing, besides the ones picked entries offer. */
+      choose: z
+        .array(
+          z
+            .object({
+              what: z.enum(["skills", "saves"]),
+              count: z.number().int().min(1).max(20),
+              from: z.array(sheetId).min(1).max(120).optional(),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(4)
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("startingGear"),
+      /** Only gear the sheet fits is offered in legal-only mode (Capability API 1.104). */
+      strict: z.literal(true).optional(),
+    })
+    .strict(),
+  /** Where the entries the picks grant from `catalog` are chosen (`grants.entries`, 1.86). */
+  z.object({ ...builderStepBase, kind: z.literal("choices"), catalog: sheetId }).strict(),
+]);
+
+type BuilderMethodName = "pointBuy" | "standardArray" | "roll" | "manual";
+interface BuilderStepBase {
+  id: string;
+  label: string;
+}
+/** One step of the guided builder (see `builderStepSchema`). Typed by hand: inferred, the value ref in
+ *  `upTo` makes the ruleset's own type too long for the compiler to write out. */
+export type RulesetBuilderStep =
+  | (BuilderStepBase & {
+      kind: "catalog";
+      catalog: string;
+      min: number;
+      max: number;
+      field?: string;
+      stamp?: Record<string, string | number | boolean>;
+      filters?: Record<string, string | number>;
+      within?: { step: string; filter: string };
+      upTo?: RulesetBuilderUpTo;
+      countFrom?: RulesetValueRef;
+    })
+  | (BuilderStepBase & {
+      kind: "fields";
+      fields: string[];
+      optional?: string[];
+      shownWhen?: Record<string, RulesetValueRef>;
+      total?: { fields: string[]; max: number };
+    })
+  | (BuilderStepBase & { kind: "choices"; catalog: string })
+  | (BuilderStepBase & {
+      kind: "abilities";
+      abilities?: string[];
+      methods: {
+        pointBuy?: { budget: number; costs: [number, number][] };
+        standardArray?: number[];
+        roll?: { count: number; sides: number; keep: number };
+        manual?: true | { min: number; max: number };
+      };
+      default?: BuilderMethodName;
+    })
+  | (BuilderStepBase & {
+      kind: "trained";
+      choose?: { what: "skills" | "saves"; count: number; from?: string[] }[];
+    })
+  | (BuilderStepBase & { kind: "startingGear"; strict?: true });
+export interface RulesetSheetBuilder {
+  steps: RulesetBuilderStep[];
+  tier?: string;
+}
+
+const sheetBuilderSchema: z.ZodType<RulesetSheetBuilder, z.ZodTypeDef, unknown> = z
+  .object({
+    steps: z.array(builderStepSchema).min(1).max(RULESET_BUILDER_STEPS_MAX),
+    /** The tier a skill or save the builder trains is set to, unless a grant names its own. The first
+     *  tier above untrained the sheet offers when left out. */
+    tier: sheetId.optional(),
+  })
+  .strict();
+
 export const rulesetSheetSchema = z
   .object({
     /** Bumped by the author when the sheet's shape changes. Stored sheets record it as `v`. */
@@ -877,9 +1133,12 @@ export const rulesetSheetSchema = z
       .strict()
       .default({ min: -20, max: 40 }),
     fields: z.array(rulesetFieldSchema).max(160).default([]),
-    derived: z.array(rulesetDerivedSchema).max(60).default([]),
+    /** Up to 240 (Capability API 1.83; 120 from 1.79, 60 before it). */
+    derived: z.array(rulesetDerivedSchema).max(RULESET_DERIVED_MAX).default([]),
     lists: z.array(listSchema).max(20).default([]),
     live: liveSchema.default({}),
+    /** A guided character builder beside the full form (Capability API 1.81). */
+    builder: sheetBuilderSchema.optional(),
   })
   .strict();
 
@@ -1245,6 +1504,7 @@ const RIDER_ENTRY_FORBIDS = [
   "targets",
   "friendlyFire",
   "amount",
+  "amountAdd",
   "damageType",
   "plus",
   "attackRoll",
@@ -1278,6 +1538,9 @@ const catalogMechanicsObject = z
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
     amount: z.object(catalogAmountShape).strict().optional(),
+    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.78): 5e's
+     *  Second Wind heals 1d10 plus the fighter's level. Needs an amount. */
+    amountAdd: rulesetValueRefSchema.optional(),
     damageType: promptSafeText(40).optional(),
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
@@ -1960,8 +2223,21 @@ const itemSlotSchema = z.object({ id: sheetId, label, count: z.number().int().mi
 
 /** One coin of a family. `value` is how many of the family's smallest unit it is worth. */
 const currencyUnitSchema = z
-  .object({ id: sheetId, label: promptSafeText(40), value: z.number().int().min(1).max(1_000_000) })
+  .object({
+    id: sheetId,
+    /** The coin's name for any number of them but one ("pennies"). */
+    label: promptSafeText(40),
+    /** Its name for exactly one ("penny"), Capability API 1.84. `label` stands for one too without it. */
+    one: promptSafeText(40).optional(),
+    value: z.number().int().min(1).max(1_000_000),
+  })
   .strict();
+
+/** An amount of a coin as said: "1 penny", "3 pennies". A coin that names no `one` says its `label` for
+ *  one too, as it always has. */
+export function rulesetCoinAmount(unit: { label: string; one?: string }, amount: number): string {
+  return `${amount} ${amount === 1 && unit.one ? unit.one : unit.label}`;
+}
 
 /** Coins that change into each other by value. Two families never do: a second nation's coin, or a
  *  setting's favours, is a family of its own. `perWeight` is how many of its coins weigh one unit of
@@ -2255,30 +2531,66 @@ const itemAttackDistanceSchema = orItemStat(z.number().finite().min(0).max(10000
  * the dice it deals with a hand free beside it (`versatile`), and how many strikes one spend buys.
  */
 /** What an item adds to hit: the best of some `abilities`, a `skill`, the proficiency bonus where
- *  `proficiency` reads above 0 off the holder's sheet, a `bonus`, and in a pool fight its own per-die
- *  `target`. A weapon's attack reads it, and so does an item's use that rolls to hit. */
+ *  `proficiency` reads above 0 off the holder's sheet, a `bonus`, what `sheetBonus` reads off the
+ *  holder's sheet (Capability API 1.90), and in a pool fight its own per-die `target`. A weapon's attack
+ *  reads it, and so does an item's use that rolls to hit. */
+// Named, so the whole definition's type stays short enough to write down (the builder's rows do the same).
+const itemToHitValueRefSchema = rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>;
 const itemToHitSchema = z
   .object({
     abilities: itemAttackAbilitiesSchema.optional(),
     skill: orItemStat(sheetId).optional(),
-    proficiency: rulesetValueRefSchema.optional(),
+    proficiency: itemToHitValueRefSchema.optional(),
     bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
+    /** A number read off the holder's sheet and added as it stands (whole numbers; a fraction is cut
+     *  toward zero): what the holder brings to every weapon of a kind rather than what the weapon is,
+     *  as 5e's Archery fighting style adds +2 to attacks with ranged weapons through a derived value
+     *  that is 2 for an archer and 0 for anyone else (Capability API 1.90). */
+    sheetBonus: itemToHitValueRefSchema.optional(),
     target: orItemStat(z.number().int().min(1).max(100)).optional(),
   })
   .strict();
+
+/** A weapon's damage: its dice, the best of its abilities, a bonus, a type, and what its holder's sheet
+ *  adds (1.92) or rerolls (1.93). Typed by name, so the definition's own type stays short enough to
+ *  write down. */
+const itemAttackDamageBaseSchema = z
+  .object({
+    dice: orItemStat(catalogDice).optional(),
+    abilities: itemAttackAbilitiesSchema.optional(),
+    bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
+    type: orItemStat(promptSafeText(40)).optional(),
+    /** A number read off the holder's sheet and added to the damage as it stands, as `toHit`'s is
+     *  (Capability API 1.92): 5e's Dueling +2 through a derived value. */
+    sheetBonus: itemToHitValueRefSchema.optional(),
+    /** The sheet bonus counts only while the weapon is held in one hand: not a versatile weapon
+     *  wielded two-handed (its hands are free for it) and not one that takes two of a slot. */
+    oneHanded: z.literal(true).optional(),
+    /** Read off the holder's sheet: damage dice at or below it are thrown again once, the new face
+     *  standing, only while the weapon is wielded two-handed (a versatile weapon with its hands
+     *  free, or one that takes two of a slot) and only in a summed fight (Capability API 1.93):
+     *  5e's Great Weapon Fighting through a derived value that is 2 for the style and 0 without. */
+    rerollUpTo: itemToHitValueRefSchema.optional(),
+  })
+  .strict();
+/** A value written on the item, or read from one of its own stats. */
+type OrItemStat<T> = T | { stat: string };
+export interface RulesetItemAttackDamage {
+  dice?: OrItemStat<string>;
+  abilities?: OrItemStat<string[]>;
+  bonus?: OrItemStat<number>;
+  type?: OrItemStat<string>;
+  sheetBonus?: RulesetValueRef;
+  oneHanded?: true;
+  rerollUpTo?: RulesetValueRef;
+}
+const itemAttackDamageSchema: z.ZodType<RulesetItemAttackDamage, z.ZodTypeDef, unknown> = itemAttackDamageBaseSchema;
 
 export const rulesetItemAttackSchema = z
   .object({
     budget: sheetId,
     toHit: itemToHitSchema.default({}),
-    damage: z
-      .object({
-        dice: orItemStat(catalogDice).optional(),
-        abilities: itemAttackAbilitiesSchema.optional(),
-        bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
-        type: orItemStat(promptSafeText(40)).optional(),
-      })
-      .strict(),
+    damage: itemAttackDamageSchema,
     reach: itemAttackDistanceSchema.optional(),
     range: z
       .object({ normal: itemAttackDistanceSchema, long: itemAttackDistanceSchema.optional() })
@@ -2364,6 +2676,8 @@ export const RULESET_ITEM_CHARGES_MAX = 100;
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
+    // A sheet value added to an amount is a catalog entry's (1.78): an item's use reads its own stats.
+    amountAdd: true,
     cost: true,
     perCostStep: true,
     check: true,
@@ -2497,6 +2811,90 @@ const catalogItemSchema = z
   })
   .strict();
 
+/** What a catalog entry gives a character when it is picked through the guided builder (Capability API
+ *  1.81), and takes back when it is unpicked. The catalog picker ignores it. */
+const catalogGrantsSchema = z
+  .object({
+    abilities: z
+      .object({
+        add: z.record(z.number().int().min(-20).max(20)).optional(),
+        /** Scores of the player's choosing, `amount` each, never one twice and never one in `except`. */
+        choose: z
+          .array(
+            z
+              .object({
+                count: z.number().int().min(1).max(6),
+                amount: z.number().int().min(-20).max(20),
+                except: z.array(sheetId).max(20).optional(),
+                /** A score may be chosen more than once, `amount` each time (Capability API 1.88): count 2
+                 *  and amount 1 is +2 to one score or +1 to two, as an ability score improvement. */
+                repeat: z.boolean().optional(),
+                /** No score goes past this through the choice (Capability API 1.91): an ability score
+                 *  improvement's "you can't increase an ability score above 20 using this feature".
+                 *  What other grants add counts first. */
+                upTo: z.number().int().min(1).max(99).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(3)
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    trained: z
+      .object({
+        skills: z.array(sheetId).max(40).optional(),
+        saves: z.array(sheetId).max(20).optional(),
+        choose: z
+          .array(
+            z
+              .object({
+                what: z.enum(["skills", "saves"]),
+                count: z.number().int().min(1).max(20),
+                /** Any of them when left out. */
+                from: z.array(sheetId).min(1).max(120).optional(),
+                /** Only what the sheet already has at this tier or higher, from the picks or a lower
+                 *  choice (Capability API 1.100): 5e's Expertise, in two skills you are proficient in. */
+                held: sheetId.optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(4)
+          .optional(),
+        /** The tier they are trained to: the first one above untrained when left out. */
+        tier: sheetId.optional(),
+      })
+      .strict()
+      .optional(),
+    /** Field values (a class's hit die, its spellcasting ability). */
+    sets: z.record(z.union([z.number().finite(), z.string().max(200), z.boolean()])).optional(),
+    /** Entries of another catalog of rows for the player to choose, `count` of them, among those that
+     *  match `filters` and, when given, are one of `ids` (a language of your choice, one of three
+     *  artisan's tools; Capability API 1.86). Chosen at the builder's `choices` step for that catalog,
+     *  and their rows go on the sheet. */
+    entries: z
+      .object({
+        choose: z
+          .array(
+            z
+              .object({
+                catalog: sheetId,
+                count: z.number().int().min(1).max(20),
+                filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
+                ids: z.array(z.string().max(80)).min(1).max(120).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(6),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const catalogEntrySchema = z
   .object({
     id: z.string().max(80).regex(RULESET_ID_PATTERN, "An entry id is lowercase letters, digits and single hyphens"),
@@ -2515,14 +2913,32 @@ const catalogEntrySchema = z
     creature: rulesetCreatureSchema.optional(),
     /** A thing to carry instead: it goes into Game Mode's inventory, not onto a sheet or into a fight. */
     item: catalogItemSchema.optional(),
+    /** What a pick through the guided builder gives (1.81). An entry that grants may write no rows. */
+    grants: catalogGrantsSchema.optional(),
+    /** A group this entry shares with others a builder step offers (Capability API 1.89): a step keeps
+     *  one pick of a group, so picking one drops the other ("a feat in place of an ability score
+     *  improvement"). */
+    exclusive: sheetId.optional(),
+    /** Read off the sheet as it stands: a builder step offers this entry only while it reads above 0
+     *  (Capability API 1.94), as 5e offers a second class only when its prerequisites are met. A pick
+     *  that later reads 0 counts for nothing and is kept. An entry of an `exclusive` group is read on
+     *  the sheet without the step's picks of that group (1.95). */
+    offeredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
     const kinds = [entry.rows, entry.creature, entry.item].filter((kind) => kind !== undefined).length;
-    if (kinds !== 1) {
+    if (kinds > 1 || (kinds === 0 && !entry.grants)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'An entry has exactly one of "rows", "creature" or "item"',
+        message: 'An entry has exactly one of "rows", "creature" or "item", or only "grants"',
+      });
+    }
+    if (entry.grants && (entry.creature || entry.item)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["grants"],
+        message: "Only an entry for a sheet grants anything; a creature or an item is never picked onto one",
       });
     }
     if (entry.creature && entry.mechanics) {
@@ -2587,12 +3003,19 @@ const catalogSchema = z
           message: `A catalog of ${catalog.holds} writes no rows, so it feeds no list`,
         });
       }
-    } else if (catalog.feeds === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["feeds"],
-        message: 'A catalog of rows names the lists it "feeds"',
-      });
+    } else if (
+      catalog.feeds === undefined &&
+      !(catalog.entries?.length && catalog.entries.every((entry) => entry.grants && !entry.rows))
+    ) {
+      // Only a catalog whose entries all just grant through the guided builder (1.81, a class) writes
+      // no rows; an asset's entries are checked against no feeds when they are read.
+      if (catalog.entries) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["feeds"],
+          message: 'A catalog of rows names the lists it "feeds"',
+        });
+      }
     }
     // The path is derived from the id rather than chosen, so the route can find the file from the
     // catalog alone and two catalogs can never name each other's asset.
@@ -2757,7 +3180,7 @@ const combatAttackSourceSchema = z
   .strict();
 
 /** A sheet list whose catalog-marked rows are abilities, filtered exactly as `battle.skills` are.
- *  What each one DOES is the entry's own `mechanics`; this says what the whole list rolls with. */
+ *  What each one DOES is the entry's own `mechanics`; this says what its rows roll with by default. */
 const combatAbilitySourceSchema = battleSkillsSchema.extend({
   /** What a row of this list spends unless its own `mechanics.budget` says otherwise. */
   budget: sheetId,
@@ -2765,6 +3188,33 @@ const combatAbilitySourceSchema = battleSkillsSchema.extend({
   toHit: rulesetValueRefSchema.optional(),
   /** The difficulty an entry's save is rolled against. */
   saveDifficulty: rulesetValueRefSchema.optional(),
+  /** A row's column selects its own spellcasting references (1.103); other rows keep the source's. */
+  byColumn: (
+    z
+      .object({
+        column: sheetId,
+        values: z
+          .record(
+            z
+              .object({
+                toHit: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+                saveDifficulty: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+              })
+              .strict(),
+          )
+          .refine((values) => Object.keys(values).length >= 1 && Object.keys(values).length <= 20, {
+            message: "A column selects 1 to 20 spellcasting entries",
+          }),
+      })
+      .strict() as z.ZodType<
+      {
+        column: string;
+        values: Record<string, { toHit?: RulesetValueRef; saveDifficulty?: RulesetValueRef }>;
+      },
+      z.ZodTypeDef,
+      unknown
+    >
+  ).optional(),
 });
 
 /** What a condition DOES, from a closed list the kind implements. A ruleset maps its own condition
@@ -3325,6 +3775,10 @@ const combatSchema = z
         naturals: combatNaturalsSchema.default({}),
         /** What a critical hit does to the damage: roll the dice twice, or add their highest faces. */
         critical: z.enum(["double-dice", "max-dice", "none"]).default("none"),
+        /** The lowest natural face of the attack die that is a critical, read off the attacker's sheet
+         *  (Capability API 1.76): 19 for a 5e Champion. The die's highest face when left out, or when
+         *  the sheet reads higher; never below 2. Needs `naturals.max: "critical"` and a single die. */
+        criticalFrom: rulesetValueRefSchema.optional(),
       })
       .strict()
       .describe("Required when kind is attack-vs-defense, and refused when it is dice-pool.")
@@ -3436,7 +3890,13 @@ const combatSchema = z
      *  damage keeps a positive ability (`penalty-only` adds the ability only when it takes away, as
      *  5e's two-weapon fighting does). A ruleset that declares none has no off-hand attacks. */
     offHand: z
-      .object({ budget: sheetId, ability: z.enum(["full", "penalty-only"]).default("full") })
+      .object({
+        budget: sheetId,
+        ability: z.enum(["full", "penalty-only"]).default("full"),
+        /** Read off the fighter's sheet: above 0, that fighter's off hand keeps the full ability
+         *  whatever `ability` says (Capability API 1.92), as 5e's Two-Weapon Fighting style does. */
+        fullWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+      })
       .strict()
       .optional(),
     attacks: z.array(combatAttackSourceSchema).max(8).optional(),
@@ -3754,6 +4214,48 @@ function refReadsListSum(
   if (!trained) return false;
   const bonus = def.resolution.proficiency?.bonus;
   return (!!trained.cap && next(trained.cap)) || (!!bonus && next(bonus));
+}
+
+/** What a value reads off the sheet, directly or through derived values: its abilities, fields, skills,
+ *  saves and the lists it adds up. Conservative: a skill or save modifier reads every ability, and a
+ *  modifier off a field's ability reads that field and every ability. */
+function refReadsSheet(
+  def: Pick<RulesetDefinitionBase, "sheet" | "resolution">,
+  ref: RulesetValueRef,
+  into = {
+    abilities: new Set<string>(),
+    fields: new Set<string>(),
+    skills: new Set<string>(),
+    saves: new Set<string>(),
+    lists: new Set<string>(),
+  },
+  depth = 0,
+): typeof into {
+  if (depth > 64) return into;
+  const all = () => def.sheet.abilities.forEach((ability) => into.abilities.add(ability.id));
+  if (ref.field !== undefined) into.fields.add(ref.field);
+  if (ref.abilityScore !== undefined) into.abilities.add(ref.abilityScore);
+  if (ref.abilityMod !== undefined) into.abilities.add(ref.abilityMod);
+  if (ref.abilityModFromField !== undefined) {
+    into.fields.add(ref.abilityModFromField);
+    all();
+  }
+  if (ref.skillMod !== undefined) {
+    into.skills.add(ref.skillMod);
+    all();
+  }
+  if (ref.saveMod !== undefined) {
+    into.saves.add(ref.saveMod);
+    all();
+  }
+  if (ref.listSum) into.lists.add(ref.listSum.list);
+  if (ref.derived !== undefined) {
+    const derived = def.sheet.derived.find((entry) => entry.id === ref.derived);
+    // An enum table reads its enum field, which derivedRefs leaves out as no number.
+    if (derived?.op === "enumTable" && derived.from.field !== undefined) into.fields.add(derived.from.field);
+    if (derived) for (const inner of derivedRefs(derived)) refReadsSheet(def, inner, into, depth + 1);
+  }
+  return into;
 }
 
 function rulesetSheetNames(
@@ -4426,6 +4928,20 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     const path = ["sheet", "lists", index];
     const columns = unique(list.columns, [...path, "columns"], "column");
     list.columns.forEach((column, columnIndex) => checkTyped(column, [...path, "columns", columnIndex]));
+    // A rolled column's sides: another column of the row that reads as a number, or the sheet's.
+    list.columns.forEach((column, columnIndex) => {
+      if (column.type !== "number" || !column.roll || typeof column.roll.sides === "number") return;
+      const at = [...path, "columns", columnIndex, "roll", "sides"];
+      const sides = column.roll.sides;
+      if ("column" in sides) {
+        const other = list.columns.find((each) => each.id === sides.column);
+        if (!other || other.id === column.id) issue(at, `"${sides.column}" is not another column of this list`);
+        else if (other.type === "enum") {
+          const unread = other.values.filter((value) => rulesetDieSides(value) === null);
+          if (unread.length) issue(at, `"${unread[0]}" does not read as a die (d6, 8)`);
+        } else if (other.type !== "number") issue(at, "Sides read a number column or an enum of dice");
+      } else checkRef(sides, at, derivedIds, false);
+    });
     checkSection(list.section, path);
     checkHideWhen(list.hideWhen, path);
     if (list.pools) {
@@ -4818,6 +5334,152 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
   });
 
+  // The guided builder (1.81): its steps name this ruleset's own catalogs, fields, scores and skills.
+  if (sheet.builder) {
+    const stepPath = (index: number) => ["sheet", "builder", "steps", index];
+    unique(sheet.builder.steps, ["sheet", "builder", "steps"], "builder step");
+    const catalogSteps = new Map<string, string>();
+    let abilitySteps = 0;
+    sheet.builder.steps.forEach((step, index) => {
+      const path = stepPath(index);
+      if (step.kind === "catalog") {
+        const catalog = catalogs.find((each) => each.id === step.catalog);
+        if (!catalog || (catalog.holds ?? "rows") !== "rows") {
+          issue([...path, "catalog"], `No catalog of rows "${step.catalog}"`);
+        }
+        for (const column of Object.keys(step.stamp ?? {})) {
+          if (
+            !catalog?.feeds?.length ||
+            catalog.feeds.some(
+              (id) => !sheet.lists.find((list) => list.id === id)?.columns.some((each) => each.id === column),
+            )
+          ) {
+            issue([...path, "stamp", column], `Unknown column "${column}" in a target list`);
+          }
+        }
+        if (step.min > step.max) issue([...path, "min"], "A step asks for at most its max");
+        if (step.field !== undefined) {
+          const field = fieldById.get(step.field);
+          if (!field || (field.type !== "text" && field.type !== "enum")) {
+            issue([...path, "field"], `No text or enum field "${step.field}"`);
+          }
+        }
+        const filterOf = (id: string) => catalog?.filters?.find((filter) => filter.id === id);
+        for (const [filterId, value] of Object.entries(step.filters ?? {})) {
+          const filter = filterOf(filterId);
+          if (!filter) issue([...path, "filters", filterId], `Unknown filter "${filterId}"`);
+          else if ((filter.type === "number") !== (typeof value === "number")) {
+            issue(
+              [...path, "filters", filterId],
+              `Filter "${filterId}" takes ${filter.type === "number" ? "a number" : "a word"}`,
+            );
+          }
+        }
+        if (step.upTo) {
+          const filter = filterOf(step.upTo.filter);
+          if (!filter || filter.type !== "number") {
+            issue([...path, "upTo", "filter"], `No number filter "${step.upTo.filter}"`);
+          }
+          checkRef(step.upTo.value, [...path, "upTo", "value"], derivedIds, false);
+        }
+        if (step.countFrom) checkRef(step.countFrom, [...path, "countFrom"], derivedIds, false);
+        if (step.within) {
+          if (!catalogSteps.has(step.within.step)) {
+            issue([...path, "within", "step"], `No catalog step "${step.within.step}" before this one`);
+          }
+          const filter = filterOf(step.within.filter);
+          if (!filter || filter.type === "number") {
+            issue([...path, "within", "filter"], `No text or tags filter "${step.within.filter}"`);
+          }
+        }
+        catalogSteps.set(step.id, step.catalog);
+      } else if (step.kind === "fields") {
+        step.fields.forEach((id, fieldIndex) => {
+          if (!fields.has(id)) issue([...path, "fields", fieldIndex], `Unknown field "${id}"`);
+        });
+        step.optional?.forEach((id, optionalIndex) => {
+          if (!step.fields.includes(id))
+            issue([...path, "optional", optionalIndex], `"${id}" is not one of this step's fields`);
+        });
+        for (const [id, ref] of Object.entries(step.shownWhen ?? {})) {
+          const at = [...path, "shownWhen", id];
+          if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
+          checkRef(ref, at, derivedIds, false);
+        }
+        step.total?.fields.forEach((id, fieldIndex) => {
+          const at = [...path, "total", "fields", fieldIndex];
+          if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
+          if (fieldById.get(id)?.type !== "number") issue(at, `No number field "${id}"`);
+          if (step.total!.fields.indexOf(id) !== fieldIndex) issue(at, `"${id}" is named twice`);
+        });
+      } else if (step.kind === "abilities") {
+        abilitySteps += 1;
+        if (sheet.abilities.length === 0) issue([...path, "kind"], "This sheet has no ability scores");
+        step.abilities?.forEach((id, abilityIndex) => {
+          if (!abilities.has(id)) issue([...path, "abilities", abilityIndex], `Unknown ability "${id}"`);
+          if (step.abilities!.indexOf(id) !== abilityIndex) {
+            issue([...path, "abilities", abilityIndex], `"${id}" is named twice`);
+          }
+        });
+        if (step.default !== undefined && step.methods[step.default] === undefined) {
+          issue([...path, "default"], `"${step.default}" is not one of this step's methods`);
+        }
+        const set = sheet.abilities.filter((ability) => !step.abilities || step.abilities.includes(ability.id));
+        const array = step.methods.standardArray;
+        if (array && array.length !== set.length) {
+          issue(
+            [...path, "methods", "standardArray"],
+            `The array hands out one value to each of the ${set.length} scores`,
+          );
+        }
+        // Every value a method gives is one each of its scores can hold, so what the step shows is what
+        // the sheet keeps.
+        const fits = (value: number) => set.every((ability) => value >= ability.min && value <= ability.max);
+        array?.forEach((value, index) => {
+          if (!fits(value)) issue([...path, "methods", "standardArray", index], `${value} is outside a score's bounds`);
+        });
+        const pointBuy = step.methods.pointBuy;
+        pointBuy?.costs.forEach(([score], index) => {
+          if (!fits(score))
+            issue([...path, "methods", "pointBuy", "costs", index], `${score} is outside a score's bounds`);
+        });
+        if (pointBuy && pointBuy.budget > pointBuy.costs[pointBuy.costs.length - 1]![1] * set.length) {
+          issue([...path, "methods", "pointBuy", "budget"], "The budget is more than buying every score up can spend");
+        }
+        const roll = step.methods.roll;
+        if (roll && !(fits(roll.keep) && fits(roll.keep * roll.sides))) {
+          issue([...path, "methods", "roll"], "A roll can come to a number outside a score's bounds");
+        }
+      } else if (step.kind === "trained") {
+        step.choose?.forEach((choice, choiceIndex) => {
+          const known = choice.what === "skills" ? skills : saves;
+          choice.from?.forEach((id, idIndex) => {
+            if (!known.has(id)) {
+              issue(
+                [...path, "choose", choiceIndex, "from", idIndex],
+                `Unknown ${choice.what === "skills" ? "skill" : "save"} "${id}"`,
+              );
+            }
+          });
+        });
+      } else if (step.kind === "startingGear" && !def.items?.startingGear) {
+        issue([...path, "kind"], "This ruleset has no starting gear");
+      } else if (step.kind === "choices") {
+        const catalog = catalogs.find((each) => each.id === step.catalog);
+        if (!catalog || (catalog.holds ?? "rows") !== "rows") {
+          issue([...path, "catalog"], `No catalog of rows "${step.catalog}"`);
+        }
+      }
+    });
+    if (abilitySteps > 1) issue(["sheet", "builder", "steps"], "A builder sets the scores in one step");
+    if (
+      sheet.builder.tier !== undefined &&
+      resolution.proficiencyTiers.findIndex((tier) => tier.id === sheet.builder!.tier) < 1
+    ) {
+      issue(["sheet", "builder", "tier"], `"${sheet.builder.tier}" is not a tier above untrained`);
+    }
+  }
+
   // A row pool belongs to a list row and is keyed by that row's name, so it can appear and vanish
   // as the player edits the sheet. A health, energy or slot pool is a declared one only.
   const declaredPool = (pool: string, path: (string | number)[]): void => {
@@ -5003,6 +5665,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
     // The same rule the check dice follow: an extreme face is only a face when one die was thrown.
     const naturals = combat.attackRoll?.naturals;
+    if (combat.attackRoll?.criticalFrom) {
+      checkRef(combat.attackRoll.criticalFrom, at("attackRoll", "criticalFrom"), derivedIds);
+      if (naturals?.max !== "critical" || combat.attackRoll.dice.count !== 1) {
+        issue(
+          at("attackRoll", "criticalFrom"),
+          'A critical range needs a single attack die whose highest face is a critical (naturals.max "critical")',
+        );
+      }
+    }
     if (naturals && combat.attackRoll!.dice.count !== 1 && (naturals.max !== "none" || naturals.min !== "none")) {
       issue(at("attackRoll", "naturals"), "Natural results need a single die; with several dice use none");
     }
@@ -5091,6 +5762,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
     if (combat.opportunity) checkBudget(combat.opportunity.budget, at("opportunity", "budget"));
     if (combat.offHand) checkBudget(combat.offHand.budget, at("offHand", "budget"));
+    if (combat.offHand?.fullWhen) checkRef(combat.offHand.fullWhen, at("offHand", "fullWhen"), derivedIds);
 
     // Contests: the checks they read, the budget they spend and the conditions they touch all exist,
     // and what they measure in distance needs a cell to measure it in.
@@ -5210,6 +5882,20 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       checkRowSource(source, path);
       if (source.toHit) checkRef(source.toHit, [...path, "toHit"], derivedIds);
       if (source.saveDifficulty) checkRef(source.saveDifficulty, [...path, "saveDifficulty"], derivedIds);
+      if (source.byColumn) {
+        if (
+          !sheet.lists
+            .find((list) => list.id === source.list)
+            ?.columns.some((column) => column.id === source.byColumn!.column)
+        ) {
+          issue([...path, "byColumn", "column"], `Unknown column "${source.byColumn.column}"`);
+        }
+        for (const [value, refs] of Object.entries(source.byColumn.values)) {
+          if (refs.toHit) checkRef(refs.toHit, [...path, "byColumn", "values", value, "toHit"], derivedIds);
+          if (refs.saveDifficulty)
+            checkRef(refs.saveDifficulty, [...path, "byColumn", "values", value, "saveDifficulty"], derivedIds);
+        }
+      }
     });
 
     const standard = new Set<string>();
@@ -5616,6 +6302,15 @@ export function rulesetPoolMaxSuccesses(
 export type RulesetSheetSchema = RulesetDefinition["sheet"];
 export type RulesetField = z.infer<typeof rulesetFieldSchema>;
 export type RulesetListColumn = z.infer<typeof rulesetListColumnSchema>;
+
+/** A die's sides as a list cell writes them: 8, "8" or "d8" (any case). Null for anything else. */
+export function rulesetDieSides(value: unknown): number | null {
+  if (typeof value === "number") return Number.isInteger(value) && value >= 2 && value <= 100 ? value : null;
+  if (typeof value !== "string") return null;
+  const match = /^\s*d?(\d{1,3})\s*$/i.exec(value);
+  const sides = match ? Number(match[1]) : NaN;
+  return Number.isInteger(sides) && sides >= 2 && sides <= 100 ? sides : null;
+}
 export type RulesetDerived = z.infer<typeof rulesetDerivedSchema>;
 export type RulesetLiveTrack = RulesetSheetSchema["live"]["tracks"][number];
 /** One rung of a wound track. Absent on a plain track, which is a bounded integer. */
@@ -5748,6 +6443,8 @@ export function parseRulesetDefinition(input: unknown): RulesetParseResult {
 
 export type RulesetCatalogHeader = z.infer<typeof catalogSchema>;
 export type RulesetCatalogEntry = z.infer<typeof catalogEntrySchema>;
+export type RulesetCatalogGrants = z.infer<typeof catalogGrantsSchema>;
+
 export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
 /** One item as a catalog entry writes it, for reading an invented item back off a game. */
 export const rulesetCatalogItemSchema = catalogItemSchema;
@@ -6340,10 +7037,12 @@ function toHitIssues(
   value(toHit.skill, "skill", [...at, "skill"]);
   value(toHit.bonus, "number", [...at, "bonus"]);
   value(toHit.target, "number", [...at, "target"]);
-  if (toHit.proficiency) {
+  for (const key of ["proficiency", "sheetBonus"] as const) {
+    const ref = toHit[key];
+    if (!ref) continue;
     const names = rulesetSheetNames(definition.sheet, definition.items);
-    for (const issue of rulesetValueRefIssues(toHit.proficiency, names, names.derived, true)) {
-      add([...at, "proficiency", issue.key], issue.message);
+    for (const issue of rulesetValueRefIssues(ref, names, names.derived, true)) {
+      add([...at, key, issue.key], issue.message);
     }
   }
   if (toHit.target !== undefined) {
@@ -6538,6 +7237,21 @@ function attackIssues(
   value(attack.damage.abilities, "abilities", [...at, "damage", "abilities"]);
   value(attack.damage.bonus, "number", [...at, "damage", "bonus"]);
   value(attack.damage.type, "type", [...at, "damage", "type"]);
+  if (attack.damage.sheetBonus) {
+    const sheetNames = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(attack.damage.sheetBonus, sheetNames, sheetNames.derived, true)) {
+      add([...at, "damage", "sheetBonus", issue.key], issue.message);
+    }
+  }
+  if (attack.damage.rerollUpTo) {
+    const sheetNames = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(attack.damage.rerollUpTo, sheetNames, sheetNames.derived, true)) {
+      add([...at, "damage", "rerollUpTo", issue.key], issue.message);
+    }
+  }
+  if (attack.damage.oneHanded && !attack.damage.sheetBonus) {
+    add([...at, "damage", "oneHanded"], "oneHanded says when the damage's sheetBonus counts, so it needs one");
+  }
   value(attack.reach, "number", [...at, "reach"]);
   value(attack.range?.normal, "number", [...at, "range", "normal"]);
   value(attack.range?.long, "number", [...at, "range", "long"]);
@@ -6555,6 +7269,9 @@ function attackIssues(
   const pooled = definition.resolution.kind === "dice-pool";
   // A summed fight's hit already deals its dice; a pool fight's deals its successes, and dice on top.
   if (!pooled && attack.damage.dice === undefined) add([...at, "damage", "dice"], "A weapon deals dice");
+  if (pooled && attack.damage.rerollUpTo) {
+    add([...at, "damage", "rerollUpTo"], "A pool fight's damage is successes, not faces, so it has nothing to reroll");
+  }
   if (!combat.distance) {
     for (const key of ["reach", "range"] as const) {
       if (attack[key] !== undefined) {
@@ -6626,6 +7343,113 @@ export function rulesetItemIssues(definition: RulesetDefinition, item: RulesetCa
   const found: string[] = [];
   itemIssues(definition, item, [], (_path, message) => found.push(message));
   return found;
+}
+
+/** A builder grant names the sheet's own scores, skills, saves, tiers and fields, and a field's value
+ *  is one it can hold. */
+function grantsIssues(
+  definition: RulesetDefinition,
+  grants: z.infer<typeof catalogGrantsSchema>,
+  path: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const { sheet } = definition;
+  const abilities = new Set(sheet.abilities.map((ability) => ability.id));
+  for (const id of Object.keys(grants.abilities?.add ?? {})) {
+    if (!abilities.has(id)) add([...path, "abilities", "add", id], `Unknown ability "${id}"`);
+  }
+  grants.abilities?.choose?.forEach((choice, index) => {
+    choice.except?.forEach((id, idIndex) => {
+      if (!abilities.has(id))
+        add([...path, "abilities", "choose", index, "except", idIndex], `Unknown ability "${id}"`);
+    });
+    const open = sheet.abilities.filter((ability) => !choice.except?.includes(ability.id)).length;
+    if (choice.repeat ? open < 1 : choice.count > open)
+      add([...path, "abilities", "choose", index, "count"], `Only ${open} scores are left to choose`);
+  });
+  const known = {
+    skills: new Set(sheet.skills.map((skill) => skill.id)),
+    saves: new Set(sheet.saves.map((save) => save.id)),
+  };
+  for (const what of ["skills", "saves"] as const) {
+    grants.trained?.[what]?.forEach((id, index) => {
+      if (!known[what].has(id))
+        add([...path, "trained", what, index], `Unknown ${what === "skills" ? "skill" : "save"} "${id}"`);
+    });
+  }
+  grants.trained?.choose?.forEach((choice, index) => {
+    choice.from?.forEach((id, idIndex) => {
+      if (!known[choice.what].has(id)) {
+        add(
+          [...path, "trained", "choose", index, "from", idIndex],
+          `Unknown ${choice.what === "skills" ? "skill" : "save"} "${id}"`,
+        );
+      }
+    });
+  });
+  const tiers = definition.resolution.proficiencyTiers;
+  if (grants.trained && tiers.length < 2) add([...path, "trained"], "This ruleset has no tier above untrained");
+  if (grants.trained?.tier !== undefined) {
+    const at = tiers.findIndex((tier) => tier.id === grants.trained!.tier);
+    if (at < 1) add([...path, "trained", "tier"], `"${grants.trained.tier}" is not a tier above untrained`);
+  }
+  grants.trained?.choose?.forEach((choice, index) => {
+    if (choice.held === undefined) return;
+    const held = tiers.findIndex((tier) => tier.id === choice.held);
+    // The tier the choice trains to, as the builder reads it: its own, the builder's, else the first.
+    const named = tiers.findIndex((tier) => tier.id === (grants.trained?.tier ?? definition.sheet.builder?.tier));
+    const offered = choice.what === "skills" ? sheet.skillTiers : sheet.saveTiers;
+    const first = tiers.findIndex((tier, at) => at >= 1 && (!offered || offered.includes(tier.id)));
+    const own = named >= 1 ? named : first >= 1 ? first : 1;
+    if (held < 1) {
+      add([...path, "trained", "choose", index, "held"], `"${choice.held}" is not a tier above untrained`);
+    } else if (held >= own) {
+      add(
+        [...path, "trained", "choose", index, "held"],
+        `"${choice.held}" is not below the tier this choice trains to, so nothing it builds on could be raised`,
+      );
+    }
+  });
+  for (const [id, value] of Object.entries(grants.sets ?? {})) {
+    const field = sheet.fields.find((each) => each.id === id);
+    if (!field) {
+      add([...path, "sets", id], `Unknown field "${id}"`);
+      continue;
+    }
+    const fits =
+      field.type === "number"
+        ? typeof value === "number" && value >= field.min && value <= field.max
+        : field.type === "boolean"
+          ? typeof value === "boolean"
+          : field.type === "enum"
+            ? typeof value === "string" && field.values.includes(value)
+            : field.type === "text" || field.type === "longtext"
+              ? typeof value === "string" && value.length <= field.maxLength
+              : typeof value === "string";
+    if (!fits) add([...path, "sets", id], `Field "${id}" cannot hold ${JSON.stringify(value)}`);
+  }
+  // Entries to choose (1.86) are chosen at a `choices` step, which is what loads their catalog.
+  grants.entries?.choose.forEach((choice, index) => {
+    const at = [...path, "entries", "choose", index];
+    const hosted = sheet.builder?.steps.some((step) => step.kind === "choices" && step.catalog === choice.catalog);
+    if (!hosted) add([...at, "catalog"], `No builder "choices" step for catalog "${choice.catalog}"`);
+    const catalog = definition.catalogs?.find((each) => each.id === choice.catalog);
+    for (const [filterId, value] of Object.entries(choice.filters ?? {})) {
+      const filter = catalog?.filters?.find((each) => each.id === filterId);
+      if (!filter) add([...at, "filters", filterId], `Unknown filter "${filterId}" of catalog "${choice.catalog}"`);
+      else if ((filter.type === "number") !== (typeof value === "number")) {
+        add(
+          [...at, "filters", filterId],
+          `Filter "${filterId}" takes ${filter.type === "number" ? "a number" : "a word"}`,
+        );
+      }
+    }
+  });
+}
+
+/** The column a list's rows are told apart by: its pools' name column, else its first text column. */
+export function rulesetListNameColumn(list: RulesetList): string | undefined {
+  return list.pools?.nameColumn ?? list.columns.find((column) => column.type === "text")?.id;
 }
 
 export function rulesetCatalogEntryIssues(
@@ -6714,11 +7538,51 @@ export function rulesetCatalogEntryIssues(
       }
     }
 
-    // How many rows this entry writes into each list, because a row the ruleset keeps up to date
-    // has to be the entry's only one there: a marked row on a sheet is then matched to its spec
-    // without guessing which of two identical marks it came from.
+    if (entry.grants) grantsIssues(definition, entry.grants, [index, "grants"], add);
+    if (entry.offeredWhen) {
+      for (const issue of rulesetValueRefIssues(entry.offeredWhen, names, names.derived, false)) {
+        add([index, "offeredWhen", issue.key], issue.message);
+      }
+      // The entry's own pick may not change what decides whether it is offered: that would offer it,
+      // take it back, and offer it again, and no number of passes settles that.
+      const reads = refReadsSheet(definition, entry.offeredWhen);
+      const grants = entry.grants;
+      const changed = [
+        ...Object.keys(grants?.abilities?.add ?? {}).filter((id) => reads.abilities.has(id)),
+        ...(grants?.abilities?.choose ?? []).flatMap((choice) =>
+          definition.sheet.abilities
+            .map((ability) => ability.id)
+            .filter((id) => !choice.except?.includes(id) && reads.abilities.has(id)),
+        ),
+        ...Object.keys(grants?.sets ?? {}).filter((id) => reads.fields.has(id)),
+        ...(grants?.trained?.skills ?? []).filter((id) => reads.skills.has(id)),
+        ...(grants?.trained?.saves ?? []).filter((id) => reads.saves.has(id)),
+        ...(grants?.trained?.choose ?? []).flatMap((choice) =>
+          [...(choice.what === "skills" ? reads.skills : reads.saves)].filter(
+            (id) => !choice.from || choice.from.includes(id),
+          ),
+        ),
+        ...(entry.rows ?? []).map((row) => row.list).filter((list) => reads.lists.has(list)),
+      ];
+      if (changed.length) {
+        add([index, "offeredWhen"], `offeredWhen reads "${changed[0]}", which picking this entry changes`);
+      }
+    }
+
+    // How many rows this entry writes into each list, because a row the ruleset keeps up to date is
+    // matched to its spec from a marked row on a sheet: the entry's only row there, or (1.87) one of
+    // several that each carry their own name in the list's name column.
     const rowsPerList = new Map<string, number>();
     for (const row of entry.rows ?? []) rowsPerList.set(row.list, (rowsPerList.get(row.list) ?? 0) + 1);
+    const namedApart = (listId: string) => {
+      const list = listById.get(listId);
+      const nameColumn = list ? rulesetListNameColumn(list) : undefined;
+      if (!nameColumn) return false;
+      const names = (entry.rows ?? []).filter((row) => row.list === listId).map((row) => row.values[nameColumn]);
+      return (
+        names.every((name) => typeof name === "string" && name.trim() !== "") && new Set(names).size === names.length
+      );
+    };
 
     (entry.rows ?? []).forEach((row, rowIndex) => {
       const path = [index, "rows", rowIndex];
@@ -6727,8 +7591,11 @@ export function rulesetCatalogEntryIssues(
       if (!list) return add([...path, "list"], `Unknown list "${row.list}"`);
       for (const message of rulesetListRowIssues(list, row.values)) add([...path, "values"], message);
       if (!row.scaled) return;
-      if ((rowsPerList.get(row.list) ?? 0) > 1) {
-        add([...path, "scaled"], `A scaled row must be this entry's only row for the list "${row.list}"`);
+      if ((rowsPerList.get(row.list) ?? 0) > 1 && !namedApart(row.list)) {
+        add(
+          [...path, "scaled"],
+          `A scaled row must be this entry's only row for the list "${row.list}", or every row there must have its own name`,
+        );
       }
       for (const [columnId, scaled] of Object.entries(row.scaled)) {
         const column = list.columns.find((candidate) => candidate.id === columnId);
@@ -6961,6 +7828,12 @@ export function rulesetCatalogEntryIssues(
           add([...path, "actions", actionIndex], `This ruleset does not have the standard action "${action}"`);
         }
       });
+    }
+    if (mechanics?.amountAdd) {
+      if (!mechanics.amount) add([index, "mechanics", "amountAdd"], "amountAdd adds to an amount: give the amount too");
+      for (const refIssue of rulesetValueRefIssues(mechanics.amountAdd, names, names.derived, false)) {
+        add([index, "mechanics", "amountAdd", refIssue.key], refIssue.message);
+      }
     }
     if (mechanics?.scales) {
       // A scaling amount reads the sheet exactly as a scaled column does, so any declared derived

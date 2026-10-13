@@ -13,6 +13,7 @@
 import {
   catalogRowRef,
   RULESET_CATALOG_ROW_KEY,
+  rulesetListNameColumn,
   type RulesetCatalogEntriesById,
   type RulesetCatalogEntry,
   type RulesetCatalogEntryRow,
@@ -57,11 +58,12 @@ export function rulesetCatalogEntriesByRef(catalogs: RulesetCatalogEntriesById):
   return byRef;
 }
 
-/** The spec for one row of one list: the entry it came from carries at most one row for that list
- *  when that row is scaled, which is the schema's own rule, so there is nothing to guess. */
+/** The spec for one row of one list. An entry with one row for that list is matched as it always was;
+ *  one with several (1.87) carries a different name on each, which the schema checks, so the sheet's
+ *  row is matched to its spec by that name. A row the player renamed matches none and is left alone. */
 function scaledRowSpec(
   byRef: ReadonlyMap<string, RulesetCatalogEntry>,
-  listId: string,
+  list: RulesetList,
   row: Record<string, unknown>,
 ): RulesetCatalogEntryRow | null {
   const ref = own(row, RULESET_CATALOG_ROW_KEY);
@@ -69,7 +71,12 @@ function scaledRowSpec(
   const entry = byRef.get(ref);
   if (!entry) return null;
   // A creature entry writes no rows at all, so it never matches a marked row on a sheet.
-  return entry.rows?.find((candidate) => candidate.list === listId && candidate.scaled) ?? null;
+  const mine = (entry.rows ?? []).filter((candidate) => candidate.list === list.id);
+  if (mine.length <= 1) return mine.find((candidate) => candidate.scaled) ?? null;
+  const nameColumn = rulesetListNameColumn(list);
+  if (!nameColumn) return null;
+  const name = own(row, nameColumn);
+  return mine.find((candidate) => candidate.scaled && own(candidate.values, nameColumn) === name) ?? null;
 }
 
 /** The value fitted into the column's own rules, so the recompute can never write something the
@@ -110,7 +117,7 @@ export function recomputeScaledRows(
     rows.forEach((row, index) => {
       if (!row || typeof row !== "object") return;
       const cells = row as Record<string, unknown>;
-      const spec = scaledRowSpec(byRef, list.id, cells);
+      const spec = scaledRowSpec(byRef, list, cells);
       if (!spec?.scaled) return;
       let next: Record<string, string | number | boolean> | null = null;
       for (const [columnId, scaled] of Object.entries(spec.scaled)) {
@@ -153,7 +160,7 @@ export function scaledRowColumns(
   const list = definition.sheet.lists.find((entry) => entry.id === listId);
   if (!list) return [];
   const byRef = catalogs instanceof Map ? catalogs : rulesetCatalogEntriesByRef(catalogs as RulesetCatalogEntriesById);
-  const spec = scaledRowSpec(byRef, listId, row);
+  const spec = scaledRowSpec(byRef, list, row);
   if (!spec?.scaled) return [];
   return Object.keys(spec.scaled).filter(
     (columnId) => list.columns.find((column) => column.id === columnId)?.type === "number",

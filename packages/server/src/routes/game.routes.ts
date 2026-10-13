@@ -2153,7 +2153,8 @@ const removePartyMemberSchema = z.object({
 });
 
 const diceRollSchema = z.object({
-  chatId: z.string().min(1),
+  /** The game it is rolled for; a sheet editor outside any game (a rolled list column) has none. */
+  chatId: z.string().min(1).optional(),
   notation: z.string().min(1).max(50).refine(isDiceNotation, "Invalid dice notation"),
   context: z.string().max(500).optional(),
 });

@@ -186,11 +186,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /risky items, fakes or a dishonest seller.*capabilityApi 1\.74/;
+    const gate = /risky items, fakes or a dishonest seller.*capabilityApi 1\.78/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-    assert.match(issue(73, honesty()) ?? "", gate);
-    assert.equal(issue(74, honesty()), null);
+    assert.match(issue(77, honesty()) ?? "", gate);
+    assert.equal(issue(78, honesty()), null);
     // Each key alone is 1.78's: a dishonest seller, a risky item, a fake.
     const without = (doc: Record<string, any>) => {
       const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
@@ -200,7 +200,7 @@ try {
       doc.items.lootTables = doc.items.lootTables.filter((table: { id: string }) => table.id !== "fences_lot");
       doc.items.market.sellers = doc.items.market.sellers.filter((seller: { id: string }) => seller.id !== "fence");
     };
-    assert.equal(issue(73, honesty(without)), null);
+    assert.equal(issue(77, honesty(without)), null);
     assert.match(
       issue(
         73,
@@ -222,7 +222,7 @@ try {
     });
     const files = new Map([["catalogs/kit.json", { entries: kitEntries }]]);
     const filedManifest = {
-      ...manifest(74),
+      ...manifest(78),
       contributions: { assets: { paths: ["ruleset.json", "catalogs/kit.json"] } },
     };
     assert.match(

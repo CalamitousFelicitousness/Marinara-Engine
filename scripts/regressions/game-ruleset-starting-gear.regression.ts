@@ -172,8 +172,8 @@ try {
       restartRequired: false,
     });
     const issue = (minor: number) => getCapabilityPackageInstallIssue(manifest(minor) as never, withGear());
-    assert.match(issue(72) ?? "", /starting gear requires .*capabilityApi 1\.73/);
-    assert.ok(!/starting gear/.test(issue(73) ?? ""));
+    assert.match(issue(76) ?? "", /starting gear requires .*capabilityApi 1\.77/);
+    assert.ok(!/starting gear/.test(issue(77) ?? ""));
   }
 
   // ── Fits ──

@@ -3590,7 +3590,9 @@ export class ProfessorMariWorkspaceService {
         }
       }
 
-      for (let round = 0; !usePi && round < MAX_COMMAND_ROUNDS; round += 1) {
+      for (let round = 0; round < MAX_COMMAND_ROUNDS; round += 1) {
+        // The pi runtime already ran above; classic owns this loop.
+        if (usePi) break;
         if (controller.signal.aborted) throw new Error("aborted");
         let result: ChatCompletionResult;
         try {

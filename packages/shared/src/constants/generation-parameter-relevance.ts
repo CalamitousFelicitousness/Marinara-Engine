@@ -1,5 +1,8 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isGeminiArgonModel,
+  isGeminiStrictRequestModel,
+  isGeminiThinkingLevelModel,
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
   isOpenAIGpt56Model,
@@ -252,8 +255,16 @@ export function relevantGenerationParameters(context: GenerationParameterContext
     if (provider === "openai_chatgpt" && !isOpenAIReasoningModel(model)) hide("reasoningEffort");
 
     if (provider === "google" || provider === "google_vertex") {
-      if (!/gemini-3/.test(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) hide("reasoningEffort");
+      if (!isGeminiThinkingLevelModel(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) {
+        hide("reasoningEffort");
+      }
     }
+
+    // Argon ignores temperature, top-p and top-k and rejects penalties, so every request but a custom endpoint's
+    // leaves them out, including OpenRouter's and NanoGPT's.
+    if (isGeminiArgonModel(model) && provider !== "custom") hide(...SAMPLING);
+    // Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject penalties too.
+    if (isGeminiStrictRequestModel(model) && provider !== "custom") hide("frequencyPenalty", "presencePenalty");
 
     if (provider === "custom") {
       // Custom endpoints keep sampling unless the model is GPT-5.5 or 5.6, which reject it.
@@ -383,7 +394,9 @@ export function reasoningEffortChoices(
     group.push(level);
     groups.set(sent, group);
   }
-  const choices: Array<GenerationParameterChoice<StoredEffortLevel | null>> = [off];
+  // A model that cannot turn thinking off (Gemini 4 Argon) sends a level for Off too, so Off is not offered.
+  const offSendsLevel = !!resolveProviderReasoningEffort({ provider, model, reasoningEffort: null });
+  const choices: Array<GenerationParameterChoice<StoredEffortLevel | null>> = offSendsLevel ? [] : [off];
   for (const [sent, levels] of groups) {
     const keep = context.selected && levels.includes(context.selected) ? context.selected : levels[0]!;
     choices.push({ value: keep, label: sent });

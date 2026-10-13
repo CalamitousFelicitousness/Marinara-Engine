@@ -25,7 +25,7 @@ import { CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS, getChatToolbarButtonClass } fr
 import { CHAT_CONTROL_WINDOW_IDS, ChatControlWindow } from "./ChatControlWindow";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
 import { PendingTypingDots } from "./PendingTypingDots";
-import { TranscriptWindowControls } from "./TranscriptWindowControls";
+import { HISTORY_PAGER_BUTTON_CLASS, TranscriptWindowControls } from "./TranscriptWindowControls";
 import { PinnedImageOverlay } from "./PinnedImageOverlay";
 import { useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
@@ -1315,11 +1315,7 @@ export function ConversationView({
         {/* Load More */}
         {hasNextPage && (
           <div className="mari-chat-load-more flex justify-center py-3">
-            <button
-              onClick={handleLoadMore}
-              disabled={isFetchingNextPage}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition-all hover:bg-[var(--accent)] disabled:opacity-50"
-            >
+            <button onClick={handleLoadMore} disabled={isFetchingNextPage} className={HISTORY_PAGER_BUTTON_CLASS}>
               {isFetchingNextPage ? <Loader2 size="0.75rem" className="animate-spin" /> : <ChevronUp size="0.75rem" />}
               {localizeUi("ui.chat.chatroleplaysurface.loadMore")}
             </button>

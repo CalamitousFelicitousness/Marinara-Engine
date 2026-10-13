@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 72 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 73 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,7 +140,7 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.72/,
+    /requires capability API 2\.0; this Engine supports 1\.73/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
@@ -149,11 +149,11 @@ try {
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 73 },
+    capabilityApi: { major: 1, minor: 74 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.73; this Engine supports 1\.72/,
+    /requires capability API 1\.74; this Engine supports 1\.73/,
   );
   const startupManifest = {
     ...currentMinorManifest,
@@ -399,12 +399,14 @@ try {
   const serverRequire = createRequire(new URL("../../packages/server/src/app.ts", import.meta.url));
   const AdmZipCtor = serverRequire("adm-zip") as new () => {
     addFile: (name: string, data: Buffer) => void;
+    toBuffer: () => Buffer;
   };
+  const { openZipArchive } = await import("../../packages/server/src/lib/zip-reader.js");
   const collisionZip = new AdmZipCtor();
   collisionZip.addFile("art/tiles.png", Buffer.from("first casing"));
   collisionZip.addFile("art/Tiles.PNG", Buffer.from("second casing"));
   assert.throws(
-    () => validatePackageArchiveEntries(collisionZip as never),
+    () => validatePackageArchiveEntries(openZipArchive(collisionZip.toBuffer())),
     /duplicate file/u,
     "case-only filename collisions must be rejected at archive validation",
   );

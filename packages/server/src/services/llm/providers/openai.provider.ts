@@ -19,6 +19,8 @@ import { parseTextualToolCalls, stripTextualToolCalls } from "../textual-tool-ca
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
+  isGeminiArgonModel,
+  isGeminiStrictRequestModel,
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
   isOpenAIGpt56Model,
@@ -103,6 +105,15 @@ export function extractOpenAICompatibleContentBlocks(
     }
   }
   return { text, thinking, toolCalls, anonymousToolCallIds };
+}
+
+/** Keep a final assistant message as history and ask for only the rest of the reply, for models that reject a prefill. */
+function appendAssistantContinuation(body: Record<string, unknown>): void {
+  if (!Array.isArray(body.messages)) return;
+  const last = body.messages.at(-1);
+  if (last?.role === "assistant" && !last.tool_calls?.length) {
+    body.messages.push({ role: "user", content: ASSISTANT_CONTINUATION_PROMPT });
+  }
 }
 
 /** The text of the final `prefix: true` assistant message actually sent, after any role-alternation retry merged it. */
@@ -631,11 +642,18 @@ export class OpenAIProvider extends BaseLLMProvider {
   private assistantReasoningPayload(
     providerMetadata: Record<string, unknown> | undefined,
     model?: string,
+    hasToolCalls = false,
   ): Record<string, unknown> {
     // Mistral messages have no reasoning_content or partial field, so reasoning saved from another provider stays out.
     if (!providerMetadata || this.providerKind === "mistral") return {};
-    if (model && !this.shouldReplayChatCompletionsReasoning(model)) return {};
     const metadata = OpenAIProvider.extractReasoningMetadata(providerMetadata);
+    if (model && !this.shouldReplayChatCompletionsReasoning(model)) {
+      // OpenRouter Gemini needs a tool call's reasoning_details (its thought signatures) back in the same tool loop.
+      // Only tool loops build messages with tool calls; saved chat reasoning stays out at the route (#1097).
+      // https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+      const geminiToolRound = hasToolCalls && this.isOpenRouterGeminiModel(model);
+      return geminiToolRound && metadata.reasoning_details ? { reasoning_details: metadata.reasoning_details } : {};
+    }
     if (providerMetadata.partial === true) metadata.partial = true;
     if (Array.isArray(metadata.reasoning_details) && metadata.reasoning_details.length) {
       return { reasoning_details: metadata.reasoning_details };
@@ -849,8 +867,13 @@ export class OpenAIProvider extends BaseLLMProvider {
   }
 
   private shouldSendPenaltyParams(model: string): boolean {
-    // DeepSeek marks both penalties deprecated and states they no longer take effect.
-    return this.providerKind !== "deepseek" && !this.isXAIReasoningModel(model);
+    // DeepSeek marks both penalties deprecated and states they no longer take effect. Argon and the newer Gemini Flash
+    // models reject them; a custom endpoint keeps them, as it keeps Argon's samplers.
+    return (
+      this.providerKind !== "deepseek" &&
+      !this.isXAIReasoningModel(model) &&
+      (this.isGenericCustomProvider() || !isGeminiStrictRequestModel(model))
+    );
   }
 
   /**
@@ -871,6 +894,8 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (m.startsWith("gpt-5") && reasoningEffort && reasoningEffort !== "none") return true;
     // Claude adaptive-only models forbid all sampling params (covers reverse proxies).
     if (isClaudeAdaptiveOnlyNoSamplingModel(m)) return true;
+    // Gemini 4 Argon ignores sampling and rejects penalties (OpenRouter, NanoGPT).
+    if (isGeminiArgonModel(m)) return true;
     return false;
   }
 
@@ -1181,15 +1206,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (body.tool_choice === "required" || (body.tool_choice && typeof body.tool_choice === "object")) {
       body.tool_choice = "auto";
     }
-    if (Array.isArray(body.messages)) {
-      const last = body.messages.at(-1);
-      if (last?.role === "assistant" && !last.tool_calls?.length) {
-        body.messages.push({
-          role: "user",
-          content: ASSISTANT_CONTINUATION_PROMPT,
-        });
-      }
-    }
+    appendAssistantContinuation(body);
   }
 
   /** Mistral request rules, applied after Custom Parameters. */
@@ -1208,6 +1225,20 @@ export class OpenAIProvider extends BaseLLMProvider {
     const last = body.messages.at(-1);
     if (last?.role !== "assistant" || last.tool_calls?.length) return;
     last.prefix = true;
+  }
+
+  /** Gemini request rules on OpenAI-compatible routes, applied after Custom Parameters. */
+  private normalizeGeminiRequest(body: Record<string, unknown>, model: string): void {
+    if (!/(?:^|\/)gemini-/i.test(model) || !Array.isArray(body.messages)) return;
+    // How OpenRouter hands Gemini a system message after the first turn (Post-Processing: Don't Apply) is undocumented,
+    // so it goes as a user turn in place.
+    const firstTurn = body.messages.findIndex((message) => message.role !== "system");
+    if (firstTurn >= 0) {
+      for (let index = firstTurn + 1; index < body.messages.length; index++) {
+        if (body.messages[index]?.role === "system") body.messages[index].role = "user";
+      }
+    }
+    if (isGeminiStrictRequestModel(model)) appendAssistantContinuation(body);
   }
 
   private applyResponsesReasoning(body: Record<string, unknown>, options: ChatOptions): void {
@@ -1410,7 +1441,9 @@ export class OpenAIProvider extends BaseLLMProvider {
       })
       .map((m) => {
         const reasoningPayload =
-          m.role === "assistant" ? this.assistantReasoningPayload(m.providerMetadata, model) : {};
+          m.role === "assistant"
+            ? this.assistantReasoningPayload(m.providerMetadata, model, !!m.tool_calls?.length)
+            : {};
         if (m.role === "tool") {
           return {
             role: "tool" as const,
@@ -1576,6 +1609,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
     this.normalizeMistralRequest(body);
+    this.normalizeGeminiRequest(body, options.model);
 
     logger.debug(
       "[OpenAI chat()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s max_completion_tokens=%s max_tokens=%s temperature=%s top_p=%s tools=%s",
@@ -1855,6 +1889,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.stripUnsupportedSamplerParameters(body, options);
     this.normalizeStrictClaudeRequest(body, options);
     this.normalizeMistralRequest(body);
+    this.normalizeGeminiRequest(body, options.model);
 
     logger.debug(
       "[OpenAI chatComplete()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s onToken=%s",

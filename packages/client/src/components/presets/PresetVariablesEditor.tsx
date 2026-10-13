@@ -1007,7 +1007,7 @@ function VariableCard({
                     <OptionFieldInput
                       value={opt.value}
                       onCommit={(v) => updateOptionField(opt.id, "value", v)}
-                      className="mari-editor-field min-w-[7rem] flex-[1_1_7rem] rounded px-1.5 py-0.5 font-mono text-xs focus:outline-none focus:ring-1 sm:min-w-0 sm:flex-1"
+                      className="mari-editor-field min-w-[7rem] flex-[1_1_7rem] rounded px-1.5 py-0.5 mari-prompt-font text-xs focus:outline-none focus:ring-1 sm:min-w-0 sm:flex-1"
                       placeholder={
                         isOnboarding && opt.label.trim() ? opt.label : localizeUi("ui.presets.variablecard.value")
                       }
@@ -1339,7 +1339,7 @@ function ExpandedEditorModal({
                 if (local !== value) onChange(local);
               }}
               onKeyDown={handleTextareaTab}
-              className="mari-editor-field h-full w-full resize-none p-4 font-mono text-sm"
+              className="mari-editor-field mari-prompt-font h-full w-full resize-none p-4 text-sm"
               placeholder={localizeUi("ui.presets.expandededitormodal.promptContentSupportsMacrosLikeUserCharEtc")}
             />
           </div>

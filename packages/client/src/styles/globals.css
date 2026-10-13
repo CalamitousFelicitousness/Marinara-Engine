@@ -2976,6 +2976,12 @@ html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-compon
   color: var(--marinara-editor-muted);
 }
 
+/* Prompt text stays monospace until the user sets an app font, then uses it like other fields (#7438).
+   A utility, like font-mono before it, so custom themes that restyle textareas still win. */
+@utility mari-prompt-font {
+  font-family: var(--font-user, var(--font-mono)), var(--font-y2k);
+}
+
 .mari-editor-chip {
   display: inline-flex;
   align-items: center;

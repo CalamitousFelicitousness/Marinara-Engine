@@ -178,7 +178,7 @@ function ExpandedMacroEditor({
             placeholder={placeholder}
             readOnly={readOnly}
             maxLength={maxLength}
-            className="min-h-0 flex-1 resize-none bg-[var(--sidebar)] p-4 font-mono text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+            className="min-h-0 flex-1 resize-none bg-[var(--sidebar)] p-4 mari-prompt-font text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
             spellCheck={false}
           />
         </div>

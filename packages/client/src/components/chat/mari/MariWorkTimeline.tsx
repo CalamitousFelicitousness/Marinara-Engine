@@ -32,12 +32,14 @@ import { cn } from "../../../lib/utils";
 import {
   collectMariReferencedResources,
   countMariListOutput,
+  mariBatchItems,
   isMariNotFoundOutput,
   type MariReferencedResource,
 } from "../../../lib/mari-referenced-resources";
 import { fieldLabel } from "../../../lib/mari-edit-diff";
 import { resourceResultType } from "../../../lib/command-icons";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { useChatStore } from "../../../stores/chat.store";
 import {
   WorkspaceTimelineItem,
   WorkspaceToolCall,
@@ -155,6 +157,23 @@ function MariLiveHeadline({ text, subject }: { text: string; subject?: string | 
   );
 }
 
+/** Longest tail of her draft kept in the DOM; the line shows its last three lines, older words give way. */
+const MARI_DRAFT_TAIL = 280;
+
+/**
+ * Her words while she writes them: provisional, so muted and hidden from screen readers (the real text is
+ * announced once it lands). Subscribes to the store itself, so a streaming draft re-renders only this line.
+ */
+function MariDraftLine({ chatId }: { chatId: string }) {
+  const draft = useChatStore((state) => state.mariDraftByChatId.get(chatId) ?? "").trim();
+  if (!draft) return null;
+  return (
+    <p className="mari-work-timeline__draft" aria-hidden="true">
+      {draft.slice(-MARI_DRAFT_TAIL)}
+    </p>
+  );
+}
+
 const PHASE_ICONS: Record<RunPhaseKind, LucideIcon> = { look: Search, change: Pencil, other: Terminal };
 
 /**
@@ -219,7 +238,8 @@ const STEP_RECORD_SUFFIX = /\s+(?:character|persona|lorebook entries|lorebook en
 
 /**
  * Slice 72: one step in words - "Read · [face] Shrek", "Read · [face] Swamp Lore · 3 entries", "Updated · Shrek ·
- * scenario", or a read she could not do ("Couldn't find · missing-donkey"), which she worked around.
+ * scenario", a batch with its items ("Created lorebook · Harbor Town · 6 entries: The Docks, The Market, …"), or a
+ * read she could not do ("Couldn't find · missing-donkey"), which she worked around.
  */
 function describeStep(
   tool: WorkspaceToolCall,
@@ -257,14 +277,17 @@ function describeStep(
   const count = entries ? countMariListOutput(tool.output) : null;
   const patch = asRecord(input?.patch);
   const fields = patch ? Object.keys(patch).map((key) => fieldLabel(key).toLocaleLowerCase()) : [];
+  const batch = mariBatchItems(input);
   const fact =
     count !== null
       ? t("ui.chat.homeprofessormarichat.refFact.entries", { count })
-      : fields.length > 0
-        ? fields.length > 2
-          ? `${fields.slice(0, 2).join(", ")} +${fields.length - 2}`
-          : fields.join(", ")
-        : null;
+      : batch
+        ? t(`ui.chat.homeprofessormarichat.refFact.${batch.names ? "entriesNamed" : "entries"}`, batch)
+        : fields.length > 0
+          ? fields.length > 2
+            ? `${fields.slice(0, 2).join(", ")} +${fields.length - 2}`
+            : fields.join(", ")
+          : null;
   const title = pastTenseStepTitle(presentation.title);
   const verb = missed
     ? t(isMariNotFoundOutput(tool.output) ? "mari.workCard.couldNotFind" : "mari.workCard.couldNotRead")
@@ -303,9 +326,12 @@ export function MariWorkTimeline({
   actionResults = [],
   onOpenResource,
   held = false,
+  draftChatId = null,
   children,
 }: {
   items: WorkspaceTimelineItem[];
+  /** The chat whose provisional words show above the live line while the run is active. */
+  draftChatId?: string | null;
   character?: CharacterPreviewModel | null;
   lorebook?: LorebookPreviewModel | null;
   active?: boolean;
@@ -681,6 +707,7 @@ export function MariWorkTimeline({
           </MariAnswer>
         ) : null}
 
+        {active && draftChatId ? <MariDraftLine chatId={draftChatId} /> : null}
         {active ? (
           // The live line is always the last line, and working Mari leads it on the left: new work lands above
           // it and pushes the older lines up, so she is never left behind on an old step or clipped.

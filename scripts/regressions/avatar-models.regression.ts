@@ -1,12 +1,13 @@
 /**
  * Avatar models of the 2D and 3D avatar agents (base lane, #7537):
  *   - avatar.json is validated on every write, queued per owner, and read back only when valid;
- *   - imports dispatch to the kind's importer, refuse with the importer's plain message (the stubs say
- *     "can't be imported yet"), and add no size limit below the global upload cap;
+ *   - imports dispatch to the kind's importer (by its bytes, else by the file's extension), refuse with
+ *     that importer's own plain message, and add no size limit below the global upload cap;
  *   - stored files are served only from the owner's folder, with a content type their bytes prove;
  *   - a refused save replaces no stored file, and a file lost since it was saved blocks no later change;
  *   - removing a kind or deleting (or expunging) the character or persona removes its files, even when the
- *     delete lands during an import; backups cover the folder.
+ *     delete lands during an import; removing the last kind keeps avatar.json only while the avatar is
+ *     turned off or a switch is changed (sprites are an avatar without it); backups cover the folder.
  */
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -26,6 +27,8 @@ const multipart = requireServer("@fastify/multipart") as typeof import("@fastify
 const sharp = requireServer("sharp") as typeof import("sharp").default;
 const { PROFESSOR_MARI_ID, characterDataSchema, createAvatarConfig } =
   await import("../../packages/shared/src/index.js");
+// The copy the server resolves `@marinara-engine/shared` to, so the import route's instanceof check matches.
+const { AvatarImportError } = await import("../../packages/shared/dist/index.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { avatarModelsRoutes } = await import("../../packages/server/src/routes/avatar-models.routes.js");
@@ -206,13 +209,26 @@ try {
   );
 
   // ── Import ──
-  const stubbed = await app.inject({
-    method: "POST",
-    url: `${base}/import`,
-    ...multipartBody({ kind: "vrm" }, { name: "model.vrm", bytes: glb() }),
+  // A file of a kind's extension that its importer does not recognise still goes to that importer, and the
+  // person gets its own refusal. A stand-in importer keeps this independent of the 3D lane's real one.
+  const stub = { detect: vrmImporter.detect, validate: vrmImporter.validate, extract: vrmImporter.extract };
+  Object.assign(vrmImporter, {
+    detect: () => false,
+    validate: async () => {
+      throw new AvatarImportError("unsupported-format", "This VRM model can't be read.");
+    },
   });
-  assert.equal(stubbed.statusCode, 415);
-  assert.deepEqual(stubbed.json(), { error: "VRM files can't be imported yet.", code: "unsupported-format" });
+  try {
+    const refused = await app.inject({
+      method: "POST",
+      url: `${base}/import`,
+      ...multipartBody({ kind: "vrm" }, { name: "model.vrm", bytes: glb() }),
+    });
+    assert.equal(refused.statusCode, 415);
+    assert.deepEqual(refused.json(), { error: "This VRM model can't be read.", code: "unsupported-format" });
+  } finally {
+    Object.assign(vrmImporter, stub);
+  }
   const unknown = await app.inject({
     method: "POST",
     url: `${base}/import`,
@@ -228,7 +244,6 @@ try {
   assert.equal(badKind.statusCode, 400);
 
   // A working importer (as the 3D lane will ship): a large upload is not refused below the global cap.
-  const stub = { detect: vrmImporter.detect, validate: vrmImporter.validate, extract: vrmImporter.extract };
   Object.assign(vrmImporter, {
     detect: ({ head }: { head: Uint8Array }) => Buffer.from(head.subarray(0, 4)).toString("ascii") === "glTF",
     validate: async ({ bytes }: { bytes: Uint8Array }) => ({ size: bytes.byteLength }),
@@ -310,6 +325,12 @@ try {
   assert.equal(afterPngtuber.statusCode, 200);
   assert.equal(afterPngtuber.json().activeKind, "vrm", "the active kind falls back to one still set up");
   assert.equal(existsSync(join(ownerDir, "pngtuber")), false);
+  // Blinking was turned off when the avatar was created; with the switches back at their defaults, nothing
+  // in avatar.json is worth keeping once the last kind goes.
+  assert.equal(
+    (await app.inject({ method: "PUT", url: base, payload: { features: { blink: true } } })).statusCode,
+    200,
+  );
   const afterVrm = await app.inject({ method: "DELETE", url: `${base}/kinds/vrm` });
   assert.equal(afterVrm.statusCode, 200);
   assert.equal(afterVrm.json(), null, "nothing remains");
@@ -367,7 +388,12 @@ try {
   assert.equal(existsSync(join(ownerDir, "vrm")), false);
   const removedBroken = await app.inject({ method: "DELETE", url: `${base}/kinds/pngtuber` });
   assert.equal(removedBroken.statusCode, 200, "the kind with the lost file can be removed");
-  assert.equal(existsSync(ownerDir), false);
+  assert.deepEqual(
+    [removedBroken.json().enabled, removedBroken.json().activeKind, removedBroken.json().kinds],
+    [false, null, {}],
+    "an avatar turned off stays off without kinds, so the owner's sprites don't show in its place",
+  );
+  assert.deepEqual(readdirSync(ownerDir), ["avatar.json"], "only the settings stay");
 
   // ── Deleting the character or persona removes its avatar ──
   await storage.saveExtractedAvatar(owner, {

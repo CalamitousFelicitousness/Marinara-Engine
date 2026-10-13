@@ -2,8 +2,9 @@
 // Avatar stage: avatars in Roleplay and Game chats (lane: base)
 // ──────────────────────────────────────────────
 // Mounted lazily by the chat surfaces. Picks each participant's kind (AvatarConfig.activeKind, falling
-// back by AVATAR_KIND_AGENT to a kind whose agent is on), loads renderers with loadAvatarRenderer(),
-// creates one director, and runs the single frame loop within AVATAR_RENDER_BUDGET (visible count, DPR
+// back by AVATAR_KIND_AGENT to a kind whose agent is on; with 2D Avatars on, expression sprites are a
+// PNGTuber avatar until one is saved), loads renderers with loadAvatarRenderer(), creates one director
+// once an avatar shows, and runs the single frame loop within AVATAR_RENDER_BUDGET (visible count, DPR
 // cap, fps, pause when hidden, offscreen, covered or effects-paused, reduced motion). It never hides the
 // full-body sprite: the user turns that off by hand. Avatars sit where the sprites would and move with
 // the sprites' Arrange mode (placement key `<ownerId>:avatar`).
@@ -17,17 +18,19 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type {
-  AvatarConfig,
-  AvatarFeatureFlags,
-  AvatarImageRef,
-  AvatarKind,
-  SpriteCharacterVisualSettings,
-  SpritePlacement,
-  SpriteSide,
+import {
+  AVATAR_2D_AGENT_ID,
+  type AvatarConfig,
+  type AvatarFeatureFlags,
+  type AvatarImageRef,
+  type AvatarKind,
+  type PngtuberAvatarData,
+  type SpriteCharacterVisualSettings,
+  type SpritePlacement,
+  type SpriteSide,
 } from "@marinara-engine/shared";
 import { clampSpritePlacement, getDefaultSpritePlacement } from "../../../components/chat/sprite-placement";
 import { SPRITE_DISPLAY_SCALE_MAX, SPRITE_DISPLAY_SCALE_MIN } from "../../../components/chat/sprite-display-modes";
@@ -44,11 +47,14 @@ import {
   type AvatarStageProps,
 } from "../contract";
 import { createAvatarDirector } from "../director/avatar-director";
+import { buildPngtuberLayersFromSprites } from "../renderers/pngtuber/pngtuber-layers";
 import {
   applyAvatarFeatures,
   avatarTargetFps,
+  ownerKey,
   resolveAvatarImage,
   selectStageAvatars,
+  withSpriteAvatar,
   type StageAvatar,
 } from "./avatar-stage-logic";
 import { useAvatarEffectsPaused, useChatCovered, useOnScreen } from "./use-avatar-pause";
@@ -79,6 +85,20 @@ interface StageSlot {
   features: AvatarFeatureFlags;
 }
 
+/** Each participant's sprite list: null while loading, empty when it failed. Structurally shared by React
+ *  Query, so an unchanged list keeps its identity. */
+function combineSpriteLists(results: QueryObserverResult<SpriteInfo[]>[]): (SpriteInfo[] | null)[] {
+  return results.map((result) => result.data ?? (result.isError ? [] : null));
+}
+
+/** The PNGTuber setup a sprite list makes, built once per list so avatars do not remount on every render. */
+const spriteSetupCache = new WeakMap<SpriteInfo[], PngtuberAvatarData | null>();
+function spriteSetupFor(sprites: SpriteInfo[] | null | undefined): PngtuberAvatarData | null {
+  if (!sprites) return null;
+  if (!spriteSetupCache.has(sprites)) spriteSetupCache.set(sprites, buildPngtuberLayersFromSprites(sprites));
+  return spriteSetupCache.get(sprites) ?? null;
+}
+
 export function avatarPlacementKey(ownerId: string) {
   return `${ownerId}:avatar`;
 }
@@ -104,37 +124,51 @@ export function AvatarStage({
   const stageRef = useRef<HTMLDivElement>(null);
 
   const { data: summaries } = useAvatarModelList(participants.length > 0 && enabledAgentIds.length > 0);
-  const maxVisible = phone ? AVATAR_RENDER_BUDGET.maxVisible.phone : AVATAR_RENDER_BUDGET.maxVisible.desktop;
-  const shown = useMemo(
-    () => selectStageAvatars(participants, summaries, enabledAgentIds, maxVisible),
-    [enabledAgentIds, maxVisible, participants, summaries],
-  );
-  const configQueries = useQueries({
-    queries: shown.map(({ participant }) => ({
-      queryKey: avatarModelKeys.detail(participant.owner),
-      queryFn: () => fetchAvatarModel(participant.owner),
+  // With 2D Avatars on, an owner's expression sprites are a PNGTuber avatar until one is saved.
+  const spriteLists = useQueries({
+    queries: participants.map(({ owner }) => ({
+      queryKey: spriteKeys.list(owner.ownerId),
+      queryFn: () => api.get<SpriteInfo[]>(`/sprites/${owner.ownerId}`),
+      enabled: enabledAgentIds.includes(AVATAR_2D_AGENT_ID),
       staleTime: 5 * 60_000,
     })),
+    combine: combineSpriteLists,
   });
-  const spriteQueries = useQueries({
-    queries: shown.map(({ participant, kind }) => ({
-      queryKey: spriteKeys.list(participant.owner.ownerId),
-      queryFn: () => api.get<SpriteInfo[]>(`/sprites/${participant.owner.ownerId}`),
-      enabled: kind === "pngtuber",
+  const spritesByOwner = useMemo(
+    () => new Map(participants.map((participant, position) => [ownerKey(participant.owner), spriteLists[position]])),
+    [participants, spriteLists],
+  );
+  const spriteAvatarOwners = useMemo(
+    () => new Set([...spritesByOwner].filter(([, sprites]) => spriteSetupFor(sprites)).map(([key]) => key)),
+    [spritesByOwner],
+  );
+  const maxVisible = phone ? AVATAR_RENDER_BUDGET.maxVisible.phone : AVATAR_RENDER_BUDGET.maxVisible.desktop;
+  const shown = useMemo(
+    () => selectStageAvatars(participants, summaries, enabledAgentIds, maxVisible, spriteAvatarOwners),
+    [enabledAgentIds, maxVisible, participants, spriteAvatarOwners, summaries],
+  );
+  const configQueries = useQueries({
+    queries: shown.map(({ participant, saved }) => ({
+      queryKey: avatarModelKeys.detail(participant.owner),
+      queryFn: () => fetchAvatarModel(participant.owner),
+      enabled: saved,
       staleTime: 5 * 60_000,
     })),
   });
 
-  // One director per chat; it subscribes to its own feeds.
+  // One director per chat, created only once an avatar shows (it may start downloading the classifier
+  // model); it subscribes to its own feeds.
+  const showsAvatars = shown.length > 0;
   const [director, setDirector] = useState<AvatarDirector | null>(null);
   useEffect(() => {
+    if (!showsAvatars) return;
     const created = createAvatarDirector({ chatId, mode, reducedMotion });
     setDirector(created);
     return () => {
       created.dispose();
       setDirector(null);
     };
-  }, [chatId, mode, reducedMotion]);
+  }, [chatId, mode, reducedMotion, showsAvatars]);
   useEffect(() => {
     director?.setParticipants(participants);
   }, [director, participants]);
@@ -191,8 +225,7 @@ export function AvatarStage({
       className={`pointer-events-none absolute inset-0 overflow-hidden ${editing ? "z-[35]" : "z-[5]"}`}
     >
       {shown.map((avatar, position) => {
-        const config = configQueries[position]?.data ?? null;
-        const sprites = avatar.kind === "pngtuber" ? spriteQueries[position] : null;
+        const sprites = spritesByOwner.get(ownerKey(avatar.participant.owner));
         const ownerId = avatar.participant.owner.ownerId;
         const ownerSettings = characterVisualSettings?.[ownerId];
         const ownerSide = ownerSettings?.spritePosition ?? side;
@@ -207,8 +240,9 @@ export function AvatarStage({
           <AvatarSlot
             key={`${ownerId}:${avatar.kind}`}
             avatar={avatar}
-            config={config && config.enabled ? config : null}
-            sprites={sprites ? (sprites.data ?? (sprites.isError ? [] : null)) : undefined}
+            savedConfig={avatar.saved ? configQueries[position]?.data : null}
+            spriteSetup={spriteSetupFor(sprites)}
+            sprites={avatar.kind === "pngtuber" ? (sprites ?? null) : undefined}
             placementKey={key}
             placement={placement}
             count={shown.length}
@@ -244,7 +278,8 @@ function avatarSizeClass(count: number) {
 
 function AvatarSlot({
   avatar,
-  config,
+  savedConfig,
+  spriteSetup,
   sprites,
   placementKey,
   placement,
@@ -263,7 +298,10 @@ function AvatarSlot({
   onFinishPlacement,
 }: {
   avatar: StageAvatar;
-  config: AvatarConfig | null;
+  /** The owner's avatar.json: undefined while loading, null when it has none. */
+  savedConfig: AvatarConfig | null | undefined;
+  /** The PNGTuber setup the owner's expression sprites make, used while none is saved. */
+  spriteSetup: PngtuberAvatarData | null;
   /** The owner's sprites for a PNGTuber avatar (null while loading), undefined for other kinds. */
   sprites: SpriteInfo[] | null | undefined;
   placementKey: string;
@@ -283,6 +321,12 @@ function AvatarSlot({
   onFinishPlacement?: () => void;
 }) {
   const { owner } = avatar.participant;
+  const { ownerType, ownerId } = owner;
+  const config = useMemo(() => {
+    if (savedConfig === undefined) return null;
+    const shownConfig = withSpriteAvatar({ ownerType, ownerId }, savedConfig, spriteSetup);
+    return shownConfig?.enabled ? shownConfig : null;
+  }, [ownerId, ownerType, savedConfig, spriteSetup]);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const resolveImage = useMemo(() => {
     if (!config || sprites === null) return null;

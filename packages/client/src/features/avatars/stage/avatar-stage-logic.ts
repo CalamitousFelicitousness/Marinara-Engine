@@ -6,6 +6,7 @@ import {
   AVATAR_AGENT_IDS,
   AVATAR_KIND_AGENT,
   AVATAR_KINDS,
+  createAvatarConfig,
   normalizeSpriteExpressionKey,
   avatarModelFileUrl,
   type AvatarAgentId,
@@ -16,6 +17,7 @@ import {
   type AvatarKind,
   type AvatarOwnerRef,
   type AvatarOwnerSummary,
+  type PngtuberAvatarData,
 } from "@marinara-engine/shared";
 import { AVATAR_RENDER_BUDGET, type AvatarParticipant } from "../contract";
 
@@ -35,30 +37,59 @@ export interface StageAvatar {
   kind: AvatarKind;
   /** Position among the shown avatars, for default placement. */
   index: number;
+  /** The owner has an avatar.json; without one the avatar is its expression sprites. */
+  saved: boolean;
 }
 
-/** Participants with an enabled avatar their chat can show, in participant order, at most `maxVisible`. */
+/** Participants with an enabled avatar their chat can show, in participant order, at most `maxVisible`.
+ *  Owners in `spriteAvatarOwners` (ownerKey) have a PNGTuber avatar from their expression sprites even
+ *  without an avatar.json, as the 2D section of docs/agents/avatars.md says; turning the avatar off still
+ *  hides it. Nothing shows until the summaries have loaded, so a turned-off avatar never flashes in. */
 export function selectStageAvatars(
   participants: readonly AvatarParticipant[],
   summaries: readonly AvatarOwnerSummary[] | undefined,
   enabledAgentIds: readonly AvatarAgentId[],
   maxVisible: number,
+  spriteAvatarOwners: ReadonlySet<string> = new Set(),
 ): StageAvatar[] {
-  if (!summaries?.length || enabledAgentIds.length === 0) return [];
+  if (!summaries || enabledAgentIds.length === 0) return [];
   const byOwner = new Map(summaries.map((summary) => [ownerKey(summary.owner), summary]));
   const seen = new Set<string>();
   const shown: StageAvatar[] = [];
   for (const participant of participants) {
     const key = ownerKey(participant.owner);
     const summary = byOwner.get(key);
-    if (!summary?.enabled || seen.has(key)) continue;
-    const kind = pickAvatarKind(summary, enabledAgentIds);
+    const fromSprites = spriteAvatarOwners.has(key);
+    if (seen.has(key) || (summary ? !summary.enabled : !fromSprites)) continue;
+    const kinds = summary?.kinds ?? [];
+    const kind = pickAvatarKind(
+      {
+        activeKind: summary?.activeKind ?? null,
+        kinds: fromSprites && !kinds.includes("pngtuber") ? [...kinds, "pngtuber"] : kinds,
+      },
+      enabledAgentIds,
+    );
     if (!kind) continue;
     seen.add(key);
-    shown.push({ participant, kind, index: shown.length });
+    shown.push({ participant, kind, index: shown.length, saved: Boolean(summary) });
     if (shown.length >= maxVisible) break;
   }
   return shown;
+}
+
+/** Fixed save time of an avatar built from sprites, so the renderer is not remounted on every render. */
+const SPRITE_AVATAR_UPDATED_AT = "1970-01-01T00:00:00.000Z";
+
+/** The owner's avatar with its expression sprites as the PNGTuber setup when it has none saved: the
+ *  saved config (or a default one) with `fromSprites` filled in. Null without either. */
+export function withSpriteAvatar(
+  owner: AvatarOwnerRef,
+  config: AvatarConfig | null,
+  fromSprites: PngtuberAvatarData | null,
+): AvatarConfig | null {
+  if (!fromSprites || config?.kinds.pngtuber) return config;
+  const base = config ?? createAvatarConfig(owner, SPRITE_AVATAR_UPDATED_AT);
+  return { ...base, kinds: { ...base.kinds, pngtuber: fromSprites } };
 }
 
 export function ownerKey(owner: AvatarOwnerRef): string {

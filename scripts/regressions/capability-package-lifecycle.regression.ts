@@ -399,12 +399,14 @@ try {
   const serverRequire = createRequire(new URL("../../packages/server/src/app.ts", import.meta.url));
   const AdmZipCtor = serverRequire("adm-zip") as new () => {
     addFile: (name: string, data: Buffer) => void;
+    toBuffer: () => Buffer;
   };
+  const { openZipArchive } = await import("../../packages/server/src/lib/zip-reader.js");
   const collisionZip = new AdmZipCtor();
   collisionZip.addFile("art/tiles.png", Buffer.from("first casing"));
   collisionZip.addFile("art/Tiles.PNG", Buffer.from("second casing"));
   assert.throws(
-    () => validatePackageArchiveEntries(collisionZip as never),
+    () => validatePackageArchiveEntries(openZipArchive(collisionZip.toBuffer())),
     /duplicate file/u,
     "case-only filename collisions must be rejected at archive validation",
   );

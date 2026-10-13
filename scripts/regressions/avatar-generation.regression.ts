@@ -377,7 +377,8 @@ async function dotCentre(png: Buffer) {
     .png()
     .toBuffer();
   const requests: Array<{ url: string; contentType: string; body: Buffer }> = [];
-  // "echo" answers with the picture it was sent, like an edit that keeps everything in place.
+  // "echo" answers with the picture it was sent, filled into the canvas size asked for (as Draw Things
+  // does with its init picture): an edit that keeps everything in place.
   let mode: "opaque" | "echo" = "opaque";
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
@@ -387,7 +388,9 @@ async function dotCentre(png: Buffer) {
     let picture = opaquePicture;
     if (mode === "echo") {
       const start = body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-      picture = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
+      const sent = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
+      const [width, height] = /name="size"\r\n\r\n(\d+)x(\d+)/u.exec(body.toString("latin1"))!.slice(1).map(Number);
+      picture = await sharp(sent).resize(width, height, { fit: "cover" }).png().toBuffer();
     }
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ data: [{ b64_json: picture.toString("base64") }] }));
@@ -436,8 +439,8 @@ async function dotCentre(png: Buffer) {
     // Canvases of another shape: a fixed 2:3 canvas for 600x720, a rounded 512x896 one for 300x900.
     mode = "echo";
     for (const [model, width, height, x, y] of [
-      ["gpt-image-1", 600, 720, 300, 300],
-      ["gpt-image-2", 300, 900, 150, 150],
+      ["gpt-image-1", 600, 720, 200, 300],
+      ["gpt-image-2", 300, 900, 100, 150],
     ] as const) {
       const png = await dotSprite(width, height, x, y);
       const sprite = { label: "dot", png, width, height, transparent: true, hash: "" };

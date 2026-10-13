@@ -304,13 +304,21 @@ export function avatarImageRequestSize(
   height: number,
   model: string,
 ): { width: number; height: number } {
-  if (isOpenAIGptImageModel(model) && !supportsOpenAIImageCustomSize(model)) {
+  if (isOpenAIGptImageModel(model)) {
     const ratio = width / Math.max(1, height);
-    return ratio > 1.12
-      ? { width: 1536, height: 1024 }
-      : ratio < 0.88
-        ? { width: 1024, height: 1536 }
-        : { width: 1024, height: 1024 };
+    if (!supportsOpenAIImageCustomSize(model)) {
+      return ratio > 1.12
+        ? { width: 1536, height: 1024 }
+        : ratio < 0.88
+          ? { width: 1024, height: 1536 }
+          : { width: 1024, height: 1024 };
+    }
+    // GPT Image 2 and 2.5 keep a size of at least 1024x1024 pixels in steps of 32 with sides at most 3:1
+    // (openAIGptImage2Size / openAIGptImage25Size in services/image/image-generation.ts). A size they
+    // would change gives a canvas of another shape than the one the sprite was placed on.
+    const clamped = Math.min(3, Math.max(1 / 3, ratio));
+    const side = (value: number) => Math.ceil(Math.sqrt(1024 * 1024 * value) / 32) * 32;
+    return { width: side(clamped), height: side(1 / clamped) };
   }
   const scale = Math.min(1, 1536 / Math.max(width, height));
   const round = (value: number) => Math.max(512, Math.round((value * scale) / 64) * 64);

@@ -49,6 +49,7 @@ try {
   let mode: "auto" | "manual" | "plan" | "bypass" = "auto";
   let provider = "custom";
   let armed = false;
+  let userText = "Do the thing.";
   let defaultParameters: string | null = null;
   let script: Scripted[] = [];
   let requests: Array<{ messages: ChatMessage[]; options: ChatOptions }> = [];
@@ -85,7 +86,7 @@ try {
         return {
           messages: [
             { role: "system", content: "You are Professor Mari (regression).", contextKind: "prompt" },
-            { role: "user", content: "Do the thing.", contextKind: "history" },
+            { role: "user", content: userText, contextKind: "history" },
           ],
           manualApprovalArmed: armed,
         };
@@ -123,7 +124,9 @@ try {
     runtime: "pi" | "classic" = "pi",
     target: InstanceType<typeof ProfessorMariWorkspaceService> = service,
     chatId?: string,
+    text = "Do the thing.",
   ) => {
+    userText = text;
     script = [...nextScript];
     requests = [];
     runtimeSeen = [];
@@ -132,7 +135,7 @@ try {
     await settings.set(MARI_RUNTIME_SETTINGS_KEY, runtime);
     const chat = chatId ? { id: chatId } : await chats.create({ name, mode: "conversation", characterIds: [] });
     const events: Array<{ type: string; data?: unknown }> = [];
-    const done = target.prompt({ chatId: chat.id, text: "Do the thing.", onEvent: (event) => events.push(event) });
+    const done = target.prompt({ chatId: chat.id, text, onEvent: (event) => events.push(event) });
     return { chat, events, done };
   };
   const lastAssistant = async (chatId: string) => {
@@ -320,17 +323,27 @@ try {
     assert.match(String(savedHeld?.extra.mariWorkspaceContinuity), /armed\.txt/u, "the held call is in the continuity");
     assert.match(String(savedHeld?.extra.mariWorkspaceContinuity), /HELD for the user's approval/u);
     armed = true;
+    const secondCall = { id: "armed-3", name: "write", args: { path: "armed-b.txt", content: "y", reason: "test" } };
     const accepted = await start(
       "pi armed accept",
-      [reply("Approved, creating armed.txt.", [writeCall("armed-2")]), reply("Created armed.txt.")],
+      [
+        reply("Approved, creating armed.txt.", [writeCall("armed-2")]),
+        reply("Now also armed-b.txt.", [secondCall]),
+        reply("This must never be requested."),
+      ],
       "pi",
       service,
       held.chat.id,
+      "I accept the proposed change.",
     );
     await accepted.done;
-    assert.equal(existsSync(join(workspaceDir, "armed.txt")), true, "the armed run applies the call");
+    assert.equal(existsSync(join(workspaceDir, "armed.txt")), true, "round 1 applies the accepted call");
     assert.equal(toolMessages(requests[1]!.messages).length, 1);
-    assert.equal((await lastAssistant(held.chat.id))?.extra.mariDeferredMutations, undefined);
+    assert.equal(existsSync(join(workspaceDir, "armed-b.txt")), false, "a second, new mutation is held");
+    assert.equal(requests.length, 2, "the run ends as a new deferral");
+    const savedAgain = await lastAssistant(held.chat.id);
+    assert.equal(savedAgain?.extra.mariDeferredMutations, true);
+    assert.match(JSON.stringify(savedAgain?.extra.mariHeldChanges), /armed-b\.txt/u);
     // An armed run that only CLAIMS it is done, with no call, is sent back instead of being accepted.
     const claim = await start(
       "pi armed claim",

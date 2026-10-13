@@ -171,6 +171,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   let stopRequested = false;
   let providerError: unknown = null;
   let runAskedForApproval = false;
+  let armedSpent = false;
   let toolRounds = 0;
   let round: Round | null = null;
   let session: AgentSession | null = null;
@@ -431,11 +432,15 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       const mutating = current.calls.filter((entry) => !isUiTool(entry.name) && isMutatingWorkspaceCommand(entry));
       // Manual always holds an un-approved mutation, with or without words: a model that thinks instead of writing
       // would otherwise be refused in a loop. Only the run right after the user's Accept may apply silently.
-      const armedManual = input.permissionsMode === "manual" && input.manualApprovalArmed;
+      // The Accept pass covers only the first round with a mutating call, and never a run that already asked.
+      // ponytail: the approval is tied to the turn, not to the exact held calls. Upgrade path: on Accept the server
+      // applies the stored held calls itself.
+      const armedManual =
+        input.permissionsMode === "manual" && input.manualApprovalArmed && !armedSpent && !runAskedForApproval;
+      if (armedManual && mutating.length > 0) armedSpent = true;
       const holdSilentManual =
         input.permissionsMode === "manual" && mutating.length > 0 && !current.text && !armedManual;
-      // The run right after a stored deferral is the user's Accept: its calls apply, with or without words, unless
-      // the words ask a new question.
+      // That round's calls apply, with or without words, unless the words ask a new question.
       current.deferred = armedManual
         ? mutating.length > 0 && visibleTextAsksApplyPermission(current.text)
         : holdSilentManual ||
@@ -460,7 +465,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       } else {
         const silent = !current.text;
         input.setRoundFlags({
-          manualSilentMutationBlocked: input.permissionsMode === "manual" && silent && !input.manualApprovalArmed,
+          manualSilentMutationBlocked: input.permissionsMode === "manual" && silent && !armedManual,
           askLatchSilentMutationBlocked:
             runAskedForApproval && silent && input.permissionsMode !== "manual" && input.permissionsMode !== "bypass",
         });

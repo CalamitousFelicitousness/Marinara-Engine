@@ -38,6 +38,8 @@ You will see two terms often:
 
 **Google Gemini** runs the Gemini models through Google AI Studio. This is the simpler of the two Google options.
 
+Marinara turns off Google's adjustable safety filters on both Google options unless you set your own safety settings in **Custom Parameters**, but Google's core protections, such as child safety, still apply.
+
 ## Google Vertex AI
 
 - Credential docs: `https://cloud.google.com/vertex-ai/docs/authentication`

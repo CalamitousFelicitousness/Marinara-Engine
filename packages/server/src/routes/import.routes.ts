@@ -15,6 +15,7 @@ import {
   inspectSTCharacter,
   inspectCharX,
   getExistingCharacterTagKeys,
+  IMPORT_BODY_LIMIT_BYTES,
   type STCharacterImportPreview,
   type STCharacterTagImportMode,
 } from "../services/import/st-character.importer.js";
@@ -30,12 +31,11 @@ import { getImportAllowedRoots } from "../config/runtime-config.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { assertInsideDir, safeCompareString, tokenForPath } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
-import { readZip, ZipReadError, type ZipFile } from "../lib/zip-reader.js";
+import { openZipArchive, type ZipArchive } from "../lib/zip-reader.js";
 import { parseJsonBytes } from "../utils/large-json.js";
 
 const PICK_FOLDER_TIMEOUT_MS = 60_000; // 60s — prevents infinite hang on headless servers
 const FOLDER_TOKEN_TTL_MS = 15 * 60_000;
-const IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES = 1024 * 1024 * 1024;
 const MAX_BATCH_IMPORT_FILES = 128;
 const NATIVE_PACKAGE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
@@ -751,20 +751,20 @@ export async function importRoutes(app: FastifyInstance) {
       }
       return importEnvelope(envelope);
     }
-    // Read strictly: the sizes the package declares are the sizes read, so the limits below hold.
-    let entries: ZipFile[];
-    try {
-      entries = readZip(buffer);
-    } catch {
-      return reply.status(400).send({ success: false, error: "Could not read .marinara package" });
-    }
     // Native packages contain data.json plus an optional avatar. Keep the
-    // structural entry boundary, but do not reject legitimate large embedded
-    // galleries or avatars by byte size.
+    // structural entry boundary, checked before the file list is read, but do
+    // not reject legitimate large embedded galleries or avatars by byte size.
     const MAX_PACKAGE_ENTRIES = 8;
-    if (entries.length > MAX_PACKAGE_ENTRIES) {
-      return reply.status(400).send({ success: false, error: ".marinara package has too many entries" });
+    const tooManyEntries = ".marinara package has too many entries";
+    let zip: ZipArchive;
+    try {
+      zip = openZipArchive(buffer, { maxEntries: MAX_PACKAGE_ENTRIES, tooManyEntries });
+    } catch (error) {
+      const tooMany = error instanceof Error && error.message === tooManyEntries;
+      const message = tooMany ? tooManyEntries : "Could not read .marinara package";
+      return reply.status(400).send({ success: false, error: message });
     }
+    const entries = zip.getEntries();
     let totalUncompressedBytes = 0;
     for (const entry of entries) {
       if (entry.isDirectory) continue;
@@ -777,28 +777,20 @@ export async function importRoutes(app: FastifyInstance) {
         return reply.status(413).send({ success: false, error: ".marinara package contents are too large" });
       }
     }
-    const dataEntry = entries.find((entry) => entry.name === "data.json" && !entry.isDirectory);
+    const dataEntry = zip.getEntry("data.json");
     if (!dataEntry) {
       return reply.status(400).send({ success: false, error: ".marinara package is missing data.json" });
     }
-    let dataBytes: Buffer;
-    let avatarBytes: Buffer | null = null;
-    const avatarEntry = entries.find((e) => /^avatar\.(png|jpe?g|webp|gif|avif)$/i.test(e.name));
-    try {
-      dataBytes = dataEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES);
-      if (avatarEntry) avatarBytes = avatarEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES);
-    } catch (error) {
-      if (!(error instanceof ZipReadError)) throw error;
-      return reply.status(400).send({ success: false, error: `Could not read .marinara package: ${error.message}` });
-    }
     let envelope: Record<string, unknown>;
     try {
-      envelope = JSON.parse(dataBytes.toString("utf-8")) as Record<string, unknown>;
+      const dataJson = dataEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES).toString("utf-8");
+      envelope = JSON.parse(dataJson) as Record<string, unknown>;
     } catch {
       return reply.status(400).send({ success: false, error: "data.json is not valid JSON" });
     }
-    if (avatarEntry && avatarBytes && envelope.data && typeof envelope.data === "object") {
-      const ext = avatarEntry.name.split(".").pop()!.toLowerCase();
+    const avatarEntry = entries.find((e) => /^avatar\.(png|jpe?g|webp|gif|avif)$/i.test(e.entryName));
+    if (avatarEntry && envelope.data && typeof envelope.data === "object") {
+      const ext = avatarEntry.entryName.split(".").pop()!.toLowerCase();
       const mime =
         ext === "jpg" || ext === "jpeg"
           ? "image/jpeg"
@@ -809,7 +801,7 @@ export async function importRoutes(app: FastifyInstance) {
               : ext === "avif"
                 ? "image/avif"
                 : "image/png";
-      const dataUrl = `data:${mime};base64,${avatarBytes.toString("base64")}`;
+      const dataUrl = `data:${mime};base64,${avatarEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES).toString("base64")}`;
       (envelope.data as Record<string, unknown>).avatar = dataUrl;
     }
     return importEnvelope(envelope);

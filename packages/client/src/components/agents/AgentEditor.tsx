@@ -813,6 +813,7 @@ export function AgentEditor() {
   const [localBatchWithOtherAgents, setLocalBatchWithOtherAgents] = useState(true);
   const [localSourceFileIds, setLocalSourceFileIds] = useState<string[]>([]);
   const [localAutoGenerateAvatars, setLocalAutoGenerateAvatars] = useState(false);
+  const [localIncludeOutfitInAvatars, setLocalIncludeOutfitInAvatars] = useState(true);
   const [localUseAvatarReferences, setLocalUseAvatarReferences] = useState(false);
   const [localIncludeCharacterAppearance, setLocalIncludeCharacterAppearance] = useState(false);
   const [localImagePositivePrompt, setLocalImagePositivePrompt] = useState("");
@@ -972,6 +973,7 @@ export function AgentEditor() {
       setLocalBatchWithOtherAgents(settings.batchWithOtherAgents !== false);
       setLocalSourceFileIds(normalizeStringArray(settings.sourceFileIds));
       setLocalAutoGenerateAvatars(settings.autoGenerateAvatars === true);
+      setLocalIncludeOutfitInAvatars(settings.includeOutfitInAvatars !== false);
       setLocalUseAvatarReferences(
         (settings.useAvatarReferences as boolean | undefined) ?? defaultSettings.useAvatarReferences === true,
       );
@@ -1049,6 +1051,7 @@ export function AgentEditor() {
       setLocalBatchWithOtherAgents(defaultSettings.batchWithOtherAgents !== false);
       setLocalSourceFileIds([]);
       setLocalAutoGenerateAvatars(false);
+      setLocalIncludeOutfitInAvatars(true);
       setLocalUseAvatarReferences(defaultSettings.useAvatarReferences === true);
       setLocalIncludeCharacterAppearance(defaultSettings.includeCharacterAppearance === true);
       setLocalImagePositivePrompt("");
@@ -1117,6 +1120,7 @@ export function AgentEditor() {
       setLocalBatchWithOtherAgents(true);
       setLocalSourceFileIds([]);
       setLocalAutoGenerateAvatars(false);
+      setLocalIncludeOutfitInAvatars(true);
       setLocalUseAvatarReferences(false);
       setLocalIncludeCharacterAppearance(false);
       setLocalImagePositivePrompt("");
@@ -1538,6 +1542,7 @@ export function AgentEditor() {
         ...(isKnowledgeRetrievalAgent && localSourceFileIds.length > 0 ? { sourceFileIds: localSourceFileIds } : {}),
         ...(savedImageConnectionId ? { imageConnectionId: savedImageConnectionId } : {}),
         ...(localAutoGenerateAvatars ? { autoGenerateAvatars: true } : {}),
+        ...(localIncludeOutfitInAvatars ? {} : { includeOutfitInAvatars: false }),
         ...(supportsImagePromptSettings
           ? {
               useAvatarReferences: localUseAvatarReferences,
@@ -1634,6 +1639,7 @@ export function AgentEditor() {
     localSourceLorebookIds,
     localSourceFileIds,
     localAutoGenerateAvatars,
+    localIncludeOutfitInAvatars,
     localUseAvatarReferences,
     localIncludeCharacterAppearance,
     localProseGuardianBanned,
@@ -1777,6 +1783,7 @@ export function AgentEditor() {
       ...(isKnowledgeRetrievalAgent && localSourceFileIds.length > 0 ? { sourceFileIds: localSourceFileIds } : {}),
       ...(agentType !== "background" && localImageConnectionId ? { imageConnectionId: localImageConnectionId } : {}),
       ...(localAutoGenerateAvatars ? { autoGenerateAvatars: true } : {}),
+      ...(localIncludeOutfitInAvatars ? {} : { includeOutfitInAvatars: false }),
       ...(supportsImagePromptSettings
         ? {
             useAvatarReferences: localUseAvatarReferences,
@@ -2827,6 +2834,17 @@ export function AgentEditor() {
                   markDirty();
                 }}
               />
+              {localAutoGenerateAvatars && (
+                <EditorSwitchRow
+                  label={localizeUi("ui.agents.agenteditor.includeOutfitInNpcPortraits")}
+                  description={localizeUi("ui.agents.agenteditor.includeOutfitInNpcPortraitsDescription")}
+                  checked={localIncludeOutfitInAvatars}
+                  onChange={(checked) => {
+                    setLocalIncludeOutfitInAvatars(checked);
+                    markDirty();
+                  }}
+                />
+              )}
               {localAutoGenerateAvatars && (
                 <div className="mt-2">
                   <label className="block text-xs text-[var(--muted-foreground)] mb-1">

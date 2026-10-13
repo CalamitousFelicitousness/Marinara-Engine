@@ -463,7 +463,7 @@ try {
       });
     assert.notEqual(
       issue(
-        265,
+        269,
         only(() => {}),
       ),
       gate,
@@ -493,7 +493,7 @@ try {
     }
     assert.equal(
       issue(
-        265,
+        269,
         only(() => {}),
         new Map([["extra.json", [{ id: "x", item: { category: "staff", use: { kind: "heal", label: "Cure" } } }]]]),
       ),

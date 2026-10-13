@@ -398,7 +398,7 @@ try {
       });
     assert.notEqual(
       issue(
-        262,
+        266,
         only(() => {}),
       ),
       gate,
@@ -426,7 +426,7 @@ try {
     }
     assert.equal(
       issue(
-        262,
+        266,
         only(() => {}),
         new Map([["extra.json", { saveEnds: { save: "wis_save", seenLean: "advantage" } }]]),
       ),

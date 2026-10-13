@@ -271,14 +271,14 @@ try {
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     assert.match(
       issue(
-        114,
+        118,
         fiveE((doc) => withSlow(doc)),
       ) ?? "",
       gate,
     );
     assert.doesNotMatch(
       issue(
-        115,
+        119,
         fiveE((doc) => withSlow(doc)),
       ) ?? "",
       gate,

@@ -833,7 +833,7 @@ const capabilityPackageManifestBaseSchema = z
 //        by attack kind, blow or ability, with typed additions and source-bound damage taken. No permission.
 // 1.133: save modifiers can count only against conditions, damage types or magic, together with
 //        the saves they name: Dwarven Resilience, Fey Ancestry and Gnome Cunning. No permission.
-// 1.134-1.163: the Kenhito lane.
+// 1.134-1.163: reserved.
 // 1.164: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
 //        ruleset, so a package with a list of more than 12 columns declares 1.164. No permission.
 // 1.165: a catalog entry's mechanics may be usable in a fight only while a value off its holder's

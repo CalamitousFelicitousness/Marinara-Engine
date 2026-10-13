@@ -312,7 +312,10 @@ try {
 
   // ── Wiring: Mari's commands name their chat, status filters, deletion keeps ──
   {
-    const agent = source("services/professor-mari/workspace-agent.service.ts") + source("services/professor-mari/workspace-commands.ts") + source("services/professor-mari/workspace-message-store.ts");
+    const agent =
+      source("services/professor-mari/workspace-agent.service.ts") +
+      source("services/professor-mari/workspace-commands.ts") +
+      source("services/professor-mari/workspace-message-store.ts");
     assert.equal(
       (agent.match(/sessionId: this\.runSessionId\(\)/gu) ?? []).length,
       6,

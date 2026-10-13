@@ -54,14 +54,18 @@ for (const mode of ["manual", "plan", "accept-edits", "bypass"] as const) {
   assert.match(block, /may further RESTRICT but never loosen/u, `${mode}: memory precedence rule`);
 }
 assert.match(mariPermissionsModePrompt("plan") ?? "", /refused by the server/u);
-assert.match(mariPermissionsModePrompt("accept-edits") ?? "", /Every applied change shows the user a change card with Undo/u);
+assert.match(
+  mariPermissionsModePrompt("accept-edits") ?? "",
+  /Every applied change shows the user a change card with Undo/u,
+);
 assert.match(
   mariPermissionsModePrompt("bypass") ?? "",
   /Sensitive file changes and dependency installs still require/u,
 );
 
 // ── Enforcement seams (source pins) ─────────────────────────────────────────
-const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
+const workspaceAgent =
+  readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
   readSource("packages/server/src/services/professor-mari/workspace-commands.ts") +
   readSource("packages/server/src/services/professor-mari/workspace-round-review.ts") +
   readSource("packages/server/src/services/professor-mari/workspace-message-store.ts");
@@ -90,6 +94,19 @@ assert.match(workspaceAgent, /permissionsMode !== "bypass" &&/u);
 // run refuses the commands); the executor floor's refusal drives the plan.
 assert.match(workspaceAgent, /permissionsMode !== "plan" &&/u);
 assert.match(workspaceAgent, /permissionsMode === "manual" \|\|/u);
+// The checks live in workspace-round-review; pin the loop's call sites so it
+// keeps passing the run's LOCAL mode and ONE review state for the whole run.
+assert.ok(
+  workspaceAgent.includes("shouldDeferRoundMutations({ permissionsMode, parsedAction, runAskedForApproval })"),
+  "the run loop must pass its local permissionsMode to the deferral check",
+);
+assert.ok(workspaceAgent.includes("reviewRoundClaim(reviewState, {"));
+assert.ok(workspaceAgent.includes("reviewRepeatedFailures(reviewState, commandResults)"));
+assert.equal(
+  workspaceAgent.split("newRoundReviewState(").length - 1,
+  2,
+  "one review state per run: the definition plus a single call before the round loop",
+);
 // Manual is also a FLOOR: silent (empty-say) mutating frames execute only in
 // a run that began right after an approved deferral; otherwise the executor
 // refuses them with describe-and-ask guidance.

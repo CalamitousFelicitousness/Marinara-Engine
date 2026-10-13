@@ -94,7 +94,8 @@ assert.equal(
 // ── Engine: the latch exists, arms where text streams, holds, and floors ────
 // Structural pins run against a whitespace-flattened copy so Prettier reflow
 // can never break them; behavior changes still do.
-const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
+const workspaceAgent =
+  readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
   readSource("packages/server/src/services/professor-mari/workspace-commands.ts") +
   readSource("packages/server/src/services/professor-mari/workspace-round-review.ts");
 const flat = workspaceAgent.replace(/\s+/gu, " ");

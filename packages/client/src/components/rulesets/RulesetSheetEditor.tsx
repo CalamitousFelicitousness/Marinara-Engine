@@ -191,7 +191,7 @@ function TrainedRows({
   );
 }
 
-/** A rolled list cell's button (Capability API 1.80): the Engine's own dice, so the number is thrown,
+/** A rolled list cell's button (Capability API 1.84): the Engine's own dice, so the number is thrown,
  *  not typed. Disabled while the row does not say what to throw (its die is not picked yet). */
 function RollCellButton({
   notation,
@@ -332,7 +332,7 @@ export function RulesetSheetEditor({
     });
   };
 
-  // A builder whose steps are limited by a sheet value (`upTo`, 1.82) is applied again on an edit here,
+  // A builder whose steps are limited by a sheet value (`upTo`, 1.86) is applied again on an edit here,
   // so lowering a level takes back at once what a pick above it gave. Its catalogs share the Guided
   // view's cache; while they load, an edit waits for the builder's next change as before.
   const builderLimits = sheet.builder?.steps.some((step) => step.kind === "catalog" && step.upTo) ?? false;
@@ -389,7 +389,7 @@ export function RulesetSheetEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedCatalogs]);
 
-  // The guided builder (1.81), beside the full form when the ruleset declares one. Its choices ride in
+  // The guided builder (1.85), beside the full form when the ruleset declares one. Its choices ride in
   // the envelope next to the build, so a step can be reopened.
   const builderState = useMemo(() => readRulesetBuilderState(envelope), [envelope]);
   const [view, setView] = useState<"guided" | "all">(sheet.builder ? "guided" : "all");

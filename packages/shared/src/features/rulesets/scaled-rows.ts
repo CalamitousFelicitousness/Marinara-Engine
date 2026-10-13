@@ -59,7 +59,7 @@ export function rulesetCatalogEntriesByRef(catalogs: RulesetCatalogEntriesById):
 }
 
 /** The spec for one row of one list. An entry with one row for that list is matched as it always was;
- *  one with several (1.87) carries a different name on each, which the schema checks, so the sheet's
+ *  one with several (1.91) carries a different name on each, which the schema checks, so the sheet's
  *  row is matched to its spec by that name. A row the player renamed matches none and is left alone. */
 function scaledRowSpec(
   byRef: ReadonlyMap<string, RulesetCatalogEntry>,

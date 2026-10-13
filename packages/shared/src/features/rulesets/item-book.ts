@@ -389,7 +389,7 @@ function rulesetItemAttackFacts(
       abilities(attack.toHit.abilities),
       typeof skill === "string" ? labelOf(definition.sheet.skills, skill) : "",
       number(attack.toHit.bonus),
-      // What the holder brings off their own sheet (1.90), by its name there.
+      // What the holder brings off their own sheet (1.94), by its name there.
       attack.toHit.sheetBonus ? sheetBonusWords(definition, attack.toHit.sheetBonus) : "",
     ]),
     ...(attack.toHit.proficiency ? { proficiency: true as const } : {}),
@@ -398,7 +398,7 @@ function rulesetItemAttackFacts(
       dice(attack.damage.dice),
       abilities(attack.damage.abilities),
       number(attack.damage.bonus),
-      // What the holder brings off their own sheet (1.92), by its name there.
+      // What the holder brings off their own sheet (1.96), by its name there.
       attack.damage.sheetBonus ? sheetBonusWords(definition, attack.damage.sheetBonus) : "",
     ]),
     ...(type ? { type } : {}),
@@ -639,7 +639,7 @@ export interface RulesetItemBookEntry extends GameInventoryRulesetItem {
   /** Set on an item the Game Master invented, with what the Engine changed from its proposal. */
   invented?: { notes: string[] };
   /** Set on one of the ruleset's coins: its family, and what it is worth in the family's smallest. */
-  coin?: { family: string; value: number; /** Its name for exactly one (1.84). */ one?: string };
+  coin?: { family: string; value: number; /** Its name for exactly one (1.88). */ one?: string };
 }
 
 /** The sheets a book reads what each character carries and binds off: the player's own, and every

@@ -125,7 +125,7 @@ const emberBuild = (heart: number, uses = 1) =>
     twoRows,
     /A scaled row must be this entry's only row for the list "tricks", or every row there must have its own name/,
   );
-  // Under two names they are told apart (1.87).
+  // Under two names they are told apart (1.91).
   assert.ok(
     parsed(emberText, (doc) => {
       const entry = doc.catalogs[0].entries.find((candidate: any) => candidate.id === "last-ember");
@@ -142,7 +142,7 @@ const emberBuild = (heart: number, uses = 1) =>
   );
 }
 
-// ── Two scaled rows of one list, told apart by name (1.87) ──
+// ── Two scaled rows of one list, told apart by name (1.91) ──
 {
   const twin = parsed(emberText, (doc) => {
     const entry = doc.catalogs[0].entries.find((candidate: any) => candidate.id === "last-ember");

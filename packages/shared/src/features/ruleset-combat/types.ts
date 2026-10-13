@@ -57,7 +57,7 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
    *  raised to it. */
   floor?: number;
   /** The first amount's own dice at or below this are thrown again once, the new face standing: a
-   *  weapon wielded two-handed by a fighter whose sheet gives it (1.93, 5e's Great Weapon Fighting). */
+   *  weapon wielded two-handed by a fighter whose sheet gives it (1.97, 5e's Great Weapon Fighting). */
   reroll?: number;
 }
 
@@ -510,7 +510,7 @@ export interface RulesetCombatant {
   /** Read from the sheet or the block once, when the fight began. */
   defense: number;
   /** The lowest natural attack face that is a critical for this fighter, read off their sheet
-   *  (`attackRoll.criticalFrom`, 1.76). The die's highest face when absent. */
+   *  (`attackRoll.criticalFrom`, 1.80). The die's highest face when absent. */
   criticalFrom?: number;
   saves: Record<string, number>;
   /** What this combatant adds in a contest, by check id. Present only when the ruleset has checks. */

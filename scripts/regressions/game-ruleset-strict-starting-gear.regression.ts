@@ -1,4 +1,4 @@
-/** Strict starting gear (Capability API 1.104): the sheet limits legal-only choices, never free edit. */
+/** Strict starting gear (Capability API 1.108): the sheet limits legal-only choices, never free edit. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -125,7 +125,7 @@ try {
     restartRequired: false,
   });
   const gateMessage =
-    "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.104 or newer";
+    "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.108 or newer";
   assert.equal(getCapabilityPackageInstallIssue(manifest(103) as never, doc), gateMessage);
   assert.equal(getCapabilityPackageInstallIssue(manifest(104) as never, doc), null);
   const legacy = structuredClone(doc);
@@ -322,7 +322,7 @@ try {
   assert.equal(radioLabels(tree).length, 3);
   assert.equal(toggle(tree), undefined, "non-strict gear keeps the original UI");
   console.log(
-    "Strict starting gear: schema, 1.104 gate, fit validation, legacy/free edit, class changes, empty state and Next passed.",
+    "Strict starting gear: schema, 1.108 gate, fit validation, legacy/free edit, class changes, empty state and Next passed.",
   );
 } finally {
   delete (globalThis as any).__gearHooks;

@@ -91,7 +91,7 @@ export function gameInventoryCoinRef(unit: string): string {
 export interface GameInventoryCoin {
   item: string;
   name: string;
-  /** Its name for exactly one, where the ruleset gives one (1.84). */
+  /** Its name for exactly one, where the ruleset gives one (1.88). */
   one?: string;
   value: number;
 }

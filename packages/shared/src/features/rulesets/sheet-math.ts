@@ -1127,7 +1127,7 @@ function stableJson(value: unknown): string {
 }
 
 /**
- * What a rolled list column throws for one row (Capability API 1.80), as dice notation (`1d8`): its
+ * What a rolled list column throws for one row (Capability API 1.84), as dice notation (`1d8`): its
  * count of dice, of the sides it names, read from the row's own column or off the sheet. Null for a
  * column that is not rolled, or sides that do not read as a die. A cell left empty reads as the editor
  * shows it.
@@ -1160,7 +1160,7 @@ export function rulesetListRollNotation(
   return read === null ? null : `${count}d${read}`;
 }
 
-/** One row's spellcasting numbers (1.103). Missing columns never take their editor defaults: an old
+/** One row's spellcasting numbers (1.107). Missing columns never take their editor defaults: an old
  *  row without a class keeps the source's references until the player assigns it one. */
 export function resolveRulesetAbilityValues(
   definition: RulesetDefinition,

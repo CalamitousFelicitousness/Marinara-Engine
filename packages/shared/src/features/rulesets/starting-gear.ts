@@ -100,7 +100,7 @@ export function rulesetStartingGearFits(
   return resolveRulesetValueRef(definition, build, gear.fits.value) >= gear.fits.atLeast;
 }
 
-/** A strict builder step holds gear to the sheet in legal-only mode (1.104). Gear without `fits`
+/** A strict builder step holds gear to the sheet in legal-only mode (1.108). Gear without `fits`
  *  belongs to everyone. No live state is read, as when the inventory ranks fitting gear first. */
 export function rulesetBuilderStartingGearOptions(
   definition: RulesetDefinition,

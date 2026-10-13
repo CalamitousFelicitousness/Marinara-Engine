@@ -208,7 +208,7 @@ function rollAmount(
   ctx: RulesetCombatContext,
   amount: RulesetCombatAmount,
   extra?: { amount: RulesetCombatAmount; times: number },
-  /** The amount's own dice at or below this are thrown again once, the new face standing (1.93). */
+  /** The amount's own dice at or below this are thrown again once, the new face standing (1.97). */
   rerollUpTo?: number,
 ): { rolls: number[]; flat: number; total: number } {
   const rolls = rerollLow(ctx, rollRulesetDice(ctx.roll, amount.count, amount.sides), amount.sides, rerollUpTo);
@@ -2612,7 +2612,7 @@ function resolveAction(
         );
         const total = kept + action.toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
-        // A critical range the attacker's sheet reads (1.76) widens a critical face down to it.
+        // A critical range the attacker's sheet reads (1.80) widens a critical face down to it.
         const criticalFrom =
           naturals.max === "critical"
             ? Math.max(2, Math.min(dice.sides, actor.criticalFrom ?? dice.sides))

@@ -554,7 +554,7 @@ export const rulesetFieldSchema = z.discriminatedUnion("type", [
 const sheetScalar = z.union([z.number().finite(), z.string().max(4000), z.boolean()]);
 
 const columnBase = { id: sheetId, label, required: z.boolean().default(false) };
-/** A number column a player fills by rolling (Capability API 1.80): `count` dice of `sides`, where
+/** A number column a player fills by rolling (Capability API 1.84): `count` dice of `sides`, where
  *  sides is a number, another column of the same row (a number, or an enum whose values read as
  *  numbers such as "d8"), or a value read off the sheet. The sheet editor rolls them with the Engine's
  *  own dice and writes the total, held to the column's min and max. */
@@ -617,8 +617,8 @@ const skillSchema = z
 const saveSchema = skillSchema;
 
 const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen: hideWhenSchema.optional() };
-/** The most derived values a sheet may have: 400 since Capability API 1.106 (240 since 1.83,
- *  120 since 1.79), which a package exceeding the corresponding older limit declares. */
+/** The most derived values a sheet may have: 400 since Capability API 1.110 (240 since 1.87,
+ *  120 since 1.83), which a package exceeding the corresponding older limit declares. */
 export const RULESET_DERIVED_MAX = 400;
 export const RULESET_DERIVED_MAX_BEFORE_1106 = 240;
 export const RULESET_DERIVED_MAX_BEFORE_183 = 120;
@@ -637,7 +637,7 @@ export const rulesetDerivedSchema = z.discriminatedUnion("op", [
       round: roundingSchema.default("down"),
     })
     .strict(),
-  /** The values multiplied together (Capability API 1.77): a 5e hit point maximum's Constitution
+  /** The values multiplied together (Capability API 1.81): a 5e hit point maximum's Constitution
    *  modifier times the level. */
   z.object({ ...derivedBase, op: z.literal("multiply"), of: z.array(rulesetValueRefSchema).min(2).max(6) }).strict(),
   z.object({ ...derivedBase, op: z.literal("min"), of: z.array(rulesetValueRefSchema).min(2).max(12) }).strict(),
@@ -878,7 +878,7 @@ const sheetMigrationSchema = z
   })
   .strict();
 
-// ── The guided builder (Capability API 1.81) ──
+// ── The guided builder (Capability API 1.85) ──
 
 /** How many steps one guided builder may have. */
 export const RULESET_BUILDER_STEPS_MAX = 24;
@@ -908,7 +908,7 @@ const builderPointBuySchema = z
   })
   .strict();
 
-/** A catalog step's limit by a sheet value (1.82). */
+/** A catalog step's limit by a sheet value (1.86). */
 export interface RulesetBuilderUpTo {
   filter: string;
   value: RulesetValueRef;
@@ -935,7 +935,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       max: z.number().int().min(1).max(40).default(1),
       /** A text or enum field the picked entries' labels are written to (a race, a class). */
       field: sheetId.optional(),
-      /** Values written onto every row this step adds (1.103). Later edits remain the player's. */
+      /** Values written onto every row this step adds (1.107). Later edits remain the player's. */
       stamp: z
         .record(sheetId, sheetScalar)
         .refine((stamp) => Object.keys(stamp).length >= 1 && Object.keys(stamp).length <= 4, {
@@ -947,11 +947,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       /** Only entries whose `filter` names an entry picked at an earlier step (a subrace by its race). */
       within: z.object({ step: sheetId, filter: sheetId }).strict().optional(),
       /** Only entries whose number `filter` is at most `value`, read off the sheet as it stands (features
-       *  up to the character's level; Capability API 1.82). An entry without the filter is offered. */
+       *  up to the character's level; Capability API 1.86). An entry without the filter is offered. */
       upTo: rulesetBuilderUpToSchema.optional(),
       /** How many entries the step asks for and at most takes, read off the sheet as it stands, in
        *  place of `min` and never above `max` (spells known at the character's level; Capability API
-       *  1.85). Picks past it are kept but count for nothing. */
+       *  1.89). Picks past it are kept but count for nothing. */
       countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     })
     .strict(),
@@ -962,11 +962,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       fields: z.array(sheetId).min(1).max(20),
       /** Fields of the step its badge does not wait on, such as a subclass chosen at a later level. */
       optional: z.array(sheetId).min(1).max(20).optional(),
-      /** Fields shown only while their value reference reads above 0 on the sheet (1.102). */
+      /** Fields shown only while their value reference reads above 0 on the sheet (1.106). */
       shownWhen: z
         .record(sheetId, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>)
         .optional(),
-      /** Number fields held to a combined maximum (1.102). */
+      /** Number fields held to a combined maximum (1.106). */
       total: z
         .object({ fields: z.array(sheetId).min(2).max(20), max: z.number().int().min(1).max(1000) })
         .strict()
@@ -994,7 +994,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
             .strict()
             .refine((roll) => roll.keep <= roll.count, { message: "A roll keeps at most the dice it throws" })
             .optional(),
-          /** Typed in: `true` keeps each score's own bounds; an object bounds the base (1.105). */
+          /** Typed in: `true` keeps each score's own bounds; an object bounds the base (1.109). */
           manual: z
             .union([
               z.literal(true),
@@ -1007,7 +1007,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
         })
         .strict()
         .refine((methods) => Object.keys(methods).length > 0, { message: "An abilities step offers a method" }),
-      /** The method a new character starts on, until the player picks another (Capability API 1.82). */
+      /** The method a new character starts on, until the player picks another (Capability API 1.86). */
       default: z.enum(["pointBuy", "standardArray", "roll", "manual"]).optional(),
     })
     .strict(),
@@ -1035,11 +1035,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
     .object({
       ...builderStepBase,
       kind: z.literal("startingGear"),
-      /** Only gear the sheet fits is offered in legal-only mode (Capability API 1.104). */
+      /** Only gear the sheet fits is offered in legal-only mode (Capability API 1.108). */
       strict: z.literal(true).optional(),
     })
     .strict(),
-  /** Where the entries the picks grant from `catalog` are chosen (`grants.entries`, 1.86). */
+  /** Where the entries the picks grant from `catalog` are chosen (`grants.entries`, 1.90). */
   z.object({ ...builderStepBase, kind: z.literal("choices"), catalog: sheetId }).strict(),
 ]);
 
@@ -1133,11 +1133,11 @@ export const rulesetSheetSchema = z
       .strict()
       .default({ min: -20, max: 40 }),
     fields: z.array(rulesetFieldSchema).max(160).default([]),
-    /** Up to 240 (Capability API 1.83; 120 from 1.79, 60 before it). */
+    /** Up to 240 (Capability API 1.87; 120 from 1.83, 60 before it). */
     derived: z.array(rulesetDerivedSchema).max(RULESET_DERIVED_MAX).default([]),
     lists: z.array(listSchema).max(20).default([]),
     live: liveSchema.default({}),
-    /** A guided character builder beside the full form (Capability API 1.81). */
+    /** A guided character builder beside the full form (Capability API 1.85). */
     builder: sheetBuilderSchema.optional(),
   })
   .strict();
@@ -1538,7 +1538,7 @@ const catalogMechanicsObject = z
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
     amount: z.object(catalogAmountShape).strict().optional(),
-    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.78): 5e's
+    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.82): 5e's
      *  Second Wind heals 1d10 plus the fighter's level. Needs an amount. */
     amountAdd: rulesetValueRefSchema.optional(),
     damageType: promptSafeText(40).optional(),
@@ -2227,7 +2227,7 @@ const currencyUnitSchema = z
     id: sheetId,
     /** The coin's name for any number of them but one ("pennies"). */
     label: promptSafeText(40),
-    /** Its name for exactly one ("penny"), Capability API 1.84. `label` stands for one too without it. */
+    /** Its name for exactly one ("penny"), Capability API 1.88. `label` stands for one too without it. */
     one: promptSafeText(40).optional(),
     value: z.number().int().min(1).max(1_000_000),
   })
@@ -2532,7 +2532,7 @@ const itemAttackDistanceSchema = orItemStat(z.number().finite().min(0).max(10000
  */
 /** What an item adds to hit: the best of some `abilities`, a `skill`, the proficiency bonus where
  *  `proficiency` reads above 0 off the holder's sheet, a `bonus`, what `sheetBonus` reads off the
- *  holder's sheet (Capability API 1.90), and in a pool fight its own per-die `target`. A weapon's attack
+ *  holder's sheet (Capability API 1.94), and in a pool fight its own per-die `target`. A weapon's attack
  *  reads it, and so does an item's use that rolls to hit. */
 // Named, so the whole definition's type stays short enough to write down (the builder's rows do the same).
 const itemToHitValueRefSchema = rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>;
@@ -2545,14 +2545,14 @@ const itemToHitSchema = z
     /** A number read off the holder's sheet and added as it stands (whole numbers; a fraction is cut
      *  toward zero): what the holder brings to every weapon of a kind rather than what the weapon is,
      *  as 5e's Archery fighting style adds +2 to attacks with ranged weapons through a derived value
-     *  that is 2 for an archer and 0 for anyone else (Capability API 1.90). */
+     *  that is 2 for an archer and 0 for anyone else (Capability API 1.94). */
     sheetBonus: itemToHitValueRefSchema.optional(),
     target: orItemStat(z.number().int().min(1).max(100)).optional(),
   })
   .strict();
 
 /** A weapon's damage: its dice, the best of its abilities, a bonus, a type, and what its holder's sheet
- *  adds (1.92) or rerolls (1.93). Typed by name, so the definition's own type stays short enough to
+ *  adds (1.96) or rerolls (1.97). Typed by name, so the definition's own type stays short enough to
  *  write down. */
 const itemAttackDamageBaseSchema = z
   .object({
@@ -2561,14 +2561,14 @@ const itemAttackDamageBaseSchema = z
     bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
     type: orItemStat(promptSafeText(40)).optional(),
     /** A number read off the holder's sheet and added to the damage as it stands, as `toHit`'s is
-     *  (Capability API 1.92): 5e's Dueling +2 through a derived value. */
+     *  (Capability API 1.96): 5e's Dueling +2 through a derived value. */
     sheetBonus: itemToHitValueRefSchema.optional(),
     /** The sheet bonus counts only while the weapon is held in one hand: not a versatile weapon
      *  wielded two-handed (its hands are free for it) and not one that takes two of a slot. */
     oneHanded: z.literal(true).optional(),
     /** Read off the holder's sheet: damage dice at or below it are thrown again once, the new face
      *  standing, only while the weapon is wielded two-handed (a versatile weapon with its hands
-     *  free, or one that takes two of a slot) and only in a summed fight (Capability API 1.93):
+     *  free, or one that takes two of a slot) and only in a summed fight (Capability API 1.97):
      *  5e's Great Weapon Fighting through a derived value that is 2 for the style and 0 without. */
     rerollUpTo: itemToHitValueRefSchema.optional(),
   })
@@ -2676,7 +2676,7 @@ export const RULESET_ITEM_CHARGES_MAX = 100;
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
-    // A sheet value added to an amount is a catalog entry's (1.78): an item's use reads its own stats.
+    // A sheet value added to an amount is a catalog entry's (1.82): an item's use reads its own stats.
     amountAdd: true,
     cost: true,
     perCostStep: true,
@@ -2812,7 +2812,7 @@ const catalogItemSchema = z
   .strict();
 
 /** What a catalog entry gives a character when it is picked through the guided builder (Capability API
- *  1.81), and takes back when it is unpicked. The catalog picker ignores it. */
+ *  1.85), and takes back when it is unpicked. The catalog picker ignores it. */
 const catalogGrantsSchema = z
   .object({
     abilities: z
@@ -2826,10 +2826,10 @@ const catalogGrantsSchema = z
                 count: z.number().int().min(1).max(6),
                 amount: z.number().int().min(-20).max(20),
                 except: z.array(sheetId).max(20).optional(),
-                /** A score may be chosen more than once, `amount` each time (Capability API 1.88): count 2
+                /** A score may be chosen more than once, `amount` each time (Capability API 1.92): count 2
                  *  and amount 1 is +2 to one score or +1 to two, as an ability score improvement. */
                 repeat: z.boolean().optional(),
-                /** No score goes past this through the choice (Capability API 1.91): an ability score
+                /** No score goes past this through the choice (Capability API 1.95): an ability score
                  *  improvement's "you can't increase an ability score above 20 using this feature".
                  *  What other grants add counts first. */
                 upTo: z.number().int().min(1).max(99).optional(),
@@ -2855,7 +2855,7 @@ const catalogGrantsSchema = z
                 /** Any of them when left out. */
                 from: z.array(sheetId).min(1).max(120).optional(),
                 /** Only what the sheet already has at this tier or higher, from the picks or a lower
-                 *  choice (Capability API 1.100): 5e's Expertise, in two skills you are proficient in. */
+                 *  choice (Capability API 1.104): 5e's Expertise, in two skills you are proficient in. */
                 held: sheetId.optional(),
               })
               .strict(),
@@ -2872,7 +2872,7 @@ const catalogGrantsSchema = z
     sets: z.record(z.union([z.number().finite(), z.string().max(200), z.boolean()])).optional(),
     /** Entries of another catalog of rows for the player to choose, `count` of them, among those that
      *  match `filters` and, when given, are one of `ids` (a language of your choice, one of three
-     *  artisan's tools; Capability API 1.86). Chosen at the builder's `choices` step for that catalog,
+     *  artisan's tools; Capability API 1.90). Chosen at the builder's `choices` step for that catalog,
      *  and their rows go on the sheet. */
     entries: z
       .object({
@@ -2913,16 +2913,16 @@ const catalogEntrySchema = z
     creature: rulesetCreatureSchema.optional(),
     /** A thing to carry instead: it goes into Game Mode's inventory, not onto a sheet or into a fight. */
     item: catalogItemSchema.optional(),
-    /** What a pick through the guided builder gives (1.81). An entry that grants may write no rows. */
+    /** What a pick through the guided builder gives (1.85). An entry that grants may write no rows. */
     grants: catalogGrantsSchema.optional(),
-    /** A group this entry shares with others a builder step offers (Capability API 1.89): a step keeps
+    /** A group this entry shares with others a builder step offers (Capability API 1.93): a step keeps
      *  one pick of a group, so picking one drops the other ("a feat in place of an ability score
      *  improvement"). */
     exclusive: sheetId.optional(),
     /** Read off the sheet as it stands: a builder step offers this entry only while it reads above 0
-     *  (Capability API 1.94), as 5e offers a second class only when its prerequisites are met. A pick
+     *  (Capability API 1.98), as 5e offers a second class only when its prerequisites are met. A pick
      *  that later reads 0 counts for nothing and is kept. An entry of an `exclusive` group is read on
-     *  the sheet without the step's picks of that group (1.95). */
+     *  the sheet without the step's picks of that group (1.99). */
     offeredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
   })
   .strict()
@@ -3007,7 +3007,7 @@ const catalogSchema = z
       catalog.feeds === undefined &&
       !(catalog.entries?.length && catalog.entries.every((entry) => entry.grants && !entry.rows))
     ) {
-      // Only a catalog whose entries all just grant through the guided builder (1.81, a class) writes
+      // Only a catalog whose entries all just grant through the guided builder (1.85, a class) writes
       // no rows; an asset's entries are checked against no feeds when they are read.
       if (catalog.entries) {
         ctx.addIssue({
@@ -3188,7 +3188,7 @@ const combatAbilitySourceSchema = battleSkillsSchema.extend({
   toHit: rulesetValueRefSchema.optional(),
   /** The difficulty an entry's save is rolled against. */
   saveDifficulty: rulesetValueRefSchema.optional(),
-  /** A row's column selects its own spellcasting references (1.103); other rows keep the source's. */
+  /** A row's column selects its own spellcasting references (1.107); other rows keep the source's. */
   byColumn: (
     z
       .object({
@@ -3776,7 +3776,7 @@ const combatSchema = z
         /** What a critical hit does to the damage: roll the dice twice, or add their highest faces. */
         critical: z.enum(["double-dice", "max-dice", "none"]).default("none"),
         /** The lowest natural face of the attack die that is a critical, read off the attacker's sheet
-         *  (Capability API 1.76): 19 for a 5e Champion. The die's highest face when left out, or when
+         *  (Capability API 1.80): 19 for a 5e Champion. The die's highest face when left out, or when
          *  the sheet reads higher; never below 2. Needs `naturals.max: "critical"` and a single die. */
         criticalFrom: rulesetValueRefSchema.optional(),
       })
@@ -3894,7 +3894,7 @@ const combatSchema = z
         budget: sheetId,
         ability: z.enum(["full", "penalty-only"]).default("full"),
         /** Read off the fighter's sheet: above 0, that fighter's off hand keeps the full ability
-         *  whatever `ability` says (Capability API 1.92), as 5e's Two-Weapon Fighting style does. */
+         *  whatever `ability` says (Capability API 1.96), as 5e's Two-Weapon Fighting style does. */
         fullWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
       })
       .strict()
@@ -5334,7 +5334,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
   });
 
-  // The guided builder (1.81): its steps name this ruleset's own catalogs, fields, scores and skills.
+  // The guided builder (1.85): its steps name this ruleset's own catalogs, fields, scores and skills.
   if (sheet.builder) {
     const stepPath = (index: number) => ["sheet", "builder", "steps", index];
     unique(sheet.builder.steps, ["sheet", "builder", "steps"], "builder step");
@@ -7428,7 +7428,7 @@ function grantsIssues(
               : typeof value === "string";
     if (!fits) add([...path, "sets", id], `Field "${id}" cannot hold ${JSON.stringify(value)}`);
   }
-  // Entries to choose (1.86) are chosen at a `choices` step, which is what loads their catalog.
+  // Entries to choose (1.90) are chosen at a `choices` step, which is what loads their catalog.
   grants.entries?.choose.forEach((choice, index) => {
     const at = [...path, "entries", "choose", index];
     const hosted = sheet.builder?.steps.some((step) => step.kind === "choices" && step.catalog === choice.catalog);
@@ -7570,7 +7570,7 @@ export function rulesetCatalogEntryIssues(
     }
 
     // How many rows this entry writes into each list, because a row the ruleset keeps up to date is
-    // matched to its spec from a marked row on a sheet: the entry's only row there, or (1.87) one of
+    // matched to its spec from a marked row on a sheet: the entry's only row there, or (1.91) one of
     // several that each carry their own name in the list's name column.
     const rowsPerList = new Map<string, number>();
     for (const row of entry.rows ?? []) rowsPerList.set(row.list, (rowsPerList.get(row.list) ?? 0) + 1);

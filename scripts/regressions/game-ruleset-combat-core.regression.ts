@@ -922,7 +922,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.equal(eventsOf(flub.events, "damage").length, 0);
 }
 
-// ── A critical range off the sheet (Capability API 1.76) ──
+// ── A critical range off the sheet (Capability API 1.80) ──
 {
   // A Champion's sheet says 19: a natural 19 is a critical, with the critical's damage; without the
   // range it is a plain hit. A sheet reading past the die's top face is held to it.
@@ -1008,7 +1008,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   );
 }
 
-// ── A sheet value added to an amount (Capability API 1.78) ──
+// ── A sheet value added to an amount (Capability API 1.82) ──
 {
   // Mending Light adding the caster's level to its 1d8+4: the menu's action carries it in its flat.
   const added = {

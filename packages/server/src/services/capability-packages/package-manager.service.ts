@@ -504,7 +504,7 @@ function supportsEngineVersion(entry: CapabilityCatalogPackage, engineVersion: s
 /** Whether any row of these entries names a column the ruleset keeps up to date. Read structurally
  *  rather than parsed: the install gate looks at documents nothing has validated yet, and a shape it
  *  does not recognise is not its problem to report. */
-/** An entry with a scaled row beside any other row of its list, told apart by name (1.87): an older
+/** An entry with a scaled row beside any other row of its list, told apart by name (1.91): an older
  *  Engine refused a scaled row that was not its entry's only one there, scaled or not. */
 function entriesCarrySeveralScaledRows(entries: unknown): boolean {
   return (
@@ -1143,21 +1143,21 @@ const HONESTY_ISSUE =
   "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.78 or newer";
 
 const CRITICAL_RANGE_ISSUE =
-  "A ruleset whose attack roll reads a critical range off the sheet requires schemaVersion 2 and capabilityApi 1.76 or newer";
+  "A ruleset whose attack roll reads a critical range off the sheet requires schemaVersion 2 and capabilityApi 1.80 or newer";
 const MULTIPLY_ISSUE =
-  "A ruleset with a derived value that multiplies requires schemaVersion 2 and capabilityApi 1.77 or newer";
+  "A ruleset with a derived value that multiplies requires schemaVersion 2 and capabilityApi 1.81 or newer";
 const AMOUNT_ADD_ISSUE =
-  "A ruleset whose catalog entries add a sheet value to their amount requires schemaVersion 2 and capabilityApi 1.78 or newer";
+  "A ruleset whose catalog entries add a sheet value to their amount requires schemaVersion 2 and capabilityApi 1.82 or newer";
 
 const BUILDER_ISSUE =
-  "A ruleset with a guided builder, or catalog entries that grant through one, requires schemaVersion 2 and capabilityApi 1.81 or newer";
+  "A ruleset with a guided builder, or catalog entries that grant through one, requires schemaVersion 2 and capabilityApi 1.85 or newer";
 
-/** What a pick through the guided builder grants (1.81): `grants`, a new key on the strict entry. */
+/** What a pick through the guided builder grants (1.85): `grants`, a new key on the strict entry. */
 function entriesCarryGrants(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.grants !== undefined);
 }
 
-/** An item's to-hit that reads a bonus off its holder's sheet (1.90): `sheetBonus`, a new key on the
+/** An item's to-hit that reads a bonus off its holder's sheet (1.94): `sheetBonus`, a new key on the
  *  strict to-hit of a weapon's attack and of an item's use. */
 function entriesCarryToHitSheetBonus(entries: unknown): boolean {
   return (
@@ -1171,7 +1171,7 @@ function entriesCarryToHitSheetBonus(entries: unknown): boolean {
   );
 }
 
-/** A weapon's damage that reads a bonus off its holder's sheet (1.92): `sheetBonus` (and `oneHanded`),
+/** A weapon's damage that reads a bonus off its holder's sheet (1.96): `sheetBonus` (and `oneHanded`),
  *  new keys on the strict damage. */
 function entriesCarryDamageSheetBonus(entries: unknown): boolean {
   return (
@@ -1183,7 +1183,7 @@ function entriesCarryDamageSheetBonus(entries: unknown): boolean {
   );
 }
 
-/** A weapon's damage dice rerolled off the holder's sheet (1.93): `rerollUpTo`, a new key on the strict
+/** A weapon's damage dice rerolled off the holder's sheet (1.97): `rerollUpTo`, a new key on the strict
  *  damage. */
 function entriesCarryDamageReroll(entries: unknown): boolean {
   return (
@@ -1195,18 +1195,18 @@ function entriesCarryDamageReroll(entries: unknown): boolean {
   );
 }
 
-/** Entries a builder step offers only while the sheet says so (1.94): `offeredWhen`, a new key on the
+/** Entries a builder step offers only while the sheet says so (1.98): `offeredWhen`, a new key on the
  *  strict entry. */
 function entriesCarryOfferedWhen(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.offeredWhen !== undefined);
 }
 
-/** Entries a builder step keeps one of (1.89): `exclusive`, a new key on the strict entry. */
+/** Entries a builder step keeps one of (1.93): `exclusive`, a new key on the strict entry. */
 function entriesCarryExclusive(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
 }
 
-/** A skill or save choice that builds on training (1.100): `held`, a new key on the strict choice. */
+/** A skill or save choice that builds on training (1.104): `held`, a new key on the strict choice. */
 function entriesCarryHeldChoices(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1217,7 +1217,7 @@ function entriesCarryHeldChoices(entries: unknown): boolean {
   );
 }
 
-/** A score choice with a cap (1.91): `upTo`, a new key on the strict choice. */
+/** A score choice with a cap (1.95): `upTo`, a new key on the strict choice. */
 function entriesCarryChoiceCaps(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1228,7 +1228,7 @@ function entriesCarryChoiceCaps(entries: unknown): boolean {
   );
 }
 
-/** A score choice that may name one score twice (1.88): `repeat`, a new key on the strict choice. */
+/** A score choice that may name one score twice (1.92): `repeat`, a new key on the strict choice. */
 function entriesCarryRepeatChoices(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1239,14 +1239,14 @@ function entriesCarryRepeatChoices(entries: unknown): boolean {
   );
 }
 
-/** Entries of another catalog to choose (1.86): `entries`, a new key on the strict grants. */
+/** Entries of another catalog to choose (1.90): `entries`, a new key on the strict grants. */
 function entriesCarryEntryChoices(entries: unknown): boolean {
   return (
     Array.isArray(entries) && entries.some((entry) => plainRecord(plainRecord(entry)?.grants)?.entries !== undefined)
   );
 }
 
-/** A sheet value added to a catalog entry's amount (1.78): `amountAdd`, a new key on strict mechanics. */
+/** A sheet value added to a catalog entry's amount (1.82): `amountAdd`, a new key on strict mechanics. */
 function entriesCarryAmountAdd(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1254,7 +1254,7 @@ function entriesCarryAmountAdd(entries: unknown): boolean {
   );
 }
 
-/** Seller honesty's item keys (1.74): `risky` and `passesFor`, new keys on the strict item. */
+/** Seller honesty's item keys (1.78): `risky` and `passesFor`, new keys on the strict item. */
 function entriesCarryHonesty(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1882,27 +1882,27 @@ export function getCapabilityPackageInstallIssue(
   // Seller honesty, 1.78 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
   const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
   const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
-  if (!declaresApi(74) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
-  // A critical range off the sheet, 1.76: a new key on the strict attack roll.
-  if (!declaresApi(76) && plainRecord(plainRecord(combatBlock)?.attackRoll)?.criticalFrom !== undefined) {
+  if (!declaresApi(78) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
+  // A critical range off the sheet, 1.80: a new key on the strict attack roll.
+  if (!declaresApi(80) && plainRecord(plainRecord(combatBlock)?.attackRoll)?.criticalFrom !== undefined) {
     return CRITICAL_RANGE_ISSUE;
   }
-  // A derived value that multiplies, 1.77: a new op.
+  // A derived value that multiplies, 1.81: a new op.
   const derivedValues = plainRecord(ruleset?.sheet)?.derived;
   if (
-    !declaresApi(77) &&
+    !declaresApi(81) &&
     Array.isArray(derivedValues) &&
     derivedValues.some((entry) => plainRecord(entry)?.op === "multiply")
   ) {
     return MULTIPLY_ISSUE;
   }
-  // A sheet value added to an amount, 1.78: a new key on strict mechanics, inline or in a catalog file.
-  if (!declaresApi(78) && carriesAmountAdd) return AMOUNT_ADD_ISSUE;
-  // More derived values than an older Engine reads, 1.79: it refused a sheet with more than 60.
-  if (!declaresApi(79) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_179) {
-    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_179} derived values requires schemaVersion 2 and capabilityApi 1.79 or newer`;
+  // A sheet value added to an amount, 1.82: a new key on strict mechanics, inline or in a catalog file.
+  if (!declaresApi(82) && carriesAmountAdd) return AMOUNT_ADD_ISSUE;
+  // More derived values than an older Engine reads, 1.83: it refused a sheet with more than 60.
+  if (!declaresApi(83) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_179) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_179} derived values requires schemaVersion 2 and capabilityApi 1.83 or newer`;
   }
-  // A coin's name for one, 1.84: a new key on the strict currency unit.
+  // A coin's name for one, 1.88: a new key on the strict currency unit.
   const currencies = plainRecord(ruleset?.items)?.currencies;
   const singular =
     Array.isArray(currencies) &&
@@ -1910,78 +1910,78 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
-  // An item's to-hit read off its holder's sheet, 1.90: a new key on the strict to-hit.
-  if (!declaresApi(90) && carriesSheetBonus) {
-    return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
+  // An item's to-hit read off its holder's sheet, 1.94: a new key on the strict to-hit.
+  if (!declaresApi(94) && carriesSheetBonus) {
+    return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.94 or newer";
   }
-  // Fields shown by the sheet or held to a combined maximum, 1.102: new keys on the strict step.
+  // Fields shown by the sheet or held to a combined maximum, 1.106: new keys on the strict step.
   const fieldsSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
   if (
-    !declaresApi(102) &&
+    !declaresApi(106) &&
     Array.isArray(fieldsSteps) &&
     fieldsSteps.some((step) => {
       const fieldsStep = plainRecord(step);
       return fieldsStep?.kind === "fields" && (fieldsStep.shownWhen !== undefined || fieldsStep.total !== undefined);
     })
   ) {
-    return "A ruleset whose builder steps show fields only while the sheet allows, or hold fields to a total, requires schemaVersion 2 and capabilityApi 1.102 or newer";
+    return "A ruleset whose builder steps show fields only while the sheet allows, or hold fields to a total, requires schemaVersion 2 and capabilityApi 1.106 or newer";
   }
-  // Each class's spellcasting references and the builder rows that name it, 1.103.
+  // Each class's spellcasting references and the builder rows that name it, 1.107.
   const abilitySources = plainRecord(combatBlock)?.abilities;
   if (
-    !declaresApi(103) &&
+    !declaresApi(107) &&
     ((Array.isArray(fieldsSteps) && fieldsSteps.some((step) => plainRecord(step)?.stamp !== undefined)) ||
       (Array.isArray(abilitySources) && abilitySources.some((source) => plainRecord(source)?.byColumn !== undefined)))
   ) {
-    return "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.103 or newer";
+    return "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.107 or newer";
   }
-  // Starting gear held to the sheet, 1.104: a new key on the strict step.
+  // Starting gear held to the sheet, 1.108: a new key on the strict step.
   if (
-    !declaresApi(104) &&
+    !declaresApi(108) &&
     Array.isArray(fieldsSteps) &&
     fieldsSteps.some((step) => {
       const gearStep = plainRecord(step);
       return gearStep?.kind === "startingGear" && gearStep.strict !== undefined;
     })
   ) {
-    return "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.104 or newer";
+    return "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.108 or newer";
   }
-  // A skill or save choice among what is already trained, 1.100: a new key on the strict choice.
-  if (!declaresApi(100) && carriesHeldChoices) {
-    return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.100 or newer";
+  // A skill or save choice among what is already trained, 1.104: a new key on the strict choice.
+  if (!declaresApi(104) && carriesHeldChoices) {
+    return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.104 or newer";
   }
-  // A catalog entry a builder step offers only while the sheet says so, 1.94: a new key on the strict entry.
-  if (!declaresApi(94) && carriesOfferedWhen) {
-    return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.94 or newer";
+  // A catalog entry a builder step offers only while the sheet says so, 1.98: a new key on the strict entry.
+  if (!declaresApi(98) && carriesOfferedWhen) {
+    return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.98 or newer";
   }
-  // A weapon's damage dice rerolled off the holder's sheet, 1.93: a new key on the strict damage.
-  if (!declaresApi(93) && carriesDamageReroll) {
-    return "A ruleset whose weapons reroll low damage dice requires schemaVersion 2 and capabilityApi 1.93 or newer";
+  // A weapon's damage dice rerolled off the holder's sheet, 1.97: a new key on the strict damage.
+  if (!declaresApi(97) && carriesDamageReroll) {
+    return "A ruleset whose weapons reroll low damage dice requires schemaVersion 2 and capabilityApi 1.97 or newer";
   }
-  // A weapon's damage off the holder's sheet, and an off hand kept full by the sheet, 1.92: new keys
+  // A weapon's damage off the holder's sheet, and an off hand kept full by the sheet, 1.96: new keys
   // on the strict damage and the strict combat.offHand.
   const fullWhen = plainRecord(plainRecord(plainRecord(ruleset?.combat)?.offHand))?.fullWhen;
-  if (!declaresApi(92) && (carriesDamageSheetBonus || fullWhen !== undefined)) {
-    return "A ruleset whose weapons add damage off the sheet, or whose off hand reads the sheet, requires schemaVersion 2 and capabilityApi 1.92 or newer";
+  if (!declaresApi(96) && (carriesDamageSheetBonus || fullWhen !== undefined)) {
+    return "A ruleset whose weapons add damage off the sheet, or whose off hand reads the sheet, requires schemaVersion 2 and capabilityApi 1.96 or newer";
   }
-  // A score choice with a cap, 1.91: a new key on the strict choice.
-  if (!declaresApi(91) && carriesChoiceCaps) {
-    return "A ruleset whose catalog entry offers a score choice with a cap requires schemaVersion 2 and capabilityApi 1.91 or newer";
+  // A score choice with a cap, 1.95: a new key on the strict choice.
+  if (!declaresApi(95) && carriesChoiceCaps) {
+    return "A ruleset whose catalog entry offers a score choice with a cap requires schemaVersion 2 and capabilityApi 1.95 or newer";
   }
-  // Entries a builder step keeps one of, 1.89: a new key on the strict entry.
-  if (!declaresApi(89) && carriesExclusive) {
-    return "A ruleset whose catalog entries are exclusive of each other requires schemaVersion 2 and capabilityApi 1.89 or newer";
+  // Entries a builder step keeps one of, 1.93: a new key on the strict entry.
+  if (!declaresApi(93) && carriesExclusive) {
+    return "A ruleset whose catalog entries are exclusive of each other requires schemaVersion 2 and capabilityApi 1.93 or newer";
   }
-  // A score choice that may name one score twice, 1.88: a new key on the strict choice.
-  if (!declaresApi(88) && carriesRepeatChoices) {
-    return "A ruleset whose catalog entry offers a score choice that repeats requires schemaVersion 2 and capabilityApi 1.88 or newer";
+  // A score choice that may name one score twice, 1.92: a new key on the strict choice.
+  if (!declaresApi(92) && carriesRepeatChoices) {
+    return "A ruleset whose catalog entry offers a score choice that repeats requires schemaVersion 2 and capabilityApi 1.92 or newer";
   }
-  // Several scaled rows for one list in one entry, told apart by name, 1.87: an older Engine refused it.
-  if (!declaresApi(87) && carriesSeveralScaled) {
-    return "A ruleset whose catalog entry scales a row beside others of its list requires schemaVersion 2 and capabilityApi 1.87 or newer";
+  // Several scaled rows for one list in one entry, told apart by name, 1.91: an older Engine refused it.
+  if (!declaresApi(91) && carriesSeveralScaled) {
+    return "A ruleset whose catalog entry scales a row beside others of its list requires schemaVersion 2 and capabilityApi 1.91 or newer";
   }
   const countSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
-  // Bigger catalog steps and bounded manual base scores, 1.105: an older Engine refused either.
+  // Bigger catalog steps and bounded manual base scores, 1.109: an older Engine refused either.
   const biggerOrBounded =
     Array.isArray(countSteps) &&
     countSteps.some((value) => {
@@ -1992,37 +1992,37 @@ export function getCapabilityPackageInstallIssue(
         (step?.kind === "abilities" && plainRecord(plainRecord(step.methods)?.manual) !== undefined)
       );
     });
-  if (!declaresApi(105) && biggerOrBounded) {
-    return "A ruleset whose builder catalog step asks for or takes more than 20 entries, or bounds manual scores, requires schemaVersion 2 and capabilityApi 1.105 or newer";
+  if (!declaresApi(109) && biggerOrBounded) {
+    return "A ruleset whose builder catalog step asks for or takes more than 20 entries, or bounds manual scores, requires schemaVersion 2 and capabilityApi 1.109 or newer";
   }
-  // More derived values again, 1.106: an older Engine refused a sheet with more than 240.
-  if (!declaresApi(106) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1106) {
-    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_1106} derived values requires schemaVersion 2 and capabilityApi 1.106 or newer`;
+  // More derived values again, 1.110: an older Engine refused a sheet with more than 240.
+  if (!declaresApi(110) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1106) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_1106} derived values requires schemaVersion 2 and capabilityApi 1.110 or newer`;
   }
-  // More builder steps, 1.107: an older Engine refused a builder with more than 16.
-  if (!declaresApi(107) && Array.isArray(countSteps) && countSteps.length > RULESET_BUILDER_STEPS_MAX_BEFORE_1107) {
-    return `A ruleset with more than ${RULESET_BUILDER_STEPS_MAX_BEFORE_1107} builder steps requires schemaVersion 2 and capabilityApi 1.107 or newer`;
+  // More builder steps, 1.111: an older Engine refused a builder with more than 16.
+  if (!declaresApi(111) && Array.isArray(countSteps) && countSteps.length > RULESET_BUILDER_STEPS_MAX_BEFORE_1107) {
+    return `A ruleset with more than ${RULESET_BUILDER_STEPS_MAX_BEFORE_1107} builder steps requires schemaVersion 2 and capabilityApi 1.111 or newer`;
   }
-  // Entries of a catalog to choose, 1.86: a new key on the strict grants and a new step kind.
+  // Entries of a catalog to choose, 1.90: a new key on the strict grants and a new step kind.
   const choosing =
     carriesEntryChoices ||
     (Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.kind === "choices"));
-  if (!declaresApi(86) && choosing) {
-    return "A ruleset whose builder offers catalog entries to choose requires schemaVersion 2 and capabilityApi 1.86 or newer";
+  if (!declaresApi(90) && choosing) {
+    return "A ruleset whose builder offers catalog entries to choose requires schemaVersion 2 and capabilityApi 1.90 or newer";
   }
-  // A catalog step's count read off the sheet, 1.85: a new key on the strict step.
+  // A catalog step's count read off the sheet, 1.89: a new key on the strict step.
   const counted = Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.countFrom !== undefined);
-  if (!declaresApi(85) && counted) {
-    return "A ruleset whose builder reads a step's count off the sheet requires schemaVersion 2 and capabilityApi 1.85 or newer";
+  if (!declaresApi(89) && counted) {
+    return "A ruleset whose builder reads a step's count off the sheet requires schemaVersion 2 and capabilityApi 1.89 or newer";
   }
-  if (!declaresApi(84) && singular) {
-    return "A ruleset whose coins name one of themselves requires schemaVersion 2 and capabilityApi 1.84 or newer";
+  if (!declaresApi(88) && singular) {
+    return "A ruleset whose coins name one of themselves requires schemaVersion 2 and capabilityApi 1.88 or newer";
   }
-  // More derived values again, 1.83: an older Engine refused a sheet with more than 120.
-  if (!declaresApi(83) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_183) {
-    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_183} derived values requires schemaVersion 2 and capabilityApi 1.83 or newer`;
+  // More derived values again, 1.87: an older Engine refused a sheet with more than 120.
+  if (!declaresApi(87) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_183) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_183} derived values requires schemaVersion 2 and capabilityApi 1.87 or newer`;
   }
-  // A list column a player fills by rolling, 1.80: a new key on the strict column.
+  // A list column a player fills by rolling, 1.84: a new key on the strict column.
   const lists = plainRecord(ruleset?.sheet)?.lists;
   const rolled =
     Array.isArray(lists) &&
@@ -2030,22 +2030,22 @@ export function getCapabilityPackageInstallIssue(
       const columns = plainRecord(list)?.columns;
       return Array.isArray(columns) && columns.some((column) => plainRecord(column)?.roll !== undefined);
     });
-  if (!declaresApi(80) && rolled) {
-    return "A ruleset with a list column filled by a roll requires schemaVersion 2 and capabilityApi 1.80 or newer";
+  if (!declaresApi(84) && rolled) {
+    return "A ruleset with a list column filled by a roll requires schemaVersion 2 and capabilityApi 1.84 or newer";
   }
-  // The guided builder, 1.81: a new key on the strict sheet, and `grants` on the strict entry.
+  // The guided builder, 1.85: a new key on the strict sheet, and `grants` on the strict entry.
   // A catalog of rows that feeds no list holds only entries that grant, which `grants` already gates.
-  if (!declaresApi(81) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants)) {
+  if (!declaresApi(85) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants)) {
     return BUILDER_ISSUE;
   }
-  // A builder step's starting method and a catalog step's limit by a sheet value, 1.82: new keys on the
+  // A builder step's starting method and a catalog step's limit by a sheet value, 1.86: new keys on the
   // strict steps.
   const builderSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
   const safer =
     Array.isArray(builderSteps) &&
     builderSteps.some((step) => plainRecord(step)?.default !== undefined || plainRecord(step)?.upTo !== undefined);
-  if (!declaresApi(82) && safer) {
-    return "A ruleset whose builder starts on a method or limits a step by a sheet value requires schemaVersion 2 and capabilityApi 1.82 or newer";
+  if (!declaresApi(86) && safer) {
+    return "A ruleset whose builder starts on a method or limits a step by a sheet value requires schemaVersion 2 and capabilityApi 1.86 or newer";
   }
   return null;
 }

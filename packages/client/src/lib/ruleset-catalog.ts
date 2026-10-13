@@ -484,7 +484,7 @@ export type CatalogMechanicsLabels = {
   /** Action-economy budget id to the name the ruleset gives it, for the entries that hand a budget
    *  back or buy a standard action with one. Empty for a ruleset that resolves no combat. */
   budgets: Readonly<Record<string, string>>;
-  /** A sheet value by the ruleset's own name, for an amount that adds one (1.78). */
+  /** A sheet value by the ruleset's own name, for an amount that adds one (1.82). */
   value?: (ref: RulesetValueRef) => string;
 };
 

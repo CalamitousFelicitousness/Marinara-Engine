@@ -155,9 +155,9 @@ export async function avatarsRoutes(app: FastifyInstance) {
       return reply.send({ avatarPath: `${avatarPath}?v=${Date.now()}` });
     } catch (err) {
       logger.warn(err, '[character-tracker] Failed to generate a portrait for "%s"', body.data.name);
-      return reply
-        .status(err instanceof TrackerPortraitConflictError ? 409 : 502)
-        .send({ error: err instanceof Error ? err.message : "Portrait generation failed" });
+      // Provider and file errors stay in the log; they can carry upstream text or local paths.
+      if (err instanceof TrackerPortraitConflictError) return reply.status(409).send({ error: err.message });
+      return reply.status(502).send({ error: "Portrait generation failed. The server log has the details." });
     }
   });
 }

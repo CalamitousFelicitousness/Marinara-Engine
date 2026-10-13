@@ -223,6 +223,7 @@ try {
   const failed = await app.inject({ method: "POST", url: portraitUrl, payload: { ...npc, includeOutfit: true } });
   failImages = false;
   assert.equal(failed.statusCode, 502, failed.body);
+  assert.doesNotMatch(failed.body, /Image service down/, "the provider's own error text stays in the server log");
   assert.equal(readFileSync(portraitFile, "utf8"), "old portrait", "a failed portrait keeps the old one");
 
   // While a portrait is being made, a second request for it is refused (no second paid image),

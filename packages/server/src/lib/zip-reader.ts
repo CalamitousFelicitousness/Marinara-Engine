@@ -3,8 +3,8 @@
 // ──────────────────────────────────────────────
 // Agent packages, custom Agent repositories, .charx cards and .marinara packages are read through
 // this module. It accepts what common tools write (stored and deflated entries, data descriptors,
-// ZIP64 records) and refuses an archive whose records disagree with each other, so the size an entry
-// declares is the size a caller gets back. Every read names a byte limit.
+// ZIP64 records, padding after the archive) and refuses an archive whose records disagree with each
+// other, so the size an entry declares is the size a caller gets back. Every read names a byte limit.
 import { posix } from "node:path";
 import { crc32, inflateRawSync } from "node:zlib";
 
@@ -76,14 +76,23 @@ function readU64(buffer: Buffer, offset: number, message: string): number {
   return Number(value);
 }
 
-/** The one end record that closes the file exactly. A comment that ends somewhere else, or two
- *  records that both could, leave the archive without a single meaning. */
+/** Zero bytes and line breaks, which archiving and transfer tools can leave after the end record. */
+function isPadding(byte: number): boolean {
+  return byte === 0x00 || byte === 0x0a || byte === 0x0d;
+}
+
+/** The one end record that closes the file, with nothing or only padding after its comment. Two
+ *  records that could close it, or other bytes after it, leave the archive without a single meaning. */
 function findEndRecord(buffer: Buffer): number {
   const last = buffer.length - END_SIZE;
+  const first = Math.max(0, last - MAX_COMMENT_LENGTH);
+  let paddingStart = buffer.length;
+  while (paddingStart > first && isPadding(buffer[paddingStart - 1]!)) paddingStart -= 1;
   let found = -1;
-  for (let offset = last; offset >= Math.max(0, last - MAX_COMMENT_LENGTH); offset -= 1) {
+  for (let offset = last; offset >= first; offset -= 1) {
     if (buffer[offset] !== 0x50 || buffer.readUInt32LE(offset) !== END_SIGNATURE) continue;
-    if (offset + END_SIZE + buffer.readUInt16LE(offset + 20) !== buffer.length) continue;
+    const recordEnd = offset + END_SIZE + buffer.readUInt16LE(offset + 20);
+    if (recordEnd > buffer.length || recordEnd < paddingStart) continue;
     if (found !== -1) refuse("The ZIP archive has more than one end record");
     found = offset;
   }
@@ -176,130 +185,160 @@ function descriptorLength(
   return null;
 }
 
-export function openZipArchive(buffer: Buffer): ZipArchive {
+/** One central directory record, checked against the local header it points to: the entry it
+ *  describes, where its bytes lie, and where the next record starts. */
+function readCentralRecord(buffer: Buffer, cursor: number, directoryOffset: number, directoryEnd: number) {
+  if (cursor + CENTRAL_SIZE > directoryEnd || buffer.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) {
+    refuse(FILE_LIST_DAMAGED);
+  }
+  const nameLength = buffer.readUInt16LE(cursor + 28);
+  const extraLength = buffer.readUInt16LE(cursor + 30);
+  const next = cursor + CENTRAL_SIZE + nameLength + extraLength + buffer.readUInt16LE(cursor + 32);
+  if (next > directoryEnd) refuse(FILE_LIST_DAMAGED);
+
+  const flags = buffer.readUInt16LE(cursor + 8);
+  const method = buffer.readUInt16LE(cursor + 10);
+  const crc = buffer.readUInt32LE(cursor + 16);
+  let compressedSize = buffer.readUInt32LE(cursor + 20);
+  let size = buffer.readUInt32LE(cursor + 24);
+  let diskStart = buffer.readUInt16LE(cursor + 34);
+  const attr = buffer.readUInt32LE(cursor + 38);
+  let localOffset = buffer.readUInt32LE(cursor + 42);
+  const nameBytes = buffer.subarray(cursor + CENTRAL_SIZE, cursor + CENTRAL_SIZE + nameLength);
+  const name = nameBytes.toString("utf8");
+
+  // ZIP64 values appear only for the fields whose classic value is all ones, in this order.
+  const zip64 = findExtraField(
+    buffer.subarray(cursor + CENTRAL_SIZE + nameLength, cursor + CENTRAL_SIZE + nameLength + extraLength),
+    ZIP64_EXTRA_FIELD,
+  );
+  if (zip64) {
+    let offset = 0;
+    const take = (bytes: 4 | 8) => {
+      if (offset + bytes > zip64.length) refuse(FILE_LIST_DAMAGED);
+      const value = bytes === 8 ? readU64(zip64, offset, FILE_LIST_DAMAGED) : zip64.readUInt32LE(offset);
+      offset += bytes;
+      return value;
+    };
+    if (size === U32_MAX) size = take(8);
+    if (compressedSize === U32_MAX) compressedSize = take(8);
+    if (localOffset === U32_MAX) localOffset = take(8);
+    if (diskStart === U16_MAX) diskStart = take(4);
+  }
+  if (diskStart !== 0) refuse(SPLIT_ARCHIVE);
+
+  // The local header must sit where the central directory says and describe the same file.
+  const mismatch: () => never = () =>
+    refuse(`The ZIP archive's file list does not match its contents at ${label(name)}`);
+  if (localOffset + LOCAL_SIZE > directoryOffset || buffer.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) {
+    mismatch();
+  }
+  const localFlags = buffer.readUInt16LE(localOffset + 6);
+  const localNameLength = buffer.readUInt16LE(localOffset + 26);
+  const dataStart = localOffset + LOCAL_SIZE + localNameLength + buffer.readUInt16LE(localOffset + 28);
+  const dataEnd = dataStart + compressedSize;
+  if (
+    buffer.readUInt16LE(localOffset + 8) !== method ||
+    dataEnd > directoryOffset ||
+    !buffer.subarray(localOffset + LOCAL_SIZE, localOffset + LOCAL_SIZE + localNameLength).equals(nameBytes)
+  ) {
+    mismatch();
+  }
+  let regionEnd = dataEnd;
+  if ((flags | localFlags) & DESCRIPTOR_FLAG) {
+    const descriptor = descriptorLength(buffer, dataEnd, directoryOffset, crc, compressedSize, size);
+    if (descriptor === null) mismatch();
+    regionEnd += descriptor;
+  }
+  const encrypted = ((flags | localFlags) & ENCRYPTED_FLAGS) !== 0;
+  if (method === STORED && !encrypted && compressedSize !== size) {
+    refuse(`The ZIP archive gives two different sizes for ${label(name)}`);
+  }
+  return { name, attr, crc, method, compressedSize, size, dataStart, dataEnd, encrypted, localOffset, regionEnd, next };
+}
+
+function createEntry(buffer: Buffer, record: ReturnType<typeof readCentralRecord>): ZipEntry {
+  const { name, size, crc, method, compressedSize, dataStart, dataEnd, encrypted } = record;
+  const isDirectory = name.endsWith("/") || name.endsWith("\\");
+  return {
+    entryName: name,
+    isDirectory,
+    size,
+    attr: record.attr,
+    read(maxBytes: number): Buffer {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError("A ZIP read needs a byte limit");
+      if (isDirectory) return Buffer.alloc(0);
+      if (size > maxBytes) refuse(`${label(name)} is too large`);
+      if (encrypted) refuse(`${label(name)} is encrypted, which is not supported`);
+      const compressed = buffer.subarray(dataStart, dataEnd);
+      let data: Buffer;
+      if (method === STORED) {
+        data = Buffer.from(compressed);
+      } else if (method === DEFLATED) {
+        try {
+          // Inflation stops at the declared size; a longer stream fails here instead of growing.
+          data =
+            size === 0 && compressedSize === 0
+              ? Buffer.alloc(0)
+              : inflateRawSync(compressed, { maxOutputLength: Math.max(size, 1) });
+        } catch {
+          refuse(`${label(name)} is damaged`);
+        }
+      } else {
+        refuse(`${label(name)} uses a compression method that is not supported`);
+      }
+      if (data.length !== size || crc32(data) !== crc) refuse(`${label(name)} is damaged`);
+      return data;
+    },
+  };
+}
+
+/** A caller's existing limit on how many entries an archive may hold, with the caller's own message. */
+export interface ZipEntryBudget {
+  maxEntries: number;
+  tooManyEntries: string;
+}
+
+/** Check the whole archive and index its entries. With a budget, an archive whose end record declares
+ *  more entries than it allows is refused before the file list is read. */
+export function openZipArchive(buffer: Buffer, budget?: ZipEntryBudget): ZipArchive {
   const { entryCount, directoryOffset, directorySize } = readDirectoryLayout(buffer, findEndRecord(buffer));
+  if (budget && entryCount > budget.maxEntries) refuse(budget.tooManyEntries);
   const directoryEnd = directoryOffset + directorySize;
-  const entries: ZipEntry[] = [];
-  const byName = new Map<string, ZipEntry>();
-  const regions: Array<{ start: number; end: number }> = [];
+  // Only each entry's name and record position are kept, and an entry is built when a caller asks
+  // for it, so indexing a long file list takes less memory than the archive itself.
+  const recordAt = new Map<string, number>();
+  const starts = new Float64Array(entryCount);
+  const ends = new Float64Array(entryCount);
 
   let cursor = directoryOffset;
   for (let index = 0; index < entryCount; index += 1) {
-    if (cursor + CENTRAL_SIZE > directoryEnd || buffer.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) {
-      refuse(FILE_LIST_DAMAGED);
-    }
-    const nameLength = buffer.readUInt16LE(cursor + 28);
-    const extraLength = buffer.readUInt16LE(cursor + 30);
-    const next = cursor + CENTRAL_SIZE + nameLength + extraLength + buffer.readUInt16LE(cursor + 32);
-    if (next > directoryEnd) refuse(FILE_LIST_DAMAGED);
-
-    const flags = buffer.readUInt16LE(cursor + 8);
-    const method = buffer.readUInt16LE(cursor + 10);
-    const crc = buffer.readUInt32LE(cursor + 16);
-    let compressedSize = buffer.readUInt32LE(cursor + 20);
-    let size = buffer.readUInt32LE(cursor + 24);
-    let diskStart = buffer.readUInt16LE(cursor + 34);
-    const attr = buffer.readUInt32LE(cursor + 38);
-    let localOffset = buffer.readUInt32LE(cursor + 42);
-    const nameBytes = buffer.subarray(cursor + CENTRAL_SIZE, cursor + CENTRAL_SIZE + nameLength);
-    const name = nameBytes.toString("utf8");
-
-    // ZIP64 values appear only for the fields whose classic value is all ones, in this order.
-    const zip64 = findExtraField(
-      buffer.subarray(cursor + CENTRAL_SIZE + nameLength, cursor + CENTRAL_SIZE + nameLength + extraLength),
-      ZIP64_EXTRA_FIELD,
-    );
-    if (zip64) {
-      let offset = 0;
-      const take = (bytes: 4 | 8) => {
-        if (offset + bytes > zip64.length) refuse(FILE_LIST_DAMAGED);
-        const value = bytes === 8 ? readU64(zip64, offset, FILE_LIST_DAMAGED) : zip64.readUInt32LE(offset);
-        offset += bytes;
-        return value;
-      };
-      if (size === U32_MAX) size = take(8);
-      if (compressedSize === U32_MAX) compressedSize = take(8);
-      if (localOffset === U32_MAX) localOffset = take(8);
-      if (diskStart === U16_MAX) diskStart = take(4);
-    }
-    if (diskStart !== 0) refuse(SPLIT_ARCHIVE);
-    if (byName.has(name)) refuse(`The ZIP archive lists ${label(name)} more than once`);
-
-    // The local header must sit where the central directory says and describe the same file.
-    const mismatch: () => never = () =>
-      refuse(`The ZIP archive's file list does not match its contents at ${label(name)}`);
-    if (localOffset + LOCAL_SIZE > directoryOffset || buffer.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) {
-      mismatch();
-    }
-    const localFlags = buffer.readUInt16LE(localOffset + 6);
-    const localNameLength = buffer.readUInt16LE(localOffset + 26);
-    const dataStart = localOffset + LOCAL_SIZE + localNameLength + buffer.readUInt16LE(localOffset + 28);
-    const dataEnd = dataStart + compressedSize;
-    if (
-      buffer.readUInt16LE(localOffset + 8) !== method ||
-      dataEnd > directoryOffset ||
-      !buffer.subarray(localOffset + LOCAL_SIZE, localOffset + LOCAL_SIZE + localNameLength).equals(nameBytes)
-    ) {
-      mismatch();
-    }
-    let regionEnd = dataEnd;
-    if ((flags | localFlags) & DESCRIPTOR_FLAG) {
-      const descriptor = descriptorLength(buffer, dataEnd, directoryOffset, crc, compressedSize, size);
-      if (descriptor === null) mismatch();
-      regionEnd += descriptor;
-    }
-    const encrypted = ((flags | localFlags) & ENCRYPTED_FLAGS) !== 0;
-    if (method === STORED && !encrypted && compressedSize !== size) {
-      refuse(`The ZIP archive gives two different sizes for ${label(name)}`);
-    }
-    regions.push({ start: localOffset, end: regionEnd });
-
-    const isDirectory = name.endsWith("/") || name.endsWith("\\");
-    const entry: ZipEntry = {
-      entryName: name,
-      isDirectory,
-      size,
-      attr,
-      read(maxBytes: number): Buffer {
-        if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError("A ZIP read needs a byte limit");
-        if (isDirectory) return Buffer.alloc(0);
-        if (size > maxBytes) refuse(`${label(name)} is too large`);
-        if (encrypted) refuse(`${label(name)} is encrypted, which is not supported`);
-        const compressed = buffer.subarray(dataStart, dataEnd);
-        let data: Buffer;
-        if (method === STORED) {
-          data = Buffer.from(compressed);
-        } else if (method === DEFLATED) {
-          try {
-            // Inflation stops at the declared size; a longer stream fails here instead of growing.
-            data =
-              size === 0 && compressedSize === 0
-                ? Buffer.alloc(0)
-                : inflateRawSync(compressed, { maxOutputLength: Math.max(size, 1) });
-          } catch {
-            refuse(`${label(name)} is damaged`);
-          }
-        } else {
-          refuse(`${label(name)} uses a compression method that is not supported`);
-        }
-        if (data.length !== size || crc32(data) !== crc) refuse(`${label(name)} is damaged`);
-        return data;
-      },
-    };
-    entries.push(entry);
-    byName.set(name, entry);
-    cursor = next;
+    const record = readCentralRecord(buffer, cursor, directoryOffset, directoryEnd);
+    if (recordAt.has(record.name)) refuse(`The ZIP archive lists ${label(record.name)} more than once`);
+    recordAt.set(record.name, cursor);
+    starts[index] = record.localOffset;
+    ends[index] = record.regionEnd;
+    cursor = record.next;
   }
   if (cursor !== directoryEnd) refuse(FILE_LIST_DAMAGED);
 
-  // No two entries may share bytes: each one's header, data and descriptor stand alone.
-  regions.sort((left, right) => left.start - right.start);
-  for (let index = 1; index < regions.length; index += 1) {
-    if (regions[index]!.start < regions[index - 1]!.end) refuse(OVERLAPPING_FILES);
+  // No two entries may share bytes: each one's header, data and descriptor stand alone. Separate
+  // regions keep one order whether sorted by start or by end, so with both lists sorted, each region
+  // must start at or after the end of the one before it.
+  starts.sort();
+  ends.sort();
+  for (let index = 1; index < entryCount; index += 1) {
+    if (starts[index]! < ends[index - 1]!) refuse(OVERLAPPING_FILES);
   }
 
+  const entryAt = (offset: number) =>
+    createEntry(buffer, readCentralRecord(buffer, offset, directoryOffset, directoryEnd));
+  let entries: ZipEntry[] | undefined;
   return {
-    getEntries: () => entries,
-    getEntry: (name: string) => (name ? (byName.get(posix.normalize(name)) ?? null) : null),
+    getEntries: () => (entries ??= Array.from(recordAt.values(), entryAt)),
+    getEntry: (name: string) => {
+      const offset = name ? recordAt.get(posix.normalize(name)) : undefined;
+      return offset === undefined ? null : entryAt(offset);
+    },
   };
 }

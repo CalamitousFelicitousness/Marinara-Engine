@@ -751,20 +751,20 @@ export async function importRoutes(app: FastifyInstance) {
       }
       return importEnvelope(envelope);
     }
+    // Native packages contain data.json plus an optional avatar. Keep the
+    // structural entry boundary, checked before the file list is read, but do
+    // not reject legitimate large embedded galleries or avatars by byte size.
+    const MAX_PACKAGE_ENTRIES = 8;
+    const tooManyEntries = ".marinara package has too many entries";
     let zip: ZipArchive;
     try {
-      zip = openZipArchive(buffer);
-    } catch {
-      return reply.status(400).send({ success: false, error: "Could not read .marinara package" });
+      zip = openZipArchive(buffer, { maxEntries: MAX_PACKAGE_ENTRIES, tooManyEntries });
+    } catch (error) {
+      const tooMany = error instanceof Error && error.message === tooManyEntries;
+      const message = tooMany ? tooManyEntries : "Could not read .marinara package";
+      return reply.status(400).send({ success: false, error: message });
     }
-    // Native packages contain data.json plus an optional avatar. Keep the
-    // structural entry boundary, but do not reject legitimate large embedded
-    // galleries or avatars by byte size.
-    const MAX_PACKAGE_ENTRIES = 8;
     const entries = zip.getEntries();
-    if (entries.length > MAX_PACKAGE_ENTRIES) {
-      return reply.status(400).send({ success: false, error: ".marinara package has too many entries" });
-    }
     let totalUncompressedBytes = 0;
     for (const entry of entries) {
       if (entry.isDirectory) continue;

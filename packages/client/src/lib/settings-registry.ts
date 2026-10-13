@@ -242,7 +242,7 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     id: "mari-runtime",
     sectionId: "omnibar",
     label: "Professor Mari runtime",
-    description: "How Professor Mari runs her tools: Classic, or Pi (experimental) with native tool calls.",
+    description: "How Professor Mari works: Classic, or Pi (experimental), which lets her think more before she acts.",
     aliases: ["mari", "runtime", "pi", "classic", "experimental", "tool calls", "reasoning"],
     kind: "Select",
   },

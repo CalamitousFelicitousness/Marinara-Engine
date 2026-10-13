@@ -8777,7 +8777,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 fullResponse.slice(roundResponseStart) !== (result.content ?? "")
               ) {
                 fullResponse = fullResponse.slice(0, roundResponseStart);
-                if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: fullResponse });
+                // The earlier rounds can hold roleplay commands the stream filter hid, and the filter
+                // has already consumed this round's text: show the clean text and start it afresh.
+                const roleplayFiltered = chatMode === "roleplay" && !input.impersonate;
+                if (roleplayFiltered)
+                  roleplayCommandStreamFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
+                if (!holdForTextRewrite)
+                  sendSseEvent(reply, {
+                    type: "content_replace",
+                    data: roleplayFiltered ? parseRoleplayCommands(fullResponse).content : fullResponse,
+                  });
               }
               // If provider doesn't support onToken (fell back to non-streaming),
               // write the content conventionally

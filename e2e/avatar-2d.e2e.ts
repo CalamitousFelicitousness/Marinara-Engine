@@ -61,8 +61,8 @@ interface MeshProbe {
   glCanvases: Set<HTMLCanvasElement>;
   /** Width or height changes on those canvases (each one reallocates the drawing buffer). */
   reallocations: number;
-  /** `new Image()` calls, which is how mesh-avatar loads every picture. */
-  images: number;
+  /** Pictures made with `new Image()`, which is how mesh-avatar loads every picture (from blob: URLs). */
+  images: HTMLImageElement[];
   violations: string[];
 }
 declare global {
@@ -75,7 +75,7 @@ declare global {
 /** Watches WebGL2 canvases, their reallocations, picture loads and CSP violations from the first script on. */
 async function probeMeshAvatars(page: Page) {
   await page.addInitScript(() => {
-    const probe: MeshProbe = { glCanvases: new Set(), reallocations: 0, images: 0, violations: [] };
+    const probe: MeshProbe = { glCanvases: new Set(), reallocations: 0, images: [], violations: [] };
     window.__meshProbe = probe;
     const getContext = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
@@ -94,8 +94,9 @@ async function probeMeshAvatars(page: Page) {
     }
     window.Image = new Proxy(window.Image, {
       construct(target, args) {
-        probe.images += 1;
-        return Reflect.construct(target, args);
+        const image = Reflect.construct(target, args) as HTMLImageElement;
+        probe.images.push(image);
+        return image;
       },
     });
     document.addEventListener("securitypolicyviolation", (event) =>
@@ -347,9 +348,12 @@ test("mesh avatars load under the server's CSP and reuse their pictures when mou
   test.skip(!(await loadMeshRenderer(page)), NO_WEBGL2);
 
   const painted = async () => (await step(page, quiet, 33))[0]!.painted > 1000;
+  // Only the avatar's own pictures: the home screen loads its own images whenever it gets to them.
+  const meshPictures = () =>
+    page.evaluate(() => window.__meshProbe!.images.filter((image) => image.src.startsWith("blob:")).length);
   await mountRenderers(page, MESH_RENDERER, "e2e-csp", kinds);
   await expect.poll(painted).toBe(true);
-  const firstMount = await page.evaluate(() => window.__meshProbe!.images);
+  const firstMount = await meshPictures();
   expect(firstMount, "the avatar's pictures load as images").toBeGreaterThan(5);
 
   // Chat switches and setup edits mount the same file again: no picture is loaded (or kept) a second time.
@@ -358,7 +362,7 @@ test("mesh avatars load under the server's CSP and reuse their pictures when mou
     await mountRenderers(page, MESH_RENDERER, "e2e-csp", kinds);
     await expect.poll(painted).toBe(true);
   }
-  expect(await page.evaluate(() => window.__meshProbe!.images), "later mounts reuse the pictures").toBe(firstMount);
+  expect(await meshPictures(), "later mounts reuse the pictures").toBe(firstMount);
   expect(await page.evaluate(() => window.__meshProbe!.violations)).toEqual([]);
 });
 

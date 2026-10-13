@@ -327,12 +327,12 @@ export const RUNTIME_API_KEY = "local-marinara-runtime";
 // Every review belongs to the Mari chat that made it (runSessionId()); slice 71 (F3) moved sensitive file
 // and install reviews there too. The status without a chat id (the omnibar's pending list) still lists all.
 const MAX_COMMAND_ROUNDS = 12;
-const MAX_PROTOCOL_REPAIR_ROUNDS = 2;
+export const MAX_PROTOCOL_REPAIR_ROUNDS = 2;
 // Local sidecar / small models fumble the JSON command protocol more often, so they get a larger
 // formatting-repair budget before Mari gives up. These repair rounds also do not count against the
 // task's command-round budget (see the `round -= 1` exemptions), so a few bad frames cannot starve
 // the actual work.
-const MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR = 6;
+export const MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR = 6;
 export const MAX_VERIFICATION_REPAIR_ROUNDS = 2;
 // #5819: mid-run completion claims get their own budget so catching a false
 // claim early in a batch cannot starve the terminal check at the end of it.
@@ -927,11 +927,12 @@ export function piRuntimePrompt() {
 You work through native tool calls. Wherever the rules below say \`say\`, write ordinary assistant text; wherever they say \`commands\`, call the tools. There is no JSON frame, no \`stop\` and no \`awaitingAuthorization\` field.
 - To ask the user to approve a change, write the change and your question as text in the SAME turn as the mutating tool calls; Marinara holds those calls behind an Accept action and ends the run.
 - Call the \`suggestions\` tool for quick-reply chips (at most 5; each has label and prompt) and the \`plan\` tool for a guided plan. Both only show UI; they change nothing. Call them in the SAME turn as your final text.
-- Immediately after you successfully create or update something, call \`suggestions\` with 2-4 follow-up chips for a natural next step: refine a field, link it to something else, or open it for full editing. Lean toward refining or connecting what already exists rather than making new items, unless the user's task is itself about creating. Tag each with the relevant entity.
+- Immediately after you successfully create or update something, call \`suggestions\` with 2-4 follow-up chips for a natural next step: refine a field, link it to something else, or open it for full editing. Lean toward refining or connecting what already exists rather than making new items, unless the user's task is itself about creating. Tag each with the relevant entity (\`characters|lorebooks|personas|presets|connections|agents|settings|chat\`).
 - When your answer ends with a question the user can answer by picking an option, call \`suggestions\` with one chip per option.
-- A chip may carry a \`detail\` (under 80 characters, no full stop) only for a real fact from this run, and an \`action\` that acts at once: \`{"kind":"resource","resource":"character|persona|preset|lorebook|agent","id":"..."}\` opens it, \`{"kind":"chat","chatId":"..."}\`, \`{"kind":"start-chat","characterId":"..."}\`, \`{"kind":"panel","panel":"characters|personas|lorebooks|presets|connections|agents"}\`. Only ids you already know. Keep \`prompt\` filled.
-- Use \`plan\` ONLY when a create/edit request is vague ("make me a character" with no details): return the WHOLE plan in one call, an ordered list of the natural fields, each with 3-5 example-answer chips. For a vague edit, read the item first, then offer 2-4 concrete directions as \`suggestions\`. If the request already has enough detail, skip \`plan\` and do the work.
+- A chip may carry a \`detail\` (under 80 characters, no full stop) only for a real fact from this run, and an \`action\` that acts at once: \`{"kind":"resource","resource":"character|persona|preset|lorebook|agent","id":"..."}\` opens it, \`{"kind":"chat","chatId":"..."}\`, \`{"kind":"start-chat","characterId":"..."}\`, \`{"kind":"panel","panel":"characters|personas|lorebooks|presets|connections|agents"}\` (a list; "connections" to pick one), \`{"kind":"peek-prompt","chatId":"..."}\`. Only ids you already know; never read just to fill \`detail\` or \`action\`. Keep \`prompt\` filled; no \`action\` when it needs your help.
+- Use \`plan\` ONLY when a create/edit request is vague ("make me a character" with no details): return the WHOLE plan in one call, an ordered list of the natural fields, each with 3-5 example-answer chips. For a vague edit, read the item first, then offer 2-4 concrete directions as \`suggestions\`. A named subject ("a lorebook for my pirate world") is enough detail. Prefer one \`plan\` to asking turn by turn: the client walks the plan with no further calls from you, then sends you one summary of all the answers to act on. If the request already has enough detail, skip \`plan\` and do the work.
 - Do not mention tapping, clicking, chips, quick replies or buttons unless you call \`suggestions\` or \`plan\` in the same turn.
+- If you say you will do something, make the tool call in the same turn; a turn with no tool call ends the run.
 - Finish by answering in text with no tool call.
 
 ${workspaceCommandKnowledgePrompt()}
@@ -1652,7 +1653,7 @@ function parseBracketCommandCalls(content: string): WorkspaceCommandCall[] {
   return calls;
 }
 
-function dedupeWorkspaceCommandCalls(calls: WorkspaceCommandCall[]): WorkspaceCommandCall[] {
+export function dedupeWorkspaceCommandCalls(calls: WorkspaceCommandCall[]): WorkspaceCommandCall[] {
   const seen = new Set<string>();
   return calls.filter((call) => {
     const key = `${call.name}:${JSON.stringify(call.arguments)}`;
@@ -1776,6 +1777,18 @@ export function parseAssistantWorkspaceAction(content: string): AssistantWorkspa
           stop,
         }),
   };
+}
+
+/**
+ * Gemini's MALFORMED_FUNCTION_CALL returned no command: an empty result, so the caller's own empty-response repair
+ * runs. Any other error is rethrown (a superseded run first).
+ */
+export function recoverMalformedGeminiCall(error: unknown, signal: AbortSignal): ChatCompletionResult {
+  signal.throwIfAborted();
+  if (!(error instanceof GeminiNoContentError) || error.finishReason.trim().toUpperCase() !== "MALFORMED_FUNCTION_CALL")
+    throw error;
+  logger.warn(error, "Professor Mari received a malformed Gemini function call; repairing the response");
+  return { content: null, toolCalls: [], finishReason: "error", usage: error.usage };
 }
 
 function isEmptyCompletedAction(action: AssistantWorkspaceAction): boolean {
@@ -3672,13 +3685,23 @@ export class ProfessorMariWorkspaceService {
             },
             complete: async (piMessages, tools) => {
               debugLog?.("[debug/professor-mari] pi tools: %s", tools.map((tool) => tool.function.name).join(", "));
-              const result = await this.chatCompleteWorkspace(
-                provider,
-                piMessages,
-                // A connection without native tool calls gets none: pi writes them into the prompt (textual mode).
-                tools.length > 0 ? { ...baseOptions, tools, toolChoice: "auto" } : baseOptions,
-                undefined,
-                debugLog,
+              let result: ChatCompletionResult;
+              try {
+                result = await this.chatCompleteWorkspace(
+                  provider,
+                  piMessages,
+                  // A connection without native tool calls gets none: pi writes them into the prompt (textual mode).
+                  tools.length > 0 ? { ...baseOptions, tools, toolChoice: "auto" } : baseOptions,
+                  undefined,
+                  debugLog,
+                );
+              } catch (error) {
+                result = recoverMalformedGeminiCall(error, controller.signal);
+              }
+              debugLog?.(
+                "[debug/professor-mari] Raw response:\n%s\nTool calls: %s",
+                result.content ?? "",
+                JSON.stringify(result.toolCalls),
               );
               latestUsage = result.usage;
               latestFinishReason = result.finishReason ?? null;
@@ -3720,18 +3743,8 @@ export class ProfessorMariWorkspaceService {
           // as a provisional "draft" event the live headline shows, cleared when the parsed text lands.
           result = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {}, debugLog);
         } catch (error) {
-          controller.signal.throwIfAborted();
-          if (
-            !(error instanceof GeminiNoContentError) ||
-            error.finishReason.trim().toUpperCase() !== "MALFORMED_FUNCTION_CALL"
-          )
-            throw error;
           // No command was returned or executed: reuse the bounded protocol repair loop below.
-          logger.warn(
-            error,
-            "Professor Mari received a malformed Gemini function call; repairing the JSON command frame",
-          );
-          result = { content: null, toolCalls: [], finishReason: "error", usage: error.usage };
+          result = recoverMalformedGeminiCall(error, controller.signal);
         }
         latestUsage = result.usage;
         latestFinishReason = result.finishReason ?? null;

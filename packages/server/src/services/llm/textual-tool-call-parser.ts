@@ -108,29 +108,30 @@ function extractBalancedJson(text: string): string | null {
   return null;
 }
 
+const TAGGED_PATTERNS: Array<{ re: RegExp; allowCommandFallback: boolean; allowAnonymousJsonPayload: boolean }> = [
+  {
+    re: /(<\|tool_call\|?>)([\s\S]*?)(?:<tool_call\|>|<\|\/tool_call\|>|<\/tool_call>|$)/gi,
+    allowCommandFallback: true,
+    allowAnonymousJsonPayload: true,
+  },
+  {
+    re: /(<tool_call>)([\s\S]*?)(?:<\/tool_call>|<\/arg_value>|$)/gi,
+    allowCommandFallback: true,
+    allowAnonymousJsonPayload: true,
+  },
+  { re: /(<tool_code>)([\s\S]*?)<\/tool_code>/gi, allowCommandFallback: true, allowAnonymousJsonPayload: true },
+  { re: /(```(?:json)?\s*)([\s\S]*?)\s*```/gi, allowCommandFallback: false, allowAnonymousJsonPayload: false },
+  // Meta Llama 3.1+ uses <|python_tag|> to delimit tool calls in content
+  {
+    re: /(<\|python_tag\|>)([\s\S]*?)(?:<\|eom_id\|>|<\|eot_id\|>|<\|end_header_id\|>|$)/gi,
+    allowCommandFallback: false,
+    allowAnonymousJsonPayload: false,
+  },
+];
+
 function parseTaggedSnippets(content: string): ParsedTaggedSnippet[] {
   const snippets: ParsedTaggedSnippet[] = [];
-  const patterns: Array<{ re: RegExp; allowCommandFallback: boolean; allowAnonymousJsonPayload: boolean }> = [
-    {
-      re: /(<\|tool_call\|?>)([\s\S]*?)(?:<tool_call\|>|<\|\/tool_call\|>|<\/tool_call>|$)/gi,
-      allowCommandFallback: true,
-      allowAnonymousJsonPayload: true,
-    },
-    {
-      re: /(<tool_call>)([\s\S]*?)(?:<\/tool_call>|<\/arg_value>|$)/gi,
-      allowCommandFallback: true,
-      allowAnonymousJsonPayload: true,
-    },
-    { re: /(<tool_code>)([\s\S]*?)<\/tool_code>/gi, allowCommandFallback: true, allowAnonymousJsonPayload: true },
-    { re: /(```(?:json)?\s*)([\s\S]*?)\s*```/gi, allowCommandFallback: false, allowAnonymousJsonPayload: false },
-    // Meta Llama 3.1+ uses <|python_tag|> to delimit tool calls in content
-    {
-      re: /(<\|python_tag\|>)([\s\S]*?)(?:<\|eom_id\|>|<\|eot_id\|>|<\|end_header_id\|>|$)/gi,
-      allowCommandFallback: false,
-      allowAnonymousJsonPayload: false,
-    },
-  ];
-  for (const pattern of patterns) {
+  for (const pattern of TAGGED_PATTERNS) {
     for (const match of content.matchAll(pattern.re)) {
       const opening = match[1] ?? "";
       const snippet = match[2]?.trim();
@@ -306,4 +307,14 @@ export function parseTextualToolCalls(
     if (call) calls.push(call);
   });
   return calls;
+}
+
+/**
+ * The content without the text parseTextualToolCalls read as calls, for content that did yield calls: tagged and
+ * fenced snippets are cut out; a call read from the whole content (bare JSON, array, `name {...}`) leaves nothing.
+ */
+export function stripTextualToolCalls(content: string): string {
+  let text = content;
+  for (const { re } of TAGGED_PATTERNS) text = text.replace(re, "");
+  return text === content ? "" : text.trim();
 }

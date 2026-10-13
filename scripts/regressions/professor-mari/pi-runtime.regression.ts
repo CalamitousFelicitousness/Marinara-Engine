@@ -806,6 +806,80 @@ try {
     }
   }
 
+  // Classic parity: empty-answer retries, Gemini malformed calls, internal names, truncated changes, duplicates.
+  {
+    mode = "auto";
+    const empty = await start("pi empty", [reply(""), reply("Now the answer.")]);
+    await empty.done;
+    assert.equal(requests.length, 2);
+    assert.match(requests[1]!.messages.at(-1)?.content ?? "", /previous response was empty/u);
+    assert.equal((await lastAssistant(empty.chat.id))?.content, "Now the answer.");
+    const emptyAlways = await start("pi empty always", [reply(""), reply(""), reply(""), reply("never")]);
+    await emptyAlways.done;
+    assert.equal(requests.length, 3, "two retries, then the note");
+    assert.ok(statusTexts(emptyAlways.events).some((text) => /kept returning an empty response/u.test(text)));
+
+    const { GeminiNoContentError } =
+      await import("../../../packages/server/src/services/llm/providers/google.provider.js");
+    const gemini = await start("pi gemini", [
+      async () => {
+        throw new GeminiNoContentError("MALFORMED_FUNCTION_CALL");
+      },
+      reply("Recovered."),
+    ]);
+    await gemini.done;
+    assert.equal(requests.length, 2);
+    assert.equal((await lastAssistant(gemini.chat.id))?.content, "Recovered.");
+
+    const names = await start("pi names", [
+      reply("I ran chat.diagnose for you.", [
+        { id: "scrub-1", name: "suggestions", args: { chips: [{ label: "Run chat.diagnose", prompt: "Go." }] } },
+      ]),
+    ]);
+    await names.done;
+    assert.equal((await lastAssistant(names.chat.id))?.content, "I ran the chat checkup for you.");
+    assert.ok(
+      JSON.stringify(names.events.filter((event) => event.type === "suggestions")).includes("Run the chat checkup"),
+    );
+
+    const cut = await start("pi cut", [
+      {
+        ...reply("Partial", [{ id: "cut-1", name: "write", args: { path: "cut.txt", content: "x", reason: "t" } }]),
+        finishReason: "length",
+      },
+    ]);
+    await cut.done;
+    assert.equal(existsSync(join(workspaceDir, "cut.txt")), false);
+    assert.ok(JSON.stringify(cut.events).includes("Continue the task."), "a cut-off change offers a continue chip");
+
+    const twice = await start("pi duplicate", [
+      reply("", [
+        { id: "dup-1", name: "read", args: { path: "hello.txt" } },
+        { id: "dup-2", name: "read", args: { path: "hello.txt" } },
+      ]),
+      reply("Done."),
+    ]);
+    await twice.done;
+    const results = toolMessages(requests[1]!.messages).map((message) => message.content);
+    assert.equal(results.length, 2);
+    assert.equal(results.filter((content) => /workspace_command_result/u.test(content)).length, 1);
+    assert.equal(results.filter((content) => /Duplicate call, skipped/u.test(content)).length, 1);
+
+    // Textual mode: a call the parser reads from a fence or from bare JSON leaves the visible text too.
+    provider = "claude_subscription";
+    const fenced = await start("textual fence", [
+      reply('Looking.\n```json\n{"name":"read","arguments":{"path":"hello.txt"}}\n```'),
+      reply('{"name":"read","arguments":{"path":"hello.txt"}}'),
+      reply("Done."),
+    ]);
+    await fenced.done;
+    provider = "custom";
+    assert.equal(requests.length, 3);
+    assert.match(requests[1]!.messages.at(-1)?.content ?? "", /hi from the workspace file/u);
+    assert.ok(!JSON.stringify(fenced.events).includes("```"), "fenced call text is removed");
+    assert.ok(!JSON.stringify(fenced.events).includes('\\"name\\":\\"read'), "bare call text is removed");
+  }
+
   // The real prompt builder: pi prompt instead of the JSON protocol, and the stored chat as plain text.
   {
     mode = "auto";
@@ -818,6 +892,9 @@ try {
     const system = requests[0]!.messages.find((message) => message.role === "system")?.content ?? "";
     assert.match(system, /<workspace_tools>/u);
     assert.match(system, /There is no JSON frame/u);
+    assert.match(system, /a turn with no tool call ends the run/u);
+    assert.match(system, /peek-prompt/u);
+    assert.match(system, /named subject/u);
     assert.doesNotMatch(system, /workspace_command_protocol/u);
     const history = requests[0]!.messages.filter((message) => message.role !== "system");
     assert.deepEqual(

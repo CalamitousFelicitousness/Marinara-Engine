@@ -24,13 +24,14 @@ import {
   type MariWorkspaceTraceItem,
   supportsNativeToolCalls,
 } from "@marinara-engine/shared";
-import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
+import { parseTextualToolCalls, stripTextualToolCalls } from "../llm/textual-tool-call-parser.js";
 import {
   appendTraceStatus,
   appendVisibleText,
   appliedMutationReadBackMismatched,
   auditWorkspaceCompletionClaim,
   chunkText,
+  dedupeWorkspaceCommandCalls,
   describeHeldCommands,
   emitRoundText,
   formatCommandResultForPrompt,
@@ -38,8 +39,11 @@ import {
   isLocalSidecarConnection,
   isMutatingWorkspaceCommand,
   isStagedSensitiveMutation,
+  MAX_PROTOCOL_REPAIR_ROUNDS,
+  MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR,
   sanitizePlanSteps,
   sanitizeSuggestionChips,
+  scrubInternalNames,
   answerEndsWithQuestion,
   visibleTextAsksApplyPermission,
   workspaceTextClaimsHeldChange,
@@ -63,6 +67,7 @@ export const MAX_PI_TOOL_ROUNDS = 400;
 
 const PI_PROVIDER = "marinara";
 const PI_API = "marinara-chat";
+const PARALLEL_TOOLS = new Set(["docs_search", "docs_read", "read", "grep", "find", "ls", "suggestions", "plan"]);
 const UI_TOOLS = ["suggestions", "plan"] as const;
 const HELD_RESULT =
   "HELD for the user's approval; NOT applied. When the user accepts, repeat exactly this call with the same input.";
@@ -114,6 +119,10 @@ type Round = {
   /** The one chips-only round a question without chips gets; only UI tools run in it and its words are dropped. */
   chipRound: boolean;
   truncated: boolean;
+  /** A truncated turn whose cut-off calls included a change: the user gets a chip to continue. */
+  droppedMutating: boolean;
+  /** Ids of calls identical to an earlier one in the same turn; they are answered, not run. */
+  duplicates: Set<string>;
   /** Provider replay data (Anthropic thinking, Gemini parts, ...) to send back with this turn's assistant message. */
   providerMetadata?: Record<string, unknown>;
 };
@@ -173,6 +182,16 @@ ${docs}
 </text_tool_calls>`;
 }
 
+function parseArguments(raw: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch {
+    // Unparsable arguments reach the tool as {}: schema validation answers the model with an error.
+  }
+  return {};
+}
+
 function textOf(content: string | readonly { type: string; text?: string }[]): string {
   if (typeof content === "string") return content;
   return content.map((part) => (part.type === "text" ? (part.text ?? "") : "")).join("");
@@ -213,6 +232,10 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   let planShown = false;
   let toolRounds = 0;
   let limitReached = false;
+  let emptyRepairs = 0;
+  const maxEmptyRepairs = isLocalSidecarConnection(input.connection)
+    ? MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR
+    : MAX_PROTOCOL_REPAIR_ROUNDS;
   let round: Round | null = null;
   let session: AgentSession | null = null;
   const maxToolRounds = input.maxToolRounds ?? MAX_PI_TOOL_ROUNDS;
@@ -333,10 +356,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         const result = await input.complete(toChatMessages(context), textualTools ? [] : toolDefs);
         const truncated = isLengthFinishReason(result.finishReason);
         const reply = textualTools ? textualReply(result.content) : null;
-        const shown = reply ? reply.text : (result.content ?? "");
+        const parsedCalls = reply?.calls ?? result.toolCalls;
+        const shown = scrubInternalNames(reply ? reply.text : (result.content ?? ""));
         const text = shown.trim() ? shown : "";
         // A truncated frame never runs: its tool calls may be cut off mid-argument.
-        const calls = truncated ? [] : (reply?.calls ?? result.toolCalls);
+        const calls = truncated ? [] : parsedCalls;
         if (result.usage) {
           message.usage = {
             ...message.usage,
@@ -352,24 +376,23 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
           stream.push({ type: "text_delta", contentIndex: 0, delta: text, partial: message });
           stream.push({ type: "text_end", contentIndex: 0, content: text, partial: message });
         }
-        const workspaceCalls: WorkspaceCommandCall[] = [];
-        for (const call of calls) {
-          let args: Record<string, unknown> = {};
-          try {
-            const parsed: unknown = JSON.parse(call.function.arguments || "{}");
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-              args = parsed as Record<string, unknown>;
-          } catch {
-            // Unparsable arguments reach the tool as {}: schema validation answers the model with an error.
-          }
-          const id = call.id || randomUUID();
-          const toolCall = { type: "toolCall" as const, id, name: call.function.name, arguments: args as never };
+        const asCall = (call: (typeof calls)[number]): WorkspaceCommandCall => ({
+          id: call.id || randomUUID(),
+          name: call.function.name as WorkspaceCommandCall["name"],
+          arguments: parseArguments(call.function.arguments),
+        });
+        const allCalls = calls.map(asCall);
+        for (const { id, name, arguments: args } of allCalls) {
+          const toolCall = { type: "toolCall" as const, id, name, arguments: args as never };
           const index = message.content.length;
           message.content.push(toolCall);
           stream.push({ type: "toolcall_start", contentIndex: index, partial: message });
           stream.push({ type: "toolcall_end", contentIndex: index, toolCall, partial: message });
-          workspaceCalls.push({ id, name: call.function.name as WorkspaceCommandCall["name"], arguments: args });
         }
+        // Like classic, an identical call in one turn runs once; pi still needs a result for each call it was given.
+        const workspaceCalls = dedupeWorkspaceCommandCalls(allCalls);
+        const duplicates = new Set(allCalls.filter((call) => !workspaceCalls.includes(call)).map((call) => call.id));
+        const droppedMutating = truncated && parsedCalls.map(asCall).some(isMutatingWorkspaceCommand);
         if (result.providerMetadata && workspaceCalls[0])
           metadataByCallId.set(workspaceCalls[0].id, result.providerMetadata);
         if (isAgentTurn) {
@@ -379,6 +402,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
             results: [],
             deferred: null,
             truncated,
+            droppedMutating,
+            duplicates,
             chipRound: chipRepair === "pending",
           };
           if (round.chipRound) chipRepair = "used";
@@ -397,16 +422,20 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     return stream;
   };
 
-  const textualReply = (content: string | null) => ({
-    calls: parseTextualToolCalls(
+  const textualReply = (content: string | null) => {
+    const calls = parseTextualToolCalls(
       content,
       tools.map((tool) => ({
         type: "function",
         function: { name: tool.name, description: tool.description, parameters: tool.parameters as never },
       })),
-    ),
-    text: (content ?? "").replace(TEXT_CALL_RE, "").trim(),
-  });
+    );
+    // Whatever the parser read as a call leaves the visible text; with no call, only a stray (cut-off) tag does.
+    return {
+      calls,
+      text: calls.length > 0 ? stripTextualToolCalls(content ?? "") : (content ?? "").replace(TEXT_CALL_RE, "").trim(),
+    };
+  };
 
   /**
    * Review one finished model turn (pi's `turn_end`, so it runs whatever happened to the turn's calls): claim audit,
@@ -418,6 +447,25 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       stopRequested = true;
       return "done" as const;
     }
+    if (current.calls.length === 0 && !current.text.trim() && !current.truncated) {
+      // Same as classic: an empty turn is retried within a budget, then ends with a note.
+      emptyRepairs += 1;
+      if (emptyRepairs <= maxEmptyRepairs) {
+        return {
+          kind: "repair" as const,
+          prompt:
+            "Your previous response was empty. Continue the task now. Call tools when work remains, or write a concise answer for the user.",
+        };
+      }
+      addNote(
+        "Professor Mari kept returning an empty response. Please try again; the request and any completed workspace steps remain in this chat.",
+        "retry",
+        "warning",
+      );
+      stopRequested = true;
+      return "done" as const;
+    }
+    emptyRepairs = 0;
     const workspaceCalls = current.calls.filter((call) => !isUiTool(call.name));
     const hasWorkspaceCalls = workspaceCalls.length > 0;
     if (!current.deferred) {
@@ -513,6 +561,12 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       if (current.results.length > 0 && hasWorkspaceCalls) onEvent({ type: "metadata", data: { narration: true } });
     }
     if (current.truncated) {
+      if (current.droppedMutating) {
+        onEvent({
+          type: "suggestions",
+          data: [{ id: "authorization-accept", label: "Accept", prompt: "Continue the task.", tone: "success" }],
+        });
+      }
       addNote(
         "Professor Mari hit the model output limit. Ask her to continue and she can pick up from here.",
         "output_limit",
@@ -605,6 +659,15 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         terminate: true,
       };
     }
+    if (current.duplicates.has(toolCallId)) {
+      return {
+        content: [
+          { type: "text" as const, text: "Duplicate call, skipped: an identical call in this turn already ran." },
+        ],
+        details: {},
+        isError: false,
+      };
+    }
     const call = current.calls.find((entry) => entry.id === toolCallId) ?? {
       id: toolCallId,
       name: name as never,
@@ -660,7 +723,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     let text: string;
     let isError = false;
     if (name === "suggestions") {
-      const chips = sanitizeSuggestionChips(params.chips);
+      const chips = sanitizeSuggestionChips(params.chips).map((chip) => ({
+        ...chip,
+        label: scrubInternalNames(chip.label),
+        ...(chip.detail ? { detail: scrubInternalNames(chip.detail) } : {}),
+      }));
       if (chips.length > 0) {
         state.suggestions = chips;
         onEvent({ type: "suggestions", data: chips });
@@ -713,7 +780,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         description: tool.description,
         // Plain JSON Schema, validated by pi before execute.
         parameters: tool.parameters as never,
-        executionMode: "sequential",
+        // Pure read tools may run together; any other call in the turn makes pi run the whole turn in order.
+        executionMode: PARALLEL_TOOLS.has(tool.name) ? "parallel" : "sequential",
         execute: (toolCallId: string, params: unknown) =>
           runTool(tool.name, toolCallId, params as Record<string, unknown>),
       }) satisfies ToolDefinition,

@@ -94,6 +94,7 @@ Did an agent you expected not run? Check that **Enable Agents** is on. Check tha
 ## Related guides
 
 - [Downloadable Agents Reference](built-in-agents.md)
+- [2D and 3D Avatars](avatars.md)
 - [Official Marinara Agents repository](https://github.com/Pasta-Devs/Marinara-Agents)
 - [Creating Custom Agents](custom-agents.md)
 - [Agent Approvals and the Agent Suite](approvals-and-agent-suite.md)

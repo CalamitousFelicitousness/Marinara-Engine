@@ -8,7 +8,15 @@ Live2D models are not supported. Live2D's licence needs a separate agreement wit
 
 ## Downloading the agents
 
-How to install **2D Avatars** and **3D Avatars** from **Download Agents** and turn them on for a chat.
+**2D Avatars** and **3D Avatars** are separate downloads, so you can install only the one you want. Both work for characters and personas in Roleplay and Game chats.
+
+1. Open **Agents → Download Agents** and install **2D Avatars**, **3D Avatars**, or both. Neither needs a restart.
+2. Set up each avatar on the agent's page in **Agents**. See [Setting up an avatar](#setting-up-an-avatar).
+3. In a Roleplay or Game chat, open **Chat Settings → Agents → Misc Agents** and add the agent.
+
+The agents send no extra requests to your AI connections while you chat.
+
+Both agents are still in development and are not in **Download Agents** yet. They need an Engine with Capability API 1.73, and an older Engine refuses to install them.
 
 ## Setting up an avatar
 

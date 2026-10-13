@@ -32,6 +32,7 @@ import { cn } from "../../../lib/utils";
 import {
   collectMariReferencedResources,
   countMariListOutput,
+  mariBatchItems,
   isMariNotFoundOutput,
   type MariReferencedResource,
 } from "../../../lib/mari-referenced-resources";
@@ -237,7 +238,8 @@ const STEP_RECORD_SUFFIX = /\s+(?:character|persona|lorebook entries|lorebook en
 
 /**
  * Slice 72: one step in words - "Read · [face] Shrek", "Read · [face] Swamp Lore · 3 entries", "Updated · Shrek ·
- * scenario", or a read she could not do ("Couldn't find · missing-donkey"), which she worked around.
+ * scenario", a batch with its items ("Created lorebook · Harbor Town · 6 entries: The Docks, The Market, …"), or a
+ * read she could not do ("Couldn't find · missing-donkey"), which she worked around.
  */
 function describeStep(
   tool: WorkspaceToolCall,
@@ -275,14 +277,17 @@ function describeStep(
   const count = entries ? countMariListOutput(tool.output) : null;
   const patch = asRecord(input?.patch);
   const fields = patch ? Object.keys(patch).map((key) => fieldLabel(key).toLocaleLowerCase()) : [];
+  const batch = mariBatchItems(input);
   const fact =
     count !== null
       ? t("ui.chat.homeprofessormarichat.refFact.entries", { count })
-      : fields.length > 0
-        ? fields.length > 2
-          ? `${fields.slice(0, 2).join(", ")} +${fields.length - 2}`
-          : fields.join(", ")
-        : null;
+      : batch
+        ? t(`ui.chat.homeprofessormarichat.refFact.${batch.names ? "entriesNamed" : "entries"}`, batch)
+        : fields.length > 0
+          ? fields.length > 2
+            ? `${fields.slice(0, 2).join(", ")} +${fields.length - 2}`
+            : fields.join(", ")
+          : null;
   const title = pastTenseStepTitle(presentation.title);
   const verb = missed
     ? t(isMariNotFoundOutput(tool.output) ? "mari.workCard.couldNotFind" : "mari.workCard.couldNotRead")

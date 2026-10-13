@@ -7150,6 +7150,8 @@
   "ui.chat.homeprofessormarichat.referenceAgentFailed": "Last run failed",
   "ui.chat.homeprofessormarichat.refFact.entries_one": "{{count}} entry",
   "ui.chat.homeprofessormarichat.refFact.entries_other": "{{count}} entries",
+  "ui.chat.homeprofessormarichat.refFact.entriesNamed_one": "{{count}} entry: {{names}}",
+  "ui.chat.homeprofessormarichat.refFact.entriesNamed_other": "{{count}} entries: {{names}}",
   "ui.chat.homeprofessormarichat.refFact.key": "key “{{key}}”",
   "ui.chat.homeprofessormarichat.refFact.off": "Off",
   "ui.chat.homeprofessormarichat.refFact.on": "On",

@@ -1211,7 +1211,7 @@ export function compactMutationResult(result: MariDbCommandResult): MariDbComman
   };
 }
 
-function compactTraceValue(value: unknown, limit = 2000, depth = 0): unknown {
+export function compactTraceValue(value: unknown, limit = 2000, depth = 0): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return compactTraceText(value, limit);
   if (["number", "boolean"].includes(typeof value)) return value;
@@ -1223,7 +1223,13 @@ function compactTraceValue(value: unknown, limit = 2000, depth = 0): unknown {
     return entries;
   }
   if (!isRecord(value)) return String(value);
-  if (depth >= 2) return `{${Object.keys(value).length} keys}`;
+  // A deep record keeps its name, so a saved batch step (a new lorebook's entries) can still list its items.
+  if (depth >= 2) {
+    const keys = Object.keys(value).length;
+    return typeof value.name === "string"
+      ? { name: compactTraceText(value.name, 80), __omittedKeys: keys - 1 }
+      : `{${keys} keys}`;
+  }
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value).slice(0, 14)) {
     out[key] = compactTraceValue(entry, Math.max(240, Math.floor(limit / 3)), depth + 1);

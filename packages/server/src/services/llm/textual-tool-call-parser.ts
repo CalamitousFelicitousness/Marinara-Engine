@@ -310,11 +310,18 @@ export function parseTextualToolCalls(
 }
 
 /**
- * The content without the text parseTextualToolCalls read as calls, for content that did yield calls: tagged and
- * fenced snippets are cut out; a call read from the whole content (bare JSON, array, `name {...}`) leaves nothing.
+ * The content without the text parseTextualToolCalls read as calls: tagged snippets are cut out; a fence only when
+ * no tag matched and that fence itself parses into a call (a ```ts example stays). A call read from the whole
+ * content (bare JSON, array, `name {...}`) leaves nothing.
  */
-export function stripTextualToolCalls(content: string): string {
+export function stripTextualToolCalls(content: string, tools: LLMToolDefinition[]): string {
+  const [fence] = TAGGED_PATTERNS.filter(({ re }) => re.source.startsWith("(```"));
   let text = content;
-  for (const { re } of TAGGED_PATTERNS) text = text.replace(re, "");
+  for (const { re } of TAGGED_PATTERNS) if (re !== fence!.re) text = text.replace(re, "");
+  if (text === content) {
+    text = content.replace(fence!.re, (whole, _open, inner: string) =>
+      parseTextualToolCalls(inner, tools).length > 0 ? "" : whole,
+    );
+  }
   return text === content ? "" : text.trim();
 }

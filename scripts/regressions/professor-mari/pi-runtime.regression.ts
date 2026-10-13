@@ -638,7 +638,8 @@ try {
     provider = "custom";
     mode = "auto";
 
-    // A native connection never reads calls from prose.
+    // The pi adapter itself never parses text on a native connection. (The OpenAI provider layer does read
+    // <tool_call> tags and json fences when tools were sent; this mock bypasses it, so that is not covered here.)
     const quoted = await start("native quoted", [
       reply(`Here is the format: ${call("write", { path: "quoted.txt", content: "x", reason: "t" })}`),
     ]);
@@ -878,6 +879,25 @@ try {
     assert.match(requests[1]!.messages.at(-1)?.content ?? "", /hi from the workspace file/u);
     assert.ok(!JSON.stringify(fenced.events).includes("```"), "fenced call text is removed");
     assert.ok(!JSON.stringify(fenced.events).includes('\\"name\\":\\"read'), "bare call text is removed");
+    provider = "claude_subscription";
+    const call = (name: string, args: Record<string, unknown>) =>
+      `<tool_call>${JSON.stringify({ name, arguments: args })}</tool_call>`;
+    // A tagged call keeps a ```ts example in the saved answer.
+    const chipsCall = call("suggestions", { chips: [{ label: "Go", prompt: "Go on." }] });
+    const keep = await start("textual keep fence", [reply(`Example:\n\`\`\`ts\nconst a = 1;\n\`\`\`\n${chipsCall}`)]);
+    await keep.done;
+    assert.match((await lastAssistant(keep.chat.id))?.content ?? "", /const a = 1;/u);
+    // Two complete tags and one left open: nothing runs, the user gets the continue chip.
+    const open = await start("textual cut", [
+      reply(
+        `${call("write", { path: "cut-a.txt", content: "x", reason: "t" })}${call("write", { path: "cut-b.txt", content: "x", reason: "t" })}<tool_call>{"name":"write","arguments":{"path":"cut-c`,
+      ),
+    ]);
+    await open.done;
+    for (const file of ["cut-a.txt", "cut-b.txt", "cut-c.txt"])
+      assert.equal(existsSync(join(workspaceDir, file)), false);
+    assert.ok(JSON.stringify(open.events).includes("Continue the task."));
+    provider = "custom";
   }
 
   // The real prompt builder: pi prompt instead of the JSON protocol, and the stored chat as plain text.

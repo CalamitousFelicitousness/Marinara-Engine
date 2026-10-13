@@ -251,7 +251,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
 
   const withToolFormat = (prompt: string) => (textualTools ? `${prompt}\n\n${textualToolPrompt(tools)}` : prompt);
 
-  const toChatMessages = (context: TranscriptContext): ChatMessage[] => {
+  const toChatMessages = (context: TranscriptContext, asText = textualTools): ChatMessage[] => {
     const out: ChatMessage[] = [];
     const prompt = getCurrentSystemPrompt(context.messages);
     if (prompt) out.push({ role: "system", content: withToolFormat(prompt), contextKind: "prompt" });
@@ -273,7 +273,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
               ]
             : [],
         );
-        if (textualTools) {
+        if (asText) {
           // No tool_calls field for a provider without native calls: the calls are replayed as text.
           const written = message.content.flatMap((part) =>
             part.type === "toolCall" ? [textCall(part.name, part.arguments)] : [],
@@ -293,7 +293,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
           ...(providerMetadata ? { providerMetadata } : {}),
         });
-      } else if (message.role === "toolResult" && textualTools) {
+      } else if (message.role === "toolResult" && asText) {
         // Results come back as user messages; several results of one turn share one.
         const previous = out[out.length - 1];
         if (previous && previous === lastResult) previous.content += `\n\n${textOf(message.content)}`;
@@ -354,7 +354,12 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         }));
         // A textual connection gets no tools in the request: the calls are in the prompt and in the reply text.
         const result = await input.complete(toChatMessages(context), textualTools ? [] : toolDefs);
-        const truncated = isLengthFinishReason(result.finishReason);
+        // A textual reply cut short (a stream that failed, or a tag left open) may hold half a call: run none.
+        const truncated =
+          isLengthFinishReason(result.finishReason) ||
+          (textualTools &&
+            (result.finishReason === "error" ||
+              (result.content ?? "").lastIndexOf("<tool_call>") > (result.content ?? "").lastIndexOf("</tool_call>")));
         const reply = textualTools ? textualReply(result.content) : null;
         const parsedCalls = reply?.calls ?? result.toolCalls;
         const shown = scrubInternalNames(reply ? reply.text : (result.content ?? ""));
@@ -423,17 +428,18 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   };
 
   const textualReply = (content: string | null) => {
-    const calls = parseTextualToolCalls(
-      content,
-      tools.map((tool) => ({
-        type: "function",
-        function: { name: tool.name, description: tool.description, parameters: tool.parameters as never },
-      })),
-    );
+    const defs: LLMToolDefinition[] = tools.map((tool) => ({
+      type: "function",
+      function: { name: tool.name, description: tool.description, parameters: tool.parameters as never },
+    }));
+    const calls = parseTextualToolCalls(content, defs);
     // Whatever the parser read as a call leaves the visible text; with no call, only a stray (cut-off) tag does.
     return {
       calls,
-      text: calls.length > 0 ? stripTextualToolCalls(content ?? "") : (content ?? "").replace(TEXT_CALL_RE, "").trim(),
+      text:
+        calls.length > 0
+          ? stripTextualToolCalls(content ?? "", defs)
+          : (content ?? "").replace(TEXT_CALL_RE, "").trim(),
     };
   };
 
@@ -468,6 +474,17 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     emptyRepairs = 0;
     const workspaceCalls = current.calls.filter((call) => !isUiTool(call.name));
     const hasWorkspaceCalls = workspaceCalls.length > 0;
+    const mutating = workspaceCalls.filter(isMutatingWorkspaceCommand);
+    // Only calls that reached the executor have a result yet; a rejected call never counts for the record.
+    const reached = new Set(mutating.filter((call) => current.results.some((r) => r.id === call.id)).map((c) => c.id));
+    if (!current.deferred && reached.size > 0) {
+      input.understood?.settle(
+        current.results.some(
+          (result) => reached.has(result.id) && (!result.success || appliedMutationReadBackMismatched(result)),
+        ),
+        current.results.some(isStagedSensitiveMutation),
+      );
+    }
     if (!current.deferred) {
       // pi answers an unknown tool or invalid arguments itself, so the call never reached runTool: count it as the failed
       // attempt it is, with pi's own error text, so the claim audit and the repeated-failure stop see it.
@@ -484,16 +501,6 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         input.commandResults.push(result);
         current.results.push(result);
       }
-    }
-    const mutating = workspaceCalls.filter(isMutatingWorkspaceCommand);
-    if (!current.deferred && mutating.length > 0) {
-      const ids = new Set(mutating.map((call) => call.id));
-      input.understood?.settle(
-        current.results.some(
-          (result) => ids.has(result.id) && (!result.success || appliedMutationReadBackMismatched(result)),
-        ),
-        current.results.some(isStagedSensitiveMutation),
-      );
     }
     const action = {
       visibleText: current.text,
@@ -605,9 +612,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
 
   /** Same as classic at its round limit: one last answer with no tools, audited like any completion claim. */
   const summarizeAtLimit = async (finished: AgentSession) => {
+    signal.throwIfAborted();
+    // No provider has a "no tools" choice, and some reject tool history sent without tools: the history goes as text.
     const messages: ChatMessage[] = [
       { role: "system", content: withToolFormat(systemPrompt), contextKind: "prompt" },
-      ...toChatMessages({ messages: finished.messages } as never).filter((message) => message.role !== "system"),
+      ...toChatMessages({ messages: finished.messages } as never, true).filter((message) => message.role !== "system"),
       {
         role: "user",
         content:
@@ -616,9 +625,10 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       },
     ];
     const result = await input.complete(messages, []);
+    signal.throwIfAborted();
     // Calls in this turn never run; they only decide which line the user reads.
     const reply = textualTools ? textualReply(result.content) : null;
-    const text = (reply ? reply.text : (result.content ?? "")).trim();
+    const text = scrubInternalNames(reply ? reply.text : (result.content ?? "")).trim();
     const tried = (reply?.calls ?? result.toolCalls).length > 0;
     const issue = auditWorkspaceCompletionClaim({ visibleText: text, commands: [], stop: true }, input.commandResults, {
       auditFrom: reviewState.claimAuditWatermark,
@@ -666,6 +676,8 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         ],
         details: {},
         isError: false,
+        // Like the call it repeats: a turn that only showed chips next to its words is a final answer.
+        ...(current.calls.every((entry) => isUiTool(entry.name)) && current.text.trim() ? { terminate: true } : {}),
       };
     }
     const call = current.calls.find((entry) => entry.id === toolCallId) ?? {

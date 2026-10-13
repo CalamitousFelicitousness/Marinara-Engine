@@ -191,6 +191,26 @@ export function computeBodyPose(
   return pose;
 }
 
+// ── Drawing size ──
+
+/** Largest drawing size per side, so a huge canvas cannot ask for an unbounded GPU buffer. */
+const MAX_PIXELS_PER_SIDE = 2048;
+
+/** Device pixels for a canvas of this CSS size: the pixel ratio is capped at `maxRatio`, and one scale
+ *  applies to both sides so the size cap never changes the shape the camera projects into. */
+export function canvasPixels(
+  width: number,
+  height: number,
+  devicePixelRatio: number,
+  maxRatio: number,
+): { width: number; height: number } {
+  const cssWidth = Number.isFinite(width) ? Math.max(0, width) : 0;
+  const cssHeight = Number.isFinite(height) ? Math.max(0, height) : 0;
+  const ratio = Math.min(Math.max(Number.isFinite(devicePixelRatio) ? devicePixelRatio : 1, 0.5), maxRatio);
+  const scale = Math.min(ratio, MAX_PIXELS_PER_SIDE / Math.max(1, cssWidth, cssHeight));
+  return { width: Math.round(cssWidth * scale), height: Math.round(cssHeight * scale) };
+}
+
 // ── Camera framing ──
 
 /** World heights (metres) of the model's head and hips bones and its lowest foot, at rest. */

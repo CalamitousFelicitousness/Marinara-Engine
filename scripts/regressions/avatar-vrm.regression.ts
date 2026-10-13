@@ -314,20 +314,34 @@ assert.equal(customMap.surprised?.target, "びっくり", "Japanese names bind t
 assert.equal(customMap.aa?.target, "vrc.v_aa");
 assert.equal(customMap.blink?.target, "まばたき");
 
-// Many expressions: capped at what avatar.json stores, with a warning.
+// Many expressions: capped at what avatar.json stores, with a warning; a preset past the cap still binds.
 const many = await vrmImporter.validate(
-  input(glb(vrm0(Array.from({ length: 300 }, (_, index) => ({ name: `Custom${index}`, presetName: "unknown" }))))),
+  input(
+    glb(
+      vrm0([
+        ...Array.from({ length: 300 }, (_, index) => ({ name: `Custom${index}`, presetName: "unknown" })),
+        { name: "Joy", presetName: "joy" },
+      ]),
+    ),
+  ),
 );
 assert.ok(many.type === "model");
 assert.equal(many.expressionNames.length, 256);
 assert.ok(many.warnings.some((warning) => /more than 256/u.test(warning)));
-assert.ok(
-  avatarConfigSchema.safeParse({
-    ...config,
-    activeKind: "vrm",
-    kinds: { vrm: buildVrmImport(many, input(new Uint8Array([1])), null).data },
-  }).success,
+const manyData = buildVrmImport(many, input(new Uint8Array([1])), null).data;
+assert.deepEqual(manyData.expressionMap.happy, { target: "happy", source: "preset", confidence: 1 });
+assert.ok(avatarConfigSchema.safeParse({ ...config, activeKind: "vrm", kinds: { vrm: manyData } }).success);
+
+// A hostile file with a huge number of expressions is read in linear time.
+// (Deduplicating with an array scan took minutes here.)
+const hostileBytes = glb(
+  vrm0(Array.from({ length: 200_000 }, (_, index) => ({ name: `X${index % 100_000}`, presetName: "unknown" }))),
 );
+const hostileStarted = performance.now();
+const hostile = await vrmImporter.validate(input(hostileBytes));
+const hostileMs = performance.now() - hostileStarted;
+assert.ok(hostile.type === "model" && hostile.expressionNames.length === 256);
+assert.ok(hostileMs < 5_000, `200,000 expression entries validate quickly (${Math.round(hostileMs)} ms)`);
 
 // ── .vrma idle animations ──
 const animationJson = {
@@ -531,6 +545,13 @@ const motion = await import("../../packages/client/src/features/avatars/renderer
   assert.ok(full.distance > bust.distance, "the full body sits further away");
   assert.ok(motion.frameCamera(body, 4, 25).distance <= bust.distance * 1.01, "a wide canvas never zooms out the bust");
 }
+assert.deepEqual(motion.canvasPixels(300, 300, 3, 2), { width: 600, height: 600 }, "the pixel ratio is capped");
+assert.deepEqual(
+  motion.canvasPixels(400, 1200, 2, 2),
+  { width: 683, height: 2048 },
+  "the size cap scales both sides alike, so a tall avatar keeps its shape",
+);
+assert.deepEqual(motion.canvasPixels(0, 0, 1, 2), { width: 0, height: 0 });
 assert.equal(motion.vrm0Mirror("0"), -1, "VRM 0.x normalised bones mirror x and z rotations");
 assert.equal(motion.vrm0Mirror("1"), 1);
 

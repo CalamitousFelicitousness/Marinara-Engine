@@ -37,6 +37,7 @@ import { api } from "../../../../lib/api-client";
 import { AVATAR_RENDER_BUDGET, type AvatarRenderer, type AvatarRendererMountOptions } from "../../contract";
 import {
   POSE_BONES,
+  canvasPixels,
   computeBodyPose,
   createBlinkTimer,
   createExpressionWeights,
@@ -52,8 +53,6 @@ import {
 /** The licence URL VRM 1.0 requires; three-vrm refuses any other unless told to accept it. */
 const VRM1_LICENSE_URL = "https://vrm.dev/licenses/1.0/";
 const FIELD_OF_VIEW = 25;
-/** Largest drawing size per side, so a huge canvas cannot ask for an unbounded GPU buffer. */
-const MAX_PIXELS_PER_SIDE = 2048;
 const GAZE_EASE_SECONDS = 0.2;
 
 // ── The one WebGL context every VRM avatar shares ──
@@ -278,9 +277,9 @@ class VrmAvatarRenderer implements AvatarRenderer {
 
   resize(width: number, height: number, devicePixelRatio: number): void {
     if (this.disposed) return;
-    const ratio = clamp(devicePixelRatio || 1, 0.5, AVATAR_RENDER_BUDGET.maxDevicePixelRatio.desktop);
-    this.pixelWidth = Math.round(clamp(width * ratio, 0, MAX_PIXELS_PER_SIDE));
-    this.pixelHeight = Math.round(clamp(height * ratio, 0, MAX_PIXELS_PER_SIDE));
+    const pixels = canvasPixels(width, height, devicePixelRatio, AVATAR_RENDER_BUDGET.maxDevicePixelRatio.desktop);
+    this.pixelWidth = pixels.width;
+    this.pixelHeight = pixels.height;
     this.aspect = width > 0 && height > 0 ? width / height : 1;
     this.updateCamera();
   }

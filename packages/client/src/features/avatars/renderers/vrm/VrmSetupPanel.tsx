@@ -179,7 +179,7 @@ function ExpressionBindings({
                   [slot]: { target: event.target.value || null, source: "user", confidence: 1 },
                 })
               }
-              className="mt-1 min-h-11 w-full rounded-lg bg-[var(--secondary)] px-2.5 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:opacity-60"
+              className="mt-1 min-h-11 w-full rounded-lg bg-[var(--secondary)] px-2.5 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:opacity-60 pointer-coarse:text-base"
             >
               <option value="">{t("avatars.vrm.expressions.none")}</option>
               {target && !names.includes(target) ? <option value={target}>{target}</option> : null}

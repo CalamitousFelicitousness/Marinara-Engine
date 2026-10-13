@@ -322,8 +322,15 @@ function vrm0Meta(meta: JsonRecord): VrmModelMeta {
 
 interface ExpressionNames {
   names: string[];
+  /** Every distinct usable name seen, so duplicates cost O(1) however many entries a file holds. */
+  seen: Set<string>;
   presets: Set<string>;
   skippedLongNames: boolean;
+  tooMany: boolean;
+}
+
+function emptyExpressionNames(): ExpressionNames {
+  return { names: [], seen: new Set(), presets: new Set(), skippedLongNames: false, tooMany: false };
 }
 
 function addExpressionName(result: ExpressionNames, name: string, preset: boolean): void {
@@ -331,14 +338,20 @@ function addExpressionName(result: ExpressionNames, name: string, preset: boolea
     result.skippedLongNames = true;
     return;
   }
-  if (result.names.includes(name)) return;
-  result.names.push(name);
+  if (result.seen.has(name)) return;
+  result.seen.add(name);
+  // A preset still binds past the cap: the model has it even when the list cannot show it.
   if (preset) result.presets.add(name);
+  if (result.names.length >= MAX_EXPRESSION_NAMES) {
+    result.tooMany = true;
+    return;
+  }
+  result.names.push(name);
 }
 
 /** The names three-vrm registers for a VRM 1.0 model: known presets, then customs that are not presets. */
 function vrm1ExpressionNames(expressions: unknown): ExpressionNames {
-  const result: ExpressionNames = { names: [], presets: new Set(), skippedLongNames: false };
+  const result = emptyExpressionNames();
   if (!isRecord(expressions)) return result;
   if (isRecord(expressions.preset)) {
     for (const [name, definition] of Object.entries(expressions.preset)) {
@@ -358,7 +371,7 @@ function vrm1ExpressionNames(expressions: unknown): ExpressionNames {
 
 /** The names three-vrm registers for a VRM 0.x model: a preset group's VRM 1.0 name, else the group name. */
 function vrm0ExpressionNames(blendShapeMaster: unknown): ExpressionNames {
-  const result: ExpressionNames = { names: [], presets: new Set(), skippedLongNames: false };
+  const result = emptyExpressionNames();
   const groups = isRecord(blendShapeMaster) ? blendShapeMaster.blendShapeGroups : undefined;
   if (groups === undefined || groups === null) return result;
   if (!Array.isArray(groups)) throw new AvatarImportError("invalid-file", DAMAGED);
@@ -437,9 +450,8 @@ function inspectModel(json: JsonRecord): ValidatedVrmFile | null {
 
   const warnings: string[] = [];
   if (expressions.skippedLongNames) warnings.push("Some expressions have names too long to use and were skipped.");
-  if (expressions.names.length > MAX_EXPRESSION_NAMES) {
+  if (expressions.tooMany) {
     warnings.push(`This model has more than ${MAX_EXPRESSION_NAMES} expressions; only the first ones can be picked.`);
-    expressions.names = expressions.names.slice(0, MAX_EXPRESSION_NAMES);
   }
   return {
     type: "model",

@@ -263,6 +263,9 @@ export interface GameSetupConfig {
   /** The generated world for a NEW game (worldgen W1): its seed, generator version, grounding and
    *  brief, stored as `chat.metadata.gameWorld`. Needs `worldKit`; absent means no world. */
   world?: import("../features/world/game-world.js").GameWorldInput;
+  /** A world another generator made, as it was made (W11): sent to create a game from it and in a setup
+   *  file, never kept in a game's metadata. */
+  worldSnapshot?: import("../features/world/snapshot.js").WorldSnapshot;
   /** The world's story script (worldgen W10), checked against the world and stored as
    *  `chat.metadata.gameStory`. Needs `world`. */
   story?: import("../features/world/story.js").StoryScript;

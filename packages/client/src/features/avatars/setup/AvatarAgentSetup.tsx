@@ -208,7 +208,11 @@ function OwnerAvatarSetup({
   };
 
   const handleFile = async (file: File | undefined) => {
-    if (!file || !pendingKind) return;
+    if (!file || !pendingKind) {
+      // Picking the same file again must still fire a change.
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setError(null);
     setImportResult(null);
     try {

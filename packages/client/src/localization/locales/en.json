@@ -9789,6 +9789,8 @@
   "ui.lorebooks.expandeddrawer.whichRoleThisEntrySContentIsAttributedTo": "Who the entry's text appears to come from in the prompt. Only matters for @ Depth entries.",
   "ui.lorebooks.expandeddrawer.wholeWords": "Whole Words",
   "ui.lorebooks.keyseditor.add": "Add",
+  "ui.lorebooks.keyseditor.collapse": "Collapse",
+  "ui.lorebooks.keyseditor.showMore": "Show {{count}} more",
   "ui.lorebooks.keyseditor.typeKeywordsSeparatedByCommasThenPressEnter": "Type keywords separated by commas, then press Enter…",
   "ui.lorebooks.linkedresourcepicker.allValue1AlreadyAdded": "All {{value1}} already added.",
   "ui.lorebooks.linkedresourcepicker.noMatches": "No matches.",

@@ -159,7 +159,7 @@ When a recurring character returns after leaving the scene, Character Tracker re
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: **Add as Prompt Section** (on by default) and an optional **Auto-Generate NPC Avatars** setting with its own image connection picker.
+- **Key settings**: **Add as Prompt Section** (on by default) and an optional **Auto-Generate NPC Avatars** setting with its own image connection picker. Under it, **Include the outfit in portraits** is on by default, so new portraits show the outfit the tracker noted as well as the look. Turn it off to draw portraits from the look alone.
 
 ### Beholder
 

@@ -158,7 +158,8 @@ test("CharacterTavern explains it is unavailable without contacting the site", a
   const nameLefts = await menu.getByRole("button").evaluateAll((buttons) =>
     buttons.map((button) => {
       const name = Array.from(button.querySelectorAll("span")).find(
-        (span) => !span.children.length && /\p{L}{3}/u.test(span.textContent ?? "") && span.textContent !== "Unavailable",
+        (span) =>
+          !span.children.length && /\p{L}{3}/u.test(span.textContent ?? "") && span.textContent !== "Unavailable",
       );
       return name ? Math.round(name.getBoundingClientRect().left) : -1;
     }),

@@ -305,6 +305,49 @@ try {
     assert.equal((await lastAssistant(held.chat.id))?.extra.mariDeferredMutations, undefined);
   }
 
+  // The Accept run (armed) applies a call that comes with ordinary words, once, and is not held again.
+  {
+    mode = "manual";
+    const writeCall = (id: string) => ({
+      id,
+      name: "write",
+      args: { path: "armed.txt", content: "x", reason: "test" },
+    });
+    const held = await start("pi armed", [reply("I will create armed.txt. Shall I go ahead?", [writeCall("armed-1")])]);
+    await held.done;
+    assert.equal(existsSync(join(workspaceDir, "armed.txt")), false);
+    const savedHeld = await lastAssistant(held.chat.id);
+    assert.match(String(savedHeld?.extra.mariWorkspaceContinuity), /armed\.txt/u, "the held call is in the continuity");
+    assert.match(String(savedHeld?.extra.mariWorkspaceContinuity), /HELD for the user's approval/u);
+    armed = true;
+    const accepted = await start(
+      "pi armed accept",
+      [reply("Approved, creating armed.txt.", [writeCall("armed-2")]), reply("Created armed.txt.")],
+      "pi",
+      service,
+      held.chat.id,
+    );
+    await accepted.done;
+    assert.equal(existsSync(join(workspaceDir, "armed.txt")), true, "the armed run applies the call");
+    assert.equal(toolMessages(requests[1]!.messages).length, 1);
+    assert.equal((await lastAssistant(held.chat.id))?.extra.mariDeferredMutations, undefined);
+    // An armed run that only CLAIMS it is done, with no call, is sent back instead of being accepted.
+    const claim = await start(
+      "pi armed claim",
+      [reply("I have updated armed2.txt for you."), reply("I have not changed anything yet.")],
+      "pi",
+      service,
+      held.chat.id,
+    );
+    await claim.done;
+    armed = false;
+    assert.equal(requests.length, 2);
+    assert.match(
+      requests[1]!.messages.filter((m) => m.role === "user").pop()?.content ?? "",
+      /no mutating command succeeded/u,
+    );
+  }
+
   // (d) Abort stops the run immediately: no tool starts, no further request.
   {
     mode = "auto";
@@ -449,20 +492,6 @@ try {
     defaultParameters = null;
     assert.equal(requests[0]!.options.reasoningEffort, "none");
     assert.equal(requests[0]!.options.enableThinking, undefined);
-  }
-
-  // A tool call written as text (no native toolCalls) runs once, and its markup is not shown.
-  {
-    mode = "auto";
-    const { chat, done } = await start("pi textual call", [
-      reply('<tool_call>{"name":"read","arguments":{"path":"hello.txt"}}</tool_call>'),
-      reply("Read it once."),
-    ]);
-    await done;
-    assert.equal(requests.length, 2);
-    assert.equal(toolMessages(requests[1]!.messages).length, 1);
-    assert.match(toolMessages(requests[1]!.messages)[0]?.content ?? "", /hi from the workspace file/u);
-    assert.equal((await lastAssistant(chat.id))?.content, "Read it once.");
   }
 
   // (e) With mariRuntime = classic the pi path is never entered and the JSON protocol is used.

@@ -3,7 +3,6 @@
 // the same Permissions Mode, claim audit and repeated-failure rules as the classic loop. The sandbox is closed
 // on purpose: no pi built-in tools, no resources read from disk, no pi auth/model files, in-memory session.
 import { randomUUID } from "node:crypto";
-import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
 import type {
   AssistantMessage,
   ToolResultMessage,
@@ -36,6 +35,7 @@ import {
   sanitizePlanSteps,
   sanitizeSuggestionChips,
   visibleTextAsksApplyPermission,
+  workspaceTextClaimsMutationCompletion,
   WORKSPACE_TOOL_DEFINITIONS,
   type PromptEventSink,
   type WorkspaceCommandCall,
@@ -56,6 +56,8 @@ export const MAX_PI_TOOL_ROUNDS = 400;
 const PI_PROVIDER = "marinara";
 const PI_API = "marinara-chat";
 const UI_TOOLS = ["suggestions", "plan"] as const;
+const HELD_RESULT =
+  "HELD for the user's approval; NOT applied. When the user accepts, repeat exactly this call with the same input.";
 const HELD_WITHOUT_WORDS = "I have changes ready. Review them below and accept to apply them; nothing was applied yet.";
 
 /** The run state prompt() persists on the saved message; the pi loop writes it, prompt() copies it back. */
@@ -267,20 +269,9 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         }));
         const result = await input.complete(toChatMessages(context), toolDefs);
         const truncated = isLengthFinishReason(result.finishReason);
-        // The OpenAI-compatible provider already turns a tool call written as text into a real one; this covers the
-        // providers that do not (it only runs when the result has no tool calls, so a call is never parsed twice).
-        let content = result.content;
-        let resultCalls = result.toolCalls;
-        if (resultCalls.length === 0 && content) {
-          const written = parseTextualToolCalls(content, toolDefs);
-          if (written.length > 0) {
-            resultCalls = written;
-            content = "";
-          }
-        }
-        const text = content?.trim() ? content : "";
+        const text = result.content?.trim() ? result.content : "";
         // A truncated frame never runs: its tool calls may be cut off mid-argument.
-        const calls = truncated ? [] : resultCalls;
+        const calls = truncated ? [] : result.toolCalls;
         if (result.usage) {
           message.usage = {
             ...message.usage,
@@ -370,7 +361,11 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       appendTraceStatus(trace, content);
       onEvent({ type: "status", data: { content, kind: "info", level: "warning" } });
       // A silent hold still needs words on the saved message: they carry the deferral flag and the held changes.
-      const words = current.text.trim() || HELD_WITHOUT_WORDS;
+      // Held calls were not applied, so words that say they were are replaced.
+      const words =
+        current.text.trim() && !workspaceTextClaimsMutationCompletion(current.text)
+          ? current.text.trim()
+          : HELD_WITHOUT_WORDS;
       state.assistantText = words;
       emitRoundText(trace, words, onEvent);
       state.suggestions = [
@@ -436,18 +431,32 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       const mutating = current.calls.filter((entry) => !isUiTool(entry.name) && isMutatingWorkspaceCommand(entry));
       // Manual always holds an un-approved mutation, with or without words: a model that thinks instead of writing
       // would otherwise be refused in a loop. Only the run right after the user's Accept may apply silently.
+      const armedManual = input.permissionsMode === "manual" && input.manualApprovalArmed;
       const holdSilentManual =
-        input.permissionsMode === "manual" && mutating.length > 0 && !current.text && !input.manualApprovalArmed;
-      current.deferred =
-        holdSilentManual ||
-        shouldDeferRoundMutations({
-          permissionsMode: input.permissionsMode,
-          parsedAction: { visibleText: current.text, awaitingAuthorization: false, commands: mutating },
-          runAskedForApproval,
-        });
+        input.permissionsMode === "manual" && mutating.length > 0 && !current.text && !armedManual;
+      // The run right after a stored deferral is the user's Accept: its calls apply, with or without words, unless
+      // the words ask a new question.
+      current.deferred = armedManual
+        ? mutating.length > 0 && visibleTextAsksApplyPermission(current.text)
+        : holdSilentManual ||
+          shouldDeferRoundMutations({
+            permissionsMode: input.permissionsMode,
+            parsedAction: { visibleText: current.text, awaitingAuthorization: false, commands: mutating },
+            runAskedForApproval,
+          });
       if (current.deferred) {
         state.endedWithDeferral = true;
         state.heldChanges = describeHeldCommands(mutating);
+        // The held calls ride in the hidden continuity record, so the Accept run repeats exactly them.
+        for (const call of mutating) {
+          input.commandResults.push({
+            id: call.id,
+            name: call.name,
+            input: call.arguments,
+            output: HELD_RESULT,
+            success: false,
+          });
+        }
       } else {
         const silent = !current.text;
         input.setRoundFlags({
@@ -477,10 +486,13 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       input.commandResults.push(result);
       current.results.push(result);
       // The executor's refusals are shared with the JSON runtime and name its `say` field; say it in pi's words.
-      text = formatCommandResultForPrompt([result]).replace(
-        /in say WITH the commands in the same response/gu,
-        "as text in the same turn as the tool calls",
-      );
+      text = formatCommandResultForPrompt([result]);
+      if (!result.success) {
+        text = text.replace(
+          /in say WITH the commands in the same response/gu,
+          "as text in the same turn as the tool calls",
+        );
+      }
       isError = !result.success;
     }
     // A turn with words that only showed chips or a plan is a final answer: end it here instead of paying for another model round.

@@ -36,7 +36,7 @@ Avatars react on their own; there is nothing to set up for this part.
 **How the mood is read.** No AI model or chat connection is asked, and your chat text is not sent anywhere else.
 
 - A built-in word list answers at once, everywhere, and knows common mood words in several languages.
-- Where your computer can run it, a small local emotion model reads the sentences instead and understands 36 languages. It downloads once (about 300 MB) into the `models` folder of your data folder the first time an avatar needs it, and the word list answers until it is ready. It uses about 900 MB of memory while loaded and unloads after 10 idle minutes. Lite installs and Android (Termux) keep the word list. The model is [Horizon-Labs/multilingual-emotions-small](https://huggingface.co/Horizon-Labs/multilingual-emotions-small) (Apache-2.0).
+- Where your computer can run it, a small emotion model on your computer reads the sentences instead and understands 36 languages. It downloads once (about 300 MB) the first time an avatar needs it, and the word list answers until it is ready. It uses about 900 MB of memory while in use and unloads after 10 idle minutes. Lite installs and Android keep the word list.
 
 **Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it.
 

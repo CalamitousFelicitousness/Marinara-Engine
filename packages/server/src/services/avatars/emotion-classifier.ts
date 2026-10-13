@@ -148,14 +148,21 @@ export function prepareAvatarEmotionModel(): Promise<AvatarEmotionModel | null> 
   if (modelState.status === "failed" && Date.now() < modelState.retryAt) return Promise.resolve(null);
   const startedAt = Date.now();
   logger.info("[avatar-classify] Loading the local emotion model %s", AVATAR_EMOTION_MODEL_ID);
-  const promise = loadModel().then(
+  // A load that was reset meanwhile (setAvatarEmotionModelLoaderForTests) must not overwrite the newer state.
+  const current = () => modelState.status === "loading" && modelState.promise === promise;
+  const promise: Promise<AvatarEmotionModel | null> = loadModel().then(
     (model) => {
+      if (!current()) {
+        void model.dispose().catch(() => {});
+        return null;
+      }
       modelState = { status: "ready", model };
       scheduleIdleUnload();
       logger.info("[avatar-classify] Local emotion model ready in %dms", Date.now() - startedAt);
       return model;
     },
     (err: unknown) => {
+      if (!current()) return null;
       modelState = { status: "failed", retryAt: Date.now() + LOAD_RETRY_MS };
       logger.warn(err, "[avatar-classify] Local emotion model unavailable; avatars use keywords for now");
       return null;

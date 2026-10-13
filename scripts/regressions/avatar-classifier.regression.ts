@@ -183,9 +183,21 @@ const offline = await classifier.classifyAvatarEmotions({ texts: ["She smiles."]
 assert.equal(offline.tier, "keywords");
 assert.equal(offline.results[0]?.emotion, "happy");
 
-// ── The route ──
+// A load still running when the state is reset never becomes the model.
+let finishSlowLoad: () => void = () => {};
+let slowDisposed = false;
+const slowModel = { ...fakeModel, dispose: async () => void (slowDisposed = true) };
+await classifier.setAvatarEmotionModelLoaderForTests(
+  () => new Promise((resolve) => (finishSlowLoad = () => resolve(slowModel))),
+);
+const slowLoad = classifier.prepareAvatarEmotionModel();
 await classifier.setAvatarEmotionModelLoaderForTests(async () => fakeModel);
-await classifier.prepareAvatarEmotionModel();
+finishSlowLoad();
+assert.equal(await slowLoad, null, "the stale load reports nothing");
+assert.ok(slowDisposed, "and frees its model");
+
+// ── The route ──
+assert.equal(await classifier.prepareAvatarEmotionModel(), fakeModel, "the current loader's model is used");
 const serverRequire = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 const fastify = serverRequire("fastify") as typeof import("fastify").default;
 const { avatarClassifyRoutes } = await import("../../packages/server/src/routes/avatar-classify.routes.js");

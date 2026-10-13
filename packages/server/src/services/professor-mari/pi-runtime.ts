@@ -458,12 +458,12 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       text = formatCommandResultForPrompt([result]);
       isError = !result.success;
     }
-    // A turn that only showed chips or a plan is a final answer: end it here instead of paying for another model round.
+    // A turn with words that only showed chips or a plan is a final answer: end it here instead of paying for another model round.
     return {
       content: [{ type: "text" as const, text }],
       details: {},
       isError,
-      ...(onlyUiTools ? { terminate: true } : {}),
+      ...(onlyUiTools && current.text.trim() ? { terminate: true } : {}),
     };
   };
 

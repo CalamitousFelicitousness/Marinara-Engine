@@ -3456,6 +3456,12 @@ export class ProfessorMariWorkspaceService {
       const provider = createProviderForConnection(connection);
       const runtime = await this.readRuntime(connection);
       const usePi = runtime.active === "pi";
+      if (usePi) {
+        // The pi runtime writes no #5740 record, so an older run's record must not reach this run's prompt (built
+        // below). Die BEFORE the shared write: a superseded run must never clear a newer run's record.
+        controller.signal.throwIfAborted();
+        this.latestUnderstoodRequest = null;
+      }
       if (runtime.note) {
         appendTraceStatus(workspaceTrace, runtime.note);
         args.onEvent({ type: "status", data: { content: runtime.note, kind: "info", level: "info" } });
@@ -3542,8 +3548,6 @@ export class ProfessorMariWorkspaceService {
       }
 
       if (usePi) {
-        // The pi runtime writes no #5740 record, so an older run's record must not reach this run's prompt.
-        this.latestUnderstoodRequest = null;
         const piState = {
           assistantText,
           endedWithDeferral: runEndedWithDeferral,

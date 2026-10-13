@@ -384,6 +384,21 @@ try {
     assert.ok(events.some((event) => event.type === "suggestions"));
   }
 
+  // Chips with no words are not the answer yet: the run goes on, keeps the chips and stores the next text.
+  {
+    mode = "auto";
+    const { chat, events, done } = await start("pi chips first", [
+      reply("", [
+        { id: "chips-2", name: "suggestions", args: { chips: [{ label: "More", prompt: "Tell me more." }] } },
+      ]),
+      reply("Now the answer."),
+    ]);
+    await done;
+    assert.equal(requests.length, 2);
+    assert.equal((await lastAssistant(chat.id))?.content, "Now the answer.");
+    assert.ok(events.some((event) => event.type === "suggestions"));
+  }
+
   // (e) With mariRuntime = classic the pi path is never entered and the JSON protocol is used.
   {
     mode = "auto";

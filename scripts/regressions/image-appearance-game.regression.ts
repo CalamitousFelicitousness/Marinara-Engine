@@ -1,7 +1,8 @@
 // #7053: the Game preview and generation routes must carry the selected persona's
 // image appearance into the actual provider prompt, not merely load its record.
+// #7419: Character Tracker portraits carry the tracked outfit to the provider too.
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -21,6 +22,10 @@ const requireServer = createRequire(new URL("../../packages/server/package.json"
 const Fastify = requireServer("fastify") as typeof import("fastify").default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { avatarsRoutes } = await import("../../packages/server/src/routes/avatars.routes.js");
+const { buildTrackerPortraitPrompt } = await import("../../packages/server/src/services/image/tracker-portrait.js");
+const { compileImagePrompt, DEFAULT_IMAGE_STYLE_PROFILES } = await import("../../packages/shared/dist/index.js");
+const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
@@ -29,7 +34,13 @@ const { createAppSettingsStorage } = await import("../../packages/server/src/ser
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const imagePrompts: string[] = [];
 const providerErrors: unknown[] = [];
+let failImages = false;
 const provider = createServer(async (request, response) => {
+  if (failImages) {
+    response.writeHead(500);
+    response.end("Image service down");
+    return;
+  }
   try {
     assert.equal(request.url, "/v1/images/generations", "the fixture only allows image requests");
     const chunks: Buffer[] = [];
@@ -50,6 +61,7 @@ const db = await getDB();
 const app = Fastify();
 app.decorate("db", db);
 await app.register(gameRoutes, { prefix: "/api/game" });
+await app.register(avatarsRoutes, { prefix: "/api/avatars" });
 
 try {
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
@@ -138,7 +150,66 @@ try {
     }
   }
 
+  // #7419: the tracker's outfit gets its own line, which every style profile keeps, even the
+  // tag profiles that shorten portrait prompts. It used to be a "wearing ..." clause they dropped.
+  const npc = {
+    name: "Brannoc",
+    appearance: "Short man with a messy brown beard and grey eyes.",
+    outfit: "a simple red tunic",
+  };
+  const lookOnly = buildTrackerPortraitPrompt(npc, false);
+  const lookAndOutfit = buildTrackerPortraitPrompt(npc, true);
+  assert.ok(!lookOnly.includes("tunic"), "Look leaves the outfit out");
+  assert.equal(buildTrackerPortraitPrompt({ ...npc, outfit: null }, true), lookOnly, "no outfit adds nothing");
+  assert.equal(buildTrackerPortraitPrompt({ ...npc, outfit: "  " }, true), lookOnly, "a blank outfit adds nothing");
+  for (const profile of DEFAULT_IMAGE_STYLE_PROFILES) {
+    const compile = (prompt: string) =>
+      compileImagePrompt({
+        kind: "portrait",
+        prompt,
+        styleProfiles: { defaultProfileId: profile.id, profiles: DEFAULT_IMAGE_STYLE_PROFILES },
+        styleProfileId: profile.id,
+      }).prompt;
+    assert.match(compile(lookAndOutfit), /simple red tunic/, `${profile.id}: the outfit reaches the image prompt`);
+    assert.match(compile(lookAndOutfit), /brown beard/, `${profile.id}: so does the look`);
+    assert.doesNotMatch(compile(lookOnly), /tunic/, `${profile.id}: Look stays without the outfit`);
+  }
+
+  // The portrait buttons: the route needs the tracker's image connection, sends the chosen prompt,
+  // and keeps the old portrait when the image service fails.
+  const trackerChat = await chats.create({ name: "Tracker portraits", mode: "roleplay", characterIds: [] });
+  assert.ok(trackerChat);
+  const portraitUrl = `/api/avatars/npc/${trackerChat.id}/generate`;
+  const noConnection = await app.inject({ method: "POST", url: portraitUrl, payload: { ...npc, includeOutfit: true } });
+  assert.equal(noConnection.statusCode, 400, noConnection.body);
+  await createAgentsStorage(db).create({
+    type: "character-tracker",
+    name: "Character Tracker",
+    phase: "post_processing",
+    settings: { imageConnectionId: connection.id },
+  });
+  for (const includeOutfit of [false, true]) {
+    const callsBefore = imagePrompts.length;
+    const generated = await app.inject({ method: "POST", url: portraitUrl, payload: { ...npc, includeOutfit } });
+    assert.equal(generated.statusCode, 200, generated.body);
+    assert.match(
+      generated.json().avatarPath,
+      new RegExp(`^/api/avatars/npc/${trackerChat.id}/brannoc\\.png\\?v=\\d+$`),
+    );
+    assert.equal(imagePrompts.length, callsBefore + 1, "one image reaches the provider");
+    assert.match(imagePrompts.at(-1)!, /brown beard/);
+    assert.equal(imagePrompts.at(-1)!.includes("simple red tunic"), includeOutfit, `includeOutfit=${includeOutfit}`);
+  }
+  const portraitFile = join(fixtureDir, "avatars", "npc", trackerChat.id, "brannoc.png");
+  writeFileSync(portraitFile, "old portrait");
+  failImages = true;
+  const failed = await app.inject({ method: "POST", url: portraitUrl, payload: { ...npc, includeOutfit: true } });
+  failImages = false;
+  assert.equal(failed.statusCode, 502, failed.body);
+  assert.equal(readFileSync(portraitFile, "utf8"), "old portrait", "a failed portrait keeps the old one");
+
   console.info("Game image appearance route regression passed (preview and generation, 5 scenarios).");
+  console.info("Character Tracker portrait regression passed (prompt assembly and the portrait route).");
 } finally {
   await app.close();
   await new Promise<void>((resolve, reject) => provider.close((error) => (error ? reject(error) : resolve())));

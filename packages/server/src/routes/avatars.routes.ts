@@ -4,10 +4,24 @@
 import type { FastifyInstance } from "fastify";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
+import { z } from "zod";
+import { parseAgentSettingsRecord } from "@marinara-engine/shared";
+import { logger } from "../lib/logger.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
 import { sendValidatedMediaFile, validateImageAssetFile } from "../utils/media-file-security.js";
 import { npcAvatarSlug } from "../services/game/npc-avatar-utils.js";
+import { generateTrackerPortrait, trackerPortraitStyleProfileId } from "../services/image/tracker-portrait.js";
+import { createAgentsStorage } from "../services/storage/agents.storage.js";
+import { createChatsStorage } from "../services/storage/chats.storage.js";
+
+const trackerPortraitRequestSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  appearance: z.string().max(4000).nullish(),
+  outfit: z.string().max(4000).nullish(),
+  includeOutfit: z.boolean(),
+  debugMode: z.boolean().optional(),
+});
 
 const AVATAR_DIR = join(DATA_DIR, "avatars");
 const NPC_AVATAR_DIR = join(AVATAR_DIR, "npc");
@@ -105,5 +119,39 @@ export async function avatarsRoutes(app: FastifyInstance) {
     writeFileSync(filePath, imageBuffer);
 
     return reply.send({ avatarPath: `/api/avatars/npc/${chatId}/${filename}?v=${Date.now()}` });
+  });
+
+  /** Generate a new Character Tracker portrait from the look, and the outfit when asked. */
+  app.post("/npc/:chatId/generate", async (req, reply) => {
+    const { chatId } = req.params as { chatId: string };
+    if (!isValidFilename(chatId)) {
+      return reply.status(400).send({ error: "Invalid chatId" });
+    }
+    const body = trackerPortraitRequestSchema.safeParse(req.body);
+    if (!body.success || !npcAvatarSlug(body.data.name)) {
+      return reply.status(400).send({ error: "Invalid portrait request" });
+    }
+    const chat = await createChatsStorage(app.db).getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const tracker = await createAgentsStorage(app.db).getByType("character-tracker");
+    const connectionId = parseAgentSettingsRecord(tracker?.settings).imageConnectionId;
+    if (typeof connectionId !== "string" || !connectionId.trim()) {
+      return reply.status(400).send({ error: "Choose an image connection for the Character Tracker first." });
+    }
+    try {
+      const avatarPath = await generateTrackerPortrait({
+        db: app.db,
+        connectionId,
+        chatId,
+        styleProfileId: trackerPortraitStyleProfileId(parseAgentSettingsRecord(chat.metadata)),
+        character: body.data,
+        includeOutfit: body.data.includeOutfit,
+        debugMode: body.data.debugMode,
+      });
+      return reply.send({ avatarPath: `${avatarPath}?v=${Date.now()}` });
+    } catch (err) {
+      logger.warn(err, '[character-tracker] Failed to generate a portrait for "%s"', body.data.name);
+      return reply.status(502).send({ error: err instanceof Error ? err.message : "Portrait generation failed" });
+    }
   });
 }

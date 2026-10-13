@@ -41,6 +41,14 @@ interface TrackerPortraitStageUploadAction {
   title: string;
 }
 
+export interface TrackerPortraitStageAction {
+  key: string;
+  icon: ReactNode;
+  onClick: () => void;
+  title: string;
+  disabled?: boolean;
+}
+
 interface PortraitDragState {
   pointerId: number;
   startClientX: number;
@@ -142,6 +150,7 @@ export function TrackerPortraitStage({
   placeholderVariant = "initial",
   stageSizeClassName = TRACKER_PROFILE_PORTRAIT_FRAME_STAGE_CLASS,
   uploadAction,
+  actions,
   view,
 }: {
   accessibleLabel: string;
@@ -154,6 +163,8 @@ export function TrackerPortraitStage({
   placeholderVariant?: "initial" | "avatar";
   stageSizeClassName?: string;
   uploadAction?: TrackerPortraitStageUploadAction;
+  /** Extra buttons shown at the top corner with the view controls. */
+  actions?: TrackerPortraitStageAction[];
   view?: TrackerPortraitStageView;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -317,6 +328,33 @@ export function TrackerPortraitStage({
           <span className="sr-only">
             {localizeUi("ui.trackerPanel.trackerportraitstage.portraitZoom")} {zoomPercent}%
           </span>
+        </div>
+      )}
+      {actions && actions.length > 0 && (
+        <div
+          className={cn(
+            PORTRAIT_VIEW_CONTROLS_CLASS,
+            "bottom-auto left-auto right-1 top-1",
+            // Stay in view while an action is busy.
+            actions.some((action) => action.disabled) && "opacity-100",
+          )}
+        >
+          {actions.map((action) => (
+            <button
+              key={action.key}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                action.onClick();
+              }}
+              disabled={action.disabled}
+              title={action.title}
+              aria-label={action.title}
+              className={cn(PORTRAIT_VIEW_BUTTON_CLASS, "disabled:cursor-default disabled:opacity-50")}
+            >
+              {action.icon}
+            </button>
+          ))}
         </div>
       )}
       <div className={cn(PORTRAIT_TOP_GLEAM_BASE_CLASS, PORTRAIT_TOP_GLEAM_CLASS_BY_SIDE[outsideSide])} />

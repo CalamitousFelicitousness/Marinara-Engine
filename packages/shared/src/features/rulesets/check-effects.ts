@@ -8,6 +8,7 @@
 // ──────────────────────────────────────────────
 import type {
   RulesetCombatCondition,
+  RulesetCreatureHideEntry,
   RulesetDefinition,
   RulesetItemUse,
   RulesetSheetBuild,
@@ -26,6 +27,29 @@ import {
 
 type RulesetEffectModifier = NonNullable<RulesetCombatCondition["modifiers"]>[number];
 
+/** What a save is rolled against (1.129). Missing context matches no narrowed modifier. */
+export interface RulesetSaveAgainst {
+  conditions?: readonly string[];
+  damage?: readonly string[];
+  magic?: boolean;
+}
+
+/** Any one match is enough; the save's own name is checked separately. */
+export function rulesetSaveAgainstMatches(
+  against: RulesetEffectModifier["against"],
+  source?: RulesetSaveAgainst,
+): boolean {
+  if (!against) return true;
+  if (!source) return false;
+  return !!(
+    against.conditions?.some((condition) => source.conditions?.includes(condition)) ||
+    against.damage?.some((type) =>
+      source.damage?.some((one) => one.trim().toLowerCase() === type.trim().toLowerCase()),
+    ) ||
+    (against.magic && source.magic)
+  );
+}
+
 /** One thing that changes this character's checks: an active condition, a level their track has
  *  reached, or one item's worn or carried effect. `name` is what a record calls it. */
 export interface RulesetCheckSource {
@@ -35,11 +59,13 @@ export interface RulesetCheckSource {
   failsSaves?: readonly string[];
   saves?: readonly string[];
   skills?: readonly string[];
-  /** What an item keeps off its holder in a fight: kinds of harm and conditions. A check reads none. */
-  resist?: readonly string[];
+  /** What this source keeps off its holder in a fight (Capability API 1.127). A check reads none. */
+  resist?: readonly RulesetCreatureHideEntry[];
   vulnerable?: readonly string[];
-  immune?: readonly string[];
+  immune?: readonly RulesetCreatureHideEntry[];
   conditionImmunities?: readonly string[];
+  /** How far it lets its holder sense with each of the fight's senses (Capability API 1.175). */
+  senses?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -81,7 +107,49 @@ export function rulesetCheckSources(
       sources.push({ ...level, name: `${label} ${level.at}` });
     }
   }
-  return [...sources, ...rulesetItemSources(definition, build, items, sheet)];
+  return [
+    ...sources,
+    ...rulesetItemSources(definition, build, items, sheet),
+    ...rulesetSheetHideSources(definition, build),
+  ];
+}
+
+/** A sheet row's typed hides (Capability API 1.127), read afresh so removing the row removes them.
+ *  Unknown damage words and condition ids are ignored; a ruleset with no damage types allows words. */
+export function rulesetSheetHideSources(definition: RulesetDefinition, build: RulesetSheetBuild): RulesetCheckSource[] {
+  const sources: RulesetCheckSource[] = [];
+  const types = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  const conditions = definition.sheet.live.conditions.map((entry) => entry.id.toLowerCase());
+  for (const source of definition.combat?.sheetHides ?? []) {
+    const list = definition.sheet.lists.find((entry) => entry.id === source.list);
+    const column = list?.columns.find((entry) => entry.id === source.column);
+    for (const row of build.lists[source.list] ?? []) {
+      const value = row[source.column] ?? column?.default;
+      if (typeof value !== "string") continue;
+      const hide: RulesetCheckSource = { name: list?.label ?? source.list };
+      for (const word of value.split(",")) {
+        const [type, ...except] = word
+          .trim()
+          .toLowerCase()
+          .split(/\s+except\s+/);
+        if (!type) continue;
+        if (source.kind === "conditionImmunities") {
+          if (!conditions.includes(type) || except.length) continue;
+          hide.conditionImmunities = [...(hide.conditionImmunities ?? []), type];
+        } else {
+          if (types && !types.includes(type)) continue;
+          if (source.kind === "vulnerable") {
+            if (!except.length) hide.vulnerable = [...(hide.vulnerable ?? []), type];
+          } else {
+            const entry = except.length ? { type, except: except.join(" ").split(/\s+/) } : type;
+            hide[source.kind] = [...(hide[source.kind] ?? []), entry];
+          }
+        }
+      }
+      sources.push(hide);
+    }
+  }
+  return sources;
 }
 
 /**
@@ -166,7 +234,7 @@ export function rulesetCheckEffects(
         save !== undefined
           ? modifier.to === "saves" && about(modifier.saves ?? source.saves, save)
           : modifier.to === "checks" && about(modifier.skills ?? source.skills, skill);
-      if (!applies) continue;
+      if (!applies || !rulesetSaveAgainstMatches(modifier.against)) continue;
       if (modifier.mode) lean(modifier.mode, source.name);
       if (modifier.flat !== undefined || modifier.dice !== undefined) {
         found.modifiers.push({ from: source.name, modifier });
@@ -251,4 +319,33 @@ export function rulesetItemGateCheck(
     modifier: Math.trunc(base) + rulesetCheckAdjust(definition, build, evaluated, target),
     difficulty,
   };
+}
+
+/** Typed defenses, in the same words on the sheet, battle status and Game Master prompt (1.127). */
+export function rulesetHideLines(
+  definition: RulesetDefinition,
+  sources: readonly Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">[],
+  text: (key: string, values: Record<string, string>) => string = (key, values) => {
+    if (key === "game.ruleset.hides.except") return `${values.type} except ${values.tags}`;
+    const labels: Record<string, string> = {
+      resist: "Resists",
+      vulnerable: "Vulnerable to",
+      immune: "Immune to",
+      conditionImmunities: "Condition immunities",
+    };
+    return `${labels[key.split(".").at(-1)!]}: ${values.names}`;
+  },
+): string[] {
+  return (["resist", "vulnerable", "immune", "conditionImmunities"] as const).flatMap((kind) => {
+    const names = sources.flatMap((source) =>
+      (source[kind] ?? []).map((entry) => {
+        if (typeof entry !== "string")
+          return text("game.ruleset.hides.except", { type: entry.type, tags: entry.except.join(" ") });
+        return kind === "conditionImmunities"
+          ? (definition.sheet.live.conditions.find((condition) => condition.id === entry)?.label ?? entry)
+          : entry;
+      }),
+    );
+    return names.length ? [text(`game.ruleset.hides.${kind}`, { names: [...new Set(names)].join(", ") })] : [];
+  });
 }

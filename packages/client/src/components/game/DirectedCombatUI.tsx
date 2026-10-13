@@ -13,6 +13,7 @@ import { GameCombatUI } from "./GameCombatUI";
 import { RulesetCombatBoard } from "./RulesetCombatBoard";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
+import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
 import { cn } from "../../lib/utils";
 
@@ -107,7 +108,7 @@ export function DirectedCombatUI(props: Props) {
     optionId: string,
     targetIds: string[],
     payWith?: string,
-    cell?: { to?: { x: number; y: number }; at?: { x: number; y: number } },
+    cell?: RulesetCellChoice,
     style?: string,
     mode?: string,
   ) =>
@@ -120,6 +121,10 @@ export function DirectedCombatUI(props: Props) {
       ...(mode ? { mode } : {}),
       ...(cell?.to ? { to: cell.to } : {}),
       ...(cell?.at ? { at: cell.at } : {}),
+      ...(cell?.toward ? { toward: cell.toward } : {}),
+      ...(cell?.side ? { side: cell.side } : {}),
+      ...(cell?.ring ? { ring: true } : {}),
+      ...(cell?.also?.length ? { also: cell.also } : {}),
     });
   return (
     <div className="flex h-full min-h-0 flex-col">

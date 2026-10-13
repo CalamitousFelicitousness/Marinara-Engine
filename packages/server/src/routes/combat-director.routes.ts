@@ -210,6 +210,11 @@ const command = z.discriminatedUnion("type", [
      *  the menu by the resolver; this only bounds them to a board's own size. */
     to: coord.optional(),
     at: coord.optional(),
+    /** How a wall is laid (1.172) and where further copies go (1.173), checked by the resolver. */
+    toward: coord.optional(),
+    side: z.enum(["near", "far"]).optional(),
+    ring: z.boolean().optional(),
+    also: z.array(coord).max(9).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
   z.object({ type: z.literal("continue") }),

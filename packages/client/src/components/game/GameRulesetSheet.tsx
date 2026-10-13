@@ -14,12 +14,15 @@ import { Minus, Pencil, Plus } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  rulesetItemEffectFacts,
   applyRulesetSheetOp,
   readResolvedSheetCommandTags,
   rulesetSheetStamp,
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
+  rulesetCheckSources,
+  rulesetHideLines,
   rulesetSectionGroups,
   type EvaluatedRulesetSheet,
   type ResolvedRulesetLive,
@@ -32,6 +35,7 @@ import {
   type RulesetSheetOp,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
+import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
@@ -332,6 +336,17 @@ export function GameRulesetSheet({
     [definition, build, items, resolved],
   );
 
+  const hideLines = useMemo(
+    () => rulesetHideLines(definition, rulesetCheckSources(definition, build, live, items), localizeUi),
+    [definition, build, live, items, localizeUi],
+  );
+  const saveModifiers = rulesetCheckSources(definition, build, live, items).flatMap((source) =>
+    rulesetItemEffectFacts(definition, {
+      modifiers: source.modifiers?.filter((one) => one.against),
+      saves: source.saves ? [...source.saves] : undefined,
+    }),
+  );
+
   /** Every change a player makes takes the same route a Game Master command does. */
   const apply = (op: RulesetSheetOp) => {
     if (readOnly) return;
@@ -625,6 +640,18 @@ export function GameRulesetSheet({
             </div>
           )}
 
+          {hideLines.map((line) => (
+            <p key={line} className="break-words text-xs text-[var(--muted-foreground)]">
+              {line}
+            </p>
+          ))}
+          {saveModifiers.length > 0 && (
+            <div className="space-y-1 text-xs text-[var(--muted-foreground)]">
+              {saveModifiers.map((fact, index) => (
+                <p key={index}>{rulesetEffectPhrase(fact, localizeUi)}</p>
+              ))}
+            </div>
+          )}
           {resolved.conditions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {resolved.conditions.map((condition) => (
@@ -646,6 +673,19 @@ export function GameRulesetSheet({
             </div>
           )}
 
+          {rulesetCheckSources(definition, build, live, items).flatMap((source, index) => {
+            const modifiers = source.modifiers?.filter((one) => one.to === "damage");
+            return modifiers?.length ? (
+              <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">
+                {source.name}:{" "}
+                {rulesetItemEffectFacts(definition, { modifiers })
+                  .map((fact) => rulesetEffectPhrase(fact, localizeUi))
+                  .join("; ")}
+              </p>
+            ) : (
+              []
+            );
+          })}
           {definition.rests.length > 0 && (
             <div className="space-y-1.5">
               <div className="flex flex-wrap gap-1.5">

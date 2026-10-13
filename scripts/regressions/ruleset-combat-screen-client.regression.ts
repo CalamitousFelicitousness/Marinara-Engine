@@ -56,6 +56,9 @@ import {
   rulesetValueLabel,
 } from "../../packages/client/src/lib/ruleset-combat-log.js";
 import {
+  rulesetAimSoFar,
+  rulesetAimTake,
+  rulesetAimTurning,
   rulesetBoardCells,
   rulesetCellKey,
   rulesetCellSentences,
@@ -653,6 +656,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["down", say({ type: "down", actorId: "brenna", dying: true })],
     ["defeated", say({ type: "defeated", actorId: "lurker" })],
     ["revived", say({ type: "revived", actorId: "brenna", health: 1 })],
+    ["stabilized", say({ type: "stabilized", targetId: "brenna", sourceId: "lurker" })],
     ["outcome", say({ type: "outcome", outcome: "victory" })],
     ["refused", say({ type: "refused", actorId: "brenna", optionId: "sword", reason: "no-budget" })],
     ["director", say({ type: "director", reason: "ruleset-unavailable", text: "The rules are gone." })],
@@ -742,6 +746,26 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
+    ["summon", say({ type: "summon", actorId: "corwin", label: "Spiritual Weapon", outcome: "appeared" })],
+    ["flew", say({ type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 })],
+    ["delay", say({ type: "delay", actorId: "corwin", label: "Fireball", outcome: "held", roll: 14, needed: 11 })],
+    [
+      "counter",
+      say({
+        type: "counter",
+        actorId: "corwin",
+        targetId: "lurker",
+        label: "Fireball",
+        level: 5,
+        reach: 3,
+        rolls: [12],
+        kept: 12,
+        modifier: 4,
+        total: 16,
+        difficulty: 15,
+        success: true,
+      }),
+    ],
     ["shift", say({ type: "shift", actorId: "brenna", amount: 3, total: 9, reason: "gained", sourceId: "lurker" })],
     ["shot", say({ type: "shot", actorId: "brenna", optionId: "item:0", label: "Longbow", left: 11 })],
     [
@@ -749,6 +773,21 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       say({ type: "reload", actorId: "brenna", optionId: "reload:1", label: "Pistol", loaded: 6, of: 6, drew: 2 }),
     ],
     ["recovered", say({ type: "recovered", actorId: "brenna", label: "Arrows", count: 3 })],
+    [
+      "zone",
+      say({
+        type: "zone",
+        actorId: "brenna",
+        label: "Cloudkill",
+        outcome: "struck",
+        targetId: "lurker",
+        trigger: "enter",
+      }),
+    ],
+    [
+      "switch",
+      say({ type: "switch", actorId: "brenna", optionId: "switch:0", label: "Flame Tongue: Flames", on: true }),
+    ],
   ];
   const printed = new Map(table);
   for (const [type, text] of table) {
@@ -815,6 +854,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     }),
     "Fireball hurts Thorn Lurker, who may answer.",
   );
+  assert.equal(
+    line(fiveE, state, {
+      type: "window",
+      window: "w5",
+      kind: "reaction",
+      waiting: ["lurker"],
+      sourceId: "brenna",
+      moment: "falls",
+      label: "fall",
+    }),
+    "Brenna falls, and Thorn Lurker may answer.",
+  );
   assert.equal(printed.get("pass"), "Thorn Lurker lets the moment go by.");
   assert.equal(
     line(fiveE, state, { type: "window", window: "w2", kind: "signature", waiting: ["lurker"] }),
@@ -854,6 +905,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("down"), "Brenna goes down and is fighting to hold on.");
   assert.equal(printed.get("defeated"), "Thorn Lurker is out of the fight.");
   assert.equal(printed.get("revived"), "Brenna is back up on 1.");
+  assert.equal(printed.get("stabilized"), "Thorn Lurker stabilizes Brenna.");
   assert.equal(printed.get("outcome"), "The fight is won.");
   assert.equal(printed.get("refused"), "Brenna could not do that: They have nothing left to spend on it this turn.");
   assert.equal(printed.get("director"), "The fight stopped here: The rules are gone.");
@@ -906,6 +958,15 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   const highGround = { ...fiveE, combat: { ...fiveE.combat!, elevation: { levelHeight: 5 } } };
   assert.equal(line(highGround, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 10 ft.");
   assert.equal(line(fiveE, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 2 levels.");
+  // A flier going up or down a level where it stands (1.109), in the same distance.
+  assert.equal(
+    line(highGround, state, { type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 }),
+    "Thorn Lurker flies up 5 ft for 1 and has 5 left.",
+  );
+  assert.equal(
+    line(highGround, state, { type: "flew", actorId: "lurker", from: 2, to: 1, cost: 1, left: 0 }),
+    "Thorn Lurker flies down 5 ft for 1 and has 0 left.",
+  );
 
   // A fight that is still going says nothing, so nobody prints "ongoing" at a player.
   assert.equal(line(fiveE, state, { type: "outcome", outcome: "ongoing" }), null);
@@ -1519,11 +1580,49 @@ function drawn(...rows: string[]): TacticalGrid {
   );
 }
 
+// ── Laying a wall, and setting down copies (1.172, 1.173) ──
+{
+  const base = { id: "w", kind: "ability", label: "Wall", targets: { side: "any", count: 1 }, targetIds: [] } as const;
+  const wall = { ...base, area: { shape: "wall", size: 3, ring: 4, sided: true, range: 12 } } as never;
+  // Set down first, then turned by the square it runs toward; the same square lays it across.
+  const first = rulesetAimTake(wall, undefined, { x: 5, y: 5 });
+  assert.deepEqual(first, { lay: { at: { x: 5, y: 5 } } });
+  assert.ok(rulesetAimTurning(wall, "lay" in first ? first.lay : undefined));
+  assert.deepEqual(rulesetAimTake(wall, { at: { x: 5, y: 5 }, side: "near" }, { x: 8, y: 5 }), {
+    send: { at: { x: 5, y: 5 }, side: "near", toward: { x: 8, y: 5 } },
+  });
+  assert.deepEqual(rulesetAimTake(wall, { at: { x: 5, y: 5 } }, { x: 5, y: 5 }), { send: { at: { x: 5, y: 5 } } });
+  // A ring goes at once, and is never turning.
+  assert.deepEqual(rulesetAimTake(wall, { ring: true }, { x: 6, y: 6 }), { send: { at: { x: 6, y: 6 }, ring: true } });
+  assert.ok(!rulesetAimTurning(wall, { ring: true, at: { x: 6, y: 6 } }));
+  // Three copies: two picks wait, the third sends; a square picked twice changes nothing.
+  const storm = { ...base, area: { shape: "box", size: 2, copies: 3, range: 30 } } as never;
+  const one = rulesetAimTake(storm, undefined, { x: 1, y: 1 });
+  assert.ok("lay" in one);
+  assert.deepEqual(rulesetAimTake(storm, one.lay, { x: 1, y: 1 }), { lay: one.lay });
+  const two = rulesetAimTake(storm, one.lay, { x: 3, y: 1 });
+  assert.ok("lay" in two);
+  assert.deepEqual(rulesetAimSoFar(two.lay), { at: { x: 1, y: 1 }, also: [{ x: 3, y: 1 }] });
+  assert.deepEqual(rulesetAimTake(storm, two.lay, { x: 5, y: 1 }), {
+    send: {
+      at: { x: 1, y: 1 },
+      also: [
+        { x: 3, y: 1 },
+        { x: 5, y: 1 },
+      ],
+    },
+  });
+  // A plain shape sends where it is aimed.
+  const ball = { ...base, area: { shape: "burst", size: 2, range: 30 } } as never;
+  assert.deepEqual(rulesetAimTake(ball, undefined, { x: 2, y: 2 }), { send: { at: { x: 2, y: 2 } } });
+  assert.equal(rulesetAimSoFar(undefined), null);
+}
+
 // ── The menu groups, the movement group first ──
 {
   assert.deepEqual(
     [...RULESET_MENU_KINDS],
-    ["move", "attack", "reload", "ability", "item", "block", "contest", "standard", "end-turn"],
+    ["move", "attack", "reload", "ability", "item", "switch", "block", "contest", "standard", "end-turn"],
   );
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({

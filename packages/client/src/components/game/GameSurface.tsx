@@ -7999,6 +7999,42 @@ function GameSurfaceComponent({
     [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
+  /** An item's switch turned on or off (1.165): the flame of a flame tongue, out of a fight. */
+  const handleSwitchInventoryStack = useCallback(
+    async (stackId: string, on: boolean) => {
+      if (!activeChatId) return null;
+      const stack = inventoryItemsRef.current.find((entry) => entry.id === stackId);
+      if (!stack) {
+        toast.error(localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"));
+        return null;
+      }
+      try {
+        const [result] = await commitInventory([{ op: "switch", id: stackId, on }]);
+        if (!result?.ok) {
+          toast.error(
+            inventoryRefusal(
+              result?.reason,
+              gameInventoryStackLabel(stack),
+              "ui.game.gamesurfacecomponent.failedToChangeValue1",
+            ),
+          );
+          return null;
+        }
+        return result.id ?? stackId;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToChangeValue1", {
+                value1: gameInventoryStackLabel(stack),
+              }),
+        );
+        return null;
+      }
+    },
+    [activeChatId, commitInventory, inventoryRefusal, localizeUi],
+  );
+
   /** One stack set to a count: the +1 and -1 buttons, and whatever the player typed. Zero removes it. */
   const handleSetInventoryStackQuantity = useCallback(
     async (stackId: string, quantity: number) => {
@@ -13511,6 +13547,7 @@ function GameSurfaceComponent({
                 onAddRulesetItems={handleAddRulesetItems}
                 placeAmong={inventoryPlaceAmong}
                 onWearItem={handleWearInventoryStack}
+                onSwitchItem={handleSwitchInventoryStack}
                 onRenameItem={handleRenameInventoryItem}
                 onSetItemQuantity={handleSetInventoryStackQuantity}
                 onSplitItem={handleSplitInventoryStack}

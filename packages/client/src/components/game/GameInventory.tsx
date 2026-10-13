@@ -21,6 +21,7 @@ import {
   Minus,
   Package,
   Plus,
+  Power,
   Scissors,
   Shirt,
   Wand2,
@@ -68,6 +69,8 @@ export interface InventoryItem {
   loaded?: number;
   /** What an item that holds charges has left, as a fight left it. Absent reads as full. */
   charges?: number;
+  /** An item with a switch turned on, as the player or a fight left it (1.165). Only ever one item. */
+  on?: true;
 }
 
 /** One party member's bag: `holder` as a stack has it (absent for the player), and the name shown. */
@@ -108,6 +111,8 @@ interface GameInventoryProps {
   /** Called when the user puts an item on or takes it off, binds or unbinds it. Resolves to the stack
    *  it is in afterwards (one item of a larger stack is taken into its own). */
   onWearItem?: (stackId: string, wear: GameInventoryWear) => Promise<string | null> | string | null;
+  /** Called when the user turns an item with a switch on or off (1.165). Resolves to the stack's id. */
+  onSwitchItem?: (stackId: string, on: boolean) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (stackId: string, itemName: string) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
@@ -156,6 +161,7 @@ export function GameInventory({
   onAddRulesetItems,
   placeAmong,
   onWearItem,
+  onSwitchItem,
   onUseItem,
   onRenameItem,
   onSetItemQuantity,
@@ -366,6 +372,19 @@ export function GameInventory({
       }
     },
     [onWearItem],
+  );
+  const handleSwitch = useCallback(
+    async (item: InventoryItem) => {
+      if (!onSwitchItem) return;
+      setWearPending(true);
+      try {
+        const switchedId = await onSwitchItem(item.id, item.on !== true);
+        if (switchedId) setSelectedItem(switchedId);
+      } finally {
+        setWearPending(false);
+      }
+    },
+    [onSwitchItem],
   );
   // What the bag in view carries and wears against what its bearer can: the player's own in the
   // shared view when there are no other bags.
@@ -1042,6 +1061,27 @@ export function GameInventory({
                   {bindingLabel ?? localizeUi("ui.game.gameinventory.bound")}
                 </button>
               )}
+              {selectedInventoryItem &&
+                selectedRulesetItem?.toggle &&
+                selectedInventoryItem.quantity === 1 &&
+                onSwitchItem && (
+                  <button
+                    type="button"
+                    aria-pressed={selectedInventoryItem.on === true}
+                    disabled={wearPending}
+                    onClick={() => void handleSwitch(selectedInventoryItem)}
+                    className={cn(
+                      "flex h-7 shrink-0 items-center justify-center gap-1 rounded border px-2 text-[0.7rem] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                      selectedInventoryItem.on
+                        ? "border-amber-500/20 bg-amber-500/10 font-semibold text-amber-300 hover:bg-amber-500/15"
+                        : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]",
+                    )}
+                    title={localizeUi("ui.game.gameinventory.switchHint")}
+                  >
+                    <Power size={12} />
+                    {selectedRulesetItem.toggle.label}
+                  </button>
+                )}
               {selectedInventoryItem && canInteract && onUseItem && (
                 <button
                   onClick={() =>

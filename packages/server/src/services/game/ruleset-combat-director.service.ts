@@ -38,8 +38,13 @@ import {
   rulesetAnswerDeflects,
   rulesetCellDistance,
   rulesetCombatant,
+  rulesetCreatureKind,
+  rulesetActiveConditions,
+  rulesetItemEffectFacts,
   rulesetCombatConditions,
+  rulesetZoneConditions,
   rulesetCombatHealth,
+  rulesetCombatHide,
   rulesetCombatOptions,
   rulesetCostSteps,
   rulesetAverageAmount,
@@ -53,6 +58,8 @@ import {
   rulesetEncounterSummary,
   rulesetOptionTargets,
   rulesetReactionPointsAtSource,
+  rulesetReactionTarget,
+  rulesetFallTargets,
   rulesetPositionOf,
   rulesetWalkingDistances,
   rulesetSheetBuildsByName,
@@ -62,8 +69,12 @@ import {
   rulesetProposedStatBlock,
   rulesetTierStatBlock,
   rulesetWindowMoment,
+  rulesetZonesShown,
   rulesetWindowOptions,
+  rulesetAreaCells,
+  rulesetZoneCatches,
   RULESET_MOVE_OPTION,
+  RULESET_ZONE_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
   type CombatAiCandidate,
@@ -511,10 +522,16 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
 function conditionsOf(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
 ): Array<{ id: string; label: string; rounds?: number }> {
   const declared = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
   const tracked = new Map(combatant.tracked.map((entry) => [entry.condition, entry.rounds]));
-  return rulesetCombatConditions(definition, combatant).map((id) => {
+  // And what a zone they stand in puts on them while they stay (1.174).
+  const ids = new Set([
+    ...rulesetCombatConditions(definition, combatant),
+    ...(state ? rulesetZoneConditions(state, combatant) : []),
+  ]);
+  return [...ids].map((id) => {
     const rounds = tracked.get(id);
     return {
       id,
@@ -540,10 +557,20 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
   };
 }
 
-function projectCombatant(definition: RulesetDefinition, combatant: RulesetCombatant): DirectedRulesetCombatant {
+function projectCombatant(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState,
+): DirectedRulesetCombatant {
   const combat = definition.combat!;
   const health = rulesetCombatHealth(definition, combat, combatant);
   const deathTrack = deathTrackOf(definition, combatant);
+  const saveModifiers = rulesetActiveConditions(definition, combat, combatant, state).flatMap((source) =>
+    rulesetItemEffectFacts(definition, {
+      modifiers: source.modifiers?.filter((one) => one.against),
+      saves: source.saves,
+    }),
+  );
   return {
     id: combatant.id,
     name: combatant.name,
@@ -552,13 +579,32 @@ function projectCombatant(definition: RulesetDefinition, combatant: RulesetComba
     initiative: combatant.initiative,
     health,
     defense: combatant.defense,
-    conditions: conditionsOf(definition, combatant),
+    conditions: conditionsOf(definition, combatant, state),
+    hides: rulesetCombatHide(definition, combatant, state),
+    damageModifiers: rulesetActiveConditions(definition, combat, combatant, state).flatMap((source) => {
+      const modifiers = source.modifiers?.filter((one) => one.to === "damage" || one.to === "damage-taken");
+      if (!modifiers?.length) return [];
+      const name = source.item
+        ? source.condition
+        : (definition.sheet.live.conditions.find((one) => one.id === source.condition)?.label ?? source.condition);
+      return [{ name, facts: rulesetItemEffectFacts(definition, { modifiers }) }];
+    }),
     budgets: { ...combatant.budgets },
     down: combatant.down,
     dying: combatant.dying,
     stable: combatant.stable,
     defeated: combatant.defeated,
     ...(deathTrack ? { deathTrack } : {}),
+    ...(saveModifiers.length ? { saveModifiers } : {}),
+    ...(() => {
+      // Its creature type and tags, by their labels (1.163).
+      const kinds = combat.creatureTypes;
+      const kind = rulesetCreatureKind(definition, combatant);
+      if (!kinds || (kind.type === undefined && !kind.tags.length)) return {};
+      const type = kinds.types.find((one) => one.id === kind.type)?.label;
+      const tags = kind.tags.map((tag) => kinds.tags?.find((one) => one.id === tag)?.label ?? tag);
+      return { kind: { ...(type ? { type } : {}), ...(tags.length ? { tags } : {}) } };
+    })(),
     ...(combatant.concentrating ? { concentrating: combatant.concentrating.label } : {}),
     ...(combatant.block?.tier ? { tier: combatant.block.tier } : {}),
     ...(combatant.block?.traits?.length ? { traits: combatant.block.traits.map((trait) => ({ ...trait })) } : {}),
@@ -566,6 +612,7 @@ function projectCombatant(definition: RulesetDefinition, combatant: RulesetComba
     ...(combatant.movement !== undefined
       ? { movement: combatant.movement, movementLeft: combatant.movementLeft ?? 0 }
       : {}),
+    ...(combatant.altitude !== undefined ? { altitude: combatant.altitude } : {}),
   };
 }
 
@@ -590,9 +637,15 @@ export function rulesetMenu(
     : rulesetCombatOptions(definition, encounter, actorId);
   return menu.map((option) => {
     const aim = option.area ? rulesetAimCells(encounter, actorId, option.id, RULESET_AIM_LIMIT) : [];
+    const actor = rulesetCombatant(encounter, actorId);
+    const action = actor?.actions.find((one) => one.id === option.id);
+    const fallers =
+      inWindow && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && actor && action
+        ? rulesetFallTargets(definition, encounter, actor, action)
+        : undefined;
     return {
       ...option,
-      targetIds: rulesetOptionTargets(definition, encounter, actorId, option),
+      targetIds: fallers ?? rulesetOptionTargets(definition, encounter, actorId, option),
       ...(aim.length > 0 ? { aim } : {}),
     };
   });
@@ -632,6 +685,7 @@ export function directedRulesetView(
             height: grid.height,
             tiles: grid.tiles.map((row) => [...row]),
             ...(grid.elevation ? { elevation: grid.elevation.map((row) => [...row]) } : {}),
+            ...(grid.walls ? { walls: { ...grid.walls } } : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
           },
@@ -639,7 +693,9 @@ export function directedRulesetView(
       : {}),
     ...(actor && !over ? { actorId: actor.id } : {}),
     controller,
-    combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant)),
+    combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
+    // The areas spells left standing (1.167), drawn on the board and listed beside it.
+    ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
     // A window is answered by the one it asks, so while it is open the menu on screen is THEIRS.
     // The actor's own turn is standing still behind it and has nothing to offer until it closes.
     ...(held && !over
@@ -651,6 +707,7 @@ export function directedRulesetView(
             waiting: Math.max(0, held.window.waiting.length - 1),
             ...(held.window.trigger.kind === "leaves-reach" ? { moverId: held.window.trigger.moverId } : {}),
             ...("sourceId" in held.window.trigger ? { sourceId: held.window.trigger.sourceId } : {}),
+            ...("targetIds" in held.window.trigger ? { targetIds: held.window.trigger.targetIds } : {}),
             ...(rulesetWindowMoment(held.window.trigger) ? { moment: rulesetWindowMoment(held.window.trigger)! } : {}),
             ...("label" in held.window.trigger ? { label: held.window.trigger.label } : {}),
             ...(held.window.trigger.kind === "hit"
@@ -848,7 +905,11 @@ export function priced(
   const out: PricedOption[] = [];
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base = (option.cost ?? []).reduce((total, entry) => total + entry.amount, 0) + (option.signature?.cost ?? 0);
-    const ways: PricedOption[] = [{ option, price: base }, ...biggerWays(definition, actor, option)];
+    // One that only a higher pool can pay for now (1.166) is never taken at its own price.
+    const ways: PricedOption[] = [
+      ...(option.upcastOnly ? [] : [{ option, price: base }]),
+      ...biggerWays(definition, actor, option),
+    ];
     // Modes first, so each mode is then made in every style, forecast as that style does.
     out.push(...ways.flatMap(modedWays).flatMap((way) => styledWays(definition, way)));
   }
@@ -863,14 +924,16 @@ function biggerWays(
   option: RulesetCombatOption,
 ): PricedOption[] {
   const action = actor.actions.find((entry) => entry.id === option.id);
-  if (!action?.use?.perCostStep) return [];
+  // What grows paid bigger, or what can only be paid out of another pool now (1.166).
+  const grows = !!action?.use?.perCostStep || !!action?.use?.targetsPerStep;
+  if (!action || (!grows && !option.upcastOnly)) return [];
   const ways: PricedOption[] = [];
   for (const pool of option.payWith ?? []) {
-    const steps = rulesetCostSteps(definition, action, pool);
-    if (steps < 1) continue;
+    const steps = rulesetCostSteps(definition, action, pool, actor);
+    if (steps < 1 && !option.upcastOnly) continue;
     const paid = planRulesetCombatCost(definition, actor, action, pool);
     if (!paid) continue;
-    const extra = steps * rulesetAverageAmount(action.use.perCostStep);
+    const extra = action.use?.perCostStep ? steps * rulesetAverageAmount(action.use.perCostStep) : 0;
     const forecast = option.forecast ? { ...option.forecast } : undefined;
     if (forecast?.averageDamage !== undefined) {
       forecast.averageDamage = Math.round((forecast.averageDamage + extra) * 100) / 100;
@@ -882,6 +945,10 @@ function biggerWays(
         label: `${option.label} (${paid.cost[0]?.label ?? pool})`,
         cost: paid.cost.map((entry) => ({ pool: entry.pool, label: entry.label, amount: entry.amount })),
         ...(forecast ? { forecast } : {}),
+        // As many targets as this pool lets it take (1.166).
+        ...(option.targetsWith?.[pool] !== undefined
+          ? { targets: { ...option.targets, count: option.targetsWith[pool]! } }
+          : {}),
       },
       payWith: pool,
       price: paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,
@@ -960,10 +1027,29 @@ export function rulesetWindowTargetOf(
   const trigger = encounter.window?.trigger;
   if (!trigger || option.targets.count > 0 || option.id === RULESET_PASS_OPTION) return undefined;
   if (trigger.kind === "leaves-reach") return trigger.moverId;
-  if (trigger.kind !== "aimed" && trigger.kind !== "hit" && trigger.kind !== "harmed" && trigger.kind !== "used") {
+  if (trigger.kind === "falls") return trigger.sourceId;
+  if (
+    trigger.kind !== "aimed" &&
+    trigger.kind !== "hit" &&
+    trigger.kind !== "harmed" &&
+    trigger.kind !== "used" &&
+    trigger.kind !== "turn-start"
+  ) {
     return undefined;
   }
   const action = actor.actions.find((entry) => entry.id === option.id);
+  if (action?.reaction?.at === "target")
+    return rulesetReactionTarget(encounter, actor, action, trigger.kind, trigger.sourceId, {
+      ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+      ...("optionId" in trigger &&
+      rulesetCombatant(encounter, trigger.sourceId)?.block &&
+      !("catalog" in trigger && trigger.catalog)
+        ? { action: trigger.label }
+        : {}),
+      ...("catalog" in trigger ? { catalog: trigger.catalog } : {}),
+      ...("entry" in trigger ? { entry: trigger.entry } : {}),
+      ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
+    });
   return action && rulesetReactionPointsAtSource(action) ? trigger.sourceId : undefined;
 }
 
@@ -995,6 +1081,12 @@ function rulesetCandidatesFrom(
   }
   for (const way of priced(definition, encounter, actor, menu)) {
     const { option, price } = way;
+    // Moving a lasting area (1.168) is weighed from where the actor stands, by whom it would catch.
+    if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
+      const moved = standing ? null : zoneMoveCandidate(encounter, actor, option, price);
+      if (moved) candidates.push(moved);
+      continue;
+    }
     // Walking is not a candidate of its own: it is what a candidate does before it acts, and a turn
     // with nothing to act on closes the distance instead (see `rulesetClosingMove`).
     if (option.kind === "move") continue;
@@ -1050,6 +1142,16 @@ function rulesetCandidatesFrom(
     // In a window, an option that asks for nobody may still land on somebody: whoever is walking
     // away, or whoever caused the moment. It is weighed by what it would do to THEM, and its answer
     // still names nobody, because the rules fill that target in.
+    const fallingAction = actor.actions.find((entry) => entry.id === option.id);
+    if (menu && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && fallingAction) {
+      const targetIds = rulesetFallTargets(definition, encounter, actor, fallingAction).slice(0, option.targets.count);
+      candidates.push({
+        action: { choice: { actorId, optionId: option.id, targetIds, ...paying(way) }, option },
+        setup: targetIds.length,
+        cost: price,
+      });
+      continue;
+    }
     const lands = menu ? rulesetWindowTargetOf(encounter, actor, option) : undefined;
     if (option.targets.count <= 0 && !lands) {
       // Holding the thing it is already holding would end it and start it again for the same price.
@@ -1243,6 +1345,49 @@ function areaCandidates(
 }
 
 /**
+ * Where to move a lasting area its actor holds (1.168): the cell that would catch the most standing
+ * opponents less friends, and only when that beats where it stands now. Ties keep the menu's own
+ * order, so the picker stays deterministic.
+ */
+function zoneMoveCandidate(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  price: number,
+): CombatAiCandidate<RulesetCandidate> | null {
+  const actionId = option.id.slice(RULESET_ZONE_OPTION_PREFIX.length);
+  const zone = actor.zones?.find((entry) => entry.actionId === actionId);
+  const action = actor.actions.find((entry) => entry.id === actionId);
+  const grid = encounter.board?.grid;
+  if (!zone?.at || !action?.area || !grid) return null;
+  const worth = (at: { x: number; y: number }) => {
+    const cells = new Set(rulesetAreaCells("burst", action.area!.size, at, at, grid).map((c) => `${c.x},${c.y}`));
+    let total = 0;
+    for (const one of encounter.combatants) {
+      if (typeof one.x !== "number" || typeof one.y !== "number" || one.down) continue;
+      if (!cells.has(`${one.x},${one.y}`) || !rulesetZoneCatches(actor, zone, action, one)) continue;
+      total += one.side === actor.side ? -1 : 1;
+    }
+    return total;
+  };
+  const now = worth(zone.at);
+  let best: { cell: { x: number; y: number }; gain: number } | null = null;
+  for (const cell of option.cells ?? []) {
+    const gain = worth(cell) - now;
+    if (gain > 0 && (!best || gain > best.gain)) best = { cell, gain };
+  }
+  if (!best) return null;
+  return {
+    action: {
+      choice: { actorId: actor.id, optionId: option.id, targetIds: [], to: { x: best.cell.x, y: best.cell.y } },
+      option,
+    },
+    setup: Math.min(1, 0.4 * best.gain),
+    cost: price,
+  };
+}
+
+/**
  * The walk a turn with nothing in reach takes: the reachable cell that ends up nearest an opponent,
  * cheapest first, and never one that would be struck at on the way when a quieter cell gets as
  * close. Nearest is measured by the walk still left to get there, not in a straight line: a wall
@@ -1263,7 +1408,7 @@ function rulesetClosingMove(
     .map((combatant) => rulesetPositionOf(combatant))
     .filter((cell): cell is { x: number; y: number } => !!cell);
   if (foes.length === 0) return null;
-  const walking = rulesetWalkingDistances(encounter.board.grid, foes);
+  const walking = rulesetWalkingDistances(encounter.board.grid, foes, actor);
   const nearest = (cell: { x: number; y: number }) => walking.get(`${cell.x},${cell.y}`) ?? Infinity;
   const already = nearest(from);
   let best: { cell: { x: number; y: number; cost: number; provokes: string[] }; away: number } | null = null;
@@ -1709,6 +1854,10 @@ export function commandRulesetCombatDirector(
       ...(command.mode !== undefined ? { mode: command.mode } : {}),
       ...(command.to ? { to: command.to } : {}),
       ...(command.at ? { at: command.at } : {}),
+      ...(command.toward ? { toward: command.toward } : {}),
+      ...(command.side ? { side: command.side } : {}),
+      ...(command.ring !== undefined ? { ring: command.ring } : {}),
+      ...(command.also?.length ? { also: command.also } : {}),
     });
     if (step.refused && step.refused.type === "refused") {
       return refuse(rulesetRefusalMessage(step.refused.reason), `ruleset_combat_${step.refused.reason}`);

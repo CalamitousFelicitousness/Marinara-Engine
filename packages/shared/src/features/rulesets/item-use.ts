@@ -34,7 +34,7 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "./live-state.js";
-import { rollDicePoolCheck, rollDiceSumCheck } from "./sheet-math.js";
+import { resolveRulesetValueRef, rollDicePoolCheck, rollDiceSumCheck } from "./sheet-math.js";
 
 /** Why an item could not be used. */
 export type RulesetItemUseRefusal =
@@ -128,6 +128,19 @@ export function useRulesetItemOutsideFight(input: {
   const onUser = works && (use.kind === "heal" || use.kind === "buff") && use.targets !== "enemy";
   let live = user.live;
   const parts: RulesetItemUsePart[] = [];
+  const sheetWithin = (bounds: NonNullable<NonNullable<typeof use.applies>[number]["when"]>) => {
+    const held = rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder);
+    const value = resolveRulesetValueRef(
+      definition,
+      user.build,
+      bounds.value,
+      evaluateRulesetSheetLive(definition, user.build, live, held),
+    );
+    return (
+      (bounds.atLeast === undefined || value >= bounds.atLeast) &&
+      (bounds.atMost === undefined || value <= bounds.atMost)
+    );
+  };
   const write = (op: RulesetSheetOp): string | undefined => {
     const result = applyRulesetSheetOp(definition, user.build, live, op);
     if (!result.ok) return undefined;
@@ -189,6 +202,8 @@ export function useRulesetItemOutsideFight(input: {
       }
     }
     for (const applies of use.applies ?? []) {
+      // Read off the user as it applies (1.162), what came before it included.
+      if (applies.when && !sheetWithin(applies.when)) continue;
       if (!write({ op: "condition", condition: applies.condition, active: true })) continue;
       const label =
         definition.sheet.live.conditions.find((condition) => condition.id === applies.condition)?.label ??

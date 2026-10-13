@@ -105,6 +105,8 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("give"), id: stackId, to: holder.optional(), count: amount.optional() }).strict(),
   /** One stack put on or taken off, bound or unbound, by whoever carries it. */
   z.object({ op: z.enum(["equip", "unequip", "bind", "unbind"]), id: stackId }).strict(),
+  /** One stack's switch turned on or off (Capability API 1.165): an item of one with a `toggle`. */
+  z.object({ op: z.literal("switch"), id: stackId, on: z.boolean() }).strict(),
 ]);
 
 export type GameInventoryOp = z.infer<typeof gameInventoryOpSchema>;
@@ -463,6 +465,25 @@ export function applyGameInventoryOps(
         }
         current = worn.stacks;
         results.push({ ok: true, id: worn.id });
+        break;
+      }
+      case "switch": {
+        const at = current.findIndex((stack) => stack.id === op.id);
+        const stack = current[at];
+        if (!stack) {
+          refuse("missing-stack");
+          break;
+        }
+        // Only one of an item with a switch: a stack of several would be some on and some off.
+        if (!stack.item || !rules?.itemOf(stack.item)?.toggle || stack.quantity !== 1) {
+          refuse("refused");
+          break;
+        }
+        const { on: _on, ...rest } = stack;
+        current = current.map((each, index) =>
+          index === at ? { ...rest, ...(op.on ? { on: true as const } : {}) } : each,
+        );
+        results.push({ ok: true, id: stack.id });
         break;
       }
     }

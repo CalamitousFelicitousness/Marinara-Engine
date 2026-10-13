@@ -243,6 +243,8 @@ const WINDOW_LINES = {
   aimed: "windowAimed",
   hit: "windowHit",
   harmed: "windowHarmed",
+  falls: "windowFalls",
+  "turn-start": "windowTurnStart",
   used: "windowUsed",
 } as const;
 
@@ -307,7 +309,10 @@ export function rulesetCombatEventLine(
     }
     case "save":
       if (event.automatic) {
-        return key("saveAutomatic", { actor: names.combatant(event.actorId), save: names.save(event.save) });
+        return key(event.success ? "saveAutomaticSuccess" : "saveAutomatic", {
+          actor: names.combatant(event.actorId),
+          save: names.save(event.save),
+        });
       }
       if (event.pool) {
         return key(event.success ? "savePoolSuccess" : "savePoolFailure", {
@@ -409,6 +414,17 @@ export function rulesetCombatEventLine(
             ),
       });
       const attacker = side(event.attacker);
+      // Breaking free of a hold that names its escape DC: a roll against that number, nobody else's.
+      if (event.escapeDc !== undefined) {
+        return key(event.winner === "actor" ? "contestEscapeWon" : "contestEscapeLost", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.targetId),
+          label: event.label,
+          roll: attacker.roll,
+          check: attacker.check,
+          dc: event.escapeDc,
+        });
+      }
       const defender = side(event.defender);
       return key(event.winner === "actor" ? "contestWon" : "contestLost", {
         actor: names.combatant(event.actorId),
@@ -461,6 +477,88 @@ export function rulesetCombatEventLine(
         roll: rulesetRollText(event, t, bonusNamer(names, t)),
         difficulty: event.difficulty,
       });
+    case "summon":
+      return key(
+        event.outcome === "appeared" ? "summonAppeared" : event.outcome === "struck" ? "summonStruck" : "summonEnded",
+        { actor: names.combatant(event.actorId), label: event.label },
+      );
+    case "zone":
+      // A lasting area (1.167): where it stands, what ends it, and whom it catches and how. Moved
+      // by its caster or drifting, and hurting whoever crosses its ground (1.168).
+      if (event.outcome === "shoved") {
+        return key("zoneShoved", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          target: names.combatant(event.targetId ?? ""),
+        });
+      }
+      if (event.outcome === "moved" || event.outcome === "drifted") {
+        return key(event.outcome === "moved" ? "zoneMoved" : "zoneDrifted", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+        });
+      }
+      return event.outcome === "struck"
+        ? key(
+            event.trigger === "moving"
+              ? "zoneStruckMoving"
+              : event.trigger === "ram"
+                ? "zoneStruckRam"
+                : event.trigger === "enter"
+                  ? "zoneStruckEnter"
+                  : event.trigger === "turn-end"
+                    ? "zoneStruckEnd"
+                    : "zoneStruckStart",
+            {
+              actor: names.combatant(event.actorId),
+              label: event.label,
+              target: names.combatant(event.targetId ?? ""),
+            },
+          )
+        : key(event.outcome === "appeared" ? "zoneAppeared" : "zoneEnded", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+          });
+    case "delay": {
+      // What a slowing condition holds over to its maker's next turn (1.115).
+      const said = { actor: names.combatant(event.actorId), label: event.label };
+      if (event.outcome === "completed") return key("delayCompleted", said);
+      if (event.outcome === "lost") return key("delayLost", said);
+      return key(event.outcome === "held" ? "delayHeld" : "delayNow", {
+        ...said,
+        roll: event.roll,
+        needed: event.needed,
+      });
+    }
+    case "counter":
+      // An answer that reaches only so high (1.111): past it, a check, or nothing at all.
+      if (event.total === undefined || event.rolls === undefined) {
+        return key("counterOutOfReach", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.targetId),
+          label: event.label,
+          level: event.level,
+        });
+      }
+      return key(event.success ? "counterSuccess" : "counterFailure", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        level: event.level,
+        roll: rulesetRollText(
+          {
+            rolls: event.rolls,
+            kept: event.kept ?? event.total,
+            modifier: event.modifier ?? 0,
+            total: event.total,
+            mode: event.mode,
+            bonuses: event.bonuses,
+          },
+          t,
+          bonusNamer(names, t),
+        ),
+        difficulty: event.difficulty,
+      });
     case "recharge":
       return key(event.back ? "rechargeBack" : "rechargeNot", {
         label: event.label,
@@ -498,7 +596,7 @@ export function rulesetCombatEventLine(
     case "concentration":
       if (event.state === "ended") {
         return key(
-          event.reason === "damage"
+          event.reason === "damage" || event.reason === "zone"
             ? "concentrationLost"
             : event.reason === "replaced"
               ? "concentrationReplaced"
@@ -527,17 +625,30 @@ export function rulesetCombatEventLine(
         cost: names.distance(event.cost),
         left: names.distance(event.left),
       });
+    case "flew":
+      return key(event.to > event.from ? "flewUp" : "flewDown", {
+        actor: names.combatant(event.actorId),
+        distance: names.height(Math.abs(event.to - event.from)),
+        cost: names.distance(event.cost),
+        left: names.distance(event.left),
+      });
     case "window":
       // Who the fight stopped for. The window between two turns is nobody's interruption, so it is
       // said as a pause rather than as somebody being caught out.
-      return key(WINDOW_LINES[event.moment ?? (event.kind === "signature" ? "between" : "leaving")], {
-        actor: names.combatant(event.waiting[0] ?? ""),
-        others: Math.max(0, event.waiting.length - 1),
-        mover: names.combatant(event.sourceId ?? event.moverId ?? ""),
-        label: event.label ?? "",
-        total: event.total ?? "",
-        defense: event.defense === undefined ? "" : defenseText(names, event.defense),
-      });
+      return key(
+        event.targetIds?.some((id) => id !== event.waiting[0]) && (event.moment === "aimed" || event.moment === "hit")
+          ? "windowBystander"
+          : WINDOW_LINES[event.moment ?? (event.kind === "signature" ? "between" : "leaving")],
+        {
+          actor: names.combatant(event.waiting[0] ?? ""),
+          others: Math.max(0, event.waiting.length - 1),
+          target: event.targetIds?.map(names.combatant).join(", ") ?? "",
+          mover: names.combatant(event.sourceId ?? event.moverId ?? ""),
+          label: event.label ?? "",
+          total: event.total ?? "",
+          defense: event.defense === undefined ? "" : defenseText(names, event.defense),
+        },
+      );
     case "recheck": {
       // The held roll against the defense the answer left: said whichever way it went, since the
       // reader saw it called a hit a moment ago.
@@ -599,6 +710,8 @@ export function rulesetCombatEventLine(
             loaded: event.loaded,
             of: event.of,
           });
+    case "switch":
+      return key(event.on ? "switchOn" : "switchOff", { actor: names.combatant(event.actorId), label: event.label });
     case "recovered":
       return key("recovered", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
     case "hardness":
@@ -643,6 +756,8 @@ export function rulesetCombatEventLine(
       return key(event.dying ? "downDying" : "down", { actor: names.combatant(event.actorId) });
     case "defeated":
       return key("defeated", { target: names.combatant(event.actorId) });
+    case "stabilized":
+      return key("stabilized", { actor: names.combatant(event.sourceId), target: names.combatant(event.targetId) });
     case "revived":
       return key("revived", { actor: names.combatant(event.actorId), health: event.health });
     case "outcome":

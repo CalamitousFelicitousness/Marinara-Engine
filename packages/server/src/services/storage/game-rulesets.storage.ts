@@ -20,6 +20,8 @@ import {
   communityRulesetId,
   isCommunityRulesetId,
   parseRulesetCatalogFile,
+  rulesetCatalogEntryIssues,
+  type RulesetCatalogEntriesById,
   parseRulesetDefinition,
   RULESET_CATALOG_MAX_BYTES,
   RULESET_MAX_BYTES,
@@ -150,6 +152,7 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
   // other import is this one file, so its catalogs have to be inline or the picker would have nothing
   // to read.
   const files = input.catalogs ?? {};
+  const entriesById: RulesetCatalogEntriesById = {};
   for (const catalog of parsed.definition.catalogs ?? []) {
     if (!catalog.asset) continue;
     if (files[catalog.id] === undefined) {
@@ -180,6 +183,25 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
     if (!catalog.ok) {
       throw new RulesetRefusedError(`The catalog "${id}" is not usable: ${catalog.issues.slice(0, 5).join("; ")}`);
     }
+    entriesById[id] = catalog.entries;
+  }
+  const complete = {
+    ...parsed.definition,
+    catalogs: parsed.definition.catalogs?.map((catalog) => ({
+      ...catalog,
+      entries: [...(entriesById[catalog.id] ?? catalog.entries ?? [])],
+    })),
+  };
+  for (const catalog of complete.catalogs ?? []) {
+    if (!catalog.entries?.some((entry) => entry.creature?.spellcasting)) continue;
+    const issues = rulesetCatalogEntryIssues(complete, catalog, catalog.entries ?? []);
+    if (issues.length)
+      throw new RulesetRefusedError(
+        `The catalog "${catalog.id}" is not usable: ${issues
+          .slice(0, 5)
+          .map((issue) => issue.message)
+          .join("; ")}`,
+      );
   }
 }
 

@@ -5,13 +5,15 @@ import {
   chatIdForMariSession,
   MARI_PERMISSIONS_MODES,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+  MARI_RUNTIMES,
+  MARI_RUNTIME_SETTINGS_KEY,
   withMariReceiptOutcome,
 } from "@marinara-engine/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } from "./generate/sse.js";
-import { readStoredMariPermissionsMode } from "../services/professor-mari/workspace-agent.service.js";
+import { readStoredMariPermissionsMode, readStoredMariRuntime } from "../services/professor-mari/workspace-agent.service.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { getProfessorMariWorkspaceService } from "../services/professor-mari/workspace-agent.service.js";
@@ -215,6 +217,9 @@ const permissionsModeSchema = z.object({
   chatId: z.string().min(1).optional(),
 });
 
+// Professor Mari's runtime ("classic" or "pi"): the same validated-route pattern, global only.
+const runtimeSchema = z.object({ runtime: z.enum(MARI_RUNTIMES) });
+
 /**
  * What the user reads when Keep or Restore fails (#6842), instead of a bare "Internal Server
  * Error". Keep and Restore first move the review's saved file under the data folder, and a
@@ -350,6 +355,19 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     }
     await createAppSettingsStorage(app.db).set(MARI_PERMISSIONS_MODE_SETTINGS_KEY, input.mode);
     return { ok: true, mode: input.mode };
+  });
+
+  // The runtime applies to the next run, so a switch never aborts an in-flight turn.
+  app.get("/runtime", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    return { runtime: await readStoredMariRuntime(createAppSettingsStorage(app.db)) };
+  });
+
+  app.put("/runtime", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const input = runtimeSchema.parse(req.body);
+    await createAppSettingsStorage(app.db).set(MARI_RUNTIME_SETTINGS_KEY, input.runtime);
+    return { ok: true, runtime: input.runtime };
   });
 
   app.get("/instructions", async (req, reply) => {

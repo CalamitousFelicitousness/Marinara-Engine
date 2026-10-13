@@ -70,6 +70,7 @@ import {
   type MariDbValidationIssue,
   type MariDbValidationResult,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+  MARI_RUNTIME_SETTINGS_KEY,
   createLorebookEntrySchema,
   lorebookDecisionModeSchema,
   parseLorebookDecisionActivation,
@@ -8145,14 +8146,16 @@ export class MariDbService {
     // transforms (change-level, so every planner is covered). Only the user's
     // validated PUT route writes this row.
     const permissionsModeChanges = changes.filter(
-      (change) => change.table === "app_settings" && change.id === MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+      (change) =>
+        change.table === "app_settings" &&
+        (change.id === MARI_PERMISSIONS_MODE_SETTINGS_KEY || change.id === MARI_RUNTIME_SETTINGS_KEY),
     );
     if (permissionsModeChanges.length > 0) {
       issues.push({
         level: "error",
         table: "app_settings",
-        id: MARI_PERMISSIONS_MODE_SETTINGS_KEY,
-        message: "The Permissions Mode can only be changed by the user, from the Mari panel or Settings.",
+        id: permissionsModeChanges[0]!.id,
+        message: "The Permissions Mode and the runtime can only be changed by the user, from the Mari panel or Settings.",
       });
     }
     // #6842: Professor Mari's own built-in card is Engine data. Startup rewrites it to the

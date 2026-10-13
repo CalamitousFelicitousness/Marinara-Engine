@@ -61,6 +61,11 @@ import {
   isMariPermissionsMode,
   MARI_AUTHORIZATION_ACCEPT_CHIP,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+  MARI_RUNTIME_SETTINGS_KEY,
+  DEFAULT_MARI_RUNTIME,
+  isMariRuntime,
+  supportsNativeToolCalls,
+  type MariRuntime,
   MODEL_LISTS,
   buildMariChangeExcerpts,
   mariReceiptReason,
@@ -2181,6 +2186,41 @@ export async function readStoredMariPermissionsMode(storage: {
   }
 }
 
+/** The stored runtime ("classic" or "pi"), tolerating junk and absence; read fresh per run like the Permissions Mode. */
+export async function readStoredMariRuntime(storage: {
+  get(key: string): Promise<string | null>;
+}): Promise<MariRuntime> {
+  try {
+    const raw = await storage.get(MARI_RUNTIME_SETTINGS_KEY);
+    return isMariRuntime(raw) ? raw : DEFAULT_MARI_RUNTIME;
+  } catch {
+    return DEFAULT_MARI_RUNTIME;
+  }
+}
+
+/** The runtime a run on this connection really uses. "pi" needs native tool calls through the provider layer. */
+export function resolveMariRuntime(
+  selected: MariRuntime,
+  connection: WorkspaceConnection | null,
+): { selected: MariRuntime; active: MariRuntime; note: string | null } {
+  if (selected !== "pi" || !connection) return { selected, active: "classic", note: null };
+  if (isLocalSidecarConnection(connection)) {
+    return {
+      selected,
+      active: "classic",
+      note: "The pi runtime does not support the local model yet, so Professor Mari uses the classic runtime on this connection.",
+    };
+  }
+  if (!supportsNativeToolCalls(connection.provider)) {
+    return {
+      selected,
+      active: "classic",
+      note: "This connection cannot make native tool calls, so Professor Mari uses the classic runtime.",
+    };
+  }
+  return { selected, active: "pi", note: null };
+}
+
 /**
  * Mode-specific behavioral guidance spliced into the prompt AFTER the saved
  * memories block, so the user's explicit, current mode selection outranks a
@@ -2865,6 +2905,10 @@ export class ProfessorMariWorkspaceService {
     if (!enabled) void this.abort();
   }
 
+  private async readRuntime(connection: WorkspaceConnection | null) {
+    return resolveMariRuntime(await readStoredMariRuntime(createAppSettingsStorage(this.app.db)), connection);
+  }
+
   private async readPermissionsMode(): Promise<MariPermissionsMode> {
     return readStoredMariPermissionsMode(createAppSettingsStorage(this.app.db));
   }
@@ -2918,6 +2962,10 @@ export class ProfessorMariWorkspaceService {
       skills: skillsResponse.skills.map(({ content: _content, ...summary }) => summary),
       skillDiagnostics: skillsResponse.diagnostics,
       active: this.active,
+      ...(await (async () => {
+        const runtime = await this.readRuntime(connection);
+        return { runtimeSelected: runtime.selected, runtimeActive: runtime.active, runtimeNote: runtime.note };
+      })()),
       ...(await (async () => {
         const resolved = await this.resolvePermissionsMode(chatId ?? null);
         return {

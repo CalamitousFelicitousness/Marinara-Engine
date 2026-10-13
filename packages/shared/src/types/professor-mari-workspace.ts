@@ -1,4 +1,5 @@
 import type { MariPermissionsMode } from "../constants/mari-permissions-mode.js";
+import type { MariRuntime } from "../constants/mari-runtime.js";
 // ──────────────────────────────────────────────
 // Professor Mari Workspace Agent Contracts
 // ──────────────────────────────────────────────
@@ -965,6 +966,12 @@ export interface MariWorkspaceStatus {
   permissionsModeDefault: MariPermissionsMode;
   /** Whether permissionsMode came from a per-chat override or the global default. */
   permissionsModeSource: "default" | "chat";
+  /** The runtime the user selected in settings (global). */
+  runtimeSelected: MariRuntime;
+  /** The runtime the next run actually uses for this connection; "classic" when "pi" cannot run on it. */
+  runtimeActive: MariRuntime;
+  /** Plain-words reason when runtimeSelected is not runtimeActive. */
+  runtimeNote?: string | null;
   /** #5740: latest-round understood-request record (diagnostic only). */
   latestUnderstoodRequest: MariUnderstoodRequest | null;
   pendingApprovals: MariWorkspacePendingApproval[];

@@ -13,6 +13,7 @@ import type {
   LLMToolDefinition,
   LLMUsage,
 } from "../llm/base-provider.js";
+import { resolveStoredChatOptions } from "../generation/generation-parameters.js";
 import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
 import { GeminiNoContentError } from "../llm/providers/google.provider.js";
@@ -4378,6 +4379,11 @@ export class ProfessorMariWorkspaceService {
         connection.provider.toLowerCase() !== "custom" ||
         isLocalInferenceBaseUrl(connection.baseUrl ?? ""));
     const verbosity = normalizeMariVerbosity(defaultParameters?.verbosity);
+    // The pi runtime sends the connection's own reasoning settings the way normal generation does; unset sends nothing.
+    const piReasoning =
+      runtime === "pi"
+        ? resolveStoredChatOptions(connection.defaultParameters, connection.provider, connection.model).reasoningEffort
+        : undefined;
     return {
       model: connection.model,
       temperature: typeof defaultParameters?.temperature === "number" ? defaultParameters.temperature : 0.2,
@@ -4395,7 +4401,8 @@ export class ProfessorMariWorkspaceService {
         : { ...(enabledParameters ?? {}), reasoningEffort: true },
       // Mari's command protocol is JSON. Hidden reasoning can consume the whole
       // response before local OpenAI-compatible servers emit the JSON frame.
-      reasoningEffort: disableHiddenReasoning ? "none" : undefined,
+      reasoningEffort: disableHiddenReasoning ? "none" : piReasoning,
+      ...(piReasoning && piReasoning !== "none" ? { enableThinking: true } : {}),
       verbosity,
       signal,
       onThinking,

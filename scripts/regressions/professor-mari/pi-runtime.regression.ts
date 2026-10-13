@@ -48,6 +48,8 @@ try {
 
   let mode: "auto" | "manual" | "plan" | "bypass" = "auto";
   let provider = "custom";
+  let armed = false;
+  let defaultParameters: string | null = null;
   let script: Scripted[] = [];
   let requests: Array<{ messages: ChatMessage[]; options: ChatOptions }> = [];
   let runtimeSeen: unknown[] = [];
@@ -74,6 +76,7 @@ try {
         baseUrl: "http://127.0.0.1:1/v1",
         apiKey: "",
         maxContext: 32768,
+        defaultParameters,
       }),
       resolvePermissionsMode: async () => ({ mode, defaultMode: mode, source: "chat" }),
       buildPromptMessages: async (...args: unknown[]) => {
@@ -84,7 +87,7 @@ try {
             { role: "system", content: "You are Professor Mari (regression).", contextKind: "prompt" },
             { role: "user", content: "Do the thing.", contextKind: "history" },
           ],
-          manualApprovalArmed: false,
+          manualApprovalArmed: armed,
         };
       },
       runPiRuntime: async (args: Record<string, unknown>) => {
@@ -169,7 +172,8 @@ try {
     assert.deepEqual(offered.map((tool) => tool.function.name).sort(), [...allowed.keys()].sort());
     for (const tool of offered) assert.equal(tool.function.description, allowed.get(tool.function.name));
     assert.equal(requests[0]!.options.responseFormat, undefined);
-    assert.notEqual(requests[0]!.options.reasoningEffort, "none", "pi must not force reasoning off");
+    assert.equal(requests[0]!.options.reasoningEffort, undefined, "an unset connection sends no reasoning setting");
+    assert.equal(requests[0]!.options.enableThinking, undefined);
     assert.ok(!requests[0]!.messages.some((m) => m.content.includes("workspace_command_protocol")));
     const toolMessage = toolMessages(requests[1]!.messages)[0];
     assert.equal(toolMessage?.tool_call_id, "call-read");
@@ -270,6 +274,35 @@ try {
     await done;
     assert.equal(existsSync(join(workspaceDir, "bypass.txt")), true, "Bypass never holds");
     assert.equal((await lastAssistant(chat.id))?.extra.mariDeferredMutations, undefined);
+  }
+
+  // Manual + a mutating call with NO words (a thinking model): held, never refused; the Accept run then applies it.
+  {
+    mode = "manual";
+    const silentWrite = (id: string) =>
+      reply("", [{ id, name: "write", args: { path: "silent.txt", content: "x", reason: "test" } }]);
+    const held = await start("pi manual silent", [silentWrite("silent-1"), reply("This must never be requested.")]);
+    await held.done;
+    assert.equal(existsSync(join(workspaceDir, "silent.txt")), false, "an un-approved silent mutation must not run");
+    assert.equal(requests.length, 1, "one model request is spent on the held round");
+    const saved = await lastAssistant(held.chat.id);
+    assert.equal(saved?.extra.mariDeferredMutations, true);
+    assert.match(JSON.stringify(saved?.extra.mariHeldChanges), /silent\.txt/u);
+    assert.ok(held.events.some((event) => event.type === "suggestions"));
+    assert.ok(!statusTexts(held.events).some((text) => /same app_data error|write error/u.test(text)));
+    // The run right after the user's Accept (armed) applies the same silent call.
+    armed = true;
+    const accepted = await start(
+      "pi manual accept",
+      [silentWrite("silent-2"), reply("Applied silent.txt.")],
+      "pi",
+      service,
+      held.chat.id,
+    );
+    await accepted.done;
+    armed = false;
+    assert.equal(existsSync(join(workspaceDir, "silent.txt")), true, "the armed run applies the change");
+    assert.equal((await lastAssistant(held.chat.id))?.extra.mariDeferredMutations, undefined);
   }
 
   // (d) Abort stops the run immediately: no tool starts, no further request.
@@ -397,6 +430,39 @@ try {
     assert.equal(requests.length, 2);
     assert.equal((await lastAssistant(chat.id))?.content, "Now the answer.");
     assert.ok(events.some((event) => event.type === "suggestions"));
+  }
+
+  // The connection's own reasoning setting reaches a pi run; classic keeps forcing it off.
+  {
+    mode = "auto";
+    defaultParameters = JSON.stringify({ reasoningEffort: "medium" });
+    const pi = await start("pi reasoning", [reply("Thought about it.")]);
+    await pi.done;
+    assert.equal(requests[0]!.options.reasoningEffort, "medium");
+    assert.equal(requests[0]!.options.enableThinking, true);
+    const classic = await start(
+      "classic reasoning",
+      [reply(JSON.stringify({ say: "Classic.", commands: [], stop: true }))],
+      "classic",
+    );
+    await classic.done;
+    defaultParameters = null;
+    assert.equal(requests[0]!.options.reasoningEffort, "none");
+    assert.equal(requests[0]!.options.enableThinking, undefined);
+  }
+
+  // A tool call written as text (no native toolCalls) runs once, and its markup is not shown.
+  {
+    mode = "auto";
+    const { chat, done } = await start("pi textual call", [
+      reply('<tool_call>{"name":"read","arguments":{"path":"hello.txt"}}</tool_call>'),
+      reply("Read it once."),
+    ]);
+    await done;
+    assert.equal(requests.length, 2);
+    assert.equal(toolMessages(requests[1]!.messages).length, 1);
+    assert.match(toolMessages(requests[1]!.messages)[0]?.content ?? "", /hi from the workspace file/u);
+    assert.equal((await lastAssistant(chat.id))?.content, "Read it once.");
   }
 
   // (e) With mariRuntime = classic the pi path is never entered and the JSON protocol is used.

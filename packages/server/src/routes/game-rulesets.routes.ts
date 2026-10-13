@@ -88,12 +88,15 @@ function leastCapabilityApi(document: unknown, definition: RulesetDefinition, ca
     "ruleset.json",
     ...(definition.catalogs ?? []).flatMap((catalog) => (catalog.asset ? [catalog.asset] : [])),
   ];
-  const catalogDocuments = new Map(
-    Object.entries(catalogs).map(([id, text]) => {
+  // Keyed by each catalog's file, as an install reads them.
+  const catalogDocuments = new Map<string, unknown>(
+    (definition.catalogs ?? []).flatMap((catalog) => {
+      const text = catalog.asset ? catalogs[catalog.id] : undefined;
+      if (!catalog.asset || text === undefined) return [];
       try {
-        return [id, JSON.parse(text) as unknown] as const;
+        return [[catalog.asset, JSON.parse(text) as unknown] as const];
       } catch {
-        return [id, null] as const;
+        return [[catalog.asset, null] as const];
       }
     }),
   );

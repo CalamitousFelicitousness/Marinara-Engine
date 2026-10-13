@@ -11374,14 +11374,6 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
     if (storyRefusal) return reply.status(400).send(storyRefusal);
-    // The world with its new edits is the snapshot from now on (W11). Edits it could not keep are taken
-    // back, so the recipe and the snapshot never disagree.
-    try {
-      await saveGameWorldSnapshot(app.db, chatId, parseMeta(updated.metadata));
-    } catch (err) {
-      await chats.patchMetadata(chatId, () => ({ gameWorld: previous }));
-      throw err;
-    }
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };

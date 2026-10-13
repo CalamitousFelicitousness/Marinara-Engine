@@ -449,6 +449,8 @@ export function TacticalCombatUI({
           if (res.opening) {
             const before = mark(res.opening.before);
             setState(before);
+            // Kept as it will stand, so a refresh while the opening plays resumes this same fight.
+            persistSnapshot(marked);
             setStarting(false);
             playSfx(SFX.start);
             playEventsRef.current?.(res.opening.events, marked, before, (final) => onBattlefieldReady?.(final));
@@ -848,8 +850,11 @@ export function TacticalCombatUI({
   );
 
   // ── Reset transient UI selection ──
-  // Read by launchBattle, which is made before the player of events is.
-  playEventsRef.current = playEvents;
+  // Read by launchBattle, which is made before the player of events is (and calls it only once its
+  // start request answers, after this has run).
+  useEffect(() => {
+    playEventsRef.current = playEvents;
+  }, [playEvents]);
 
   const resetSelection = useCallback(() => {
     setUi({ kind: "idle" });

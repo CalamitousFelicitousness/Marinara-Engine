@@ -481,6 +481,6 @@ try {
   console.log("Ruleset starting gear: schema and gate, fits, the resolver, and the route into one bag, once a group.");
 } finally {
   await app.close();
-  closeDB();
+  await closeDB();
   rmSync(dataDir, { recursive: true, force: true });
 }

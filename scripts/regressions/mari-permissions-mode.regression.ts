@@ -62,7 +62,8 @@ assert.match(
 
 // ── Enforcement seams (source pins) ─────────────────────────────────────────
 const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
-  readSource("packages/server/src/services/professor-mari/workspace-commands.ts");
+  readSource("packages/server/src/services/professor-mari/workspace-commands.ts") +
+  readSource("packages/server/src/services/professor-mari/workspace-round-review.ts");
 // Mode read fresh per run and per status call - never latched at construction.
 assert.match(
   workspaceAgent,

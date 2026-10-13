@@ -105,6 +105,12 @@ import {
   workspacePathAccessPolicy,
 } from "./workspace-change-review.service.js";
 import { WorkspaceCommands } from "./workspace-commands.js";
+import {
+  newRoundReviewState,
+  reviewRepeatedFailures,
+  reviewRoundClaim,
+  shouldDeferRoundMutations,
+} from "./workspace-round-review.js";
 import { quickEditFingerprint, validateQuickEditProposal, QuickEditConflictError } from "./quick-edit-proposal.js";
 
 type DbConnectionWithKey = typeof apiConnections.$inferSelect & { apiKey: string };
@@ -282,7 +288,7 @@ type JsonPayloadMatch = {
   end: number;
 };
 
-type AssistantWorkspaceAction = {
+export type AssistantWorkspaceAction = {
   visibleText: string;
   commands: WorkspaceCommandCall[];
   suggestions: MariSuggestionChip[];
@@ -322,11 +328,11 @@ const MAX_PROTOCOL_REPAIR_ROUNDS = 2;
 // task's command-round budget (see the `round -= 1` exemptions), so a few bad frames cannot starve
 // the actual work.
 const MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR = 6;
-const MAX_VERIFICATION_REPAIR_ROUNDS = 2;
+export const MAX_VERIFICATION_REPAIR_ROUNDS = 2;
 // #5819: mid-run completion claims get their own budget so catching a false
 // claim early in a batch cannot starve the terminal check at the end of it.
-const MAX_MIDRUN_CLAIM_REPAIR_ROUNDS = 2;
-const MAX_REPEATED_COMMAND_FAILURES = 3;
+export const MAX_MIDRUN_CLAIM_REPAIR_ROUNDS = 2;
+export const MAX_REPEATED_COMMAND_FAILURES = 3;
 const MAX_HISTORY_MESSAGES = 40;
 export const MAX_PARALLEL_READONLY_COMMANDS = 4;
 const RECENT_WORKSPACE_CONTINUITY_LIMIT = 4;
@@ -1067,7 +1073,7 @@ export function compactOutput(value: string, limit = COMMAND_OUTPUT_LIMIT): stri
   return value.length > limit ? `${value.slice(0, limit)}\n… output truncated at ${limit} characters …` : value;
 }
 
-function commandFailureSignature(result: WorkspaceCommandResult) {
+export function commandFailureSignature(result: WorkspaceCommandResult) {
   const input = JSON.stringify(result.input ?? {});
   return `${result.name}:${input}:${result.output}`.slice(0, 2000);
 }
@@ -3435,12 +3441,8 @@ export class ProfessorMariWorkspaceService {
       const maxProtocolRepairRounds = isLocalSidecarConnection(connection)
         ? MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR
         : MAX_PROTOCOL_REPAIR_ROUNDS;
-      const repeatedFailureCounts = new Map<string, number>();
+      const reviewState = newRoundReviewState();
       let protocolRepairRounds = 0;
-      let verificationRepairRounds = 0;
-      let midRunClaimRepairRounds = 0;
-      let claimAuditWatermark = 0;
-      let hadPassedClaimAudit = false;
       // protocolRepairRounds resets on every productive round, so a model that alternates malformed
       // and good frames could otherwise refund the round budget indefinitely. Cap the TOTAL refunds
       // for the whole task so repeated formatting stumbles cannot drive unbounded requests; past the
@@ -3534,28 +3536,7 @@ export class ProfessorMariWorkspaceService {
               }),
             }
           : parsedFrame;
-        // #5725: Manual defers EVERY described mutation (empty-say command
-        // frames - the post-approval pattern - still execute); Bypass never
-        // defers; Auto/others keep the self-declared ask-first behavior.
-        const shouldDeferMutations =
-          permissionsMode !== "bypass" &&
-          // Plan never defers: accepting would be a dead end (the next Plan
-          // run refuses the commands anyway); the executor floor's refusal is
-          // what the model turns into the requested plan.
-          permissionsMode !== "plan" &&
-          parsedAction.visibleText &&
-          (permissionsMode === "manual" ||
-            parsedAction.awaitingAuthorization ||
-            visibleTextRequestsUserApproval(parsedAction.visibleText) ||
-            // #5748: the strict ask detector covers interrogatives the loose
-            // one misses ("Shall I save it now?") - a frame that asks AND
-            // stages the mutation must defer, not execute past its own
-            // question (the latch arms too late to catch the same round).
-            visibleTextAsksApplyPermission(parsedAction.visibleText) ||
-            // #5748: an earlier round of THIS run asked - only the user can
-            // answer, so any later described mutation is held for Accept.
-            runAskedForApproval) &&
-          parsedAction.commands.some(isMutatingWorkspaceCommand);
+        const shouldDeferMutations = shouldDeferRoundMutations({ permissionsMode, parsedAction, runAskedForApproval });
         const action = shouldDeferMutations
           ? {
               ...parsedAction,
@@ -3696,56 +3677,25 @@ export class ProfessorMariWorkspaceService {
             this.latestUnderstoodRequest = runUnderstoodRequest;
           }
         }
-        const claimAudit =
-          (!action.protocolValid && action.commands.length === 0) ||
-          (action.commands.length > 0 && isLengthFinishReason(result.finishReason))
-            ? { issue: null, advanceWatermark: false }
-            : auditWorkspaceCompletionClaim(action, commandResultsForContinuity, {
-                auditFrom: claimAuditWatermark,
-                hadPassedClaimAudit,
-              });
-        if (claimAudit.advanceWatermark) {
-          claimAuditWatermark = commandResultsForContinuity.length;
-          hadPassedClaimAudit = true;
-        }
-        const verificationIssue = claimAudit.issue;
-        if (verificationIssue) {
-          // #5819: mid-run claims draw on their own budget, so catching a
-          // false step-claim early in a batch cannot starve the terminal
-          // check that ends the run.
-          const terminalClaim = action.commands.length === 0 && action.stop;
-          if (terminalClaim) verificationRepairRounds += 1;
-          else midRunClaimRepairRounds += 1;
-          const withinRepairBudget = terminalClaim
-            ? verificationRepairRounds <= MAX_VERIFICATION_REPAIR_ROUNDS
-            : midRunClaimRepairRounds <= MAX_MIDRUN_CLAIM_REPAIR_ROUNDS;
-          if (withinRepairBudget) {
-            messages.push({ role: "assistant", content: action.assistantHistoryContent });
-            if (commandResults.length > 0) {
-              messages.push({
-                role: "user",
-                content: formatCommandResultForPrompt(commandResults),
-                contextKind: "history",
-              });
-            }
+        const claimDecision = reviewRoundClaim(reviewState, {
+          action,
+          commandResultsForContinuity,
+          truncated: isLengthFinishReason(result.finishReason),
+        });
+        if (claimDecision.kind === "repair") {
+          messages.push({ role: "assistant", content: action.assistantHistoryContent });
+          if (commandResults.length > 0) {
             messages.push({
               role: "user",
-              content:
-                verificationIssue === "none" && !terminalClaim
-                  ? "You claimed a step was completed, but no command output since your last verified claim backs it up. Do not repeat the claim. First run a read that shows the state you claimed; if the work is genuinely missing, perform it and verify it with another read before moving on. Never redo work a read shows already exists."
-                  : verificationIssue === "none"
-                    ? "Your previous reply claimed the requested workspace change was complete, but no mutating command succeeded in this run. Do not repeat the completion claim. Use a read command to inspect the requested state; if it is missing, perform the mutation, then verify it with another read before setting stop to true. If an earlier run already completed the work, answer from what the read shows - never redo work that already exists."
-                    : verificationIssue === "mismatch"
-                      ? "Your previous reply claimed a change was complete, but the store read-back observed that a change in this run did NOT persist as intended (see readBack.mismatches on that result). Do not claim success. Tell the user plainly which change failed to persist and what the store observed; you may retry the mutation once if a retry is sensible - a retry whose result confirms the persisted state clears this."
-                      : verificationIssue === "staged"
-                        ? "Your previous reply claimed a change was complete, but at least one change in this run was only staged for the user's approval and has NOT been applied. Do not claim it is done, and do not re-run the mutation - the change is already staged and re-running it cannot apply it. Restate plainly which changes are applied and which are awaiting the user's approval, then stop."
-                        : "A mutating workspace command succeeded, but no successful read verified the resulting state. Run a confirmatory read now. Only claim completion after that read confirms the change. Do it matter-of-factly - never apologize or present the check as fixing a mistake; report the confirmed state plainly.",
+              content: formatCommandResultForPrompt(commandResults),
               contextKind: "history",
             });
-            continue;
           }
-          const content =
-            "Professor Mari could not verify the requested workspace change, so I stopped before showing an unsupported completion claim. Ask her to continue and she can use the saved workspace trace.";
+          messages.push({ role: "user", content: claimDecision.prompt, contextKind: "history" });
+          continue;
+        }
+        if (claimDecision.kind === "stop") {
+          const content = claimDecision.content;
           assistantText = appendVisibleText(assistantText, content);
           appendTraceStatus(workspaceTrace, content);
           args.onEvent({ type: "status", data: { content, kind: "retry", level: "warning" } });
@@ -3864,17 +3814,9 @@ export class ProfessorMariWorkspaceService {
           break;
         }
 
-        const repeatedFailure = commandResults
-          .filter((commandResult) => !commandResult.success)
-          .map((commandResult) => {
-            const signature = commandFailureSignature(commandResult);
-            const count = (repeatedFailureCounts.get(signature) ?? 0) + 1;
-            repeatedFailureCounts.set(signature, count);
-            return { commandResult, count };
-          })
-          .find((entry) => entry.count >= MAX_REPEATED_COMMAND_FAILURES);
-        if (repeatedFailure) {
-          const content = `Professor Mari hit the same ${repeatedFailure.commandResult.name} error ${MAX_REPEATED_COMMAND_FAILURES} times, so I stopped the workspace loop before it spammed the chat. Error: ${repeatedFailure.commandResult.output}`;
+        const repeatedFailureContent = reviewRepeatedFailures(reviewState, commandResults);
+        if (repeatedFailureContent !== null) {
+          const content = repeatedFailureContent;
           assistantText = appendVisibleText(assistantText, content);
           appendTraceStatus(workspaceTrace, content);
           args.onEvent({ type: "status", data: { content, kind: "retry", level: "warning" } });
@@ -3905,8 +3847,8 @@ export class ProfessorMariWorkspaceService {
           };
           const finalAction = parseAssistantWorkspaceAction(finalResult.content ?? "");
           const finalVerificationIssue = auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, {
-            auditFrom: claimAuditWatermark,
-            hadPassedClaimAudit,
+            auditFrom: reviewState.claimAuditWatermark,
+            hadPassedClaimAudit: reviewState.hadPassedClaimAudit,
           }).issue;
           if (finalVerificationIssue) {
             const content =

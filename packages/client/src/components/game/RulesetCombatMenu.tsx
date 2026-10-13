@@ -10,7 +10,7 @@
 // than listed here, so the half-made choice is HELD by the board and handed back down: one step,
 // two ways of finishing it, and the same pure rules behind both.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { RULESET_PASS_OPTION } from "@marinara-engine/shared";
+import { RULESET_CHARGE_STEP_PREFIX, RULESET_PASS_OPTION } from "@marinara-engine/shared";
 import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import {
@@ -23,6 +23,7 @@ import {
 } from "../../lib/ruleset-combat-board";
 import {
   rulesetDefaultTargets,
+  rulesetPicksStep,
   rulesetMenuGroups,
   rulesetOptionCostText,
   rulesetModeText,
@@ -55,6 +56,14 @@ export interface RulesetCombatMenuProps {
     style?: string,
     /** The weapon's mode an attack is made in. */
     mode?: string,
+    /** How many uses it spends, where the option lets its user choose (1.246). */
+    amount?: number,
+    /** The alterations it is used with (1.248): Metamagic. */
+    alters?: string[],
+    /** Who of its user's side they spare (1.249): Careful Spell. */
+    spares?: string[],
+    /** Who they give disadvantage on their first save (1.250): Heightened Spell. */
+    heightens?: string,
   ) => void;
   /** Walking away. The ruleset's menu never carries it, because leaving is not a thing the rules
    *  resolve: it is the director ending the session, exactly as the other two styles end it. */
@@ -96,10 +105,21 @@ export function RulesetCombatMenu({
 }: RulesetCombatMenuProps) {
   const { t } = useTranslation();
   const [ownStep, setOwnStep] = useState<RulesetMenuStep | null>(null);
+  // The number typed into the amount step (1.246), kept as text so a cleared box is not a zero.
+  const [amountText, setAmountText] = useState("");
+  // The alterations ticked in the alter step (1.248).
+  const [altersPicked, setAltersPicked] = useState<string[]>([]);
+  // Who of its user's side is ticked to be spared in the spare step (1.249).
+  const [sparesPicked, setSparesPicked] = useState<string[]>([]);
   // Held by the owner only when it passes BOTH halves (`step` may be null, never left out): with one
   // of them missing the menu keeps its own, or a pick would be handed up and never come back down.
   const held = onStepChange !== undefined && heldStep !== undefined;
   const step = held ? heldStep : ownStep;
+  // Opened here or on the board, the spare step starts with as many ticked as it spares, in order.
+  const spareOpen = step?.stage === "spare" ? step.spare : undefined;
+  useEffect(() => {
+    if (spareOpen) setSparesPicked(spareOpen.ids.slice(0, spareOpen.most));
+  }, [spareOpen]);
   // Stable whatever the owner passes, so the turn reset below runs when the turn moves and never
   // because a parent handed down a fresh function.
   const stepChange = useRef(held ? onStepChange : undefined);
@@ -140,7 +160,16 @@ export function RulesetCombatMenu({
   useEffect(() => {
     // A step the BOARD draws has its keyboard on the board, so the menu must not take it back the
     // moment the stage opens.
-    if (stepStage === "style" || stepStage === "mode" || stepStage === "pay" || stepStage === "target") {
+    if (
+      stepStage === "style" ||
+      stepStage === "mode" ||
+      stepStage === "alter" ||
+      stepStage === "spare" ||
+      stepStage === "heighten" ||
+      stepStage === "pay" ||
+      stepStage === "amount" ||
+      stepStage === "target"
+    ) {
       first.current?.focus();
     }
     // Going BACK unmounts the step, and the browser would drop focus on the body, leaving a keyboard
@@ -161,9 +190,43 @@ export function RulesetCombatMenu({
     );
   }
 
-  const send = (option: DirectedRulesetOption, targets: string[], payWith?: string, style?: string, mode?: string) => {
+  const send = (
+    option: DirectedRulesetOption,
+    targets: string[],
+    payWith?: string,
+    style?: string,
+    mode?: string,
+    // A step that went through the amount carries it; one sent straight off the menu passes its own.
+    amount: number | undefined = step?.amount,
+    alters: string[] | undefined = step?.alters,
+  ) => {
+    if (picksFirst({ stage: "target", option, targets, payWith, style, mode, amount, alters })) return;
     closeStep();
-    onChoose(option.id, targets, payWith, undefined, style, mode);
+    onChoose(option.id, targets, payWith, undefined, style, mode, amount, alters);
+  };
+  /** Who it spares and who it heightens are picked before it is sent, where there is a pick to make
+   *  (1.249, 1.250). True when that step was opened. */
+  const picksFirst = (held: RulesetMenuStep): boolean => {
+    const next = rulesetPicksStep(view, held, held.targets, held.cell);
+    if (!next) return false;
+    setStep(next);
+    return true;
+  };
+  /** Sent with what was picked for it. */
+  const sendPicked = (held: RulesetMenuStep, heightens?: string) => {
+    closeStep();
+    onChoose(
+      held.option.id,
+      held.targets,
+      held.payWith,
+      held.cell,
+      held.style,
+      held.mode,
+      held.amount,
+      held.alters,
+      held.spared,
+      heightens,
+    );
   };
   /** Which picking step this option opens, or null for one that is simply sent. On a board, a walk
    *  and a shape are picked on the board; everything else is the list below. */
@@ -174,10 +237,38 @@ export function RulesetCombatMenu({
   };
   /** The step after the style and the mode are chosen: what pays for it, where it goes, or who it is
    *  aimed at, as many as the mode aims at. */
-  const afterMode = (option: DirectedRulesetOption, style?: string, mode?: string) => {
-    const how = { ...(style ? { style } : {}), ...(mode ? { mode } : {}) };
+  const afterMode = (
+    option: DirectedRulesetOption,
+    style?: string,
+    mode?: string,
+    amount?: number | null,
+    /** null once the alter step was passed with none ticked (1.248). */
+    alters?: string[] | null,
+  ) => {
+    const how = {
+      ...(style ? { style } : {}),
+      ...(mode ? { mode } : {}),
+      ...(typeof amount === "number" ? { amount } : {}),
+      ...(alters?.length ? { alters } : {}),
+    };
+    // What it may be used with comes first (1.248): Metamagic, which may give it another target.
+    if (option.alters?.length && alters === undefined) {
+      setAltersPicked(option.alterNeeded ? [option.alterNeeded] : []);
+      setStep({ stage: "alter", option, ...how, targets: [] });
+      return;
+    }
     const chosen = mode ? option.modes?.find((entry) => entry.id === mode) : undefined;
-    const aimed = chosen ? { ...option, targets: { ...option.targets, count: chosen.targets } } : option;
+    const moded = chosen ? { ...option, targets: { ...option.targets, count: chosen.targets } } : option;
+    const twins = (alters ?? []).filter((id) => option.alters?.find((offer) => offer.id === id)?.twins).length;
+    const aimed = twins ? { ...moded, targets: { ...moded.targets, count: moded.targets.count + twins } } : moded;
+    // How much of it to spend comes first where its user chooses (1.246); null is "just enough",
+    // which the rules work out from the target.
+    if (aimed.amount && amount === undefined) {
+      setAmountText(String(aimed.amount.max));
+      // The option as it came, so going on from here aims it once, not twice.
+      setStep({ stage: "amount", option, ...how, targets: [] });
+      return;
+    }
     if (aimed.payWith && aimed.payWith.length > 0) {
       setStep({ stage: "pay", option: aimed, ...how, targets: [] });
       return;
@@ -192,7 +283,7 @@ export function RulesetCombatMenu({
       });
       return;
     }
-    send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode);
+    send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode, how.amount, how.alters);
   };
   /** The step after the style is chosen: the weapon's mode, where it has any. */
   const afterStyle = (option: DirectedRulesetOption, style?: string) => {
@@ -312,6 +403,224 @@ export function RulesetCombatMenu({
     );
   }
 
+  // ── Choosing what to use it with (1.248) ──
+  if (step?.stage === "alter" && step.option.alters?.length) {
+    const option = step.option;
+    const offers = option.alters!;
+    const toggle = (id: string) => {
+      if (id === option.alterNeeded) return;
+      const offer = offers.find((one) => one.id === id);
+      if (altersPicked.includes(id)) {
+        setAltersPicked(altersPicked.filter((one) => one !== id));
+        return;
+      }
+      // Only one that does not join another (Empowered joins one).
+      const kept = offer?.joins
+        ? altersPicked
+        : altersPicked.filter((one) => offers.find((entry) => entry.id === one)?.joins || one === option.alterNeeded);
+      setAltersPicked(
+        offer?.joins || !kept.some((one) => !offers.find((entry) => entry.id === one)?.joins) ? [...kept, id] : kept,
+      );
+    };
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-alter-prompt">
+          {t("game.combat.ruleset.alter.prompt", { label: rulesetOptionLabel(option, t) })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-alter-prompt">
+          {offers.map((offer, index) => {
+            const picked = altersPicked.includes(offer.id);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={offer.id}
+                type="button"
+                disabled={busy || offer.id === option.alterNeeded}
+                aria-pressed={picked}
+                onClick={() => toggle(offer.id)}
+                className={cn(
+                  buttonClass,
+                  picked
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
+                    : "border-white/15 bg-white/5 text-white/85 hover:bg-white/10",
+                )}
+              >
+                <span className="block font-semibold">{offer.label}</span>
+                <span className="block text-[0.65rem] text-white/55">
+                  {t(offer.perLevel ? "game.combat.ruleset.alter.costPerLevel" : "game.combat.ruleset.alter.cost", {
+                    count: offer.cost,
+                  })}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              afterMode(option, step.style, step.mode, undefined, altersPicked.length ? altersPicked : null)
+            }
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {altersPicked.length
+              ? t("game.combat.ruleset.alter.use", { count: altersPicked.length })
+              : t("game.combat.ruleset.alter.none")}
+          </button>
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
+  // ── Who of its user's side it spares (1.249): Careful Spell ──
+  if (step?.stage === "spare" && step.spare) {
+    const { ids, most } = step.spare;
+    const toggle = (id: string) =>
+      setSparesPicked(
+        sparesPicked.includes(id)
+          ? sparesPicked.filter((one) => one !== id)
+          : sparesPicked.length < most
+            ? [...sparesPicked, id]
+            : sparesPicked,
+      );
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-spare-prompt">
+          {t("game.combat.ruleset.spare.prompt", { label: rulesetOptionLabel(step.option, t), count: most })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-spare-prompt">
+          {ids.map((id, index) => {
+            const picked = sparesPicked.includes(id);
+            const combatant = view.combatants.find((one) => one.id === id);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={id}
+                type="button"
+                disabled={busy || (!picked && sparesPicked.length >= most)}
+                aria-pressed={picked}
+                onClick={() => toggle(id)}
+                className={cn(
+                  buttonClass,
+                  picked
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
+                    : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/20",
+                )}
+              >
+                <span className="block font-semibold">{combatant?.name ?? id}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const picked = { ...step, spared: sparesPicked };
+              if (!picksFirst(picked)) sendPicked(picked);
+            }}
+            className={cn(buttonClass, "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-white")}
+          >
+            {sparesPicked.length
+              ? t("game.combat.ruleset.spare.confirm", { count: sparesPicked.length })
+              : t("game.combat.ruleset.spare.none")}
+          </button>
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
+  // ── Who it gives disadvantage on their first save (1.250): Heightened Spell ──
+  if (step?.stage === "heighten" && step.heighten) {
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-heighten-prompt">
+          {t("game.combat.ruleset.heighten.prompt", { label: rulesetOptionLabel(step.option, t) })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-heighten-prompt">
+          {step.heighten.ids.map((id, index) => {
+            const combatant = view.combatants.find((one) => one.id === id);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={id}
+                type="button"
+                disabled={busy}
+                onClick={() => sendPicked(step, id)}
+                className={cn(
+                  buttonClass,
+                  combatant?.side === "enemy"
+                    ? "border-amber-400/30 bg-amber-500/10 text-white/85 hover:bg-amber-500/20"
+                    : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/20",
+                )}
+              >
+                <span className="block font-semibold">{combatant?.name ?? id}</span>
+              </button>
+            );
+          })}
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
+  // ── Choosing how much of it to spend (1.246) ──
+  if (step?.stage === "amount" && step.option.amount) {
+    const option = step.option;
+    const max = option.amount!.max;
+    const typed = Number(amountText);
+    const valid = Number.isInteger(typed) && typed >= 1 && typed <= max;
+    const chooseAmount = (amount: number | null) => {
+      afterMode(option, step.style, step.mode, amount, step.alters ?? null);
+    };
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <label className="text-xs text-white/60" htmlFor="ruleset-amount-input">
+          {t("game.combat.ruleset.amount.prompt", { label: rulesetOptionLabel(option, t), max })}
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            id="ruleset-amount-input"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={max}
+            step={1}
+            value={amountText}
+            disabled={busy}
+            onChange={(event) => setAmountText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && valid) chooseAmount(typed);
+            }}
+            className="min-h-11 w-20 rounded-lg border border-white/15 bg-white/5 px-2 text-xs tabular-nums text-white/90"
+          />
+          <button
+            ref={first}
+            type="button"
+            disabled={busy || !valid}
+            onClick={() => chooseAmount(typed)}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {t("game.combat.ruleset.amount.spend", { count: valid ? typed : 0 })}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => chooseAmount(null)}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {t("game.combat.ruleset.amount.fill")}
+          </button>
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
   // ── Paying for it out of another pool of the family ──
   const pools = step?.stage === "pay" ? (step.option.payWith ?? []) : [];
   if (step && pools.length > 0) {
@@ -343,7 +652,12 @@ export function RulesetCombatMenu({
               onClick={() => paid(pool)}
               className={cn(buttonClass, "border-blue-400/25 bg-blue-500/10 text-white/85 hover:bg-blue-500/20")}
             >
-              {t("game.combat.ruleset.upcast.pool", { pool })}
+              {/* More of the item's own charges (1.264). */}
+              {pool.startsWith(RULESET_CHARGE_STEP_PREFIX)
+                ? t("game.combat.ruleset.upcast.charges", {
+                    count: Number(pool.slice(RULESET_CHARGE_STEP_PREFIX.length)),
+                  })
+                : t("game.combat.ruleset.upcast.pool", { pool })}
             </button>
           ))}
         </div>
@@ -367,27 +681,87 @@ export function RulesetCombatMenu({
     const sendLaid = () => {
       const laid = rulesetAimSoFar(lay);
       if (!laid) return;
+      if (picksFirst({ ...step, targets: [], cell: laid })) return;
       closeStep();
-      onChoose(option.id, [], step.payWith, laid, step.style, step.mode);
+      onChoose(option.id, [], step.payWith, laid, step.style, step.mode, step.amount, step.alters);
     };
+    // Who may go along on a teleport (1.271), ticked here while the board takes the cell.
+    const carries = step.stage === "aim" ? option.teleport?.carries : undefined;
     const prompt =
       step.stage === "move"
         ? "game.combat.ruleset.board.movePrompt"
-        : turning
-          ? "game.combat.ruleset.board.aimTurnPrompt"
-          : wall && !lay?.ring
-            ? "game.combat.ruleset.board.aimWallPrompt"
-            : copies > 1
-              ? "game.combat.ruleset.board.aimCopiesPrompt"
-              : rulesetOptionHasAim(option)
-                ? "game.combat.ruleset.board.aimPrompt"
-                : "game.combat.ruleset.board.aimNobody";
+        : option.teleport
+          ? option.teleport.cells.length === 0
+            ? "game.combat.ruleset.board.teleportLeavePrompt"
+            : "game.combat.ruleset.board.teleportPrompt"
+          : turning
+            ? "game.combat.ruleset.board.aimTurnPrompt"
+            : wall && !lay?.ring
+              ? "game.combat.ruleset.board.aimWallPrompt"
+              : copies > 1
+                ? "game.combat.ruleset.board.aimCopiesPrompt"
+                : rulesetOptionHasAim(option)
+                  ? "game.combat.ruleset.board.aimPrompt"
+                  : "game.combat.ruleset.board.aimNobody";
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200">
           {t(prompt, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
         </p>
-        {/* How a wall is laid (1.176) and how many copies are down (1.177): the board takes the cells. */}
+        {/* How a wall is laid (1.172) and how many copies are down (1.173): the board takes the cells. */}
+        {carries && (
+          <div className="flex flex-wrap gap-2">
+            {carries.ids.map((id) => {
+              const along = step.targets.includes(id);
+              const full = !along && step.targets.length >= carries.count;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={busy || full}
+                  aria-pressed={along}
+                  onClick={() =>
+                    setStep({
+                      ...step,
+                      targets: along ? step.targets.filter((one) => one !== id) : [...step.targets, id],
+                    })
+                  }
+                  className={cn(buttonClass, along ? "border-[var(--primary)]/60 bg-[var(--primary)]/25" : "")}
+                >
+                  {t("game.combat.ruleset.board.teleportCarry", {
+                    name: view.combatants.find((one) => one.id === id)?.name ?? id,
+                  })}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {/* Out of the fight altogether (1.274), with whoever is ticked to go along. */}
+        {option.teleport?.leaves && step.stage === "aim" && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const along = step.targets;
+                closeStep();
+                onChoose(
+                  option.id,
+                  [],
+                  step.payWith,
+                  along.length ? { carries: along } : undefined,
+                  step.style,
+                  step.mode,
+                  step.amount,
+                  step.alters,
+                );
+              }}
+              className={buttonClass}
+            >
+              {t("game.combat.ruleset.board.teleportLeave")}
+            </button>
+          </div>
+        )}
         {(wall || copies > 1) && (
           <div className="flex flex-wrap gap-2">
             {wall && area?.ring !== undefined && !turning && (
@@ -437,19 +811,34 @@ export function RulesetCombatMenu({
     const option = step.option;
     const many = option.targets.count > 1;
     const targets = view.combatants.filter((combatant) => option.targetIds.includes(combatant.id));
+    // The walls' sections it may strike instead (1.195), each by the first of its cells offered.
+    const offered = new Set((option.walls ?? []).map((cell) => `${cell.x},${cell.y}`));
+    const sections = (view.zones ?? []).flatMap((zone) =>
+      (zone.sections ?? []).flatMap((section) => {
+        const cell = section.cells.find((one) => offered.has(`${one.x},${one.y}`));
+        return cell ? [{ wall: zone.label, health: section.health, max: section.max, cell }] : [];
+      }),
+    );
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200" id="ruleset-target-prompt">
           {many
-            ? t("game.combat.ruleset.target.promptMany", {
-                label: rulesetOptionLabel(option, t),
-                count: option.targets.count,
-              })
+            ? t(
+                option.targets.repeat
+                  ? "game.combat.ruleset.target.promptRepeat"
+                  : "game.combat.ruleset.target.promptMany",
+                {
+                  label: rulesetOptionLabel(option, t),
+                  count: option.targets.count,
+                },
+              )
             : t("game.combat.ruleset.target.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-target-prompt">
           {targets.map((combatant, index) => {
             const picked = step.targets.includes(combatant.id);
+            // Picked more than once (1.300): eldritch blast's beams at one target.
+            const times = step.targets.filter((id) => id === combatant.id).length;
             return (
               <button
                 ref={index === 0 ? first : undefined}
@@ -474,9 +863,43 @@ export function RulesetCombatMenu({
                     max: combatant.health.max,
                   })}
                 </span>
+                {times > 1 && (
+                  <span className="mt-0.5 block text-[0.65rem] font-semibold tabular-nums text-white/80">
+                    {t("game.combat.ruleset.target.times", { count: times })}
+                  </span>
+                )}
               </button>
             );
           })}
+          {sections.map((section, index) => (
+            <button
+              ref={index === 0 && targets.length === 0 ? first : undefined}
+              key={`${section.cell.x},${section.cell.y}`}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                closeStep();
+                onChoose(
+                  option.id,
+                  [],
+                  step.payWith,
+                  { wall: { x: section.cell.x, y: section.cell.y } },
+                  step.style,
+                  step.mode,
+                  step.amount,
+                  step.alters,
+                );
+              }}
+              className={cn(buttonClass, "border-sky-300/30 bg-sky-500/10 text-white/85 hover:bg-sky-500/20")}
+            >
+              <span className="block font-semibold">
+                {t("game.combat.ruleset.target.wall", { wall: section.wall })}
+              </span>
+              <span className="mt-0.5 block text-[0.65rem] tabular-nums text-white/55">
+                {t("game.combat.ruleset.status.health", { value: section.health, max: section.max })}
+              </span>
+            </button>
+          ))}
         </div>
         <div className="flex flex-wrap gap-2">
           {many && (

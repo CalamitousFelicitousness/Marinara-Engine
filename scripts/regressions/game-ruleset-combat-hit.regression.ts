@@ -317,6 +317,9 @@ try {
       optionId: "scimitar",
       label: "Scimitar",
       blow: "melee",
+      weapon: true,
+      // The budget it was paid for from (1.243).
+      budget: "action",
       total: 20,
       defense: 18,
     });
@@ -326,6 +329,7 @@ try {
       actorId: "snag",
       optionId: "scimitar",
       targetIds: ["brenna"],
+      budget: "action",
       held: {
         targetId: "brenna",
         rest: [],

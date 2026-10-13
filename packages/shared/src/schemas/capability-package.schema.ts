@@ -918,7 +918,153 @@ const capabilityPackageManifestBaseSchema = z
 //        A creature's spellcasting may say the components its spells need (`components`, `[]` for
 //        none), and an item's use may be `utility`, leaving only an area (a scroll of Fog Cloud). No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 180 } as const);
+// 1.177: a sense a condition or an item gives may add to the holder's own (`{ add }`), an action may
+// `push` whoever it lands on away from its maker, a line or cone may move with its caster and be
+// turned (`zone.turn`), and a zone's hard going may count only toward its caster (`towardCaster`).
+// 1.178: a zone may go off later (`detonates`, growing each turn and set off when touched) and burn
+// away when damage of a type it names reaches it (`burns`).
+// 1.179: a creature's action may `push` (on a failed save when it has one), and an item's use may
+// give its line a `width`.
+// 1.180: a save may roll twice by what its target is (`save.modes`), damage may be at its most against
+// a kind (`maxAgainst`), `targetTypes` may bound ability scores and condition immunities, and
+// condition modifiers roll attacks twice (`attacks`, `attacks-taken` with `from`, `atSource`) or
+// narrow saves to what a kind of creature does (`against.from`).
+// 1.181: a creature's actions may recharge together (`recharge.group`), and a blow may `charge`:
+// more damage, a save, a push and conditions after a straight run at its target this turn.
+// 1.182: an item's attack may add to hit by what it hits (`against`) and `slay`, and its `plus`
+// clauses may skip some targets (`not`), count only in reach or thrown (`blow`) and drain (`tempHp`);
+// its `onHit` conditions may need a target that is something and land once a turn.
+// 1.183: a sheet, a rest and a fight may name up to 160 conditions, an attacks modifier may take
+// `ability`, and a checks modifier may take `abilities`.
+// 1.184: a condition may harm its holder each turn (`harms`), stack (`stacks`) and keep to one holder
+// per source (`onePerSource`); an item attack's `against` may name a `marked` target, a `mode`, and
+// ignore cover and long range, and its `plus` clauses may be `marked`; a creature action may name
+// the `ability` its attack is made with.
+// 1.185: an item attack's mode may carry its own `range`, `plus` clauses, a `line` that everybody
+// between the wielder and the target saves against, and `charges` it spends of the item.
+// 1.186: a combat condition effect "cannot-heal" keeps every heal off its holder; a combat condition's
+//        `conditionImmunitiesFrom` keeps conditions off only when a creature that is `from` puts them
+//        on; `targetTypes.abilityAtLeast` floors a target's ability scores; and a saves modifier's
+//        `against.actions` narrows it to named actions, AND whatever else it names.
+// 1.187: an item attack's `ignoresResistance` (a vorpal sword), a slay's `saved` conditions on a made
+//        save (a mace of disruption), and `othersWhileMarked` (an oathbow's other weapons). Off a
+//        board, an area names either side unless it spares its own (no key: a behavior change).
+// 1.188: a contest's `difficulty` (rolled against a fixed number, no defender), `targets`,
+//        `targetHolds`, `targetDying` and `onWin.stabilizes` (5e's Medicine checks), and an item
+//        attack's and a condition's `harms.healedOnlyByRest` (a sword of wounding: hit points they
+//        take come back only by rest).
+// 1.189: a size's `cells` in `combat.sizes.order`: a creature of that size fills that many cells a
+//        side on a board, for placement, movement, reach, areas, cover and sight.
+// 1.190: a combat condition's `size.steps`: its holder is that many sizes bigger or smaller while it
+//        holds (5e's Enlarge/Reduce), filling its new size on a board where there is room.
+// 1.191: catalog mechanics' `healthPool` (shared out least health first: Sleep, Color Spray),
+//        `healthAtMost` (Power Word Stun) and `kills` (Power Word Kill).
+// 1.192: a damage modifier's `diceTimes` (a blow's own dice that many times over: an enlarged
+//        duergar), and a creature's `self` action taken on its turn landing on itself.
+// 1.193: a catalog zone's `damageType`, dealt at its triggers in place of the entry's own (5e's
+//        Wall of Thorns: piercing as it appears, slashing to whoever moves into it).
+// 1.194: catalog mechanics' `healthPoolSkips` (whom a health pool passes over: holders of its
+//        `conditions`, as Sleep the unconscious, and with `unseeing` those who can't see its maker).
+// 1.195: a wall zone's `sections` (struck at like creatures with their own defense and health, and
+//        broken apart, a broken one leaving what its `broken` says: 5e's Wall of Ice), and a
+//        choice's `wall` cell, which an attack option's `walls` offers.
+// 1.196: catalog mechanics' `tracks` (live tracks moved by levels on whoever it lands on: 5e's
+//        Greater Restoration takes exhaustion off, Sickening Radiance adds it) and `unseals` (the
+//        health only a rest gives back, given back), and a wall section's `broken.perCostStep`.
+// 1.197: an applied condition's `endsWith` (it ends whenever another condition put on with it by
+//        the same use ends: 5e's Hypnotic Pattern's incapacitation goes with its charm).
+// 1.198: a creature action's `reducesMax` (a failed save lowers the health maximum by the damage
+//        taken until a rest, or with `lasting` until something unseals it; at 0 the target dies:
+//        Life Drain, a clay golem's Slam), and a live pool's `lasting`.
+// 1.199: catalog mechanics' `cureOneOf` (one of its `ends` conditions, `tracks` or `unseals`, picked
+//        as a mode of the option, else the first the target needs: 5e's Greater Restoration).
+// 1.200-1.229 are the Kenhito lane's; this lane goes on at 1.230.
+// 1.230: `reducesMax` with no save of its own (every blow that lands), `onFailedSave` (the entry's
+//        own failed save), `damageType` and `heals` (its maker regains what it lowered), on catalog
+//        mechanics too; catalog `leavesAtLeast` (5e's Harm); `targetHolds` on a creature action or
+//        catalog mechanics (a vampire's Bite: grappled by it, incapacitated or restrained).
+// 1.231: a combat condition's `actions` (catalog entries its holder may use while it holds) and
+//        catalog mechanics' `endsCondition` (used, it ends that condition on its user, with its
+//        concentration); `ends.from` (only what a creature of those types or tags put on); and
+//        `dismisses` (out of the fight for good, or while a condition holds, back when it ends:
+//        5e's Dispel Evil and Good, Banishment).
+// 1.232: surprise. A fight's `surprised` combatants take no move and no action on their first turn and
+//        no reaction until it ends; a combat condition's `cannotBeSurprised` (5e's Foresight); catalog
+//        mechanics' `ignoresSurpriseWith` (taking that entry first shakes it off: Feral Instinct).
+// 1.233: catalog mechanics' `extraFirstTurn` (a second turn in a fight's first round at the holder's
+//        initiative plus its number, unless surprised if it says so: 5e's Thief's Reflexes).
+// 1.234: a combat condition's `grants.melee` (its granted strike only with a weapon in reach) and
+//        `onEnd.tracks` (tracks moved as it ends): 5e's Frenzy, and its exhaustion; catalog mechanics'
+//        `usesOf` (spends another row's uses by name: Frenzied Rage spends a Rage).
+// 1.235: initiative thrown twice: `combat.initiative.checkAbility` (initiative is a check with that
+//        ability, so what rolls such checks twice rolls it twice: Foresight, Cat's Grace) and catalog
+//        mechanics' `initiativeMode` (Feral Instinct).
+// 1.236: a "hit" reaction's `by: "self"` (its holder's own attack hitting, aimed at whoever it hit)
+//        and `weapon` (a weapon's blow only); catalog mechanics' `addsToBlow` (its amount joins that
+//        blow, doubled by its critical: Divine Smite) and `perCostStepsMax` (to 5d8 at most).
+// 1.237: catalog mechanics' `attackRows` (held, it changes the attack rows it names: the better of
+//        their ability and its own, a die in place of theirs where better, qualities: 5e's Martial
+//        Arts and Ki-Empowered Strikes), `grantsStrike` (held, a strike bought with another budget)
+//        and `afterAttack` (only once the attack action was taken this turn: Flurry of Blows); a
+//        condition grant's `names` and `afterAttack`.
+// 1.238: an opportunity attack's hit is held for answers as any other hit is (smite or stun it), the
+//        walk's window asked on once it lands; a walker held still on the way goes no further.
+// 1.239: `combat.attacks[].always` (rows every sheet has: 5e's unarmed strike); an `attackRows` rule's
+//        `items` (held weapons by tags, or by name with `names`, which a rule may now leave out) and
+//        `wielding.only` (kept only while every weapon held is one of these); `grantsStrike`'s `when`
+//        and `wielding`.
+// 1.240: catalog mechanics' `usesSpent` (several uses at once: Quivering Palm's 3 ki) and
+//        `dropsOnFailedSave` (a failed save drops to 0 health); a "hit" reaction's `names` (only a hit by
+//        those attacks); a condition's `onEnd.harm` (damage as it ends from whoever put it on, `unless`
+//        its holder is that: Hurl Through Hell).
+// 1.241: `afterAttack`'s `items` (the attack action taken with a held weapon matched by tags, as an
+//        `attackRows` rule's `items` matches it: a dagger +1 is a monk weapon).
+// 1.242: catalog mechanics' `beforeAttack` (only before the holder's first attack of their turn:
+//        Reckless Attack); `attacks` and `blow` narrow a change to attacks too; a damage change's
+//        `criticalDice` (more of the blow's own dice on a critical only: Brutal Critical).
+// 1.243: a hit moment's `budget` (only a strike paid for from it) and a reaction's `oneOf` (one of
+//        its holder's answers sharing the name per hit): Open Hand Technique on Flurry of Blows.
+// 1.244: a change's `rescue` (held back until the holder's own attack, save or check falls short:
+//        Bardic Inspiration, Guidance, Resistance) and catalog mechanics' `rescue` (spent on a
+//        failed roll to roll a save again or succeed: Indomitable, Diamond Soul, Stroke of Luck).
+// 1.245: catalog mechanics' `lowersRoll` (dice off somebody else's attack roll that hit: Cutting
+//        Words) and a condition's or level's `evasion` (nothing on a made half save: Evasion).
+// 1.246: catalog mechanics' `usesChosen` (a heal its user spends as many uses of as they choose,
+//        the option's `amount` and the choice's `amount`: Lay on Hands).
+// 1.247: catalog mechanics' `restore` (gives back to a pool, more for each step of a higher cost,
+//        `overMax` past its maximum until a rest) and a live pool's stored `above`: Font of Magic.
+// 1.248: catalog mechanics' `alters` and `usesSpentByLevel` (an entry chosen with another one, which
+//        changes how it is used: Metamagic), the option's `alters` and `alterNeeded`, the choice's
+//        `alters`, and the `altered` event.
+// 1.249: Empowered rerolls the lowest of all a blow's damage dice (its clauses' and a critical's
+//        too); the alter offer's `spares` and the choice's `spares` (who Careful Spell spares).
+// 1.250: catalog mechanics' `halfOnMiss` (a miss deals half: Acid Arrow), an applied condition's
+//        `harmsPerCostStep` (its harm grows with the cost it was put on at), and the alter offer's
+//        `heightens` with the choice's `heightens` (who Heightened Spell picks).
+// 1.251: catalog mechanics' `rescue` by `twenty` (Stroke of Luck on a check) and by `die` with
+//        `dice` or `die` (a holder's own die: Peerless Skill, Dark One's Own Luck), `notSelf`, and a
+//        combat condition's `oneAtATime`; the condition event's `already`.
+// 1.252: `lowersRoll.also` (Cutting Words off ability checks and damage rolls), a rescue's `saves`
+//        and `budget` (a ring of evasion), `halfOnMiss` on an item's use, and the lowered event's
+//        `roll`.
+// 1.253: a combat condition's `kinds`, which a cure's `ends` and an immunity may name, and
+//        `saveEnds.successes` and `saveEnds.failures` (Contagion); the condition event's `worsened`.
+// 1.254: `rescue` on an item's use (a ring of evasion), spending the item's own charges.
+// 1.255: a combat condition's `onRest` lowering a maximum on a rest (Mummy Rot), after a save if it
+//        has one (an otyugh's disease, cured on a success), and counted saves
+//        rolled out when a fight ends.
+// 1.256: a combat condition's `onDamaged`, `expires.becomes` and `curedOnlyBy`; `onRest.restoredWhenCured`;
+//        the `cannot-heal-nonmagical` effect and a restore op's `magical`; `ends` on a stat block's
+//        action.
+// 1.257: `qualities` on a stat block's action (a magical Healing Touch).
+// 1.258: a combat condition's `auras` (Aura of Protection, Holy Nimbus), and `keepsOn` on a catalog
+//        entry's mechanics and on a stat block: conditions held for the whole fight.
+// 1.259: a combat condition's `behavior` (`only`, `onlyWhenStuck`, `moves`, `table`): Turn Undead,
+//        Command, Confusion; `saveEnds.at: "action"` (Irresistible Dance); the `compelled` event
+//        and refusal.
+// 1.260: an aura's `needs`, `harms` and `save` (Countercharm, a balor's Fire Aura, a pit fiend's Fear
+//        Aura); a save modifier's `against.casts` (Holy Nimbus).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 309 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

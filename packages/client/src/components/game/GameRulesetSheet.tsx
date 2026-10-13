@@ -72,6 +72,7 @@ const SHEET_REFUSAL_KEYS: Readonly<Record<string, string>> = Object.freeze({
   "unknown-entry": "game.ruleset.sheet.refusal.unknownEntry",
   "ambiguous-entry": "game.ruleset.sheet.refusal.ambiguousEntry",
   "bad-pool": "game.ruleset.sheet.refusal.badPool",
+  "cannot-heal": "game.ruleset.sheet.refusal.cannotHeal",
   malformed: "game.ruleset.sheet.refusal.malformed",
   "unknown-character": "game.ruleset.sheet.refusal.unknownCharacter",
   "ambiguous-character": "game.ruleset.sheet.refusal.ambiguousCharacter",

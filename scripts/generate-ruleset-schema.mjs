@@ -118,6 +118,18 @@ function requireOneHideComparison(node) {
   }
 }
 
+// A condition's size change is at least one step, up or down (1.190), another refinement. Found by
+// its shape: an object of `steps` alone, from -5 to 5.
+function refuseNoSizeStep(node) {
+  if (Array.isArray(node)) return node.forEach(refuseNoSizeStep);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(refuseNoSizeStep);
+  const steps = node.properties?.steps;
+  if (node.type === "object" && steps?.type === "integer" && steps.minimum === -5 && steps.maximum === 5) {
+    steps.not = { const: 0 };
+  }
+}
+
 // A sheet item's `hideWhen` compares its field exactly one way too: equals, notEquals or in. Found
 // by its shape: `field` beside all three.
 function requireOneHideWhenComparison(node) {
@@ -155,15 +167,19 @@ function enumTableShape(node) {
   properties.table.maxProperties = 40;
 }
 
-// What winning a contest does is at least one thing: it applies, ends or pushes. A refinement, so the
-// editor is told here. Found by its shape: the three side by side.
+// What winning a contest does is at least one thing: it applies, ends, pushes or stabilizes (1.188). A
+// refinement, so the editor is told here. Found by its shape: the first three side by side. A contest
+// is rolled against a defender or a fixed difficulty (1.188), exactly one: found by the two side by side.
 function contestDoesSomething(node) {
   if (Array.isArray(node)) return node.forEach(contestDoesSomething);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(contestDoesSomething);
   const properties = node.properties;
+  if (node.type === "object" && properties?.defender && properties.difficulty && properties.attacker) {
+    node.allOf = [...(node.allOf ?? []), { oneOf: [{ required: ["defender"] }, { required: ["difficulty"] }] }];
+  }
   if (node.type !== "object" || !properties?.applies || !properties.ends || !properties.push) return;
-  requireAnyOf(node, ["applies", "ends", "push"]);
+  requireAnyOf(node, ["applies", "ends", "push", ...(properties.stabilizes ? ["stabilizes"] : [])]);
 }
 
 // A rest step's `to` is a word only on a state, where it is "default" or one of the state's values;
@@ -236,13 +252,19 @@ function cancelOnlyWhenAimed(node) {
     ];
   }
   if (node.type === "object" && ["on", "for", "within"].every((key) => keys.includes(key))) {
-    node.allOf = [...(node.allOf ?? []),
-      { if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
-        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } } },
-      { if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
-        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } } },
+    node.allOf = [
+      ...(node.allOf ?? []),
+      {
+        if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
+        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } },
+      },
+      {
+        if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
+        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } },
+      },
     ];
-    if (keys.includes("cancelSave")) node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
+    if (keys.includes("cancelSave"))
+      node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
   }
   if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
     // Only a moment BEFORE something resolves may call it off.
@@ -262,7 +284,7 @@ function modifierSaysSomething(node) {
   Object.values(node).forEach(modifierSaysSomething);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
-  requireAnyOf(node, ["flat", "dice", "times", "mode"]);
+  requireAnyOf(node, ["flat", "dice", "times", "diceTimes", "mode"]);
   if (properties.against) requireAnyOf(properties.against, ["conditions", "damage", "magic"]);
   properties.flat = { ...properties.flat, not: { const: 0 } };
   node.allOf = [
@@ -396,7 +418,10 @@ function creatureActionShape(node) {
       if: { required: ["heal"] },
       then: { not: { anyOf: ["damage", "toHit", "save", "area"].map((key) => ({ required: [key] })) } },
     },
-    { if: { required: ["targets"] }, then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } } },
+    {
+      if: { required: ["targets"] },
+      then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } },
+    },
   ];
 }
 
@@ -414,17 +439,22 @@ function oneSourceForCreature(node) {
   if (node.type !== "object" || !properties?.sheet || !properties.actions || !properties.tier) return;
   const casting = properties.spellcasting;
   casting.properties.spells.uniqueItems = true;
-  casting.allOf = [{
-    if: { required: ["coven"] },
-    then: { properties: { spells: { contains: { required: ["coven"] } } } },
-    else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
-  }];
+  casting.allOf = [
+    {
+      if: { required: ["coven"] },
+      then: { properties: { spells: { contains: { required: ["coven"] } } } },
+      else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
+    },
+  ];
   node.allOf = [
     ...(node.allOf ?? []),
     {
       if: { required: ["sheet"] },
       then: { not: { anyOf: CREATURE_SHEET_REPLACES.map((key) => ({ required: [key] })) } },
-      else: { required: CREATURE_PLAIN_NEEDS, anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }] },
+      else: {
+        required: CREATURE_PLAIN_NEEDS,
+        anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }],
+      },
     },
   ];
 }
@@ -548,6 +578,18 @@ function soakSaysSomething(node) {
   requireAnyOf(node, ["all", "byKind"]);
 }
 
+// What a wall's broken section deals (1.195) names dice or a flat number, and its `onSave` its save.
+// Found by its shape: `triggers`, `amount` and `onSave` together, wherever a zone sits.
+function brokenSectionRules(node) {
+  if (Array.isArray(node)) return node.forEach(brokenSectionRules);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(brokenSectionRules);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.triggers || !properties.amount || !properties.onSave) return;
+  requireAnyOf(properties.amount, ["dice", "flat"]);
+  node.allOf = [...(node.allOf ?? []), { if: { required: ["onSave"] }, then: { required: ["save"] } }];
+}
+
 /**
  * Rules a catalog entry's mechanics keep that the shape alone does not say: riders carry their
  * rider, free actions name no budget, and summons belong to attacks against enemies. Zod refuses
@@ -559,6 +601,12 @@ function requireMechanicsPairs(node) {
   Object.values(node).forEach(requireMechanicsPairs);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.kind || !properties.rider || !properties.free) return;
+  // A health pool (1.191) names dice or a flat number.
+  if (properties.healthPool) requireAnyOf(properties.healthPool, ["dice", "flat"]);
+  if (properties.healthPoolSkips) requireAnyOf(properties.healthPoolSkips, ["conditions", "unseeing"]);
+  // A track is moved by at least one level (1.196).
+  const by = properties.tracks?.items?.properties?.by;
+  if (by) by.not = { const: 0 };
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { properties: { kind: { const: "rider" } }, required: ["kind"] }, then: { required: ["rider"] } },
@@ -697,6 +745,7 @@ requireCheckEffectDoesSomething(schema);
 requireFaceRuleSaysSomething(schema);
 spendOnlyOnAPool(schema);
 requireMechanicsPairs(schema);
+brokenSectionRules(schema);
 requireOneCatalogSource(schema);
 requireOneEntryContent(schema);
 requireCatalogFeeds(schema);
@@ -719,6 +768,7 @@ soakSaysSomething(schema);
 boundScaledColumns(schema);
 requireOneHideComparison(schema);
 requireOneHideWhenComparison(schema);
+refuseNoSizeStep(schema);
 readOnlyWithLiveTrack(schema);
 enumTableShape(schema);
 restStepTo(schema);

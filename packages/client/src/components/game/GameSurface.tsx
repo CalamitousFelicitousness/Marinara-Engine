@@ -1096,6 +1096,8 @@ export function generatedPartyMemberToCombatant(
     element,
     combatClass,
     movementMode,
+    // Caught unaware as the scene set it (1.232), read by a ruleset fight only.
+    ...(member.surprised === true ? { surprised: true } : {}),
   };
 }
 
@@ -1151,6 +1153,7 @@ export function generatedEnemyToCombatant(enemy: CombatEnemy, index: number, fal
     ...(typeof enemy.creature === "string" && enemy.creature.trim() ? { creature: enemy.creature.trim() } : {}),
     ...(typeof enemy.tier === "string" && enemy.tier.trim() ? { tier: enemy.tier.trim() } : {}),
     ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
+    ...(enemy.surprised === true ? { surprised: true } : {}),
   };
 }
 
@@ -7795,6 +7798,8 @@ function GameSurfaceComponent({
           return localizeUi("ui.game.gamesurfacecomponent.notBindableValue1", { value1 });
         case "binding-full":
           return localizeUi("ui.game.gamesurfacecomponent.bindingFullValue1", { value1 });
+        case "needs-worn":
+          return localizeUi("ui.game.gamesurfacecomponent.needsWornValue1", { value1 });
         case "missing-stack":
           return localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory");
         default:

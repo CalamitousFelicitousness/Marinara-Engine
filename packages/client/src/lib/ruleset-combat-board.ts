@@ -33,19 +33,25 @@ export interface RulesetBoardCell {
   solid: boolean;
   /** How high the cell stands (combat C6b), 0 on level ground. */
   height: number;
-  /** Who is standing here, defeated or not. */
+  /** Who is standing here, defeated or not: on every cell they fill (1.189). */
   occupant?: DirectedRulesetCombatant;
+  /** The cell their token is drawn from, the top-left one they fill (1.189). */
+  anchor?: true;
   /** Set while a walk is being chosen: what ending here costs of the allowance, in cells, and the
    *  ids of the standing enemies the path would be struck at by. */
   reach?: { cost: number; provokes: string[] };
   /** Set while a target is being chosen and a legal one stands here. */
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
-  aim?: { targetIds: string[] };
-  /** A cell the shape being laid has already been set down on (1.176, 1.177). */
+  aim?: { targetIds: string[]; teleport?: true };
+  /** A cell the shape being laid has already been set down on (1.172, 1.173). */
   laid?: true;
   /** The labels of the lasting areas covering it (1.171), first cast first. */
   zones?: string[];
+  /** A wall's section standing here (1.195): whose wall, and what it has left of what; 0 is broken. */
+  section?: { wall: string; health: number; max: number };
+  /** Set while a target is being chosen and the attack may strike the section here (1.195). */
+  strikable?: true;
 }
 
 export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cell.x},${cell.y}`;
@@ -54,7 +60,8 @@ export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cel
  *  Every shape does, one with nowhere to land included: the server refuses a shape sent with no
  *  cell, so the step opens and says nobody would be caught instead of sending a choice that fails. */
 export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
-  return !!option.area;
+  // A teleport is aimed at where it goes (1.271).
+  return !!option.area || (option.teleport?.cells.length ?? 0) > 0;
 }
 
 /** Whether a shape has any square it may be aimed at right now. */
@@ -73,7 +80,12 @@ export interface RulesetAimChoice {
 
 /** The cells a choice made on the board carries: where a walk goes, or where a shape lands and how
  *  it is laid. */
-export type RulesetCellChoice = { to?: RulesetCombatCell } & Partial<RulesetAimChoice>;
+export type RulesetCellChoice = {
+  to?: RulesetCombatCell;
+  wall?: RulesetCombatCell;
+  /** Who goes along on a teleport (1.271). */
+  carries?: string[];
+} & Partial<RulesetAimChoice>;
 
 /** Whether a wall being aimed has been set down and waits for the way it runs: any cell picks it. */
 export function rulesetAimTurning(option: DirectedRulesetOption, lay: RulesetAimLay | undefined): boolean {
@@ -120,10 +132,11 @@ export function rulesetAimTake(
   return { send: { at } };
 }
 
-/** Whether taking this option asks the player to pick a cell to walk to. Getting back up spends
- *  movement and goes nowhere, so it is sent straight off the menu. */
+/** Whether taking this option asks the player to pick a cell to walk to: a walk, or a legendary
+ *  move (1.278). Getting back up spends movement and goes nowhere, so it is sent straight off the
+ *  menu. */
 export function rulesetOptionNeedsCell(option: DirectedRulesetOption): boolean {
-  return option.kind === "move" && (option.cells?.length ?? 0) > 0;
+  return (option.kind === "move" || !!option.signature) && (option.cells?.length ?? 0) > 0;
 }
 
 /**
@@ -139,7 +152,15 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const standing = new Map<string, DirectedRulesetCombatant>();
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
-    standing.set(rulesetCellKey({ x: combatant.x, y: combatant.y }), combatant);
+    // Sent away (1.231): not on the board at all.
+    if (combatant.away) continue;
+    // Every cell they fill (1.189).
+    const span = Math.max(1, combatant.span ?? 1);
+    for (let dy = 0; dy < span; dy++) {
+      for (let dx = 0; dx < span; dx++) {
+        standing.set(rulesetCellKey({ x: combatant.x + dx, y: combatant.y + dy }), combatant);
+      }
+    }
   }
   const reach = new Map<string, { cost: number; provokes: string[] }>();
   if (step?.stage === "move") {
@@ -147,15 +168,26 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       reach.set(rulesetCellKey(cell), { cost: cell.cost, provokes: [...cell.provokes] });
     }
   }
-  const aims = new Map<string, { targetIds: string[] }>();
+  const aims = new Map<string, { targetIds: string[]; teleport?: true }>();
   const laid = new Set<string>();
   if (step?.stage === "aim") {
-    for (const entry of step.option.aim ?? []) aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds] });
+    // A teleport's cells are where it may go (1.271), not what it would catch.
+    const teleport = step.option.teleport ? { teleport: true as const } : {};
+    for (const entry of step.option.aim ?? []) {
+      aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds], ...teleport });
+    }
     for (const cell of [step.lay?.at, ...(step.lay?.also ?? [])]) if (cell) laid.add(rulesetCellKey(cell));
   }
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
+  const strikable = new Set(step?.stage === "target" ? (step.option.walls ?? []).map(rulesetCellKey) : []);
+  const sections = new Map<string, { wall: string; health: number; max: number }>();
   const zoned = new Map<string, string[]>();
   for (const zone of view.zones ?? []) {
+    for (const section of zone.sections ?? []) {
+      for (const cell of section.cells) {
+        sections.set(rulesetCellKey(cell), { wall: zone.label, health: section.health, max: section.max });
+      }
+    }
     for (const cell of zone.cells) {
       const key = rulesetCellKey(cell);
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
@@ -183,11 +215,14 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         solid: TERRAIN_DATA[terrain]?.impassable === true || ((grid.walls?.[key] ?? 0) & 1) === 1,
         height: grid.elevation?.[y]?.[x] ?? 0,
         ...(occupant ? { occupant } : {}),
+        ...(occupant && occupant.x === x && occupant.y === y ? { anchor: true as const } : {}),
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
         ...(aim ? { aim } : {}),
         ...(laid.has(key) ? { laid: true as const } : {}),
         ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
+        ...(sections.has(key) ? { section: sections.get(key)! } : {}),
+        ...(strikable.has(key) ? { strikable: true as const } : {}),
       });
     }
   }
@@ -230,7 +265,9 @@ export function rulesetNothingInReach(view: DirectedRulesetView): boolean {
       (option.targets.side === "enemy" || option.targets.side === "any" || !!option.area),
   );
   if (offensive.length === 0) return false;
-  return offensive.every((option) => option.targetIds.length === 0 && (option.aim?.length ?? 0) === 0);
+  return offensive.every(
+    (option) => option.targetIds.length === 0 && (option.aim?.length ?? 0) === 0 && (option.walls?.length ?? 0) === 0,
+  );
 }
 
 /** The ids on a line, as names, for the sentences that have to say who. */
@@ -287,8 +324,17 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
       );
     }
   }
+  if (cell.section) {
+    said.push(
+      cell.section.health > 0
+        ? t("game.combat.ruleset.board.section", cell.section)
+        : t("game.combat.ruleset.board.sectionBroken", { wall: cell.section.wall }),
+    );
+  }
   if (cell.targetable) said.push(t("game.combat.ruleset.board.targetable"));
-  if (cell.aim) {
+  if (cell.strikable) said.push(t("game.combat.ruleset.board.strikable"));
+  if (cell.aim?.teleport) said.push(t("game.combat.ruleset.board.teleportable"));
+  else if (cell.aim) {
     const names = rulesetNamesOf(view, cell.aim.targetIds);
     said.push(
       names.length > 0

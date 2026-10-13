@@ -12,7 +12,14 @@
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import { GAME_INVENTORY_MAX_QUANTITY, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import type { RulesetCombatAction, RulesetCombatant, RulesetCombatEvent, RulesetEncounterState } from "./types.js";
+import type {
+  RulesetCombatAction,
+  RulesetCombatant,
+  RulesetCombatMode,
+  RulesetDroppedThing,
+  RulesetCombatEvent,
+  RulesetEncounterState,
+} from "./types.js";
 
 /** How many one attack shoots: what its mode says, else what its ammunition says, else one. */
 function shotsPer(action: RulesetCombatAction): number {
@@ -41,10 +48,42 @@ export function rulesetModedAction(
     ...(mode.target !== undefined && base !== undefined ? { target: base + mode.target } : {}),
     ...(mode.targets !== undefined ? { targets: { ...action.targets, count: mode.targets } } : {}),
     ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
+    // Its own reach and clauses (1.185): a javelin of lightning's bolt, 4d6 more on a hit.
+    ...(mode.range ? { range: { ...mode.range } } : {}),
+    ...(mode.plus?.length && action.damage
+      ? { damage: { ...action.damage, plus: [...(action.damage.plus ?? []), ...mode.plus] } }
+      : {}),
+    // The one cure picked (1.199), in place of all of them.
+    ...(mode.cure ? cureOnly(mode.cure) : {}),
+    // The creature type picked (1.265), remembered by what it puts on: Antipathy/Sympathy.
+    ...(mode.kind && action.applies ? { applies: action.applies.map((one) => ({ ...one, kind: mode.kind })) } : {}),
+    // What a hit sets off around whoever it hit (1.307): a Hammer of Thunderbolts' clap.
+    ...(mode.aroundHit ? { aroundHit: mode.aroundHit } : {}),
   };
 }
 
-/** Whether one of the fighter's items is switched on (1.169): as this fight left it, else as its stack
+/** A cure that does one of its cures, narrowed to the one a mode names (1.199). */
+function cureOnly(
+  cure: NonNullable<RulesetCombatMode["cure"]>,
+): Partial<RulesetCombatAction> & { cureOneOf: undefined } {
+  return {
+    cureOneOf: undefined,
+    ends: cure.ends !== undefined ? { conditions: [cure.ends], count: 1 } : undefined,
+    tracks: cure.track ? [{ ...cure.track }] : undefined,
+    unseals: cure.unseals,
+  };
+}
+
+/** What is left of an item's charges a weapon spends (1.182, 1.185): as this fight left them, else
+ *  as its stack kept them, else full. */
+export function rulesetItemChargesLeft(actor: RulesetCombatant, charges: { max: number; item: number }): number {
+  return Math.min(
+    charges.max,
+    actor.charges?.[charges.item] ?? actor.sheet?.items?.[charges.item]?.charges ?? charges.max,
+  );
+}
+
+/** Whether one of the fighter's items is switched on (1.165): as this fight left it, else as its stack
  *  kept it. Off unless something turned it on. */
 export function rulesetItemOn(actor: RulesetCombatant, item: number): boolean {
   return actor.on?.[item] ?? actor.sheet?.items?.[item]?.on === true;
@@ -115,7 +154,12 @@ function draw(actor: RulesetCombatant, tag: string, count: number, recover?: num
 
 /** One attack's shots, spent: out of the clip where the weapon has one, and otherwise out of the
  *  bag. Null for an action that shoots nothing. */
-export function spendRulesetShots(actor: RulesetCombatant, action: RulesetCombatAction): RulesetCombatEvent | null {
+export function spendRulesetShots(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  /** More charges spent on it beyond its own (1.264). */
+  more = 0,
+): RulesetCombatEvent | null {
   if (action.kind === "reload") return null;
   const use = action.itemUse;
   if (use && (use.consumes || use.charges)) {
@@ -125,7 +169,7 @@ export function spendRulesetShots(actor: RulesetCombatant, action: RulesetCombat
       (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
       return { ...said, left: rulesetItemUseLeft(actor, use), of: quantity };
     }
-    const left = Math.max(0, rulesetItemUseLeft(actor, use) - use.charges!.cost);
+    const left = Math.max(0, rulesetItemUseLeft(actor, use) - use.charges!.cost - more);
     (actor.charges ??= {})[use.item] = left;
     return { ...said, left, of: use.charges!.max };
   }
@@ -193,9 +237,51 @@ export function breakRulesetItem(
 ): RulesetCombatEvent | null {
   const use = action.itemUse;
   const breaks = use?.charges?.breaksOn;
-  if (!use || !breaks || rulesetItemUseLeft(actor, use) > 0 || actor.broken?.[use.item]) return null;
+  if (!use?.charges || !breaks || rulesetItemUseLeft(actor, use) > 0 || actor.broken?.[use.item]) return null;
   const face = roll(breaks.die);
-  if (face > breaks.atMost) return null;
+  // A high face gives charges back instead (1.266): a Staff of the Magi's 20.
+  if (breaks.regains && face >= breaks.regains.atLeast) {
+    const amount = breaks.regains.amount;
+    const rolls = Array.from({ length: Math.max(0, amount.count) }, () => roll(amount.sides));
+    const back = Math.max(0, Math.min(use.charges.max, rolls.reduce((sum, one) => sum + one, 0) + amount.flat));
+    (actor.charges ??= {})[use.item] = back;
+    return {
+      type: "recharged",
+      actorId: actor.id,
+      optionId: action.id,
+      label: action.label,
+      roll: face,
+      rolls,
+      amount: back,
+    };
+  }
+  if (breaks.atMost === undefined || face > breaks.atMost) return null;
+  // It becomes another item instead (1.267): a staff of striking's nonmagical quarterstaff, struck
+  // and used as that from now on.
+  const next = breaks.becomes !== undefined ? actor.becomes?.[use.item] : undefined;
+  if (next) {
+    const held = actor.sheet?.items?.[use.item];
+    if (held && actor.sheet?.items) {
+      const { charges: _charges, ...rest } = held;
+      actor.sheet.items = actor.sheet.items.map((one, at) =>
+        at === use.item ? { ...rest, item: next.item, name: next.name } : one,
+      );
+    }
+    actor.actions = [
+      ...actor.actions.filter((one) => rulesetActionItemIndex(one) !== use.item),
+      ...structuredClone(next.actions),
+    ];
+    (actor.became ??= {})[use.item] = next.ref;
+    delete actor.charges?.[use.item];
+    return {
+      type: "broke",
+      actorId: actor.id,
+      optionId: action.id,
+      label: action.label,
+      roll: face,
+      becomes: next.name,
+    };
+  }
   (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
   (actor.broken ??= {})[use.item] = true;
   return { type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face };
@@ -213,7 +299,9 @@ export interface RulesetFightItemChange {
   charges?: number;
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
-  /** A fake's true name (1.78): what a use of it is written as. */
+  /** It became another item when its last charge was spent (1.267): that item, and its name. */
+  becomes?: { ref: string; name: string };
+  /** A fake's true name (1.74): what a use of it is written as. */
   truly?: string;
   /** Its switch as the fight left it, when the fight turned it (1.169). */
   on?: boolean;
@@ -234,7 +322,7 @@ export function rulesetFightItemChanges(
     if (
       combatant.side !== "party" ||
       !items ||
-      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on)
+      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on && !combatant.became)
     ) {
       continue;
     }
@@ -248,7 +336,10 @@ export function rulesetFightItemChanges(
       const spent = charges !== undefined && charges !== earlier?.charges?.[index];
       const on = combatant.on?.[index];
       const switched = on !== undefined && on !== (earlier?.on?.[index] ?? held.on === true);
-      if (taken === 0 && !reloaded && !spent && !switched) return;
+      // Become another item on its last charge (1.267), since `before`.
+      const became = combatant.became?.[index];
+      const turned = became !== undefined && earlier?.became?.[index] === undefined;
+      if (taken === 0 && !reloaded && !spent && !switched && !turned) return;
       changes.push({
         stack: { ...held.stack },
         name: held.name ?? held.stack.ref,
@@ -257,6 +348,7 @@ export function rulesetFightItemChanges(
         ...(spent ? { charges } : {}),
         ...(switched ? { on } : {}),
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
+        ...(turned ? { becomes: { ref: became, name: combatant.sheet?.items?.[index]?.name ?? became } } : {}),
         ...(held.truly ? { truly: held.truly.name } : {}),
       });
     });
@@ -310,6 +402,14 @@ export function applyRulesetFightItemChanges(
     }
     const { on: wasOn, ...kept } = stack;
     const on = change.on ?? wasOn === true;
+    // Become another item (1.267): the stack holds that item now, under its name, with no charges.
+    if (change.becomes) {
+      const { charges: _charges, loaded: _loaded, ...plain } = kept;
+      journal.push({ item: stack.name, action: "lost", quantity: 1 });
+      journal.push({ item: change.becomes.name, action: "acquired", quantity: 1 });
+      next[at] = { ...plain, item: change.becomes.ref, name: change.becomes.name, quantity };
+      continue;
+    }
     next[at] = {
       ...kept,
       quantity,
@@ -319,4 +419,96 @@ export function applyRulesetFightItemChanges(
     };
   }
   return { stacks: next, journal };
+}
+
+/** The option that picks something dropped back up (1.261), followed by what it picks up. */
+export const RULESET_PICK_UP_OPTION_PREFIX = "pickup:";
+/** Spending more of an item's charges on a use (1.264): `charges:<how many more>`, paid with as a
+ *  higher pool is, a step of a higher cost each. */
+export const RULESET_CHARGE_STEP_PREFIX = "charges:";
+
+/** How many more charges a payment spends on this action (1.264), or null for a payment of another
+ *  kind. Never past what its use allows. */
+export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string | undefined): number | null {
+  const step = action.itemUse?.charges?.step;
+  if (!step || !payWith?.startsWith(RULESET_CHARGE_STEP_PREFIX)) return null;
+  const more = Number(payWith.slice(RULESET_CHARGE_STEP_PREFIX.length));
+  return Number.isInteger(more) && more > 0 ? Math.min(more, step.max) : 0;
+}
+
+/** Averting the eyes from a gaze's holder, or looking again (1.263): `avert:<holder id>`. */
+export const RULESET_AVERT_OPTION_PREFIX = "avert:";
+
+const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend):(\d+)(?::\d+)?$/;
+
+/** The place in its holder's items of the item an action is made with, when it is one: a weapon's
+ *  blow, its off-hand blow, a use, a switch, a reload or charges spent on a hit (1.268). */
+export function rulesetActionItemIndex(action: Pick<RulesetCombatAction, "id">): number | undefined {
+  const match = ITEM_ACTION.exec(action.id);
+  return match ? Number(match[1]) : undefined;
+}
+
+/** Whether what an action is made with lies where its holder dropped it (1.261): a held item's
+ *  every action, or a stat block's own. */
+export function rulesetActionDropped(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
+  if (!actor.dropped?.length) return false;
+  const index = actor.sheet ? rulesetActionItemIndex(action) : undefined;
+  const key = index !== undefined ? `item:${index}` : action.id;
+  return actor.dropped.some((thing) => thing.key === key);
+}
+
+/** The items a fighter holds that do nothing for them now, dropped (1.261), by their place. */
+export function rulesetDroppedItems(actor: RulesetCombatant): Set<number> {
+  const out = new Set<number>();
+  if (!actor.sheet) return out;
+  for (const thing of actor.dropped ?? []) {
+    if (thing.key.startsWith("item:")) out.add(Number(thing.key.slice("item:".length)));
+  }
+  return out;
+}
+
+/** What a stat block's held things it has let fall (1.262) gave its defense. */
+export function rulesetDroppedHeldDefense(actor: RulesetCombatant): number {
+  if (!actor.block?.held || !actor.dropped?.length) return 0;
+  let lost = 0;
+  for (const thing of actor.dropped) {
+    if (!thing.key.startsWith("held:")) continue;
+    lost += actor.block.held[Number(thing.key.slice("held:".length))]?.defense ?? 0;
+  }
+  return lost;
+}
+
+/** What a fighter would let fall now (1.261): each worn item taking one of `slots` or carrying one of
+ *  `tags`, and each of a stat block's actions carrying one of `tags`, that is not down already. */
+export function rulesetThingsToDrop(
+  actor: RulesetCombatant,
+  drops: { slots?: string[]; tags?: string[]; pickUp?: string },
+): RulesetDroppedThing[] {
+  const down = new Set((actor.dropped ?? []).map((thing) => thing.key));
+  const at = typeof actor.x === "number" && typeof actor.y === "number" ? { x: actor.x, y: actor.y } : undefined;
+  const out: RulesetDroppedThing[] = [];
+  const add = (key: string, label: string) => {
+    if (down.has(key)) return;
+    down.add(key);
+    out.push({ key, label, ...(at ? { at } : {}), ...(drops.pickUp ? { pickUp: drops.pickUp } : {}) });
+  };
+  if (actor.sheet) {
+    (actor.sheet.items ?? []).forEach((held, index) => {
+      if (!held.worn) return;
+      const slotted = drops.slots?.some((slot) => (held.item.slots?.[slot] ?? 0) > 0);
+      const tagged = drops.tags?.some((tag) => held.item.tags?.includes(tag));
+      if (!slotted && !tagged) return;
+      const named = actor.actions.find((action) => rulesetActionItemIndex(action) === index)?.label;
+      add(`item:${index}`, held.name ?? named ?? held.item.category);
+    });
+    return out;
+  }
+  for (const action of actor.actions) {
+    if (drops.tags?.some((tag) => action.qualities?.includes(tag))) add(action.id, action.label);
+  }
+  // What it holds that is no action (1.262): a printed shield.
+  actor.block?.held?.forEach((thing, index) => {
+    if (drops.tags?.some((tag) => thing.tags.includes(tag))) add(`held:${index}`, thing.label);
+  });
+  return out;
 }

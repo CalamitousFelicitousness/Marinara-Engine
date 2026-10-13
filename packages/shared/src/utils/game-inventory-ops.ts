@@ -40,6 +40,7 @@ import {
   type GameInventoryItemRules,
   type GameInventoryStack,
   type GameInventoryWearRefusal,
+  releaseGameInventoryUnmetBindings,
 } from "./game-inventory-stacks.js";
 
 /** The most operations one request applies. */
@@ -326,8 +327,35 @@ export function applyGameInventoryOps(
           if (!stack) break;
           if (stack.truly) fakes.set(stack.truly, (fakes.get(stack.truly) ?? 0) + 1);
           const held = chargesOf(stack)!;
-          const now = left(stack) - held.cost;
-          const breaks = now === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) <= held.breaksOn.atMost : false;
+          const spentTo = left(stack) - held.cost;
+          const face = spentTo === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) : undefined;
+          // A high face gives charges back (1.266): a Staff of the Magi's 20.
+          const regains = held.breaksOn?.regains;
+          const now =
+            face !== undefined && regains && roll && face >= regains.atLeast
+              ? Math.max(
+                  0,
+                  Math.min(
+                    held.max,
+                    Array.from({ length: regains.count }, () => roll(regains.sides)).reduce(
+                      (sum, one) => sum + one,
+                      0,
+                    ) + regains.flat,
+                  ),
+                )
+              : spentTo;
+          const cracks =
+            face !== undefined && now === 0 && held.breaksOn?.atMost !== undefined && face <= held.breaksOn.atMost;
+          // Or it becomes another item instead (1.267), under that item's name.
+          const into = cracks && held.breaksOn?.becomes ? rules?.itemOf(held.breaksOn.becomes) : undefined;
+          if (into) {
+            const { charges: _charges, ...plain } = stack;
+            current = current.map((each) => (each === stack ? { ...plain, item: into.item, name: into.name } : each));
+            journal.push({ item: stack.name, action: "lost", quantity: 1 });
+            journal.push({ item: into.name, action: "acquired", quantity: 1 });
+            continue;
+          }
+          const breaks = cracks;
           if (breaks) broke++;
           current = breaks
             ? current.filter((each) => each !== stack)
@@ -488,7 +516,8 @@ export function applyGameInventoryOps(
       }
     }
   }
-  return { stacks: current, results, journal };
+  // A binding whose needed items went elsewhere, or came off, is undone (1.308).
+  return { stacks: releaseGameInventoryUnmetBindings(current, rules), results, journal };
 }
 
 /**

@@ -71,6 +71,10 @@ export interface RulesetItemUseSaid {
   left: { count: number } | { charges: number; max: number };
   /** It spent its last charge and its `breaksOn` die said it breaks: the face rolled. */
   broke?: number;
+  /** It spent its last charge and its `breaksOn` die gave some back (1.266): the face, and how many. */
+  recharged?: { roll: number; amount: number };
+  /** It spent its last charge and became another item (1.267): that item's name, and the face. */
+  becomes?: { name: string; roll: number };
   /** Its gate, when its user rolled one: what was rolled, the total (a pool's successes) against the
    *  difficulty, and whether it passed. Failed, nothing it does happened. */
   gate?: { check: string; total: number; difficulty: number; success: boolean; rolls: number[] };
@@ -128,6 +132,20 @@ export function useRulesetItemOutsideFight(input: {
   const onUser = works && (use.kind === "heal" || use.kind === "buff") && use.targets !== "enemy";
   let live = user.live;
   const parts: RulesetItemUsePart[] = [];
+  const sheetValue = (ref: Parameters<typeof resolveRulesetValueRef>[2]) =>
+    Math.trunc(
+      resolveRulesetValueRef(
+        definition,
+        user.build,
+        ref,
+        evaluateRulesetSheetLive(
+          definition,
+          user.build,
+          live,
+          rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder),
+        ),
+      ),
+    );
   const sheetWithin = (bounds: NonNullable<NonNullable<typeof use.applies>[number]["when"]>) => {
     const held = rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder);
     const value = resolveRulesetValueRef(
@@ -164,7 +182,10 @@ export function useRulesetItemOutsideFight(input: {
       now === undefined
         ? undefined
         : `${definition.sheet.live.pools.find((entry) => entry.id === pool)?.label ?? pool} ${now}`;
-    const heal = use.kind === "heal" ? rolled(use.amount) : null;
+    const healed = use.kind === "heal" ? rolled(use.amount) : null;
+    // What its holder's sheet adds (1.266): a Staff of Healing's spellcasting modifier.
+    const added = healed && use.amountAdd ? sheetValue(use.amountAdd) : 0;
+    const heal = healed ? { ...healed, total: Math.max(0, healed.total + (Number.isFinite(added) ? added : 0)) } : null;
     if (heal && health) {
       // A wound track clears one mark, as a heal in a fight does; a pool takes the amount.
       const now =
@@ -173,7 +194,16 @@ export function useRulesetItemOutsideFight(input: {
             ? write({ op: "damage", track: health.track, kind: "", amount: -1 })
             : undefined
           : heal.total > 0
-            ? named(health.pool, write({ op: "restore", pool: health.pool, amount: heal.total }))
+            ? named(
+                health.pool,
+                write({
+                  op: "restore",
+                  pool: health.pool,
+                  amount: heal.total,
+                  // A potion tagged magical is a magical heal (1.256), as its use in a fight is.
+                  ...(item.tags?.includes("magical") ? { magical: true as const } : {}),
+                }),
+              )
             : undefined;
       // Only what landed is said: a heal of nothing, or one the sheet refused, says nothing.
       if (now !== undefined) parts.push({ kind: "heal", amount: heal.total, rolls: heal.rolls, now });
@@ -218,14 +248,25 @@ export function useRulesetItemOutsideFight(input: {
   // The last charge spent: an item that may break rolls for it, as it would in a fight.
   const breaks = charges === 0 ? item.charges?.breaksOn : undefined;
   const face = breaks ? roll(breaks.die) : undefined;
-  const broke = breaks && face !== undefined && face <= breaks.atMost ? face : undefined;
+  // A high face gives charges back instead (1.266), as it would in a fight.
+  const regained =
+    breaks?.regains && face !== undefined && face >= breaks.regains.atLeast ? rolled(breaks.regains.amount) : null;
+  const recharged = regained && max !== undefined ? { roll: face!, amount: Math.min(max, regained.total) } : undefined;
+  const cracked =
+    !recharged && breaks?.atMost !== undefined && face !== undefined && face <= breaks.atMost ? face : undefined;
+  // Or it becomes another item instead (1.267).
+  const turnsInto = cracked !== undefined && breaks?.becomes ? input.itemOf(breaks.becomes) : undefined;
+  const becomes = turnsInto && breaks?.becomes ? { ref: breaks.becomes, name: turnsInto.name } : undefined;
+  const broke = becomes ? undefined : cracked;
+  const after = recharged ? recharged.amount : charges;
   const spent = applyRulesetFightItemChanges(stacks, [
     {
       stack: { id: stack.id, ref: stack.item, ...(stack.holder ? { holder: stack.holder } : {}) },
       name: stack.name,
       taken: use.consumes || broke !== undefined ? 1 : 0,
-      ...(charges !== undefined ? { charges } : {}),
+      ...(after !== undefined ? { charges: after } : {}),
       ...(broke !== undefined ? { broke: true as const } : {}),
+      ...(becomes ? { becomes } : {}),
     },
   ]);
   if (!spent) return { ok: false, reason: "no-stack" };
@@ -244,10 +285,12 @@ export function useRulesetItemOutsideFight(input: {
       parts,
       ...(aimed ? { aimed } : {}),
       ...(broke !== undefined ? { broke } : {}),
+      ...(recharged ? { recharged } : {}),
+      ...(becomes ? { becomes: { name: becomes.name, roll: cracked! } } : {}),
       ...(gate ? { gate } : {}),
       left:
-        charges !== undefined && max !== undefined
-          ? { charges, max }
+        after !== undefined && max !== undefined
+          ? { charges: after, max }
           : { count: use.consumes ? stack.quantity - 1 : stack.quantity },
     },
   };
@@ -341,11 +384,15 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
   const left =
     said.broke !== undefined
       ? `Its last charge spent, it breaks (a ${said.broke} on its die).`
-      : "charges" in said.left
-        ? `${said.left.charges} of ${said.left.max} charges left.`
-        : said.left.count > 0
-          ? `${said.left.count} left.`
-          : "None left.";
+      : said.becomes
+        ? `Its last charge spent, it becomes ${said.becomes.name} (a ${said.becomes.roll} on its die).`
+        : said.recharged
+          ? `Its last charge spent, it gets ${said.recharged.amount} back (a ${said.recharged.roll} on its die).`
+          : "charges" in said.left
+            ? `${said.left.charges} of ${said.left.max} charges left.`
+            : said.left.count > 0
+              ? `${said.left.count} left.`
+              : "None left.";
   return `${said.user} uses ${said.item}: ${gate}${does}. ${left}`;
 }
 

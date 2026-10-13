@@ -32,6 +32,13 @@ export interface RulesetSaveAgainst {
   conditions?: readonly string[];
   damage?: readonly string[];
   magic?: boolean;
+  /** What the creature the save is against is (1.180): its type and tags. */
+  from?: { type?: string; tags: readonly string[] };
+  /** What the action the save is against is known by (1.186): its id, its name and its shared
+   *  recharge group. */
+  action?: readonly string[];
+  /** The catalog the entry it is against came from, or the one an item's use casts from (1.260). */
+  catalog?: string;
 }
 
 /** Any one match is enough; the save's own name is checked separately. */
@@ -41,12 +48,26 @@ export function rulesetSaveAgainstMatches(
 ): boolean {
   if (!against) return true;
   if (!source) return false;
+  // Named actions narrow everything else it says (1.186): one of them, and then the rest as usual.
+  if (against.actions) {
+    const known = (source.action ?? []).map((name) => name.trim().toLowerCase());
+    if (!against.actions.some((name) => known.includes(name.trim().toLowerCase()))) return false;
+  }
+  // As do the catalogs it is cast from (1.260): a spell, and then whoever cast it.
+  if (against.casts && !(source.catalog !== undefined && against.casts.includes(source.catalog))) return false;
+  if ((against.actions || against.casts) && !against.conditions && !against.damage && !against.magic && !against.from) {
+    return true;
+  }
   return !!(
     against.conditions?.some((condition) => source.conditions?.includes(condition)) ||
     against.damage?.some((type) =>
       source.damage?.some((one) => one.trim().toLowerCase() === type.trim().toLowerCase()),
     ) ||
-    (against.magic && source.magic)
+    (against.magic && source.magic) ||
+    (against.from &&
+      source.from &&
+      ((source.from.type !== undefined && !!against.from.types?.includes(source.from.type)) ||
+        source.from.tags.some((tag) => !!against.from?.tags?.includes(tag))))
   );
 }
 
@@ -64,8 +85,10 @@ export interface RulesetCheckSource {
   vulnerable?: readonly string[];
   immune?: readonly RulesetCreatureHideEntry[];
   conditionImmunities?: readonly string[];
-  /** How far it lets its holder sense with each of the fight's senses (Capability API 1.179). */
-  senses?: Readonly<Record<string, number>>;
+  /** How far it lets its holder sense with each of the fight's senses (Capability API 1.175). */
+  senses?: Readonly<Record<string, number | { add: number }>>;
+  /** The light it sheds for its holder (Capability API 1.289). */
+  light?: Readonly<{ bright: number; dim: number }>;
 }
 
 /**
@@ -215,6 +238,13 @@ export function rulesetCheckEffects(
   };
   const save = target?.type === "save" ? target.id : undefined;
   const skill = target?.type === "skill" ? target.id : undefined;
+  // The ability a check is made with (1.183): a raw ability check's own, or a skill's as it is rolled.
+  const ability =
+    target?.type === "ability"
+      ? target.id
+      : target?.type === "skill"
+        ? (target.withAbility ?? target.ability)
+        : undefined;
   const about = (narrowed: readonly string[] | undefined, id: string | undefined) =>
     !narrowed || (id !== undefined && narrowed.includes(id));
   for (const source of sources) {
@@ -233,7 +263,9 @@ export function rulesetCheckEffects(
       const applies =
         save !== undefined
           ? modifier.to === "saves" && about(modifier.saves ?? source.saves, save)
-          : modifier.to === "checks" && about(modifier.skills ?? source.skills, skill);
+          : modifier.to === "checks" &&
+            about(modifier.skills ?? source.skills, skill) &&
+            about(modifier.abilities, ability);
       if (!applies || !rulesetSaveAgainstMatches(modifier.against)) continue;
       if (modifier.mode) lean(modifier.mode, source.name);
       if (modifier.flat !== undefined || modifier.dice !== undefined) {

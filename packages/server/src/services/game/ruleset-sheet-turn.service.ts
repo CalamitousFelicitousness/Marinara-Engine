@@ -208,7 +208,13 @@ export function applyGameRulesetSheetTurn(
   catalogs?: RulesetCatalogEntriesById,
 ): GameRulesetSheetTurn {
   try {
-    const applied = applySheetCommandTags(content, { ...context, live: baseLive ?? {}, catalogs });
+    const applied = applySheetCommandTags(content, {
+      ...context,
+      live: baseLive ?? {},
+      catalogs,
+      // A rest that brings on what a condition does with it (1.255) rolls real dice.
+      roll: (sides) => 1 + Math.floor(Math.random() * sides),
+    });
     for (const outcome of applied.outcomes) {
       if (!outcome.ok) logger.warn("[game/sheet] Refused for %s: %s (%s)", outcome.who, outcome.reason, outcome.tag);
     }

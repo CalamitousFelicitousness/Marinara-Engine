@@ -5,7 +5,10 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseTextualToolCalls } from "../../../packages/server/src/services/llm/textual-tool-call-parser.js";
+import {
+  parseTextualToolCalls,
+  stripTextualToolCalls,
+} from "../../../packages/server/src/services/llm/textual-tool-call-parser.js";
 import type {
   ChatCompletionResult,
   ChatMessage,
@@ -625,6 +628,45 @@ try {
     );
     assert.equal(spaced?.function.name, "app_data");
     assert.deepEqual(JSON.parse(spaced!.function.arguments), { action: "lorebook.getEntry", apply: true });
+
+    // Other models' call markup: each format reads as one known call and strips to the prose.
+    const readTool = [{ type: "function" as const, function: { name: "read", description: "", parameters: {} } }];
+    const markupCases: Array<[string, string]> = [
+      [
+        "deepseek",
+        '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>read\n```json\n{"path":"a.txt"}\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+      ],
+      [
+        "kimi",
+        '<|tool_calls_section_begin|><|tool_call_begin|>functions.read:0<|tool_call_argument_begin|>{"path":"a.txt"}<|tool_call_end|><|tool_calls_section_end|>',
+      ],
+      ["glm", "<tool_call>read\n<arg_key>path</arg_key>\n<arg_value>a.txt</arg_value>\n</tool_call>"],
+      ["qwen", "<tool_call>\n<function=read>\n<parameter=path>\na.txt\n</parameter>\n</function>\n</tool_call>"],
+      ["qwen bare", "<function=read>\n<parameter=path>\na.txt\n</parameter>\n</function>"],
+      [
+        "minimax",
+        '<minimax:tool_call>\n<invoke name="read">\n<parameter name="path">a.txt</parameter>\n</invoke>\n</minimax:tool_call>',
+      ],
+      ["mistral", '[TOOL_CALLS]read[ARGS]{"path":"a.txt"}'],
+      ["mistral list", '[TOOL_CALLS][{"name":"read","arguments":{"path":"a.txt"}}]'],
+    ];
+    for (const [label, markup] of markupCases) {
+      const [parsed, ...more] = parseTextualToolCalls(`Looking.\n${markup}`, readTool);
+      assert.equal(parsed?.function.name, "read", `${label}: name`);
+      assert.equal(more.length, 0, `${label}: one call`);
+      assert.deepEqual(JSON.parse(parsed!.function.arguments), { path: "a.txt" }, `${label}: arguments`);
+      assert.equal(stripTextualToolCalls(`Looking.\n${markup}`, readTool), "Looking.", `${label}: strip`);
+    }
+    assert.equal(parseTextualToolCalls("Use the read tool.", readTool).length, 0);
+    assert.equal(
+      parseTextualToolCalls("<tool_call>nope\n<arg_key>a</arg_key><arg_value>b</arg_value></tool_call>", readTool)
+        .length,
+      0,
+    );
+    assert.equal(
+      parseTextualToolCalls('<tool_call>{"name":"read","arguments":{"path":"a.txt"}}</tool_call>', readTool).length,
+      1,
+    );
 
     // Understood request (#5740) on pi: the round's words, the mutating command, then the observed outcome.
     const write = await start("textual write", [

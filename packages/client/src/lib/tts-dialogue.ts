@@ -16,6 +16,8 @@ export interface TTSVoiceRequest {
   text: string;
   paragraphIndex?: number;
   speaker?: string;
+  /** The chat character the speaker resolved to (the one whose voice reads the line), if any. */
+  characterId?: string;
   tone?: string;
   voice?: string;
   pauseAfterMs?: number;
@@ -484,6 +486,7 @@ export function buildTTSVoiceRequests(
     return chunks.map((chunk, chunkIndex) => ({
       text: chunk,
       speaker,
+      ...(resolvedCharacterId ? { characterId: resolvedCharacterId } : {}),
       tone: utterance.tone,
       voice,
       ...(config.dialogueOnly &&

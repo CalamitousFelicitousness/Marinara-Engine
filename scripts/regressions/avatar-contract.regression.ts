@@ -180,7 +180,7 @@ await app.close();
 const repoRoot = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
 const clientSrc = join(repoRoot, "packages", "client", "src");
 const rendererRoot = join(clientSrc, "features", "avatars", "renderers") + sep;
-const heavyImport = /(?:from\s+|import\s*\(\s*)["'](?:three(?:\/[^"']*)?|@pixiv\/[^"']+|mesh-avatar)["']/u;
+const heavyImport = /(?:from\s+|import\s*\(\s*|import\s+)["'](?:three(?:\/[^"']*)?|@pixiv\/[^"']+|mesh-avatar)["']/u;
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);

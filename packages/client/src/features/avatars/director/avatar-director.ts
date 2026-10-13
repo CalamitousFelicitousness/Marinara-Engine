@@ -287,6 +287,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     }
     if (wholeReply) {
       // A reply that arrived whole is classified whole, once per owner.
+      if (readOffset >= text.length) return;
       const byOwner = new Map<string, string[]>();
       for (const paragraph of paragraphs) {
         if (!paragraph.ownerId) continue;
@@ -315,7 +316,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   };
 
   const sendQueued = () => {
-    if (queue.length === 0 || inFlight || now - lastSentAt < T.classifyIntervalMs) return;
+    if (disposed || queue.length === 0 || inFlight || now - lastSentAt < T.classifyIntervalMs) return;
     const batch = queue.slice(-AVATAR_CLASSIFY_LIMITS.maxTexts);
     queue = [];
     const deliver = () => {
@@ -489,6 +490,8 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       disposed = true;
       inFlight?.abort();
       inFlight = null;
+      queue = [];
+      arrived = [];
       for (const unsubscribe of unsubscribers.splice(0)) unsubscribe();
     },
   };

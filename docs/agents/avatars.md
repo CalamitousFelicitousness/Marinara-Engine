@@ -24,7 +24,29 @@ How to import a VRM model (`.vrm`, versions 0.x and 1.0) and an optional idle an
 
 ## How faces and mouths follow the reply
 
-How the avatar picks a face while a reply streams in Roleplay and from the Game Master's lines in Game mode, how the Expression Engine sets the final face, and how the mouth follows the text.
+Avatars react on their own; there is nothing to set up for this part.
+
+**Faces in Roleplay.** While a reply streams in, Marinara Engine reads each finished sentence and guesses its mood. To keep the face from flickering:
+
+- The face changes only when the new mood is clearly stronger than the current one.
+- A face stays for at least two seconds.
+- The face goes back to calm only after two calm sentences in a row.
+- About four seconds after the reply ends, the face relaxes back to calm.
+
+**How the mood is read.** No AI model or chat connection is asked, and your chat text is not sent anywhere else.
+
+- A built-in word list answers at once, everywhere, and knows common mood words in several languages.
+- Where your computer can run it, a small local emotion model reads the sentences instead and understands 36 languages. It downloads once (about 300 MB) into the `models` folder of your data folder the first time an avatar needs it, and the word list answers until it is ready. It uses about 900 MB of memory while loaded and unloads after 10 idle minutes. Lite installs and Android (Termux) keep the word list. The model is [Horizon-Labs/multilingual-emotions-small](https://huggingface.co/Horizon-Labs/multilingual-emotions-small) (Apache-2.0).
+
+**Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it.
+
+**The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. Avatars work without it too.
+
+**Mouths.** The mouth moves only for dialogue (words in quotes, `[Name]:` lines and speaker tags), never for narration, at about the pace of speech. If the text appears faster than anyone could say it, the mouth speeds up and then skips ahead so it stays with the words on screen. With streaming off, a reply's dialogue is spoken within eight seconds. When text-to-speech plays a line, the voice moves the mouth instead.
+
+**Body.** An avatar thinks from the moment you send until its first words, talks while its mouth moves, listens while someone else talks or while you type, and rests otherwise.
+
+**Group chats.** When Marinara Engine knows who is replying, that character speaks. Otherwise each paragraph belongs to the first character it names, or to the one before it.
 
 ## Lip sync with text-to-speech
 

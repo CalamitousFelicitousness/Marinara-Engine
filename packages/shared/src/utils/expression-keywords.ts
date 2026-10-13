@@ -91,6 +91,8 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
       "sad",
       "sadly",
       "sadness",
+      "sadder",
+      "saddest",
       "saddened",
       "unhappy",
       "sorrow*",
@@ -164,6 +166,8 @@ export const EXPRESSION_KEYWORD_GROUPS: readonly ExpressionKeywordGroup[] = [
     words: [
       "happy",
       "happily",
+      "happier",
+      "happiest",
       "happiness",
       "joy",
       "joyful*",

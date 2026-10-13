@@ -42,6 +42,7 @@ const cases: Array<[string, string]> = [
   ["They entered the crypt.", "neutral"],
   ["The museum opens at nine.", "neutral"],
   ["He is unhappy.", "sad"],
+  ["She looks sadder than ever.", "sad"],
   // Accents fold; letters without a decomposition (Polish ł) stay themselves.
   ["Er ist WÜTEND.", "angry"],
   ["Er ist wutend.", "angry"],

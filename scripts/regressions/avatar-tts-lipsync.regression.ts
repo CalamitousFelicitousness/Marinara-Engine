@@ -4,7 +4,7 @@
  *     closes smoothly, and guesses a coarse mouth shape from how bright the sound is;
  *   - the real TTS service publishes a level source for the character whose voice reads each line, swaps it
  *     between speakers, withdraws it on narration, pause, stop and chat switch, and attributes a reading to
- *     the chat where it started;
+ *     the chat it was requested in, even when the user switches chats while it loads or a stage mounts later;
  *   - the voice never passes through Web Audio: no AudioContext is created and playback is untouched, so the
  *     Safari/iOS autoplay handling keeps working; an undecodable clip simply gives no level;
  *   - the TTS request builders carry the character their voice lookup resolved, without changing cache keys.
@@ -34,6 +34,8 @@ function toneSamples(parts: ToneSpec, sampleRate = 16_000): VoiceSamples {
 let realtimeContexts = 0;
 let decodes = 0;
 const fetchedTexts: string[] = [];
+/** While set, voice requests wait for it, like a slow provider. */
+let fetchGate: Promise<void> | null = null;
 class ForbiddenAudioContext {
   constructor() {
     realtimeContexts += 1;
@@ -94,6 +96,7 @@ Object.defineProperty(globalThis, "OfflineAudioContext", { configurable: true, v
 globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
   const { text } = JSON.parse(String(init?.body)) as { text: string };
   fetchedTexts.push(text);
+  if (fetchGate) await fetchGate;
   return new Response(new Blob([CLIPS[text] ?? "[]"]), { headers: { "Content-Type": "audio/wav" } });
 }) as typeof fetch;
 
@@ -224,6 +227,7 @@ try {
         { text: "mari", speaker: "Mari", characterId: "mari-id" },
       ],
       "message-1",
+      { chatId: "chat-a" },
     );
     await until(() => events.length === 1, "Dottore's line starts");
     const element = ttsService.getPlayback()?.element as unknown as FakeAudio;
@@ -282,14 +286,36 @@ try {
     // A reading started in another chat belongs to that chat.
     useChatStore.setState({ activeChatId: "chat-b" });
     const countBefore = events.length;
-    void ttsService.speak("dottore", "message-2", { characterId: "dottore-id" });
+    void ttsService.speak("dottore", "message-2", { chatId: "chat-b", characterId: "dottore-id" });
     await until(() => events.length === countBefore + 1, "a reading in chat B starts");
     assert.equal(events.at(-1)?.[0], "dottore-id");
     ttsService.stop();
     assert.deepEqual(events.at(-1), ["dottore-id", null], "stopping withdraws the voice");
 
+    // Switching chats while the voice still loads: the reading stays with the chat it was requested in.
+    useChatStore.setState({ activeChatId: "chat-a" });
+    let releaseFetch = () => {};
+    fetchGate = new Promise<void>((resolve) => (releaseFetch = resolve));
+    const countBeforeLoading = events.length;
+    const loading = ttsService.speakSequence(
+      [{ text: "dottore", speaker: "Dottore", characterId: "dottore-id" }],
+      "message-5",
+      { chatId: "chat-a" },
+    );
+    assert.equal(ttsService.getState(), "loading");
+    useChatStore.setState({ activeChatId: "chat-b" });
+    fetchGate = null;
+    releaseFetch();
+    await until(() => ttsService.getState() === "playing", "chat A's voice starts while chat B is open");
+    assert.equal(events.length, countBeforeLoading, "chat B's avatars stay still for chat A's voice");
+    useChatStore.setState({ activeChatId: "chat-a" });
+    assert.equal(events.at(-1)?.[0], "dottore-id", "chat A's avatar follows its own voice when the user comes back");
+    assert.ok(events.at(-1)?.[1]);
+    ttsService.stop();
+    await loading;
+
     // An undecodable clip still plays; the avatar just gets no level.
-    void ttsService.speak("broken", "message-3", { characterId: "dottore-id" });
+    void ttsService.speak("broken", "message-3", { chatId: "chat-a", characterId: "dottore-id" });
     await until(() => ttsService.getState() === "playing" && events.at(-1)?.[1] != null, "the broken clip plays");
     const broken = events.at(-1)![1]!;
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -298,11 +324,27 @@ try {
     assert.equal(ttsService.getState(), "playing", "the voice itself keeps playing");
     ttsService.stop();
 
+    // A reading with no chat, like the voice preview in settings, moves no mouth.
+    const countBeforePreview = events.length;
+    void ttsService.speak("dottore", "tts-preview", { characterId: "dottore-id" });
+    await until(() => ttsService.getState() === "playing", "a reading with no chat plays");
+    assert.equal(events.length, countBeforePreview, "a reading with no chat moves no avatar");
+    ttsService.stop();
+
     unsubscribe();
     const countAfterUnsubscribe = events.length;
-    void ttsService.speak("dottore", "message-4", { characterId: "dottore-id" });
+    void ttsService.speak("dottore", "message-4", { chatId: "chat-a", characterId: "dottore-id" });
     await until(() => ttsService.getState() === "playing", "playback without listeners");
     assert.equal(events.length, countAfterUnsubscribe, "nothing is published once the director unsubscribes");
+
+    // A stage that mounts in another chat while chat A's voice plays stays still; chat A's stage follows it.
+    useChatStore.setState({ activeChatId: "chat-b" });
+    const lateEvents: Array<[string, AvatarAudioLevelSource | null]> = [];
+    const unsubscribeLate = subscribeAvatarAudio((ownerId, source) => lateEvents.push([ownerId, source]));
+    assert.deepEqual(lateEvents, [], "a stage mounted in another chat does not take chat A's voice");
+    useChatStore.setState({ activeChatId: "chat-a" });
+    assert.equal(lateEvents.at(-1)?.[0], "dottore-id", "the chat being read follows the voice");
+    unsubscribeLate();
     ttsService.stop();
 
     assert.equal(realtimeContexts, 0, "playback never goes through a realtime AudioContext");

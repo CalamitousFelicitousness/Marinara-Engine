@@ -4,7 +4,8 @@
 // While text-to-speech reads a character's line, publish an AvatarAudioLevelSource for that character, and null
 // when the voice pauses, stops, moves to another speaker or the chat changes. The character is the one the TTS
 // voice lookup resolved for the line (TTSSpeakRequest.characterId). Lines read by the narrator or by a speaker
-// who is not a chat character move no mouth.
+// who is not a chat character move no mouth. A reading moves avatars only in the chat it was requested in
+// (TTSSpeakOptions.chatId), whichever chat is open when the clip starts playing; a reading with no chat moves none.
 // The level is the clip's loudness track (voice-envelope.ts) read at the playback element's current time. The
 // element is never connected to Web Audio, so playback and the Safari/iOS autoplay handling in lib/tts-service.ts
 // stay as they are. The director subscribes; nothing else does.
@@ -18,8 +19,6 @@ const listeners = new Set<AvatarAudioListener>();
 const envelopes = new WeakMap<Blob, VoiceEnvelope | null | "pending">();
 let published: AvatarAudioLevelSource | null = null;
 let stopWatching: (() => void) | null = null;
-/** The chat that was open when a reading started. Its voice moves avatars in that chat only. */
-let reading: { sequence: number; chatId: string | null } | null = null;
 
 function envelopeFor(blob: Blob): VoiceEnvelope | null | "pending" {
   const known = envelopes.get(blob);
@@ -31,10 +30,8 @@ function envelopeFor(blob: Blob): VoiceEnvelope | null | "pending" {
 
 /** The character whose voice is playing for the open chat, or null. */
 function speakingCharacter(playback: TTSPlayback | null): string | null {
-  if (!playback || ttsService.getState() !== "playing") return null;
-  const chatId = useChatStore.getState().activeChatId;
-  if (reading?.sequence !== playback.sequence) reading = { sequence: playback.sequence, chatId };
-  return reading.chatId === chatId ? playback.characterId : null;
+  if (!playback?.chatId || ttsService.getState() !== "playing") return null;
+  return playback.chatId === useChatStore.getState().activeChatId ? playback.characterId : null;
 }
 
 function createSource(ownerId: string): AvatarAudioLevelSource {

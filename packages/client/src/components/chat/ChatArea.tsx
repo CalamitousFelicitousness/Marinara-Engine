@@ -3083,6 +3083,7 @@ const LocalChatArea = memo(function LocalChatArea({
         parts.flatMap(({ message, requests }) => withTTSVoiceRequestCacheKeys(requests, cfg, message.id)),
         lastMsg.id,
         {
+          chatId: targetChatId,
           progressive: cfg.progressivePlayback,
           volume: ttsLineVolume / 100,
           onChunkStart: (_request, index) => {

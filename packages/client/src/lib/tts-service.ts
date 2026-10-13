@@ -13,6 +13,8 @@ export interface TTSSpeakOptions {
   speaker?: string;
   /** The character whose voice reads this text, so their avatar's mouth can follow it. */
   characterId?: string;
+  /** The chat this reading belongs to. Only that chat's avatars follow the voice. */
+  chatId?: string;
   tone?: string;
   voice?: string;
   /** Explicit audio connection to synthesize with. Empty string forces the legacy TTS settings blob. */
@@ -40,7 +42,10 @@ export interface TTSSpeakRequest {
   activeId?: string | null;
 }
 
-export interface TTSSpeakSequenceOptions extends Pick<TTSSpeakOptions, "signal" | "throwOnError" | "volume" | "muted"> {
+export interface TTSSpeakSequenceOptions extends Pick<
+  TTSSpeakOptions,
+  "signal" | "throwOnError" | "volume" | "muted" | "chatId"
+> {
   progressive?: boolean;
   onChunkStart?: (request: TTSSpeakRequest, index: number) => void;
   onChunkEnd?: (request: TTSSpeakRequest, index: number) => void;
@@ -51,8 +56,8 @@ export interface TTSSpeakSequenceOptions extends Pick<TTSSpeakOptions, "signal" 
 export interface TTSPlayback {
   readonly element: HTMLAudioElement;
   readonly blob: Blob;
-  /** Changes with every speak, sequence and stop, so a reader can tell one reading from the next. */
-  readonly sequence: number;
+  /** The chat the reading was requested in (TTSSpeakOptions.chatId), not the chat open when the clip plays. */
+  readonly chatId: string | null;
   readonly characterId: string | null;
 }
 
@@ -458,7 +463,7 @@ class TTSService {
     audio.src = objectUrl;
     this.applyPlaybackOptions(audio, options);
     this.audio = audio;
-    this.playback = { element: audio, blob, sequence, characterId: options.characterId ?? null };
+    this.playback = { element: audio, blob, chatId: options.chatId ?? null, characterId: options.characterId ?? null };
 
     audio.onended = () => {
       if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
@@ -572,7 +577,12 @@ class TTSService {
       audio.src = objectUrl;
       this.applyPlaybackOptions(audio, options);
       this.audio = audio;
-      this.playback = { element: audio, blob, sequence, characterId: request.characterId ?? null };
+      this.playback = {
+        element: audio,
+        blob,
+        chatId: options.chatId ?? null,
+        characterId: request.characterId ?? null,
+      };
       const runChunkStart = () => {
         try {
           options.onChunkStart?.(request, index);

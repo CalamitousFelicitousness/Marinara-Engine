@@ -58,8 +58,15 @@ try {
     await import("../../packages/server/src/services/llm/providers/openai-chatgpt.provider.js");
   const { __setSdkForTesting, ClaudeSubscriptionProvider } =
     await import("../../packages/server/src/services/llm/providers/claude-subscription.provider.js");
-  const { isClaudeAdaptiveOnlyNoSamplingModel, resolveProviderReasoningEffort, shouldSuppressUnknownModelParameters } =
-    await import("../../packages/shared/src/constants/model-lists.js");
+  const {
+    MODEL_LISTS,
+    isClaudeAdaptiveOnlyNoSamplingModel,
+    isGeminiArgonModel,
+    resolveProviderReasoningEffort,
+    shouldSuppressUnknownModelParameters,
+  } = await import("../../packages/shared/src/constants/model-lists.js");
+  const { resolveAgentConnectionParameters, withThinkingHeadroom } =
+    await import("../../packages/server/src/services/generation/agent-generation-parameters.js");
   const { relevantGenerationParameters, reasoningEffortChoices, verbosityChoices } =
     await import("../../packages/shared/src/constants/generation-parameter-relevance.js");
   const { readOpenRouterModelCapabilities } = await import("../../packages/server/src/routes/connections.routes.js");
@@ -166,7 +173,7 @@ try {
       frequencyPenalty: frequencyPenalty || undefined,
       presencePenalty: presencePenalty || undefined,
       enableThinking: !!resolved,
-      reasoningEffort: values.reasoningEffort === null ? "none" : (resolved ?? undefined),
+      reasoningEffort: values.reasoningEffort === null && !resolved ? "none" : (resolved ?? undefined),
       verbosity: values.verbosity,
       serviceTier: values.serviceTier,
       enabledParameters: Object.fromEntries(PROBED.map((key) => [key, true])),
@@ -243,13 +250,24 @@ try {
         "meta-llama/llama-3.3-70b-instruct",
         "x-ai/grok-4.3",
         "google/gemini-3.5-flash",
+        "google/gemini-4-argon",
+        "google/gemini-4-argon:online",
+        "google/gemini-3.8-flash",
       ],
       make: registry("openrouter", `${base}/openrouter.ai/api/v1`),
     },
     {
       provider: "nanogpt",
       baseUrl: `${base}/nano-gpt.com/api/v1`,
-      models: ["TheDrummer/Artemis-v1.1", "gpt-5", "glm-4.6", "deepseek-v4-pro", "claude-opus-5"],
+      models: [
+        "TheDrummer/Artemis-v1.1",
+        "gpt-5",
+        "glm-4.6",
+        "deepseek-v4-pro",
+        "claude-opus-5",
+        "google/gemini-4-argon",
+        "gemini-3.7-flash",
+      ],
       make: registry("nanogpt", `${base}/nano-gpt.com/api/v1`),
     },
     {
@@ -293,7 +311,7 @@ try {
     {
       provider: "custom",
       baseUrl: `${base}/v1`,
-      models: ["llama-3.3-70b", "gpt-5.5", "glm-4.6", "claude-opus-5"],
+      models: ["llama-3.3-70b", "gpt-5.5", "glm-4.6", "claude-opus-5", "gemini-3.8-flash"],
       make: registry("custom", `${base}/v1`),
     },
     {
@@ -323,11 +341,20 @@ try {
         "gemini-2.5-pro",
         "gemini-2.5-flash",
         "gemini-3-pro-preview",
+        "gemini-4-argon",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
         "gemini-2.0-flash",
         "gemma-3-27b-it",
         "gemini-unknown",
       ],
       make: registry("google", `${base}/v1beta`),
+    },
+    {
+      provider: "google_vertex",
+      baseUrl: `${base}/v1/projects/p/locations/global`,
+      models: ["gemini-2.5-flash", "gemini-3-pro-preview", "gemini-4-argon", "gemini-3.8-flash", "gemini-unknown"],
+      make: registry("google_vertex", `${base}/v1/projects/p/locations/global`),
     },
     {
       provider: "openai_chatgpt",
@@ -640,6 +667,69 @@ try {
     ],
     "ChatGPT offers its own levels plus the model default instead of an Off it cannot honour",
   );
+  // Argon cannot turn thinking off. A saved Off or no level sends its default, medium, everywhere: in the request, in
+  // the agent's thinking room and in the panel, so the panel offers only its three levels.
+  for (const provider of ["google", "google_vertex"]) {
+    assert.deepEqual(
+      reasoningEffortChoices({ provider, model: "gemini-4-argon" }).map((choice) => [
+        choice.value,
+        choice.label,
+        choice.kind ?? "",
+        choice.description ?? "",
+      ]),
+      [
+        ["low", "low", "", ""],
+        ["medium", "medium", "", ""],
+        ["high", "high", "", ""],
+      ],
+      `${provider} Argon offers no Off it cannot honour`,
+    );
+    assert.deepEqual(
+      [null, undefined, "none"].map((reasoningEffort) =>
+        resolveProviderReasoningEffort({
+          provider,
+          model: "gemini-4-argon",
+          reasoningEffort: reasoningEffort as never,
+        }),
+      ),
+      ["medium", "medium", "medium"],
+      `${provider} Argon without a level sends medium`,
+    );
+    const agentOn = (reasoningEffort: string | null) => {
+      const resolved = resolveAgentConnectionParameters({
+        provider,
+        model: "gemini-4-argon",
+        defaultParameters: { reasoningEffort },
+      });
+      return {
+        reasoning: resolved.generation.reasoning,
+        maxTokens: withThinkingHeadroom(4096, resolved.generation, resolved.enabledParameters),
+      };
+    };
+    assert.deepEqual(
+      agentOn(null),
+      agentOn("medium"),
+      `${provider} an agent on an Argon connection saved as Off gets medium and its thinking room`,
+    );
+    assert.deepEqual(agentOn(null).reasoning, { reasoningEffort: "medium", enableThinking: true });
+    assert.ok(agentOn(null).maxTokens > 4096, `${provider} Argon agent calls keep room for thinking`);
+    assert.deepEqual(
+      reasoningEffortChoices({ provider, model: "gemini-3-pro-preview" })[0],
+      { value: null, label: null },
+      `${provider} Gemini 3 keeps its Off choice`,
+    );
+  }
+  // Aggregators list google/gemini-4-argon too; the request leaves out what Argon ignores or rejects (#7534).
+  for (const provider of ["openrouter", "nanogpt"]) {
+    const shown = relevantGenerationParameters({ provider, model: "google/gemini-4-argon", reasoningEffort: "high" });
+    for (const key of ["temperature", "topP", "topK", "frequencyPenalty", "presencePenalty"] as const) {
+      assert.ok(!shown.has(key), `${provider} Argon must not offer ${key}`);
+    }
+  }
+  // New Google and Vertex connections start on the first listed model; Argon needs a paid key and a global location.
+  for (const provider of ["google", "google_vertex"] as const) {
+    assert.ok(!isGeminiArgonModel(MODEL_LISTS[provider][0]!.id), `${provider} new connections must not start on Argon`);
+  }
   assert.deepEqual(
     verbosityChoices({
       provider: "openai_chatgpt",

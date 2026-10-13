@@ -21,12 +21,15 @@ import {
   type RulesetLiveStates,
   type RulesetMarketDay,
   type WorldKitItems,
+  readWorldLedger,
   type WorldLedgerCarry,
+  type WorldLedgerEntry,
   worldLedgerCarry,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { parseExtra } from "../generation/prompt-attachments.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
+import { createGameWorldSnapshotsStorage } from "../storage/game-world-snapshots.storage.js";
 import type { ResolvedGameRuleset } from "./ruleset-registry.service.js";
 import { gameRulesetLayerOptions, readMetadata } from "./game-inventory.service.js";
 import { loadGameRulesetSheetContext } from "./ruleset-sheet-turn.service.js";
@@ -43,7 +46,18 @@ export interface GameRepliesBefore {
   carried: WorldLedgerCarry | null;
   /** The player's message the reply answers: the last one before it (worldgen W10, a fight's recap). */
   player: string | null;
+  /** The world's ledger to fold (worldgen W4): from the living world earlier sessions left (W11) when the
+   *  session keeps one, then this session's replies; else every reply in `all`. */
+  ledger: WorldLedgerEntry[];
+  /** For each of `scoped`, the market place its turn was at when the world put the party there and no
+   *  place tag began a day (`GAME_MARKET_PLACE_EXTRA` on the reply), else null. */
+  marketPlaces: Array<string | null>;
+  /** For each of `scoped`, the reply's message id (null for what earlier sessions carried in). */
+  replyIds: Array<string | null>;
 }
+
+/** The reply's extra that says which world-set market place its turn was at (`gameMarketDayFor`). */
+export const GAME_MARKET_PLACE_EXTRA = "gameMarketPlace";
 
 /** A Game Master's own reply: an assistant message that is not a party's turn (a tag a party's model
  *  echoes never counts for the world), as a tag a player types never does. */
@@ -60,24 +74,52 @@ export function isGameMasterReply(message: { role: string; content: unknown }): 
 
 export async function gameRepliesBefore(db: DB, chatId: string, replacing?: string | null): Promise<GameRepliesBefore> {
   const chats = createChatsStorage(db);
-  const [messages, chat] = await Promise.all([chats.listMessages(chatId), chats.getById(chatId)]);
+  const [messages, chat, fold] = await Promise.all([
+    chats.listMessages(chatId),
+    chats.getById(chatId),
+    createGameWorldSnapshotsStorage(db).getFold(chatId),
+  ]);
   const end = replacing ? messages.findIndex((message) => message.id === replacing) : -1;
   const before = end >= 0 ? messages.slice(0, end) : messages;
   // Each session is its own chat: what the earlier ones did to the world comes first, as one reply.
-  const carried = worldLedgerCarry(readMetadata(chat?.metadata).gameLedgerCarry);
+  const meta = readMetadata(chat?.metadata);
+  const carried = worldLedgerCarry(meta.gameLedgerCarry);
   const all: string[] = carried?.tags ? [carried.tags] : [];
+  const places: Array<string | null> = carried?.tags ? [null] : [];
+  const ids: Array<string | null> = carried?.tags ? [null] : [];
   let scopedFrom = all.length;
   let player: string | null = null;
+  // A world given to a game made without one (worldgen W12) starts after the message it was given at: the
+  // replies before it are of no place in the world, nor of its ledger.
+  const startsAfter = typeof meta.gameWorldStartsAfter === "string" ? meta.gameWorldStartsAfter : null;
+  let started = !startsAfter || !before.some((message) => message.id === startsAfter);
   for (const message of before) {
+    if (!started) {
+      started = message.id === startsAfter;
+      continue;
+    }
     if (parseExtra(message.extra).isConversationStart === true) scopedFrom = all.length;
     if (message.role === "user" && typeof message.content === "string") player = message.content;
     if (isGameMasterReply(message)) {
       all.push(message.content);
+      const stamp = parseExtra(message.extra)[GAME_MARKET_PLACE_EXTRA];
+      places.push(typeof stamp === "string" ? stamp : null);
+      ids.push(message.id);
       // Answered: a later reply answers only what the player writes after it.
       if (message.content.trim()) player = null;
     }
   }
-  return { scoped: all.slice(scopedFrom), all, carried, player };
+  const own = all.slice(carried?.tags ? 1 : 0);
+  const ledger = fold ? [{ from: fold }, ...readWorldLedger(own)] : readWorldLedger(all);
+  return {
+    scoped: all.slice(scopedFrom),
+    all,
+    carried,
+    player,
+    ledger,
+    marketPlaces: places.slice(scopedFrom),
+    replyIds: ids.slice(scopedFrom),
+  };
 }
 
 /**
@@ -96,6 +138,23 @@ export async function gamePlaceBefore(db: DB, chatId: string, replacing?: string
 }
 
 /**
+ * The market place a turn is at when the world put the party there and no place tag began a day there
+ * (`world|<name>|<size>`), from the Game Master's replies before it and the reply's own answered place
+ * tags; undefined when a place tag's day is the one in force. Saved on each such reply
+ * (`GAME_MARKET_PLACE_EXTRA`), so the market day there runs across turns.
+ */
+export function gameMarketWorldPlace(
+  texts: readonly string[],
+  reply: string | undefined,
+  inForce: GamePlace | null | undefined,
+): string | undefined {
+  const begun = gameMarketDayStart(answeredGamePlaces(reply === undefined ? texts : [...texts, reply]))?.mark.place;
+  if (!inForce?.name || gameInventoryNameKey(inForce.name) === gameInventoryNameKey(begun?.name ?? ""))
+    return undefined;
+  return `world|${gameInventoryNameKey(inForce.name)}|${inForce.size ?? ""}`;
+}
+
+/**
  * The place a reply happens at and its market day (#6934): from the Game Master's replies before it
  * (`gameMasterReplies`), then the reply's own answered place tags, if given. The day is named by the
  * chat, the place tag that began it and that place, so the same day always rolls the same shelf; what
@@ -108,17 +167,21 @@ export async function gameMarketDayFor(
   replacing: string | null | undefined,
   reply: string | undefined,
   book: Pick<RulesetItemBook, "coinNamed" | "coins">,
-): Promise<{ place: GamePlace | null; day: RulesetMarketDay }> {
-  const texts = await gameMasterReplies(db, chatId, replacing);
+  /** Where the game's world has put the party (worldgen W7/W8), when it says. */
+  inForce?: GamePlace | null,
+): Promise<{ place: GamePlace | null; day: RulesetMarketDay; worldPlace?: string }> {
+  const replies = await gameRepliesBefore(db, chatId, replacing);
+  const texts = replies.scoped;
   const marks = answeredGamePlaces(reply === undefined ? texts : [...texts, reply]);
   const start = gameMarketDayStart(marks);
   const bought = new Map<string, number>();
   const stockBought = new Map<string, number>();
   const paidOut = new Map<string, number>();
-  if (start) {
+  // What the replies from `from` on bought and sold (the first read from `offset` on).
+  const count = (from: { text: number; end: number }) => {
     texts.forEach((text, index) => {
-      if (index < start.mark.text) return;
-      const since = index === start.mark.text ? text.slice(start.mark.end) : text;
+      if (index < from.text) return;
+      const since = index === from.text ? text.slice(from.end) : text;
       for (const tag of readResolvedInventoryTags(since)) {
         if (!tag.ok) continue;
         if (tag.action === "buy") {
@@ -136,10 +199,31 @@ export async function gameMarketDayFor(
         }
       }
     });
-  }
+  };
   const begun = start?.mark.place;
+  // The world may have put the party somewhere no place tag began a day (the map's location): the
+  // market there keeps a day of its own, from the first of the replies in a row whose turns were there
+  // (each says so in its extra) to now, and counts what they bought and sold. A turn anywhere else, or a
+  // place tag's day, ends it, so coming back is a new day.
+  const worldPlace = gameMarketWorldPlace(texts, reply, inForce);
+  if (inForce && worldPlace) {
+    let first = texts.length;
+    while (first > 0 && replies.marketPlaces[first - 1] === worldPlace) first -= 1;
+    // A place tag answered inside the run began a day of its own: the run starts after it.
+    const lastTag = marks.at(-1);
+    if (lastTag && lastTag.text >= first && lastTag.text < texts.length) first = lastTag.text + 1;
+    count({ text: first, end: 0 });
+    return {
+      place: inForce,
+      // Named by the reply before the run (it is there before and after each turn of the day, so a reply
+      // deleted inside the run does not move it), or the start when the run is the first.
+      day: { key: `${chatId}|${worldPlace}|${replies.replyIds[first - 1] ?? "start"}`, bought, stockBought, paidOut },
+      worldPlace,
+    };
+  }
+  if (start) count(start.mark);
   return {
-    place: marks.at(-1)?.place ?? null,
+    place: inForce ?? marks.at(-1)?.place ?? null,
     day: {
       key: start ? `${chatId}|${start.ordinal}|${begun?.name ?? ""}|${begun?.size ?? ""}` : "",
       bought,

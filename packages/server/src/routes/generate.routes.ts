@@ -49,6 +49,7 @@ import {
   type DecisionMessage,
 } from "../services/generation/agent-activation-questions.js";
 import { registerSequentialGameTasks } from "../services/game/sequential-tasks.js";
+import { loadGameWorld } from "../services/game/game-world.service.js";
 import {
   createAdvancedMemoryService,
   sceneCheckTranscript,
@@ -126,6 +127,7 @@ import {
   formatSkillCheckResultSummary,
   unwrapConversationInstructions,
   findKnownModel,
+  isGeminiModel,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -193,7 +195,6 @@ import {
   getRoleplayCommandActivity,
   applyGameInventoryTags,
   applyGamePlaceTags,
-  gameWorldFromMetadata,
   worldKitSize,
   worldPlaceByName,
   worldPlaceInForce,
@@ -299,7 +300,9 @@ import {
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
 import {
+  GAME_MARKET_PLACE_EXTRA,
   gameMarketDayFor,
+  gameMarketWorldPlace,
   gameRepliesBefore,
   loadGameKitMarket,
   loadGameMarket,
@@ -2017,13 +2020,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         (turnStoryRead ??=
           chatMode === "game" && !input.impersonate && !input.continueMessageId
             ? (async () => {
-                const game = gameWorldFromMetadata(chatMeta);
+                const game = await loadGameWorld(app.db, input.chatId, chatMeta);
                 const story = gameStoryFromMetadata(chatMeta, game);
                 if (!game || !story) return null;
                 const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
-                const before = readWorldLedger(replies.all);
+                const before = replies.ledger;
                 const town = visit ? worldTown(game, visit.settlementId, worldPresent(game, before)) : null;
                 // The walk and the visit this turn tells, as their tags will stand before the reply.
                 const walkTags = walk ? worldWalkTags(game, walk) : "";
@@ -4693,6 +4696,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               chatId: input.chatId,
               chat,
               chatMetadata: gamePromptMetadata,
+              world: await loadGameWorld(app.db, input.chatId, gamePromptMetadata),
               characterIds,
               chars,
               chats,
@@ -4941,7 +4945,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? worldTown(
                     promptWorld!,
                     visit.settlementId,
-                    worldPresent(promptWorld!, readWorldLedger((await promptRepliesAll()).all)),
+                    worldPresent(promptWorld!, (await promptRepliesAll()).ledger),
                   )?.buildings.find((building) => building.id === visit.to)
                 : undefined;
             if (visited?.placeId && visited.name) {
@@ -4958,7 +4962,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           };
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
-          const promptWorld = gameWorldFromMetadata(chatMeta);
+          const promptWorld = await loadGameWorld(app.db, input.chatId, chatMeta);
           // The people the party has already met (worldgen W2), so the block offers only new ones.
           const promptMet = new Set(
             (Array.isArray(chatMeta.gameNpcs) ? (chatMeta.gameNpcs as GameNpc[]) : []).flatMap((npc) =>
@@ -4974,7 +4978,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
-                const present = worldPresent(promptWorld, readWorldLedger((await promptRepliesAll()).all));
+                const present = worldPresent(promptWorld, (await promptRepliesAll()).ledger);
                 const before = await promptPlace();
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
@@ -7269,7 +7273,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           followUpIteration,
           impersonate: input.impersonate,
-          isGoogleProvider,
+          // Gemini on OpenRouter, NanoGPT or custom also ends on the rewrite instruction. Ending on the AI's reply would
+          // continue that reply into the user's swipe (#7558).
+          isGoogleProvider: isGoogleProvider || isGeminiModel(conn.model),
           regenerateUserMessage,
         });
         if (tailMessages.assistantPrefillInjected) {
@@ -8144,7 +8150,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             providerMacroContext,
             historyMacroProfilesById,
           );
-          if (chatMode === "conversation" && conversationIsGroup && !input.impersonate) {
+          // The group reply format is for the characters' replies. Impersonation and a user-message rewrite write the
+          // user's message, and the rewrite instruction stays last.
+          if (
+            chatMode === "conversation" &&
+            conversationIsGroup &&
+            !input.impersonate &&
+            !tailMessages.googleUserRegenerationInjected
+          ) {
             const turnCharacterName =
               usesIndividualGroupGeneration && groupTurnPromptEnabled && speaksOnlyTargetCharacter && targetCharId
                 ? (charInfo.find((character) => character.id === targetCharId)?.name ?? null)
@@ -10019,10 +10032,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
               : turnKitItems?.definition.items?.market;
-          const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
+          const turnWorld =
+            chatMode === "game" && !input.impersonate ? await loadGameWorld(app.db, input.chatId, chatMeta) : null;
           let turnPresent: WorldPresent | undefined;
+          // The Game Master's replies before this one (a regeneration's before the telling it replaces).
+          let turnReplies: Awaited<ReturnType<typeof gameRepliesBefore>> | undefined;
           if (turnMarket || turnWorld) {
             const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            turnReplies = replies;
             turnPlace = worldPlaceInForce(
               turnWorld,
               lastGamePlace(replies.scoped),
@@ -10041,7 +10058,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const walk = await turnWalkPromise;
               const visit = await turnVisitPromise;
               const visitTown = visit
-                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, readWorldLedger(replies.all)))
+                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, replies.ledger))
                 : null;
               let walkTags = "";
               let visitTags = "";
@@ -10083,7 +10100,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 contentReplaced = true;
               }
               if (storyPrefix) turnShownScenes = storyTurnTold!.turn.shown;
-              const ledger = readWorldLedger(replies.all);
+              const ledger = replies.ledger;
               if (/\[world:/i.test(fullResponse)) {
                 const answered = applyWorldTags(fullResponse, turnWorld, ledger);
                 if (answered !== fullResponse) {
@@ -11000,8 +11017,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               data: savedMsg,
             });
           } else if (savedMsg?.id) {
+            // The world-set market place this turn was at (a ruleset's market where the world put the party
+            // and no place tag began a day), saved on the reply so the market day there runs across turns.
+            const marketWorldPlace =
+              chatMode === "game" && turnMarket && !turnKitItems && turnReplies && typeof savedMsg.content === "string"
+                ? gameMarketWorldPlace(turnReplies.scoped, savedMsg.content, turnPlace)
+                : undefined;
             const extraUpdate: Record<string, unknown> = {
               ...(chatMode === "game" ? { gameOutcomeNarrationFailed } : {}),
+              // Set, or cleared on a regeneration at a place a tag named.
+              ...(chatMode === "game" ? { [GAME_MARKET_PLACE_EXTRA]: marketWorldPlace ?? null } : {}),
               ...(gameToolPlan && gameToolConnection
                 ? {
                     gameToolPlanning: {
@@ -11714,6 +11739,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ? input.forCharacterId
               : ((chatMode === "conversation" ? availableGroupCharacters[0]?.id : characterIds[0]) ?? null);
           const sentMessages = [...finalMessages];
+          // A user-message rewrite instruction stays last. A guide ("do not include a reply from {{user}}") after it
+          // can turn the user's swipe into a character's reply.
+          const userRewrite = tailMessages.googleUserRegenerationInjected ? sentMessages.pop() : undefined;
 
           if (generationGuideInstruction) {
             sentMessages.push({ role: "system", content: generationGuideInstruction });
@@ -11755,6 +11783,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               sentMessages.push({ role: "system", content: charInstruction });
             }
           }
+          if (userRewrite) sentMessages.push(userRewrite);
 
           // A merged group generation may voice several characters unless a regen
           // target or a single explicit @mention pins it to exactly one speaker.

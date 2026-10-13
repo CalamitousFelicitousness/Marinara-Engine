@@ -1,7 +1,6 @@
 import {
   assignCombatTactics,
   combatTacticsSchema,
-  gameWorldFromMetadata,
   gameWorldKitFromMetadata,
   worldAssetsForFamily,
   worldBattlefields,
@@ -92,6 +91,7 @@ import {
   useRemovePartyMember,
   gameKeys,
   patchChatMetadata,
+  useGameWorld,
 } from "../../hooks/use-game";
 import {
   gameStoryboardKeys,
@@ -283,6 +283,7 @@ import {
 } from "./game-asset-generation-payload";
 import { PinnedImageOverlay } from "../chat/PinnedImageOverlay";
 import { CHAT_TOOLBAR_ICON_GAP_CLASS } from "../chat/ChatToolbarControls";
+import { HISTORY_PAGER_BUTTON_CLASS } from "../chat/TranscriptWindowControls";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_PANEL_SUBTITLE } from "../ui/neutral-surface-styles";
 import type { ReadableTag } from "../../lib/game-tag-parser";
 import type { DirectionCommand, GameNpc, GameStoryboardViewerDisplayMode } from "@marinara-engine/shared";
@@ -359,6 +360,13 @@ function persistReplayPresentationCue(
     .catch((error) => {
       console.warn("[game-replay] Failed to load presentation-cue persistence", error);
     });
+}
+
+/** A short key for a stored world recipe, so a query is not keyed by the whole recipe. */
+function recipeKey(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++) hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
+  return `${text.length}:${hash.toString(36)}`;
 }
 
 const GAME_MOBILE_CHOICE_STAGE_HEIGHT = "max-h-[clamp(8rem,30svh,14rem)] sm:max-h-[clamp(9rem,36svh,20rem)]";
@@ -1539,6 +1547,12 @@ const SpriteOverlay = lazy(async () => {
   return { default: module.SpriteOverlay };
 });
 
+// 2D and 3D Avatars: loads only in games where an avatar agent is on.
+const AvatarStage = lazy(async () => {
+  const module = await import("../../features/avatars/stage/AvatarStage");
+  return { default: module.AvatarStage };
+});
+
 const GameSessionHistory = lazy(async () => {
   const module = await import("./GameSessionHistory");
   return { default: module.GameSessionHistory };
@@ -1604,6 +1618,8 @@ import type {
   CombatStyleNotes,
 } from "@marinara-engine/shared";
 import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
+import { chatAvatarParticipants } from "../../features/avatars/stage/avatar-stage-logic";
+import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-avatar-agents";
 
 /** Typewriter component for the intro screen — reveals text character-by-character. */
 function IntroTypewriter({ text, onComplete }: { text: string; onComplete?: () => void }) {
@@ -2237,10 +2253,15 @@ function GameSurfaceComponent({
   );
   const gameElements = useMemo(() => worldElementSet(gameKit), [gameKit]);
   // The game's world (worldgen W8), drawn as the overworld, and the real time the overworld has passed.
-  const gameWorld = useMemo(
-    () => gameWorldFromMetadata({ gameWorld: chatMeta.gameWorld, gameWorldKit: chatMeta.gameWorldKit }),
-    [chatMeta.gameWorld, chatMeta.gameWorldKit],
+  // The server's world, as its snapshot keeps it (W11), read again when its recipe is saved anew.
+  const gameWorldRecipe = useMemo(
+    () => (chatMeta.gameWorld == null ? null : recipeKey(JSON.stringify(chatMeta.gameWorld))),
+    [chatMeta.gameWorld],
   );
+  const gameWorldQuery = useGameWorld(activeChatId, gameWorldRecipe);
+  const gameWorld = gameWorldQuery.data ?? null;
+  // A game with a world waits for it rather than showing the scene for a moment first.
+  const gameWorldPending = gameWorldRecipe !== null && gameWorldQuery.isPending;
   const overworldClockRef = useRef<WorldOverworldHandle | null>(null);
   // The setting's art family (worldgen W6f): another family's art, music and sounds are left out.
   const artFamily = worldKitArtFamily(gameKit);
@@ -2301,6 +2322,22 @@ function GameSurfaceComponent({
    *  package to actually be there. */
   const experienceOwnsGame =
     experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
+  // A game made without a world may be given one from the journal (worldgen W12), written for its own
+  // setting with its own connection; never one an Experience decides.
+  const canMakeWorld =
+    chatMeta.gameWorld == null && gameExperienceId === null && chatMeta.gameSessionStatus !== "concluded";
+  const makeWorldRequest = useMemo(() => {
+    const setup = chatMeta.gameSetupConfig as GameSetupConfig | undefined;
+    if (!chat.connectionId) return null;
+    return {
+      connectionId: chat.connectionId,
+      genre: setup?.genre || "Fantasy",
+      setting: setup?.setting || "A world of its own",
+      tone: setup?.tone || "Heroic",
+      ...(setup?.playerGoals ? { playerGoals: setup.playerGoals } : {}),
+      ...(setup?.language ? { language: setup.language } : {}),
+    };
+  }, [chat.connectionId, chatMeta.gameSetupConfig]);
   const { data: agentConfigs } = useAgentConfigs(storyboardAgentActive || chatMeta.enableSpriteGeneration === true);
   const storyboardAgentConfig = useMemo(
     () => agentConfigs?.find((config) => config.type === STORYBOARD_AGENT_ID) ?? null,
@@ -3830,6 +3867,13 @@ function GameSurfaceComponent({
   useEffect(() => {
     if (spriteVisible) prevSpriteIdsRef.current = activeSpriteIds;
   }, [spriteVisible, activeSpriteIds]);
+
+  // Avatars of the game's characters and the player; the Game Master's lines drive their faces.
+  const avatarAgentIds = useChatAvatarAgentIds(chatMeta);
+  const avatarParticipants = useMemo(
+    () => chatAvatarParticipants(gameCharacterIds, characterMap, personaInfo),
+    [characterMap, gameCharacterIds, personaInfo],
+  );
 
   // New game mechanics hooks
   const _advanceTime = useAdvanceTime();
@@ -8683,7 +8727,11 @@ function GameSurfaceComponent({
   // The overworld (worldgen W8): a game with a world opens on it, and the player can switch to the scene
   // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
   const overworldShown =
-    gameWorld !== null && chatMeta.gameWorldView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
+    (gameWorld !== null || gameWorldPending) &&
+    chatMeta.gameWorldView !== "scene" &&
+    !experienceOwnsGame &&
+    !combatUiActive &&
+    !replayActive;
   // The town the party is in (worldgen W8b) is the overworld's other side: entered from it, left to it.
   const townShown = overworldShown && chatMeta.gameWorldView === "town";
   const setWorldView = useCallback(
@@ -12168,6 +12216,9 @@ function GameSurfaceComponent({
               <GameJournal
                 chatId={activeChatId}
                 hasWorld={Boolean(chatMeta.gameWorld)}
+                canMakeWorld={canMakeWorld}
+                worldRequest={makeWorldRequest}
+                worldKit={gameKit}
                 worldTurnKey={narrationTurnKey(latestAssistantMsg)}
                 npcs={npcs}
                 onClose={closeSessionPanel}
@@ -12516,6 +12567,18 @@ function GameSurfaceComponent({
               </Suspense>
             )}
           </div>
+          {avatarAgentIds.length > 0 && avatarParticipants.length > 0 && !overworldShown && (
+            <Suspense fallback={null}>
+              <AvatarStage
+                chatId={activeChatId}
+                mode="game"
+                participants={avatarParticipants}
+                enabledAgentIds={avatarAgentIds}
+                side="center"
+                scale={gameFullBodySpriteScale}
+              />
+            </Suspense>
+          )}
 
           <div className="relative flex min-w-0 h-full flex-col overflow-hidden">
             {/* Fade in all UI chrome after intro cinematic finishes */}
@@ -13244,7 +13307,7 @@ function GameSurfaceComponent({
                                       Math.min(combatLogEntries.length, current + combatLogPageSize),
                                     );
                                   }}
-                                  className="rounded-md border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
+                                  className={HISTORY_PAGER_BUTTON_CLASS}
                                 >
                                   {localizeUi("ui.game.gamesurfacecomponent.showMoreOlderLogs")}
                                   {hiddenCombatLogCount})

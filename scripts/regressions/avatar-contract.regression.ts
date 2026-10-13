@@ -171,16 +171,18 @@ await app.register(avatarModelsRoutes, { prefix: "/api/avatar-models" });
 await app.register(avatarClassifyRoutes, { prefix: "/api/avatar-classify" });
 await app.register(avatarGenerationRoutes, { prefix: "/api/avatar-generation" });
 await app.ready();
-for (const url of ["/api/avatar-models", "/api/avatar-classify", "/api/avatar-generation/mesh-rig"]) {
+for (const url of ["/api/avatar-classify", "/api/avatar-generation/mesh-rig"]) {
   assert.equal((await app.inject({ method: "GET", url })).statusCode, 404, `${url} is not served yet`);
 }
+// The base lane serves avatar models (scripts/regressions/avatar-models.regression.ts covers the routes).
+assert.equal((await app.inject({ method: "GET", url: "/api/avatar-models" })).statusCode, 200);
 await app.close();
 
 // ── Renderer libraries only in the lazy renderer modules ──
 const repoRoot = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
 const clientSrc = join(repoRoot, "packages", "client", "src");
 const rendererRoot = join(clientSrc, "features", "avatars", "renderers") + sep;
-const heavyImport = /(?:from\s+|import\s*\(\s*)["'](?:three(?:\/[^"']*)?|@pixiv\/[^"']+|mesh-avatar)["']/u;
+const heavyImport = /(?:from\s+|import\s*\(\s*|import\s+)["'](?:three(?:\/[^"']*)?|@pixiv\/[^"']+|mesh-avatar)["']/u;
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);

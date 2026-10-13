@@ -358,6 +358,24 @@ export interface MeshAvatarData {
   source: "import" | "generated";
 }
 
+/** What a VRM file says about itself, read at import and shown in setup. Values stay in the file's own
+ *  vocabulary (VRM 1.0 or 0.x); the Engine shows the author's terms and does not enforce them. */
+export interface VrmModelMeta {
+  title: string | null;
+  authors: string[];
+  version: string | null;
+  /** Who may use the model as an avatar: VRM 1.0 `avatarPermission` or VRM 0.x `allowedUserName`. */
+  avatarPermission: string | null;
+  /** VRM 1.0 `commercialUsage` or VRM 0.x `commercialUssageName`. */
+  commercialUsage: string | null;
+  /** VRM 1.0 `modification`; VRM 0.x states this through `licenseName`. */
+  modification: string | null;
+  /** VRM 0.x `licenseName`; VRM 1.0 has none. */
+  licenseName: string | null;
+  /** An http(s) link: VRM 1.0 `licenseUrl` or VRM 0.x `otherLicenseUrl`. */
+  licenseUrl: string | null;
+}
+
 export interface VrmAvatarData {
   /** The `.vrm` model, e.g. `vrm/model.vrm`. */
   file: AvatarFilePath;
@@ -366,6 +384,10 @@ export interface VrmAvatarData {
   expressionMap: AvatarExpressionMap;
   /** Optional `.vrma` idle animation. */
   idleAnimation?: AvatarFilePath | null;
+  /** The model's own details, read at import. */
+  meta?: VrmModelMeta | null;
+  /** Every expression name the model has, as three-vrm names them, for choosing bindings in setup. */
+  expressionNames?: string[];
 }
 
 export interface AvatarKindDataMap {

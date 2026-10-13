@@ -101,6 +101,28 @@ const meshAvatarDataSchema = z
   })
   .strict();
 
+/** Most expression names stored for one VRM; VRoid models have about 20. */
+const MAX_VRM_EXPRESSION_NAMES = 256;
+const vrmMetaTextSchema = z.string().min(1).max(256).nullable();
+const vrmMetaTermSchema = z.string().min(1).max(64).nullable();
+
+const vrmModelMetaSchema = z
+  .object({
+    title: vrmMetaTextSchema,
+    authors: z.array(z.string().min(1).max(256)).max(16),
+    version: vrmMetaTextSchema,
+    avatarPermission: vrmMetaTermSchema,
+    commercialUsage: vrmMetaTermSchema,
+    modification: vrmMetaTermSchema,
+    licenseName: vrmMetaTermSchema,
+    licenseUrl: z
+      .string()
+      .max(2048)
+      .regex(/^https?:\/\/[^\s]+$/iu, "A license link is an http(s) address.")
+      .nullable(),
+  })
+  .strict();
+
 const vrmAvatarDataSchema = z
   .object({
     file: avatarFilePathSchema.refine((path) => path.startsWith("vrm/"), "A VRM file lives in vrm/."),
@@ -110,6 +132,8 @@ const vrmAvatarDataSchema = z
       .refine((path) => path.startsWith("vrm/"), "A VRM animation lives in vrm/.")
       .nullable()
       .optional(),
+    meta: vrmModelMetaSchema.nullable().optional(),
+    expressionNames: z.array(z.string().min(1).max(128)).max(MAX_VRM_EXPRESSION_NAMES).optional(),
   })
   .strict();
 

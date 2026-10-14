@@ -82,6 +82,8 @@ export interface AdvancedMemoryJob {
   stage: "idle" | "classifying" | "summarizing" | "recollecting" | "indexing" | "compacting" | "ready";
   completed: number;
   total: number;
+  /** Parts of the current scene's request, when it is sent in parts; `completed` and `total` count scenes. */
+  part?: { completed: number; total: number } | null;
   error: string | null;
   reviewRecordId?: string | null;
   processedMessageId?: string | null;

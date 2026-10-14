@@ -93,6 +93,9 @@ const REQUIRED_BONES = [
 /** Arms further below horizontal than this are not a T-pose. The Engine lowers the arms 69° from the rest
  *  pose, so a model already resting with its arms down would push them through its hips. */
 export const MAX_ARM_DROP_DEGREES = 25;
+/** Each arm segment (shoulder to elbow, elbow to wrist) must point this close to straight out along the
+ *  shoulder line: arms held forward, or bent at the elbow, are no T-pose either. */
+export const MAX_ARM_OUTWARD_DEGREES = 30;
 /** Hips lower than this share of the height mean the legs are missing (a bust or a cropped sprite). */
 export const MIN_HIPS_HEIGHT_RATIO = 0.35;
 
@@ -245,6 +248,8 @@ export interface VrmConversionReport {
   hipsHeightRatio: number;
   /** How far each arm points below horizontal at rest (left, right). */
   armDropDegrees: [number, number];
+  /** How far each arm segment points away from straight out (left upper, left lower, right upper, right lower). */
+  armOutwardDegrees: number[];
   /** The turn around the up axis that made the model face +Z. */
   facingTurnDegrees: number;
   /** Materials whose metal was switched off. */
@@ -388,7 +393,32 @@ export function convertRiggedGlbToVrm(
     return length > 0 ? (Math.asin(Math.max(-1, Math.min(1, -along[1] / length))) * 180) / Math.PI : 90;
   };
   const armDropDegrees: [number, number] = [armDrop("left"), armDrop("right")];
-  if (armDropDegrees.some((drop) => Math.abs(drop) > MAX_ARM_DROP_DEGREES)) {
+  // Out along the shoulder line, level: each segment of each arm, measured against it.
+  const shoulderLine = (() => {
+    const l = at("leftUpperArm");
+    const r = at("rightUpperArm");
+    const line: Vec3 = [l[0] - r[0], 0, l[2] - r[2]];
+    const length = Math.hypot(...line);
+    return length > 0 ? (line.map((value) => value / length) as Vec3) : null;
+  })();
+  const outwardDegrees = (side: "left" | "right", from: string, to: string) => {
+    if (!shoulderLine) return 0;
+    const a = at(`${side}${from}`);
+    const b = at(`${side}${to}`);
+    const along: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const length = Math.hypot(...along);
+    const sign = side === "left" ? 1 : -1;
+    const cos = length > 0 ? (sign * (along[0] * shoulderLine[0] + along[2] * shoulderLine[2])) / length : -1;
+    return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+  };
+  const armOutwardDegrees = (["left", "right"] as const).flatMap((side) => [
+    outwardDegrees(side, "UpperArm", "LowerArm"),
+    outwardDegrees(side, "LowerArm", "Hand"),
+  ]);
+  if (
+    armDropDegrees.some((drop) => Math.abs(drop) > MAX_ARM_DROP_DEGREES) ||
+    armOutwardDegrees.some((angle) => angle > MAX_ARM_OUTWARD_DEGREES)
+  ) {
     throw new VrmConversionError(
       "not-t-pose",
       `The 3D model's arms aren't held out to the sides, so it can't move like an avatar. ${FULL_BODY_ADVICE}`,
@@ -449,6 +479,7 @@ export function convertRiggedGlbToVrm(
       heightMetres: height,
       hipsHeightRatio,
       armDropDegrees,
+      armOutwardDegrees,
       facingTurnDegrees,
       metalMaterials,
       warnings,

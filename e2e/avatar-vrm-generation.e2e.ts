@@ -293,6 +293,10 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     await expect(draft.getByRole("img", { name: "full neutral drawn in a T-pose" })).toBeVisible();
     await expect(draft.getByRole("img", { name: "The new 3D model" })).toBeVisible();
     await expect(draft.getByText("Body only, the face doesn't move.")).toBeVisible();
+    await expect(
+      maker.getByRole("button", { name: "Make 3D model", exact: true }),
+      "a paid model is kept or discarded before another is made",
+    ).toBeDisabled();
     await expect(draft.getByText("Your avatar stays the same until you save.")).toBeVisible();
     expect((await request.get(`/api/avatar-models/character/${character.id}`)).status(), "nothing saved yet").toBe(404);
     await maker.screenshot({ path: info.outputPath("vrm-model-draft.png"), animations: "disabled" });

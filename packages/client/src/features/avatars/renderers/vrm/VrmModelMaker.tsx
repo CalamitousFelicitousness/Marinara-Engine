@@ -182,7 +182,8 @@ export function VrmModelMaker({
             <button
               type="button"
               onClick={start}
-              disabled={busy || !label || !connectionId || tooFewCredits}
+              // A made model is kept or discarded first: it cost credits, and a new run would drop it.
+              disabled={busy || !!job.draft || !label || !connectionId || tooFewCredits}
               className={PRIMARY_BUTTON}
             >
               {job.running ? (

@@ -42,7 +42,7 @@ const { VrmConversionError, convertRiggedGlbToVrm, parseGlb, shrinkGlbTextures, 
   await import("../../packages/server/src/services/avatars/generation/glb-to-vrm.js");
 const { TripoError, createTripoClient } =
   await import("../../packages/server/src/services/avatars/generation/tripo-client.js");
-const { generateVrmModel, TRIPO_REQUESTS } =
+const { generateVrmModel, tripoSourceImage, TRIPO_REQUESTS } =
   await import("../../packages/server/src/services/avatars/generation/tripo-vrm.js");
 const { AvatarGenerationError } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
@@ -53,7 +53,7 @@ const KEY = "tsk_regression_key_7f3a9c";
 
 // ── A Mixamo-rigged model like Tripo's, built here ──
 type V3 = [number, number, number];
-type Pose = "t-pose" | "arms-down";
+type Pose = "t-pose" | "arms-down" | "arms-forward" | "bent-elbows";
 const T_POSE: Record<string, V3> = {
   Hips: [0, 0.95, 0],
   Spine: [0, 1.05, 0],
@@ -123,11 +123,18 @@ function riggedGlb(
   const facing = options.facing ?? "+X";
   const turn = ([x, y, z]: V3): V3 => (facing === "+X" ? [z, y, -x] : facing === "-X" ? [-z, y, x] : [x, y, z]);
   const pose: Record<string, V3> = { ...T_POSE };
-  if (options.pose === "arms-down") {
-    for (const side of [1, -1]) {
-      const prefix = side === 1 ? "Left" : "Right";
+  for (const side of [1, -1]) {
+    const prefix = side === 1 ? "Left" : "Right";
+    if (options.pose === "arms-down") {
       pose[`${prefix}ForeArm`] = [0.2 * side, 1.15, 0];
       pose[`${prefix}Hand`] = [0.22 * side, 0.92, 0];
+    } else if (options.pose === "arms-forward") {
+      // Level, but held out in front.
+      pose[`${prefix}ForeArm`] = [0.16 * side, 1.4, 0.26];
+      pose[`${prefix}Hand`] = [0.16 * side, 1.4, 0.5];
+    } else if (options.pose === "bent-elbows") {
+      // Upper arms out, forearms bent forward at the elbow.
+      pose[`${prefix}Hand`] = [0.42 * side, 1.4, 0.24];
     }
   }
   if (options.legless) {
@@ -285,6 +292,10 @@ const converted = convertRiggedGlbToVrm(tripoGlb, { name: "Maukie" });
   assert.deepEqual(report.unmappedJoints, ["Root"]);
   assert.equal(report.facingTurnDegrees, -90, "a model facing +X turns -90° around the up axis");
   assert.ok(Math.abs(report.armDropDegrees[0]) < 1 && Math.abs(report.armDropDegrees[1]) < 1, "a T-pose");
+  assert.ok(
+    report.armOutwardDegrees.every((angle) => angle < 1),
+    "both arms straight out along the shoulders",
+  );
   assert.ok(Math.abs(report.heightMetres - 1.8) < 0.01, `height ${report.heightMetres}`);
   assert.equal(report.metalMaterials, 1);
   assert.ok(binChunk(converted.vrm).equals(binChunk(tripoGlb)), "the binary chunk is copied byte for byte");
@@ -354,6 +365,16 @@ refusal(
   riggedGlb({ legless: true }),
   "no-legs",
   /no legs\. Use a full-body sprite where the whole character is visible\./u,
+);
+refusal(
+  riggedGlb({ pose: "arms-forward" }),
+  "not-t-pose",
+  /Use a full-body sprite where the whole character is visible\./u,
+);
+refusal(
+  riggedGlb({ pose: "bent-elbows" }),
+  "not-t-pose",
+  /Use a full-body sprite where the whole character is visible\./u,
 );
 refusal(riggedGlb({ drop: "LeftFoot" }), "missing-bones", /missing parts a VRM needs: leftFoot\./u);
 refusal(riggedGlb({ skin: false }), "not-rigged", /without a skeleton/u);
@@ -888,6 +909,19 @@ try {
       /Use a full-body sprite where the whole character is visible\./u.test(error.message),
   );
   assert.equal(existsSync(avatarOwnerDir(runOwner)), false, "a refused model stores nothing");
+
+  // A narrow full-body sprite (1:4) is padded with see-through space to the 1:3 Tripo takes, not stretched.
+  writeFileSync(
+    join(spriteDir, "full_thin.png"),
+    await sharp({ create: { width: 200, height: 800, channels: 4, background: { r: 200, g: 120, b: 60, alpha: 1 } } })
+      .png()
+      .toBuffer(),
+  );
+  const thin = await tripoSourceImage(character.id, "full_thin");
+  const thinInfo = await sharp(thin.bytes).metadata();
+  assert.deepEqual([thinInfo.width, thinInfo.height], [267, 800], "padded to 1:3");
+  const corner = await sharp(thin.bytes).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer();
+  assert.equal(corner[3], 0, "the padding is see-through");
 
   // Only a Tripo connection with a key will do.
   await assert.rejects(

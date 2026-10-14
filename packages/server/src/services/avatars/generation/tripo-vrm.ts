@@ -132,7 +132,13 @@ export async function tripoBalance(
   }
 }
 
-/** The sprite as Tripo takes it: a PNG at most UPLOAD_MAX_SIDE, its flat background cleaned off. Without image
+/** Tripo takes pictures from 1:3 to 3:1 (width to height). */
+const MAX_ASPECT = 3;
+const OUT_OF_SHAPE =
+  "This sprite is more than three times as tall as it is wide (or the other way round), which Tripo doesn't take. Use a less narrow full-body sprite.";
+
+/** The sprite as Tripo takes it: a PNG at most UPLOAD_MAX_SIDE, its flat background cleaned off, and padded
+ *  with see-through space to at most 1:3 when it is narrower (a tall full-body sprite often is). Without image
  *  processing (sharp on Lite or Termux) a PNG or JPEG sprite is sent as it is. */
 export async function tripoSourceImage(
   ownerId: string,
@@ -147,6 +153,13 @@ export async function tripoSourceImage(
   } catch {
     const type = isAllowedImageBuffer(bytes)?.mimeType;
     if ((type === "image/png" || type === "image/jpeg") && bytes.length <= TRIPO_UPLOAD_MAX_BYTES) {
+      // A PNG's size is in its header; a JPEG's shape is left to Tripo to judge.
+      if (type === "image/png" && bytes.length >= 24) {
+        const width = bytes.readUInt32BE(16);
+        const height = bytes.readUInt32BE(20);
+        if (width * MAX_ASPECT < height || height * MAX_ASPECT < width)
+          throw new AvatarGenerationError(422, OUT_OF_SHAPE);
+      }
       return { bytes, mimeType: type };
     }
     throw new AvatarGenerationError(
@@ -167,6 +180,21 @@ export async function tripoSourceImage(
   }
   if (Math.max(sprite.width, sprite.height) > UPLOAD_MAX_SIDE) {
     png = await sharp(png).resize({ width: UPLOAD_MAX_SIDE, height: UPLOAD_MAX_SIDE, fit: "inside" }).png().toBuffer();
+  }
+  const { width = 0, height = 0 } = await sharp(png).metadata();
+  const padX = Math.max(0, Math.ceil(height / MAX_ASPECT) - width);
+  const padY = Math.max(0, Math.ceil(width / MAX_ASPECT) - height);
+  if (padX || padY) {
+    png = await sharp(png)
+      .extend({
+        left: Math.floor(padX / 2),
+        right: Math.ceil(padX / 2),
+        top: Math.floor(padY / 2),
+        bottom: Math.ceil(padY / 2),
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
   }
   return { bytes: png, mimeType: "image/png" };
 }

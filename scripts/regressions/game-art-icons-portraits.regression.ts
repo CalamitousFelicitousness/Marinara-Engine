@@ -62,7 +62,7 @@ const pack = (kind: "icons" | "portraits", tiles: Record<string, unknown>) => ({
 });
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 333);
+  assert.ok(supportedCapabilityApi.minor >= 338);
 
   // ── The packs ──
   const iconsRead = parseBoardPack(
@@ -195,6 +195,12 @@ try {
   assert.equal(getCapabilityPackageInstallIssue(manifest(337) as never, withIcons()), gate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(338) as never, withIcons()), gate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(337) as never, JSON.parse(fiveEText)), gate);
+  // An icon in a catalog file asks for 1.338 as well.
+  const iconFile = new Map([
+    ["catalogs/spells.json", { id: "spells", entries: [{ id: "cloud", icon: "ic_poison_cloud" }] }],
+  ]);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(337) as never, JSON.parse(fiveEText), iconFile), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(338) as never, JSON.parse(fiveEText), iconFile), gate);
 
   console.log("Art icons and portraits: icon and portrait packs, derived names, a ruleset's own icons, the gate.");
 } finally {

@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   applyRulesetCombatChoice,
+  rulesetOpenLairWindow,
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetCombatant,
@@ -32,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 323);
+  assert.ok(supportedCapabilityApi.minor >= 328);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -60,6 +61,16 @@ try {
               saveEnds: { save: "con_save", at: "turn-end" },
             },
           ],
+        },
+        // Taken in its lair, inside a choice of its own (1.315).
+        {
+          id: "frost",
+          name: "Mill Frost",
+          budget: "action",
+          lair: true,
+          range: 60,
+          save: { save: "con_save", difficulty: 15, onSuccess: "negates" },
+          damage: { dice: "1d4" },
         },
       ],
     },
@@ -155,6 +166,40 @@ try {
       of(restored.events, "save").map((one) => one.difficulty),
       [15],
     );
+  }
+
+  // ── A lair action, a choice within a choice: moved once, not twice ──
+  {
+    const state = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: roll,
+      bestiary,
+      combatants: [
+        { id: "ada", name: "Ada", side: "party", build, live: {} },
+        { id: "miller", name: "The Miller", side: "enemy", creature: { catalogId: "creatures", entryId: "miller" } },
+      ],
+      inLair: ["miller"],
+    });
+    for (const one of state.combatants) one.initiative = one.id === "miller" ? 10 : 5;
+    state.order = ["miller", "ada"];
+    state.turn = 0;
+    who(state, "miller").tracked.push({ condition: "unaged", rounds: 3 });
+    const open = rulesetOpenLairWindow(definition, state);
+    assert.ok(open.window, "its lair's count comes before everybody");
+    const taken = applyRulesetCombatChoice(
+      definition,
+      open,
+      { actorId: "miller", optionId: "lair>frost", targetIds: ["ada"], window: open.window!.id },
+      roll,
+    );
+    assert.deepEqual(of(taken.events, "refused"), [], JSON.stringify(taken.events));
+    assert.deepEqual(
+      of(taken.events, "save").map((one) => one.difficulty),
+      [13],
+    );
+    const frost = who(taken.state, "miller").actions.find((one) => one.id === "frost")!;
+    assert.equal(frost.save?.difficulty, 15, "as written after the step");
   }
 
   // ── Refused, and the gate ──

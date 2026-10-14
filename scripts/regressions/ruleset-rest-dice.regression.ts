@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 330);
+  assert.ok(supportedCapabilityApi.minor >= 335);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -99,6 +99,26 @@ try {
     assert.deepEqual(short, { ok: false, reason: "insufficient" });
     const longRest = applyRulesetSheetOp(definition, ada, hurt, { op: "rest", rest: "long", dice: 1 }, roll);
     assert.deepEqual(longRest, { ok: false, reason: "bad-amount" }, "a long rest spends no dice");
+  }
+
+  // ── Kept from healing (Mummy Rot): the dice are spent, nothing is healed, and the rest goes on ──
+  {
+    const doc = document();
+    doc.sheet.live.conditions.push({ id: "rot", label: "Mummy Rot" });
+    doc.combat.conditions.push({ condition: "rot", effects: ["cannot-heal"] });
+    const rotting = parseRulesetDefinition(doc);
+    assert.ok(rotting.ok, rotting.ok ? "" : rotting.issues.join("; "));
+    const rested = applyRulesetSheetOp(
+      rotting.definition,
+      ada,
+      { ...hurt, conditions: ["rot"] },
+      { op: "rest", rest: "short", dice: 1 },
+      roll,
+    );
+    assert.ok(rested.ok, JSON.stringify(rested));
+    assert.equal(rested.live.pools?.hp?.value, 10);
+    assert.equal(rested.live.pools?.hit_dice?.value, 3);
+    assert.match(rested.now, /Mummy Rot keeps it from healing/);
   }
 
   // ── The party, with Pell's song ──

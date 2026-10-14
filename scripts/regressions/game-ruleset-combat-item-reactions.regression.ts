@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 317);
+  assert.ok(supportedCapabilityApi.minor >= 322);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -173,7 +173,8 @@ try {
     warded.state.turn = 0;
     d20 = 18;
     const next = act(warded.state, { actorId: "foe", optionId: "claw", targetIds: ["ally"] });
-    assert.equal(of(next.events, "attack").at(-1)?.hit ?? true, true);
+    assert.notEqual(of(next.events, "attack").at(-1)?.outcome, "miss", "an 18 hits the ally, unwarded");
+    assert.ok(of(next.events, "attack").length > 0);
     assert.ok(
       !next.state.window ||
         !rulesetWindowOptions(definition, next.state, "bard").some((one) => one.label.includes("Coffin")),

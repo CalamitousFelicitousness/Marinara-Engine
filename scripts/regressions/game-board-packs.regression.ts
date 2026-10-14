@@ -92,7 +92,7 @@ const forest = (extra: Record<string, unknown> = {}) => ({
 });
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 328);
+  assert.ok(supportedCapabilityApi.minor >= 333);
 
   // ── Read strictly ──
   const read = parseBoardPack({ ...forest(), tiles: { ...forest().tiles, flower: [{ sheet: "s1", x: 0, y: 0 }] } });

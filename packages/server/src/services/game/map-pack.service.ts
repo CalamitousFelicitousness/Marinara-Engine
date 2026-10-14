@@ -36,7 +36,7 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
   const kit = readWorldKitFile(files.kit.toString("utf8"));
   if (!kit.ok) return { ok: false, reason: `its kit does not read: ${kit.issues[0]}` };
   const api = files.capabilityApi;
-  const declaresIntro = !!api && (api.major > 1 || api.minor >= 338);
+  const declaresIntro = !!api && (api.major > 1 || (api.major === 1 && api.minor >= 339));
   const worlds: MapPack["worlds"] = [];
   for (const { path, data } of files.worlds) {
     const world = readWorldFile(data.toString("utf8"));

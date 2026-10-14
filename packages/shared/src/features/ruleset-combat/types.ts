@@ -1327,10 +1327,10 @@ export interface RulesetCombatant {
    *  Instinct's rage). */
   surprised?: true;
   surpriseOut?: string[];
-  /** Auras whose save they made and are now proof against for the fight (1.265), as
-   *  `<holder>/<condition>`. */
   /** How many times each of its auras has grown (1.320), by the condition that spreads it. */
   auraGrown?: Record<string, number>;
+  /** Auras whose save they made and are now proof against for the fight (1.265), as
+   *  `<holder>/<condition>`. */
   auraSafe?: string[];
   /** Whose gaze they keep their eyes from (1.268): they skip its save and cannot see them. */
   averted?: string[];

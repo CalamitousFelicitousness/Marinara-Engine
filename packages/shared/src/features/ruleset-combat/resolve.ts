@@ -1122,7 +1122,8 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
     }
     return;
   }
-  feedAuras(ctx, target);
+  // A prop is nobody (1.316): nothing feeds on it falling.
+  if (!target.object) feedAuras(ctx, target);
   target.down = true;
   // Held Ground (1.323): felled, out of the fight but never dying, unless the blow reaps.
   const held = ctx.state.heldGround;
@@ -3598,6 +3599,9 @@ function whyNotOffered(
  * same events. `payWith` pays the price out of a higher pool of the same family, under the rule the
  * sheet's own `use` command already follows.
  */
+/** Whether a choice is being taken with its user's save difficulties already moved (1.328). */
+let shiftingSaves = false;
+
 export function applyRulesetCombatChoice(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -3606,13 +3610,28 @@ export function applyRulesetCombatChoice(
 ): RulesetCombatStep {
   // What its user makes others save against, lowered or raised by what they hold (1.328): the
   // Miller's Un-age, a spell save DC 2 lower. Set on their actions for this step only.
-  const actor = rulesetCombatant(state, choice.actorId);
+  // Only the outermost choice moves them: a lair action, a legendary cast or a readied action taken
+  // within it is already reading the moved difficulties.
+  const actor = shiftingSaves ? undefined : rulesetCombatant(state, choice.actorId);
   const by = actor ? rulesetSaveDifficultyShift(definition, actor, state) : 0;
   if (!actor || by === 0) return applyAlteredChoice(definition, state, choice, roller);
+  const moved = new Set(actor.actions.map((action) => action.id));
   const view = withRulesetActions(state, actor.id, (actions) => shiftedDifficulties(actions, by));
-  const step = applyAlteredChoice(definition, view, choice, roller);
+  shiftingSaves = true;
+  let step: RulesetCombatStep;
+  try {
+    step = applyAlteredChoice(definition, view, choice, roller);
+  } finally {
+    shiftingSaves = false;
+  }
   if (step.state === view) return { ...step, state };
-  return { ...step, state: withRulesetActions(step.state, actor.id, (actions) => shiftedDifficulties(actions, -by)) };
+  // Moved back are only the actions that were moved: one made during the step keeps its own.
+  return {
+    ...step,
+    state: withRulesetActions(step.state, actor.id, (actions) =>
+      actions.map((action) => (moved.has(action.id) ? shiftedDifficulties([action], -by)[0]! : action)),
+    ),
+  };
 }
 
 /** How much what a combatant holds (a condition, an item, a level) moves the difficulty of the saves

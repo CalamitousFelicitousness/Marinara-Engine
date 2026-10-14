@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 327);
+  assert.ok(supportedCapabilityApi.minor >= 332);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -184,7 +184,34 @@ try {
         doc.catalogs.find((one: { id: string }) => one.id === "hymns").entries[0].mechanics.usableNear.prop = "p7";
       }),
     );
-    assert.ok(byId.ok !== false);
+    // By its id: a Wheel under another label is still p7.
+    const sungById = createRulesetEncounter({
+      definition: byId,
+      seed: 1,
+      roller: roll,
+      combatants: [
+        {
+          id: "ada",
+          name: "Ada",
+          side: "party",
+          build,
+          live: {},
+          catalogs: { hymns: byId.catalogs!.find((one) => one.id === "hymns")!.entries! },
+        },
+        { id: "foe", name: "Foe", side: "enemy", block: block() },
+      ],
+      board: {
+        grid: { width: 16, height: 10, tiles: Array.from({ length: 10 }, () => Array(16).fill("plains")) },
+        placements: { ada: { x: 7, y: 5 }, foe: { x: 14, y: 8 } },
+        props: [{ ...wheel, label: "The Old Wheel" }] as never,
+      },
+    });
+    sungById.order = ["ada", "foe"];
+    sungById.turn = 0;
+    assert.ok(
+      rulesetCombatOptions(byId, sungById, "ada").some((one) => one.label === "Sing a Verse"),
+      "by its id, whatever its label",
+    );
     const broken = fight({ x: 7, y: 5 }, [wheel]);
     broken.board!.props![0]!.health = 0;
     assert.ok(!verse(broken), "the Wheel broken");

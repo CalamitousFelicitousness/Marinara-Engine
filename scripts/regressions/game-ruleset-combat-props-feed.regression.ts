@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 326);
+  assert.ok(supportedCapabilityApi.minor >= 331);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -186,6 +186,19 @@ try {
       [["foe", 15]],
     );
     assert.equal(who(fed.state, "foe").health?.value, 65);
+  }
+
+  // ── A broken prop is nobody: Collector does not feed on its own shelf falling ──
+  {
+    const shelf = { id: "p1", label: "Shelf", cells: [{ x: 9, y: 7 }], health: 1 };
+    const state = fight({ bard: { x: 2, y: 2 }, ally: { x: 2, y: 4 }, foe: { x: 12, y: 7 } }, [shelf]);
+    const foe = who(state, "foe");
+    foe.tracked.push({ condition: "collector", rounds: null, kept: true });
+    foe.health!.value = 50;
+    const leaned = act(state, { actorId: "foe", optionId: "lean", targetIds: [], at: { x: 9, y: 7 } });
+    assert.equal(leaned.state.board?.props?.[0]?.health, 0, "the shelf is broken");
+    assert.deepEqual(of(leaned.events, "heal"), []);
+    assert.equal(who(leaned.state, "foe").health?.value, 50);
   }
 
   // ── Refused, and the gate ──

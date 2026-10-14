@@ -11,9 +11,9 @@ export const GAME_INTRO_TEXT_MAX = 8000;
 
 const introText = z
   .string()
-  .trim()
-  .min(1)
   .max(GAME_INTRO_TEXT_MAX)
+  // Kept exactly as written: a defined intro is the first message, leading and trailing spaces included.
+  .refine((value) => value.trim().length > 0, { message: "An intro cannot be blank" })
   .refine((value) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(value), {
     message: "An intro cannot contain control characters",
   })

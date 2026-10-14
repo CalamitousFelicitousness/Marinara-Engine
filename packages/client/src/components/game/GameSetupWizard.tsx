@@ -96,7 +96,7 @@ import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChoose
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
 import { GameSetupWorldChooser, worldDraftConfig, worldDraftFromWorld, type WorldDraft } from "./GameSetupWorldChooser";
-import { GameSetupGmIntro, gameIntroForSetup } from "./GameSetupGmIntro";
+import { GameSetupGmIntro, gameIntroForSetup, gameIntroProblem } from "./GameSetupGmIntro";
 import {
   GAME_SETUP_FIELD_LABEL,
   GAME_SETUP_GHOST_BUTTON_CLASS,
@@ -1145,11 +1145,14 @@ export function GameSetupWizard({
   const spatialMapTargetLocationCountValid =
     normalizeSpatialMapTargetLocationCount(spatialMapTargetLocationCountInput) !== null;
   // A kit or a world that does not hold together is never quietly left out of a downloaded setup.
+  // An intro the server would refuse (1.339): fixed before the game starts or its setup is saved.
+  const introProblem = gameIntroProblem(gameIntro);
   const setupDownloadBlocked =
-    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok);
+    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok) || !!introProblem;
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
+    !introProblem &&
     !mapPackUnreadable &&
     !mapPackPending &&
     !(checkedWorldKit && !checkedWorldKit.ok) &&
@@ -1161,25 +1164,30 @@ export function GameSetupWizard({
     ? localizeUi("multiplayer.game.missingPersona")
     : experienceSeedInvalid
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
-      : mapPackUnreadable
-        ? localizeUi("game.mapPack.fixBeforeStart")
-        : mapPackPending
-          ? localizeUi("game.mapPack.loading")
-          : checkedWorldKit && !checkedWorldKit.ok
-            ? localizeUi("game.worldKit.setup.fixBeforeStart")
-            : checkedWorld && !checkedWorld.ok
-              ? localizeUi("game.world.setup.fixBeforeStart")
-              : activeLorebookEntryIds.length && !eligibleEntries
-                ? localizeUi(
-                    entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
-                  )
-                : !gmConnectionId
-                  ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-                  : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-                    ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                        value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-                      })
-                    : null;
+      : introProblem
+        ? localizeUi(`game.intro.${introProblem}`)
+        : mapPackUnreadable
+          ? localizeUi("game.mapPack.fixBeforeStart")
+          : mapPackPending
+            ? localizeUi("game.mapPack.loading")
+            : checkedWorldKit && !checkedWorldKit.ok
+              ? localizeUi("game.worldKit.setup.fixBeforeStart")
+              : checkedWorld && !checkedWorld.ok
+                ? localizeUi("game.world.setup.fixBeforeStart")
+                : activeLorebookEntryIds.length && !eligibleEntries
+                  ? localizeUi(
+                      entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+                    )
+                  : !gmConnectionId
+                    ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+                    : !spatialMapTargetLocationCountValid &&
+                        enableAgents &&
+                        hierarchicalMapsInstalled &&
+                        draftSpatialMap
+                      ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                          value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                        })
+                      : null;
   const normalizedLanguage = normalizeGameLanguage(language);
   // What the model writes a setting kit or a world's brief for: the World step's own choices.
   const worldWriteRequest = gmConnectionId

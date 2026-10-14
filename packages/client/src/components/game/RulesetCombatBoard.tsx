@@ -503,7 +503,7 @@ export function RulesetCombatBoard({
                         "pointer-events-none absolute inset-0",
                         !art?.light && cell.light === "dark" && "bg-black/60",
                         !art?.light && cell.light === "dim" && "bg-black/30",
-                        !art?.light && cell.light === "sunlight" && "bg-yellow-200/20",
+                        !art?.light && cell.light === "sunlight" && "bg-white/20",
                       )}
                       style={art?.light ? boardSliceStyle(art.light) : undefined}
                       title={t(RULESET_BOARD_LIGHT_KEYS[cell.light])}
@@ -513,7 +513,7 @@ export function RulesetCombatBoard({
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0",
-                        !art?.fog && (cell.fog === "heavy" ? "bg-slate-200/50" : "bg-slate-200/25"),
+                        !art?.fog && (cell.fog === "heavy" ? "bg-white/50" : "bg-white/25"),
                       )}
                       style={art?.fog ? boardSliceStyle(art.fog) : undefined}
                       title={t(RULESET_BOARD_FOG_KEYS[cell.fog])}
@@ -535,7 +535,7 @@ export function RulesetCombatBoard({
                       ))
                     ) : (
                       <span
-                        className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"
+                        className="pointer-events-none absolute inset-0 bg-[var(--accent)]/20 ring-1 ring-inset ring-[var(--accent)]/40"
                         title={cell.zones.join(", ")}
                       />
                     ))}
@@ -545,12 +545,12 @@ export function RulesetCombatBoard({
                       {cell.section.health}
                     </span>
                   )}
-                  {/* Growth (1.318): a green tangle over the square. */}
+                  {/* Growth (1.318): a tangle over the square, in the theme's primary colour until art draws it. */}
                   {cell.growth && (
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0",
-                        !art?.growth && "bg-emerald-700/40 ring-1 ring-inset ring-emerald-400/40",
+                        !art?.growth && "bg-[var(--primary)]/30 ring-1 ring-inset ring-[var(--primary)]/40",
                       )}
                       style={art?.growth ? boardSliceStyle(art.growth) : undefined}
                       title={t("game.combat.ruleset.board.growth")}
@@ -567,8 +567,8 @@ export function RulesetCombatBoard({
                           : cn(
                               "inset-[18%] rounded-[2px] border",
                               cell.prop.health > 0
-                                ? "border-amber-900/80 bg-amber-700/70"
-                                : "border-dashed border-amber-900/50 bg-transparent",
+                                ? "border-[var(--foreground)]/60 bg-[var(--muted)]/80"
+                                : "border-dashed border-[var(--foreground)]/40 bg-transparent",
                             ),
                       )}
                       style={art?.prop ? boardSliceStyle(art.prop) : undefined}
@@ -584,7 +584,7 @@ export function RulesetCombatBoard({
                     />
                   )}
                   {cell.prop && cell.prop.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-amber-100">
+                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.prop.health}
                     </span>
                   )}

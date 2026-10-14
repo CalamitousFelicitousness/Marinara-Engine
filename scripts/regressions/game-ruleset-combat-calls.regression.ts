@@ -40,7 +40,7 @@ const { rulesetController } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 320);
+  assert.ok(supportedCapabilityApi.minor >= 325);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",

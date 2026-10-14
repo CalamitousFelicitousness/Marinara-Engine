@@ -1676,7 +1676,7 @@ function carriesArtIcon(value: unknown, depth = 0): boolean {
 
 /** Whether anything names a list of lair actions for a broken concentration to pick from (1.336). */
 function carriesBrokenLairList(value: unknown, depth = 0): boolean {
-  if (depth > 8) return false;
+  if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBrokenLairList(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
@@ -4526,7 +4526,10 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
   }
   // Icons named by a catalog entry or a condition, 1.338.
-  if (!declaresApi(338) && carriesArtIcon(ruleset)) {
+  if (
+    !declaresApi(338) &&
+    (carriesArtIcon(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesArtIcon(document)))
+  ) {
     return "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.338 or newer";
   }
   // Rest dice over several pools, 1.337.
@@ -4538,7 +4541,11 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.337 or newer";
   }
   // A broken concentration that picks one of a list of lair actions, 1.336.
-  if (!declaresApi(336) && carriesBrokenLairList(ruleset)) {
+  if (
+    !declaresApi(336) &&
+    (carriesBrokenLairList(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBrokenLairList(document)))
+  ) {
     return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.336 or newer";
   }
   // Dice a rest spends to heal, 1.335.

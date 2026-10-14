@@ -68,7 +68,7 @@ const { createRulesetFight, directedRulesetView } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 313);
+  assert.ok(supportedCapabilityApi.minor >= 318);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",

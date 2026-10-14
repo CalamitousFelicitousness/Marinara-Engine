@@ -112,6 +112,10 @@ export interface TacticalMadeBattlefield {
       growth?: boolean;
       season?: string | null;
       rotate?: 1 | 2 | 3;
+      /** Whoever stands on it carried toward an edge (1.329): a millrace. */
+      push?: { toward: "north" | "south" | "east" | "west"; squares: number };
+      /** What obscures carried toward an edge (1.329): a snow drift. */
+      drift?: { toward: "north" | "south" | "east" | "west"; squares: number };
       tell?: string;
     };
   }>;

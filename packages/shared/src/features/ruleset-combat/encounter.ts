@@ -3991,7 +3991,9 @@ export interface RulesetEncounterInput {
   /** Who is caught unaware as it begins (1.237): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
   surprised?: string[];
-  /** Who fights in its own lair (1.315): its lair actions are taken on its lair count. */
+  /** Who fights in its own lair (1.315): its lair actions are taken on its lair count. A count
+   *  above everybody's comes before the first turn: call `rulesetOpenLairWindow` on the new fight
+   *  to open it, as the director does. */
   inLair?: string[];
   /** Held Ground (1.323): whoever reaches no health here is felled instead. A `condition` the fight
    *  does not know and `marks` on a track the sheet does not have are dropped. */

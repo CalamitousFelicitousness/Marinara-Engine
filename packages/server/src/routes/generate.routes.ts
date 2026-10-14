@@ -6519,13 +6519,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         // Create the pipeline (exclude text rewrite agents — they run last,
         // after all other post-processing agents have produced their context).
-        const textRewriteAgents = resolvedAgents.filter(
+        const allTextRewriteAgents = resolvedAgents.filter(
           (a) => a.phase === "post_processing" && resolveAgentResultType(a) === "text_rewrite",
         );
+        // A defined intro (1.339) stays exactly as set: no agent rewrites it; its Game tags still run.
+        const textRewriteAgents = definedIntro?.mode === "defined" ? [] : allTextRewriteAgents;
         const textRewriteRunAgents = mergePairedBuiltInRewriteAgents(textRewriteAgents);
         const textRewritePendingState = getTextRewritePendingState(textRewriteAgents);
         const holdForTextRewrite = shouldHoldForTextRewrite(textRewriteAgents);
-        const textRewriteAgentIds = new Set(textRewriteAgents.map((a) => a.id));
+        const textRewriteAgentIds = new Set(allTextRewriteAgents.map((a) => a.id));
         const lorebookKeeperAgent = resolvedAgents.find((a) => a.type === "lorebook-keeper") ?? null;
         let pipelineAgents = resolvedAgents.filter(
           (a) =>
@@ -9911,7 +9913,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 },
               });
             }
+            // A defined intro stays as set: its rolls are recorded, its text is not rewritten around them.
             if (
+              definedIntro?.mode !== "defined" &&
               shouldNarrateGameDiceOutcome(
                 chatMeta,
                 Boolean(rolled.resolved || rolled.untrained || generalRolls.rolled),

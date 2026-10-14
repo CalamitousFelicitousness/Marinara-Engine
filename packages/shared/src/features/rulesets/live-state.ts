@@ -1235,7 +1235,7 @@ export function applyRulesetSheetOp(
       items,
     );
     if (!spent.ok) return spent;
-    const after = applyRulesetSheetOp(definition, build, spent.live, { op: "rest", rest: rest.id }, roll);
+    const after = applyRulesetSheetOp(definition, build, spent.live, { op: "rest", rest: rest.id }, roll, items);
     return after.ok ? { ...after, now: `${spent.now}; ${after.now}`.slice(0, MAX_NOW_LENGTH) } : after;
   }
 
@@ -1765,6 +1765,13 @@ function rulesetSpendRestDice(
     const total = Math.floor(amount);
     if (total === 0) continue;
     const restored = applyRulesetSheetOp(definition, build, live, { op: "restore", pool: heals, amount: total });
+    // A condition that keeps them from healing (Mummy Rot) costs the dice and heals nothing, and the
+    // rest goes on, as a rest's own healing does.
+    if (!restored.ok && restored.reason === "cannot-heal") {
+      const by = healKeptOffBy(definition, readStoredLiveState(definition, build, live).conditions ?? [], false);
+      healed.push(`${by ?? "a condition"} keeps it from healing`);
+      continue;
+    }
     if (!restored.ok) return restored;
     live = restored.live;
     last = restored;

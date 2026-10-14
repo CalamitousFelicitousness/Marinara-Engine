@@ -68,6 +68,28 @@ function readBuild(definition: RulesetDefinition, envelope: RulesetSheetEnvelope
 
 /** Entries under the section headings the ruleset puts them in, each group drawn by `render`. A sheet
  *  whose entries name no section is drawn exactly as it always was: one group, no heading. */
+/** Whether two JSON-shaped values hold the same data, whatever order their keys were written in.
+ *  An undefined property counts as absent, as it would in the stored JSON. */
+function sameValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((each, index) => sameValue(each, right[index]))
+    );
+  }
+  const a = left as Record<string, unknown>;
+  const b = right as Record<string, unknown>;
+  const keys = Object.keys(a).filter((key) => a[key] !== undefined);
+  return (
+    keys.length === Object.keys(b).filter((key) => b[key] !== undefined).length &&
+    keys.every((key) => sameValue(a[key], b[key]))
+  );
+}
+
 function SectionedEntries<T extends { id: string; section?: string }>({
   definition,
   entries,
@@ -404,12 +426,7 @@ export function RulesetSheetEditor({
         ? applyRulesetBuilder(definition, build, state, builderCatalogs.catalogs)
         : undefined;
     const next = recomputeScaledRows(definition, applied?.build ?? build, loadedCatalogs);
-    if (
-      applied
-        ? JSON.stringify(next) === JSON.stringify(build) && JSON.stringify(applied.state) === JSON.stringify(state)
-        : next === build
-    )
-      return;
+    if (applied ? sameValue(next, build) && sameValue(applied.state, state) : next === build) return;
     onChange({
       ...envelope,
       v: rulesetSheetStamp(definition, envelope),

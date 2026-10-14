@@ -2046,7 +2046,16 @@ function forecastFor(
         flat: damage.flat + action.use.perCostStep.flat * steps,
       };
       forecast.averageDamage =
-        Math.round(averageHarm(definition, combat, scaled, target ?? undefined, actor) * 100) / 100;
+        Math.round(
+          averageHarm(
+            definition,
+            combat,
+            scaled,
+            target ?? undefined,
+            actor,
+            rulesetDamageMinimum(definition, actor, scaled),
+          ) * 100,
+        ) / 100;
     } else forecast.averageDamage += rulesetAverageDamage(action.use.perCostStep) * steps;
   }
   if (action.damage && forecast.averageDamage !== undefined) {

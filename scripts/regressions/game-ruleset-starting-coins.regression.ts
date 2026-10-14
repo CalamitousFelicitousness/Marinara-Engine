@@ -213,6 +213,6 @@ try {
   console.log("game-ruleset-starting-coins: passed");
 } finally {
   await app.close();
-  closeDB();
+  await closeDB();
   rmSync(dataDir, { recursive: true, force: true });
 }

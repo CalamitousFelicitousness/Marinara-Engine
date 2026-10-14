@@ -15,9 +15,9 @@ import type { TFunction } from "i18next";
  * Game Master's prompt and therefore has to stay in English.
  */
 export function rulesetCheckValueText(definition: RulesetDefinition, value: number, t: TFunction): string {
-  if (definition.resolution.kind === "roll-against" || definition.resolution.kind === "symbol-pool")
-    return formatRulesetCheckValue(definition, value);
-  if (definition.resolution.kind !== "dice-sum") return t("game.ruleset.check.dice", { count: value });
+  const kind = definition.resolution.kind;
+  if (kind !== "dice-sum" && kind !== "roll-against" && kind !== "symbol-pool")
+    return t("game.ruleset.check.dice", { count: value });
   return formatRulesetCheckValue(definition, value);
 }
 

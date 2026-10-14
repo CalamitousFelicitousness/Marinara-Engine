@@ -1350,6 +1350,8 @@ function rulesetVouchesFor(ruleset: SkillCheckRulesetContext, tag: SkillCheckTag
   // Nor one whose faces are worth other numbers, roll on, or mark a face: the record a Game Master
   // writes cannot be audited against those (1.136).
   if (resolution.dice.faces || resolution.openEnded || resolution.unmodified) return false;
+  // Rows the Game Master applies (1.156) change the roll and cost something: always the Engine's own.
+  if (tag.apply?.length) return false;
   const result = tag.resolvedResult;
   if (!result || result.resolution !== "sum") return false;
   // A check the character's conditions or items change is always the Engine's own: the Game Master

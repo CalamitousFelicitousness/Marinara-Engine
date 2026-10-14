@@ -118,9 +118,12 @@ async function openBorrowedCatalog(
     if ("issue" in source) return { kind: "unusable", issues: [source.issue] };
     file = source;
   }
-  // The lender's file, its version and this catalog's own entries name what the answer was read from.
+  // The lender's file, its version, this catalog's own entries and the borrowing ruleset (whose sheet
+  // decides which entries fit) name what the answer was read from.
   const sha256 = createHash("sha256")
-    .update(`${file.sha256}.${lender.definition.version}.${JSON.stringify(catalog.entries ?? [])}`)
+    .update(
+      `${file.sha256}.${lender.definition.version}.${definition.id}.${definition.version}.${JSON.stringify(catalog.entries ?? [])}`,
+    )
     .digest("hex");
   return {
     kind: "asset",

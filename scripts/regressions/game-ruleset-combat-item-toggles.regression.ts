@@ -206,6 +206,18 @@ try {
         [2, undefined],
       ],
     );
+    // A spent one keeps its own charges; the one added beside it is fresh.
+    const spent = on.stacks.map((one) => (one.id === "s1" ? { ...one, charges: 1, loaded: 0 } : one));
+    const fresh = applyGameInventoryOps(spent, [{ op: "set", id: "s1", quantity: 2 }], undefined, rules).stacks;
+    assert.deepEqual(
+      fresh
+        .filter((one) => one.item === "gear/tongue" && !one.holder)
+        .map((one) => [one.quantity, one.on, one.charges, one.loaded]),
+      [
+        [1, true, 1, 0],
+        [1, undefined, undefined, undefined],
+      ],
+    );
     const added = addToGameInventoryNamed(on.stacks, "Flame Tongue", 1, () => "s4")!.stacks;
     assert.deepEqual(
       added.filter((one) => one.item === "gear/tongue" && !one.holder).map((one) => [one.quantity, one.on]),

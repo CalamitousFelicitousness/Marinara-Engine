@@ -1351,13 +1351,14 @@ export function setGameInventoryStackQuantity(
   if (next === stack.quantity) return stacks;
   if (next < stack.quantity && keptByCurse(stack, rules)) return stacks;
   if (next === 0) return stacks.filter((_, i) => i !== index);
-  // A worn stack and one switched on stay one item; what is added beside them is neither.
+  // A worn stack and one switched on stay one item; what is added beside them is neither, and holds
+  // its own loads and charges.
   const single = gameInventoryStackWorn(stack) || stack.on === true;
   const limit = single ? 1 : stackLimit(gameInventoryItemId(stack), rules);
   if (next <= limit) return stacks.map((each, i) => (i === index ? { ...each, quantity: next } : each));
   const beside = single ? stackLimit(gameInventoryItemId(stack), rules) : limit;
   if (Math.ceil((next - limit) / beside) > GAME_INVENTORY_MAX_NEW_STACKS) return stacks;
-  const { on: _on, ...off } = unworn(stack);
+  const { on: _on, loaded: _loaded, charges: _charges, ...off } = unworn(stack);
   const rest: GameInventoryStack[] = [];
   for (let left = next - limit; left > 0; left -= beside) {
     rest.push({ ...off, id: newId(), quantity: Math.min(left, beside) });

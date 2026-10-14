@@ -65,7 +65,7 @@ Ids inside the sheet (abilities, skills, fields, pools, and so on) are lowercase
 
 ### Resolution kinds
 
-`resolution.kind` picks how a check is rolled. Every kind reads the same character sheet and share three keys, so the parts of the file below `resolution` do not change when you switch:
+`resolution.kind` picks how a check is rolled. Every kind reads the same character sheet and shares three keys, so the parts of the file below `resolution` do not change when you switch:
 
 - `abilityModifier`: how a score on the sheet becomes a number. `identity` means the score is the number. `floorHalfMinusTen` is the 5e rule. `stepTable` lets you list your own thresholds as `[[score, number], ...]`.
 - `proficiencyTiers`: the training levels a skill or save can have. The first one is what an unlisted skill gets. A tier adds `flat`, or `multiplier` times a proficiency bonus, or both. If your system has a proficiency bonus, name where it comes from with `"proficiency": { "bonus": { "derived": "proficiency_bonus" } }`.

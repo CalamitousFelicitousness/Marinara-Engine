@@ -113,6 +113,18 @@ try {
   const gate = (minor: number, doc: unknown) => getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
   assert.match(gate(214, fixture()) ?? "", /1\.215/);
   assert.equal(gate(215, fixture()), null);
+  // The same pick in a catalog kept in its own file.
+  const inFile = fixture((doc) => {
+    const playbooks = doc.catalogs.at(-1);
+    doc.catalogs[doc.catalogs.length - 1] = {
+      id: playbooks.id,
+      label: playbooks.label,
+      asset: "catalogs/playbooks.json",
+    };
+  });
+  const filed = { ...manifest(214), contributions: { assets: { paths: ["ruleset.json", "catalogs/playbooks.json"] } } };
+  const files = new Map([["catalogs/playbooks.json", { entries: fixture().catalogs.at(-1).entries }]]);
+  assert.match(getCapabilityPackageInstallIssue(filed as any, inFile, files) ?? "", /1\.215/);
 
   console.log("game-ruleset-item-access: passed");
 } finally {

@@ -278,6 +278,7 @@ try {
   assert.equal(first(large.events, "daze").over, 2);
   assert.ok(rulesetCombatConditions(dazing, rulesetCombatant(large.state, "target")!).includes("dazed"));
   const again = hit(dazing, large.state, [7, 6, 6, 6]);
+  assert.ok(!again.events.some((e) => e.type === "daze"), "a second daze before the skip is not told again");
   const skipped = advance(dazing, JSON.parse(JSON.stringify(again.state)));
   assert.equal(skipped.events.filter((e) => e.type === "skip").length, 1);
   assert.equal(first(skipped.events, "skip").actorId, "target");

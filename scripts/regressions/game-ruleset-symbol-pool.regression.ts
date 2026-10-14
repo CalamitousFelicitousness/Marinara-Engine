@@ -462,8 +462,7 @@ try {
   const gate = /requires schemaVersion 2 and capabilityApi 1\.141/;
   assert.match(getCapabilityPackageInstallIssue(manifest(140) as any, doc()) ?? "", gate);
   assert.equal(getCapabilityPackageInstallIssue(manifest(141) as any, doc()), null);
-  for (const minor of [143, 144])
-    assert.match(getCapabilityPackageInstallIssue(manifest(minor) as any, ownDoc()) ?? "", /capabilityApi 1\.150/);
+  assert.match(getCapabilityPackageInstallIssue(manifest(149) as any, ownDoc()) ?? "", /capabilityApi 1\.150/);
   assert.equal(getCapabilityPackageInstallIssue(manifest(150) as any, ownDoc()), null);
   assert.match(
     getCapabilityPackageInstallIssue(

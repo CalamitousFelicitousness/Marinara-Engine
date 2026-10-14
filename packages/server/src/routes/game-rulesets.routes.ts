@@ -107,9 +107,14 @@ function leastCapabilityApi(
       }
     }),
   );
+  const catalogTexts = new Map(
+    (definition.catalogs ?? []).flatMap((catalog) =>
+      catalog.asset && catalogs[catalog.id] !== undefined ? [[catalog.asset, catalogs[catalog.id]!] as const] : [],
+    ),
+  );
   const bytesOf = (path: string) => {
     if (path === "ruleset.json") return Buffer.byteLength(rulesetText);
-    const text = catalogs[path.replace(/^catalogs\/|\.json$/gu, "")];
+    const text = catalogTexts.get(path);
     return text === undefined ? 1 : Buffer.byteLength(text);
   };
   for (let minor = 0; minor <= supportedCapabilityApi.minor; minor++) {

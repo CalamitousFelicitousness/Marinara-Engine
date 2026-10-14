@@ -4237,6 +4237,8 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryRepeatChoices(fileEntries)) carriesRepeatChoices = true;
       if (entriesCarryChoiceCaps(fileEntries)) carriesChoiceCaps = true;
       if (entriesCarryBuilderChoices146(fileEntries)) carriesBuilderChoices = true;
+      if (entriesCarryBuilderLegality150(fileEntries)) carriesBuilderLegality = true;
+      if (entriesCarryContextual151(fileEntries)) carriesContextual = true;
       if (entriesCarryBuilderRatings147(fileEntries)) carriesBuilderRatings = true;
       if (entriesCarryDamageSheetBonus(fileEntries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(fileEntries)) carriesDamageReroll = true;
@@ -4695,25 +4697,28 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with guided named rows requires schemaVersion 2 and capabilityApi 1.154 or newer";
   }
+  // Catalog entries kept in their own files carry these keys as often as inline ones.
+  const inRulesetOrCatalogs = (detect: (document: unknown) => boolean) =>
+    detect(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => detect(document));
   if (!declaresApi(220) && carriesBorrowedCatalog215(ruleset)) {
     return "A ruleset with a catalog borrowed from another ruleset requires schemaVersion 2 and capabilityApi 1.220 or newer";
   }
   if (!declaresApi(219) && carriesLongAdvancement214(ruleset)) {
     return "A ruleset whose advancement allows more than 24 fields requires schemaVersion 2 and capabilityApi 1.219 or newer";
   }
-  if (!declaresApi(218) && carriesTrackCosts213(ruleset)) {
+  if (!declaresApi(218) && inRulesetOrCatalogs(carriesTrackCosts213)) {
     return "A roll effect that costs a list row or marks a track requires schemaVersion 2 and capabilityApi 1.218 or newer";
   }
-  if (!declaresApi(217) && carriesBestRating212(ruleset)) {
+  if (!declaresApi(217) && inRulesetOrCatalogs(carriesBestRating212)) {
     return "A roll effect that takes the best rating requires schemaVersion 2 and capabilityApi 1.217 or newer";
   }
   if (!declaresApi(216) && carriesRowDots211(ruleset)) {
     return "Row dots funded at creation requires schemaVersion 2 and capabilityApi 1.216 or newer";
   }
-  if (!declaresApi(215) && carriesItemAccess210(ruleset)) {
+  if (!declaresApi(215) && inRulesetOrCatalogs(carriesItemAccess210)) {
     return "A pick that opens items without carrying them requires schemaVersion 2 and capabilityApi 1.215 or newer";
   }
-  if (!declaresApi(214) && carriesNoCancel209(ruleset)) {
+  if (!declaresApi(214) && inRulesetOrCatalogs(carriesNoCancel209)) {
     return "A roll effect that switches off cancelling requires schemaVersion 2 and capabilityApi 1.214 or newer";
   }
   if (!declaresApi(213) && carriesAbilitySpecialties208(ruleset)) {
@@ -4722,7 +4727,7 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(212) && carriesRowStances207(ruleset)) {
     return "A row check in a stance requires schemaVersion 2 and capabilityApi 1.212 or newer";
   }
-  if (!declaresApi(211) && carriesPartialBoosts206(ruleset)) {
+  if (!declaresApi(211) && inRulesetOrCatalogs(carriesPartialBoosts206)) {
     return "A score choice with partial increases requires schemaVersion 2 and capabilityApi 1.211 or newer";
   }
   if (!declaresApi(210) && carriesWorkedColumns205(ruleset)) {
@@ -4740,7 +4745,7 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(206) && carriesRowPrices201(ruleset)) {
     return "A ruleset with row prices scaled, offset or overridden requires schemaVersion 2 and capabilityApi 1.206 or newer";
   }
-  if (!declaresApi(205) && carriesRowCounts200(ruleset)) {
+  if (!declaresApi(205) && inRulesetOrCatalogs(carriesRowCounts200)) {
     return "A ruleset with list sums that count rows or match a cell requires schemaVersion 2 and capabilityApi 1.205 or newer";
   }
   if (!declaresApi(164) && carriesTrades159(ruleset)) {

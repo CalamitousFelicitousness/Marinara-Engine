@@ -184,6 +184,13 @@ try {
     // The chain ends.
     const endless = rollDiceSumCheck(rolemaster, { modifier: 0, dc: 100, isSave: false }, () => 100);
     assert.equal(endless.rolls.length, RULESET_OPEN_ENDED_MAX_ROLLS);
+    // A face the player rolled first opens the chain the same way.
+    const preRolled = rollDiceSumCheck(
+      rolemaster,
+      { modifier: 20, dc: 100, isSave: false, preRolled: 97 },
+      faces(98, 40),
+    );
+    assert.deepEqual([preRolled.rolls, preRolled.usedRoll], [[97, 98, 40], 235], "a rolled-first 97 chains on");
 
     // The natural is the first die's: a 1 that the policy makes automatic stays a failure however far
     // the chain goes, and a 100 rolled on later in a chain is not a natural.

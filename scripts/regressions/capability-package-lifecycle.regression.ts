@@ -194,7 +194,7 @@ try {
         capabilityPackageManifestSchema.parse({ ...manifestV2, capabilityApi: { major: 1, minor } }),
       ),
       null,
-      `Capability API 1.${minor} ({label}) is supported`,
+      `Capability API 1.${minor} (${label}) is supported`,
     );
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({

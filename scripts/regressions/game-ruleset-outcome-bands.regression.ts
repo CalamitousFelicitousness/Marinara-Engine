@@ -276,7 +276,9 @@ try {
     const throwPool = (required: number, ...rolled: number[]) =>
       rollDicePoolCheck(pool, { modifier: rolled.length, required, isSave: false }, faces(...rolled));
     // Gravewatch: target 7, tens explode? Read the faces the file declares and stay under them.
-    const target = pool.resolution.kind === "dice-pool" ? pool.resolution.target.default : 7;
+    assert.equal(pool.resolution.kind, "dice-pool");
+    if (pool.resolution.kind !== "dice-pool") throw new Error("unreachable");
+    const target = pool.resolution.target.default;
     const hit = target;
     const miss = target - 1;
     assert.equal(throwPool(3, hit, miss, miss).outcome, "Barely", "one success is a success here, whatever dc says");
@@ -285,11 +287,9 @@ try {
     const critical = throwPool(1, hit, hit, hit);
     assert.deepEqual([critical.outcome, critical.criticalSuccess], ["Critical", true]);
     assert.equal(throwPool(1, miss, miss, miss).outcome, "Miss");
-    const botch = pool.resolution.kind === "dice-pool" ? pool.resolution.botch : undefined;
-    if (botch) {
-      const botched = throwPool(1, 1, miss, miss);
-      assert.deepEqual([botched.outcome, botched.criticalFailure], ["Miss", true], "a botch is the worst band");
-    }
+    assert.ok(pool.resolution.botch, "the example pool has a botch");
+    const botched = throwPool(1, 1, miss, miss);
+    assert.deepEqual([botched.outcome, botched.criticalFailure], ["Miss", true], "a botch is the worst band");
 
     // ── The record, the summary and the Game Master ──
     const cards = [{ name: "Bram the Quiet", rulesetSheet: null }];

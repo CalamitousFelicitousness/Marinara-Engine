@@ -143,7 +143,7 @@ export function renderRulesetSheetBlock(
     // Rows that are checks of their own (1.161), by the name the Game Master asks for them by.
     ...rulesetRowChecks(definition, build).map((row) => ({
       section: undefined,
-      text: `${row.label} ${checkValue(evaluated.skillMods[row.key] ?? 0)}`,
+      text: `${safeValue(row.label)} ${checkValue(evaluated.skillMods[row.key] ?? 0)}`,
     })),
   ];
   if (trained.length > 0) push(`Trained: ${grouped(trained, (entry) => entry.text)}`);

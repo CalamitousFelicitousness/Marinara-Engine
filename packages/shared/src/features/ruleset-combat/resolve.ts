@@ -9248,6 +9248,8 @@ function resolveActionBody(
     // One hit, including its clauses, never accumulated wounds from previous hits.
     const levels = ctx.combat.damageKinds?.marks === "per-blow" ? Math.min(1, dealt) : dealt;
     if (before && daze && dazeOver !== undefined && levels > 0 && levels > dazeOver) {
+      // A second hit before the skipped turn adds no second skip, so it is not told again.
+      const newlyDazed = target.dazed === undefined;
       target.dazed ??= {};
       const condition = daze.condition;
       if (
@@ -9258,15 +9260,17 @@ function resolveActionBody(
         applyConditionId(ctx, target, condition, { condition, duration: "instant" }, { sourceId: actor.id });
         target.dazed.condition = condition;
       }
-      ctx.events.push({
-        type: "daze",
-        targetId: target.id,
-        sourceId: actor.id,
-        damage: levels,
-        over: dazeOver,
-        ...(condition ? { condition } : {}),
-        ...(daze.text ? { text: daze.text } : {}),
-      });
+      if (newlyDazed) {
+        ctx.events.push({
+          type: "daze",
+          targetId: target.id,
+          sourceId: actor.id,
+          damage: levels,
+          over: dazeOver,
+          ...(condition ? { condition } : {}),
+          ...(daze.text ? { text: daze.text } : {}),
+        });
+      }
     }
     // Its maximum lowered to nothing (1.203), it dies.
     if (sappedDealt > 0 && !target.defeated && rulesetSealedAway(ctx, target)) {

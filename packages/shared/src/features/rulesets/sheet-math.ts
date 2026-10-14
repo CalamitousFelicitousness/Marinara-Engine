@@ -1049,8 +1049,9 @@ export function rollDiceSumCheck(
   const { faces, sides } = dice;
   const openEnded = dice.count === 1 ? resolution.openEnded : undefined;
   const faceWorth = (face: number) => (faces ? (faces[face - 1] ?? 0) : face);
-  const rollSet = (): { thrown: number[]; worth: number } => {
-    const thrown = Array.from({ length: dice.count }, () => rollDie(sides));
+  // A face the player rolled first (single die only) starts the set, and still opens its chain.
+  const rollSet = (preset?: number): { thrown: number[]; worth: number } => {
+    const thrown = preset === undefined ? Array.from({ length: dice.count }, () => rollDie(sides)) : [preset];
     let worth = thrown.reduce((total, face) => total + faceWorth(face), 0);
     if (openEnded) {
       const first = thrown[0]!;
@@ -1071,7 +1072,7 @@ export function rollDiceSumCheck(
     }
     return { thrown, worth };
   };
-  const first = preRolled === null ? rollSet() : { thrown: [preRolled], worth: faceWorth(preRolled) };
+  const first = rollSet(preRolled ?? undefined);
   const second = useAdvantage || useDisadvantage ? rollSet() : null;
   const kept = !second
     ? first

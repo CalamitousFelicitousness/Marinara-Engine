@@ -277,6 +277,84 @@ test("summary toggles keep other entries usable and toggle all in one save", asy
   }
 });
 
+// Maintainer request (2026-10-14): on phones a summary's row cut off its title and message range.
+test("Chat Summary shows an opened summary's whole title and range on phones, with a plain Delete", async ({
+  page,
+  request,
+}, info) => {
+  const phone = info.project.name.startsWith("mobile");
+  const title =
+    "The siege of Ironhold and the road home through Whisperingpinesvalleyoftheforgottenkingsandqueensofold";
+  const entry = createChatSummaryEntry({
+    id: "long-title",
+    title,
+    content: "The party held the gate until dawn.",
+    enabled: true,
+    sourceMode: "range",
+    rangeStartIndex: 12345,
+    rangeEndIndex: 67890,
+  });
+  const created = await request.post("/api/chats", { data: { name: "Summary long title", mode: "roleplay" } });
+  expect(created.ok()).toBeTruthy();
+  const { id } = await created.json();
+  expect((await request.patch(`/api/chats/${id}/metadata`, { data: { summaryEntries: [entry] } })).ok()).toBeTruthy();
+  try {
+    await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+    await seedUIState(page, {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      chatHelpSeenModes: ["conversation", "roleplay", "game"],
+    });
+    await page.addInitScript(
+      ({ id, version }) => {
+        localStorage.setItem("marinara-active-chat-id", id);
+        localStorage.setItem("marinara:whats-new:seen-version", version);
+      },
+      { id, version },
+    );
+    await page.goto("/");
+    const panel = await openChatSettingsTool(page, "chat-summary");
+    const row = summaryRow(panel, entry.id);
+    const heading = row.locator("[data-summary-entry-heading]");
+    await expect(heading).toHaveCount(0);
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("summary-collapsed.png") });
+
+    await row.getByRole("button", { name: "Expand summary entry", exact: true }).click();
+    const text = row.getByText("The party held the gate until dawn.", { exact: true });
+    await expect(text).toBeVisible();
+    if (phone) {
+      // The whole title and range sit above the summary text, wrapped instead of cut off.
+      await expect(heading.getByText(title, { exact: true })).toBeVisible();
+      await expect(heading.getByText(/^Messages 12345–67890 · ~\d+ tokens$/)).toBeVisible();
+      for (const line of await heading.locator("p").all()) {
+        expect.soft(await line.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      }
+      expect.soft((await heading.boundingBox())!.y).toBeLessThan((await text.boundingBox())!.y);
+    } else {
+      await expect(heading).toBeHidden();
+    }
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("summary-expanded.png") });
+
+    // Delete uses the same chrome text colour as Edit beside it, never the destructive red.
+    const colour = (button: Locator) => button.evaluate((element) => getComputedStyle(element).color);
+    const destructive = await row.evaluate((element) => {
+      const probe = element.appendChild(document.createElement("span"));
+      probe.style.color = "var(--destructive)";
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    const deleteColour = await colour(row.getByRole("button", { name: "Delete summary entry", exact: true }));
+    expect(deleteColour).toBe(await colour(row.getByRole("button", { name: "Edit summary entry", exact: true })));
+    expect(deleteColour).not.toBe(destructive);
+  } finally {
+    await request.delete(`/api/chats/${id}?force=true`);
+  }
+});
+
 // #7029: the range fields showed two or three digits, in half the footer, behind an accent border.
 test("Chat Summary range fields fit long message numbers in a quiet box", async ({ page, request }, info) => {
   const created = await request.post("/api/chats", { data: { name: "Summary ranges", mode: "roleplay" } });

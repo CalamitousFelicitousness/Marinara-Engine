@@ -81,7 +81,7 @@ When **Attach Card Appearance** is on, any card or persona that also has **Image
 In a Roleplay chat, **Chat Settings**, **Agents**, **Illustrator** has an **Illustrator makes** setting:
 
 - **Pictures** (the default): pictures only, as before.
-- **Pictures and clips**: Illustrator may also turn a picture it just made into a short clip when motion is the point of the moment, such as action, violence, a chase or something breaking. It writes the motion itself, following the video connection's **Video Prompting Instructions**. The picture appears first, and the clip joins the same message when it is ready.
+- **Pictures and clips**: Illustrator may also turn a picture it just made into a short clip when motion is the point of the moment, such as action, violence, a chase or something breaking. This includes pictures the storyteller asked for with `[illustrate]`. It writes the motion itself, following the video connection's **Video Prompting Instructions**. The picture appears first, and the clip joins the same message when it is ready.
 - **Clips only**: every time Illustrator would show a picture, it shows a short clip instead. The picture it draws is the clip's starting frame and goes to the Gallery, not the reply. If the clip fails, the picture is shown instead.
 
 Clips use the **Video Connection** under **Scene Videos**, and each one is a video request. Without a working video connection, Illustrator makes pictures instead, even with **Clips only**. Custom agents that create images follow the same setting.

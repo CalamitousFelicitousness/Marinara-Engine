@@ -139,14 +139,22 @@
 }
 
 /* Game sections (the logs, the Inventory, the combat panels, the Journal…) draw white
-   and black tints and an amber accent over an always-dark scene. Where the chat style
-   supplies a palette, those tints take its text and background and the accent its
-   control color: a section under Apply preset colors, and Game content in a window,
-   which follows its style without the switches. Party, enemy and element colors stay. */
+   and black tints, an amber accent and pale party, enemy and element colors over an
+   always-dark scene. Where the chat style supplies a palette, those tints take its text
+   and background, the accent its control color held steady (it marks warnings, so it
+   never pulses), and each pale color moves toward the text so it stays readable on a
+   light style: a section under Apply preset colors, and Game content in a window,
+   which follows its style without the switches. */
 :root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface {
   --mari-game-text: var(--mari-action-text);
   --mari-game-bg: var(--mari-action-bg);
-  --mari-game-accent: var(--mari-action-control);
+  --mari-game-accent: var(
+    --mari-chat-control-color,
+    var(
+      --mari-window-control-color,
+      var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-app-accent-static)))
+    )
+  );
 }
 
 :root:is([data-chat-widget-preset], [data-chat-widget-colors])
@@ -162,16 +170,17 @@
   );
   --mari-game-accent: var(
     --mari-window-control-color,
-    var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-accent)))
+    var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-app-accent-static)))
   );
 }
 
+/* ponytail: only the hues Game sections draw are moved; a section that adds another
+   hue needs its rows here. */
 :root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface,
 :root:is([data-chat-widget-preset], [data-chat-widget-colors])
   .mari-window
   .mari-game-section:not(.mari-chat-style-surface) {
   --color-white: var(--mari-game-text);
-  --color-black: var(--mari-game-bg);
   --color-amber-50: var(--mari-game-accent);
   --color-amber-100: var(--mari-game-accent);
   --color-amber-200: var(--mari-game-accent);
@@ -188,14 +197,88 @@
   --color-zinc-800: color-mix(in oklab, var(--mari-game-text) 12%, var(--mari-game-bg));
   --color-zinc-900: var(--mari-game-bg);
   --color-zinc-950: var(--mari-game-bg);
+  --color-red-50: color-mix(in oklab, var(--color-red-600) 15%, var(--mari-game-text));
+  --color-red-100: color-mix(in oklab, var(--color-red-600) 25%, var(--mari-game-text));
+  --color-red-200: color-mix(in oklab, var(--color-red-600) 35%, var(--mari-game-text));
+  --color-red-300: color-mix(in oklab, var(--color-red-600) 45%, var(--mari-game-text));
+  --color-red-400: color-mix(in oklab, var(--color-red-600) 55%, var(--mari-game-text));
+  --color-orange-50: color-mix(in oklab, var(--color-orange-600) 15%, var(--mari-game-text));
+  --color-orange-100: color-mix(in oklab, var(--color-orange-600) 25%, var(--mari-game-text));
+  --color-orange-200: color-mix(in oklab, var(--color-orange-600) 35%, var(--mari-game-text));
+  --color-orange-300: color-mix(in oklab, var(--color-orange-600) 45%, var(--mari-game-text));
+  --color-orange-400: color-mix(in oklab, var(--color-orange-600) 55%, var(--mari-game-text));
+  --color-yellow-50: color-mix(in oklab, var(--color-yellow-600) 15%, var(--mari-game-text));
+  --color-yellow-100: color-mix(in oklab, var(--color-yellow-600) 25%, var(--mari-game-text));
+  --color-yellow-200: color-mix(in oklab, var(--color-yellow-600) 35%, var(--mari-game-text));
+  --color-yellow-300: color-mix(in oklab, var(--color-yellow-600) 45%, var(--mari-game-text));
+  --color-yellow-400: color-mix(in oklab, var(--color-yellow-600) 55%, var(--mari-game-text));
+  --color-green-50: color-mix(in oklab, var(--color-green-600) 15%, var(--mari-game-text));
+  --color-green-100: color-mix(in oklab, var(--color-green-600) 25%, var(--mari-game-text));
+  --color-green-200: color-mix(in oklab, var(--color-green-600) 35%, var(--mari-game-text));
+  --color-green-300: color-mix(in oklab, var(--color-green-600) 45%, var(--mari-game-text));
+  --color-green-400: color-mix(in oklab, var(--color-green-600) 55%, var(--mari-game-text));
+  --color-emerald-50: color-mix(in oklab, var(--color-emerald-600) 15%, var(--mari-game-text));
+  --color-emerald-100: color-mix(in oklab, var(--color-emerald-600) 25%, var(--mari-game-text));
+  --color-emerald-200: color-mix(in oklab, var(--color-emerald-600) 35%, var(--mari-game-text));
+  --color-emerald-300: color-mix(in oklab, var(--color-emerald-600) 45%, var(--mari-game-text));
+  --color-emerald-400: color-mix(in oklab, var(--color-emerald-600) 55%, var(--mari-game-text));
+  --color-cyan-50: color-mix(in oklab, var(--color-cyan-600) 15%, var(--mari-game-text));
+  --color-cyan-100: color-mix(in oklab, var(--color-cyan-600) 25%, var(--mari-game-text));
+  --color-cyan-200: color-mix(in oklab, var(--color-cyan-600) 35%, var(--mari-game-text));
+  --color-cyan-300: color-mix(in oklab, var(--color-cyan-600) 45%, var(--mari-game-text));
+  --color-cyan-400: color-mix(in oklab, var(--color-cyan-600) 55%, var(--mari-game-text));
+  --color-sky-50: color-mix(in oklab, var(--color-sky-600) 15%, var(--mari-game-text));
+  --color-sky-100: color-mix(in oklab, var(--color-sky-600) 25%, var(--mari-game-text));
+  --color-sky-200: color-mix(in oklab, var(--color-sky-600) 35%, var(--mari-game-text));
+  --color-sky-300: color-mix(in oklab, var(--color-sky-600) 45%, var(--mari-game-text));
+  --color-sky-400: color-mix(in oklab, var(--color-sky-600) 55%, var(--mari-game-text));
+  --color-blue-50: color-mix(in oklab, var(--color-blue-600) 15%, var(--mari-game-text));
+  --color-blue-100: color-mix(in oklab, var(--color-blue-600) 25%, var(--mari-game-text));
+  --color-blue-200: color-mix(in oklab, var(--color-blue-600) 35%, var(--mari-game-text));
+  --color-blue-300: color-mix(in oklab, var(--color-blue-600) 45%, var(--mari-game-text));
+  --color-blue-400: color-mix(in oklab, var(--color-blue-600) 55%, var(--mari-game-text));
+  --color-violet-50: color-mix(in oklab, var(--color-violet-600) 15%, var(--mari-game-text));
+  --color-violet-100: color-mix(in oklab, var(--color-violet-600) 25%, var(--mari-game-text));
+  --color-violet-200: color-mix(in oklab, var(--color-violet-600) 35%, var(--mari-game-text));
+  --color-violet-300: color-mix(in oklab, var(--color-violet-600) 45%, var(--mari-game-text));
+  --color-violet-400: color-mix(in oklab, var(--color-violet-600) 55%, var(--mari-game-text));
+  --color-purple-50: color-mix(in oklab, var(--color-purple-600) 15%, var(--mari-game-text));
+  --color-purple-100: color-mix(in oklab, var(--color-purple-600) 25%, var(--mari-game-text));
+  --color-purple-200: color-mix(in oklab, var(--color-purple-600) 35%, var(--mari-game-text));
+  --color-purple-300: color-mix(in oklab, var(--color-purple-600) 45%, var(--mari-game-text));
+  --color-purple-400: color-mix(in oklab, var(--color-purple-600) 55%, var(--mari-game-text));
+  --color-fuchsia-50: color-mix(in oklab, var(--color-fuchsia-600) 15%, var(--mari-game-text));
+  --color-fuchsia-100: color-mix(in oklab, var(--color-fuchsia-600) 25%, var(--mari-game-text));
+  --color-fuchsia-200: color-mix(in oklab, var(--color-fuchsia-600) 35%, var(--mari-game-text));
+  --color-fuchsia-300: color-mix(in oklab, var(--color-fuchsia-600) 45%, var(--mari-game-text));
+  --color-fuchsia-400: color-mix(in oklab, var(--color-fuchsia-600) 55%, var(--mari-game-text));
+  --color-rose-50: color-mix(in oklab, var(--color-rose-600) 15%, var(--mari-game-text));
+  --color-rose-100: color-mix(in oklab, var(--color-rose-600) 25%, var(--mari-game-text));
+  --color-rose-200: color-mix(in oklab, var(--color-rose-600) 35%, var(--mari-game-text));
+  --color-rose-300: color-mix(in oklab, var(--color-rose-600) 45%, var(--mari-game-text));
+  --color-rose-400: color-mix(in oklab, var(--color-rose-600) 55%, var(--mari-game-text));
+}
+
+/* A section's black tints follow the background only inside it: its own shadow falls on
+   the scene, so it stays dark. Game content in a window casts none. */
+:root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface > *,
+:root:is([data-chat-widget-preset], [data-chat-widget-colors])
+  .mari-window
+  .mari-game-section:not(.mari-chat-style-surface) {
+  --color-black: var(--mari-game-bg);
 }
 
 /* Inside a section each element paints its own color, now that the tints follow the style:
    muted labels stay muted, buttons keep their contrast and party, enemy and element colors
    show. In the logs a fallback name or dialogue color set inline still follows the preset
-   text, as on the other chat surfaces; a character's own color keeps its paint (#7296). */
+   text, as on the other chat surfaces; a character's own color keeps its paint (#7296).
+   Icons take the control color, as on every chat surface; an amber icon marks a warning,
+   so it keeps the steady accent above. */
 :root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface * {
   -webkit-text-fill-color: currentColor;
+}
+:root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface svg[class*=" text-amber-"] {
+  color: revert-layer;
 }
 :root[data-chat-widget-apply-colors="true"]
   .mari-game-section.mari-chat-style-surface[data-game-section="logs"]
@@ -454,11 +537,15 @@
   [data-game-section^="tactical-"],
   [data-game-section="ruleset-status"],
   [data-game-section="combat-ai"],
-  [data-game-section="combat-director"]
+  [data-game-section="combat-director"],
+  [data-game-section="combat-weather"]
 ) {
   --mari-chat-existing-border: var(--border);
 }
-.mari-game-section[data-game-section="element-reaction"] {
+.mari-game-section[data-game-section="scene-alert"] {
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-amber-500) 20%, transparent);
+}
+.mari-game-section:is([data-game-section="element-reaction"], [data-game-section="scene-retry"]) {
   --mari-chat-existing-border: transparent;
 }
 .mari-game-section.mari-chat-action-panel {

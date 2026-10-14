@@ -10,14 +10,22 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import { TILE_PACK_MAX_BYTES, WORLD_ART_FAMILIES, parseTilePack, type TilePack } from "@marinara-engine/shared";
+import {
+  TILE_PACK_IMAGE_FILE_MAX_BYTES,
+  TILE_PACK_MAX_BYTES,
+  WORLD_ART_FAMILIES,
+  parseTilePack,
+  type TilePack,
+} from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
+import { cleanImageTilePack } from "../services/game/tile-pack-images.service.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { GAME_TILE_PACKS_RATE_LIMIT } from "../middleware/rate-limit.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import {
   createGameTilePacksStorage,
   TilePackVersionConflictError,
+  TilePackVersionTooOldError,
   type GameTilePackRow,
 } from "../services/storage/game-tile-packs.storage.js";
 
@@ -25,10 +33,10 @@ const BUILT_IN_DIR = fileURLToPath(new URL("../assets/overworld-tiles/", import.
 /** Which stored pack each family is drawn with, in app settings. */
 const SELECTION_KEY = "gameTilePackSelection";
 const LOCAL = "local/";
-/** A pack saved from the maker is no larger than a share file can be. */
-const SAVE_BODY_LIMIT = TILE_PACK_MAX_BYTES + 16_384;
+/** A pack saved from the maker is no larger than a share file can be (an image pack's, the larger). */
+const SAVE_BODY_LIMIT = TILE_PACK_IMAGE_FILE_MAX_BYTES + 16_384;
 /** A share file sent as text: its JSON escaping can make a byte up to six. */
-const IMPORT_BODY_LIMIT = TILE_PACK_MAX_BYTES * 6 + 16_384;
+const IMPORT_BODY_LIMIT = TILE_PACK_IMAGE_FILE_MAX_BYTES * 6 + 16_384;
 
 /** The id a pack is filed by, under `local/`; none when that would be longer than an id can be (cutting
  *  it short could file two packs as one). */
@@ -62,7 +70,13 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
 
   /** Store a checked pack (a save from the maker, or an imported file) under its local id, as the same
    *  text either way, so the same tiles saved again are recognised whatever way they came. */
-  const save = async (reply: FastifyReply, pack: TilePack, notes: string[]) => {
+  const save = async (reply: FastifyReply, read: TilePack, notes: string[]) => {
+    let pack = read;
+    if (pack.tilePackVersion === 2) {
+      const cleaned = await cleanImageTilePack(pack);
+      if (!cleaned.ok) return reply.status(400).send({ error: `The tile pack is not usable: ${cleaned.issue}` });
+      pack = cleaned.pack;
+    }
     const id = localId(pack.id);
     if (!id) return reply.status(400).send({ error: "The tile pack's id is too long." });
     const filed = { ...pack, id };
@@ -71,6 +85,9 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
       logger.info("[game/tile-packs] %s version %d: %s", row.packId, row.version, status);
       return { status, pack: { id: row.packId, version: row.version, name: row.name, family: row.family }, notes };
     } catch (error) {
+      if (error instanceof TilePackVersionTooOldError) {
+        return reply.status(409).send({ error: error.message, code: "tile_pack_version_too_old" });
+      }
       if (error instanceof TilePackVersionConflictError) {
         return reply.status(409).send({ error: error.message, code: "tile_pack_version_conflict" });
       }
@@ -85,6 +102,9 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
       name: row.name,
       family: row.family,
       version: row.version,
+      // Image packs (version 2) are told apart without reading their sheets: the definition is written
+      // with its version first.
+      tilePackVersion: row.definition.startsWith('{"tilePackVersion":2') ? 2 : 1,
     })),
     builtIn: [...WORLD_ART_FAMILIES],
     selection: await readSelection(),
@@ -123,7 +143,16 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
     { bodyLimit: SAVE_BODY_LIMIT, config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } },
     async (req, reply) => {
       if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack save" })) return;
-      const read = parseTilePack(z.object({ pack: z.unknown() }).parse(req.body).pack);
+      const sent = z.object({ pack: z.record(z.unknown()) }).safeParse(req.body);
+      if (!sent.success) return reply.status(400).send({ error: "The tile pack is not usable: no pack was sent." });
+      const body = sent.data.pack;
+      // The body limit is an image pack's; a drawn pack keeps its own, smaller one.
+      if (
+        (body as { tilePackVersion?: unknown } | null)?.tilePackVersion !== 2 &&
+        JSON.stringify(body).length > TILE_PACK_MAX_BYTES
+      )
+        return reply.status(413).send({ error: "The tile pack is larger than a drawn tile pack can be." });
+      const read = parseTilePack(body);
       if (!read.ok)
         return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
       return save(reply, read.pack, read.notes);

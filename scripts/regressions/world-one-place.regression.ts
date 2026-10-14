@@ -31,6 +31,9 @@ import {
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-one-place-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+// No local embedding model: memory recall would download one in the background after each turn, and the
+// process would wait for that download (or its timeout) before exiting.
+process.env.MARINARA_LITE = "true";
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");

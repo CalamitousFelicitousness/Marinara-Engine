@@ -57,11 +57,13 @@ export function AdvancedMemoryInspector({
   const [editAudience, setEditAudience] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [search, setSearch] = useState("");
+  const [recollectionDrafts, setRecollectionDrafts] = useState<Record<string, string>>({});
   const sources = useAdvancedMemorySources(chatId, showSources ? selectedId : null);
   const records = useMemo(() => {
     const all = status.data?.records ?? [];
+    // Recollections show inside their scene, not as cards of their own.
     return all
-      .filter((record) => record.kind !== "excerpt")
+      .filter((record) => record.kind !== "excerpt" && record.kind !== "recollection")
       .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex);
   }, [status.data?.records]);
   const sceneNumbers = advancedMemorySceneNumbers(status.data);
@@ -70,6 +72,17 @@ export function AdvancedMemoryInspector({
       ? t("chat.advancedMemory.sceneNumber", { number: sceneNumbers.get(record.sceneId) })
       : t(`chat.advancedMemory.kind.${record.kind}`);
   const selected = records.find((record) => record.id === selectedId);
+  // The selected scene's recollections, in the chat's character order.
+  const characterOrder = (id: string | undefined) => {
+    const index = characters.findIndex((character) => character.id === id);
+    return index < 0 ? characters.length : index;
+  };
+  const recollections =
+    selected?.kind === "scene" && selected.id !== selected.sceneId
+      ? (status.data?.records ?? [])
+          .filter((record) => record.kind === "recollection" && record.sceneId === selected.sceneId)
+          .sort((a, b) => characterOrder(a.audienceCharacterIds[0]) - characterOrder(b.audienceCharacterIds[0]))
+      : [];
   const editableTimeline = selected?.kind === "scene" && selected.id !== selected.sceneId;
   const timelineChanged = editableTimeline && draftTimeline.trim() !== (selected.timeline ?? "").trim();
   const blockedRecord = records.find((record) => record.id === status.data?.job.reviewRecordId);
@@ -141,6 +154,7 @@ export function AdvancedMemoryInspector({
     setDraftAudience(record.audienceCharacterIds);
     setEditAudience(false);
     setShowSources(false);
+    setRecollectionDrafts({});
   };
   // A scene number from the Fix box opens that scene, or its missing-summary card, and moves focus there.
   const sceneRequest = useUIStore((state) =>
@@ -512,6 +526,81 @@ export function AdvancedMemoryInspector({
           >
             {t("chat.advancedMemory.save")}
           </button>
+          {recollections.length > 0 && (
+            <section
+              className="space-y-3 border-t border-[var(--border)] pt-3"
+              aria-label={t("chat.advancedMemory.recollections.title")}
+              data-component="AdvancedMemoryRecollections"
+            >
+              <h6 className="text-xs font-semibold">{t("chat.advancedMemory.recollections.title")}</h6>
+              <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                {t("chat.advancedMemory.recollections.help")}
+              </p>
+              {recollections.map((recollection) => {
+                const name = characterName(recollection.audienceCharacterIds[0] ?? "");
+                const draftText = recollectionDrafts[recollection.id] ?? recollection.content;
+                // An edited one is left out of prompts once what its character could read changes, until saved again.
+                const review = recollection.manualOverride && recollection.embeddingStatus === "stale";
+                return (
+                  <div key={recollection.id} className="space-y-1.5">
+                    <label className="block space-y-1 text-xs">
+                      <span className="font-medium">{name}</span>
+                      <textarea
+                        value={draftText}
+                        onChange={(event) =>
+                          setRecollectionDrafts((current) => ({ ...current, [recollection.id]: event.target.value }))
+                        }
+                        rows={4}
+                        aria-label={t("chat.advancedMemory.recollections.label", { name })}
+                        className="mari-chrome-field min-h-24 w-full resize-y rounded-lg px-3 py-2 text-xs leading-relaxed"
+                      />
+                    </label>
+                    <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                      {!recollection.content ? (
+                        t("chat.advancedMemory.recollections.empty")
+                      ) : (
+                        <>
+                          {t(
+                            recollection.manualOverride
+                              ? "chat.advancedMemory.manual"
+                              : "chat.advancedMemory.generated",
+                          )}
+                          {recollection.embeddingStatus === "stale" && (
+                            <>
+                              {" · "}
+                              {t(
+                                review
+                                  ? "chat.advancedMemory.recollections.review"
+                                  : "chat.advancedMemory.recollections.stale",
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      className={`${buttonClass} w-full`}
+                      aria-label={t("chat.advancedMemory.recollections.saveFor", { name })}
+                      disabled={
+                        action.isPending || !draftText.trim() || (draftText === recollection.content && !review)
+                      }
+                      onClick={() =>
+                        action.mutate(
+                          { action: "record", recordId: recollection.id, patch: { content: draftText } },
+                          {
+                            onSuccess: () => setRecollectionDrafts(({ [recollection.id]: _saved, ...rest }) => rest),
+                          },
+                        )
+                      }
+                    >
+                      {t("chat.advancedMemory.save")}
+                    </button>
+                  </div>
+                );
+              })}
+            </section>
+          )}
           <button
             type="button"
             className={`${buttonClass} w-full`}

@@ -42,7 +42,7 @@ import {
 } from "../../hooks/use-lorebooks";
 import { useFeatureEnabled } from "../../hooks/use-feature-settings";
 import { useCharacters, usePersonas } from "../../hooks/use-characters";
-import { useConnections } from "../../hooks/use-connections";
+import { useConnections, useDefaultEmbeddingConnection } from "../../hooks/use-connections";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { useSpatialContext } from "../../hooks/use-spatial-context";
 import { showConfirmDialog } from "../../lib/app-dialogs";
@@ -3212,6 +3212,7 @@ function VectorizeSection({
   const { t: localizeUi } = useUiTranslation();
   const queryClient = useQueryClient();
   const { data: rawConnections } = useConnections();
+  const { data: defaultEmbedding } = useDefaultEmbeddingConnection();
   const sidecarModelDownloaded = useSidecarStore((s) => s.modelDownloaded);
   const sidecarModelDisplayName = useSidecarStore((s) => s.modelDisplayName);
   const fetchSidecarStatus = useSidecarStore((s) => s.fetchStatus);
@@ -3281,11 +3282,17 @@ function VectorizeSection({
       const storedConnectionId = window.localStorage.getItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY);
       if (storedConnectionId && embeddingConnections.some((connection) => connection.id === storedConnectionId)) {
         setSelectedConnectionId(storedConnectionId);
+        return;
       }
     } catch {
       // localStorage is optional; the picker still works for this session.
     }
-  }, [embeddingConnections, selectedConnectionId]);
+    // Nothing remembered: start on the app-wide default, so entries share the vector space chats query.
+    const defaultId = defaultEmbedding?.connectionId;
+    if (defaultId && embeddingConnections.some((connection) => connection.id === defaultId)) {
+      setSelectedConnectionId(defaultId);
+    }
+  }, [defaultEmbedding?.connectionId, embeddingConnections, selectedConnectionId]);
 
   const handleConnectionChange = (nextConnectionId: string) => {
     setSelectedConnectionId(nextConnectionId);

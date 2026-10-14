@@ -71,6 +71,69 @@ export interface TacticalMadeBattlefield {
   /** The battlefield it looks like: its colours, and the weather's reach. */
   scene: TacticalEnvironment;
   grid: TacticalGrid;
+  /** What stands on it that may be broken (Capability API 1.316), as painted. */
+  props?: Array<{
+    id: string;
+    label: string;
+    cells: Array<{ x: number; y: number }>;
+    health: number;
+    defense?: number;
+    resist?: string[];
+    vulnerable?: string[];
+    immune?: string[];
+    blocks?: { move?: boolean; sight?: boolean };
+    fragile?: boolean;
+    relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget?: string };
+    /** Its sprite in the board's pack (1.333). */
+    art?: string;
+  }>;
+  /** The board pack it is drawn with (1.333), by id; none for its scene's. */
+  pack?: string;
+  /** What it does on its own each round (Capability API 1.318), as painted. */
+  events?: Array<{
+    id: string;
+    label?: string;
+    at: "round-start" | "round-end";
+    from?: number;
+    every?: number;
+    until?: number;
+    where:
+      | { cells: Array<{ x: number; y: number }> }
+      | { block: { x: number; y: number; w: number; h: number } }
+      | { ring: { x: number; y: number; start: number; step: number; filled?: true } }
+      | { sweep: { from: "north" | "south" | "east" | "west"; start: number; step: number; filled?: true } }
+      | { spread: "growth" };
+    onlyOn?: TacticalTerrain[];
+    change: {
+      terrain?: TacticalTerrain;
+      height?: number;
+      light?: "bright" | "dim" | "dark" | "sunlight" | "clear";
+      obscured?: "light" | "heavy" | "clear";
+      growth?: boolean;
+      season?: string | null;
+      rotate?: 1 | 2 | 3;
+      /** Whoever stands on it carried toward an edge (1.329): a millrace. */
+      push?: { toward: "north" | "south" | "east" | "west"; squares: number };
+      /** What obscures carried toward an edge (1.329): a snow drift. */
+      drift?: { toward: "north" | "south" | "east" | "west"; squares: number };
+      tell?: string;
+    };
+  }>;
+  /** The cells growth lies on from the start (1.318), as painted. */
+  growth?: Array<{ x: number; y: number }>;
+  /** The season on each cell, by "x,y" (shared with the season work of 1.364). */
+  seasons?: Record<string, string>;
+  /** What standing in some light does here (Capability API 1.319): Noonfield's bright light. */
+  lightRule?: {
+    label?: string;
+    in?: Array<"sunlight" | "bright" | "dim" | "dark">;
+    rounds?: number;
+    tracks?: Array<{ track: string; by: number; upTo?: number }>;
+    applies?: string[];
+    spares?: { types?: string[]; tags?: string[] };
+    /** A save that escapes it this time (1.321). */
+    save?: { save: string; difficulty: number; against?: { conditions?: string[]; damage?: string[] } };
+  };
 }
 
 export interface TerrainInfo {
@@ -128,6 +191,17 @@ export interface TacticalGrid {
   /** Cells a standing wall closes (Capability API 1.177), by "x,y": 1 nobody moves into, 2 nobody
    *  sees through, 3 both. Only a ruleset fight's zones set it, and they take it away as they end. */
   walls?: Record<string, number>;
+  /** What lies on each cell over its terrain (Capability API 1.318), by "x,y": growth (hard going,
+   *  lightly obscuring), its own light, a fog, a season. Only a ruleset fight sets it. */
+  ground?: Record<string, TacticalGroundCell>;
+}
+
+/** What lies on one cell over its terrain (1.318). */
+export interface TacticalGroundCell {
+  growth?: true;
+  light?: "bright" | "dim" | "dark" | "sunlight";
+  obscured?: "light" | "heavy";
+  season?: string;
 }
 
 export interface TacticalCoord {

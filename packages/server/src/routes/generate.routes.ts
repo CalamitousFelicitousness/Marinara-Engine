@@ -12,6 +12,7 @@ import {
 } from "../services/multiplayer/generation-policy.js";
 import { appendLorebookImageMessages, type LorebookImageNotice } from "../services/generation/lorebook-image-prompt.js";
 import { withLorebookImageCompatibility } from "../services/llm/lorebook-image-provider.js";
+import { fixedTextProvider } from "../services/llm/fixed-text-provider.js";
 import { DECISION_SETTINGS_KEYS, resolveDecisionBackend } from "../services/decision/decision-default.js";
 import {
   DECISION_TIMERS_METADATA_KEY,
@@ -210,10 +211,15 @@ import {
   readToldLedger,
   refuseStoryTags,
   readStoryLedger,
+  storyFightBroken,
   storyFightOutcome,
   storyState,
   storyTurn,
   storyTurnPromptText,
+  gameIntroFor,
+  gameIntroGuidanceText,
+  readGameIntroChoice,
+  type GameIntro,
   type StoryScript,
   type StoryTurn,
   readWorldLedger,
@@ -2015,6 +2021,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
       // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
       // tell the same turn. A continuation trips nothing, as it tells no walk.
+      // The Game Master's intro message (1.339), on the reply that opens the game: the Experience's when its
+      // creator locked it, else what the setup chose, else the Experience's own. A new session of a game
+      // already under way opens with none.
+      let gameIntroRead: Promise<GameIntro | null> | undefined;
+      const gameIntroNow = () =>
+        (gameIntroRead ??=
+          chatMode === "game" && !input.impersonate && !input.continueMessageId
+            ? (async () => {
+                const game = await loadGameWorld(app.db, input.chatId, chatMeta);
+                const intro = gameIntroFor(
+                  game ? gameStoryFromMetadata(chatMeta, game)?.intro : undefined,
+                  readGameIntroChoice(chatMeta.gameIntro),
+                );
+                if (!intro) return null;
+                const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+                return replies.carried || replies.all.some((reply) => reply.trim()) ? null : intro;
+              })().catch((error) => {
+                logger.warn(error, "[game/intro] Intro for chat %s could not be read", input.chatId);
+                return null;
+              })
+            : Promise.resolve(null));
       let turnStoryRead: Promise<{ story: StoryScript; game: GameWorld; turn: StoryTurn } | null> | undefined;
       const turnStory = () =>
         (turnStoryRead ??=
@@ -2048,6 +2075,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     added: present.places,
                     day: present.day,
                     fight: storyFightOutcome(replies.player),
+                    broke: storyFightBroken(replies.player),
                     playerName: personaName,
                   }),
                 };
@@ -4369,8 +4397,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           providerTopK,
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           primaryProvider: agentChatProvider,
-          provider,
+          provider: runtimeProvider,
         } = providerRuntime;
+        // A defined Game Master intro (1.339) is the game's first message exactly as set: streamed as written.
+        const definedIntro = await gameIntroNow();
+        const provider =
+          definedIntro?.mode === "defined" ? fixedTextProvider(definedIntro.text, runtimeProvider) : runtimeProvider;
         ({
           temperature,
           maxTokens,
@@ -4390,6 +4422,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           stopSequences,
           effectiveMaxContext,
         } = providerRuntime);
+        // A defined intro is the whole reply as set: no prefill goes before it.
+        if (definedIntro?.mode === "defined") assistantPrefill = "";
 
         const chatConnectionMaxParallelJobs = Number(conn.maxParallelJobs) || 1;
         const chatConnectionKnownModel = findKnownModel(conn.provider as APIProvider, conn.model.trim());
@@ -4972,9 +5006,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // What the story says to the Game Master this turn (worldgen W10): its values, the directions in
           // force, the scene just shown, and what it asks now.
           const promptTurnStory = await turnStory();
-          const promptStoryNow = promptTurnStory
-            ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn)
-            : "";
+          const promptStoryNow = [
+            // A guided intro (1.339), on the reply that opens the game.
+            gameIntroGuidanceText(await gameIntroNow()),
+            promptTurnStory ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn) : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
@@ -6483,13 +6521,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         // Create the pipeline (exclude text rewrite agents — they run last,
         // after all other post-processing agents have produced their context).
-        const textRewriteAgents = resolvedAgents.filter(
+        const allTextRewriteAgents = resolvedAgents.filter(
           (a) => a.phase === "post_processing" && resolveAgentResultType(a) === "text_rewrite",
         );
+        // A defined intro (1.339) stays exactly as set: no agent rewrites it; its Game tags still run.
+        const textRewriteAgents = definedIntro?.mode === "defined" ? [] : allTextRewriteAgents;
         const textRewriteRunAgents = mergePairedBuiltInRewriteAgents(textRewriteAgents);
         const textRewritePendingState = getTextRewritePendingState(textRewriteAgents);
         const holdForTextRewrite = shouldHoldForTextRewrite(textRewriteAgents);
-        const textRewriteAgentIds = new Set(textRewriteAgents.map((a) => a.id));
+        const textRewriteAgentIds = new Set(allTextRewriteAgents.map((a) => a.id));
         const lorebookKeeperAgent = resolvedAgents.find((a) => a.type === "lorebook-keeper") ?? null;
         let pipelineAgents = resolvedAgents.filter(
           (a) =>
@@ -9697,7 +9737,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           }
 
-          if (input.trimIncompleteModelOutput && !input.impersonate) {
+          // A defined intro was written, not cut off: it is kept whole.
+          if (input.trimIncompleteModelOutput && !input.impersonate && definedIntro?.mode !== "defined") {
             const beforeTrim = fullResponse;
             fullResponse = trimIncompleteModelEnding(fullResponse);
             if (fullResponse !== beforeTrim) {
@@ -9875,7 +9916,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 },
               });
             }
+            // A defined intro stays as set: its rolls are recorded, its text is not rewritten around them.
             if (
+              definedIntro?.mode !== "defined" &&
               shouldNarrateGameDiceOutcome(
                 chatMeta,
                 Boolean(rolled.resolved || rolled.untrained || generalRolls.rolled),

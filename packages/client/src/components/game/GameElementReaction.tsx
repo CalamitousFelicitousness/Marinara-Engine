@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { WORLD_DEFAULT_ELEMENTS, worldElementId, type WorldElementSet } from "@marinara-engine/shared";
 
 interface ReactionDisplay {
@@ -96,7 +97,8 @@ export function GameElementReaction({ reaction, elements, onDismiss }: GameEleme
       }`}
     >
       <div
-        className="flex flex-col items-center gap-1.5 rounded-xl bg-black/85 px-6 py-3 shadow-lg shadow-black/40 backdrop-blur-md"
+        data-game-section="element-reaction"
+        className={`${GAME_SECTION_CLASS} flex flex-col items-center gap-1.5 rounded-xl bg-black/85 px-6 py-3 shadow-lg shadow-black/40 backdrop-blur-md`}
         style={{ boxShadow: `0 0 24px 4px ${glowColor}40, inset 0 0 12px ${glowColor}20` }}
       >
         {/* Reaction name with emoji */}

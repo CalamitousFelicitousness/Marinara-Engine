@@ -84,6 +84,7 @@ const result = await sendCommand?.command.execute(sendCommand.args, {
     createdContent = data.content;
     createdCharacterId = data.characterId;
   },
+  prepareUserMessage: async (text: string) => text,
   generate: async () => {
     generateCalls += 1;
   },

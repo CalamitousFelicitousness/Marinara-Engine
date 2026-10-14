@@ -76,6 +76,7 @@ function install(
   contents: Record<string, string>,
   mapPack: Record<string, unknown> | null,
   tamper?: string,
+  minor = 72,
 ) {
   const root = join(dataDir, "capability-packages", "versions", id, "1.0.0");
   mkdirSync(root, { recursive: true });
@@ -91,7 +92,7 @@ function install(
     legacy: false,
     manifest: {
       schemaVersion: 2,
-      capabilityApi: { major: 1, minor: 72 },
+      capabilityApi: { major: 1, minor },
       builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
       id,
       name: `${id} Experience`,
@@ -168,6 +169,29 @@ const installed = [
     },
     { kit: "kit.worldkit.json", worlds: ["huge.world.json"] },
   ),
+  // A story's intro message is Capability API 1.339: a pack declaring 1.338 may not carry one.
+  ...[338, 339].map((minor) =>
+    install(
+      `intro${minor}`,
+      {
+        "kit.worldkit.json": text(worldKitFile(kit)),
+        "upriver.world.json": text(
+          worldFile(
+            "Upriver",
+            kit,
+            { ...worldOf(9), edits },
+            {
+              ...story,
+              intro: { mode: "defined", text: "The river is high.", locked: true },
+            },
+          ),
+        ),
+      },
+      { kit: "kit.worldkit.json", worlds: ["upriver.world.json"] },
+      undefined,
+      minor,
+    ),
+  ),
   install(
     "badtiles",
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": "{}" },
@@ -236,6 +260,11 @@ try {
   );
   const badTiles = await readMapPack("badtiles");
   assert.ok(badTiles && !badTiles.ok && /tiles do not read/.test(badTiles.reason), JSON.stringify(badTiles));
+  const early = await readMapPack("intro338");
+  assert.ok(early && !early.ok && /needs Capability API 1\.339/.test(early.reason), JSON.stringify(early));
+  const intro = await readMapPack("intro339");
+  assert.ok(intro?.ok, JSON.stringify(intro));
+  assert.equal(intro.pack.worlds[0]?.story?.intro?.text, "The river is high.");
   assert.equal(await readMapPack("plain"), null, "an Experience without a pack");
   assert.equal(await readMapPack("nowhere"), null, "not installed");
 

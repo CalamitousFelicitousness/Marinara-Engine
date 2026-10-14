@@ -1,6 +1,8 @@
 // ──────────────────────────────────────────────
 // Game: Narration Area (VN-style segmented box)
 // ──────────────────────────────────────────────
+import { artPortraitFor } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import {
   useEffect,
   useLayoutEffect,
@@ -5266,13 +5268,21 @@ export function GameNarration({
                                   }
                                 />
                               ) : (
-                                <img
-                                  src="/npc-silhouette.svg"
-                                  alt={active.speaker || "?"}
-                                  className={cn(
-                                    GAME_DIALOGUE_AVATAR_CLASS,
-                                    "object-cover transition-colors hover:border-white/30",
-                                  )}
+                                <ArtIcon
+                                  kind="portraits"
+                                  ids={[artPortraitFor(active.speaker ?? "", active.sprite)]}
+                                  label={active.speaker || undefined}
+                                  className={GAME_DIALOGUE_AVATAR_CLASS}
+                                  fallback={
+                                    <img
+                                      src="/npc-silhouette.svg"
+                                      alt={active.speaker || "?"}
+                                      className={cn(
+                                        GAME_DIALOGUE_AVATAR_CLASS,
+                                        "object-cover transition-colors hover:border-white/30",
+                                      )}
+                                    />
+                                  }
                                 />
                               )}
                             </button>
@@ -5312,10 +5322,18 @@ export function GameNarration({
                             }
                           />
                         ) : (
-                          <img
-                            src="/npc-silhouette.svg"
-                            alt={active.speaker || "?"}
-                            className={cn(GAME_DIALOGUE_AVATAR_CLASS, "object-cover")}
+                          <ArtIcon
+                            kind="portraits"
+                            ids={[artPortraitFor(active.speaker ?? "", active.sprite)]}
+                            label={active.speaker || undefined}
+                            className={GAME_DIALOGUE_AVATAR_CLASS}
+                            fallback={
+                              <img
+                                src="/npc-silhouette.svg"
+                                alt={active.speaker || "?"}
+                                className={cn(GAME_DIALOGUE_AVATAR_CLASS, "object-cover")}
+                              />
+                            }
                           />
                         )}
                         <ExpressionReaction expression={active.sprite} />

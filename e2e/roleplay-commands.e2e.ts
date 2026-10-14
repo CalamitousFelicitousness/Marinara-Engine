@@ -88,6 +88,48 @@ for (const mode of ["roleplay", "conversation"] as const) {
       await request.delete(`/api/chats/${chat.id}`);
     }
   });
+
+  test(`/send stores macros resolved like a normal send in ${mode} (#7585)`, async ({ page, request }) => {
+    const persona = await (await request.post("/api/characters/personas", { data: { name: "Pat Persona" } })).json();
+    const response = await request.post("/api/chats", {
+      data: { name: "Send macros", mode, personaId: persona.id },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const chat = (await response.json()) as { id: string };
+    // Hold the persona list, as on a slow first load: /send must wait for it, not store "User" for {{user}}.
+    // A message without macros must not wait.
+    let releasePersonas = () => {};
+    const personasHeld = new Promise<void>((resolve) => (releasePersonas = resolve));
+    await page.route("**/api/characters/personas/list", async (route) => {
+      await personasHeld;
+      await route.continue();
+    });
+    try {
+      await openChat(page, chat.id, {
+        chatHelpSeenModes: ["roleplay", "conversation"],
+        enterToSendRP: true,
+        enterToSendConvo: true,
+      });
+      const stored = async () =>
+        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as any[])
+          .filter((message) => message.role === "user")
+          .map((message) => message.content as string);
+      const composer = page.locator("textarea[data-chat-composer]");
+      await composer.fill("/send Plain hello.");
+      await composer.press("Enter");
+      await expect.poll(stored).toEqual(["Plain hello."]);
+      await composer.fill("/send Pick {{random::red::green}}, I am {{user}}.");
+      await composer.press("Enter");
+      await expect(composer).toHaveValue("");
+      releasePersonas();
+      await expect.poll(async () => (await stored())[1]).toMatch(/^Pick (red|green), I am Pat Persona\.$/u);
+      await expect(page.locator('[data-message-role="user"]').last()).toContainText((await stored())[1]!);
+    } finally {
+      releasePersonas();
+      await request.delete(`/api/chats/${chat.id}`);
+      await request.delete(`/api/characters/personas/${persona.id}`);
+    }
+  });
 }
 
 test("Roleplay interruptions trim the latest message and restore its original safely", async ({

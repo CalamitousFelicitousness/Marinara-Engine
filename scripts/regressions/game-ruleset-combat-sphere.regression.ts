@@ -37,6 +37,7 @@ import {
   type RulesetDefinition,
   type RulesetEncounterState,
   type RulesetStatBlock,
+  type RulesetSheetItem,
 } from "../../packages/shared/src/index.js";
 import { rulesetThreateningEnemies } from "../../packages/shared/src/features/ruleset-combat/grid.js";
 
@@ -163,13 +164,13 @@ try {
       ],
     } as unknown as RulesetStatBlock,
   });
-  const fight = (): RulesetEncounterState => {
+  const fight = (items?: RulesetSheetItem[]): RulesetEncounterState => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
       roller: () => 10,
       combatants: [
-        { id: "mage", name: "Mage", side: "party", build, live: {}, catalogs: { spells } },
+        { id: "mage", name: "Mage", side: "party", build, live: {}, catalogs: { spells }, ...(items ? { items } : {}) },
         { id: "ally", name: "Ally", side: "party", build, live: {}, catalogs: { spells } },
         foe("a"),
         foe("b"),
@@ -228,6 +229,36 @@ try {
     assert.ok(targetsOf(state, "mage", "Bolt").includes("giant"), "the size limit is the sphere's own");
     giant.size = "large";
     assert.ok(targetsOf(state, "mage", "Resilient Sphere").includes("giant"), "Large still fits");
+    // A scroll of it holds to the same size (1.317).
+    const scroll = (upTo?: string): RulesetSheetItem => ({
+      name: "Sphere Scroll",
+      quantity: 1,
+      worn: false,
+      item: {
+        category: "gear",
+        use: {
+          kind: "debuff",
+          budget: "action",
+          targets: "any",
+          range: 30,
+          saveDifficulty: 15,
+          save: { save: "dex_save", onSuccess: "negates" },
+          applies: [{ condition: "sphered", duration: { rounds: 10 } }],
+          consumes: true,
+          ...(upTo ? { targetsUpTo: upTo } : {}),
+        },
+      } as never,
+    });
+    const read = fight([scroll("large")]);
+    const huge = rulesetCombatant(read, "giant")!;
+    huge.x = 4;
+    huge.y = 5;
+    assert.ok(!targetsOf(read, "mage", "Sphere Scroll").includes("giant"), "not a Huge giant");
+    assert.ok(targetsOf(read, "mage", "Sphere Scroll").includes("a"));
+    const any = fight([scroll()]);
+    rulesetCombatant(any, "giant")!.x = 4;
+    rulesetCombatant(any, "giant")!.y = 5;
+    assert.ok(targetsOf(any, "mage", "Sphere Scroll").includes("giant"), "a use with no limit reaches it");
   }
 
   // ── Nothing gets in or out ──

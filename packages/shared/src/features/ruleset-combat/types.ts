@@ -1088,6 +1088,8 @@ export const RULESET_SHAPE_KEYS = [
   "senses",
   "size",
   "baseSize",
+  "baseSpeeds",
+  "levitating",
   "span",
   "riders",
   "block",
@@ -1551,6 +1553,11 @@ export interface RulesetCombatant {
   speeds?: RulesetMoveSpeeds;
   /** A flier that hovers (1.113). */
   hover?: true;
+  /** Their own ways of moving while a condition gives them more (1.345); `speeds` and `hover` are
+   *  what they have now. Absent while nothing gives them any. */
+  baseSpeeds?: { speeds?: RulesetMoveSpeeds; hover?: true };
+  /** Moving only up and down, never across (1.345): Levitate. */
+  levitating?: true;
   /** What is left this turn of each way they move, in CELLS (1.113): every cell moved comes off all
    *  of them, as switching from walking to flying takes what was already walked off the flight.
    *  Absent for somebody who only walks, whose walk is `movementLeft`. */

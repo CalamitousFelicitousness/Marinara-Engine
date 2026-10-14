@@ -77899,6 +77899,73 @@
                 },
                 "additionalProperties": false
               },
+              "speeds": {
+                "type": "object",
+                "properties": {
+                  "fly": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000
+                      },
+                      {
+                        "type": "string",
+                        "const": "walk"
+                      }
+                    ]
+                  },
+                  "swim": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000
+                      },
+                      {
+                        "type": "string",
+                        "const": "walk"
+                      }
+                    ]
+                  },
+                  "climb": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000
+                      },
+                      {
+                        "type": "string",
+                        "const": "walk"
+                      }
+                    ]
+                  },
+                  "burrow": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000
+                      },
+                      {
+                        "type": "string",
+                        "const": "walk"
+                      }
+                    ]
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
+              "hover": {
+                "type": "boolean",
+                "const": true
+              },
+              "levitates": {
+                "type": "boolean",
+                "const": true
+              },
               "endsWhenSourceDown": {
                 "type": "boolean"
               },

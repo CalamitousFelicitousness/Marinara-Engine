@@ -8965,6 +8965,28 @@ const combatConditionSchema = z
       })
       .strict()
       .optional(),
+    /** Ways of moving it gives its holder while it holds (Capability API 1.345), in the ruleset's own
+     *  distance, or `"walk"` for as fast as they walk: 5e's Fly `{"fly": 60}`, Dragon Wings
+     *  `{"fly": "walk"}`, an item use's Wings of Flying. A faster one of their own stays theirs.
+     *  `hover` keeps them up while they cannot move (a Broom of Flying). `levitates` (Levitate,
+     *  Boots of Levitation) moves them only up and down, by its fly speed, never across, and they
+     *  hover. When it ends, somebody up in the air with no flight left falls. */
+    speeds: z
+      .object(
+        Object.fromEntries(
+          (["fly", "swim", "climb", "burrow"] as const).map((mode) => [
+            mode,
+            z.union([z.number().int().min(1).max(10000), z.literal("walk")]).optional(),
+          ]),
+        ) as Record<
+          "fly" | "swim" | "climb" | "burrow",
+          z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodLiteral<"walk">]>>
+        >,
+      )
+      .strict()
+      .optional(),
+    hover: z.literal(true).optional(),
+    levitates: z.literal(true).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied

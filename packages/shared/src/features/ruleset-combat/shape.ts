@@ -117,6 +117,8 @@ export function rulesetTakeShape(
   if (built.criticalFrom === undefined) delete target.criticalFrom;
   else target.criticalFrom = built.criticalFrom;
   delete target.baseSize;
+  delete target.baseSpeeds;
+  delete target.levitating;
   target.creature = { ...form.creature };
   // A form taken partway through a turn moves no further than its own speed allows.
   if (target.movementLeft !== undefined && target.movement !== undefined) {

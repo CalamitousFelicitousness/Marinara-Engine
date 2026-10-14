@@ -4680,6 +4680,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
 
   // Grown or shrunk by what they held as the fight began (1.195), before anybody is set down.
   rulesetSyncSizes(definition, state);
+  // And the ways of moving they were given (1.345).
+  rulesetSyncSpeeds(definition, state);
   placeRulesetCombatants(definition, combat, state, input.board);
   // What auras spread from where everybody stands (1.263).
   rulesetSyncAuras(definition, state);
@@ -5225,6 +5227,80 @@ export function rulesetSyncAuras(
     }
   }
   return changes;
+}
+
+/**
+ * Ways of moving given by the conditions each holds (1.345): Fly, Dragon Wings, Levitate. Their own
+ * come back as nothing gives them any more. What is left of this turn's movement grows by what a
+ * faster way adds, and a new way starts with what is left of the walk. The ids of those whose ways
+ * changed.
+ */
+export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetEncounterState): string[] {
+  const combat = definition.combat;
+  if (!combat) return [];
+  const changed: string[] = [];
+  for (const combatant of state.combatants) {
+    const grants = rulesetActiveConditions(definition, combat, combatant, state).filter(
+      (entry) => entry.speeds || entry.hover || entry.levitates,
+    );
+    if (!grants.length && !combatant.baseSpeeds && !combatant.levitating) continue;
+    const own = combatant.baseSpeeds ?? {
+      ...(combatant.speeds ? { speeds: { ...combatant.speeds } } : {}),
+      ...(combatant.hover ? { hover: true as const } : {}),
+    };
+    const speeds: RulesetMoveSpeeds = { ...(own.speeds ?? {}) };
+    let hover = !!own.hover;
+    let levitating = false;
+    for (const entry of grants) {
+      for (const mode of RULESET_MOVE_MODES) {
+        const given = entry.speeds?.[mode];
+        const speed = given === "walk" ? combatant.speed : given;
+        if (speed && speed > (speeds[mode] ?? 0)) speeds[mode] = speed;
+      }
+      if (entry.hover || entry.levitates) hover = true;
+      if (entry.levitates) levitating = true;
+    }
+    const before = { speeds: combatant.speeds, hover: combatant.hover, levitating: combatant.levitating };
+    const fastBefore = rulesetMovementAllowance(definition, combat, combatant, state);
+    const modesBefore = rulesetModeAllowances(definition, combat, combatant, state);
+    if (Object.keys(speeds).length) combatant.speeds = speeds;
+    else delete combatant.speeds;
+    if (hover) combatant.hover = true;
+    else delete combatant.hover;
+    if (levitating) combatant.levitating = true;
+    else delete combatant.levitating;
+    if (grants.length) combatant.baseSpeeds = own;
+    else delete combatant.baseSpeeds;
+    if (
+      JSON.stringify(before) ===
+      JSON.stringify({ speeds: combatant.speeds, hover: combatant.hover, levitating: combatant.levitating })
+    )
+      continue;
+    changed.push(combatant.id);
+    if (combatant.movement === undefined) continue;
+    // What is left of the turn: more by what a faster way adds, and each new way from the walk left.
+    const fastAfter = rulesetMovementAllowance(definition, combat, combatant, state);
+    const left = combatant.movementLeft ?? 0;
+    const walked = Math.max(0, fastBefore - left);
+    combatant.movement = fastAfter;
+    combatant.movementLeft = Math.max(0, left + fastAfter - fastBefore);
+    const modesAfter = rulesetModeAllowances(definition, combat, combatant, state);
+    if (!modesAfter) {
+      delete combatant.modeLeft;
+      continue;
+    }
+    const was = combatant.modeLeft ?? {};
+    const now: Partial<Record<RulesetMoveMode, number>> = {};
+    for (const [mode, cells] of Object.entries(modesAfter) as Array<[RulesetMoveMode, number]>) {
+      const had = modesBefore?.[mode];
+      now[mode] =
+        had !== undefined && was[mode] !== undefined
+          ? Math.max(0, was[mode]! + cells - had)
+          : Math.max(0, cells - walked);
+    }
+    combatant.modeLeft = now;
+  }
+  return changed;
 }
 
 export function rulesetSyncSizes(

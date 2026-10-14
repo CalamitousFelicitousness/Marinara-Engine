@@ -755,6 +755,8 @@ export function rulesetReachableCells(
   const actor = rulesetCombatant(state, actorId);
   const from = rulesetPositionOf(actor);
   if (!combat || !grid || !actor || !from) return [];
+  // Levitating (1.345): up and down only, never across.
+  if (actor.levitating) return [];
   const budget = Math.min(MOVEMENT_CEILING, Math.max(0, Math.floor(actor.movementLeft ?? 0)));
   if (budget < 1) return [];
 

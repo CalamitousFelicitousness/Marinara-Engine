@@ -95,6 +95,7 @@ import {
   rulesetAuraSpreaders,
   rulesetSyncAuras,
   rulesetSyncSizes,
+  rulesetSyncSpeeds,
   rulesetMovesOnly,
   rulesetLightMatches,
 } from "./encounter.js";
@@ -376,6 +377,12 @@ function begin(
       rulesetSyncZoneWalls(next);
       // Grown or shrunk as the conditions now held say (1.195).
       for (const change of rulesetSyncSizes(definition, next)) ctx.events.push({ type: "resized", ...change });
+      // Given ways of moving, or left with their own, as the conditions now held say (1.345): up in
+      // the air with no flight left, they fall.
+      for (const id of rulesetSyncSpeeds(definition, next)) {
+        const one = rulesetCombatant(next, id);
+        if (one) groundFlier(ctx, one);
+      }
       // Spread, or taken back, by auras as everybody now stands (1.263).
       for (const change of rulesetSyncAuras(definition, next)) {
         ctx.events.push({
@@ -6491,7 +6498,9 @@ function groundFlier(ctx: RulesetCombatContext, flier: RulesetCombatant): void {
   const grounded =
     !rulesetCombatStanding(flier) ||
     !!rulesetProneCondition(ctx.definition, ctx.combat, flier) ||
-    rulesetCombatEffects(ctx.definition, ctx.combat, flier, ctx.state).has("speed-zero");
+    rulesetCombatEffects(ctx.definition, ctx.combat, flier, ctx.state).has("speed-zero") ||
+    // Its flight gone with what gave it (1.345).
+    !flier.speeds?.fly;
   if (!grounded) return;
   const levels = rulesetLevelOf(grid, flier) - elevationAt(grid, flier.x!, flier.y!);
   // Down first, so whatever the fall itself does finds it on the ground.

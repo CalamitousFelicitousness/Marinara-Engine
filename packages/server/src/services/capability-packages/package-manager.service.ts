@@ -2114,6 +2114,19 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
+/** A combat condition that gives ways of moving, hovering or levitation (1.345). */
+function carriesGivenSpeeds(ruleset: unknown): boolean {
+  const combat = plainRecord(plainRecord(ruleset)?.combat);
+  const conditions = Array.isArray(combat?.conditions) ? combat.conditions : [];
+  return conditions.some((one) => {
+    const condition = plainRecord(one);
+    return (
+      !!condition &&
+      (condition.speeds !== undefined || condition.hover !== undefined || condition.levitates !== undefined)
+    );
+  });
+}
+
 /** A call from a catalog entry or an item use (1.344): `calls` anywhere but a creature's action. */
 function carriesCatalogCalls(value: unknown, depth = 0, inCreature = false): boolean {
   if (!value || depth > 40) return false;
@@ -5173,6 +5186,10 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Ways of moving given by conditions, 1.345.
+  if (!declaresApi(345) && carriesGivenSpeeds(ruleset)) {
+    return "A ruleset with a condition that gives ways of moving, hovering or levitation requires schemaVersion 2 and capabilityApi 1.345 or newer";
   }
   // Calls from catalog entries and item uses, 1.344.
   if (

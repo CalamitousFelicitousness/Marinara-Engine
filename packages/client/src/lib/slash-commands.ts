@@ -66,6 +66,8 @@ export interface SlashCommandContext {
   }) => void | Promise<void>;
   /** Prepare typed text as a normal send would store it: user-input regex, input translation and macros. */
   prepareUserMessage: (text: string) => Promise<string>;
+  /** Whether the composer had files attached, which a posted user message carries (/send). */
+  hasComposerAttachments?: boolean;
   /** Invalidate chat queries to refresh the UI */
   invalidate: () => void;
   /** Invalidate the character detail cache after character-owned changes. */
@@ -110,6 +112,7 @@ export function withComposerReplyAndAttachments(
   const attachments = composer.attachments.map(({ type, data, name }) => ({ type, data, filename: name, name }));
   return {
     ...ctx,
+    hasComposerAttachments: attachments.length > 0,
     createMessage: async (data) => {
       if (data.role !== "user") return ctx.createMessage(data);
       // A reply picked while the command was preparing its text stays for the next message.
@@ -753,7 +756,8 @@ const COMMANDS: SlashCommand[] = [
     local: true,
     async execute(args, ctx) {
       const content = stripSingleWrappingQuotePair(args);
-      if (!content) return { handled: true, feedback: "Usage: /send <message>" };
+      // Files with no text post on their own, as Post only posts them.
+      if (!content && !ctx.hasComposerAttachments) return { handled: true, feedback: "Usage: /send <message>" };
       await ctx.createMessage({ role: "user", content: await ctx.prepareUserMessage(content), characterId: null });
       return { handled: true };
     },

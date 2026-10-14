@@ -179,6 +179,24 @@ for (const mode of ["roleplay", "conversation"] as const) {
       if (mode === "conversation") expect(extra(message.extra).replyTo).toEqual(reply);
       await expect(input.getByText("map-note.txt", { exact: true })).toHaveCount(0);
       await expect(input.getByRole("button", { name: "Cancel reply", exact: true })).toHaveCount(0);
+
+      // A file with no text posts on its own, as Post only posts it, instead of vanishing.
+      await input.locator('input[type="file"]').setInputFiles({
+        name: "gate-key.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("Brass."),
+      });
+      await expect(input.getByText("gate-key.txt", { exact: true })).toBeVisible();
+      // The Send button, since Enter on "/send" picks the command from the list in Roleplay.
+      await composer.fill("/send");
+      await input.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(async () => (await posted()).length).toBe(2);
+      const fileOnly = (await posted()).find((candidate) => candidate.id !== message.id);
+      expect(fileOnly.content).toBe("");
+      expect(extra(fileOnly.extra).attachments).toEqual([
+        expect.objectContaining({ type: "text/plain", name: "gate-key.txt" }),
+      ]);
+      await expect(input.getByText("gate-key.txt", { exact: true })).toHaveCount(0);
     } finally {
       await request.delete(`/api/chats/${chat.id}`);
     }

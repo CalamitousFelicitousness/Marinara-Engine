@@ -67,6 +67,9 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
       },
     });
     expect(metadata.ok(), await metadata.text()).toBeTruthy();
+    // Chat variables are their own metadata patch: the route takes macroVariables only on its own.
+    const variables = await request.patch(`/api/chats/${chat.id}/metadata`, { data: { macroVariables: { gold: "12" } } });
+    expect(variables.ok(), await variables.text()).toBeTruthy();
     const opening = await request.post(`/api/chats/${chat.id}/messages`, {
       data: { role: "assistant", content: "A gate blocks the path." },
     });
@@ -99,7 +102,7 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
     await expect(narration).toContainText("A gate blocks the path.");
     await page
       .getByPlaceholder("What do you do?", { exact: true })
-      .fill("I shout {{random::red::green}}, I am {{user}}.");
+      .fill("I shout {{random::red::green}}, I am {{user}} with {{getvar::gold}} gold.");
     await page.getByRole("button", { name: "Send game turn", exact: true }).click();
     releasePersonas();
 
@@ -107,7 +110,10 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
       ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as Array<{ role: string; content: string }>)
         .filter((message) => message.role === "user")
         .map((message) => message.content);
-    await expect.poll(storedTurn).toEqual([expect.stringMatching(/^I shout (red|green), I am Pat Persona\.$/u)]);
+    // A Game turn reads the chat's variables, as the server did when it filled the raw turn in.
+    await expect
+      .poll(storedTurn)
+      .toEqual([expect.stringMatching(/^I shout (red|green), I am Pat Persona with 12 gold\.$/u)]);
     const [turn] = await storedTurn();
     await expect.poll(() => prompts.length).toBeGreaterThan(0);
     expect(prompts[0]!.some((content) => content.includes(turn!))).toBe(true);
@@ -117,6 +123,20 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
     await page.getByRole("button", { name: "Logs", exact: true }).click();
     const logs = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Session Logs" }) });
     await expect(logs).toContainText(turn!);
+    await logs.getByRole("button", { name: "Close logs", exact: true }).click();
+    await expect(logs).toHaveCount(0);
+
+    // A turn that writes a chat variable stays raw, so the server still applies the write.
+    await page.getByPlaceholder("What do you do?", { exact: true }).fill("{{setvar::met::yes}}I wave.");
+    await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+    await expect.poll(storedTurn).toEqual([turn, "{{setvar::met::yes}}I wave."]);
+    await expect
+      .poll(async () => {
+        const saved = (await (await request.get(`/api/chats/${chat.id}`)).json()) as { metadata?: unknown };
+        const meta = typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
+        return (meta as { macroVariables?: Record<string, string> } | undefined)?.macroVariables;
+      })
+      .toEqual({ gold: "12", met: "yes" });
   } finally {
     for (const path of cleanup) await request.delete(path);
     await new Promise<void>((resolve) => provider.close(() => resolve()));

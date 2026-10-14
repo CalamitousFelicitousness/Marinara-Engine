@@ -134,7 +134,8 @@ import {
   useUploadPersonaAvatar,
   type SpriteInfo,
 } from "../../hooks/use-characters";
-import { createInputMacroResolverForChat } from "../../lib/chat-macros";
+import { createInputMacroResolverForChat, VARIABLE_WRITE_MACRO_RE } from "../../lib/chat-macros";
+import { parseChatMetadata } from "../../lib/chat-display";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api, ApiError, getJsonRepairRequest, type JsonRepairRequest } from "../../lib/api-client";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
@@ -7046,7 +7047,11 @@ function GameSurfaceComponent({
       // A turn is stored with its macros filled in, as a Roleplay or Conversation send is (#7585), so the Game
       // log and the model read the same {{random}} pick. Macros only: a turn skips user-input regex and
       // translation, as it always has, and carries engine tags ([choice: …], [dice: …]) those could rewrite.
-      if (userMessage.includes("{{")) {
+      // It reads the chat's variables, as the server did when it filled in a raw turn.
+      // ponytail: a turn that changes a chat variable ({{setvar}}, {{incvar}} …) is still sent raw, so the
+      // server saves the new value as before; only that turn can still show the log one {{random}} pick and
+      // the model another. Upgrade: send the turn's variable changes with it and resolve it here too.
+      if (userMessage.includes("{{") && !VARIABLE_WRITE_MACRO_RE.test(userMessage)) {
         const submittingChat = useChatStore.getState().activeChat;
         // Waits only while a list is still loading after the page opens, so a turn otherwise stays
         // synchronous up to the generation (see handleSendGameTurn).
@@ -7058,6 +7063,7 @@ function GameSurfaceComponent({
           queryClient.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
           queryClient.getQueryData<Persona[]>(characterKeys.personas),
           userMessage,
+          { ...parseChatMetadata(submittingChat?.metadata).macroVariables },
         )(userMessage);
       }
       return await generate({

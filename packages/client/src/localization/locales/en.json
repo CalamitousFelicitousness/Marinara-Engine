@@ -572,7 +572,7 @@
   "chat.advancedMemory.status.needs_confirmation": "Character knowledge needs confirmation",
   "chat.advancedMemory.status.ready": "Memory is ready",
   "chat.advancedMemory.status.running": "Processing memory",
-  "chat.advancedMemory.summaryGenerationHelp": "Scene summaries are written by the Helper model, using only that scene's messages and your corrections. Your Summaries prompts and Chat Summary's Maximum output size still apply. Constant summaries are written by the model specified in the Chat Summary section (or Helper, if it's not chosen). Characters who saw the same events share a summary, and Resume picks up where it stopped.",
+  "chat.advancedMemory.summaryGenerationHelp": "Scene summaries are written by the Helper model, using only that scene's messages and your corrections. Your Summaries prompts and Chat Summary's Maximum output size still apply. Constant summaries are also written by the Helper model. Characters who saw the same events share a summary, and Resume picks up where it stopped.",
   "chat.advancedMemory.summaryText": "Summary text",
   "chat.advancedMemory.timeframe": "Story timeframe",
   "chat.advancedMemory.timeframeUnknown": "Not specified in the story",

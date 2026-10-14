@@ -5,7 +5,9 @@
 import {
   applyGameInventoryOps,
   gameInventoryBagKey,
+  defaultRulesetSheetBuild,
   normalizeCharacterLookupName,
+  readRulesetSheetEnvelope,
   resolveRulesetStartingGear,
   rulesetStartingGearKind,
   rulesetStartingGearTakenBy,
@@ -25,6 +27,7 @@ import {
   loadGameInventoryItemBook,
   readMetadata,
 } from "./game-inventory.service.js";
+import { rollDieSecurely } from "./dice-rng.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "./ruleset-registry.service.js";
 
 /** The gear each bag has taken, by bag key ("" for the player's own) and gear id. */
@@ -108,7 +111,27 @@ export async function takeGameStartingGear(
 
   const book = await loadGameInventoryItemBook(db, { metadata, resolved, playerName }, "player");
   if (!book) return refuse(409, "no-gear", "This game's items could not be read");
-  const resolution = resolveRulesetStartingGear(definition, book, input.selection, gameRulesetLayerOptions(resolved));
+  // Coins read off the holder's sheet or rolled (1.157) are worked out once, here, as the gear is taken.
+  const metaCards = (Array.isArray(metadata.gameCharacterCards) ? metadata.gameCharacterCards : []).filter(
+    (card: unknown): card is { name: string; rulesetSheet?: unknown } =>
+      !!card && typeof card === "object" && typeof (card as { name?: unknown }).name === "string",
+  );
+  const holderCard =
+    input.holder !== undefined
+      ? metaCards.find(
+          (card) => normalizeCharacterLookupName(card.name) === normalizeCharacterLookupName(input.holder!),
+        )
+      : (metaCards.find((card) => !!playerKey && normalizeCharacterLookupName(card.name) === playerKey) ??
+        metaCards[0]);
+  const holderBuild = holderCard ? readRulesetSheetEnvelope(definition, holderCard.rulesetSheet)?.build : undefined;
+  const resolution = resolveRulesetStartingGear(
+    definition,
+    book,
+    input.selection,
+    gameRulesetLayerOptions(resolved),
+    undefined,
+    { build: holderBuild ?? defaultRulesetSheetBuild(definition), rollDie: rollDieSecurely },
+  );
   if (!resolution.ok) return refuse(409, resolution.reason, resolution.detail);
   const { gear } = resolution;
   const kind = rulesetStartingGearKind(definition, gear.id);

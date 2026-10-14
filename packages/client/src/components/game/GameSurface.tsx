@@ -1,4 +1,5 @@
 import {
+  RULESET_PARTY_KEY,
   assignCombatTactics,
   combatTacticsSchema,
   gameWorldKitFromMetadata,
@@ -235,6 +236,8 @@ import {
   scoreAmbient,
   normalizeCharacterLookupName,
   readRulesetSheetEnvelope,
+  defaultRulesetSheetBuild,
+  type RulesetSheetBuild,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
   type RulesetLiveState,
@@ -244,10 +247,11 @@ import { GameNarration } from "./GameNarration";
 import { formatNarration } from "./game-narration-format";
 import { GameInput } from "./GameInput";
 import { GameMapPanel, MobileMapButton } from "./GameMap";
+import { GameProgressClocks } from "./GameProgressClocks";
 import { GamePartyBar } from "./GamePartyBar";
 import { GameCharacterSheet } from "@/components/game/GameCharacterSheet";
 import type { GameCharacterSheetGameCard, GameCharacterSheetRuleset } from "@/components/game/GameCharacterSheet";
-import { describeRefusedSheetCommands } from "./GameRulesetSheet";
+import { GameRulesetPartySheet, describeRefusedSheetCommands } from "./GameRulesetSheet";
 import { useGameRuleset } from "../../hooks/use-game-ruleset";
 import { useRulesetItemBook } from "../../hooks/use-ruleset-item-book";
 import { flushGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
@@ -8993,6 +8997,20 @@ function GameSurfaceComponent({
       }),
     };
   }, [chatMeta.gameCharacterCards, gameRuleset, inventoryPlayerName]);
+  // The party's characters as a turn reads them, which the shared sheet's member fields follow (1.163).
+  const partySheetMemberBuilds = useMemo<RulesetSheetBuild[] | undefined>(() => {
+    if (gameRuleset.status !== "ok" || !gameRuleset.definition.party?.fromMembers?.length) return undefined;
+    const definition = gameRuleset.definition;
+    const cards = (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : []) as Array<
+      Record<string, unknown>
+    >;
+    return cards.flatMap((card) => {
+      if (typeof card.name !== "string" || !card.name.trim()) return [];
+      if (card.rulesetSheet == null) return [defaultRulesetSheetBuild(definition)];
+      const build = readRulesetSheetEnvelope(definition, card.rulesetSheet)?.build;
+      return build ? [build] : [];
+    });
+  }, [chatMeta.gameCharacterCards, gameRuleset]);
   // A game with no ruleset buys and pays in its setting kit's money (worldgen W6b).
   const inventoryKit = gameKit;
   const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems, inventoryKit);
@@ -12942,6 +12960,10 @@ function GameSurfaceComponent({
                   className={cn(
                     // On a phone it stops short of the control-button rows in the right half of the chat.
                     "pointer-events-auto absolute left-3 right-[calc(50%+1.625rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
+                    gameRuleset?.status === "ok" &&
+                      gameRuleset.definition.clocks &&
+                      Boolean(gameSnapshot?.rulesetClocks?.length) &&
+                      "flex-wrap md:flex-nowrap",
                     tacticalCombatActive
                       ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
                       : topOverlayOffsetClass,
@@ -12976,6 +12998,29 @@ function GameSurfaceComponent({
                       constraintsRef={hudSurfaceRef}
                     />
                   </div>
+
+                  {gameRuleset?.status === "ok" &&
+                    gameRuleset.definition.clocks &&
+                    Boolean(gameSnapshot?.rulesetClocks?.length) && (
+                      <div className="order-last w-full md:order-none md:w-48">
+                        <GameProgressClocks clocks={gameSnapshot?.rulesetClocks ?? []} />
+                      </div>
+                    )}
+
+                  {gameRuleset?.status === "ok" && gameRuleset.definition.party && (
+                    <div className="order-last w-full md:order-none md:w-64">
+                      <GameRulesetPartySheet
+                        definition={gameRuleset.definition}
+                        stored={chatMeta.gamePartySheet}
+                        live={gameSnapshot?.rulesetLive?.[RULESET_PARTY_KEY]}
+                        chatId={activeChatId}
+                        revision={
+                          typeof chatMeta.gamePartySheetRevision === "number" ? chatMeta.gamePartySheetRevision : 0
+                        }
+                        memberBuilds={partySheetMemberBuilds}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Dynamic weather effects from tracked game state */}

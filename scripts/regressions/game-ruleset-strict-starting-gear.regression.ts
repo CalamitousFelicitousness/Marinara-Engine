@@ -155,7 +155,7 @@ try {
     "react/jsx-runtime": `export const Fragment = 'fragment'; export const jsx = (type, props) => ({type, props}); export const jsxs = jsx;`,
     "react-i18next": `export const useTranslation = () => ({ t: (key) => key });`,
     "@tanstack/react-query": `export const useQueries = ({combine}) => combine([]);`,
-    "lucide-react": `export const Check = 'check', ChevronLeft = 'left', ChevronRight = 'right', Dices = 'dice', Minus = 'minus', Plus = 'plus';`,
+    "lucide-react": `export const Check = 'check', ChevronLeft = 'left', ChevronRight = 'right', Dices = 'dice', Minus = 'minus', Plus = 'plus', Trash2 = 'trash';`,
     "../ui/Modal": `export const Modal = 'modal';`,
     "./RulesetItemPicker": `export const rulesetItemStatsLine = () => '';`,
     "../../hooks/use-capability-packages": `export const rulesetCatalogQuery = () => ({});`,

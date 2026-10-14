@@ -17,6 +17,7 @@ import {
   stripEngineResultBlocks,
 } from "./game-narration-text.js";
 import { stripGameBranchDelimiters } from "./dice-branch.js";
+import { stripClockCommandTags } from "./clock-command-tag.js";
 import { stripSheetCommandTags } from "./sheet-command-tag.js";
 import { readResolvedInventoryTagBody, type ResolvedInventoryTag } from "./inventory-command-tag.js";
 import type { DirectionCommand, DirectionEffect, WidgetUpdate } from "../types/game.js";
@@ -410,7 +411,7 @@ export function parseSegmentInventoryUpdates(content: string): SegmentInventoryU
   source = source.replace(/\[party-chat\]/gi, "");
   source = extractFlatTags(source, /\[dice:/gi).remaining;
 
-  source = stripSheetCommandTags(source);
+  source = stripClockCommandTags(stripSheetCommandTags(source));
   source = stripMapUpdateTag(source);
   source = stripBalancedTag(source, "[choices:");
 
@@ -635,7 +636,7 @@ export function parseGmTags(content: string): ParsedGmTags {
 
   // The Engine resolves every sheet command and rewrites it with the outcome it actually
   // applied, so the bookkeeping is never narration.
-  text = stripSheetCommandTags(text);
+  text = stripClockCommandTags(stripSheetCommandTags(text));
 
   // [combat: enemies="Goblin:5:40:8:5:6, Skeleton:3:25:6:3:4" allies="Dottore, Nasira"]
   // Format: Name:Level:HP:ATK:DEF:SPD — comma separated for multiple enemies
@@ -860,7 +861,7 @@ export function stripGmTags(content: string): string {
   // the player already read would be the worse failure.
   // The Engine resolves every sheet command and rewrites it with the outcome it actually
   // applied, so the bookkeeping is never narration.
-  text = stripSheetCommandTags(text);
+  text = stripClockCommandTags(stripSheetCommandTags(text));
   text = stripGameBranchDelimiters(text);
   // Quote-aware catch-all for any remaining [tag: ...] the model may invent
   text = stripUnknownBracketTags(text);

@@ -5,6 +5,18 @@ export {
   type EmptyResponseContext,
 } from "@marinara-engine/shared";
 
+/** Endings that mean a reply was cut off, stopped, blocked or handed to a tool before it was finished. */
+const UNFINISHED_FINISH_REASONS = new Set(["length", "abort", "error", "content_filter", "refusal", "tool_calls"]);
+
+/**
+ * Whether a reply ended before it was finished. Any other ending counts as finished: OpenAI's "stop",
+ * Anthropic's own "end_turn" or "stop_sequence" (passed through as is), or none at all. Callers that asked for a
+ * format judge the reply by whether it has that format, not by how the provider named its ending.
+ */
+export function replyUnfinished(finishReason: string | null | undefined): boolean {
+  return !!finishReason && UNFINISHED_FINISH_REASONS.has(finishReason);
+}
+
 /**
  * The output budget that actually went to the provider. Routes compute
  * max_tokens before the connection-level override is applied; the provider

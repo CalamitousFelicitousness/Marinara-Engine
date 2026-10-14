@@ -32,7 +32,8 @@ function sameRuleset(rulesetId: string | undefined, named: string): boolean {
 
 export interface CreatureArtFor {
   /** A ruleset fighter's bestiary entry, when it was made from one. */
-  creature?: { catalogId: string; entryId: string };
+  /** `from`: the lender's ruleset and catalog, for a creature out of a borrowed catalog (1.220). */
+  creature?: { catalogId: string; entryId: string; from?: { ruleset: string; catalog: string } };
   /** The fight's ruleset, for a ref that names one. */
   rulesetId?: string;
   /** Its name in the fight ("Goblin 2"). */
@@ -47,13 +48,15 @@ export function findCreatureArt(
 ): CreaturePackCreature | null {
   if (!pack) return null;
   if (who.creature) {
-    const { catalogId, entryId } = who.creature;
-    const two = plainly(`${catalogId}/${entryId}`);
+    const { catalogId, entryId, from } = who.creature;
+    // A borrowed creature is drawn as the lender's: its art names the lender's ruleset and catalog.
+    const rulesetId = from ? from.ruleset : who.rulesetId;
+    const two = plainly(`${from ? from.catalog : catalogId}/${entryId}`);
     for (const creature of pack.creatures)
       for (const ref of creature.match) {
         const parts = ref.split("/");
         if (parts.length === 2 && plainly(ref) === two) return creature;
-        if (parts.length === 3 && sameRuleset(who.rulesetId, parts[0]!) && plainly(`${parts[1]}/${parts[2]}`) === two)
+        if (parts.length === 3 && sameRuleset(rulesetId, parts[0]!) && plainly(`${parts[1]}/${parts[2]}`) === two)
           return creature;
       }
   }

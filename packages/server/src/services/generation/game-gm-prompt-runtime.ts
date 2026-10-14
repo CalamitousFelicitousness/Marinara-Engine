@@ -154,6 +154,7 @@ export async function injectGameGmPromptRuntime(args: {
   chatMetadata: Record<string, unknown>;
   /** The game's world (worldgen W1), as `loadGameWorld` reads it. */
   world: GameWorld | null;
+  ruleset?: GmPromptContext["ruleset"];
   characterIds: string[];
   chars: CharactersStore;
   chats: ChatsStore;
@@ -380,6 +381,7 @@ export async function injectGameGmPromptRuntime(args: {
   const promptWorld = args.world;
   const gmCtx: GmPromptContext = {
     gameActiveState: gameActiveState as GameActiveState,
+    ruleset: args.ruleset,
     storyArc,
     plotTwists,
     map: gameMap,

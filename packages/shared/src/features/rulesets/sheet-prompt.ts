@@ -20,11 +20,13 @@ import { rulesetCheckSources, rulesetHideLines } from "./check-effects.js";
 import { rulesetItemEffectFacts, rulesetItemEffectText } from "./item-book.js";
 import { readRulesetLive } from "./live-state.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
+import { rulesetItemAccess } from "./sheet-builder.js";
 import {
   evaluateRulesetSheet,
   resolveRulesetAbilityValues,
   formatRulesetCheckValue,
   isRulesetItemHidden,
+  rulesetRowChecks,
   rulesetSectionGroups,
   type RulesetSheetItem,
 } from "./sheet-math.js";
@@ -86,7 +88,8 @@ function fieldText(field: RulesetField, build: RulesetSheetBuild): string {
 /** One party member's sheet, as the Game Master reads it. Deterministic and pure. */
 export function renderRulesetSheetBlock(
   definition: RulesetDefinition,
-  card: { name: string; build: RulesetSheetBuild },
+  /** `envelope` is the card's stored sheet, whose builder picks open items (1.215); `stored` is its live state. */
+  card: { name: string; build: RulesetSheetBuild; envelope?: unknown },
   stored: unknown,
   catalogs: RulesetCatalogEntriesById = {},
   /** The items the character holds, which an `itemStat` reads. */
@@ -137,6 +140,11 @@ export function renderRulesetSheetBlock(
         section: save.section,
         text: `${save.label} ${checkValue(evaluated.saveMods[save.id] ?? 0)}`,
       })),
+    // Rows that are checks of their own (1.161), by the name the Game Master asks for them by.
+    ...rulesetRowChecks(definition, build).map((row) => ({
+      section: undefined,
+      text: `${safeValue(row.label)} ${checkValue(evaluated.skillMods[row.key] ?? 0)}`,
+    })),
   ];
   if (trained.length > 0) push(`Trained: ${grouped(trained, (entry) => entry.text)}`);
 
@@ -181,7 +189,7 @@ export function renderRulesetSheetBlock(
           ];
         }
         // The maximum is the character's own, which is what the resolved track already holds.
-        const fallback = Math.min(Math.max(track.default ?? track.min, track.min), resolved.max);
+        const fallback = resolved.start ?? Math.min(Math.max(track.default ?? track.min, track.min), resolved.max);
         return resolved.value === fallback && !track.alwaysShow ? [] : [`${track.label} ${resolved.value}`];
       })
       .join(", "),
@@ -277,6 +285,13 @@ export function renderRulesetSheetBlock(
         : `${list.label} ${[...groups].map(([group, names]) => `(${group || "-"}): ${names.join(", ")}`).join("; ")}`,
     );
   }
+
+  // Items open to the character but not carried (1.215), by the name the Game Master gives them.
+  const access = rulesetItemAccess(definition, card.envelope ?? stored, catalogs, build)
+    .map((ref) => catalogEntries.get(ref)?.label)
+    .filter((name): name is string => !!name);
+  if (access.length)
+    push(`Has access to, not carried until taken as load: ${access.map((name) => safeValue(name)).join(", ")}`);
 
   for (const line of rulesetHideLines(definition, rulesetCheckSources(definition, build, stored, items)))
     push(safeValue(line, 4000));

@@ -15,6 +15,8 @@ import { z } from "zod";
 import {
   RULESET_CONDITIONS_MAX,
   RULESET_CATALOG_ROW_KEY,
+  rulesetSheetBuildSchema,
+  storedRulesetSheetsSchema,
   RULESET_WOUND_EXTRA_PER_ROW,
   RULESET_WOUND_LEVELS_MAX,
   type RulesetCatalogEntriesById,
@@ -30,6 +32,7 @@ import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import {
   evaluateRulesetSheet,
+  defaultRulesetSheetBuild,
   isRulesetItemHidden,
   lookupStepTable,
   resolveRulesetValueRef,
@@ -80,7 +83,7 @@ export interface RulesetLiveState {
   usedOn?: Record<string, string[]>;
 }
 
-/** Live state of every card in one game, keyed by normalizeCharacterLookupName(card name). */
+/** Live state of every card, keyed by normalized name, plus RULESET_PARTY_KEY for the shared sheet. */
 export type RulesetLiveStates = Record<string, RulesetLiveState>;
 
 /** A stored live blob is refused above this many serialized bytes, like a stored sheet is. */
@@ -193,6 +196,8 @@ export interface RulesetLivePoolSpec {
   allowTemp: boolean;
   group?: string;
   start: "full" | "empty";
+  /** Where the pool starts when its `startFrom` reads it off the sheet (1.158), else `start` decides. */
+  startAt?: number;
   recharge?: string;
   listId?: string;
 }
@@ -229,6 +234,15 @@ export function listRulesetLivePools(definition: RulesetDefinition, build: Rules
       max,
       allowTemp: pool.allowTemp,
       start: pool.start,
+      ...(pool.startFrom
+        ? {
+            startAt: clamp(
+              Math.floor(resolveRulesetValueRef(definition, build, pool.startFrom, evaluated)) || 0,
+              0,
+              max,
+            ),
+          }
+        : {}),
       ...(pool.group ? { group: pool.group } : {}),
     });
   }
@@ -296,7 +310,16 @@ export interface ResolvedRulesetWounds {
 
 export interface ResolvedRulesetLive {
   pools: Array<RulesetLivePoolSpec & { value: number; temp: number; sealed: number; lasting: number }>;
-  tracks: Array<{ id: string; label: string; min: number; max: number; value: number; wound?: ResolvedRulesetWounds }>;
+  tracks: Array<{
+    id: string;
+    label: string;
+    min: number;
+    max: number;
+    value: number;
+    /** Where a plain track starts (its `default`, or `startFrom` read off the sheet). */
+    start?: number;
+    wound?: ResolvedRulesetWounds;
+  }>;
   text: Array<{ id: string; label: string; maxLength: number; value: string }>;
   conditions: Array<{ id: string; label: string; active: boolean }>;
   /** Every state the sheet shows, at its value: what is stored when the state still offers it, else
@@ -732,7 +755,7 @@ function resolveLive(
   return {
     pools: listRulesetLivePools(definition, build).map((spec) => {
       const entry = own(state.pools, spec.key);
-      const fallback = spec.start === "full" ? spec.max : 0;
+      const fallback = spec.startAt ?? (spec.start === "full" ? spec.max : 0);
       return {
         ...spec,
         // What it holds past its maximum (1.252) counts on top, wherever the stored value stands.
@@ -744,7 +767,7 @@ function resolveLive(
       };
     }),
     // A track a field takes off the sheet is not on it, exactly as a hidden pool is not.
-    tracks: definition.sheet.live.tracks.flatMap((track) => {
+    tracks: definition.sheet.live.tracks.flatMap((track): ResolvedRulesetLive["tracks"] => {
       if (isRulesetItemHidden(track, build, definition)) return [];
       // A wound track's number is how many marks are on it, and its length is its levels. Its own
       // `min` and `max` are held to 0 and `levels.length` at import, so they agree by construction.
@@ -763,7 +786,14 @@ function resolveLive(
         ];
       }
       const max = trackMax(track);
-      const fallback = clamp(track.default ?? track.min, track.min, max);
+      evaluated ??= track.startFrom ? evaluateRulesetSheet(definition, build) : null;
+      const fallback = clamp(
+        track.startFrom
+          ? Math.floor(resolveRulesetValueRef(definition, build, track.startFrom, evaluated!)) || 0
+          : (track.default ?? track.min),
+        track.min,
+        max,
+      );
       return [
         {
           id: track.id,
@@ -771,6 +801,7 @@ function resolveLive(
           min: track.min,
           max,
           value: clamp(own(state.tracks, track.id) ?? fallback, track.min, max),
+          start: fallback,
         },
       ];
     }),
@@ -841,7 +872,14 @@ export function evaluateRulesetSheetLive(
 
 // ── Commands ──
 
+export type RulesetAdvanceOp =
+  | { op: "advance"; field: string; to?: string | number; by?: number }
+  | { op: "advance"; ability: string; to?: number; by?: number }
+  | { op: "advance"; skill: string; tier: string }
+  | { op: "advance"; save: string; tier: string };
+
 export type RulesetSheetOp =
+  | RulesetAdvanceOp
   /** The four that move one pool. One member rather than four, because `damage` also has a track
    *  shape below and two members under one name could not be told apart by the name alone. */
   | {
@@ -886,6 +924,14 @@ export type RulesetSheetRefusal =
   | "ambiguous-pool"
   | "insufficient"
   | "bad-amount"
+  | `bad-amount: ${string}`
+  | "advancement-disabled"
+  | "save-failed"
+  | "not-allowed"
+  | "unknown-ability"
+  | "unknown-skill"
+  | "unknown-save"
+  | "unknown-tier"
   | "no-temp"
   | "unknown-track"
   /** A track op on a wound track, or a wound op on a plain one. */
@@ -909,7 +955,8 @@ export type RulesetSheetRefusal =
   | "malformed";
 
 export type RulesetSheetOpResult =
-  { ok: true; live: RulesetLiveState; now: string } | { ok: false; reason: RulesetSheetRefusal };
+  | { ok: true; live: RulesetLiveState; now: string; build?: RulesetSheetBuild }
+  | { ok: false; reason: RulesetSheetRefusal };
 
 /** The op names a tag may spell. `heal` is an alias the tag layer folds into `restore`, and `cast`
  *  one it folds into `use`. */
@@ -924,6 +971,7 @@ export const RULESET_SHEET_OP_NAMES = Object.freeze([
   "note",
   "rest",
   "use",
+  "advance",
 ] as const);
 
 /** How long a `now` summary may get before the tag layer would cut it anyway. */
@@ -957,6 +1005,73 @@ function isAmount(amount: number, allowZero = false): boolean {
   return Number.isInteger(amount) && amount >= (allowZero ? 0 : 1) && amount <= MAX_OP_AMOUNT;
 }
 
+/** Permanent advancement uses the editor's bounds, refusing rather than clamping a request. */
+function advanceBuild(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  op: RulesetAdvanceOp,
+): RulesetSheetOpResult {
+  const allowed = definition.sheet.advancement;
+  if (!allowed) return { ok: false, reason: "advancement-disabled" };
+  const defaults = defaultRulesetSheetBuild(definition);
+  const next = structuredClone(build);
+  const find = <T extends { id: string; label: string }>(entries: T[], name: string) =>
+    entries.find((entry) => sameName(entry.id, name)) ?? entries.find((entry) => sameName(entry.label, name));
+  let now: string;
+  if ("skill" in op || "save" in op) {
+    const skill = "skill" in op;
+    const group = skill ? "skills" : "saves";
+    if (!allowed[group]) return { ok: false, reason: "not-allowed" };
+    const entry = find(definition.sheet[group], "skill" in op ? op.skill : op.save);
+    if (!entry) return { ok: false, reason: skill ? "unknown-skill" : "unknown-save" };
+    const tier = find(definition.resolution.proficiencyTiers, op.tier);
+    if (!tier) return { ok: false, reason: "unknown-tier" };
+    next[group][entry.id] = tier.id;
+    now = tier.label;
+  } else {
+    if ((op.to === undefined) === (op.by === undefined)) return { ok: false, reason: "bad-amount" };
+    const field = "field" in op;
+    const entry = field ? find(definition.sheet.fields, op.field) : find(definition.sheet.abilities, op.ability);
+    if (!entry) return { ok: false, reason: field ? "unknown-field" : "unknown-ability" };
+    if (field ? !allowed.fields?.includes(entry.id) : !allowed.abilities) return { ok: false, reason: "not-allowed" };
+    const group = field ? "fields" : "abilities";
+    if ("type" in entry && (entry.type === "text" || entry.type === "longtext")) {
+      if (op.by !== undefined || typeof op.to !== "string") return { ok: false, reason: "bad-amount" };
+      if (op.to.length > entry.maxLength)
+        return { ok: false, reason: `bad-amount: maximum ${entry.maxLength} characters` };
+      next.fields[entry.id] = op.to;
+      now = op.to;
+    } else {
+      if ("type" in entry && entry.type !== "number") return { ok: false, reason: "not-allowed" };
+      const number = (value: unknown) =>
+        typeof value === "number"
+          ? value
+          : typeof value === "string" && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim())
+            ? Number(value)
+            : NaN;
+      const storedValue = build[group][entry.id];
+      const previous =
+        typeof storedValue === "number" && Number.isFinite(storedValue) ? storedValue : defaults[group][entry.id];
+      const value = op.by === undefined ? number(op.to) : number(previous) + op.by;
+      const integer = !("type" in entry) || entry.integer;
+      if (!Number.isFinite(value) || value < entry.min || value > entry.max || (integer && !Number.isInteger(value))) {
+        return { ok: false, reason: `bad-amount: ${integer ? "integer " : ""}${entry.min} to ${entry.max}` };
+      }
+      next[group][entry.id] = value;
+      now = String(value);
+    }
+  }
+  const parsed = rulesetSheetBuildSchema.safeParse(next);
+  if (
+    !parsed.success ||
+    !storedRulesetSheetsSchema.safeParse({ [definition.id]: { v: definition.sheet.version, build: parsed.data } })
+      .success
+  )
+    return { ok: false, reason: "malformed" };
+  return { ok: true, build: parsed.data, live: readStoredLiveState(definition, parsed.data, stored), now };
+}
+
 /** Apply one command to one character's live state. Pure: the input blob is never touched, and the
  *  result is a new sparse state. A refusal changes nothing, which is what lets the Game Master's
  *  fiction be corrected rather than silently accepted. */
@@ -986,6 +1101,7 @@ export function applyRulesetSheetOp(
   // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
   // ruleset's catalogs, which this function deliberately does not take.
   if (op.op === "use") return { ok: false, reason: "malformed" };
+  if (op.op === "advance") return advanceBuild(definition, build, stored, op);
   const next = readStoredLiveState(definition, build, stored);
   const resolved = resolveLive(definition, build, next);
 
@@ -1004,7 +1120,12 @@ export function applyRulesetSheetOp(
     // Past the maximum is held apart (1.252), so the stored value never reads as more than it may.
     const above = Math.max(0, value - spec.max);
     if (above > 0) value = spec.max;
-    if (value === (spec.start === "full" ? spec.max : 0) && temp === 0 && sealed === 0 && above === 0) {
+    if (
+      value === (spec.startAt ?? (spec.start === "full" ? spec.max : 0)) &&
+      temp === 0 &&
+      sealed === 0 &&
+      above === 0
+    ) {
       delete pools[spec.key];
     } else
       pools[spec.key] = {
@@ -1018,7 +1139,9 @@ export function applyRulesetSheetOp(
   };
   const setTrack = (track: ResolvedRulesetLive["tracks"][number], value: number): void => {
     const tracks = next.tracks ?? {};
-    if (value === clamp(definitionTrackDefault(definition, track.id) ?? track.min, track.min, track.max)) {
+    if (
+      value === (track.start ?? clamp(definitionTrackDefault(definition, track.id) ?? track.min, track.min, track.max))
+    ) {
       delete tracks[track.id];
     } else tracks[track.id] = value;
     next.tracks = tracks;

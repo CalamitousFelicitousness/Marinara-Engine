@@ -688,6 +688,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
       retrieveMaxMessages: 10,
       narratorCharacterId: null,
       autoMessageVisibility: false,
+      characterRecollections: false,
       knowledgeStarts: { [narrator.id]: "historical-0" },
       knowledgeConfirmed: false,
     },

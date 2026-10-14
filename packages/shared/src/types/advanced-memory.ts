@@ -26,6 +26,8 @@ export const advancedMemorySettingsSchema = z.object({
   narratorCharacterId: z.string().nullable().default(null),
   /** Individual group chats only: hide each new message from characters the memory model finds absent. */
   autoMessageVisibility: z.boolean().default(false),
+  /** Each scene participant's short first-person memory of a recalled scene. Off keeps saved ones, unused. */
+  characterRecollections: z.boolean().default(false),
   /** A null value explicitly confirms knowledge from the beginning. Missing means unconfirmed. */
   knowledgeStarts: z.record(z.string().nullable()).default({}),
   knowledgeConfirmed: z.boolean().default(false),
@@ -70,7 +72,7 @@ export interface AdvancedMemoryJob {
   /** Explicit user pause; ordinary interruptions and correction recovery may also be cancelled. */
   paused?: boolean;
   status: "idle" | "running" | "ready" | "cancelled" | "error" | "needs_confirmation";
-  stage: "idle" | "classifying" | "summarizing" | "indexing" | "compacting" | "ready";
+  stage: "idle" | "classifying" | "summarizing" | "recollecting" | "indexing" | "compacting" | "ready";
   completed: number;
   total: number;
   error: string | null;
@@ -105,7 +107,8 @@ export interface AdvancedMemoryRecord {
   id: string;
   chatId: string;
   sceneId: string;
-  kind: "scene" | "continuity" | "temporary" | "excerpt";
+  /** A recollection is one character's (`audienceCharacterIds[0]`) first-person memory of a summarized scene. */
+  kind: "scene" | "continuity" | "temporary" | "excerpt" | "recollection";
   status: "open" | "closed";
   startMessageId: string;
   endMessageId: string;

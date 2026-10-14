@@ -143,6 +143,7 @@ export function MariRow({
   hint,
   state,
   compact = false,
+  action,
   className,
   ...button
 }: {
@@ -159,6 +160,8 @@ export function MariRow({
   state?: "selected" | "busy" | "failed";
   /** One line (title, then the fact) in a narrow group; references only. */
   compact?: boolean;
+  /** A button beside the row's own button, at its end (a button cannot hold buttons). */
+  action?: ReactNode;
   className?: string;
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "title" | "slot">) {
   const trailNode =
@@ -192,7 +195,14 @@ export function MariRow({
   const rowClass = cn("mari-row", !fact && !compact && "mari-row--one");
   return (
     <div className={cn("mari-list__item", compact && "mari-list__item--compact", className)} data-state={state}>
-      {button.onClick ? (
+      {button.onClick && action ? (
+        <div className={rowClass}>
+          <button type="button" className="mari-row__toggle" title={hint} {...button}>
+            {content}
+          </button>
+          {action}
+        </div>
+      ) : button.onClick ? (
         <button type="button" className={rowClass} title={hint} {...button}>
           {content}
         </button>

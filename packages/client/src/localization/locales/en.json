@@ -1667,6 +1667,7 @@
   "connections.modelPicker.saveFailed": "Couldn't save the model: {{error}}",
   "connections.modelPicker.searchLabel": "Search models or type a model ID",
   "connections.modelPicker.searchPlaceholder": "Search or enter model ID…",
+  "connections.modelPicker.showModels": "Show models for {{connection}}",
   "connections.modelPicker.title": "Models",
   "connections.modelPicker.truncated": "Showing {{shown}} of {{total}}. Type to narrow the list.",
   "connections.modelPicker.unpin": "Unpin {{model}}",

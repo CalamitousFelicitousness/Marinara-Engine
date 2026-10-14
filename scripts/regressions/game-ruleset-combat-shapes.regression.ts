@@ -7,6 +7,7 @@
  *     action; a blow past the form's health ends the shape and the rest carries on to their own.
  *   - Polymorph on a creature: `upTo.targetLevel` refuses a form above its own number; held by
  *     concentration, the shape ends when it breaks.
+ *   - Forms read from a catalog (1.348): `from` with `filters` and `notFilters`.
  *   - Refused shapes; the install gate.
  */
 import assert from "node:assert/strict";
@@ -455,6 +456,64 @@ try {
       }),
       /A creature has no sheet to read "at" off/,
     );
+  }
+
+  // ── Forms read from a catalog (1.348): every beast, or everything but constructs and undead ──
+  {
+    const modesOf = (forms: Record<string, unknown>) => {
+      const definition = parsed(document([wildShape(forms)]));
+      const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!
+        .entries! as RulesetCatalogEntry[];
+      return optionFor(definition, fight(definition, entries), "druid", "Wild Shape").modes?.map((one) => one.id);
+    };
+    // Wild Shape: the beasts, capped at 1 and kept off flying.
+    assert.deepEqual(
+      modesOf({
+        from: { catalog: "creatures", filters: { kind: "Beast" } },
+        upTo: { filter: "cr", at: { const: 1 } },
+        without: [{ speed: "fly" }],
+      }),
+      ["form-creatures-cinder-hound", "form-creatures-dire-wolf"],
+    );
+    // Shapechange: anything but a construct or an undead, any of a list, matched without case.
+    assert.deepEqual(modesOf({ from: { catalog: "creatures", notFilters: { kind: ["construct", "Undead"] } } }), [
+      "form-creatures-thorn-lurker",
+      "form-creatures-cinder-hound",
+      "form-creatures-toll-sergeant",
+      "form-creatures-dire-wolf",
+      "form-creatures-giant-eagle",
+    ]);
+    // A list-valued filter matches any of its own: found in ruins.
+    assert.deepEqual(
+      modesOf({ from: { catalog: "creatures", filters: { places: "Ruins", kind: ["Beast", "Undead"] } } }),
+      ["form-creatures-cinder-hound", "form-creatures-grave-piper"],
+    );
+    // Named ones first, each once.
+    assert.deepEqual(
+      modesOf({ into: ["creatures/giant-eagle"], from: { catalog: "creatures", filters: { kind: "Beast" } } }),
+      ["form-creatures-giant-eagle", "form-creatures-cinder-hound", "form-creatures-dire-wolf"],
+    );
+    refused(document([wildShape({ upTo: { filter: "cr", at: { const: 1 } } })]), /read "from" a catalog/);
+    // Gated at 1.348; named forms alone stay 1.342's.
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const gate =
+      "A ruleset with shape forms read from a catalog requires schemaVersion 2 and capabilityApi 1.348 or newer";
+    const reading = document([wildShape({ from: { catalog: "creatures", filters: { kind: "Beast" } } })]);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(347) as never, reading), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(348) as never, reading), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(347) as never, document([wolfOnly])), gate);
   }
 
   // ── The install gate ──

@@ -4284,7 +4284,25 @@ function fillShapeForms(
       : 0;
   const cap = forms.upTo?.at && sheet ? read(forms.upTo.at) : undefined;
   const modes: RulesetCombatMode[] = [];
-  for (const ref of forms.into) {
+  // Named ones first, then every match of the catalog `from` reads (1.348), each once.
+  const refs = [...(forms.into ?? [])];
+  if (forms.from) {
+    // An entry's value matches any of what is wanted; a value that is itself a list, any of its own.
+    const plain = (one: string | number) => String(one).trim().toLowerCase();
+    const wanted = (value: string | number | string[] | undefined, want: string | number | Array<string | number>) => {
+      if (value === undefined) return false;
+      const have = (Array.isArray(value) ? value : [value]).map(plain);
+      return (Array.isArray(want) ? want : [want]).some((one) => have.includes(plain(one)));
+    };
+    for (const entry of catalogs[forms.from.catalog] ?? []) {
+      const filters = entry.filters ?? {};
+      if (Object.entries(forms.from.filters ?? {}).some(([id, want]) => !wanted(filters[id], want))) continue;
+      if (Object.entries(forms.from.notFilters ?? {}).some(([id, want]) => wanted(filters[id], want))) continue;
+      const ref = `${forms.from.catalog}/${entry.id}`;
+      if (!refs.includes(ref)) refs.push(ref);
+    }
+  }
+  for (const ref of refs) {
     const [catalogId, entryId] = ref.split("/");
     const entry = catalogId && entryId ? findRulesetCreatureEntry(catalogs, { catalogId, entryId }) : null;
     const block = rulesetCreatureBlock(definition, entry);

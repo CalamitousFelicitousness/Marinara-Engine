@@ -2179,13 +2179,27 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** Shape forms read from a catalog (1.348). */
+function carriesShapeCatalogs(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesShapeCatalogs(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(plainRecord(record.forms)?.from)) return true;
+  const creature = plainRecord(record.creature);
+  if (Array.isArray(creature?.actions) && creature.actions.some((one) => carriesShapeCatalogs(one, depth + 1)))
+    return true;
+  return featureValues(record).some((one) => carriesShapeCatalogs(one, depth + 1));
+}
+
 /** A shape change (1.342): an entry or a creature's action offering `forms`, or a condition with a `shape`. */
 function carriesShapes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesShapes(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
-  if (Array.isArray(plainRecord(record.forms)?.into)) return true;
+  const forms = plainRecord(record.forms);
+  if (Array.isArray(forms?.into) || plainRecord(forms?.from)) return true;
   if (typeof record.condition === "string" && plainRecord(record.shape)) return true;
   const creature = plainRecord(record.creature);
   if (Array.isArray(creature?.actions) && creature.actions.some((one) => carriesShapes(one, depth + 1))) return true;
@@ -5212,6 +5226,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Shape forms read from a catalog, 1.348.
+  if (
+    !declaresApi(348) &&
+    (carriesShapeCatalogs(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesShapeCatalogs(document)))
+  ) {
+    return "A ruleset with shape forms read from a catalog requires schemaVersion 2 and capabilityApi 1.348 or newer";
   }
   // Hanging on at 1 from a condition or level, or on a save or the blow's terms, 1.347.
   if (

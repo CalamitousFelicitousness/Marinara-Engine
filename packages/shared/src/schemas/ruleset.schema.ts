@@ -4343,7 +4343,8 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
   });
 
 /** The forms a shape change offers (Capability API 1.342), each a bestiary entry as
- *  `"<catalogId>/<entryId>"`, from this ruleset's catalogs or the fight's bestiary: what its user picks
+ *  `"<catalogId>/<entryId>"`, from this ruleset's catalogs or the fight's bestiary, or every match
+ *  of a catalog's `from` (1.348): what its user picks
  *  as they use it, like a weapon's mode. The entry also `applies` a condition with `shape`, and the
  *  one it lands on becomes the picked form while that holds. `upTo` keeps out the forms whose bestiary
  *  `filter` (5e's `challenge`) is above `at`, read off the user's sheet, and above `targetLevel`, read
@@ -4351,6 +4352,14 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
  *  challenge by druid level, Polymorph's "equal or less than the target's". `without` keeps out the
  *  forms that move a way `speed` names unless `unless` reads above nought on the user's sheet: no
  *  flying before druid level 8. */
+const shapeFilterValues = z.union([
+  z.number().finite(),
+  z.string().max(80),
+  z
+    .array(z.union([z.number().finite(), z.string().max(80)]))
+    .min(1)
+    .max(32),
+]);
 export const shapeFormsSchema = z
   .object({
     into: z
@@ -4362,7 +4371,23 @@ export const shapeFormsSchema = z
       )
       .min(1)
       .max(64)
-      .refine((into) => new Set(into).size === into.length, { message: "A form is listed once" }),
+      .refine((into) => new Set(into).size === into.length, { message: "A form is listed once" })
+      .optional(),
+    /** Every entry of a bestiary catalog that matches (Capability API 1.348), besides any `into`
+     *  names: `filters` each entry must match (any of a list), `notFilters` none it may. 5e's Wild
+     *  Shape is `{"catalog": "creatures", "filters": {"type": "Beast"}}`, Shapechange
+     *  `{"catalog": "creatures", "notFilters": {"type": ["Construct", "Undead"]}}`. */
+    from: z
+      .object({
+        catalog: z
+          .string()
+          .trim()
+          .regex(/^[^/\s]{1,80}$/, "A catalog id"),
+        filters: z.record(sheetId, shapeFilterValues).optional(),
+        notFilters: z.record(sheetId, shapeFilterValues).optional(),
+      })
+      .strict()
+      .optional(),
     upTo: z
       .object({
         filter: sheetId,
@@ -4386,7 +4411,10 @@ export const shapeFormsSchema = z
       .max(4)
       .optional(),
   })
-  .strict();
+  .strict()
+  .refine((forms) => forms.into !== undefined || forms.from !== undefined, {
+    message: 'The forms are named in "into", read "from" a catalog, or both',
+  });
 export type RulesetShapeForms = z.infer<typeof shapeFormsSchema>;
 
 const calledCreatureRef = z

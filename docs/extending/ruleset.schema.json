@@ -40884,6 +40884,94 @@
                           "minItems": 1,
                           "maxItems": 64
                         },
+                        "from": {
+                          "type": "object",
+                          "properties": {
+                            "catalog": {
+                              "type": "string",
+                              "pattern": "^[^/\\s]{1,80}$"
+                            },
+                            "filters": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "maxLength": 80
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "maxLength": 80
+                                        }
+                                      ]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 32
+                                  }
+                                ]
+                              },
+                              "propertyNames": {
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "properties": {
+                                "$comment": {}
+                              }
+                            },
+                            "notFilters": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "maxLength": 80
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "maxLength": 80
+                                        }
+                                      ]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 32
+                                  }
+                                ]
+                              },
+                              "propertyNames": {
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "properties": {
+                                "$comment": {}
+                              }
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "catalog"
+                          ],
+                          "additionalProperties": false
+                        },
                         "upTo": {
                           "type": "object",
                           "properties": {
@@ -41461,9 +41549,6 @@
                         },
                         "$comment": {}
                       },
-                      "required": [
-                        "into"
-                      ],
                       "additionalProperties": false
                     },
                     "calls": {
@@ -51441,6 +51526,94 @@
                                 "minItems": 1,
                                 "maxItems": 64
                               },
+                              "from": {
+                                "type": "object",
+                                "properties": {
+                                  "catalog": {
+                                    "type": "string",
+                                    "pattern": "^[^/\\s]{1,80}$"
+                                  },
+                                  "filters": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "maxLength": 80
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "anyOf": [
+                                              {
+                                                "type": "number"
+                                              },
+                                              {
+                                                "type": "string",
+                                                "maxLength": 80
+                                              }
+                                            ]
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 32
+                                        }
+                                      ]
+                                    },
+                                    "propertyNames": {
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "properties": {
+                                      "$comment": {}
+                                    }
+                                  },
+                                  "notFilters": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "maxLength": 80
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "anyOf": [
+                                              {
+                                                "type": "number"
+                                              },
+                                              {
+                                                "type": "string",
+                                                "maxLength": 80
+                                              }
+                                            ]
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 32
+                                        }
+                                      ]
+                                    },
+                                    "propertyNames": {
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "properties": {
+                                      "$comment": {}
+                                    }
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "catalog"
+                                ],
+                                "additionalProperties": false
+                              },
                               "upTo": {
                                 "type": "object",
                                 "properties": {
@@ -52018,9 +52191,6 @@
                               },
                               "$comment": {}
                             },
-                            "required": [
-                              "into"
-                            ],
                             "additionalProperties": false
                           },
                           "draws": {
@@ -63484,6 +63654,94 @@
                               "minItems": 1,
                               "maxItems": 64
                             },
+                            "from": {
+                              "type": "object",
+                              "properties": {
+                                "catalog": {
+                                  "type": "string",
+                                  "pattern": "^[^/\\s]{1,80}$"
+                                },
+                                "filters": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "string",
+                                        "maxLength": 80
+                                      },
+                                      {
+                                        "type": "array",
+                                        "items": {
+                                          "anyOf": [
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "string",
+                                              "maxLength": 80
+                                            }
+                                          ]
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 32
+                                      }
+                                    ]
+                                  },
+                                  "propertyNames": {
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "properties": {
+                                    "$comment": {}
+                                  }
+                                },
+                                "notFilters": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "string",
+                                        "maxLength": 80
+                                      },
+                                      {
+                                        "type": "array",
+                                        "items": {
+                                          "anyOf": [
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "string",
+                                              "maxLength": 80
+                                            }
+                                          ]
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 32
+                                      }
+                                    ]
+                                  },
+                                  "propertyNames": {
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "properties": {
+                                    "$comment": {}
+                                  }
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "catalog"
+                              ],
+                              "additionalProperties": false
+                            },
                             "upTo": {
                               "type": "object",
                               "properties": {
@@ -64061,9 +64319,6 @@
                             },
                             "$comment": {}
                           },
-                          "required": [
-                            "into"
-                          ],
                           "additionalProperties": false
                         },
                         "calls": {
@@ -73514,6 +73769,94 @@
                                     "minItems": 1,
                                     "maxItems": 64
                                   },
+                                  "from": {
+                                    "type": "object",
+                                    "properties": {
+                                      "catalog": {
+                                        "type": "string",
+                                        "pattern": "^[^/\\s]{1,80}$"
+                                      },
+                                      "filters": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "anyOf": [
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "string",
+                                              "maxLength": 80
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "number"
+                                                  },
+                                                  {
+                                                    "type": "string",
+                                                    "maxLength": 80
+                                                  }
+                                                ]
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 32
+                                            }
+                                          ]
+                                        },
+                                        "propertyNames": {
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "properties": {
+                                          "$comment": {}
+                                        }
+                                      },
+                                      "notFilters": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "anyOf": [
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "string",
+                                              "maxLength": 80
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "number"
+                                                  },
+                                                  {
+                                                    "type": "string",
+                                                    "maxLength": 80
+                                                  }
+                                                ]
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 32
+                                            }
+                                          ]
+                                        },
+                                        "propertyNames": {
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "properties": {
+                                          "$comment": {}
+                                        }
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "catalog"
+                                    ],
+                                    "additionalProperties": false
+                                  },
                                   "upTo": {
                                     "type": "object",
                                     "properties": {
@@ -74091,9 +74434,6 @@
                                   },
                                   "$comment": {}
                                 },
-                                "required": [
-                                  "into"
-                                ],
                                 "additionalProperties": false
                               },
                               "calls": {

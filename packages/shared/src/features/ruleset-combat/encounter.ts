@@ -17,6 +17,7 @@ import {
   type RulesetCatalogMechanics,
   type RulesetCatalogCalls,
   type RulesetRegeneration,
+  type RulesetHangsOn,
   type RulesetCatalogZone,
   type RulesetItemUse,
   type RulesetCombat,
@@ -860,6 +861,7 @@ function activeLevels(
         ...(level.skills ? { skills: level.skills } : {}),
         ...(level.evasion ? { evasion: level.evasion } : {}),
         ...(level.regenerates ? { regenerates: level.regenerates } : {}),
+        ...(level.hangsOn ? { hangsOn: level.hangsOn } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
@@ -5250,6 +5252,22 @@ export function rulesetRegenerations(
       entry.regenerates ? [entry.regenerates] : [],
     ),
     ...(combatant.block?.regenerates ? [combatant.block.regenerates] : []),
+  ];
+}
+
+/** Everything that may leave this combatant at 1 instead of 0 (1.320, 1.347), each with the name its
+ *  count this fight is kept under: its own block's first, then its conditions' and levels'. */
+export function rulesetHangsOn(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): Array<{ from: string | null; hangs: RulesetHangsOn }> {
+  return [
+    ...(combatant.block?.hangsOn ? [{ from: null, hangs: combatant.block.hangsOn }] : []),
+    ...rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) =>
+      entry.hangsOn ? [{ from: entry.condition, hangs: entry.hangsOn }] : [],
+    ),
   ];
 }
 

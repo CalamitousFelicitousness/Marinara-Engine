@@ -13,6 +13,7 @@ import {
   type RulesetCombat,
   type RulesetCreatureHideEntry,
   type RulesetDefinition,
+  type RulesetHangsOn,
 } from "../../schemas/ruleset.schema.js";
 import { evaluateRulesetSheetLive, readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
@@ -98,6 +99,7 @@ import {
   rulesetSyncSizes,
   rulesetSyncSpeeds,
   rulesetRegenerations,
+  rulesetHangsOn,
   rulesetMovesOnly,
   rulesetLightMatches,
 } from "./encounter.js";
@@ -290,6 +292,9 @@ interface RulesetCombatContext {
    *  systems that keep such a track that is what being taken out IS, so the blow puts them down;
    *  without it a fight on one could never end. Read, and cleared, when the blow is finished. */
   overwhelmed: Set<string>;
+  /** The kinds of harm that landed on each target in the blow being dealt (1.347), "" for none: what
+   *  a hang-on at 1 refuses (Undead Fortitude's radiant). Read and cleared as the blow ends. */
+  blowTypes: Map<string, Set<string>>;
   /** Source-side harm ends conditions only once the harmful step has finished (1.125). */
   harmEndings: Array<() => void>;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
@@ -345,6 +350,7 @@ function begin(
     },
     events: [],
     overwhelmed: new Set(),
+    blowTypes: new Map(),
     harmEndings: [],
     ...(borrowedOuter ? { outer: borrowedOuter } : {}),
   };
@@ -765,6 +771,11 @@ function applyDamage(
     ...(input.pool ? { pool: input.pool } : {}),
     ...(input.floor !== undefined ? { floor: input.floor } : {}),
   });
+  if (dealt > 0) {
+    const kinds = ctx.blowTypes.get(target.id) ?? new Set<string>();
+    kinds.add(type ?? "");
+    ctx.blowTypes.set(target.id, kinds);
+  }
   ctx.harmEndings.push(endConditionsOnHarm(ctx, target, input.sourceId, dealt, false, damageSaves));
   // Harm its regeneration is stopped by (1.346): fire or acid on a troll, until its next turn starts.
   if (
@@ -789,6 +800,8 @@ function applyDamage(
  */
 function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: number, critical: boolean): void {
   const overwhelmed = ctx.overwhelmed.delete(target.id);
+  const kinds = ctx.blowTypes.get(target.id) ?? new Set<string>();
+  ctx.blowTypes.delete(target.id);
   if (dealt <= 0) return;
   const wasDown = !!target.down;
   endConditionsOnDamage(ctx, target);
@@ -798,7 +811,7 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   // not: going down ends it outright (`dropToZero`), so nothing is rolled for it.
   if (!out) concentrationFromDamage(ctx, target, dealt);
   if (out) {
-    if (!wasDown) dropToZero(ctx, target);
+    if (!wasDown) dropToZero(ctx, target, false, { dealt, critical, kinds });
     else if (target.dying && !target.defeated) {
       // Already down: a blow while down costs the rule's own number of failures.
       const rule = critical ? ctx.combat.dying?.criticalWhileDown : ctx.combat.dying?.damageWhileDown;
@@ -1153,40 +1166,103 @@ function rulesetDiesAtZero(target: RulesetCombatant): boolean {
   return target.side === "enemy" || !target.sheet;
 }
 
-function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain = false): void {
+/** The blow that took them to 0 (1.347): what it dealt, whether it was a critical hit, and the kinds
+ *  of harm in it. */
+interface RulesetDroppingBlow {
+  dealt: number;
+  critical: boolean;
+  kinds: Set<string>;
+}
+
+/** A pool on a combatant's own sheet, or undefined with no sheet or no such pool. */
+function sheetPool(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  key: string,
+): { value: number; max: number } | undefined {
+  if (!target.sheet) return undefined;
+  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+  return live.pools.find((entry) => !entry.listId && entry.key === key);
+}
+
+/** Whether one way of hanging on at 1 works against this blow (1.320, 1.347), paying for it if it
+ *  does: its use this fight, its sheet pool, or the save its holder makes. */
+function hangsOnNow(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  from: string | null,
+  hangs: RulesetHangsOn,
+  blow: RulesetDroppingBlow | undefined,
+): { left?: number } | null {
+  // Terms read off the blow need one: dropped outright by something that is not damage, they do not apply.
+  const terms = hangs.save || hangs.notFrom || hangs.notCritical || hangs.dealtAtMost !== undefined;
+  if (terms && !blow) return null;
+  if (blow && hangs.notCritical && blow.critical) return null;
+  if (blow && hangs.notFrom?.some((kind) => blow.kinds.has(kind.trim().toLowerCase()))) return null;
+  if (blow && hangs.dealtAtMost !== undefined && blow.dealt > hangs.dealtAtMost) return null;
+  const used = from === null ? (target.hungOn ?? 0) : (target.hungOnBy?.[from] ?? 0);
+  if (hangs.uses !== undefined && used >= hangs.uses) return null;
+  if (hangs.spends !== undefined && (sheetPool(ctx, target, hangs.spends)?.value ?? 0) < 1) return null;
+  if (hangs.save) {
+    // Times it has worked before: this fight's count, or what has been spent off the tally since a
+    // rest last filled it.
+    const tally = hangs.save.tally !== undefined ? sheetPool(ctx, target, hangs.save.tally) : undefined;
+    const before = tally ? Math.max(0, tally.max - tally.value) : used;
+    const difficulty =
+      hangs.save.difficulty + (hangs.save.plusDamage ? (blow?.dealt ?? 0) : 0) + (hangs.save.raisedBy ?? 0) * before;
+    if (!rollSave(ctx, target, hangs.save.save, difficulty)) return null;
+    if (tally && tally.value > 0)
+      writeRulesetSheet(ctx.definition, target, { op: "spend", pool: hangs.save.tally!, amount: 1 });
+  }
+  if (hangs.spends !== undefined)
+    writeRulesetSheet(ctx.definition, target, { op: "spend", pool: hangs.spends, amount: 1 });
+  if (from === null) target.hungOn = used + 1;
+  else target.hungOnBy = { ...target.hungOnBy, [from]: used + 1 };
+  return hangs.uses !== undefined ? { left: hangs.uses - used - 1 } : {};
+}
+
+function dropToZero(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  slain = false,
+  blow?: RulesetDroppingBlow,
+): void {
   // Hanging on at 1 instead (1.320): the Miller's Hourglass, once, with a turn of its own straight
-  // after this one.
-  const hangs = target.block?.hangsOn;
+  // after this one. From 1.347 on a save and the blow's own terms too, from a sheet's conditions and
+  // levels as well as a block: Undead Fortitude, Relentless, Relentless Endurance, Relentless Rage.
   // A creature that fights with a sheet hangs on in its hit point pool; a wound track has no 1 to hang
   // on at.
   const health = ctx.combat.health;
   const pool = target.sheet && !target.health && !("track" in health) ? health.pool : undefined;
-  if (hangs && !slain && (target.health || pool) && (target.hungOn ?? 0) < hangs.uses) {
-    target.hungOn = (target.hungOn ?? 0) + 1;
-    if (target.health) target.health.value = 1;
-    else {
-      const now = healthOf(ctx, target).value;
-      if (now < 1)
-        writeRulesetSheet(ctx.definition, target, { op: "restore", pool: pool!, amount: 1 - now, magical: true });
-    }
-    ctx.events.push({
-      type: "hangsOn",
-      actorId: target.id,
-      ...(hangs.label ? { label: hangs.label } : {}),
-      left: hangs.uses - target.hungOn,
-    });
-    if (hangs.extraTurn) {
-      const at = ctx.state.turn + 1;
-      ctx.state.order.splice(at, 0, target.id);
-      ctx.state.interjected = at;
+  if (!slain && (target.health || pool)) {
+    for (const { from, hangs } of rulesetHangsOn(ctx.definition, ctx.combat, target, ctx.state)) {
+      const held = hangsOnNow(ctx, target, from, hangs, blow);
+      if (!held) continue;
+      if (target.health) target.health.value = 1;
+      else {
+        const now = healthOf(ctx, target).value;
+        if (now < 1)
+          writeRulesetSheet(ctx.definition, target, { op: "restore", pool: pool!, amount: 1 - now, magical: true });
+      }
       ctx.events.push({
-        type: "extraTurn",
+        type: "hangsOn",
         actorId: target.id,
-        initiative: target.initiative,
-        label: hangs.label ?? "",
+        ...(hangs.label ? { label: hangs.label } : {}),
+        ...(held.left !== undefined ? { left: held.left } : {}),
       });
+      if (hangs.extraTurn) {
+        const at = ctx.state.turn + 1;
+        ctx.state.order.splice(at, 0, target.id);
+        ctx.state.interjected = at;
+        ctx.events.push({
+          type: "extraTurn",
+          actorId: target.id,
+          initiative: target.initiative,
+          label: hangs.label ?? "",
+        });
+      }
+      return;
     }
-    return;
   }
   // Down, they are themselves again (1.342): a shapechanger dies in its true form.
   if (target.shape) endShape(ctx, target, "damage");

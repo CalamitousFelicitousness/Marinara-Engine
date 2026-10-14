@@ -2114,6 +2114,22 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
+/** Hanging on at 1 on a condition or a level, or a creature's with the terms 1.347 added. A creature's
+ *  plain `uses` and `extraTurn` are 1.320's. */
+function carriesHangsOn347(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHangsOn347(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const hangs = plainRecord(record.hangsOn);
+  if (hangs) {
+    // A creature's block is the record holding its actions; a condition or level holds none.
+    if (!Array.isArray(record.actions)) return true;
+    if (Object.keys(hangs).some((key) => !["uses", "extraTurn", "label"].includes(key))) return true;
+  }
+  return featureValues(record).some((one) => carriesHangsOn347(one, depth + 1));
+}
+
 /** Regeneration on a condition, a level or a creature (1.346). */
 function carriesRegeneration(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5196,6 +5212,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Hanging on at 1 from a condition or level, or on a save or the blow's terms, 1.347.
+  if (
+    !declaresApi(347) &&
+    (carriesHangsOn347(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHangsOn347(document)))
+  ) {
+    return "A ruleset that hangs on at 1 from a condition or a level, or on a save or the blow's own terms, requires schemaVersion 2 and capabilityApi 1.347 or newer";
   }
   // Regeneration, 1.346.
   if (

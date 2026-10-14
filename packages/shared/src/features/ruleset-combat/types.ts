@@ -16,6 +16,7 @@ import type {
   RulesetShapeForms,
   RulesetCatalogCalls,
   RulesetRegeneration,
+  RulesetHangsOn,
   RulesetTargetIs,
   RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
@@ -567,9 +568,9 @@ export interface RulesetStatBlock {
   lairInitiative?: number;
   /** How many failed saves it may turn into successes (1.317): 5e's Legendary Resistance (3/Day). */
   legendaryResistance?: number;
-  /** Dropping to 0, it is left at 1 instead this many times (1.320), with a turn straight after where
-   *  it says: the Miller's Hourglass. */
-  hangsOn?: { uses: number; extraTurn?: true; label?: string };
+  /** Dropping to 0, it is left at 1 instead (1.320), with a turn straight after where it says: the
+   *  Miller's Hourglass; with a save and the blow's terms from 1.347: Undead Fortitude. */
+  hangsOn?: RulesetHangsOn;
   /** What it regains as each of its turns starts (1.346). */
   regenerates?: RulesetRegeneration;
   /** It does not move while any of its cells is in one of these lights (1.319): Lantern-Shy. */
@@ -1331,6 +1332,9 @@ export interface RulesetCombatant {
   legendaryResisted?: number;
   /** How many times it has hung on at 1 instead of dropping (1.320). */
   hungOn?: number;
+  /** How many times each condition or level of theirs has had them hang on at 1 this fight (1.347),
+   *  by its name. */
+  hungOnBy?: Record<string, number>;
   /** Felled on Held Ground (1.323): out of the fight, never dying, up again later unless `reaped`. */
   felled?: true;
   reaped?: true;
@@ -2430,7 +2434,7 @@ export type RulesetCombatEvent =
       pushed?: Array<{ id: string; from: RulesetCombatCell; to: RulesetCombatCell }>;
     }
   /** Left at 1 instead of dropping to 0 (1.320), and how many more times it may. */
-  | { type: "hangsOn"; actorId: string; label?: string; left: number }
+  | { type: "hangsOn"; actorId: string; label?: string; left?: number }
   /** A prop lit again (1.332): who lit it, and how many cells it lights. */
   | { type: "relit"; actorId: string; propId: string; label: string; cells: number }
   /** Held Ground let go mid-fight (1.330): who died of it, and who went down instead. */

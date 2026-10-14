@@ -478,7 +478,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.lairInitiative !== undefined ? { lairInitiative: creature.lairInitiative } : {}),
     ...(creature.legendaryResistance !== undefined ? { legendaryResistance: creature.legendaryResistance } : {}),
     ...(creature.stillIn ? { stillIn: [...creature.stillIn] } : {}),
-    ...(creature.hangsOn ? { hangsOn: { ...creature.hangsOn } } : {}),
+    ...(creature.hangsOn ? { hangsOn: structuredClone(creature.hangsOn) } : {}),
     ...(creature.regenerates ? { regenerates: structuredClone(creature.regenerates) } : {}),
     ...(creature.riders?.length ? { riders: creature.riders.flatMap((rider) => riderOf(rider, ids)) } : {}),
   };

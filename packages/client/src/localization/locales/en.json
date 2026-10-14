@@ -2092,6 +2092,8 @@
   "game.combat.ruleset.event.growthCleared": "{{actor}}'s {{label}} clears the growth from {{count}} squares.",
   "game.combat.ruleset.event.growthCut": "{{actor}}'s {{label}} cuts the growth back.",
   "game.combat.ruleset.event.hangsOn": "{{actor}} hangs on at 1 instead of falling ({{left}} left).",
+  "game.combat.ruleset.event.hangsOnAgain": "{{actor}} hangs on at 1 instead of falling.",
+  "game.combat.ruleset.event.hangsOnAgainNamed": "{{label}}: {{actor}} hangs on at 1 instead of falling.",
   "game.combat.ruleset.event.hangsOnNamed": "{{label}}: {{actor}} hangs on at 1 instead of falling ({{left}} left).",
   "game.combat.ruleset.event.hardness": "{{actor}}'s {{label}} lands on {{target}} with {{dice}} dice, below a hardness of {{hardness}}, and does nothing.",
   "game.combat.ruleset.event.heal": "{{target}} recovers {{amount}}, and is on {{health}} of {{maxHealth}}.",

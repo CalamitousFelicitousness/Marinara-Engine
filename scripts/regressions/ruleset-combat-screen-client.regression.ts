@@ -1298,6 +1298,12 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     say({ type: "hangsOn", actorId: "lurker", left: 1 }),
     "Thorn Lurker hangs on at 1 instead of falling (1 left).",
   );
+  // With no count of uses (1.347): Undead Fortitude, as often as its save holds.
+  assert.equal(
+    say({ type: "hangsOn", actorId: "lurker", label: "Undead Fortitude" }),
+    "Undead Fortitude: Thorn Lurker hangs on at 1 instead of falling.",
+  );
+  assert.equal(say({ type: "hangsOn", actorId: "lurker" }), "Thorn Lurker hangs on at 1 instead of falling.");
   assert.equal(printed.get("auraGrows"), "Thorn Lurker's Poisoned spreads further, reaching 30 now.");
   assert.equal(printed.get("felled"), "Held Ground: Thorn Lurker is felled, down but held back from dying.");
   assert.equal(say({ type: "felled", actorId: "lurker" }), "Thorn Lurker is felled: down, but held back from dying.");

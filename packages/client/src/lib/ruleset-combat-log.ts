@@ -729,8 +729,13 @@ export function rulesetCombatEventLine(
         actor: names.combatant(event.targetId),
         form: event.form,
       });
-    // Hanging on at 1 (1.320): the Hourglass.
+    // Hanging on at 1 (1.320): the Hourglass; with no count of uses (1.347), Undead Fortitude.
     case "hangsOn":
+      if (event.left === undefined)
+        return key(event.label ? "hangsOnAgainNamed" : "hangsOnAgain", {
+          actor: names.combatant(event.actorId),
+          label: event.label ?? "",
+        });
       return key(event.label ? "hangsOnNamed" : "hangsOn", {
         actor: names.combatant(event.actorId),
         label: event.label ?? "",

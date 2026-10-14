@@ -2496,6 +2496,56 @@ export const regenerationSchema: z.ZodType<RulesetRegeneration, z.ZodTypeDef, un
     message: '"keepsUp" regenerates at 0, so it goes without "notAtZero"',
   });
 
+/** Left at 1 instead of dropping to 0 (Capability API 1.320, widened in 1.347). `uses` is how many
+ *  times a fight; `spends` names a pool on the holder's own sheet that pays 1 each time and stops it
+ *  when empty (5e's Relentless Endurance, once a long rest). `save` has its holder roll first:
+ *  `difficulty`, plus the damage the blow dealt with `plusDamage` (Undead Fortitude's 5 + the damage),
+ *  plus `raisedBy` for each time it has worked before: counted this fight, or with `tally` as what
+ *  has been spent off a pool on the sheet, each success spending 1 and a rest that refills the pool
+ *  starting the count again (Relentless Rage's DC 10, +5 a time, back to 10 after a rest).
+ *  It never works against a blow with a damage type in `notFrom` or a critical hit with `notCritical`
+ *  (Undead Fortitude's radiant and critical hits), nor one that dealt more than `dealtAtMost` (a
+ *  boar's Relentless, 7). `extraTurn` gives its holder a turn of its own straight after. With no
+ *  `uses`, `spends` or `save` it would work every time, so one of them is needed. */
+export interface RulesetHangsOn {
+  uses?: number;
+  spends?: string;
+  save?: { save: string; difficulty: number; plusDamage?: true; raisedBy?: number; tally?: string };
+  notFrom?: string[];
+  notCritical?: true;
+  dealtAtMost?: number;
+  extraTurn?: true;
+  label?: string;
+}
+export const hangsOnSchema: z.ZodType<RulesetHangsOn, z.ZodTypeDef, unknown> = z
+  .object({
+    uses: z.number().int().min(1).max(10).optional(),
+    spends: sheetId.optional(),
+    save: z
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(0).max(100),
+        plusDamage: z.literal(true).optional(),
+        raisedBy: z.number().int().min(1).max(20).optional(),
+        tally: sheetId.optional(),
+      })
+      .strict()
+      .refine((save) => !save.tally || save.raisedBy !== undefined, {
+        message: '"tally" counts what "raisedBy" raises, so it goes with "raisedBy"',
+        path: ["tally"],
+      })
+      .optional(),
+    notFrom: z.array(promptSafeText(40)).min(1).max(8).optional(),
+    notCritical: z.literal(true).optional(),
+    dealtAtMost: z.number().int().min(0).max(10000).optional(),
+    extraTurn: z.literal(true).optional(),
+    label: promptSafeText(60).optional(),
+  })
+  .strict()
+  .refine((hangs) => hangs.uses !== undefined || hangs.spends !== undefined || hangs.save !== undefined, {
+    message: 'Hanging on at 1 names "uses", "spends" or a "save", or it would work every time',
+  });
+
 /** Temporary points a combat condition gives its holder each turn (Capability API 1.274). Typed by
  *  hand, as its harm is. */
 export interface RulesetConditionTemporary {
@@ -6248,20 +6298,14 @@ const creatureFields = {
   /** How many failed saves it may turn into successes (Capability API 1.317), each fight: 5e's
    *  Legendary Resistance (3/Day). */
   legendaryResistance: z.number().int().min(1).max(20).optional(),
-  /** Dropping to 0 hit points, it is left at 1 instead, `uses` times a fight, and with `extraTurn`
-   *  takes a turn of its own straight after the one it happened in (Capability API 1.320): the
-   *  showcase's Miller of Hours and its Hourglass. Not against what slays outright. */
   /** What it regains as each of its turns starts (Capability API 1.346): Regeneration. See
    *  `regenerationSchema`; `add` reads nothing here. */
   regenerates: regenerationSchema.optional(),
-  hangsOn: z
-    .object({
-      uses: z.number().int().min(1).max(10),
-      extraTurn: z.literal(true).optional(),
-      label: promptSafeText(60).optional(),
-    })
-    .strict()
-    .optional(),
+  /** Dropping to 0 hit points, it is left at 1 instead (Capability API 1.320): the showcase's Miller
+   *  of Hours and its Hourglass, `uses` times a fight with a turn straight after. From 1.347 a save
+   *  and the blow's own terms too: Undead Fortitude, Relentless. Not against what slays outright. See
+   *  `hangsOnSchema`; `spends` and `tally` read a sheet, so a creature takes neither. */
+  hangsOn: hangsOnSchema.optional(),
   /** It does not move while any of its cells is in one of these lights (Capability API 1.319): the
    *  showcase's Lantern-Shy, `["bright", "sunlight"]`. */
   stillIn: z
@@ -8440,6 +8484,9 @@ const combatLevelSchema = z
     /** What its holder regains as each of their own turns starts (Capability API 1.346): 5e's
      *  Survivor on a champion's level. */
     regenerates: regenerationSchema.optional(),
+    /** Left at 1 instead of dropping to 0 (Capability API 1.347): 5e's Relentless Endurance on a
+     *  half-orc's level, spending its pool. */
+    hangsOn: hangsOnSchema.optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9142,6 +9189,8 @@ const combatConditionSchema = z
     harms: conditionHarmsSchema.optional(),
     /** What its holder regains as each of their own turns starts (Capability API 1.346). */
     regenerates: regenerationSchema.optional(),
+    /** Left at 1 instead of dropping to 0 while it holds (Capability API 1.347): Relentless Rage. */
+    hangsOn: hangsOnSchema.optional(),
     /** Temporary points its holder gains as each of their turns starts or ends (Capability API
      *  1.274), lost as it ends where it says so: 5e's Heroism. */
     temporary: conditionTemporarySchema.optional(),
@@ -13101,6 +13150,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
+      if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
       // Kept off by who puts them on (1.191): the ruleset's own conditions, from creatures it names.
       entry.conditionImmunitiesFrom?.forEach((ward, wardIndex) => {
         const where = [...path, "conditionImmunitiesFrom", wardIndex];
@@ -13368,6 +13418,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       levelled.add(key);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
+      if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
     });
 
     if (combat.concentration) {
@@ -14461,6 +14512,7 @@ function creatureIssues(
   }
   // Its Regeneration (1.346) has no sheet to add anything off.
   if (creature.regenerates?.add) add([...at, "regenerates", "add"], 'A creature has no sheet to read "add" off');
+  if (creature.hangsOn) hangsOnIssues(definition, creature.hangsOn, [...at, "hangsOn"], add, true);
   // What it may take as a standard action with another budget (1.291) is one the fight has.
   creature.actions.forEach((action, index) => {
     action.standard?.actions.forEach((name, nameIndex) => {
@@ -15051,6 +15103,35 @@ function itemHideIssues(
     });
   }
   hideIssues(definition, effect, at, add);
+}
+
+/** Hanging on at 1 (1.347): health in points, harm the ruleset has, and on a sheet its own saves and
+ *  pools. A creature's block has no sheet, so it neither spends nor tallies. */
+function hangsOnIssues(
+  definition: RulesetDefinition,
+  hangs: RulesetHangsOn,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+  creature = false,
+): void {
+  const health = definition.combat?.health;
+  if (health && "track" in health) add(at, `Health is the wound track "${health.track}", which has no 1 to hang on at`);
+  const declared = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  hangs.notFrom?.forEach((kind, index) => {
+    if (declared && !declared.includes(kind.trim().toLowerCase()))
+      add([...at, "notFrom", index], `Unknown damage type "${kind}"`);
+  });
+  if (creature) {
+    if (hangs.spends !== undefined) add([...at, "spends"], 'A creature has no sheet to spend "spends" off');
+    if (hangs.save?.tally !== undefined) add([...at, "save", "tally"], 'A creature has no sheet to keep "tally" on');
+    return;
+  }
+  const pools = new Set(definition.sheet.live.pools.map((pool) => pool.id));
+  if (hangs.spends !== undefined && !pools.has(hangs.spends)) add([...at, "spends"], `Unknown pool "${hangs.spends}"`);
+  if (hangs.save?.tally !== undefined && !pools.has(hangs.save.tally))
+    add([...at, "save", "tally"], `Unknown pool "${hangs.save.tally}"`);
+  if (hangs.save && !definition.sheet.saves.some((save) => save.id === hangs.save!.save))
+    add([...at, "save", "save"], `Unknown save "${hangs.save.save}"`);
 }
 
 /** Typed hides share a creature's damage words and exception tags (Capability API 1.132). */

@@ -46759,6 +46759,65 @@
                           "minimum": 1,
                           "maximum": 10
                         },
+                        "spends": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "save": {
+                          "type": "object",
+                          "properties": {
+                            "save": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "difficulty": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100
+                            },
+                            "plusDamage": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "raisedBy": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20
+                            },
+                            "tally": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "save",
+                            "difficulty"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "notFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "notCritical": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "dealtAtMost": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 10000
+                        },
                         "extraTurn": {
                           "type": "boolean",
                           "const": true
@@ -46770,9 +46829,6 @@
                         },
                         "$comment": {}
                       },
-                      "required": [
-                        "uses"
-                      ],
                       "additionalProperties": false
                     },
                     "stillIn": {
@@ -89996,6 +90052,86 @@
                 },
                 "additionalProperties": false
               },
+              "hangsOn": {
+                "type": "object",
+                "properties": {
+                  "uses": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "spends": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "save": {
+                    "type": "object",
+                    "properties": {
+                      "save": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "difficulty": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "plusDamage": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "raisedBy": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20
+                      },
+                      "tally": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "save",
+                      "difficulty"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "notFrom": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "notCritical": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "dealtAtMost": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "extraTurn": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
               "temporary": {
                 "type": "object",
                 "properties": {
@@ -95664,6 +95800,86 @@
                   "keepsUp": {
                     "type": "boolean",
                     "const": true
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
+              "hangsOn": {
+                "type": "object",
+                "properties": {
+                  "uses": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "spends": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "save": {
+                    "type": "object",
+                    "properties": {
+                      "save": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "difficulty": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "plusDamage": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "raisedBy": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20
+                      },
+                      "tally": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "save",
+                      "difficulty"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "notFrom": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "notCritical": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "dealtAtMost": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "extraTurn": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
                   },
                   "$comment": {}
                 },

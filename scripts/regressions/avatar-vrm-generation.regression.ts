@@ -529,11 +529,14 @@ const tripoError = (kind: string, pattern: RegExp) => (error: unknown) =>
       init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
     });
   const stalled = createTripoClient({ apiKey: KEY, fetch: silent, requestTimeoutMs: 30, transferTimeoutMs: 30 });
+  // AbortSignal.timeout's timer doesn't keep Node running (the server's sockets do); this test holds it open.
+  const awake = setInterval(() => undefined, 1000);
   await assert.rejects(stalled.balance(), tripoError("unavailable", /Couldn't reach Tripo/u));
   await assert.rejects(
     stalled.download("https://tripo-data.example.com/a.glb", 1024),
     tripoError("unavailable", /download/u),
   );
+  clearInterval(awake);
 }
 {
   // Busy: wait as long as Tripo asks, then go on; still busy after the retries: a plain message.

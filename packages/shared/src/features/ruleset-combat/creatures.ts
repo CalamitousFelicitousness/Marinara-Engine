@@ -22,6 +22,7 @@ import { parseRulesetCombatDice, rulesetAverageAmount, rulesetAverageDamage } fr
 import type {
   RulesetCombatAmount,
   RulesetCombatDamage,
+  RulesetCombatCharge,
   RulesetCombatDamageClause,
   RulesetCombatRider,
   RulesetPlainStatBlock,
@@ -61,6 +62,10 @@ export function rulesetReactionAnswers(
       : {}),
     ...(moment.blow ? { blow: moment.blow } : {}),
     ...(moment.seesSource ? { seesSource: true as const } : {}),
+    ...(moment.by ? { by: moment.by } : {}),
+    ...(moment.weapon ? { weapon: true as const } : {}),
+    ...(moment.names ? { names: [...moment.names] } : {}),
+    ...(moment.budget ? { budget: moment.budget } : {}),
   });
   return {
     ...narrowing(reaction),
@@ -131,9 +136,12 @@ function amountOf(input: { dice?: string; flat?: number } | undefined): RulesetC
 
 /** The clauses beside a blow's first amount. A clause with a save of its own falls back to the
  *  action's number when it named none, and a block has no other number to reach for. */
-function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] | null {
-  const fallback = action.save?.difficulty ?? action.saveDifficulty ?? 0;
-  const clauses = (action.damage?.plus ?? []).flatMap((clause) => {
+function clausesOf(
+  action: RulesetCreatureAction,
+  plus = action.damage?.plus,
+  fallback = action.save?.difficulty ?? action.saveDifficulty ?? 0,
+): RulesetCombatDamageClause[] | null {
+  const clauses = (plus ?? []).flatMap((clause) => {
     const amount = amountOf(clause);
     if (!amount) return [];
     return [
@@ -156,6 +164,25 @@ function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] |
   return clauses.length > 0 ? clauses : null;
 }
 
+/** A charge as a block carries it (1.186): its clauses' saves fall back to the charge's own number. */
+function chargeOf(
+  action: RulesetCreatureAction,
+  charge: NonNullable<RulesetCreatureAction["charge"]>,
+): RulesetCombatCharge {
+  const plus = clausesOf(
+    action,
+    charge.plus,
+    charge.save?.difficulty ?? action.save?.difficulty ?? action.saveDifficulty ?? 0,
+  );
+  return {
+    atLeast: charge.atLeast,
+    ...(plus ? { plus } : {}),
+    ...(charge.save ? { save: { ...charge.save } } : {}),
+    ...(charge.push !== undefined ? { push: charge.push } : {}),
+    ...(charge.applies ? { applies: charge.applies.map((entry) => ({ ...entry })) } : {}),
+  };
+}
+
 function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
   const damage = amountOf(action.damage);
   const heal = amountOf(action.heal);
@@ -171,6 +198,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
+    ...(action.needs && action.needsAny ? { needsAny: true as const } : {}),
     ...(action.seen ? { seen: true as const } : {}),
     ...(action.components ? { components: [...action.components] } : {}),
     ...(damage
@@ -185,16 +213,33 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
         }
       : {}),
     ...(heal ? { heal } : {}),
+    ...(action.ends ? { ends: structuredClone(action.ends) } : {}),
+    ...(action.qualities ? { qualities: [...action.qualities] } : {}),
     ...(action.targets ? { targets: action.targets } : {}),
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
     ...(action.targetCount !== undefined ? { targetCount: action.targetCount } : {}),
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
+    // In the ruleset's distance, as reach is: the encounter turns both into cells (1.184).
+    ...(action.push !== undefined ? { push: action.push } : {}),
+    // What its attack is made with (1.189), so changes narrowed to an ability reach it.
+    ...(action.ability ? { ability: action.ability } : {}),
+    ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
+    ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
-    ...(action.recharge ? { recharge: { dice: { ...action.recharge.dice }, from: action.recharge.from } } : {}),
+    ...(action.recharge
+      ? {
+          recharge: {
+            dice: { ...action.recharge.dice },
+            from: action.recharge.from,
+            ...(action.recharge.group ? { group: action.recharge.group } : {}),
+          },
+        }
+      : {}),
+    ...(action.charge ? { charge: chargeOf(action, action.charge) } : {}),
     ...(action.sequence ? { sequence: action.sequence.map((step) => ({ ...step })) } : {}),
     ...(action.signature ? { signature: { ...action.signature } } : {}),
     ...(action.reaction
@@ -360,6 +405,8 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
+    ...(creature.keepsOn ? { keepsOn: [...creature.keepsOn] } : {}),
+    ...(creature.held ? { held: creature.held.map((thing) => ({ ...thing, tags: [...thing.tags] })) } : {}),
     ...(creature.senses ? { senses: { ...creature.senses } } : {}),
     ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
     ...(creature.shield ? { shield: true as const } : {}),
@@ -542,9 +589,11 @@ export function clampRulesetStatBlock(
   }
   // A threat tier bounds harm, not healing or what an action does to its own side.
   for (const action of block.actions) {
-    if (action.heal !== undefined || action.targets !== undefined) {
+    if (action.heal !== undefined || action.targets !== undefined || action.ends !== undefined) {
       delete action.heal;
       delete action.targets;
+      delete action.ends;
+      // A cure (1.261) is healing too.
       adjusted.push(`"${action.name}" carried healing or targets the threat scale cannot bound, so they were dropped.`);
     }
   }
@@ -584,12 +633,38 @@ export function clampRulesetStatBlock(
   // A track some level reads may be shrugged off as a condition is (1.115).
   const leveled = new Set((combat.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   if (block.conditionImmunities) {
-    const kept = block.conditionImmunities.filter((condition) => conditions.has(condition) || leveled.has(condition));
+    // Or a kind of them (1.258): immune to disease.
+    const kinds = new Set((combat.conditions ?? []).flatMap((entry) => entry.kinds ?? []));
+    const kept = block.conditionImmunities.filter(
+      (condition) => conditions.has(condition) || leveled.has(condition) || kinds.has(condition),
+    );
     if (kept.length < block.conditionImmunities.length) {
       adjusted.push("A condition this ruleset does not have was dropped from the immunities.");
     }
     if (kept.length > 0) block.conditionImmunities = kept;
     else delete block.conditionImmunities;
+  }
+  // What it keeps on is a written creature's (1.263): an aura spreads harm the scale cannot bound.
+  if (block.keepsOn) {
+    delete block.keepsOn;
+    adjusted.push("Conditions kept on through the fight were dropped: the threat scale cannot bound an aura.");
+  }
+  // A held thing lets fall only by tags the ruleset has (1.267); a shield's worth is bounded like any defense.
+  if (block.held) {
+    const tags = new Set((definition.items?.tags ?? []).map((tag) => tag.id));
+    const kept = block.held
+      .filter((thing) => thing.tags.some((tag) => tags.has(tag)))
+      .slice(0, 4)
+      .map((thing) => ({
+        label: thing.label,
+        tags: thing.tags.filter((tag) => tags.has(tag)),
+        ...(Number.isFinite(thing.defense) && thing.defense
+          ? { defense: Math.max(-20, Math.min(20, Math.round(thing.defense!))) }
+          : {}),
+      }));
+    if (kept.length < block.held.length) adjusted.push("A held thing with no item tag this ruleset has was dropped.");
+    if (kept.length) block.held = kept;
+    else delete block.held;
   }
   // Senses are the fight's own (1.178); one it does not have is nothing to see by.
   if (block.senses) {

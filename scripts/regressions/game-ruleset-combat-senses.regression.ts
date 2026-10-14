@@ -410,8 +410,8 @@ try {
   walk(schema);
   assert.deepEqual(
     found,
-    { needs: 2, lacks: 1 },
-    "the published schema carries the entry, creature action and condition keys",
+    { needs: 3, lacks: 1 },
+    "the published schema carries the entry, creature action, aura and condition keys",
   );
   assert.equal(
     rulesetItemUseSchema.safeParse({ kind: "attack", amount: { flat: 4 }, needs: ["hearing"] }).success,

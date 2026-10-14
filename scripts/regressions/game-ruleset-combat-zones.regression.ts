@@ -317,7 +317,7 @@ try {
     refusedDoc(
       {
         kind: "attack",
-        area: { shape: "cone", size: 15 },
+        area: { shape: "box", size: 15 },
         amount: { flat: 1 },
         zone: { rounds: 1, anchor: "caster", triggers: ["enter"] },
       },

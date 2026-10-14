@@ -6,7 +6,13 @@
  * the resolver decides when a zone catches somebody and does it.
  */
 import { rulesetCombatant } from "./encounter.js";
-import { rulesetCellDistance, rulesetPositionOf, rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
+import {
+  rulesetCellDistance,
+  rulesetFootprint,
+  rulesetPositionOf,
+  rulesetZoneCatches,
+  rulesetZoneCells,
+} from "./grid.js";
 import type {
   RulesetCombatAction,
   RulesetCombatant,
@@ -36,6 +42,11 @@ export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: Rule
   return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);
 }
 
+/** Whether a zone's cells hold any cell somebody fills (1.194). */
+export function rulesetZoneHoldsOne(cells: readonly RulesetCombatCell[], combatant: RulesetCombatant): boolean {
+  return rulesetFootprint(combatant).some((cell) => rulesetZoneHolds(cells, cell));
+}
+
 /** Who a zone has inside it now, among those it may catch. */
 export function rulesetZoneOccupants(
   state: RulesetEncounterState,
@@ -45,7 +56,7 @@ export function rulesetZoneOccupants(
 ): string[] {
   const cells = rulesetZoneCells(state, caster, zone);
   return state.combatants
-    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHolds(cells, rulesetPositionOf(one)))
+    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHoldsOne(cells, one))
     .map((one) => one.id);
 }
 
@@ -59,7 +70,7 @@ export function rulesetZoneSideOccupants(
   const cells = zone.sideCells ?? [];
   if (cells.length === 0) return [];
   return state.combatants
-    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHolds(cells, rulesetPositionOf(one)))
+    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHoldsOne(cells, one))
     .map((one) => one.id);
 }
 
@@ -76,7 +87,14 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
     const blocks = action.zone?.blocks;
     if (!blocks || zone.anchor !== "point") continue;
     const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
+    // A broken section closes nothing (1.200).
+    const broken = new Set(
+      (zone.sections ?? [])
+        .filter((section) => section.health <= 0)
+        .flatMap((section) => section.cells.map((cell) => `${cell.x},${cell.y}`)),
+    );
     for (const cell of zone.cells ?? []) {
+      if (broken.has(`${cell.x},${cell.y}`)) continue;
       const key = `${cell.x},${cell.y}`;
       walls[key] = (walls[key] ?? 0) | bits;
     }
@@ -92,14 +110,41 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   rounds: number;
   cells: RulesetCombatCell[];
   side?: RulesetCombatCell[];
+  sections?: Array<{ cells: RulesetCombatCell[]; health: number; max: number }>;
 }> {
-  return rulesetStandingZones(state).map(({ caster, zone }) => ({
+  return rulesetStandingZones(state).map(({ caster, zone, action }) => ({
     casterId: caster.id,
     label: zone.label,
     rounds: zone.rounds,
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
     ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
+    // Each section and what it has left (1.200).
+    ...(zone.sections?.length && action.zone?.sections
+      ? {
+          sections: zone.sections.map((section) => ({
+            cells: section.cells.map((cell) => ({ ...cell })),
+            health: Math.max(0, section.health),
+            max: action.zone!.sections!.health,
+          })),
+        }
+      : {}),
   }));
+}
+
+/** The standing sections of walls that may be struck (1.200), each with its zone. */
+export function rulesetStandingSections(state: RulesetEncounterState): Array<{
+  caster: RulesetCombatant;
+  zone: RulesetCombatZone;
+  action: RulesetCombatAction;
+  section: { cells: RulesetCombatCell[]; health: number };
+}> {
+  return rulesetStandingZones(state).flatMap(({ caster, zone, action }) =>
+    action.zone?.sections
+      ? (zone.sections ?? [])
+          .filter((section) => section.health > 0)
+          .map((section) => ({ caster, zone, action, section }))
+      : [],
+  );
 }
 
 /** Where a zone may be moved to (1.173): any cell of the board within its `move` distance of where
@@ -116,6 +161,29 @@ export function rulesetZoneMoveCells(
     for (let x = Math.max(0, zone.at.x - distance); x <= Math.min(grid.width - 1, zone.at.x + distance); x++) {
       const away = rulesetCellDistance(zone.at, { x, y });
       if (away > 0) cells.push({ x, y, cost: away, path: [], provokes: [] });
+    }
+  }
+  return cells;
+}
+
+/** The ways a line or cone its caster carries may be turned to face (1.182): toward any cell next
+ *  to them on the board but the one it faces now, each a step away. */
+export function rulesetZoneTurnCells(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+): RulesetReachableCell[] {
+  const grid = state.board?.grid;
+  const at = rulesetPositionOf(caster);
+  if (!grid || !at || !zone.facing) return [];
+  const cells: RulesetReachableCell[] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if ((dx === 0 && dy === 0) || (dx === zone.facing.dx && dy === zone.facing.dy)) continue;
+      const x = at.x + dx;
+      const y = at.y + dy;
+      if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) continue;
+      cells.push({ x, y, cost: 1, path: [], provokes: [] });
     }
   }
   return cells;

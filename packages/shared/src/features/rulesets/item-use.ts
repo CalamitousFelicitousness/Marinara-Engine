@@ -173,7 +173,16 @@ export function useRulesetItemOutsideFight(input: {
             ? write({ op: "damage", track: health.track, kind: "", amount: -1 })
             : undefined
           : heal.total > 0
-            ? named(health.pool, write({ op: "restore", pool: health.pool, amount: heal.total }))
+            ? named(
+                health.pool,
+                write({
+                  op: "restore",
+                  pool: health.pool,
+                  amount: heal.total,
+                  // A potion tagged magical is a magical heal (1.261), as its use in a fight is.
+                  ...(item.tags?.includes("magical") ? { magical: true as const } : {}),
+                }),
+              )
             : undefined;
       // Only what landed is said: a heal of nothing, or one the sheet refused, says nothing.
       if (now !== undefined) parts.push({ kind: "heal", amount: heal.total, rolls: heal.rolls, now });

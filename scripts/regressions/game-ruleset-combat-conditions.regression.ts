@@ -366,7 +366,13 @@ try {
     assert.ok(levelNode.properties.effects.items.enum.includes("own-checks-disadvantage"));
     const modifierNode = published.properties.combat.properties.conditions.items.properties.modifiers.items;
     assert.deepEqual(modifierNode.allOf[0], {
-      anyOf: [{ required: ["flat"] }, { required: ["dice"] }, { required: ["times"] }, { required: ["mode"] }],
+      anyOf: [
+        { required: ["flat"] },
+        { required: ["dice"] },
+        { required: ["times"] },
+        { required: ["diceTimes"] },
+        { required: ["mode"] },
+      ],
     });
     assert.deepEqual(modifierNode.properties.flat.not, { const: 0 });
   }
@@ -578,6 +584,7 @@ try {
         rounds: 1,
         clock: "turn-start",
         source: "snag",
+        action: ["slow", "Slow"],
       },
     );
     const hers = endTurn(fiveE, slow.state, "snag");
@@ -635,7 +642,7 @@ try {
     assert.ok(!eventsOf(brand.events, "condition").some((event) => event.reason === "spent"));
     assert.deepEqual(
       rulesetCombatant(brand.state, "brenna")!.tracked.find((entry) => entry.condition === "marked"),
-      { condition: "marked", rounds: 2, endsAfter: "attacked", source: "snag" },
+      { condition: "marked", rounds: 2, endsAfter: "attacked", source: "snag", action: ["brand", "Brand"] },
       "the new one, with its whole clock",
     );
 

@@ -61,6 +61,16 @@ export type DirectedCommand =
       ring?: boolean;
       /** Where further copies of an area that allows them are set down (1.178). */
       also?: Array<{ x: number; y: number }>;
+      /** A wall's section struck at instead of a creature (1.200): one of the option's `walls`. */
+      wall?: { x: number; y: number };
+      /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
+      amount?: number;
+      /** The alterations it is used with (1.253), from the option's `alters`: Metamagic. */
+      alters?: string[];
+      /** Who of its user's side an alteration that spares some spares (1.254): Careful Spell. */
+      spares?: string[];
+      /** Who an alteration that heightens gives disadvantage (1.255): Heightened Spell. */
+      heightens?: string;
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }
@@ -88,6 +98,11 @@ export interface CombatDecisionOption {
   /** Where a ruleset fight's own shape is aimed. `to` above is where the actor walks first, which
    *  a positioned candidate may carry too. */
   at?: { x: number; y: number };
+  /** Where a zone its actor moves or turns goes (1.173, 1.182): the choice's own `to`, never the
+   *  walk `to` above. */
+  zoneTo?: { x: number; y: number };
+  /** The altering actions a ruleset candidate is used with (1.253). */
+  alters?: string[];
 }
 export interface CombatDecisionWindow {
   id: string;
@@ -130,6 +145,10 @@ export interface DirectedRulesetCombatant {
   dying: boolean;
   stable: boolean;
   defeated: boolean;
+  /** Sent out of the fight, alive (1.236): off the board until it comes back, if it does. */
+  away?: true;
+  /** Caught unaware (1.237): their first turn is only ended, and they answer nothing until then. */
+  surprised?: true;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */
   deathTrack?: { successes: number; failures: number; successesMax: number; failuresMax: number };
   /** What this combatant is holding together, when the ruleset has concentration. */
@@ -149,6 +168,8 @@ export interface DirectedRulesetCombatant {
   movementLeft?: number;
   /** The level a flier is up at (1.114), present only while it is off the ground. */
   altitude?: number;
+  /** How many cells a side it fills (1.194), `x`/`y` the top-left one. Absent for one cell. */
+  span?: number;
 }
 /**
  * What a ruleset fight's log holds: everything the resolver did, plus the few things the DIRECTOR
@@ -198,6 +219,8 @@ export interface DirectedRulesetView {
     cells: Array<{ x: number; y: number }>;
     /** A wall's chosen side (1.177), the cells that catch beside it. */
     side?: Array<{ x: number; y: number }>;
+    /** A wall's sections (1.200): their cells and the health each has left; one at 0 is broken. */
+    sections?: Array<{ cells: Array<{ x: number; y: number }>; health: number; max: number }>;
   }>;
   /** The legal menu, present only while a human controls the one being asked: the actor whose turn
    *  it is, or, while a window holds the fight open, whoever that window is asking. */

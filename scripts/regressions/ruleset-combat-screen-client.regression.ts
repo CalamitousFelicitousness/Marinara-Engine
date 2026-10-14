@@ -80,6 +80,9 @@ import {
   rulesetOptionNeedsTargets,
   rulesetPickTarget,
   rulesetSendsOnPick,
+  rulesetHeightenPick,
+  rulesetPicksStep,
+  rulesetSparePick,
   type RulesetMenuStep,
 } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 import {
@@ -745,7 +748,79 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         path: [{ x: 4, y: 2 }],
       }),
     ],
+    ["slain", say({ type: "slain", actorId: "brenna", targetId: "lurker", label: "Mace of Disruption" })],
+    ["dropped", say({ type: "dropped", actorId: "brenna", targetId: "lurker", label: "Quivering Palm" })],
+    [
+      "lowered",
+      say({
+        type: "lowered",
+        actorId: "brenna",
+        targetId: "lurker",
+        label: "Cutting Words",
+        to: "Bite",
+        rolls: [4],
+        by: 4,
+        total: 12,
+      }),
+    ],
+    ["evaded", say({ type: "evaded", targetId: "brenna", label: "Fire Breath" })],
+    [
+      "altered",
+      say({
+        type: "altered",
+        actorId: "brenna",
+        optionId: "ability:0:1",
+        label: "Fireball",
+        alters: ["Careful Spell", "Empowered Spell"],
+      }),
+    ],
+    [
+      "rescued",
+      say({ type: "rescued", actorId: "brenna", optionId: "ability:0:1", label: "Indomitable", by: "reroll" }),
+    ],
+    ["charged", say({ type: "charged", actorId: "lurker", targetId: "brenna", label: "Gore" })],
     ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
+    ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
+    ["compelled", say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 2, does: "nothing" })],
+    ["letFall", say({ type: "letFall", actorId: "brenna", condition: "incapacitated", labels: ["Mace", "Shield"] })],
+    ["pickedUp", say({ type: "pickedUp", actorId: "brenna", label: "Mace" })],
+    ["averted", say({ type: "averted", actorId: "brenna", holderId: "lurker" })],
+    [
+      "section",
+      say({
+        type: "section",
+        actorId: "brenna",
+        label: "Mace",
+        wall: "Wall of Ice",
+        outcome: "hit",
+        dealt: 7,
+        health: 23,
+      }),
+    ],
+    [
+      "track",
+      say({
+        type: "track",
+        targetId: "lurker",
+        sourceId: "brenna",
+        track: "exhaustion",
+        label: "Exhaustion",
+        from: 2,
+        to: 1,
+      }),
+    ],
+    ["unsealed", say({ type: "unsealed", targetId: "lurker", sourceId: "brenna", amount: 5, maxHealth: 30 })],
+    ["dismissed", say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Dismissal" })],
+    ["returned", say({ type: "returned", targetId: "lurker" })],
+    ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
+    ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
+    ["extraTurn", say({ type: "extraTurn", actorId: "brenna", initiative: 7, label: "Thief's Reflexes" })],
+    ["added", say({ type: "added", actorId: "brenna", targetId: "lurker", label: "Divine Smite", to: "Longsword" })],
+    [
+      "healthPool",
+      say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [8, 7], total: 15, affected: ["lurker"] }),
+    ],
+
     ["summon", say({ type: "summon", actorId: "corwin", label: "Spiritual Weapon", outcome: "appeared" })],
     ["flew", say({ type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 })],
     ["delay", say({ type: "delay", actorId: "corwin", label: "Fireball", outcome: "held", roll: 14, needed: 11 })],
@@ -917,7 +992,158 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     printed.get("contest"),
     "Brenna tries Grapple on Thorn Lurker: 14 + 7 = 21 with Athletics against 9 + 2 = 11 with Acrobatics, and wins.",
   );
+  assert.equal(printed.get("slain"), "Brenna's Mace of Disruption destroys Thorn Lurker outright.");
+  assert.equal(printed.get("dropped"), "Brenna's Quivering Palm drops Thorn Lurker to 0.");
+  assert.equal(printed.get("rescued"), "Brenna uses Indomitable and rolls again.");
+  assert.equal(printed.get("lowered"), "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite, to 12.");
+  const lowered = {
+    type: "lowered",
+    actorId: "brenna",
+    targetId: "lurker",
+    label: "Cutting Words",
+    to: "Grapple",
+    rolls: [4],
+    by: 4,
+    total: 12,
+  };
+  assert.equal(
+    say({ ...lowered, type: "lowered", roll: "checks" }),
+    "Brenna's Cutting Words takes 4 off Thorn Lurker's check for Grapple, to 12.",
+  );
+  assert.equal(
+    say({ ...lowered, type: "lowered", to: "Bite", roll: "damage" }),
+    "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite damage, to 12.",
+  );
+  assert.equal(printed.get("evaded"), "Brenna evades Fire Breath entirely.");
+  assert.equal(printed.get("altered"), "Brenna uses Fireball with Careful Spell, Empowered Spell.");
+  assert.equal(
+    say({ type: "rescued", actorId: "brenna", optionId: "ability:0:2", label: "Stroke of Luck", by: "success" }),
+    "Brenna uses Stroke of Luck and succeeds instead.",
+  );
+  assert.equal(
+    say({ type: "rescued", actorId: "brenna", optionId: "ability:0:2", label: "Stroke of Luck", by: "twenty" }),
+    "Brenna uses Stroke of Luck: the d20 counts as a 20.",
+  );
+  assert.equal(
+    say({ type: "rescued", actorId: "brenna", optionId: "ability:0:3", label: "Peerless Skill", by: "die" }),
+    "Brenna uses Peerless Skill and adds a die.",
+  );
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "already" }),
+    "Thorn Lurker already has one like Incapacitated, so it does not go on.",
+  );
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "worsened" }),
+    "Incapacitated on Thorn Lurker worsens: too many saves failed.",
+  );
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: true, reason: "aura" }),
+    "Thorn Lurker is now Incapacitated, from an aura nearby.",
+  );
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "parted" }),
+    "Thorn Lurker is no longer Incapacitated: out of the aura.",
+  );
+  assert.equal(
+    say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 1, does: "wander" }),
+    "Thorn Lurker rolls 1 for Incapacitated and wanders off.",
+  );
+  assert.equal(
+    say({
+      type: "compelled",
+      actorId: "lurker",
+      condition: "incapacitated",
+      roll: 7,
+      does: "strike",
+      targetId: "brenna",
+    }),
+    "Thorn Lurker rolls 7 for Incapacitated and lashes out at Brenna.",
+  );
+  assert.equal(
+    say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 4, does: "nothing" }),
+    "Thorn Lurker rolls 4 for Incapacitated and does nothing this turn.",
+  );
+  assert.equal(
+    say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 9, does: "normal" }),
+    "Thorn Lurker rolls 9 for Incapacitated and acts normally.",
+  );
+  assert.equal(printed.get("letFall"), "Brenna drops Mace, Shield (Incapacitated).");
+  assert.equal(printed.get("pickedUp"), "Brenna picks up Mace.");
+  assert.equal(printed.get("averted"), "Brenna averts their eyes from Thorn Lurker.");
+  assert.equal(
+    say({ type: "averted", actorId: "brenna", holderId: "lurker", back: true }),
+    "Brenna looks at Thorn Lurker again.",
+  );
+  assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
+  assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");
+  assert.equal(printed.get("section"), "Brenna's Mace strikes the Wall of Ice for 7; that section has 23 left.");
+  const struck = (outcome: "hit" | "miss" | "critical", dealt: number, health: number, broken?: true) =>
+    say({
+      type: "section",
+      actorId: "brenna",
+      label: "Mace",
+      wall: "Wall of Ice",
+      outcome,
+      dealt,
+      health,
+      ...(broken ? { broken } : {}),
+    });
+  assert.equal(struck("miss", 0, 30), "Brenna's Mace misses the Wall of Ice.");
+  assert.equal(
+    struck("critical", 30, 0, true),
+    "Brenna's Mace strikes the Wall of Ice for 30 and breaks that section.",
+  );
+  assert.equal(printed.get("track"), "Brenna takes Thorn Lurker's Exhaustion down from 2 to 1.");
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "linked" }),
+    "Thorn Lurker is no longer Incapacitated: what came with it has ended.",
+  );
+  assert.equal(
+    say({
+      type: "track",
+      targetId: "lurker",
+      sourceId: "brenna",
+      track: "exhaustion",
+      label: "Exhaustion",
+      from: 1,
+      to: 2,
+    }),
+    "Brenna raises Thorn Lurker's Exhaustion from 1 to 2.",
+  );
+  assert.equal(
+    printed.get("unsealed"),
+    "Brenna lifts what kept 5 of Thorn Lurker's health from healing; their maximum is 30 again.",
+  );
+  assert.equal(printed.get("dismissed"), "Brenna's Dismissal sends Thorn Lurker out of the fight for good.");
+  assert.equal(
+    say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Banishment", while: "prone" }),
+    "Brenna's Banishment sends Thorn Lurker away for as long as they are Prone.",
+  );
+  assert.equal(printed.get("returned"), "Thorn Lurker comes back into the fight.");
+  assert.equal(
+    say({ type: "returned", targetId: "lurker", gone: true }),
+    "Thorn Lurker stays where they were sent, gone for good.",
+  );
+  assert.equal(
+    say({ type: "surprised", actorIds: ["brenna", "lurker"] }),
+    "Caught unaware: Brenna, Thorn Lurker. They cannot move or act on their first turn, or react until it ends.",
+  );
+  assert.equal(say({ type: "surpriseOver", actorId: "lurker" }), "Thorn Lurker is no longer surprised.");
+  assert.equal(
+    printed.get("extraTurn"),
+    "Brenna takes a second turn this round with Thief's Reflexes, at initiative 7.",
+  );
+  assert.equal(printed.get("added"), "Brenna adds Divine Smite to the Longsword that hit Thorn Lurker.");
+  assert.equal(
+    say({ type: "surpriseOver", actorId: "brenna", label: "Rage" }),
+    "Brenna shakes off the surprise with Rage.",
+  );
+  assert.equal(printed.get("healthPool"), "Brenna's Sleep rolls 15, enough for Thorn Lurker.");
+  assert.equal(
+    say({ type: "healthPool", actorId: "brenna", label: "Sleep", rolls: [1, 1], total: 2, affected: [] }),
+    "Brenna's Sleep rolls 2, not enough for anybody.",
+  );
   // Every reason a number attacks move changes; the pool fight's own lane pins a taking blow's dice.
   assert.equal(printed.get("shift"), "Brenna gains 3 initiative, and is on 9.");
   const shifted = (reason: Extract<RulesetCombatEvent, { type: "shift" }>["reason"], amount: number) =>
@@ -1135,6 +1361,96 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.deepEqual(rulesetDefaultTargets(sword), [], "something that IS a choice sends nothing until it is made");
 }
 
+// ── Who Careful Spell spares is picked when it catches more of its user's side than it spares (1.254) ──
+{
+  const view = {
+    actorId: "sorc",
+    combatants: [
+      { id: "sorc", side: "party" },
+      { id: "ally", side: "party" },
+      { id: "p1", side: "party" },
+      { id: "foe", side: "enemy" },
+    ],
+  } as unknown as DirectedRulesetView;
+  const option = {
+    alters: [
+      { id: "careful", label: "Careful Spell", cost: 1, spares: 1 },
+      { id: "empowered", label: "Empowered Spell", cost: 1, joins: true },
+    ],
+    aim: [
+      { x: 5, y: 5, targetIds: ["ally", "p1", "foe"] },
+      { x: 9, y: 9, targetIds: ["ally", "foe"] },
+    ],
+  } as unknown as DirectedRulesetOption;
+  assert.deepEqual(rulesetSparePick(view, { option, alters: ["careful"] }, [], { at: { x: 5, y: 5 } }), {
+    ids: ["ally", "p1"],
+    most: 1,
+  });
+  assert.equal(
+    rulesetSparePick(view, { option, alters: ["careful"] }, [], { at: { x: 9, y: 9 } }),
+    null,
+    "one caught, and it spares one: nothing to pick",
+  );
+  assert.equal(rulesetSparePick(view, { option, alters: ["empowered"] }, [], { at: { x: 5, y: 5 } }), null);
+  assert.deepEqual(
+    rulesetSparePick(view, { option, alters: ["careful"] }, ["ally", "p1", "foe"])?.ids,
+    ["ally", "p1"],
+    "a list of targets is who it catches",
+  );
+  assert.deepEqual(
+    rulesetSparePick(view, { option, alters: ["careful"] }, [], { at: { x: 1, y: 1 }, toward: { x: 2, y: 1 } })?.ids,
+    ["sorc", "ally", "p1"],
+    "a wall could catch any of them",
+  );
+  // Asked in somebody else's window, its user is the one asked.
+  const asked = { ...view, actorId: "foe", window: { actorId: "sorc" } } as unknown as DirectedRulesetView;
+  assert.deepEqual(rulesetSparePick(asked, { option, alters: ["careful"] }, [], { at: { x: 5, y: 5 } })?.ids, [
+    "ally",
+    "p1",
+  ]);
+}
+
+// ── Who Heightened Spell heightens is picked when it catches more than one (1.255), after who is spared ──
+{
+  const view = {
+    actorId: "sorc",
+    combatants: [
+      { id: "sorc", side: "party" },
+      { id: "ally", side: "party" },
+      { id: "p1", side: "party" },
+      { id: "foe", side: "enemy" },
+    ],
+  } as unknown as DirectedRulesetView;
+  const option = {
+    alters: [
+      { id: "careful", label: "Careful Spell", cost: 1, spares: 1 },
+      { id: "heightened", label: "Heightened Spell", cost: 3, heightens: true },
+    ],
+    aim: [
+      { x: 5, y: 5, targetIds: ["ally", "p1", "foe"] },
+      { x: 9, y: 9, targetIds: ["sorc", "foe"] },
+    ],
+  } as unknown as DirectedRulesetOption;
+  const at = { at: { x: 5, y: 5 } };
+  assert.deepEqual(rulesetHeightenPick(view, { option, alters: ["heightened"] }, [], at), {
+    ids: ["ally", "p1", "foe"],
+  });
+  assert.equal(
+    rulesetHeightenPick(view, { option, alters: ["heightened"] }, [], { at: { x: 9, y: 9 } }),
+    null,
+    "only one besides its user: nothing to pick",
+  );
+  assert.equal(rulesetHeightenPick(view, { option, alters: ["careful"] }, [], at), null);
+  const step: RulesetMenuStep = { stage: "aim", option, alters: ["careful", "heightened"], targets: [] };
+  const spare = rulesetPicksStep(view, step, [], at);
+  assert.equal(spare?.stage, "spare", "who is spared first");
+  assert.deepEqual(spare?.cell, at);
+  const heighten = rulesetPicksStep(view, { ...spare!, spared: ["p1"] }, [], at);
+  assert.equal(heighten?.stage, "heighten", "then who is heightened");
+  assert.deepEqual(heighten?.spared, ["p1"]);
+  assert.equal(rulesetPicksStep(view, { ...step, alters: [] }, [], at), null, "nothing to pick, it is sent");
+}
+
 // ── When a fight is the ruleset's own ──
 
 {
@@ -1341,6 +1657,12 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.equal(at(plain, 0, 1).occupant?.name, "Brenna");
   assert.equal(at(plain, 6, 1).occupant?.name, "Thorn Lurker");
   assert.equal(at(plain, 3, 0).occupant, undefined);
+  // Sent away (1.236), it is on no square at all.
+  const awayView = {
+    ...view,
+    combatants: view.combatants.map((one) => (one.name === "Thorn Lurker" ? { ...one, away: true as const } : one)),
+  };
+  assert.equal(at(rulesetBoardCells(awayView, null), 6, 1).occupant, undefined);
   // Outside a half-made choice nothing is highlighted: the board is information, not a command.
   assert.ok(plain.every((cell) => !cell.reach && !cell.targetable && !cell.aim));
   // A view with no grid is no board at all, whatever else it carries.
@@ -1472,6 +1794,50 @@ function drawn(...rows: string[]): TacticalGrid {
   // Whoever is up is said out loud, so a screen reader is told where the turn is.
   const onTurn = rulesetBoardCells(near, null).find((cell) => cell.occupant?.id === "brenna")!;
   assert.ok(rulesetCellSentences(onTurn, near, t).includes("On turn."));
+
+  // A wall's sections (1.200): what each has left, and the ones an attack may strike instead.
+  const iced: DirectedRulesetView = {
+    ...near,
+    zones: [
+      {
+        casterId: "corwin",
+        label: "Wall of Ice",
+        rounds: 10,
+        cells: [
+          { x: 3, y: 1 },
+          { x: 3, y: 2 },
+        ],
+        sections: [
+          { cells: [{ x: 3, y: 1 }], health: 20, max: 30 },
+          { cells: [{ x: 3, y: 2 }], health: 0, max: 30 },
+        ],
+      },
+    ],
+  };
+  const striking = { ...nearSword, targetIds: [], walls: [{ x: 3, y: 1 }] };
+  assert.ok(rulesetOptionNeedsTargets(striking), "a section to strike is something to point it at");
+  const strikes = rulesetBoardCells(iced, { stage: "target", option: striking, targets: [] });
+  assert.deepEqual(
+    strikes.filter((cell) => cell.strikable).map((cell) => rulesetCellKey(cell)),
+    ["3,1"],
+  );
+  assert.deepEqual(at(strikes, 3, 1).section, { wall: "Wall of Ice", health: 20, max: 30 });
+  assert.match(
+    rulesetCellSentences(at(strikes, 3, 1), iced, t).join(" "),
+    /A section of Wall of Ice, with 20 of 30 left\. Can be struck\.$/u,
+  );
+  assert.match(rulesetCellSentences(at(strikes, 3, 2), iced, t).join(" "), /A broken section of Wall of Ice\.$/u);
+  assert.equal(at(rulesetBoardCells(iced, null), 3, 1).strikable, undefined, "only while a target is chosen");
+  assert.equal(
+    rulesetNothingInReach({
+      ...view,
+      options: view.options!.map((option) =>
+        option.label === "Longsword" ? { ...option, walls: [{ x: 3, y: 1 }] } : option,
+      ),
+    }),
+    false,
+    "a section in reach is something to do",
+  );
 }
 
 // ── Ember Roads, in paces: the same code, a different unit, and no strikes at all ──

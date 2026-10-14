@@ -238,7 +238,7 @@ const use = (
   const action = rulesetCombatant(start, "ada")!.actions.find((entry) => entry.id === "use:0")!;
   assert.deepEqual(
     { ...action.itemUse!.gate!, modifier: typeof action.itemUse!.gate!.modifier },
-    { check: "Ward", skill: "ward", modifier: "number", difficulty: 2 },
+    { check: "Ward", skill: "ward", ability: "nerve", modifier: "number", difficulty: 2 },
   );
   // Every die a 10: the reading holds, and the Resolve comes back.
   const read = use(gravewatch, start, () => 10);

@@ -204,7 +204,7 @@ function defenseText(names: RulesetCombatNames, defense: number): string {
 function bonusNamer(names: RulesetCombatNames, t: TFunction): (bonus: RulesetConditionBonus) => string {
   return (bonus) =>
     bonus.level === undefined
-      ? bonus.item
+      ? bonus.item || bonus.entry
         ? bonus.condition
         : names.condition(bonus.condition)
       : t("game.combat.ruleset.roll.level", {
@@ -267,6 +267,26 @@ export function rulesetCombatEventLine(
       });
     case "round":
       return key("round", { round: event.round });
+    case "surprised":
+      return key("surprised", { names: event.actorIds.map((id) => names.combatant(id)).join(", ") });
+    case "extraTurn":
+      return key("extraTurn", {
+        actor: names.combatant(event.actorId),
+        initiative: event.initiative,
+        label: event.label,
+      });
+    case "added":
+      return key("added", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        to: event.to,
+      });
+    case "surpriseOver":
+      return key(event.label ? "surpriseShaken" : "surpriseOver", {
+        actor: names.combatant(event.actorId),
+        ...(event.label ? { label: event.label } : {}),
+      });
     case "turn":
       return key("turn", { actor: names.combatant(event.actorId) });
     case "attack": {
@@ -374,6 +394,7 @@ export function rulesetCombatEventLine(
       return key(event.reason === "spent" ? "shiftSpent" : "shiftRecovered", { actor, total: event.total });
     }
     case "heal":
+      if (event.blocked) return key("healBlocked", { target: names.combatant(event.targetId) });
       return key("heal", {
         target: names.combatant(event.targetId),
         amount: event.amount,
@@ -394,6 +415,7 @@ export function rulesetCombatEventLine(
       return key(`condition${event.reason[0]!.toUpperCase()}${event.reason.slice(1)}`, {
         target: names.combatant(event.targetId),
         condition: names.condition(event.condition),
+        ...(event.stacks !== undefined ? { stacks: event.stacks } : {}),
       });
     case "contest": {
       // Both sides as a roll, with the check each one added, so the line reads the way the table
@@ -425,6 +447,17 @@ export function rulesetCombatEventLine(
           dc: event.escapeDc,
         });
       }
+      // A treatment against its own number (1.193): nobody else rolled.
+      if (event.difficulty !== undefined) {
+        return key(event.winner === "actor" ? "contestDifficultyWon" : "contestDifficultyLost", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.targetId),
+          label: event.label,
+          roll: attacker.roll,
+          check: attacker.check,
+          dc: event.difficulty,
+        });
+      }
       const defender = side(event.defender);
       return key(event.winner === "actor" ? "contestWon" : "contestLost", {
         actor: names.combatant(event.actorId),
@@ -438,6 +471,98 @@ export function rulesetCombatEventLine(
     }
     case "fell":
       return key("fell", { target: names.combatant(event.targetId), distance: names.height(event.levels) });
+    case "slain":
+      return key("slain", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+      });
+    case "dropped":
+      return key("dropped", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+      });
+    case "altered":
+      return key("altered", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        alters: event.alters.join(", "),
+      });
+    case "lowered":
+      // Off a check or a damage roll (1.257), or else an attack roll.
+      return key(event.roll === "checks" ? "loweredCheck" : event.roll === "damage" ? "loweredDamage" : "lowered", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        by: event.by,
+        target: names.combatant(event.targetId),
+        to: event.to,
+        total: event.total,
+      });
+    case "evaded":
+      return key("evaded", { target: names.combatant(event.targetId), label: event.label });
+    case "rescued":
+      return key(`rescued${event.by[0]!.toUpperCase()}${event.by.slice(1)}`, {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+      });
+    case "dismissed":
+      return key(event.while ? "dismissedWhile" : "dismissed", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        ...(event.while ? { condition: names.condition(event.while) } : {}),
+      });
+    case "returned":
+      return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    case "charged":
+      return key("charged", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+      });
+    case "healthPool":
+      return event.affected.length
+        ? key("healthPool", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            total: event.total,
+            names: event.affected.map((id) => names.combatant(id)).join(", "),
+          })
+        : key("healthPoolNone", { actor: names.combatant(event.actorId), label: event.label, total: event.total });
+    case "compelled": {
+      const values = {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        roll: event.roll,
+      };
+      if (event.does === "strike")
+        return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
+      return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
+    }
+    case "letFall":
+      return key("letFall", {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        items: event.labels.join(", "),
+      });
+    case "pickedUp":
+      return key("pickedUp", { actor: names.combatant(event.actorId), item: event.label });
+    case "averted":
+      return key(event.back ? "lookedBack" : "averted", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.holderId),
+      });
+    case "resized":
+      return key("resized", { target: names.combatant(event.targetId), size: event.label });
+    case "section":
+      return key(event.outcome === "miss" ? "sectionMiss" : event.broken ? "sectionBroken" : "section", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        wall: event.wall,
+        dealt: event.dealt,
+        health: event.health,
+      });
     case "pushed":
       return key("pushed", {
         actor: names.combatant(event.actorId),
@@ -491,6 +616,16 @@ export function rulesetCombatEventLine(
           label: event.label,
           target: names.combatant(event.targetId ?? ""),
         });
+      }
+      // Going off, and catching fire (1.183).
+      if (event.outcome === "detonated" || event.outcome === "burning") {
+        return key(event.outcome === "detonated" ? "zoneDetonated" : "zoneBurning", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+        });
+      }
+      if (event.outcome === "turned") {
+        return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
       }
       if (event.outcome === "moved" || event.outcome === "drifted") {
         return key(event.outcome === "moved" ? "zoneMoved" : "zoneDrifted", {
@@ -758,6 +893,21 @@ export function rulesetCombatEventLine(
       return key("defeated", { target: names.combatant(event.actorId) });
     case "stabilized":
       return key("stabilized", { actor: names.combatant(event.sourceId), target: names.combatant(event.targetId) });
+    case "track":
+      return key(event.to < event.from ? "trackDown" : "trackUp", {
+        actor: names.combatant(event.sourceId),
+        target: names.combatant(event.targetId),
+        track: event.label,
+        from: event.from,
+        to: event.to,
+      });
+    case "unsealed":
+      return key("unsealed", {
+        actor: names.combatant(event.sourceId),
+        target: names.combatant(event.targetId),
+        amount: event.amount,
+        max: event.maxHealth,
+      });
     case "revived":
       return key("revived", { actor: names.combatant(event.actorId), health: event.health });
     case "outcome":

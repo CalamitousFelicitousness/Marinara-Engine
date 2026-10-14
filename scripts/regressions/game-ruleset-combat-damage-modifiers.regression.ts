@@ -312,6 +312,10 @@ try {
       damageType: "radiant",
       fromSource: true,
     })) {
+      // Attacks are narrowed by ability since 1.188 (game-ruleset-combat-ability-narrowing).
+      if (key === "ability" && to === "attacks") continue;
+      // Attacks are narrowed by kind of attack and blow since 1.247 (game-ruleset-combat-reckless).
+      if ((key === "attacks" || key === "blow") && to === "attacks") continue;
       const doc = document((one) => {
         one.combat.conditions.at(-1).modifiers = [
           { to, ...(to === "health-max" ? { times: 0.5 } : { flat: 2 }), [key]: value },

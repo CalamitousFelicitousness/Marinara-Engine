@@ -732,7 +732,12 @@ try {
     name: string,
     markers: string[],
     characterRecollections = false,
-    onProgress?: (job: { stage: string; completed: number; total: number }) => void,
+    onProgress?: (job: {
+      stage: string;
+      completed: number;
+      total: number;
+      part?: { completed: number } | null;
+    }) => void,
   ) => {
     const created = await chats.create({
       name,
@@ -995,7 +1000,7 @@ try {
   );
 
   // ── 14. Prepare's summary counter counts scenes too, never the parts of one scene's summary ──
-  const prepared: Array<{ stage: string; completed: number; total: number }> = [];
+  const prepared: Array<{ stage: string; completed: number; total: number; part?: { completed: number } | null }> = [];
   await summarizedChat("Prepared", ["BACKFILL_P", "BACKFILL_Q", "BACKFILL_R"], true, (job) => prepared.push(job));
   const summarizing = prepared
     .filter((job) => job.stage === "summarizing")
@@ -1003,6 +1008,7 @@ try {
   const totals = new Set(prepared.filter((job) => job.stage === "summarizing").map((job) => job.total));
   assert(summarizing.length > 0);
   assert(totals.size === 1 && [...totals][0]! >= 3, `the counter stays on the scenes: ${summarizing.join(", ")}`);
+  assert.equal(prepared.at(-1)?.part ?? null, null, "a finished Prepare shows no request part");
 
   // ── 15. A scene summarized again asks no recollection of whoever has a hand-edited or deleted one ──
   const resummarized = await summarizedChat("Summarized again", ["BACKFILL_S", "BACKFILL_T"], true);
@@ -1021,6 +1027,10 @@ try {
     summaryS.map((call) => cardsOf(call.system).map((card) => card.name)),
     summaryS.map(() => ["Bram"]),
     "only the generated recollection's character is asked for one",
+  );
+  assert(
+    summaryS.every((call) => call.system.includes('this list (IDs and names): [{"name":"Bram","id":"bram"}]')),
+    "and the instruction asks only Bram for one",
   );
   const adaSAfter = await recollectionOf(resummarized.id, "BACKFILL_S", "ada");
   assert.deepEqual([adaSAfter?.content, adaSAfter?.manualOverride], ["", true], "Ada's stays deleted");

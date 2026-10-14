@@ -124,8 +124,15 @@ export function createTripoClient(options: TripoClientOptions) {
 
   /** The key never leaves this module in text: not in a log line, not in an error. */
   const redact = (text: string) => text.split(key).join("[redacted]");
+  /** Log lines also leave out the signature of any download link (its query). */
   const log = (message: string, ...args: unknown[]) =>
-    logDebugOverride(debug, message, ...args.map((arg) => (typeof arg === "string" ? redact(arg) : arg)));
+    logDebugOverride(
+      debug,
+      message,
+      ...args.map((arg) =>
+        typeof arg === "string" ? redact(arg).replace(/(https?:\/\/[^\s?#"']+)[?#][^\s"']*/gu, "$1") : arg,
+      ),
+    );
 
   function errorFor(status: number, code: number | undefined, message: string | undefined): TripoError {
     if (status === 401 || code === 1000 || code === 1001)
@@ -144,9 +151,11 @@ export function createTripoClient(options: TripoClientOptions) {
   }
 
   async function request<T>(method: "GET" | "POST", path: string, body?: unknown, form?: FormData): Promise<T> {
-    if (!form)
+    // Polls are left out: waitForTask logs each task's start and end.
+    if (form) log("[debug/avatar-generation] Tripo %s %s (a picture)", method, path);
+    else if (!path.startsWith("/tasks/")) {
       log("[debug/avatar-generation] Tripo %s %s %s", method, path, body === undefined ? "" : JSON.stringify(body));
-    else log("[debug/avatar-generation] Tripo %s %s (a picture)", method, path);
+    }
     for (let attempt = 0; ; attempt += 1) {
       if (signal?.aborted) throw abortError(signal);
       let response: Response;
@@ -245,7 +254,8 @@ export function createTripoClient(options: TripoClientOptions) {
       onProgress?: (progress: number | null) => void,
     ): Promise<TripoTask> {
       const started = now();
-      let last: number | null | undefined;
+      // The run already said the step started, so only real progress is passed on.
+      let last: number | null = null;
       const timeout = options.taskTimeoutMs ?? TASK_TIMEOUT_MS;
       while (now() - started < timeout) {
         const task = await request<TripoTask>("GET", `/tasks/${encodeURIComponent(taskId)}`);

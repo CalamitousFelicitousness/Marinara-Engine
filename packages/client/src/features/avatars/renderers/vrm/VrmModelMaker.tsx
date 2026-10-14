@@ -176,6 +176,7 @@ export function VrmModelMaker({
                 : balance.data
                   ? t("avatars.vrm.make.balance", { balance: balance.data.balance, cost })
                   : null}
+            {tooFewCredits ? ` ${t("avatars.vrm.make.notEnough")}` : null}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -192,10 +193,13 @@ export function VrmModelMaker({
               {t("avatars.vrm.make.start")}
             </button>
             {job.running ? (
-              <button type="button" onClick={job.cancel} className={SECONDARY_BUTTON}>
-                <X size="0.875rem" aria-hidden />
-                {t("avatars.generation.cancel")}
-              </button>
+              <>
+                <button type="button" onClick={job.cancel} className={SECONDARY_BUTTON}>
+                  <X size="0.875rem" aria-hidden />
+                  {t("avatars.generation.cancel")}
+                </button>
+                <span className="text-[0.625rem] text-[var(--muted-foreground)]">{t("avatars.vrm.make.stay")}</span>
+              </>
             ) : null}
           </div>
         </>

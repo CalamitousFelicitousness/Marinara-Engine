@@ -358,7 +358,12 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
     controllerRef.current.abort();
     setCancelled(true);
   }, []);
-  const discard = useCallback(() => setDraft(null), []);
+  /** Drops the draft and the finished run's steps (after Discard, or once the model is kept). */
+  const discard = useCallback(() => {
+    setDraft(null);
+    setSteps({});
+    setCreditsUsed(0);
+  }, []);
   return { steps, creditsUsed, draft, running, error, cancelled, start, cancel, discard };
 }
 

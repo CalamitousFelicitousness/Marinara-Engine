@@ -570,6 +570,27 @@ const tripoError = (kind: string, pattern: RegExp) => (error: unknown) =>
   assert.equal(downloads.calls[0]!.headers.authorization, undefined, "the key never goes to a download link");
   await assert.rejects(client(downloads.fetch).download("http://tripo-data.example.com/a.glb", 1024), /secure/u);
   await assert.rejects(client(downloads.fetch).download(undefined, 1024), /secure/u);
+  // A failed download is logged in debug mode without the link's signature.
+  const lines: string[] = [];
+  const warn = logger.warn.bind(logger);
+  (logger as { warn: unknown }).warn = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+  try {
+    const broken = createTripoClient({
+      apiKey: KEY,
+      debug: true,
+      fetch: async () => {
+        throw new Error("Refused to fetch https://tripo-data.example.com/a.glb?sig=SECRET123: blocked");
+      },
+    });
+    await assert.rejects(broken.download("https://tripo-data.example.com/a.glb?sig=SECRET123", 1024), /Try again/u);
+  } finally {
+    (logger as { warn: unknown }).warn = warn;
+  }
+  assert.ok(
+    lines.some((line) => line.includes("https://tripo-data.example.com/a.glb")),
+    "the failure is logged",
+  );
+  assert.equal(lines.join("\n").includes("SECRET123"), false, "the signature never reaches the log");
   const missing = mockTripo(() => ({ status: 404, bytes: Buffer.from("") }));
   await assert.rejects(
     client(missing.fetch).download("https://tripo-data.example.com/a.glb", 1024),
@@ -774,6 +795,7 @@ try {
   assert.ok(log.includes("22222222-2222-4222-8222-222222222222"), "task ids are logged");
   assert.equal(log.includes(KEY), false, "the key is never logged");
   assert.equal(log.includes("sig="), false, "download signatures are never logged");
+  assert.equal(log.includes("Tripo GET /tasks"), false, "polls are not logged one by one");
 
   // Not enough credits: refused before anything is paid for.
   const poor = script(riggedGlb(), { balance: 40 });

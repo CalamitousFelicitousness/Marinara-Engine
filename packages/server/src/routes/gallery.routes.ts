@@ -870,8 +870,6 @@ export async function galleryRoutes(app: FastifyInstance) {
     return {
       videoConnectionId,
       galleryImage,
-      // The clip joins the newest reply, where the user is, whichever reply the picture came from.
-      anchor: resolveChatVideoAnchor(messages),
       videoRuntime,
       durationSeconds,
       aspectRatio,
@@ -1126,16 +1124,8 @@ export async function galleryRoutes(app: FastifyInstance) {
       logDebugOverride(debugOverrideEnabled, message, ...args);
     };
     const sceneVideos = createGameSceneVideosStorage(app.db);
-    const {
-      videoConnectionId,
-      galleryImage,
-      anchor,
-      videoRuntime,
-      durationSeconds,
-      aspectRatio,
-      prompt,
-      videoFallback,
-    } = prepared;
+    const { videoConnectionId, galleryImage, videoRuntime, durationSeconds, aspectRatio, prompt, videoFallback } =
+      prepared;
     const {
       source,
       serviceHint,
@@ -1216,13 +1206,19 @@ export async function galleryRoutes(app: FastifyInstance) {
       await chats.patchMetadata(input.chatId, () => ({ sceneLastVideoId: row.id }));
       logger.info("[gallery/generate-scene-video] saved video %s for chat %s", row.id, input.chatId);
       const video = serializeSceneVideo(row);
-      // Shown inline under the message the animated image belongs to; the video stays in the gallery either way.
+      // Shown inline under the newest reply, chosen now rather than before generating: the user may have sent
+      // or swiped a message meanwhile. The video stays in the gallery either way.
+      const anchor = resolveChatVideoAnchor(await chats.listMessages(input.chatId));
+      let messageId: string | null = null;
       if (anchor) {
-        await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video)).catch((attachErr) => {
+        try {
+          await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video));
+          messageId = anchor.messageId;
+        } catch (attachErr) {
           logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", row.id);
-        });
+        }
       }
-      return { video, messageId: anchor?.messageId ?? null };
+      return { video, messageId };
     } catch (err) {
       if (savedFilePath && !metadataSaved) {
         await removeSavedVideoFromDisk(savedFilePath).catch((cleanupErr) => {

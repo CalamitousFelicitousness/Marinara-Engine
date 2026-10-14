@@ -34,12 +34,15 @@ const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), 
 
 // One local server plays both the text model (director) and ComfyUI.
 const comfyPrompts: string[] = [];
+// Runs when a video job starts, to change the chat while the clip is being made.
+let duringGeneration: (() => Promise<void>) | null = null;
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const url = request.url ?? "";
   if (url.endsWith("/prompt")) {
     comfyPrompts.push(Buffer.concat(chunks).toString());
+    await duringGeneration?.();
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ prompt_id: "job-1" }));
     return;
@@ -183,6 +186,22 @@ try {
   const second = await generate({ galleryImageId: loose.id });
   assert.equal(second.messageId, later.id);
   assert.equal((await videoAttachments(later.id)).message.length, 2);
+
+  // A reply that arrives while the clip is being made gets it: the newest reply is chosen after generating.
+  let arrived: { id: string } | null = null;
+  duringGeneration = async () => {
+    arrived = await chats.createMessage({
+      chatId: roleplay.id,
+      role: "assistant",
+      characterId: null,
+      content: "Meanwhile, the storm breaks.",
+    });
+  };
+  const third = await generate({ galleryImageId: loose.id });
+  duringGeneration = null;
+  assert.ok(arrived);
+  assert.equal(third.messageId, (arrived as { id: string }).id);
+  assert.equal((await videoAttachments((arrived as { id: string }).id)).message.length, 1);
 
   // The newest reply's shown swipe gets the clip.
   assert.deepEqual(

@@ -208,7 +208,7 @@ function rollAmount(
   ctx: RulesetCombatContext,
   amount: RulesetCombatAmount,
   extra?: { amount: RulesetCombatAmount; times: number },
-  /** The amount's own dice at or below this are thrown again once, the new face standing (1.97). */
+  /** The amount's own dice at or below this are thrown again once, the new face standing (1.98). */
   rerollUpTo?: number,
 ): { rolls: number[]; flat: number; total: number } {
   const rolls = rerollLow(ctx, rollRulesetDice(ctx.roll, amount.count, amount.sides), amount.sides, rerollUpTo);
@@ -1406,7 +1406,7 @@ export function applyRulesetCombatChoice(
     noteOutcome(ctx);
     return finish();
   }
-  // A fake, spent, is found out (1.78); one whose true item has no use did nothing.
+  // A fake, spent, is found out (1.79); one whose true item has no use did nothing.
   const fake = action.itemUse?.fake;
   if (fake) {
     ctx.events.push({
@@ -2108,7 +2108,7 @@ function openAimed(
 function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   const found = actor?.actions.find((entry) => entry.id === resume.optionId);
-  // A fake does what it truly does (1.78).
+  // A fake does what it truly does (1.79).
   const own = found && rulesetActionAsUsed(found);
   // Picked up in the mode it was made in.
   const action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
@@ -2612,7 +2612,7 @@ function resolveAction(
         );
         const total = kept + action.toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
-        // A critical range the attacker's sheet reads (1.80) widens a critical face down to it.
+        // A critical range the attacker's sheet reads (1.81) widens a critical face down to it.
         const criticalFrom =
           naturals.max === "critical"
             ? Math.max(2, Math.min(dice.sides, actor.criticalFrom ?? dice.sides))

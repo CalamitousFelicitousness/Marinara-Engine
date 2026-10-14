@@ -57,7 +57,7 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
    *  raised to it. */
   floor?: number;
   /** The first amount's own dice at or below this are thrown again once, the new face standing: a
-   *  weapon wielded two-handed by a fighter whose sheet gives it (1.97, 5e's Great Weapon Fighting). */
+   *  weapon wielded two-handed by a fighter whose sheet gives it (1.98, 5e's Great Weapon Fighting). */
   reroll?: number;
 }
 
@@ -373,7 +373,7 @@ export interface RulesetCombatAction {
    *  it spends of it: one off the stack, or some of its charges. */
   itemUse?: {
     item: number;
-    /** A fake used (Capability API 1.78): its true name, and what its true item does in place of what
+    /** A fake used (Capability API 1.79): its true name, and what its true item does in place of what
      *  the action says (`rulesetActionAsUsed`), or `dud` where it does nothing a fight can use, so the
      *  use is spent for nothing. The fight says what it really was once it is spent. */
     fake?: { name: string; dud?: true; does?: Partial<RulesetCombatAction> };
@@ -510,7 +510,7 @@ export interface RulesetCombatant {
   /** Read from the sheet or the block once, when the fight began. */
   defense: number;
   /** The lowest natural attack face that is a critical for this fighter, read off their sheet
-   *  (`attackRoll.criticalFrom`, 1.80). The die's highest face when absent. */
+   *  (`attackRoll.criticalFrom`, 1.81). The die's highest face when absent. */
   criticalFrom?: number;
   saves: Record<string, number>;
   /** What this combatant adds in a contest, by check id. Present only when the ruleset has checks. */
@@ -891,7 +891,7 @@ export type RulesetCombatEvent =
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
   /** An item whose last charge was just spent, and whose die said it breaks. */
   | { type: "broke"; actorId: string; optionId: string; label: string; roll: number }
-  /** A fake just used, found out (1.78): what it truly was, and whether it did nothing. */
+  /** A fake just used, found out (1.79): what it truly was, and whether it did nothing. */
   | { type: "fake"; actorId: string; optionId: string; label: string; truly: string; dud?: true }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */

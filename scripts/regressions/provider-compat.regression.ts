@@ -4,6 +4,7 @@ import { logger } from "../../packages/server/src/lib/logger.js";
 import {
   findKnownModel,
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isGeminiModel,
   isGeminiThinkingLevelModel,
   resolveProviderReasoningEffort,
   shouldSuppressUnknownModelParameters,
@@ -77,6 +78,7 @@ import {
 import { resolveMainGenerationToolChoice } from "../../packages/server/src/services/generation/tool-resolution-runtime.js";
 import {
   appendGenerationTailMessages,
+  buildUserMessageRegenerationPromptFromSource,
   hasProviderMessagePayload,
   parseStoredGenerationParameters,
   type SimpleMessage,
@@ -3181,6 +3183,7 @@ try {
 // Argon takes thinkingLevel low, medium or high only (thinkingBudget and "minimal" are HTTP 400), cannot turn thinking
 // off, ignores temperature, top-p and top-k, and rejects penalties and a prefilled final model turn.
 // https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+// https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
 // The Gemini 3 bodies are pinned byte for byte so none of this leaks into them.
 // Every Gemini request on both hosts turns the four adjustable safety filters off (#7542):
 // https://ai.google.dev/gemini-api/docs/safety-settings
@@ -3332,7 +3335,8 @@ try {
       finishReason = "STOP";
       assert.equal(usage?.finishReason, "length");
 
-      // A user's own safety settings in custom parameters are kept, in either spelling, and never sent twice.
+      // A user's own safety settings in custom parameters win for the categories they name, in either spelling,
+      // and are never sent twice. The categories they leave out stay Off.
       requests.length = 0;
       const ownSafety = [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" }];
       await collectProviderOutput(provider, {
@@ -3345,7 +3349,20 @@ try {
       assert.deepEqual(body(0), {
         contents: [{ role: "user", parts: [{ text: "test" }] }],
         generationConfig: { maxOutputTokens: 4096 },
+        safety_settings: [...ownSafety, ...safetySettings.slice(1)],
+      });
+      // Both spellings at once are sent exactly as the user wrote them, so nothing contradicts either list.
+      const ownCamelSafety = [{ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" }];
+      await collectProviderOutput(provider, {
+        model: "gemini-4-argon",
+        reasoningEffort: "none",
+        customParameters: { safety_settings: ownSafety, safetySettings: ownCamelSafety },
+      });
+      assert.deepEqual(body(1), {
+        contents: [{ role: "user", parts: [{ text: "test" }] }],
+        generationConfig: { maxOutputTokens: 4096 },
         safety_settings: ownSafety,
+        safetySettings: ownCamelSafety,
       });
 
       // Gemini 3 is unchanged, byte for byte, apart from the safety settings every Gemini request now carries:
@@ -3391,7 +3408,255 @@ try {
         ],
         `${kind} Gemini 3 request bodies must not change`,
       );
+
+      // Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject a final model turn and both penalties and ignore temperature,
+      // top-p and top-k, like Argon (#7558). They keep their thinking levels, which stay Argon's rules only.
+      // https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.6
+      // https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-8-flash
+      for (const model of ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"]) {
+        requests.length = 0;
+        const options = { model, ...samplers, reasoningEffort: "high" as const, enableThinking: true };
+        await collectProviderOutputForMessages(provider, prefilled, { ...options, stream: false });
+        await provider.chatComplete(prefilled, { ...options, tools: [diceTool] });
+        for (const index of [0, 1]) {
+          assert.deepEqual(
+            [body(index).contents, body(index).generationConfig],
+            [
+              [
+                { role: "user", parts: [{ text: "test" }] },
+                { role: "model", parts: [{ text: "Once" }] },
+                { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] },
+              ],
+              { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "high", includeThoughts: true } },
+            ],
+            `${kind} ${model} ${index ? "tools round" : "chat"} must not end on a model turn or send samplers`,
+          );
+        }
+      }
+
+      // A past reply whose saved Gemini parts hold only a thought keeps its turn in chat(), as the tools round does.
+      requests.length = 0;
+      const thoughtOnly = [{ text: "plan", thought: true, thoughtSignature: "sig" }];
+      await collectProviderOutputForMessages(
+        provider,
+        [
+          { role: "user", content: "U1" },
+          { role: "assistant", content: "", providerMetadata: { geminiParts: thoughtOnly } },
+          { role: "user", content: "U2" },
+        ],
+        { model: "gemini-3.5-flash", stream: false },
+      );
+      assert.deepEqual(
+        body(0).contents,
+        [
+          { role: "user", parts: [{ text: "U1" }] },
+          { role: "model", parts: thoughtOnly },
+          { role: "user", parts: [{ text: "U2" }] },
+        ],
+        `${kind} chat() must keep a saved thought-only model turn`,
+      );
     }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalUrls === undefined) delete process.env.PROVIDER_LOCAL_URLS_ENABLED;
+    else process.env.PROVIDER_LOCAL_URLS_ENABLED = originalLocalUrls;
+  }
+}
+
+// ── Gemini on OpenRouter and other OpenAI-compatible connections (#7558) ──
+// Argon, Gemini 3.5 Flash-Lite and 3.6 to 3.8 Flash reject a request ending on a model turn and both penalties and
+// ignore temperature, top-p and top-k, so a prefill or an empty Send after a reply gets the continuation turn native
+// Google adds, and the samplers stay out (a custom endpoint keeps them). A user-message regeneration ends on its rewrite
+// instruction, as on native Google. Mid-chat system messages (Post-Processing: Don't Apply) go to any Gemini as user
+// turns in place. OpenRouter Gemini tool rounds send back the call's reasoning_details, while saved chat reasoning still
+// stays out (#1097). Other bodies are pinned byte for byte.
+// https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
+// https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+{
+  const originalFetch = globalThis.fetch;
+  const originalLocalUrls = process.env.PROVIDER_LOCAL_URLS_ENABLED;
+  // The stub answers every request; the flag skips the DNS check, so nothing leaves the machine.
+  process.env.PROVIDER_LOCAL_URLS_ENABLED = "true";
+  const raws: string[] = [];
+  let reply: Record<string, unknown> = { content: "Hi" };
+  globalThis.fetch = async (_input, init) => {
+    raws.push(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: reply, finish_reason: "stop" }] }), {
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const sent = (index: number) => JSON.parse(raws[index] ?? "null") as Record<string, unknown>;
+  const samplers = { temperature: 0.7, topP: 0.9, topK: 40, frequencyPenalty: 0.3, presencePenalty: 0.4 };
+  const options = { stream: false, ...samplers, reasoningEffort: "high" as const, enableThinking: true };
+  const diceTool = {
+    type: "function" as const,
+    function: { name: "roll_dice", description: "Roll dice", parameters: { type: "object", properties: {} } },
+  };
+  // An empty Send after a reply in Roleplay ends on the reply; a preset prefill ends the same way.
+  const endsOnReply: ChatMessage[] = [
+    { role: "system", content: "main" },
+    { role: "user", content: "U1" },
+    { role: "assistant", content: "<last_message>A1</last_message>" },
+  ];
+  const continued = [
+    { role: "system", content: "main" },
+    { role: "user", content: "U1" },
+    { role: "assistant", content: "<last_message>A1</last_message>" },
+    { role: "user", content: ASSISTANT_CONTINUATION_PROMPT },
+  ];
+  const dontApply: ChatMessage[] = [
+    { role: "system", content: "main" },
+    { role: "user", content: "U1" },
+    { role: "assistant", content: "A1" },
+    { role: "system", content: "note" },
+    { role: "user", content: "U2" },
+    { role: "system", content: "post" },
+  ];
+  const make = (baseUrl: string, kind: string) =>
+    new OpenAIProvider(baseUrl, "test", undefined, undefined, undefined, kind);
+  const openRouter = make("https://openrouter.ai/api/v1", "openrouter");
+  const nanoGpt = make("https://nano-gpt.com/api/v1", "nanogpt");
+  const custom = make("https://gemini-gateway.example/v1", "custom");
+  try {
+    const allSamplers = { temperature: 0.7, top_p: 0.9, frequency_penalty: 0.3, presence_penalty: 0.4 };
+    const cases = [
+      [openRouter, "google/gemini-4-argon", {}],
+      [nanoGpt, "google/gemini-4-argon", {}],
+      [openRouter, "google/gemini-4-argon:online", {}],
+      [custom, "gemini-4-argon", allSamplers],
+      [openRouter, "google/gemini-3.8-flash", {}],
+      [openRouter, "google/gemini-3.6-flash:online", {}],
+      [nanoGpt, "gemini-3.7-flash", {}],
+      [custom, "gemini-3.5-flash-lite", allSamplers],
+    ] as const;
+    for (const [provider, model, sampling] of cases) {
+      raws.length = 0;
+      await collectProviderOutputForMessages(provider, endsOnReply, { model, ...options });
+      await provider.chatComplete(endsOnReply, { model, ...options, tools: [diceTool] });
+      for (const index of [0, 1]) {
+        const body = sent(index);
+        const round = index ? "tools round" : "chat";
+        assert.deepEqual(body.messages, continued, `${model} ${round} must not end on a reply`);
+        assert.deepEqual(
+          Object.fromEntries(Object.keys(allSamplers).flatMap((key) => (key in body ? [[key, body[key]]] : []))),
+          sampling,
+          `${model} ${round} sends only the samplers it takes`,
+        );
+      }
+    }
+
+    // Don't Apply: system messages after the first turn go to Gemini as user turns, in place.
+    raws.length = 0;
+    await collectProviderOutputForMessages(openRouter, dontApply, { model: "google/gemini-3.5-flash", ...options });
+    assert.deepEqual(sent(0).messages, [
+      { role: "system", content: "main" },
+      { role: "user", content: "U1" },
+      { role: "assistant", content: "A1" },
+      { role: "user", content: "note" },
+      { role: "user", content: "U2" },
+      { role: "user", content: "post" },
+    ]);
+
+    // Regenerating U2 as a swipe drops it from history. The route passes isGeminiModel(conn.model), so the request ends
+    // on the rewrite instruction, not on A1 with a continuation turn that would save the AI's prose as the user's swipe.
+    // gemini-user-regeneration.regression.ts proves that wiring through the real route.
+    const rewrite = buildUserMessageRegenerationPromptFromSource({ role: "user", content: "U2" });
+    for (const [provider, model] of [
+      [openRouter, "google/gemini-3.8-flash"],
+      [nanoGpt, "google/gemini-4-argon"],
+      [custom, "gemini-3.6-flash"],
+      [openRouter, "google/gemini-3.5-flash"],
+    ] as const) {
+      const regeneration: ChatMessage[] = [
+        { role: "system", content: "main" },
+        { role: "user", content: "U1" },
+        { role: "assistant", content: "A1" },
+      ];
+      const tail = appendGenerationTailMessages(regeneration, {
+        assistantPrefill: "",
+        assistantReasoningPrefill: "",
+        supportsAssistantReasoningPrefill: false,
+        followUpIteration: 0,
+        impersonate: false,
+        isGoogleProvider: isGeminiModel(model),
+        regenerateUserMessage: rewrite,
+      });
+      assert.equal(tail.googleUserRegenerationInjected, true, `${model} must take the rewrite instruction`);
+      raws.length = 0;
+      await collectProviderOutputForMessages(provider, regeneration, { model, ...options });
+      assert.deepEqual(
+        (sent(0).messages as unknown[]).slice(2),
+        [
+          { role: "assistant", content: "A1" },
+          { role: "user", content: rewrite.content },
+        ],
+        `${model} user-message regeneration must end on the rewrite instruction`,
+      );
+    }
+    assert.equal(isGeminiModel("meta-llama/llama-3.3-70b-instruct"), false);
+    assert.equal(isGeminiModel("anthropic/claude-opus-5"), false);
+
+    // Gemini 3.5 Flash, 3.1 Pro and other models keep their bodies, byte for byte.
+    raws.length = 0;
+    for (const model of [
+      "google/gemini-3.5-flash",
+      "google/gemini-3.1-pro-preview",
+      "meta-llama/llama-3.3-70b-instruct",
+    ]) {
+      await collectProviderOutputForMessages(openRouter, endsOnReply, { model, ...options });
+    }
+    await collectProviderOutputForMessages(openRouter, dontApply, {
+      model: "meta-llama/llama-3.3-70b-instruct",
+      ...options,
+    });
+    assert.deepEqual(raws, [
+      '{"model":"google/gemini-3.5-flash","messages":[{"role":"system","content":"main"},{"role":"user","content":"U1"},{"role":"assistant","content":"<last_message>A1</last_message>"}],"stream":false,"max_tokens":4096,"temperature":0.7,"top_p":0.9,"frequency_penalty":0.3,"presence_penalty":0.4,"reasoning":{"effort":"high"}}',
+      '{"model":"google/gemini-3.1-pro-preview","messages":[{"role":"system","content":"main"},{"role":"user","content":"U1"},{"role":"assistant","content":"<last_message>A1</last_message>"}],"stream":false,"max_tokens":4096,"temperature":0.7,"top_p":0.9,"frequency_penalty":0.3,"presence_penalty":0.4,"reasoning":{"effort":"high"}}',
+      '{"model":"meta-llama/llama-3.3-70b-instruct","messages":[{"role":"system","content":"main"},{"role":"user","content":"U1"},{"role":"assistant","content":"<last_message>A1</last_message>"}],"stream":false,"max_tokens":4096,"temperature":0.7,"top_p":0.9,"frequency_penalty":0.3,"presence_penalty":0.4,"reasoning":{"effort":"high"}}',
+      '{"model":"meta-llama/llama-3.3-70b-instruct","messages":[{"role":"system","content":"main"},{"role":"user","content":"U1"},{"role":"assistant","content":"A1"},{"role":"system","content":"note"},{"role":"user","content":"U2"},{"role":"system","content":"post"}],"stream":false,"max_tokens":4096,"temperature":0.7,"top_p":0.9,"frequency_penalty":0.3,"presence_penalty":0.4,"reasoning":{"effort":"high"}}',
+    ]);
+
+    // A tools round returns the call with its reasoning_details; the next round sends them back unmodified.
+    const details = [{ type: "reasoning.encrypted", format: "google-gemini-v1", data: "signature", id: "call_1" }];
+    const call = { id: "call_1", type: "function", function: { name: "roll_dice", arguments: "{}" } };
+    raws.length = 0;
+    reply = { content: null, tool_calls: [call], reasoning: "Rolling.", reasoning_details: details };
+    const round = await openRouter.chatComplete([{ role: "user", content: "Roll." }], {
+      model: "google/gemini-3.5-flash",
+      ...options,
+      tools: [diceTool],
+    });
+    reply = { content: "Rolled 4." };
+    await openRouter.chatComplete(
+      [
+        { role: "user", content: "Roll." },
+        {
+          role: "assistant",
+          content: round.content ?? "",
+          tool_calls: round.toolCalls,
+          ...(round.providerMetadata ? { providerMetadata: round.providerMetadata } : {}),
+        },
+        { role: "tool", tool_call_id: "call_1", content: "4" },
+      ],
+      { model: "google/gemini-3.5-flash", ...options, tools: [diceTool] },
+    );
+    assert.deepEqual(
+      (sent(1).messages as unknown[])[1],
+      { role: "assistant", content: null, tool_calls: [call], reasoning_details: details },
+      "an OpenRouter Gemini tool call must carry its reasoning_details into the next round",
+    );
+    // Saved chat history still replays none (#1097), even when its reasoning reaches the provider.
+    raws.length = 0;
+    await collectProviderOutputForMessages(
+      openRouter,
+      [
+        { role: "user", content: "U1" },
+        { role: "assistant", content: "A1", providerMetadata: { reasoning_details: details } },
+        { role: "user", content: "U2" },
+      ],
+      { model: "google/gemini-3.5-flash", ...options },
+    );
+    assert.deepEqual((sent(0).messages as unknown[])[1], { role: "assistant", content: "A1" });
   } finally {
     globalThis.fetch = originalFetch;
     if (originalLocalUrls === undefined) delete process.env.PROVIDER_LOCAL_URLS_ENABLED;

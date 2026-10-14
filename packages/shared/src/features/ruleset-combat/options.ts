@@ -749,7 +749,7 @@ export function rulesetHitChance(
   mode: RulesetCombatRollMode = "normal",
   /** What the attacker's conditions add on top of the dice, rolled once whichever throw is kept. */
   bonus?: RulesetBonusDice,
-  /** The lowest natural face that is a critical for this attacker (1.80), which always lands. */
+  /** The lowest natural face that is a critical for this attacker (1.81), which always lands. */
   criticalFrom?: number,
 ): number | null {
   if (bonus && (bonus.flat !== 0 || bonus.dice.length > 0)) {

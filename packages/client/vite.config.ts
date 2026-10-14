@@ -60,6 +60,13 @@ function manualChunks(id: string) {
   // Removing those suffixes splits eager React imports across chunks and creates startup cycles.
   id = id.slice(id.search(/\/(?:\.pnpm|node_modules)\//u));
 
+  // Avatar renderer libraries load only with an avatar renderer's lazy chunk (features/avatars), never in
+  // vendor-misc, which the entry imports. three's core build is its own chunk to stay under the budget.
+  if (/\/node_modules\/three\/build\/three\.core\./u.test(id)) return "vendor-three-core";
+  if (/\/node_modules\/three\//u.test(id)) return "vendor-three";
+  if (/\/node_modules\/@pixiv\//u.test(id)) return "vendor-three-vrm";
+  if (/\/node_modules\/(?:mesh-avatar|fflate)\//u.test(id)) return "vendor-mesh-avatar";
+
   // Keep dynamically selected Lucide glyphs in small alphabetical chunks
   // instead of pulling the complete icon catalog into one eager vendor file.
   const lucideIcon = id.match(/lucide-react\/dist\/esm\/icons\/([^/]+)\.js$/u);
@@ -164,8 +171,16 @@ export default defineConfig({
             // Intentionally exclude html so index.html is not precached and does not interfere with the PWA stale-version/update flow.
             globPatterns: ["**/*.{js,css,json,png,svg,ico,woff2}"],
             navigateFallback: null,
-            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand.
-            globIgnores: ["**/sprites/**", "logo.png", "logo-splash.gif"],
+            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand, and
+            // avatar renderers and their libraries load only where an avatar agent is used (features/avatars).
+            globIgnores: [
+              "**/sprites/**",
+              "logo.png",
+              "logo-splash.gif",
+              "**/{pngtuber,mesh-avatar,vrm}-renderer-*.js",
+              "**/vendor-three*.js",
+              "**/vendor-mesh-avatar*.js",
+            ],
             navigateFallbackAllowlist: [],
             runtimeCaching: [
               {

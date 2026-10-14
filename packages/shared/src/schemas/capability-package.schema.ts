@@ -607,136 +607,140 @@ const capabilityPackageManifestBaseSchema = z
 // 1.72: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
 //        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
 //        its declared assets. A new game with the Experience on is locked to them.
-// 1.73: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
+// 1.73: the Engine hosts the 2D and 3D avatar agents (`2d-avatars`, `3d-avatars`, types/avatars.ts): it
+//        owns their storage, import, lazy renderers, setup on the Agent editor page, stream director,
+//        classifier and generation routes, and merges the 2D agent's `avatarGenerationTemplates`. No new
+//        manifest field; an avatar package declares 1.73 so an Engine without these surfaces refuses it.
+// 1.74: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
 //        creatures in the way (`creatures`), and a save (an entry's, a creature action's or an item use's)
 //        may ignore cover (`ignoresCover`); cover is read from the attacker's position by corner lines
 //        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.72: an Engine that cannot
 //        read these refuses the whole ruleset or catalog file, so a package that ships any of them
-//        declares 1.73. No permission.
-// 1.74: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
+//        declares 1.74. No permission.
+// 1.75: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
 //        is, what higher ground gives an attack and a shot, and what a fall does (combat C6b). Boards
 //        may have height whatever a ruleset says. Not a soft seam, for the same reason as 1.20 through
-//        1.73: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
-//        declares 1.74. No permission.
-// 1.75: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
+//        1.74: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
+//        declares 1.75. No permission.
+// 1.76: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
 //        `budgets`, `grants`, `exclusive`, `attacksPerTurn` and `onEnd`, and a budget may have a count of
-//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.74: an
+//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.75: an
 //        Engine that cannot read these refuses the whole ruleset file, so a package that ships any of
-//        them declares 1.75. No permission.
-// 1.76: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
+//        them declares 1.76. No permission.
+// 1.77: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
 //        (C6e-0): fields, abilities, skills and saves renamed, one field routed by another's text, and
 //        a live pool or track routed to the one the migrated sheet shows. A rest's poolGroup restore
 //        may also be `shared` (C6e): its fraction worked out on the whole group. Not a soft seam, for
-//        the same reason as 1.20 through 1.75: an Engine that cannot read it refuses the whole ruleset
-//        file, so a package that ships it declares 1.76. No permission.
-// 1.77: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
+//        the same reason as 1.20 through 1.76: an Engine that cannot read it refuses the whole ruleset
+//        file, so a package that ships it declares 1.77. No permission.
+// 1.78: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
 //        never on its own, with choices and lists to pick from. Not a soft seam, for the same reason as
-//        1.20 through 1.76: an Engine that cannot read it refuses the whole ruleset file, so a package
-//        that ships it declares 1.77. No permission.
-// 1.78: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
+//        1.20 through 1.77: an Engine that cannot read it refuses the whole ruleset file, so a package
+//        that ships it declares 1.78. No permission.
+// 1.79: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
 //        that `passesFor` another item, and a market seller may be `honest: false`. A fake bought from
 //        a dishonest seller is a stack that shows as what it passes for and keeps what it truly is.
-//        Not a soft seam, for the same reason as 1.20 through 1.77: an Engine that cannot read these
-//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.78.
+//        Not a soft seam, for the same reason as 1.20 through 1.78: an Engine that cannot read these
+//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.79.
 //        No permission.
-// 1.79: (reserved by Pixelforge: map pack tiles may be an image pack.)
-// 1.80: a ruleset's `combat.attackRoll.criticalFrom`: the lowest natural face of the attack die that
+// 1.80: (reserved by Pixelforge: map pack tiles may be an image pack.)
+// 1.81: a ruleset's `combat.attackRoll.criticalFrom`: the lowest natural face of the attack die that
 //        is a critical, read off the attacker's sheet (5e's Champion). Not a soft seam, for the same
-//        reason as 1.20 through 1.78: an Engine that cannot read it refuses the whole ruleset file, so
-//        a package that ships it declares 1.80. No permission.
-// 1.81: a derived value may `multiply` (a 5e hit point maximum's Constitution modifier times the
+//        reason as 1.20 through 1.79: an Engine that cannot read it refuses the whole ruleset file, so
+//        a package that ships it declares 1.81. No permission.
+// 1.82: a derived value may `multiply` (a 5e hit point maximum's Constitution modifier times the
 //        level). Not a soft seam, for the same reason. No permission.
-// 1.82: a catalog entry's mechanics may `amountAdd` a value read off the user's sheet to its amount
+// 1.83: a catalog entry's mechanics may `amountAdd` a value read off the user's sheet to its amount
 //        (5e's Second Wind, 1d10 plus the fighter's level). Not a soft seam, for the same reason: an
 //        Engine that cannot read it refuses the catalog. No permission.
-// 1.83: a sheet may have up to 120 derived values (60 before). Not a soft seam: an Engine that cannot
-//        read it refuses the whole ruleset file, so a package with more than 60 declares 1.83.
+// 1.84: a sheet may have up to 120 derived values (60 before). Not a soft seam: an Engine that cannot
+//        read it refuses the whole ruleset file, so a package with more than 60 declares 1.84.
 //        No permission.
-// 1.84: a sheet list's number column may be filled by a `roll` (count, and sides as a number, another
+// 1.85: a sheet list's number column may be filled by a `roll` (count, and sides as a number, another
 //        column of the row, or a value off the sheet); the sheet editor rolls it with the Engine's own
 //        dice. Not a soft seam: an Engine that cannot read it refuses the whole ruleset file, so a
-//        package that ships it declares 1.84. No permission.
-// 1.85: a sheet may declare a guided `builder` (steps that pick catalog entries, fill fields, set the
+//        package that ships it declares 1.85. No permission.
+// 1.86: a sheet may declare a guided `builder` (steps that pick catalog entries, fill fields, set the
 //        ability scores by point buy, an array, rolls or by hand, choose trained skills and saves, and
 //        take starting gear), and a catalog entry may say what a pick through it `grants` (score
 //        increases, training, field values). Not a soft seam: an Engine that cannot read either refuses
-//        the ruleset file or the catalog, so a package that ships them declares 1.85. No permission.
-// 1.86: a builder's abilities step may start on a `default` method, and a catalog step may offer only
+//        the ruleset file or the catalog, so a package that ships them declares 1.86. No permission.
+// 1.87: a builder's abilities step may start on a `default` method, and a catalog step may offer only
 //        entries up to a value read off the sheet (`upTo`, features up to the character's level). Not a
 //        soft seam: an Engine that cannot read either refuses the ruleset file, so a package that ships
-//        them declares 1.86. No permission.
-// 1.87: a sheet may have up to 240 derived values (120 before). Not a soft seam: an Engine that cannot
-//        read it refuses the whole ruleset file, so a package with more than 120 declares 1.87.
+//        them declares 1.87. No permission.
+// 1.88: a sheet may have up to 240 derived values (120 before). Not a soft seam: an Engine that cannot
+//        read it refuses the whole ruleset file, so a package with more than 120 declares 1.88.
 //        No permission.
-// 1.88: a currency unit may name one of itself (`one: "penny"` beside `label: "pennies"`), said for an
+// 1.89: a currency unit may name one of itself (`one: "penny"` beside `label: "pennies"`), said for an
 //        amount of exactly one. Not a soft seam: an Engine that cannot read it refuses the ruleset
-//        file, so a package that ships it declares 1.88. No permission.
-// 1.89: a builder's catalog step may read how many entries it asks for and takes off the sheet
+//        file, so a package that ships it declares 1.89. No permission.
+// 1.90: a builder's catalog step may read how many entries it asks for and takes off the sheet
 //        (`countFrom`, spells known at the character's level). Not a soft seam: an Engine that cannot
-//        read it refuses the ruleset file, so a package that ships it declares 1.89. No permission.
-// 1.90: a catalog entry may grant entries of another catalog to choose (`grants.entries.choose`, a
+//        read it refuses the ruleset file, so a package that ships it declares 1.90. No permission.
+// 1.91: a catalog entry may grant entries of another catalog to choose (`grants.entries.choose`, a
 //        language of your choice), chosen at a builder `choices` step. Not a soft seam: an Engine that
 //        cannot read either refuses the ruleset file or the catalog, so a package that ships them
-//        declares 1.90. No permission.
-// 1.91: a catalog entry may scale several rows of one list when each carries its own name in the
+//        declares 1.91. No permission.
+// 1.92: a catalog entry may scale several rows of one list when each carries its own name in the
 //        list's name column (two uses of one racial trait). Not a soft seam: an Engine that cannot read
-//        it refuses the catalog, so a package that ships it declares 1.91. No permission.
-// 1.92: a builder grant's score choice may name one score more than once (`abilities.choose[].repeat`,
+//        it refuses the catalog, so a package that ships it declares 1.92. No permission.
+// 1.93: a builder grant's score choice may name one score more than once (`abilities.choose[].repeat`,
 //        an ability score improvement's +2 to one or +1 to two). Not a soft seam: an Engine that cannot
-//        read it refuses the catalog, so a package that ships it declares 1.92. No permission.
-// 1.93: a catalog entry may name an `exclusive` group: a builder step keeps one pick of a group, so a
-//        feat can take an ability score improvement's place. Not a soft seam: an Engine that cannot
 //        read it refuses the catalog, so a package that ships it declares 1.93. No permission.
-// 1.94: an item's to-hit (a weapon's attack, an item's use) may add a number read off its holder's sheet
+// 1.94: a catalog entry may name an `exclusive` group: a builder step keeps one pick of a group, so a
+//        feat can take an ability score improvement's place. Not a soft seam: an Engine that cannot
+//        read it refuses the catalog, so a package that ships it declares 1.94. No permission.
+// 1.95: an item's to-hit (a weapon's attack, an item's use) may add a number read off its holder's sheet
 //        (`toHit.sheetBonus`, 5e's Archery: +2 to attacks with ranged weapons). Not a soft seam: an
-//        Engine that cannot read it refuses the catalog, so a package that ships it declares 1.94. No
+//        Engine that cannot read it refuses the catalog, so a package that ships it declares 1.95. No
 //        permission.
-// 1.95: a builder grant's score choice may cap the scores it raises (`abilities.choose[].upTo`, an
+// 1.96: a builder grant's score choice may cap the scores it raises (`abilities.choose[].upTo`, an
 //        ability score improvement's "not above 20"). Not a soft seam: an Engine that cannot read it
-//        refuses the catalog, so a package that ships it declares 1.95. No permission.
-// 1.96: a weapon's damage may add a number read off its holder's sheet, only while held in one hand
+//        refuses the catalog, so a package that ships it declares 1.96. No permission.
+// 1.97: a weapon's damage may add a number read off its holder's sheet, only while held in one hand
 //        when it says `oneHanded` (`attack.damage.sheetBonus`), and `combat.offHand.fullWhen` keeps a
 //        fighter's off hand on the full ability when their sheet says so. Not a soft seam: an Engine
 //        that cannot read either refuses the ruleset or the catalog, so a package that ships them
-//        declares 1.96. No permission.
-// 1.97: a weapon's damage may reroll its low dice once, off its holder's sheet, while wielded
+//        declares 1.97. No permission.
+// 1.98: a weapon's damage may reroll its low dice once, off its holder's sheet, while wielded
 //        two-handed (`attack.damage.rerollUpTo`, 5e's Great Weapon Fighting). Not a soft seam: an Engine
-//        that cannot read it refuses the catalog, so a package that ships it declares 1.97. No
+//        that cannot read it refuses the catalog, so a package that ships it declares 1.98. No
 //        permission.
-// 1.98: a catalog entry may say when a builder step offers it (`offeredWhen`, a value off the sheet
+// 1.99: a catalog entry may say when a builder step offers it (`offeredWhen`, a value off the sheet
 //        above 0: a second class whose prerequisites are met). Not a soft seam: an Engine that cannot
-//        read it refuses the catalog, so a package that ships it declares 1.98. No permission.
-// 1.99: a catalog entry of an `exclusive` group is judged by its `offeredWhen` on the sheet without the
+//        read it refuses the catalog, so a package that ships it declares 1.99. No permission.
+// 1.100: a catalog entry of an `exclusive` group is judged by its `offeredWhen` on the sheet without the
 //        step's picks of that group, which picking it drops (a feat in place of an ability score
 //        improvement is not offered on the score that improvement gave). Behaviour only, no new key: a
-//        package that relies on it declares 1.99. No permission.
-// 1.100-1.102: Tactical Combat's 5e combat rules (`feat/combat-5e-rules`), landed before 1.103.
-// 1.103: a builder skill or save choice never offers what the picks already train to its tier or higher:
+//        package that relies on it declares 1.100. No permission.
+// 1.101-1.103: Tactical Combat's 5e combat rules (`feat/combat-5e-rules`), landed before 1.104.
+// 1.104: a builder skill or save choice never offers what the picks already train to its tier or higher:
 //        what an entry trains outright, or what an earlier choice holds. A stored choice of one counts for
 //        nothing. Behaviour only, no new key. No permission.
-// 1.104: a skill or save choice a catalog entry grants may build on training already held (`held`, a
+// 1.105: a skill or save choice a catalog entry grants may build on training already held (`held`, a
 //        tier: 5e's Expertise, two skills you are proficient in), offering only what the picks or a
-//        lower choice train to it. Not a soft seam: a package that ships it declares 1.104. No permission.
-// 1.105: an entry a builder choice offers (`grants.entries.choose`) is held to its `offeredWhen` on the
+//        lower choice train to it. Not a soft seam: a package that ships it declares 1.105. No permission.
+// 1.106: an entry a builder choice offers (`grants.entries.choose`) is held to its `offeredWhen` on the
 //        sheet, as a step's options are. Behaviour only, no new key: a package that relies on it
-//        declares 1.105. No permission.
-// 1.106: a builder fields step may show fields only while the sheet allows (`shownWhen`), and hold
+//        declares 1.106. No permission.
+// 1.107: a builder fields step may show fields only while the sheet allows (`shownWhen`), and hold
 //        number fields to a combined maximum (`total`). Not a soft seam: an Engine that cannot read
-//        it refuses the file, so a package that ships it declares 1.106. No permission.
-// 1.107: a builder catalog step stamps columns onto its added rows (`stamp`), and a combat ability
+//        it refuses the file, so a package that ships it declares 1.107. No permission.
+// 1.108: a builder catalog step stamps columns onto its added rows (`stamp`), and a combat ability
 //        source reads spellcasting references by a row's column (`byColumn`). Not a soft seam: an
-//        older Engine refuses either key, so a package that ships it declares 1.107. No permission.
-// 1.108: a builder starting-gear step may hold its gear to what the sheet fits (`strict`) in legal-only
+//        older Engine refuses either key, so a package that ships it declares 1.108. No permission.
+// 1.109: a builder starting-gear step may hold its gear to what the sheet fits (`strict`) in legal-only
 //        mode. Free edit still offers every gear. Not a soft seam: an older Engine refuses the key,
-//        so a package that ships it declares 1.108. No permission.
-// 1.109: a builder catalog step may ask for or take up to 40 entries, and `methods.manual` may bound
+//        so a package that ships it declares 1.109. No permission.
+// 1.110: a builder catalog step may ask for or take up to 40 entries, and `methods.manual` may bound
 //        typed base scores with `{ min, max }`. Not a soft seam: an older Engine refuses the ruleset,
-//        so a package with more than 20 picks or bounded manual scores declares 1.109. No permission.
-// 1.110: a sheet may have up to 400 derived values. Not a soft seam: an older Engine refuses more
-//        than 240, so a package that ships more declares 1.110. No permission.
-// 1.111: a guided builder may have up to 24 steps. Not a soft seam: an older Engine refuses more
-//        than 16, so a package that ships more declares 1.111. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 111 } as const);
+//        so a package with more than 20 picks or bounded manual scores declares 1.110. No permission.
+// 1.111: a sheet may have up to 400 derived values. Not a soft seam: an older Engine refuses more
+//        than 240, so a package that ships more declares 1.111. No permission.
+// 1.112: a guided builder may have up to 24 steps. Not a soft seam: an older Engine refuses more
+//        than 16, so a package that ships more declares 1.112. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 112 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

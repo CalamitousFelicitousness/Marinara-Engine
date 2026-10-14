@@ -263,6 +263,7 @@ export function MariTranscript({
                   character={focusedCharacter}
                   lorebook={focusedLorebook}
                   active={workspaceTimelineActive}
+                  draftChatId={chatId}
                   restStory={latestTurnRestStory}
                   pullTarget={!appendedArrival}
                   runFailed={

@@ -1,4 +1,4 @@
-// The guided builder (Capability API 1.85): a ruleset's `sheet.builder` as steps across the top, each
+// The guided builder (Capability API 1.86): a ruleset's `sheet.builder` as steps across the top, each
 // with the choices it still waits on, Back and Next that never block, and the character as it stands
 // beside them. Everything it writes goes through the shared builder, which keeps the build the one
 // sheet the rest of the Engine reads and takes back what an unpicked entry gave.
@@ -60,7 +60,7 @@ const buttonClass =
   "inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50";
 
 /** A choice of `count` among `from`, as toggles: a full choice takes no more until one is let go. A
- *  choice that repeats (1.92) adds one each press, and takes one back with the chip's minus. */
+ *  choice that repeats (1.93) adds one each press, and takes one back with the chip's minus. */
 function ChoiceSlot({
   title,
   slot,
@@ -72,7 +72,7 @@ function ChoiceSlot({
   slot: RulesetBuilderAbilitySlot | RulesetBuilderTrainedSlot | RulesetBuilderEntrySlot;
   labelOf: (id: string) => string;
   onChange: (chosen: string[]) => void;
-  /** Whether an option already stands at the choice's cap (1.95), so it takes no more. */
+  /** Whether an option already stands at the choice's cap (1.96), so it takes no more. */
   atCap?: (id: string) => boolean;
 }) {
   const { t } = useUiTranslation();
@@ -283,7 +283,7 @@ export function RulesetSheetBuilder({
           />
         ))}
       {trainedSlots
-        // A choice the picks already answer in full (1.103) has nothing left to offer.
+        // A choice the picks already answer in full (1.104) has nothing left to offer.
         .filter((slot) => slot.stepId === step.id && slot.from.length > 0)
         .map((slot) => (
           <ChoiceSlot
@@ -328,11 +328,11 @@ export function RulesetSheetBuilder({
       const on = picked.includes(id);
       // Against every stored pick, so one the sheet has fallen below (`upTo`) is kept, not dropped.
       const stored = state.picks?.[current.id] ?? [];
-      // A pick of an `exclusive` group (1.93) replaces the step's other pick of that group.
+      // A pick of an `exclusive` group (1.94) replaces the step's other pick of that group.
       const next = on ? stored.filter((each) => each !== id) : rulesetBuilderPickAdded(current, stored, id, catalogs);
       update({ ...state, picks: { ...state.picks, [current.id]: next } });
     };
-    // A count read off the sheet (1.89) moves with the character; the step's own max otherwise.
+    // A count read off the sheet (1.90) moves with the character; the step's own max otherwise.
     const most = rulesetBuilderStepCount(definition, current, build).max;
     if (options.length === 0) {
       return (
@@ -352,7 +352,7 @@ export function RulesetSheetBuilder({
           {options.map((entry) => {
             const on = picked.includes(entry.id);
             const takenAt = on ? undefined : elsewhere.get(entry.id);
-            // A pick that only replaces the step's pick of its own group (1.93) never makes it fuller.
+            // A pick that only replaces the step's pick of its own group (1.94) never makes it fuller.
             const replaces =
               !!entry.exclusive &&
               options.some((other) => other.exclusive === entry.exclusive && picked.includes(other.id));

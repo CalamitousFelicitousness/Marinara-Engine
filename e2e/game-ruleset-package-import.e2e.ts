@@ -47,7 +47,7 @@ const packageOf = (contents: typeof files, extra: Record<string, string> = {}) =
         })),
         permissions: [],
         restartRequired: false,
-        capabilityApi: { major: 1, minor: 78 },
+        capabilityApi: { major: 1, minor: 79 },
         builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
       },
       files: { ...Object.fromEntries(contents.map((file) => [file.name, file.data.toString("base64")])), ...extra },

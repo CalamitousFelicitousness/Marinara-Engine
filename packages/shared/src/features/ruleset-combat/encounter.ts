@@ -707,7 +707,7 @@ function itemToHit(
   const proficient =
     toHit.proficiency !== undefined && resolveRulesetValueRef(definition, build, toHit.proficiency, evaluated) > 0;
   const target = read(toHit.target);
-  // What the holder brings to it off their own sheet (Capability API 1.94: an archer's +2 to ranged).
+  // What the holder brings to it off their own sheet (Capability API 1.95: an archer's +2 to ranged).
   const fromSheet =
     toHit.sheetBonus !== undefined
       ? Math.trunc(resolveRulesetValueRef(definition, build, toHit.sheetBonus, evaluated))
@@ -768,7 +768,7 @@ function itemUseActions(
       pooled,
     );
     if (!action) return;
-    // A fake (1.78) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
+    // A fake (1.79) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
     // the menu tells them apart; what it does is what it truly does. One whose true item does nothing a
     // fight can use is spent for nothing.
     const real = held.truly ? fakeUseAction(definition, held.truly.item, build, evaluated, perCell, pooled) : null;
@@ -808,7 +808,7 @@ function itemUseActions(
   return actions;
 }
 
-/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.78). */
+/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.79). */
 export const RULESET_FAKE_EFFECT_KEYS = [
   "toHit",
   "target",
@@ -823,7 +823,7 @@ export const RULESET_FAKE_EFFECT_KEYS = [
   "concentration",
 ] as const satisfies ReadonlyArray<keyof RulesetCombatAction>;
 
-/** The action a use resolves as: for a fake (1.78), the one offered with what it truly does in place
+/** The action a use resolves as: for a fake (1.79), the one offered with what it truly does in place
  *  of what it seemed to, so the menu, the forecast and the aim stay what the real thing's are. */
 export function rulesetActionAsUsed(action: RulesetCombatAction): RulesetCombatAction {
   const does = action.itemUse?.fake?.does;
@@ -939,7 +939,7 @@ function itemAttackActions(
     const damageAbility = dealtWith.length
       ? Math.max(...dealtWith.map((ability) => evaluated.abilityMods[ability] ?? ABILITY_COLUMN_MISS))
       : 0;
-    // What the holder brings to the damage off their own sheet (1.96: a duelist's +2), only while the
+    // What the holder brings to the damage off their own sheet (1.97: a duelist's +2), only while the
     // weapon is held in one hand when it says so: a versatile weapon wielded two-handed, or one that
     // takes two of a slot, is not.
     const twoHanded = free || Object.values(item.slots ?? {}).some((count) => count >= 2);
@@ -983,7 +983,7 @@ function itemAttackActions(
       });
     }
     // Low damage dice thrown again once, off the holder's sheet, only while the weapon is wielded
-    // two-handed (1.97: Great Weapon Fighting's 1s and 2s). A pool fight's damage is successes, not
+    // two-handed (1.98: Great Weapon Fighting's 1s and 2s). A pool fight's damage is successes, not
     // faces, so it has none.
     const rerollRead =
       !pooled && attack.damage.rerollUpTo !== undefined && twoHanded
@@ -1034,7 +1034,7 @@ function itemAttackActions(
         ...single,
         id: `offhand:${index}`,
         budget: offHand.budget,
-        // The off hand keeps the full ability for a fighter whose sheet says so (1.96: Two-Weapon
+        // The off hand keeps the full ability for a fighter whose sheet says so (1.97: Two-Weapon
         // Fighting), whatever the ruleset's rule for everyone else.
         damage: damageOf(
           offHand.ability === "penalty-only" &&
@@ -1155,7 +1155,7 @@ function mechanicsAction(
   if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels) return null;
   const { build, evaluated, perCell } = from;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
-  // What the sheet adds to it (1.82), read as the entry is put on the menu: 1d10 plus a level.
+  // What the sheet adds to it (1.83), read as the entry is put on the menu: 1d10 plus a level.
   const added = mechanics.amountAdd ? Math.trunc(resolve(mechanics.amountAdd)) : 0;
   const declared = amountOf(mechanics.amount);
   const amount = declared && added ? { ...declared, flat: declared.flat + added } : declared;

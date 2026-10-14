@@ -241,7 +241,7 @@ export async function loadGameFightItems(
 }
 
 /**
- * What a fight's next uses of its lines do in this game, for a use that comes out of a fake (1.78):
+ * What a fight's next uses of its lines do in this game, for a use that comes out of a fake (1.79):
  * `effectOf(name, effect, nth)` is what the `nth` use from now (0 for the next) of the line spent by
  * `name` does, where the line otherwise does `effect`. Null when the party holds no fake, so every use
  * does what its line says.
@@ -310,7 +310,7 @@ export async function applyGameInventoryChangeHeld<T>(
   const before = normalizeGameInventoryStacks(metadata.gameInventory);
   const changed = change(before, metadata);
   // A worn or carried fake that the sheet shows for what it is, is found out with the change that
-  // made it so (1.78, the user's ruling). Never at the cost of the change itself.
+  // made it so (1.79, the user's ruling). Never at the cost of the change itself.
   let found: Awaited<ReturnType<typeof revealFakesTheSheetShows>> = null;
   if (changed.stacks !== before) {
     try {

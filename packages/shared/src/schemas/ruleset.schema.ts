@@ -554,7 +554,7 @@ export const rulesetFieldSchema = z.discriminatedUnion("type", [
 const sheetScalar = z.union([z.number().finite(), z.string().max(4000), z.boolean()]);
 
 const columnBase = { id: sheetId, label, required: z.boolean().default(false) };
-/** A number column a player fills by rolling (Capability API 1.84): `count` dice of `sides`, where
+/** A number column a player fills by rolling (Capability API 1.85): `count` dice of `sides`, where
  *  sides is a number, another column of the same row (a number, or an enum whose values read as
  *  numbers such as "d8"), or a value read off the sheet. The sheet editor rolls them with the Engine's
  *  own dice and writes the total, held to the column's min and max. */
@@ -617,8 +617,8 @@ const skillSchema = z
 const saveSchema = skillSchema;
 
 const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen: hideWhenSchema.optional() };
-/** The most derived values a sheet may have: 400 since Capability API 1.110 (240 since 1.87,
- *  120 since 1.83), which a package exceeding the corresponding older limit declares. */
+/** The most derived values a sheet may have: 400 since Capability API 1.111 (240 since 1.88,
+ *  120 since 1.84), which a package exceeding the corresponding older limit declares. */
 export const RULESET_DERIVED_MAX = 400;
 export const RULESET_DERIVED_MAX_BEFORE_1106 = 240;
 export const RULESET_DERIVED_MAX_BEFORE_183 = 120;
@@ -637,7 +637,7 @@ export const rulesetDerivedSchema = z.discriminatedUnion("op", [
       round: roundingSchema.default("down"),
     })
     .strict(),
-  /** The values multiplied together (Capability API 1.81): a 5e hit point maximum's Constitution
+  /** The values multiplied together (Capability API 1.82): a 5e hit point maximum's Constitution
    *  modifier times the level. */
   z.object({ ...derivedBase, op: z.literal("multiply"), of: z.array(rulesetValueRefSchema).min(2).max(6) }).strict(),
   z.object({ ...derivedBase, op: z.literal("min"), of: z.array(rulesetValueRefSchema).min(2).max(12) }).strict(),
@@ -834,7 +834,7 @@ const liveSchema = z
   .strict();
 
 /**
- * One step of a sheet migration (Capability API 1.76): how a sheet stored on an older layout reads on
+ * One step of a sheet migration (Capability API 1.77): how a sheet stored on an older layout reads on
  * this one. Every step COPIES: what it read from stays where it was, so a sheet read by an older
  * version of the ruleset still reads as it did.
  * - `rename`: an ability, skill, save (with its bonus) or field that has a new id.
@@ -878,7 +878,7 @@ const sheetMigrationSchema = z
   })
   .strict();
 
-// ── The guided builder (Capability API 1.85) ──
+// ── The guided builder (Capability API 1.86) ──
 
 /** How many steps one guided builder may have. */
 export const RULESET_BUILDER_STEPS_MAX = 24;
@@ -908,7 +908,7 @@ const builderPointBuySchema = z
   })
   .strict();
 
-/** A catalog step's limit by a sheet value (1.86). */
+/** A catalog step's limit by a sheet value (1.87). */
 export interface RulesetBuilderUpTo {
   filter: string;
   value: RulesetValueRef;
@@ -935,7 +935,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       max: z.number().int().min(1).max(40).default(1),
       /** A text or enum field the picked entries' labels are written to (a race, a class). */
       field: sheetId.optional(),
-      /** Values written onto every row this step adds (1.107). Later edits remain the player's. */
+      /** Values written onto every row this step adds (1.108). Later edits remain the player's. */
       stamp: z
         .record(sheetId, sheetScalar)
         .refine((stamp) => Object.keys(stamp).length >= 1 && Object.keys(stamp).length <= 4, {
@@ -947,11 +947,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       /** Only entries whose `filter` names an entry picked at an earlier step (a subrace by its race). */
       within: z.object({ step: sheetId, filter: sheetId }).strict().optional(),
       /** Only entries whose number `filter` is at most `value`, read off the sheet as it stands (features
-       *  up to the character's level; Capability API 1.86). An entry without the filter is offered. */
+       *  up to the character's level; Capability API 1.87). An entry without the filter is offered. */
       upTo: rulesetBuilderUpToSchema.optional(),
       /** How many entries the step asks for and at most takes, read off the sheet as it stands, in
        *  place of `min` and never above `max` (spells known at the character's level; Capability API
-       *  1.89). Picks past it are kept but count for nothing. */
+       *  1.90). Picks past it are kept but count for nothing. */
       countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     })
     .strict(),
@@ -962,11 +962,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       fields: z.array(sheetId).min(1).max(20),
       /** Fields of the step its badge does not wait on, such as a subclass chosen at a later level. */
       optional: z.array(sheetId).min(1).max(20).optional(),
-      /** Fields shown only while their value reference reads above 0 on the sheet (1.106). */
+      /** Fields shown only while their value reference reads above 0 on the sheet (1.107). */
       shownWhen: z
         .record(sheetId, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>)
         .optional(),
-      /** Number fields held to a combined maximum (1.106). */
+      /** Number fields held to a combined maximum (1.107). */
       total: z
         .object({ fields: z.array(sheetId).min(2).max(20), max: z.number().int().min(1).max(1000) })
         .strict()
@@ -994,7 +994,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
             .strict()
             .refine((roll) => roll.keep <= roll.count, { message: "A roll keeps at most the dice it throws" })
             .optional(),
-          /** Typed in: `true` keeps each score's own bounds; an object bounds the base (1.109). */
+          /** Typed in: `true` keeps each score's own bounds; an object bounds the base (1.110). */
           manual: z
             .union([
               z.literal(true),
@@ -1007,7 +1007,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
         })
         .strict()
         .refine((methods) => Object.keys(methods).length > 0, { message: "An abilities step offers a method" }),
-      /** The method a new character starts on, until the player picks another (Capability API 1.86). */
+      /** The method a new character starts on, until the player picks another (Capability API 1.87). */
       default: z.enum(["pointBuy", "standardArray", "roll", "manual"]).optional(),
     })
     .strict(),
@@ -1035,11 +1035,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
     .object({
       ...builderStepBase,
       kind: z.literal("startingGear"),
-      /** Only gear the sheet fits is offered in legal-only mode (Capability API 1.108). */
+      /** Only gear the sheet fits is offered in legal-only mode (Capability API 1.109). */
       strict: z.literal(true).optional(),
     })
     .strict(),
-  /** Where the entries the picks grant from `catalog` are chosen (`grants.entries`, 1.90). */
+  /** Where the entries the picks grant from `catalog` are chosen (`grants.entries`, 1.91). */
   z.object({ ...builderStepBase, kind: z.literal("choices"), catalog: sheetId }).strict(),
 ]);
 
@@ -1105,7 +1105,7 @@ export const rulesetSheetSchema = z
   .object({
     /** Bumped by the author when the sheet's shape changes. Stored sheets record it as `v`. */
     version: z.number().int().min(1),
-    /** How a sheet stored on an older layout reads on this one (Capability API 1.76). A version that
+    /** How a sheet stored on an older layout reads on this one (Capability API 1.77). A version that
      *  only adds needs none. Never removed once shipped: a sheet stored long ago still needs them. */
     migrations: z.array(sheetMigrationSchema).min(1).max(32).optional(),
     sections: z
@@ -1133,11 +1133,11 @@ export const rulesetSheetSchema = z
       .strict()
       .default({ min: -20, max: 40 }),
     fields: z.array(rulesetFieldSchema).max(160).default([]),
-    /** Up to 240 (Capability API 1.87; 120 from 1.83, 60 before it). */
+    /** Up to 240 (Capability API 1.88; 120 from 1.84, 60 before it). */
     derived: z.array(rulesetDerivedSchema).max(RULESET_DERIVED_MAX).default([]),
     lists: z.array(listSchema).max(20).default([]),
     live: liveSchema.default({}),
-    /** A guided character builder beside the full form (Capability API 1.85). */
+    /** A guided character builder beside the full form (Capability API 1.86). */
     builder: sheetBuilderSchema.optional(),
   })
   .strict();
@@ -1175,7 +1175,7 @@ const restRestoreSchema = z
     /** A live state, put back with `to`: `"default"` or one of its values. */
     state: sheetId.optional(),
     /** A pool group's fraction worked out on the group's whole maximum and shared out over its pools
-     *  in the order the sheet lists them, rather than on each pool alone (Capability API 1.76): 5e's
+     *  in the order the sheet lists them, rather than on each pool alone (Capability API 1.77): 5e's
      *  "half of the character's total number of" hit dice, kept in one pool per die. */
     shared: z.literal(true).optional(),
     ...restAmountShape,
@@ -1538,14 +1538,14 @@ const catalogMechanicsObject = z
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
     amount: z.object(catalogAmountShape).strict().optional(),
-    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.82): 5e's
+    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.83): 5e's
      *  Second Wind heals 1d10 plus the fighter's level. Needs an amount. */
     amountAdd: rulesetValueRefSchema.optional(),
     damageType: promptSafeText(40).optional(),
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
     attackRoll: z.boolean().optional(),
-    /** `ignoresCover` (Capability API 1.73): the target gains nothing from cover on this save, as a
+    /** `ignoresCover` (Capability API 1.74): the target gains nothing from cover on this save, as a
      *  spell whose text says so (5e's Sacred Flame). */
     save: z
       .object({
@@ -1808,7 +1808,7 @@ const creatureSaveSchema = z
     save: sheetId,
     difficulty: z.number().int().min(0).max(1000),
     onSuccess: z.enum(["none", "half", "negates"]),
-    /** The target gains nothing from cover on this save (Capability API 1.73). */
+    /** The target gains nothing from cover on this save (Capability API 1.74). */
     ignoresCover: z.literal(true).optional(),
   })
   .strict();
@@ -2227,7 +2227,7 @@ const currencyUnitSchema = z
     id: sheetId,
     /** The coin's name for any number of them but one ("pennies"). */
     label: promptSafeText(40),
-    /** Its name for exactly one ("penny"), Capability API 1.88. `label` stands for one too without it. */
+    /** Its name for exactly one ("penny"), Capability API 1.89. `label` stands for one too without it. */
     one: promptSafeText(40).optional(),
     value: z.number().int().min(1).max(1_000_000),
   })
@@ -2292,7 +2292,7 @@ const rulesetItemRefSchema = z
   .max(81)
   .regex(/^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/, "An item is named as <catalog>/<entry>");
 
-/** One line of starting gear (Capability API 1.77): one of the ruleset's items, coins, one item the
+/** One line of starting gear (Capability API 1.78): one of the ruleset's items, coins, one item the
  *  player picks from a fixed list, or a plain item the ruleset's catalogs do not have. */
 const startingGearLineSchema = z
   .object({
@@ -2323,7 +2323,7 @@ const startingGearLineSchema = z
     }
   });
 
-/** Gear a character may take into their bag at the start (Capability API 1.77), never on their own:
+/** Gear a character may take into their bag at the start (Capability API 1.78), never on their own:
  *  the player asks for it, once for each `group` (a class's gear beside a background's). `fits` says
  *  which characters it is for, read off the sheet; it orders the list and refuses nobody. */
 const startingGearSchema = z
@@ -2447,7 +2447,7 @@ const marketSchema = z
             /** One of the ruleset's loot tables, rolled once a market day for what this seller has in
              *  stock on top of what they sell (#6934). */
             stock: z.object({ table: sheetId }).strict().optional(),
-            /** A dishonest seller (Capability API 1.78) passes fakes off as what they pass for, from
+            /** A dishonest seller (Capability API 1.79) passes fakes off as what they pass for, from
              *  their stock, and buys a fake as what it seems. Sellers are honest unless they say so. */
             honest: z.literal(false).optional(),
             only: z
@@ -2507,7 +2507,7 @@ const itemsSchema = z
     /** What an item the player types in becomes: a plain item, or nothing at all. */
     freeform: z.enum(["plain", "refuse"]).default("plain"),
     market: marketSchema.optional(),
-    /** Gear a character may take at the start, never given on its own (Capability API 1.77). */
+    /** Gear a character may take at the start, never given on its own (Capability API 1.78). */
     startingGear: z.array(startingGearSchema).min(1).max(40).optional(),
   })
   .strict();
@@ -2532,7 +2532,7 @@ const itemAttackDistanceSchema = orItemStat(z.number().finite().min(0).max(10000
  */
 /** What an item adds to hit: the best of some `abilities`, a `skill`, the proficiency bonus where
  *  `proficiency` reads above 0 off the holder's sheet, a `bonus`, what `sheetBonus` reads off the
- *  holder's sheet (Capability API 1.94), and in a pool fight its own per-die `target`. A weapon's attack
+ *  holder's sheet (Capability API 1.95), and in a pool fight its own per-die `target`. A weapon's attack
  *  reads it, and so does an item's use that rolls to hit. */
 // Named, so the whole definition's type stays short enough to write down (the builder's rows do the same).
 const itemToHitValueRefSchema = rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>;
@@ -2545,14 +2545,14 @@ const itemToHitSchema = z
     /** A number read off the holder's sheet and added as it stands (whole numbers; a fraction is cut
      *  toward zero): what the holder brings to every weapon of a kind rather than what the weapon is,
      *  as 5e's Archery fighting style adds +2 to attacks with ranged weapons through a derived value
-     *  that is 2 for an archer and 0 for anyone else (Capability API 1.94). */
+     *  that is 2 for an archer and 0 for anyone else (Capability API 1.95). */
     sheetBonus: itemToHitValueRefSchema.optional(),
     target: orItemStat(z.number().int().min(1).max(100)).optional(),
   })
   .strict();
 
 /** A weapon's damage: its dice, the best of its abilities, a bonus, a type, and what its holder's sheet
- *  adds (1.96) or rerolls (1.97). Typed by name, so the definition's own type stays short enough to
+ *  adds (1.97) or rerolls (1.98). Typed by name, so the definition's own type stays short enough to
  *  write down. */
 const itemAttackDamageBaseSchema = z
   .object({
@@ -2561,14 +2561,14 @@ const itemAttackDamageBaseSchema = z
     bonus: orItemStat(z.number().int().min(-100).max(100)).optional(),
     type: orItemStat(promptSafeText(40)).optional(),
     /** A number read off the holder's sheet and added to the damage as it stands, as `toHit`'s is
-     *  (Capability API 1.96): 5e's Dueling +2 through a derived value. */
+     *  (Capability API 1.97): 5e's Dueling +2 through a derived value. */
     sheetBonus: itemToHitValueRefSchema.optional(),
     /** The sheet bonus counts only while the weapon is held in one hand: not a versatile weapon
      *  wielded two-handed (its hands are free for it) and not one that takes two of a slot. */
     oneHanded: z.literal(true).optional(),
     /** Read off the holder's sheet: damage dice at or below it are thrown again once, the new face
      *  standing, only while the weapon is wielded two-handed (a versatile weapon with its hands
-     *  free, or one that takes two of a slot) and only in a summed fight (Capability API 1.97):
+     *  free, or one that takes two of a slot) and only in a summed fight (Capability API 1.98):
      *  5e's Great Weapon Fighting through a derived value that is 2 for the style and 0 without. */
     rerollUpTo: itemToHitValueRefSchema.optional(),
   })
@@ -2676,7 +2676,7 @@ export const RULESET_ITEM_CHARGES_MAX = 100;
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
-    // A sheet value added to an amount is a catalog entry's (1.82): an item's use reads its own stats.
+    // A sheet value added to an amount is a catalog entry's (1.83): an item's use reads its own stats.
     amountAdd: true,
     cost: true,
     perCostStep: true,
@@ -2759,9 +2759,9 @@ const catalogItemSchema = z
     /** Lodging, passage, a blessing: bought like an item, never carried. Buying it only pays. */
     service: z.literal(true).optional(),
     /** What an honest seller warns of before selling it, for an item whose chance can turn on the
-     *  buyer (Capability API 1.78). */
+     *  buyer (Capability API 1.79). */
     risky: promptSafeText(160).optional(),
-    /** A fake (Capability API 1.78): the ruleset item it passes for, "<catalog>/<entry>". A dishonest
+    /** A fake (Capability API 1.79): the ruleset item it passes for, "<catalog>/<entry>". A dishonest
      *  seller sells it as that item, at that item's price; an honest one never sells it. */
     passesFor: rulesetItemRefSchema.optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
@@ -2812,7 +2812,7 @@ const catalogItemSchema = z
   .strict();
 
 /** What a catalog entry gives a character when it is picked through the guided builder (Capability API
- *  1.85), and takes back when it is unpicked. The catalog picker ignores it. */
+ *  1.86), and takes back when it is unpicked. The catalog picker ignores it. */
 const catalogGrantsSchema = z
   .object({
     abilities: z
@@ -2826,10 +2826,10 @@ const catalogGrantsSchema = z
                 count: z.number().int().min(1).max(6),
                 amount: z.number().int().min(-20).max(20),
                 except: z.array(sheetId).max(20).optional(),
-                /** A score may be chosen more than once, `amount` each time (Capability API 1.92): count 2
+                /** A score may be chosen more than once, `amount` each time (Capability API 1.93): count 2
                  *  and amount 1 is +2 to one score or +1 to two, as an ability score improvement. */
                 repeat: z.boolean().optional(),
-                /** No score goes past this through the choice (Capability API 1.95): an ability score
+                /** No score goes past this through the choice (Capability API 1.96): an ability score
                  *  improvement's "you can't increase an ability score above 20 using this feature".
                  *  What other grants add counts first. */
                 upTo: z.number().int().min(1).max(99).optional(),
@@ -2855,7 +2855,7 @@ const catalogGrantsSchema = z
                 /** Any of them when left out. */
                 from: z.array(sheetId).min(1).max(120).optional(),
                 /** Only what the sheet already has at this tier or higher, from the picks or a lower
-                 *  choice (Capability API 1.104): 5e's Expertise, in two skills you are proficient in. */
+                 *  choice (Capability API 1.105): 5e's Expertise, in two skills you are proficient in. */
                 held: sheetId.optional(),
               })
               .strict(),
@@ -2872,7 +2872,7 @@ const catalogGrantsSchema = z
     sets: z.record(z.union([z.number().finite(), z.string().max(200), z.boolean()])).optional(),
     /** Entries of another catalog of rows for the player to choose, `count` of them, among those that
      *  match `filters` and, when given, are one of `ids` (a language of your choice, one of three
-     *  artisan's tools; Capability API 1.90). Chosen at the builder's `choices` step for that catalog,
+     *  artisan's tools; Capability API 1.91). Chosen at the builder's `choices` step for that catalog,
      *  and their rows go on the sheet. */
     entries: z
       .object({
@@ -2913,16 +2913,16 @@ const catalogEntrySchema = z
     creature: rulesetCreatureSchema.optional(),
     /** A thing to carry instead: it goes into Game Mode's inventory, not onto a sheet or into a fight. */
     item: catalogItemSchema.optional(),
-    /** What a pick through the guided builder gives (1.85). An entry that grants may write no rows. */
+    /** What a pick through the guided builder gives (1.86). An entry that grants may write no rows. */
     grants: catalogGrantsSchema.optional(),
-    /** A group this entry shares with others a builder step offers (Capability API 1.93): a step keeps
+    /** A group this entry shares with others a builder step offers (Capability API 1.94): a step keeps
      *  one pick of a group, so picking one drops the other ("a feat in place of an ability score
      *  improvement"). */
     exclusive: sheetId.optional(),
     /** Read off the sheet as it stands: a builder step offers this entry only while it reads above 0
-     *  (Capability API 1.98), as 5e offers a second class only when its prerequisites are met. A pick
+     *  (Capability API 1.99), as 5e offers a second class only when its prerequisites are met. A pick
      *  that later reads 0 counts for nothing and is kept. An entry of an `exclusive` group is read on
-     *  the sheet without the step's picks of that group (1.99). */
+     *  the sheet without the step's picks of that group (1.100). */
     offeredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
   })
   .strict()
@@ -3007,7 +3007,7 @@ const catalogSchema = z
       catalog.feeds === undefined &&
       !(catalog.entries?.length && catalog.entries.every((entry) => entry.grants && !entry.rows))
     ) {
-      // Only a catalog whose entries all just grant through the guided builder (1.85, a class) writes
+      // Only a catalog whose entries all just grant through the guided builder (1.86, a class) writes
       // no rows; an asset's entries are checked against no feeds when they are read.
       if (catalog.entries) {
         ctx.addIssue({
@@ -3103,7 +3103,7 @@ const combatBudgetSchema = z
     label,
     /** `turn` refills at the start of the holder's own turn; `round` when a new round begins. */
     per: z.enum(["turn", "round"]),
-    /** How many a turn (or round) hands out. 0 (Capability API 1.75) is a budget only a condition's
+    /** How many a turn (or round) hands out. 0 (Capability API 1.76) is a budget only a condition's
      *  `budgets` fills, as Haste's extra action is. */
     count: z.number().int().min(0).max(10).default(1),
   })
@@ -3188,7 +3188,7 @@ const combatAbilitySourceSchema = battleSkillsSchema.extend({
   toHit: rulesetValueRefSchema.optional(),
   /** The difficulty an entry's save is rolled against. */
   saveDifficulty: rulesetValueRefSchema.optional(),
-  /** A row's column selects its own spellcasting references (1.107); other rows keep the source's. */
+  /** A row's column selects its own spellcasting references (1.108); other rows keep the source's. */
   byColumn: (
     z
       .object({
@@ -3427,7 +3427,7 @@ const combatConditionSchema = z
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /**
-     * The action economy while it holds (Capability API 1.75, combat C6d), as Haste and Slow change it:
+     * The action economy while it holds (Capability API 1.76, combat C6d), as Haste and Slow change it:
      * - `budgets`: how many of a turn budget its holder gets, more or fewer, never below none;
      * - `grants`: what a budget (often one declared with a count of 0, which only this fills) may be
      *   spent on: the standard actions it names, an attack of one strike (`attacks`), an item's use
@@ -3776,7 +3776,7 @@ const combatSchema = z
         /** What a critical hit does to the damage: roll the dice twice, or add their highest faces. */
         critical: z.enum(["double-dice", "max-dice", "none"]).default("none"),
         /** The lowest natural face of the attack die that is a critical, read off the attacker's sheet
-         *  (Capability API 1.80): 19 for a 5e Champion. The die's highest face when left out, or when
+         *  (Capability API 1.81): 19 for a 5e Champion. The die's highest face when left out, or when
          *  the sheet reads higher; never below 2. Needs `naturals.max: "critical"` and a single die. */
         criticalFrom: rulesetValueRefSchema.optional(),
       })
@@ -3838,7 +3838,7 @@ const combatSchema = z
       .optional(),
     /**
      * What standing behind something adds to the defense an attack is rolled against (Capability API
-     * 1.73 for everything past `bonus`). Cover is graded by corner lines from the attacker (combat
+     * 1.74 for everything past `bonus`). Cover is graded by corner lines from the attacker (combat
      * C6a-2): `bonus` is half cover's, and `threeQuarters` the bigger one when the ruleset has it. A
      * target out of sight is total cover and cannot be aimed at, so it needs no number. `saves` names
      * the saves cover helps too, against an action's own save, from where the action comes; `creatures`
@@ -3854,7 +3854,7 @@ const combatSchema = z
       .strict()
       .optional(),
     /**
-     * What this system makes of a board's height (Capability API 1.74, combat C6b). Height is always
+     * What this system makes of a board's height (Capability API 1.75, combat C6b). Height is always
      * walked and seen by, whatever this says: climbing a level costs one more cell, nobody walks a step
      * of two levels or more, and ground higher than both ends blocks sight. This says what the system
      * adds: how high one level is in its own distance (`levelHeight`), what striking down from higher
@@ -3894,7 +3894,7 @@ const combatSchema = z
         budget: sheetId,
         ability: z.enum(["full", "penalty-only"]).default("full"),
         /** Read off the fighter's sheet: above 0, that fighter's off hand keeps the full ability
-         *  whatever `ability` says (Capability API 1.96), as 5e's Two-Weapon Fighting style does. */
+         *  whatever `ability` says (Capability API 1.97), as 5e's Two-Weapon Fighting style does. */
         fullWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
       })
       .strict()
@@ -4433,7 +4433,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   unique(def.rests, ["rests"], "rest");
   const poolGroups = new Set(sheet.live.pools.map((pool) => pool.group).filter((group): group is string => !!group));
 
-  // Sheet migrations (1.76). Each hop once and below this version. What a step writes to is on this
+  // Sheet migrations (1.77). Each hop once and below this version. What a step writes to is on this
   // sheet, and what it reads from is not: an id moved away is never used again, which is what makes
   // every step safe to run again. A rename is followed through the renames after it to where it ends.
   if (sheet.migrations) {
@@ -5217,7 +5217,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       });
     });
-    // Starting gear (1.77): every item one of the ruleset's (a catalog kept in its own file is checked
+    // Starting gear (1.78): every item one of the ruleset's (a catalog kept in its own file is checked
     // when the gear is taken), never a service, and few enough stacks to fit a bag; coins it declares;
     // a plain item only where items may be plain; `fits` read off the sheet without the live state,
     // as carrying is.
@@ -5334,7 +5334,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
   });
 
-  // The guided builder (1.85): its steps name this ruleset's own catalogs, fields, scores and skills.
+  // The guided builder (1.86): its steps name this ruleset's own catalogs, fields, scores and skills.
   if (sheet.builder) {
     const stepPath = (index: number) => ["sheet", "builder", "steps", index];
     unique(sheet.builder.steps, ["sheet", "builder", "steps"], "builder step");
@@ -5946,7 +5946,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, path, issue);
-      // The action economy it changes (1.75) is the ruleset's own: budgets it declares, conditions it has.
+      // The action economy it changes (1.76) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
         const where = [...path, "budgets", changeIndex, "budget"];
         checkBudget(change.budget, where);
@@ -6846,7 +6846,7 @@ function effectNameIssues(
   });
 }
 
-/** Why a fake cannot pass for its target (Capability API 1.78), or null when it can: the target is
+/** Why a fake cannot pass for its target (Capability API 1.79), or null when it can: the target is
  *  another real, sellable item of the same kind, worn the same way. `target` undefined is an item the
  *  ruleset does not have. Read at import (inline and same-file targets), at install (every catalog
  *  file) and when a market offers the fake (a target a layer hides is never offered). */
@@ -7428,7 +7428,7 @@ function grantsIssues(
               : typeof value === "string";
     if (!fits) add([...path, "sets", id], `Field "${id}" cannot hold ${JSON.stringify(value)}`);
   }
-  // Entries to choose (1.90) are chosen at a `choices` step, which is what loads their catalog.
+  // Entries to choose (1.91) are chosen at a `choices` step, which is what loads their catalog.
   grants.entries?.choose.forEach((choice, index) => {
     const at = [...path, "entries", "choose", index];
     const hosted = sheet.builder?.steps.some((step) => step.kind === "choices" && step.catalog === choice.catalog);
@@ -7570,7 +7570,7 @@ export function rulesetCatalogEntryIssues(
     }
 
     // How many rows this entry writes into each list, because a row the ruleset keeps up to date is
-    // matched to its spec from a marked row on a sheet: the entry's only row there, or (1.91) one of
+    // matched to its spec from a marked row on a sheet: the entry's only row there, or (1.92) one of
     // several that each carry their own name in the list's name column.
     const rowsPerList = new Map<string, number>();
     for (const row of entry.rows ?? []) rowsPerList.set(row.list, (rowsPerList.get(row.list) ?? 0) + 1);

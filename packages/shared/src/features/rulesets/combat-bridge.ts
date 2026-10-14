@@ -81,7 +81,7 @@ export function rulesetSheetBuildsByName(
     const name = typeof card?.name === "string" ? card.name.trim() : "";
     const key = name ? normalizeCharacterLookupName(name) : "";
     if (!key) continue;
-    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.76).
+    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.77).
     const envelope = readRulesetSheetEnvelope(definition, card.rulesetSheet);
     if (!envelope) continue;
     // Setup keeps ONE sheet per normalized name and lets the persona's win a name it shares with a

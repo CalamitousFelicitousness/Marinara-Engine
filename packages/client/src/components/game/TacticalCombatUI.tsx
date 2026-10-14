@@ -333,7 +333,9 @@ export function TacticalCombatUI({
   const rootRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
   // How tall the bar and the order are, for the game surface's floating controls to clear: one line on
-  // a wide screen, more where the bar wraps and the round is fought by initiative.
+  // a wide screen, more where the bar wraps and the round is fought by initiative. The bar only mounts once
+  // the battle has loaded, so it is measured again when it appears.
+  const chromeShown = !starting && !startError && state != null;
   useEffect(() => {
     const chrome = chromeRef.current;
     if (!chrome || typeof ResizeObserver === "undefined") return;
@@ -346,7 +348,7 @@ export function TacticalCombatUI({
       observer.disconnect();
       root.style.removeProperty("--tactical-chrome-height");
     };
-  }, []);
+  }, [chromeShown]);
 
   // Action-menu drag offset lives at component level so the card keeps its
   // position across unit selections (the card unmounts on deselect).
@@ -449,9 +451,13 @@ export function TacticalCombatUI({
           if (res.opening) {
             const before = mark(res.opening.before);
             setState(before);
+            // Kept as it will stand, so a refresh while the opening plays resumes this same fight. The
+            // battlefield is told now too: the opening turns move units, not the ground.
+            persistSnapshot(marked);
             setStarting(false);
             playSfx(SFX.start);
-            playEventsRef.current?.(res.opening.events, marked, before, (final) => onBattlefieldReady?.(final));
+            onBattlefieldReady?.(marked);
+            playEventsRef.current?.(res.opening.events, marked, before);
             return;
           }
           setState(marked);
@@ -848,8 +854,11 @@ export function TacticalCombatUI({
   );
 
   // ── Reset transient UI selection ──
-  // Read by launchBattle, which is made before the player of events is.
-  playEventsRef.current = playEvents;
+  // Read by launchBattle, which is made before the player of events is (and calls it only once its
+  // start request answers, after this has run).
+  useEffect(() => {
+    playEventsRef.current = playEvents;
+  }, [playEvents]);
 
   const resetSelection = useCallback(() => {
     setUi({ kind: "idle" });
@@ -1286,7 +1295,7 @@ export function TacticalCombatUI({
             </span>
             {animating && (
               <span className="flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[0.65rem] font-semibold text-white/70">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300 shadow-[0_0_6px_1px_rgba(252,211,77,0.7)]" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--warning)] shadow-[0_0_6px_1px_color-mix(in_srgb,var(--warning)_70%,transparent)]" />
                 {localizeUi("ui.game.tacticalcombatui.resolving")}
               </span>
             )}

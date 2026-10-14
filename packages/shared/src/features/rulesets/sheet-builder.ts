@@ -1,4 +1,4 @@
-// The guided builder (Capability API 1.85): a ruleset's `sheet.builder` walks a player through making a
+// The guided builder (Capability API 1.86): a ruleset's `sheet.builder` walks a player through making a
 // character in steps, and the catalog entries picked on the way say what they `grant`. What the player
 // chose is kept beside the build, in the sheet envelope's `builder`, so a step can be reopened; the
 // build itself stays the sheet every other part of the Engine reads.
@@ -53,14 +53,14 @@ export interface RulesetBuilderState {
   abilityChoices?: Record<string, string[]>;
   /** Skills or saves chosen for a grant's or a trained step's `choose`. */
   trainedChoices?: Record<string, string[]>;
-  /** Catalog entries chosen for a grant's `entries.choose` (1.90). */
+  /** Catalog entries chosen for a grant's `entries.choose` (1.91). */
   entryChoices?: Record<string, string[]>;
   applied?: RulesetBuilderApplied;
   /** Picks describe the character as it already is: what they grant is recorded as given, and the
    *  sheet is not changed. For a character made before the builder, until the player says done. */
   describing?: boolean;
   /** Set once the builder starts a blank sheet: only such a character takes a step's `default` method
-   *  (1.86). One it described never does, so ending describing keeps its scores. */
+   *  (1.87). One it described never does, so ending describing keeps its scores. */
   made?: "builder";
 }
 
@@ -112,7 +112,7 @@ function filterHas(entry: RulesetCatalogEntry, filterId: string, value: string |
   return Array.isArray(have) ? typeof value === "string" && have.includes(value) : have === value;
 }
 
-/** Set while the builder works out a sheet without one exclusive group's picks (1.99), so the entries
+/** Set while the builder works out a sheet without one exclusive group's picks (1.100), so the entries
  *  judged inside it are read off that sheet as it stands and the rule never nests. */
 let judgingWithoutGroups = false;
 
@@ -141,7 +141,7 @@ export function rulesetBuilderOptions(
   const limit = step.upTo && build ? resolveRulesetValueRef(definition, build, step.upTo.value) : null;
   const parentPicks = step.within ? rulesetBuilderPicks(definition, step.within.step, state, catalogs, build) : null;
   // An entry of an `exclusive` group is judged on the sheet without the step's picks of that group
-  // (1.99): picking it drops them, so what they gave cannot be what lets it be picked (a feat in place of
+  // (1.100): picking it drops them, so what they gave cannot be what lets it be picked (a feat in place of
   // an ability score improvement, judged on the scores without that improvement). Worked out once per
   // group, and without this rule inside, so it never nests.
   const withoutGroups = new Map<string, RulesetSheetBuild>();
@@ -163,7 +163,7 @@ export function rulesetBuilderOptions(
       const at = entry.filters?.[step.upTo.filter];
       if (typeof at === "number" && at > limit) return false;
     }
-    // Offered only while the sheet as it stands says so (1.98): a second class's prerequisites.
+    // Offered only while the sheet as it stands says so (1.99): a second class's prerequisites.
     if (
       entry.offeredWhen &&
       build &&
@@ -177,7 +177,7 @@ export function rulesetBuilderOptions(
   });
 }
 
-/** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.99):
+/** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.100):
  *  what they wrote taken back, everything else as it was. The sheet itself when none are picked. */
 function rulesetBuilderBuildWithoutGroup(
   definition: RulesetDefinition,
@@ -219,7 +219,7 @@ function rulesetBuilderBuildWithoutGroup(
 }
 
 /** How many entries a catalog step asks for and at most takes: its `countFrom` read off the sheet as it
- *  stands (1.89), whole and between 0 and its `max`, or else its own `min` and `max`. */
+ *  stands (1.90), whole and between 0 and its `max`, or else its own `min` and `max`. */
 export function rulesetBuilderStepCount(
   definition: RulesetDefinition,
   step: StepOf<"catalog">,
@@ -250,7 +250,7 @@ export function rulesetBuilderPicks(
   // `within` only ever names an earlier step (the ruleset is refused otherwise), so this ends.
   const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
-  // One pick of an `exclusive` group counts (1.93): the latest, since picking replaces; earlier ones
+  // One pick of an `exclusive` group counts (1.94): the latest, since picking replaces; earlier ones
   // of the same group count for nothing.
   const picked = (state.picks?.[stepId] ?? [])
     .map((id) => byId.get(id))
@@ -262,7 +262,7 @@ export function rulesetBuilderPicks(
     .slice(0, rulesetBuilderStepCount(definition, step, build).max);
 }
 
-/** The stored picks of a step with `id` added: one of an `exclusive` group (1.93) replaces the step's
+/** The stored picks of a step with `id` added: one of an `exclusive` group (1.94) replaces the step's
  *  other picks of that group, and any other is added at the end. */
 export function rulesetBuilderPickAdded(
   step: StepOf<"catalog">,
@@ -317,16 +317,16 @@ export interface RulesetBuilderChoiceSlot {
 
 export interface RulesetBuilderAbilitySlot extends RulesetBuilderChoiceSlot {
   amount: number;
-  /** No score goes past this through the choice (1.95). */
+  /** No score goes past this through the choice (1.96). */
   upTo?: number;
-  /** One score may be chosen more than once (1.92). */
+  /** One score may be chosen more than once (1.93). */
   repeat?: boolean;
 }
 
 export interface RulesetBuilderTrainedSlot extends RulesetBuilderChoiceSlot {
   what: "skills" | "saves";
   tier: string;
-  /** Only what is already trained to this tier or higher is offered (Capability API 1.104). */
+  /** Only what is already trained to this tier or higher is offered (Capability API 1.105). */
   held?: string;
 }
 
@@ -363,7 +363,7 @@ export function rulesetBuilderAbilitySlots(
     (entry.grants?.abilities?.choose ?? []).map((choice, index) => {
       const key = rulesetBuilderChoiceKey(step.id, entry.id, index);
       const from = all.filter((id) => !choice.except?.includes(id));
-      // A choice that repeats (1.92) may name one score more than once; any other names each once.
+      // A choice that repeats (1.93) may name one score more than once; any other names each once.
       const stored = (state.abilityChoices?.[key] ?? []).filter((id) => from.includes(id));
       const chosen = choice.repeat ? stored : [...new Set(stored)];
       return {
@@ -383,7 +383,7 @@ export function rulesetBuilderAbilitySlots(
 
 /** Every skill or save choice: the picks' and the trained steps' own. Shown at the first trained step,
  *  or where the entry was picked when the builder has none. A choice never offers what the picks already
- *  train to its tier or higher (1.103): not what an entry trains outright, nor what an earlier choice
+ *  train to its tier or higher (1.104): not what an entry trains outright, nor what an earlier choice
  *  holds, so two sources that both teach Insight leave the second free for another skill. */
 export function rulesetBuilderTrainedSlots(
   definition: RulesetDefinition,
@@ -456,7 +456,7 @@ export function rulesetBuilderTrainedSlots(
         )
       : [],
   );
-  // A choice that builds on training at another's tier (1.104) needs that one's picks, so it never
+  // A choice that builds on training at another's tier (1.105) needs that one's picks, so it never
   // takes them away from it.
   const over = (other: RulesetBuilderTrainedSlot, each: RulesetBuilderTrainedSlot) =>
     other.what === each.what &&
@@ -474,7 +474,7 @@ export function rulesetBuilderTrainedSlots(
       kept.filter((other) => other !== each && over(other, each)).flatMap((other) => other.chosen),
     );
     let from = each.from.filter((id) => each.chosen.includes(id) || !elsewhere.has(id));
-    // A choice that builds on training (5e's Expertise, 1.104) offers only what the picks train, or a
+    // A choice that builds on training (5e's Expertise, 1.105) offers only what the picks train, or a
     // lower choice holds, to its `held` tier or higher.
     if (each.held !== undefined) {
       const floor = rank(each.held);
@@ -491,7 +491,7 @@ export function rulesetBuilderTrainedSlots(
   });
 }
 
-/** Every choice of catalog entries the picks grant (1.90), shown at the first `choices` step for its
+/** Every choice of catalog entries the picks grant (1.91), shown at the first `choices` step for its
  *  catalog. Only entries that write rows are offered, since rows are all a choice puts on the sheet. An
  *  entry is never chosen twice: one chosen at an earlier slot is that slot's, and is not offered to
  *  the others, so a slot never waits on a choice nobody can make. */
@@ -514,7 +514,7 @@ export function rulesetBuilderEntrySlots(
             (option.rows?.length ?? 0) > 0 &&
             Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
             (!choice.ids || choice.ids.includes(option.id)) &&
-            // Offered only while the sheet allows (1.105), as a step offers it (1.98).
+            // Offered only while the sheet allows (1.106), as a step offers it (1.99).
             (!option.offeredWhen || !build || resolveRulesetValueRef(definition, build, option.offeredWhen) > 0),
         )
         .map((option) => option.id);
@@ -555,7 +555,7 @@ export function rulesetPointBuySpent(
   return spent;
 }
 
-/** The method the scores are set by: the player's, else the step's `default` (1.86) for a character the
+/** The method the scores are set by: the player's, else the step's `default` (1.87) for a character the
  *  builder makes, never for one it describes; none when the step does not offer it. */
 export function rulesetBuilderMethod(
   definition: RulesetDefinition,
@@ -635,7 +635,7 @@ function stepFieldValue(
 }
 
 /** What the builder's choices come to, worked out from scratch. */
-/** An increase a choice with `upTo` gives (1.95), applied after every other so it stops at its cap. */
+/** An increase a choice with `upTo` gives (1.96), applied after every other so it stops at its cap. */
 interface CappedIncrease {
   id: string;
   by: number;
@@ -741,7 +741,7 @@ export function applyRulesetBuilder(
   given: RulesetBuilderState,
   catalogs: RulesetCatalogEntriesById,
 ): { build: RulesetSheetBuild; state: RulesetBuilderState } {
-  // A blank sheet the builder starts is the builder's, and keeps the method it starts on (1.86), so a
+  // A blank sheet the builder starts is the builder's, and keeps the method it starts on (1.87), so a
   // later change to the ruleset's default never moves its scores.
   let state = given;
   if (!state.describing && !state.made && state.applied === undefined && rulesetSheetBuildIsBlank(definition, build)) {
@@ -778,7 +778,7 @@ function applyRulesetBuilderOnce(
   };
   const { capped, ...want } = desired(definition, state, catalogs, build);
   /** The increase capped choices add to a score that stands at `from` before them, each stopping at
-   *  its own cap and never taking away (1.95). */
+   *  its own cap and never taking away (1.96). */
   const cappedOn = (id: string, from: number) => {
     let score = from;
     for (const each of capped) {
@@ -953,7 +953,7 @@ function applyRulesetBuilderOnce(
   };
 }
 
-/** Fields shown at a step on the sheet as it stands (1.106). Hiding keeps their stored values. */
+/** Fields shown at a step on the sheet as it stands (1.107). Hiding keeps their stored values. */
 export function rulesetBuilderShownFields(
   definition: RulesetDefinition,
   step: StepOf<"fields">,

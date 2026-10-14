@@ -3908,7 +3908,7 @@ export function getCapabilityPackageInstallIssue(
   // Each class's spellcasting references and the builder rows that name it, 1.108.
   const abilitySources = plainRecord(combatBlock)?.abilities;
   if (
-    !declaresApi(107) &&
+    !declaresApi(108) &&
     ((Array.isArray(fieldsSteps) && fieldsSteps.some((step) => plainRecord(step)?.stamp !== undefined)) ||
       (Array.isArray(abilitySources) && abilitySources.some((source) => plainRecord(source)?.byColumn !== undefined)))
   ) {
@@ -3916,7 +3916,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Starting gear held to the sheet, 1.109: a new key on the strict step.
   if (
-    !declaresApi(108) &&
+    !declaresApi(109) &&
     Array.isArray(fieldsSteps) &&
     fieldsSteps.some((step) => {
       const gearStep = plainRecord(step);
@@ -3953,7 +3953,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Answers that stop only so high, and pools that say their level, 1.116.
   if (
-    !declaresApi(115) &&
+    !declaresApi(116) &&
     (carriesCounterReachKeys ||
       ((plainRecord(plainRecord(ruleset?.sheet)?.live)?.pools as unknown[] | undefined) ?? []).some(
         (pool) => plainRecord(pool)?.level !== undefined,
@@ -3964,7 +3964,7 @@ export function getCapabilityPackageInstallIssue(
   // Answers to named entries, answers at more than one moment, and conditions that keep an entry's
   // harm off, 1.117.
   if (
-    !declaresApi(116) &&
+    !declaresApi(117) &&
     (carriesNamedAnswerKeys ||
       ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
         (condition) => plainRecord(condition)?.noDamageFrom !== undefined,
@@ -4014,7 +4014,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Conditions that end on harm, a new save or an ally's action, 1.125.
   if (
-    !declaresApi(124) &&
+    !declaresApi(125) &&
     ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some((condition) =>
       ["endsWhen", "saveWhenDamaged", "shakeOff"].some((key) => plainRecord(condition)?.[key] !== undefined),
     )
@@ -4122,7 +4122,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Save modifiers narrowed by conditions, damage or magic, 1.134.
   if (
-    !declaresApi(133) &&
+    !declaresApi(134) &&
     (carriesSaveAgainst(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveAgainst(document)))
   ) {
@@ -4138,7 +4138,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Creature types and the target tests that read them, 1.168.
   if (
-    !declaresApi(167) &&
+    !declaresApi(168) &&
     (carriesCreatureTypes(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureTypes(document)))
   ) {
@@ -4146,7 +4146,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // A weapon's extra damage and saves on what its hit puts on, 1.169.
   if (
-    !declaresApi(168) &&
+    !declaresApi(169) &&
     (carriesItemAttackExtras(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemAttackExtras(document)))
   ) {
@@ -4154,7 +4154,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // An item's switch and the clauses dealt while it is on, 1.170.
   if (
-    !declaresApi(169) &&
+    !declaresApi(170) &&
     (carriesItemToggles(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemToggles(document)))
   ) {
@@ -4162,7 +4162,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Pools that pay for other groups, and targets that grow with the cost, 1.171.
   if (
-    !declaresApi(170) &&
+    !declaresApi(171) &&
     (carriesCostLadder(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCostLadder(document)))
   ) {
@@ -4170,14 +4170,14 @@ export function getCapabilityPackageInstallIssue(
   }
   // Areas that stay, 1.172.
   if (
-    !declaresApi(171) &&
+    !declaresApi(172) &&
     (carriesZones(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesZones(document)))
   ) {
     return "A ruleset with lasting zones requires schemaVersion 2 and capabilityApi 1.172 or newer";
   }
   // Areas that move, drift or make their ground hard going, 1.173.
   if (
-    !declaresApi(172) &&
+    !declaresApi(173) &&
     (carriesMovingZones(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesMovingZones(document)))
   ) {
@@ -4186,7 +4186,7 @@ export function getCapabilityPackageInstallIssue(
   // Escapes against the applier's save, zones that shake concentration or stop at a damage cap, and
   // items whose use concentrates or leaves a zone, 1.174.
   if (
-    !declaresApi(173) &&
+    !declaresApi(174) &&
     (carriesZoneRules(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneRules(document)))
   ) {
@@ -4195,7 +4195,7 @@ export function getCapabilityPackageInstallIssue(
   // Zones that ram or hurt whom they hold, ground that costs several steps or halves speed, and
   // holds broken only by their escape DC and checks, 1.175.
   if (
-    !declaresApi(174) &&
+    !declaresApi(175) &&
     (carriesZoneGround(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneGround(document)))
   ) {
@@ -4203,28 +4203,28 @@ export function getCapabilityPackageInstallIssue(
   }
   // Cures that end conditions, steady the dying or bring back the dead, 1.176.
   if (
-    !declaresApi(175) &&
+    !declaresApi(176) &&
     (carriesCures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCures(document)))
   ) {
     return "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.176 or newer";
   }
   // Square and cube areas, and walls that block or have a side, 1.177.
   if (
-    !declaresApi(176) &&
+    !declaresApi(177) &&
     (carriesWalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalls(document)))
   ) {
     return "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
   // Senses, obscuring zones, hiding conditions, seen-only targets and area copies, 1.178.
   if (
-    !declaresApi(177) &&
+    !declaresApi(178) &&
     (carriesSight(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSight(document)))
   ) {
     return "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.178 or newer";
   }
   // Components, and zones that work on whoever stands in them, stop components or ward, 1.179.
   if (
-    !declaresApi(178) &&
+    !declaresApi(179) &&
     (carriesZoneInside(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneInside(document)))
   ) {
@@ -4232,7 +4232,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Conditions that end when their holder attacks or casts, granted senses, giving away the unseen, 1.180.
   if (
-    !declaresApi(179) &&
+    !declaresApi(180) &&
     (carriesSightExtras(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSightExtras(document)))
   ) {
@@ -4240,7 +4240,7 @@ export function getCapabilityPackageInstallIssue(
   }
   // Wards by base level or raised per step, save extras, creature spell components, utility uses, 1.181.
   if (
-    !declaresApi(180) &&
+    !declaresApi(181) &&
     (carriesWardsAndSaves(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWardsAndSaves(document)))
   ) {

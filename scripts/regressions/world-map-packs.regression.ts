@@ -170,7 +170,7 @@ const installed = [
     },
     { kit: "kit.worldkit.json", worlds: ["huge.world.json"] },
   ),
-  // Image tiles (tile pack v2) need Capability API 1.79.
+  // Image tiles (tile pack v2) need Capability API 1.80.
   install(
     "imagetiles",
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
@@ -285,7 +285,7 @@ try {
   }
   const oldImageTiles = await readMapPack("oldimagetiles");
   assert.ok(
-    oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.79/.test(oldImageTiles.reason),
+    oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.80/.test(oldImageTiles.reason),
     JSON.stringify(oldImageTiles),
   );
   assert.equal(await readMapPack("plain"), null, "an Experience without a pack");

@@ -6322,7 +6322,7 @@ export const capabilityPackageManager = {
     kit: Buffer;
     worlds: Array<{ path: string; data: Buffer }>;
     tiles: Buffer | null;
-    /** The tiles file's pinned hash, and the Capability API the package declares (image tiles need 1.79, a story intro 1.338). */
+    /** The tiles file's pinned hash, and the Capability API the package declares (image tiles need 1.80, a story intro 1.339). */
     tilesSha256: string | null;
     capabilityApi: { major: number; minor: number } | null;
   } | null> {

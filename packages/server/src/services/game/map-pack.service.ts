@@ -74,7 +74,7 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
       if (tiles.tilePackVersion === 2) {
         const api = files.capabilityApi;
         if (!api || api.major !== 1 || api.minor < 79)
-          return { ok: false, reason: "its tiles are an image pack, which needs capabilityApi 1.79 or newer" };
+          return { ok: false, reason: "its tiles are an image pack, which needs capabilityApi 1.80 or newer" };
         const cleaned = await cleanImageTilePack(tiles);
         if (!cleaned.ok) return { ok: false, reason: `its tiles do not read: ${cleaned.issue}` };
         tiles = cleaned.pack;

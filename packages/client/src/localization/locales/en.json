@@ -9063,6 +9063,7 @@
   "ui.connections.connectioneditor.usagePercentOf": "{{percent}}% · {{used}} used",
   "ui.connections.connectioneditor.usagePercentUsed": "{{percent}}% used",
   "ui.connections.connectioneditor.usageRemaining": "{{remaining}} remaining",
+  "ui.connections.connectioneditor.usageRemainingAndResets": "{{remaining}} remaining · {{resets}}",
   "ui.connections.connectioneditor.usageResets": "resets {{when}}",
   "ui.connections.connectioneditor.usageUnknown": "unknown",
   "ui.connections.connectioneditor.usageUsedOfLimit": "{{used}} / {{limit}} tokens",

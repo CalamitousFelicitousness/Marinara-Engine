@@ -97,8 +97,7 @@ function QuotaBar({
   const used = formatTokens(window.used);
   const total = quotaTotalForDisplay(window, limit);
   const roundedPercent = String(Math.round(percent));
-  // A window without counts states when it resets instead.
-  const resetsIn = window.used === null && window.resetAt !== null ? formatRelativeUntil(window.resetAt) : null;
+  const resetsIn = window.resetAt !== null ? formatRelativeUntil(window.resetAt) : null;
   const resets = resetsIn ? localizeUi("ui.connections.connectioneditor.usageResets", { when: resetsIn }) : null;
   // The wider layouts state the percentage and the tokens together; the compact
   // one leaves the tokens to the header row above and states only the percentage.
@@ -128,7 +127,7 @@ function QuotaBar({
               ? localizeUi("ui.connections.connectioneditor.usageLabelPercentUsed", { label, percent: roundedPercent })
               : localizeUi("ui.connections.connectioneditor.usagePercentUsed", { percent: roundedPercent })}
         </span>
-        {(!compact || (labelInCompact && resets)) && (
+        {(!compact || resets) && (
           <span className="text-[0.6875rem] tabular-nums text-[var(--marinara-chat-chrome-panel-text)]">
             {compact ? resets : reading}
           </span>
@@ -157,11 +156,19 @@ function QuotaBar({
           style={{ width: `${percent}%` }}
         />
       </div>
-      {!compact && window.remaining !== null && (
+      {/* A window with counts states its reset under the bar; one without states it in the reading. */}
+      {!compact && window.used !== null && (window.remaining !== null || resets) && (
         <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]">
-          {localizeUi("ui.connections.connectioneditor.usageRemaining", {
-            remaining: formatTokens(window.remaining),
-          })}
+          {window.remaining === null
+            ? resets
+            : resets
+              ? localizeUi("ui.connections.connectioneditor.usageRemainingAndResets", {
+                  remaining: formatTokens(window.remaining),
+                  resets,
+                })
+              : localizeUi("ui.connections.connectioneditor.usageRemaining", {
+                  remaining: formatTokens(window.remaining),
+                })}
         </p>
       )}
     </div>

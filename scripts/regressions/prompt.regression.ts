@@ -4018,7 +4018,7 @@ const cases: RegressionCase[] = [
       );
       assert.match(chatsRouteSource, /const customPrompt = resolveGameGmPromptTemplate\(chatMeta, setupConfig\);/u);
       assert.match(editorSource, /StoryboardAgentSettingsPanel/u);
-      assert.match(editorSource, /\{!isStoryboardAgent && \(\s*<FieldGroup[\s\S]*?agentBudget/u);
+      assert.match(editorSource, /\{!isStoryboardAgent && !isAvatarAgent && \(\s*<FieldGroup[\s\S]*?agentBudget/u);
       assert.doesNotMatch(
         editorSource,
         /\.\.\.\(localContextSize !== "" \? \{ contextSize: Number\(localContextSize\) \} : \{\}\)/u,
@@ -4135,7 +4135,7 @@ const cases: RegressionCase[] = [
       assert.doesNotMatch(editorSource, /StoryboardAdvancedPromptLibrary|storyboardPromptLibraryOpen/u);
       assert.match(
         editorSource,
-        /\{!isStoryboardAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
+        /\{!isStoryboardAgent && !isAvatarAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
         "Storyboard should not render a second global prompt library below its numbered stages",
       );
       assert.match(editorSource, /onPlannerPromptChange=\{setLocalPrompt\}/u);

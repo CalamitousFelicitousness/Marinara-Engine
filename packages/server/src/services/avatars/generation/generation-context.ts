@@ -15,6 +15,7 @@ import {
   AVATAR_PROMPT_TEMPLATE_VARIABLES,
   LOCAL_SIDECAR_CONNECTION_ID,
   compileImagePrompt,
+  isChatProvider,
   isOpenAIGptImageModel,
   mergeBuiltInAgentSettings,
   normalizeAgentPromptTemplateOptions,
@@ -170,8 +171,8 @@ export function listAvatarSourceSprites(ownerId: string, { all = false } = {}): 
     .sort((a, b) => a.localeCompare(b));
 }
 
-/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
-export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
+/** Path of the owner's raster sprite with this exact label, or null. */
+export function findAvatarSpriteFile(ownerId: string, label: string): string | null {
   const dir = assertInsideDir(SPRITES_ROOT, join(SPRITES_ROOT, ownerId));
   const filename = existsSync(dir)
     ? readdirSync(dir).find(
@@ -179,8 +180,11 @@ export async function readAvatarSourceSprite(ownerId: string, label: string): Pr
           SPRITE_SOURCE_EXTENSIONS.has(extname(name).toLowerCase()) && name.slice(0, -extname(name).length) === label,
       )
     : undefined;
-  if (!filename) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
-  const bytes = await readFile(assertInsideDir(dir, join(dir, filename)));
+  return filename ? assertInsideDir(dir, join(dir, filename)) : null;
+}
+
+/** Decodes a sprite file to PNG, first frame for animated sprites. */
+export async function decodeAvatarSourceSprite(label: string, bytes: Buffer): Promise<AvatarSourceSprite> {
   if (!isAllowedImageBuffer(bytes)) {
     throw new AvatarGenerationError(422, `The sprite "${label}" is not a picture the image model can read.`);
   }
@@ -195,6 +199,13 @@ export async function readAvatarSourceSprite(ownerId: string, label: string): Pr
     transparent: !stats.isOpaque,
     hash: createHash("sha256").update(bytes).digest("hex"),
   };
+}
+
+/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
+export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
+  const file = findAvatarSpriteFile(ownerId, label);
+  if (!file) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
+  return decodeAvatarSourceSprite(label, await readFile(file));
 }
 
 // ── The 2D Avatars agent: templates and connection ──
@@ -235,11 +246,8 @@ export function renderAvatarPromptTemplate(
   return renderTemplate(template, vars, AVATAR_PROMPT_TEMPLATE_VARIABLES[id]).trim();
 }
 
-/** Connections that can't answer a chat request (the same list the Agent editor leaves out). */
-const NON_LANGUAGE_PROVIDERS = new Set(["image_generation", "video_generation", "audio", "decision"]);
-
 function isLanguageConnection(conn: { provider: string } | null): boolean {
-  return !!conn && !NON_LANGUAGE_PROVIDERS.has(conn.provider);
+  return !!conn && isChatProvider(conn.provider);
 }
 
 /** The chat connection that reads the sprite: the one chosen for this run, else the 2D Avatars agent's

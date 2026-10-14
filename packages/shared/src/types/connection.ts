@@ -23,7 +23,8 @@ export type APIProvider =
   | "image_generation"
   | "video_generation"
   | "audio"
-  | "decision";
+  | "decision"
+  | "tripo";
 
 /**
  * `custom` is a System One server; `openai_compatible` is an ordinary chat model on a

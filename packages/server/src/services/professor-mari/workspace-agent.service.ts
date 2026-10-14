@@ -59,6 +59,7 @@ import {
   findKnownModel,
   LOCAL_SIDECAR_CONNECTION_ID,
   DEFAULT_MARI_PERMISSIONS_MODE,
+  isChatProvider,
   isMariPermissionsMode,
   MARI_AUTHORIZATION_ACCEPT_CHIP,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
@@ -4662,13 +4663,7 @@ export class ProfessorMariWorkspaceService {
     }
 
     const rows = (await this.app.db.select().from(apiConnections)) as Array<typeof apiConnections.$inferSelect>;
-    const languageRows = rows.filter(
-      (row) =>
-        row.provider !== "image_generation" &&
-        row.provider !== "video_generation" &&
-        row.provider !== "audio" &&
-        row.provider !== "decision",
-    );
+    const languageRows = rows.filter((row) => isChatProvider(row.provider));
     const selected = connectionId ? languageRows.find((row) => row.id === connectionId) : null;
     const fallback =
       selected ??

@@ -1930,7 +1930,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             ),
           ).trim()
         : render(text, char ? (ctx.names.get(char) ?? "Character") : (names[0] ?? "Character"));
-    return parseRoleplayUserCommands(rendered).content;
+    // Back-to-back sections that all hide still leave a blank line too many. The memory joins the prompt after
+    // the request collapses blank lines, so collapse them here the same way.
+    return parseRoleplayUserCommands(rendered).content.replace(/\n([ \t]*\n){2,}/g, "\n\n");
   }
 
   async function embedRecord(

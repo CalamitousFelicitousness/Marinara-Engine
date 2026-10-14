@@ -2754,10 +2754,11 @@ function endsWithLineBreak(text: string): boolean {
  * the blank lines after it when it starts a paragraph. Sections nested in a branch are rewritten with the line
  * breaks that branch carries. Sections that share a line with other text stay as written, and so do a group
  * block's `[` and `]` lines. Line endings become `\n` and comments go first, as reading drops them anyway.
- * ponytail: a paragraph made only of several sections keeps one extra blank line when all of them hide, and a
- * summary made only of sections can keep a line break at its end in Individual mode. There, a section with no
- * text before it also carries the next line's start inside its deferred token, so the Markdown heading guard
- * and the XML indent miss that line. Each needs a separator that knows its neighbours if it matters.
+ * ponytail: a paragraph made only of several sections keeps one extra blank line when all of them hide, until
+ * the request, Peek Prompt and Advanced Memory collapse runs of blank lines into one. A summary made only of
+ * sections can keep a line break at its end in Individual mode. There, a section with no text before it also
+ * carries the next line's start inside its deferred token, so the Markdown heading guard and the XML indent
+ * miss that line. Each needs a separator that knows its neighbours if it matters.
  */
 export function attachConditionalLineBreaks(input: string): string {
   const lines = stripMacroComments(input.replace(/\r\n?/gu, "\n")).split("\n");

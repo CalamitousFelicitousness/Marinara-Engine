@@ -300,11 +300,9 @@ export const runImageGenerationRequest = runMediaGenerationRequest;
 // line per account no matter which connection row it came through.
 //
 // Order vs the global ceiling: callers enter the lane first and take a permit
-// inside it (invariant 1 above), so lane waiters never sit on permits. Callers
-// still wrapped in the legacy per-connection FIFO already hold a permit when
-// they reach their lane; that only parks a slot while they wait.
-// ponytail: route those legacy image wrappers through the lane alone in a
-// follow-up so no waiter holds a permit.
+// inside it (invariant 1 above), so lane waiters never sit on permits. Image
+// routes no longer wrap generateImage in the per-connection FIFO; video still
+// passes through it, inside its lane, for callers that opt in.
 
 let providerLanesEnabled = true;
 const providerLaneTails = new Map<string, Promise<void>>();

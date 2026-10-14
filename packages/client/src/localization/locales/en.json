@@ -4647,7 +4647,7 @@
   "settings.controls.portraits.label": "Portraits",
   "settings.controls.professorMariSuggestions.help": "Show quick replies under her answers.",
   "settings.controls.professorMariSuggestions.label": "Reply chips",
-  "settings.controls.queueMedia.help": "Sends supported image and video generation jobs one at a time per connection. Keep this on for providers that reject simultaneous requests.",
+  "settings.controls.queueMedia.help": "Sends image and video generation jobs to each provider account one at a time, from every feature. Keep this on for providers that reject simultaneous requests.",
   "settings.controls.queueMedia.label": "Queue media generation requests",
   "settings.controls.quoteStyle.help": "Choose how straight and smart quotation marks are unified in chat inputs and displayed AI output.",
   "settings.controls.quoteStyle.label": "Quote style",

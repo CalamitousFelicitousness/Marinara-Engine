@@ -235,7 +235,7 @@ function RollCellButton({
         {notation ? t("ui.rulesets.sheet.roll", { notation }) : t("ui.rulesets.sheet.rollNeedsDie")}
       </button>
       {failed && (
-        <span role="status" className="text-[0.625rem] text-[var(--destructive)]">
+        <span role="status" className="text-[0.625rem] text-[var(--marinara-app-accent-static)]">
           {t("ui.rulesets.sheet.rollFailed")}
         </span>
       )}

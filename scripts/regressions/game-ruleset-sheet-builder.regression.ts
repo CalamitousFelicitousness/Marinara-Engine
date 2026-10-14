@@ -1187,6 +1187,13 @@ try {
       .entries.find((e: { id: string }) => e.id === "wizard");
     wizard.offeredWhen = { derived: "proficiency_bonus" };
   }, /offeredWhen reads "level", which picking this entry changes/);
+  // A skill modifier reads the proficiency bonus, so it reads the level the pick sets.
+  refused((doc) => {
+    const wizard = doc.catalogs
+      .find((c: { id: string }) => c.id === "classes")
+      .entries.find((e: { id: string }) => e.id === "wizard");
+    wizard.offeredWhen = { skillMod: "arcana" };
+  }, /offeredWhen reads "level", which picking this entry changes/);
 
   // ── 1.94: entries a step keeps one of ──
   const grouped = (doc: Record<string, any>) => {

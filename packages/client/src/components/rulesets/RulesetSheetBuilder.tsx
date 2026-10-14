@@ -562,7 +562,7 @@ export function RulesetSheetBuilder({
               </span>
             ) : null}
             {rollFailed && (
-              <span role="status" className="text-[0.625rem] text-[var(--destructive)]">
+              <span role="status" className="text-[0.625rem] text-[var(--marinara-app-accent-static)]">
                 {t("ui.rulesets.sheet.rollFailed")}
               </span>
             )}
@@ -837,7 +837,7 @@ export function RulesetSheetBuilder({
         <section aria-label={step.label} className="min-w-0 space-y-2">
           <h4 className="text-xs font-semibold text-[var(--foreground)]">{step.label}</h4>
           {failed ? (
-            <p role="alert" className="text-xs text-[var(--destructive)]">
+            <p role="alert" className="text-xs text-[var(--marinara-app-accent-static)]">
               {t("ui.rulesets.builder.loadFailed")}
             </p>
           ) : !ready ? (

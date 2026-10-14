@@ -4217,8 +4217,8 @@ function refReadsListSum(
 }
 
 /** What a value reads off the sheet, directly or through derived values: its abilities, fields, skills,
- *  saves and the lists it adds up. Conservative: a skill or save modifier reads every ability, and a
- *  modifier off a field's ability reads that field and every ability. */
+ *  saves and the lists it adds up. Conservative: a skill or save modifier reads every ability, its cap
+ *  and the proficiency bonus, and a modifier off a field's ability reads that field and every ability. */
 function refReadsSheet(
   def: Pick<RulesetDefinitionBase, "sheet" | "resolution">,
   ref: RulesetValueRef,
@@ -4233,6 +4233,13 @@ function refReadsSheet(
 ): typeof into {
   if (depth > 64) return into;
   const all = () => def.sheet.abilities.forEach((ability) => into.abilities.add(ability.id));
+  // A skill or save modifier also reads its cap and the proficiency bonus, as refReadsListSum follows.
+  const trainedReads = (trained: { cap?: RulesetValueRef } | undefined) => {
+    if (!trained) return;
+    if (trained.cap) refReadsSheet(def, trained.cap, into, depth + 1);
+    const bonus = def.resolution.proficiency?.bonus;
+    if (bonus) refReadsSheet(def, bonus, into, depth + 1);
+  };
   if (ref.field !== undefined) into.fields.add(ref.field);
   if (ref.abilityScore !== undefined) into.abilities.add(ref.abilityScore);
   if (ref.abilityMod !== undefined) into.abilities.add(ref.abilityMod);
@@ -4243,10 +4250,12 @@ function refReadsSheet(
   if (ref.skillMod !== undefined) {
     into.skills.add(ref.skillMod);
     all();
+    trainedReads(def.sheet.skills.find((entry) => entry.id === ref.skillMod));
   }
   if (ref.saveMod !== undefined) {
     into.saves.add(ref.saveMod);
     all();
+    trainedReads(def.sheet.saves.find((entry) => entry.id === ref.saveMod));
   }
   if (ref.listSum) into.lists.add(ref.listSum.list);
   if (ref.derived !== undefined) {

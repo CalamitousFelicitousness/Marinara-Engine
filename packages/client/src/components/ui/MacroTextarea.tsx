@@ -17,6 +17,7 @@ import { resolveSelfCardAssets } from "../../lib/card-asset-links";
 import { cn } from "../../lib/utils";
 import { formatEstimatedTokens } from "../../lib/character-token-count";
 import { handleTextareaTab } from "../../lib/textarea-editing";
+import { isBrowserExtensionUi } from "../../lib/chat-floating-ui-events";
 import { DecisionStatementNote } from "./DecisionStatementNote";
 import { Trans, useTranslation as useUiTranslation } from "react-i18next";
 
@@ -111,7 +112,8 @@ function ExpandedMacroEditor({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      // Escape in a browser extension's card (Grammarly's) closes that card, not this editor.
+      if (event.key === "Escape" && !isBrowserExtensionUi(event.target)) {
         if (!readOnly) onChange(localValue);
         onClose();
       }

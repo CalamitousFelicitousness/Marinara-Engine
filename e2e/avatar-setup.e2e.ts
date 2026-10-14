@@ -333,14 +333,19 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
         personality: "PERSONALITY-SECRET",
         scenario: "SCENARIO-SECRET",
         first_mes: "GREETING-SECRET",
-        extensions: { appearance: `{{char}} has ${LOOK}` },
+        // Another macro means nothing to an outside tool, so only the owner's own name is filled in.
+        extensions: { appearance: `{{char}} has ${LOOK} She keeps the scarf {{user}} gave her.` },
       },
     },
   });
   expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
   const character = (await characterResponse.json()) as { id: string };
   const personaResponse = await request.post("/api/characters/personas", {
-    data: { name: "Guide persona", description: PERSONA_LOOK, personality: "PERSONALITY-SECRET" },
+    data: {
+      name: "Guide persona",
+      description: `${PERSONA_LOOK} Often seen with {{char}}.`,
+      personality: "PERSONALITY-SECRET",
+    },
   });
   expect(personaResponse.ok(), await personaResponse.text()).toBeTruthy();
   const persona = (await personaResponse.json()) as { id: string };
@@ -406,6 +411,7 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
     await expect.poll(copied).toContain("Guide persona");
     const personaPrompt = await copied();
     expect(personaPrompt).toContain(PERSONA_LOOK);
+    expect(personaPrompt).not.toContain("{{");
     for (const secret of PRIVATE) expect(personaPrompt, secret).not.toContain(secret);
 
     // ── Read the guide opens the docs at the section ──

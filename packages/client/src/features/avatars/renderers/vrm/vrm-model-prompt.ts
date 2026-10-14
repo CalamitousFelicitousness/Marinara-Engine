@@ -53,9 +53,9 @@ export function vrmModelPrompt(owner: AvatarOwnerRef, card: unknown): string {
     );
   }
   name = oneLine(name, MAX_NAME_CHARS);
-  // The card's own name macro would mean nothing to an outside tool.
+  // Macros mean nothing to an outside tool: the owner's own name macro becomes the name, any other is dropped.
   const macro = owner.ownerType === "persona" ? /\{\{\s*user\s*\}\}/giu : /\{\{\s*char\s*\}\}/giu;
-  const description = oneLine((look ?? "").replace(macro, name), MAX_LOOK_CHARS);
+  const description = oneLine((look ?? "").replace(macro, name).replace(/\{\{[^{}]*\}\}/gu, ""), MAX_LOOK_CHARS);
   return [
     `Full-body anime-style 3D character${name ? `: ${name}` : ""}.`,
     "Standing in a T-pose, front view, neutral face with the mouth closed, plain white background.",

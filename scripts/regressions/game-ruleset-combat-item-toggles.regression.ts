@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  addToGameInventoryNamed,
   applyGameInventoryOps,
   applyRulesetCombatChoice,
   applyRulesetFightItemChanges,
@@ -196,6 +197,35 @@ try {
     assert.deepEqual(on.results, [{ ok: true, id: "s1" }]);
     assert.equal(on.stacks.find((one) => one.id === "s1")!.on, true);
     const off = applyGameInventoryOps(on.stacks, [{ op: "switch", id: "s1", on: false }], undefined, rules);
+    // One switched on stays one item: more of it goes beside it, unswitched.
+    const more = applyGameInventoryOps(on.stacks, [{ op: "set", id: "s1", quantity: 3 }], undefined, rules).stacks;
+    assert.deepEqual(
+      more.filter((one) => one.item === "gear/tongue" && !one.holder).map((one) => [one.quantity, one.on]),
+      [
+        [1, true],
+        [2, undefined],
+      ],
+    );
+    // A spent one keeps its own charges; the one added beside it is fresh.
+    const spent = on.stacks.map((one) => (one.id === "s1" ? { ...one, charges: 1, loaded: 0 } : one));
+    const fresh = applyGameInventoryOps(spent, [{ op: "set", id: "s1", quantity: 2 }], undefined, rules).stacks;
+    assert.deepEqual(
+      fresh
+        .filter((one) => one.item === "gear/tongue" && !one.holder)
+        .map((one) => [one.quantity, one.on, one.charges, one.loaded]),
+      [
+        [1, true, 1, 0],
+        [1, undefined, undefined, undefined],
+      ],
+    );
+    const added = addToGameInventoryNamed(on.stacks, "Flame Tongue", 1, () => "s4")!.stacks;
+    assert.deepEqual(
+      added.filter((one) => one.item === "gear/tongue" && !one.holder).map((one) => [one.quantity, one.on]),
+      [
+        [1, true],
+        [1, undefined],
+      ],
+    );
     assert.equal(off.stacks.find((one) => one.id === "s1")!.on, undefined);
     assert.deepEqual(
       applyGameInventoryOps(stacks, [{ op: "switch", id: "s2", on: true }], undefined, rules).results,

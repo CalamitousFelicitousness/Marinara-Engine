@@ -566,8 +566,11 @@ function sees(
     );
   if (sightless) {
     // Without eyes there is only what a blind sense reaches, and off a board nobody measures that.
-    if (!positioned) return blindSenses.size > 0 && [...blindSenses].some((sense) => (ranges[sense] ?? 0) > 0);
-    if (![...blindSenses].some((sense) => (ranges[sense] ?? 0) >= away)) return false;
+    // What hides from every sense but those it names still hides from them (below).
+    const reach = positioned
+      ? [...blindSenses].some((sense) => (ranges[sense] ?? 0) >= away)
+      : [...blindSenses].some((sense) => (ranges[sense] ?? 0) > 0);
+    if (!reach) return false;
   }
   // Hidden by a condition (5e's invisible) unless a sense sees it, or another of theirs gives them
   // away (1.180: Faerie Fire outlines the invisible).

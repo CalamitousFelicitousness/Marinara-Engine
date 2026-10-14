@@ -29,6 +29,7 @@ import {
   type SpriteDisplayMode,
 } from "./sprite-display-modes";
 import { clampSpritePlacement, getDefaultSpritePlacement, type SpritePlacementMap } from "./sprite-placement";
+import { useSpritePlacementDrag } from "./use-sprite-placement-drag";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface SpriteOverlayProps {
@@ -434,16 +435,12 @@ function CharacterSprite({
   const { t: localizeUi } = useUiTranslation();
   const { data: sprites } = useCharacterSprites(characterId);
   const prevExpressionRef = useRef(expression);
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    origin: SpritePlacement;
-  } | null>(null);
   const [activeTransition, setActiveTransition] = useState<Transition>(transition);
-  const [currentPlacement, setCurrentPlacement] = useState<SpritePlacement>(() => clampSpritePlacement(placement));
-  const currentPlacementRef = useRef(currentPlacement);
-  const [isDragging, setIsDragging] = useState(false);
+  const {
+    placement: currentPlacement,
+    dragging: isDragging,
+    onPointerDown,
+  } = useSpritePlacementDrag({ placement, placementKey, editing, stageRef, onPlacementChange });
 
   const spriteUrl = useMemo(() => {
     if (!sprites || !(sprites as SpriteInfo[]).length) return null;
@@ -522,64 +519,11 @@ function CharacterSprite({
   );
 
   useEffect(() => {
-    currentPlacementRef.current = currentPlacement;
-  }, [currentPlacement]);
-
-  useEffect(() => {
-    if (!isDragging) {
-      const nextPlacement = clampSpritePlacement(placement);
-      currentPlacementRef.current = nextPlacement;
-      setCurrentPlacement(nextPlacement);
-    }
-  }, [isDragging, placement]);
-
-  useEffect(() => {
     if (prevExpressionRef.current !== expression) {
       setActiveTransition(transition);
       prevExpressionRef.current = expression;
     }
   }, [expression, transition]);
-
-  useEffect(() => {
-    if (!editing && dragRef.current) {
-      dragRef.current = null;
-      setIsDragging(false);
-    }
-  }, [editing]);
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const dragState = dragRef.current;
-      const stage = stageRef.current;
-      if (!dragState || !stage || event.pointerId !== dragState.pointerId) return;
-
-      const dx = ((event.clientX - dragState.startX) / Math.max(stage.clientWidth, 1)) * 100;
-      const dy = ((event.clientY - dragState.startY) / Math.max(stage.clientHeight, 1)) * 100;
-      const nextPlacement = clampSpritePlacement({ x: dragState.origin.x + dx, y: dragState.origin.y + dy });
-      currentPlacementRef.current = nextPlacement;
-      setCurrentPlacement(nextPlacement);
-    };
-
-    const finishDrag = (event: PointerEvent) => {
-      const dragState = dragRef.current;
-      if (!dragState || event.pointerId !== dragState.pointerId) return;
-      dragRef.current = null;
-      setIsDragging(false);
-      onPlacementChange?.(placementKey, currentPlacementRef.current);
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", finishDrag);
-    window.addEventListener("pointercancel", finishDrag);
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", finishDrag);
-      window.removeEventListener("pointercancel", finishDrag);
-    };
-  }, [isDragging, onPlacementChange, placementKey, stageRef]);
 
   if (!spriteUrl) return null;
 
@@ -595,19 +539,7 @@ function CharacterSprite({
         zIndex: isDragging ? 40 : zIndex,
         touchAction: editing ? "none" : "auto",
       }}
-      onPointerDown={(event) => {
-        if (!editing) return;
-        if (event.button !== 0 && event.pointerType !== "touch") return;
-        event.preventDefault();
-        event.stopPropagation();
-        dragRef.current = {
-          pointerId: event.pointerId,
-          startX: event.clientX,
-          startY: event.clientY,
-          origin: currentPlacementRef.current,
-        };
-        setIsDragging(true);
-      }}
+      onPointerDown={onPointerDown}
     >
       {editing && (
         <div className="absolute left-1/2 top-0 z-[2] flex -translate-x-1/2 -translate-y-[calc(100%+0.35rem)] items-center gap-1">
@@ -621,7 +553,7 @@ function CharacterSprite({
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onPlacementChange?.(placementKey, currentPlacementRef.current);
+              onPlacementChange?.(placementKey, currentPlacement);
               onFinishPlacement?.();
             }}
             className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-[var(--marinara-chat-chrome-button-text-hover)] shadow-lg backdrop-blur-md transition-colors hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"

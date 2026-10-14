@@ -4,23 +4,16 @@
 // Pure functions (no DOM), shared by the renderer and the setup panel and pinned by
 // scripts/regressions/avatar-2d-renderers.regression.ts.
 import {
+  PNGTUBER_DEFAULT_MOTION,
   SPRITE_EXPRESSION_LABELS,
-  avatarModelFileUrl,
   detectSpriteEmotionBindings,
   normalizeSpriteExpressionKey,
   type AvatarFrameInput,
   type AvatarImageRef,
-  type AvatarOwnerRef,
   type PngtuberAvatarData,
   type PngtuberLayerSet,
 } from "@marinara-engine/shared";
 
-/** Motion for a new setup: a small hop while talking and a blink every 3 to 6 seconds. */
-export const PNGTUBER_DEFAULT_MOTION = Object.freeze({
-  bounceOnTalk: true,
-  bounceHeight: 0.06,
-  blinkIntervalSeconds: 4.5,
-});
 /** Crossfade between faces. */
 export const PNGTUBER_FADE_MS = 120;
 /** How long the eyes stay shut in one blink. */
@@ -59,6 +52,12 @@ export function splitSpriteVariant(key: string): { base: string; mouthOpen: bool
     }
   }
   return { base, mouthOpen, eyesClosed };
+}
+
+/** A sprite that is another face's talk or blink picture (`happy_talk`, `happy_blink`), not a face itself. */
+export function isSpriteVariant(expression: string): boolean {
+  const { mouthOpen, eyesClosed } = splitSpriteVariant(normalizeSpriteExpressionKey(expression));
+  return mouthOpen || eyesClosed;
 }
 
 /** The sprites a PNGTuber setup uses: portrait sprites when there are any, otherwise full-body ones, so the
@@ -100,22 +99,6 @@ export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): 
     motion: { ...PNGTUBER_DEFAULT_MOTION },
     source: "sprites",
   };
-}
-
-/** URL of a PNGTuber picture: a stored file, or the owner's sprite with that key (a portrait before a
- *  full-body sprite of the same face). */
-export function resolvePngtuberImage(
-  owner: AvatarOwnerRef,
-  ref: AvatarImageRef,
-  sprites: readonly SpriteLike[],
-): string | null {
-  if (ref.source === "file") return avatarModelFileUrl(owner, ref.path);
-  for (const sprite of pngtuberSpriteFamily(sprites)) {
-    if (sprite.url && normalizeSpriteExpressionKey(sprite.expression) === ref.label) return sprite.url;
-  }
-  return (
-    sprites.find((sprite) => sprite.url && normalizeSpriteExpressionKey(sprite.expression) === ref.label)?.url ?? null
-  );
 }
 
 /** The layer set a frame shows: the exact sprite label when the setup has it (an Expression Engine or

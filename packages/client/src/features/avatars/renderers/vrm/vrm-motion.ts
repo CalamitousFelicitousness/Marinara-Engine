@@ -4,7 +4,8 @@
 // Plain maths with no three.js import, so it is cheap to test. vrm-renderer.ts applies the results to a
 // loaded model every frame the stage asks for.
 import type { AvatarExpressionMap, AvatarFrameInput, AvatarViseme } from "@marinara-engine/shared";
-import { AVATAR_EMOTIONS, AVATAR_VISEMES } from "@marinara-engine/shared";
+import { AVATAR_EMOTIONS, AVATAR_VISEMES, PNGTUBER_DEFAULT_MOTION } from "@marinara-engine/shared";
+import { pngtuberBlinkWaitMs } from "../pngtuber/pngtuber-layers";
 
 /** Seconds for an eased value to cover about 63% of the way to its target. */
 const EMOTION_EASE_SECONDS = 0.15;
@@ -110,11 +111,16 @@ export interface BlinkTimer {
   phase: number;
 }
 
-export function createBlinkTimer(random: () => number = Math.random): BlinkTimer {
-  return { random, wait: 2 + random() * 4, phase: -1 };
+/** Seconds until the next blink: VRM avatars blink at the PNGTuber default rate (3 to 6 seconds). */
+function nextBlinkWait(random: () => number): number {
+  return pngtuberBlinkWaitMs(PNGTUBER_DEFAULT_MOTION.blinkIntervalSeconds, random) / 1000;
 }
 
-/** Eyelid closure 0..1 for this frame: a quick blink every 2 to 6 seconds while enabled. */
+export function createBlinkTimer(random: () => number = Math.random): BlinkTimer {
+  return { random, wait: nextBlinkWait(random), phase: -1 };
+}
+
+/** Eyelid closure 0..1 for this frame: a quick blink every 3 to 6 seconds while enabled. */
 export function stepBlink(timer: BlinkTimer, dtSeconds: number, options: { enabled: boolean }): number {
   if (!options.enabled) {
     timer.phase = -1;
@@ -134,7 +140,7 @@ export function stepBlink(timer: BlinkTimer, dtSeconds: number, options: { enabl
   const opening = phase - BLINK_CLOSE_SECONDS - BLINK_HOLD_SECONDS;
   if (opening < BLINK_OPEN_SECONDS) return 1 - opening / BLINK_OPEN_SECONDS;
   timer.phase = -1;
-  timer.wait = 2 + timer.random() * 4;
+  timer.wait = nextBlinkWait(timer.random);
   return 0;
 }
 

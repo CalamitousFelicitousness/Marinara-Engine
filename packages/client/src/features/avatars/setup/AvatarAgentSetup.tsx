@@ -20,7 +20,7 @@ import {
   type AvatarOwnerType,
 } from "@marinara-engine/shared";
 import { SettingsSwitch } from "../../../components/panels/settings/SettingControls";
-import { useAvatarModel, useAvatarModelList, useUpdateAvatarModel } from "../../../hooks/use-avatar-models";
+import { useAvatarModel, useAvatarModelActions, useAvatarModelList } from "../../../hooks/use-avatar-models";
 import { useCharacterSprites, useCharacters, usePersonas } from "../../../hooks/use-characters";
 import { parseCharacterDisplayData } from "../../../lib/character-display";
 import { cn } from "../../../lib/utils";
@@ -151,7 +151,7 @@ function OwnerAvatarSetup({
   const { data: config = null, isLoading: configLoading } = useAvatarModel(owner);
   const spritesQuery = useCharacterSprites(owner.ownerId);
   const sprites = spritesQuery.data ?? (spritesQuery.isLoading ? null : []);
-  const update = useUpdateAvatarModel();
+  const { save: update } = useAvatarModelActions(owner);
   const [chosenKind, setChosenKind] = useState<AvatarKind | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -178,7 +178,7 @@ function OwnerAvatarSetup({
   const save = async (change: AvatarConfigUpdate) => {
     setError(null);
     try {
-      await update.mutateAsync({ owner, update: change });
+      await update.mutateAsync(change);
     } catch (saveError) {
       setError(errorMessage(saveError, t("avatars.setup.saveFailed")));
     }

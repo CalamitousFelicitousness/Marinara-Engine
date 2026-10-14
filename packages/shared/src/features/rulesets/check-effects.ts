@@ -151,10 +151,12 @@ export function rulesetSheetHideSources(definition: RulesetDefinition, build: Ru
       if (typeof value !== "string") continue;
       const hide: RulesetCheckSource = { name: list?.label ?? source.list };
       for (const word of value.split(",")) {
-        const [type, ...except] = word
-          .trim()
-          .toLowerCase()
-          .split(/\s+except\s+/);
+        // "fire except magical silvered": words, so a long run of spaces costs no regex backtracking.
+        const words = word.trim().toLowerCase().split(/\s+/);
+        const cuts = words.flatMap((one, at) => (one === "except" && at > 0 && at < words.length - 1 ? [at] : []));
+        const cut = cuts[0] ?? words.length;
+        const type = words.slice(0, cut).join(" ");
+        const except = words.slice(cut + 1).filter((_, at) => !cuts.includes(at + cut + 1));
         if (!type) continue;
         if (source.kind === "conditionImmunities") {
           if (!conditions.includes(type) || except.length) continue;
@@ -164,7 +166,7 @@ export function rulesetSheetHideSources(definition: RulesetDefinition, build: Ru
           if (source.kind === "vulnerable") {
             if (!except.length) hide.vulnerable = [...(hide.vulnerable ?? []), type];
           } else {
-            const entry = except.length ? { type, except: except.join(" ").split(/\s+/) } : type;
+            const entry = except.length ? { type, except } : type;
             hide[source.kind] = [...(hide[source.kind] ?? []), entry];
           }
         }

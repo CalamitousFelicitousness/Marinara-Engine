@@ -1,25 +1,20 @@
 // VRM setup on the 3D Avatars agent page (lane: 3D): import a `.vrm` (and an optional `.vrma`), show the
 // author's terms from the file, and check or change which expression shows each face and mouth shape.
 import { useId, useRef, useState, type ReactNode } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Info, Loader2, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   AVATAR_EXPRESSION_SLOTS,
-  avatarModelPath,
-  type AvatarConfig,
-  type AvatarConfigUpdate,
   type AvatarExpressionBindingSource,
   type AvatarExpressionMap,
   type AvatarExpressionSlot,
-  type AvatarImportResult,
   type VrmAvatarData,
   type VrmModelMeta,
 } from "@marinara-engine/shared";
-import { api } from "../../../../lib/api-client";
+import { useAvatarModelActions } from "../../../../hooks/use-avatar-models";
 import { showConfirmDialog } from "../../../../lib/app-dialogs";
-import { avatarModelKeys, type AvatarKindSetupPanelProps } from "../../contract";
+import type { AvatarKindSetupPanelProps } from "../../contract";
 
 /** Plain words for the values VRM 1.0 and 0.x files use in their terms; anything else shows as written. */
 const TERM_KEYS: ReadonlyMap<string, string> = new Map([
@@ -226,58 +221,45 @@ function ExpressionBindings({
 
 export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
   const [warnings, setWarnings] = useState<string[]>([]);
   // A change shows at once; it is dropped when the saved config arrives (a new data object) or the save fails.
   const [pending, setPending] = useState<{ base: VrmAvatarData; data: VrmAvatarData } | null>(null);
+  // Toasts are given to the hook, so a result still shows after the user switches owner or leaves the page.
+  const {
+    save: saveData,
+    importFile,
+    remove: removeModel,
+  } = useAvatarModelActions(owner, onChanged, {
+    importFile: {
+      onSuccess: (result, { file }) => {
+        setWarnings(result.warnings);
+        toast.success(t(/\.vrma$/iu.test(file.name) ? "avatars.vrm.idle.added" : "avatars.vrm.imported"));
+      },
+      onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.importFailed"))),
+    },
+    save: {
+      onError: (error) => {
+        setPending(null);
+        toast.error(errorMessage(error, t("avatars.vrm.saveFailed")));
+      },
+    },
+    remove: {
+      onSuccess: () => {
+        setWarnings([]);
+        toast.success(t("avatars.vrm.removed"));
+      },
+      onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.removeFailed"))),
+    },
+  });
   const stored = config?.kinds.vrm ?? null;
   const data = pending && pending.base === stored ? pending.data : stored;
 
-  const refresh = (next?: AvatarConfig | null) => {
-    if (next !== undefined) queryClient.setQueryData(avatarModelKeys.detail(owner), next);
-    void queryClient.invalidateQueries({ queryKey: avatarModelKeys.all });
-    onChanged();
-  };
-
-  const importFile = useMutation({
-    mutationFn: (file: File) => {
-      const form = new FormData();
-      form.append("kind", "vrm");
-      form.append("file", file);
-      return api.upload<AvatarImportResult>(`${avatarModelPath(owner)}/import`, form);
-    },
-    onSuccess: (result, file) => {
-      setWarnings(result.warnings);
-      toast.success(t(/\.vrma$/iu.test(file.name) ? "avatars.vrm.idle.added" : "avatars.vrm.imported"));
-      refresh(result.config);
-    },
-    onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.importFailed"))),
-  });
-
-  const saveData = useMutation({
-    mutationFn: (vrm: VrmAvatarData) =>
-      api.put<AvatarConfig>(avatarModelPath(owner), { kinds: { vrm } } satisfies AvatarConfigUpdate),
-    onSuccess: (next) => refresh(next),
-    onError: (error) => {
-      setPending(null);
-      toast.error(errorMessage(error, t("avatars.vrm.saveFailed")));
-    },
-  });
-
-  const removeModel = useMutation({
-    mutationFn: () => api.delete<AvatarConfig | null>(`${avatarModelPath(owner)}/kinds/vrm`),
-    onSuccess: (next) => {
-      setWarnings([]);
-      toast.success(t("avatars.vrm.removed"));
-      refresh(next);
-    },
-    onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.removeFailed"))),
-  });
+  const importVrmFile = (file: File) => importFile.mutate({ kind: "vrm", file });
 
   const busy = importFile.isPending || saveData.isPending || removeModel.isPending;
   const save = (next: VrmAvatarData) => {
     if (stored) setPending({ base: stored, data: next });
-    saveData.mutate(next);
+    saveData.mutate({ kinds: { vrm: next } });
   };
   const confirmRemove = async () => {
     const confirmed = await showConfirmDialog({
@@ -286,7 +268,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
       confirmLabel: t("avatars.vrm.remove"),
       tone: "destructive",
     });
-    if (confirmed) removeModel.mutate();
+    if (confirmed) removeModel.mutate("vrm");
   };
 
   const warningList =
@@ -317,7 +299,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
             label={t("avatars.vrm.import")}
             busy={importFile.isPending}
             disabled={busy}
-            onFile={(file) => importFile.mutate(file)}
+            onFile={importVrmFile}
           />
         </div>
         {warningList}
@@ -347,7 +329,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
             label={t("avatars.vrm.replace")}
             busy={importFile.isPending}
             disabled={busy}
-            onFile={(file) => importFile.mutate(file)}
+            onFile={importVrmFile}
           />
           <button type="button" disabled={busy} onClick={() => void confirmRemove()} className={BUTTON_CLASS}>
             {removeModel.isPending ? (
@@ -384,7 +366,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
             // The server tells a model from an animation by content, so a .vrm picked here would replace the
             // model; some phone pickers ignore `accept` and show every file.
             onFile={(file) =>
-              /\.vrma$/iu.test(file.name) ? importFile.mutate(file) : toast.error(t("avatars.vrm.idle.notAnimation"))
+              /\.vrma$/iu.test(file.name) ? importVrmFile(file) : toast.error(t("avatars.vrm.idle.notAnimation"))
             }
           />
           {data.idleAnimation ? (

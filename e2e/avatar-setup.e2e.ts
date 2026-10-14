@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
@@ -6,7 +6,8 @@ import { seedUIState } from "./ui-state-fixture.js";
 // with 2D Avatars on, before anything is saved. The 2D Avatars agent page shows one set of controls (the
 // base switches above the 2D lane's PNGTuber panel), saves the sprites with `_talk` sprites as open mouths,
 // and the faces can be changed by hand. On phones the chat stays mounted under the agent's page, and its
-// avatars stop drawing while covered.
+// avatars stop drawing while covered. Making an avatar from a sprite never offers a talk picture as the
+// source, and Arrange mode drags full-body sprites and avatars with one shared gesture.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -50,6 +51,10 @@ const AGENT = {
 };
 
 async function preparePage(page: Page, characterId: string, ui: Record<string, unknown>, chatId?: string) {
+  // Each page keeps its own UI state: settings the agent page syncs to the server must not reach the chat page.
+  await page.route("**/api/app-settings/ui", (route) =>
+    route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
+  );
   await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [PACKAGE] }));
   await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [AGENT] }));
   // The real list, without avatars other workers save on the same server (the setup page would open on one).
@@ -137,6 +142,18 @@ test("2D Avatars shows a character's sprites as its avatar and saves them as a P
     await expect(setup.getByText("An example avatar. Set one up to see yours.")).toHaveCount(0);
     await expect(setup.getByRole("img", { name: "Preview" })).toBeVisible();
     await expect(setup.getByRole("checkbox", { name: /Show this avatar in chats/u })).toBeChecked();
+    // Making an avatar from a sprite offers faces only, never their talk pictures.
+    await expect(setup.getByRole("group", { name: "Sprites", exact: true }).getByRole("button")).toHaveText([
+      "neutral",
+      "happy",
+      "crying",
+    ]);
+    await expect(setup.getByRole("group", { name: "Sprite to use", exact: true }).getByRole("button")).toHaveText([
+      "neutral",
+      "happy",
+      "crying",
+      "full idle",
+    ]);
     await page.screenshot({ path: info.outputPath("avatar-setup-sprites.png"), animations: "disabled" });
     if (info.project.name.startsWith("mobile")) {
       // Only the preview draws: the covered chat's avatars stop.
@@ -174,6 +191,9 @@ test("2D Avatars shows a character's sprites as its avatar and saves them as a P
     expect(saved.kinds.pngtuber.layers.happy?.mouthOpen).toEqual({ source: "sprite", label: "happy_talk" });
 
     // ── The chat shows the saved avatar ──
+    // The agent page leaves first: it shares local storage with the chat page and keeps saving its UI state
+    // (the open agent page) there, which could open the agent page in the chat page as it starts.
+    await page.goto("about:blank");
     const savedChatPage = await page.context().newPage();
     await preparePage(savedChatPage, character.id, {}, chat.id);
     await savedChatPage.goto("/");
@@ -187,6 +207,107 @@ test("2D Avatars shows a character's sprites as its avatar and saves them as a P
     // ── Removing the character removes its avatar ──
     expect((await request.delete(`/api/characters/${character.id}`)).status()).toBe(204);
     expect((await request.get(`/api/avatar-models/character/${character.id}`)).status()).toBe(404);
+  } finally {
+    await request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
+    await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
+  }
+});
+
+test("Arrange mode drags full-body sprites and avatars with the same gesture", async ({ page, request }) => {
+  const characterResponse = await request.post("/api/characters", { data: { data: { name: "Arrange fixture" } } });
+  expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string };
+  const chatResponse = await request.post("/api/chats", {
+    data: { name: "Arrange chat", mode: "roleplay", characterIds: [character.id] },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+  expect(
+    (
+      await request.patch(`/api/chats/${chat.id}/metadata`, {
+        data: {
+          enableAgents: true,
+          activeAgentIds: ["expression", "2d-avatars"],
+          spriteCharacterIds: [character.id],
+          spriteDisplayModes: ["full-body"],
+          fullBodySpriteScale: 0.5,
+          spritePlacements: { [character.id]: { x: 25, y: 85 }, [`${character.id}:avatar`]: { x: 75, y: 85 } },
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+
+  try {
+    await preparePage(page, character.id, { chatSettingsExpandedSections: { "roleplay-agents": true } }, chat.id);
+    await page.goto("/");
+    // Each item's positioned box is a direct child of its stage.
+    const sprite = page.getByRole("img", { name: "full-body neutral sprite" }).locator("xpath=../..");
+    const avatar = page.locator(`[data-avatar-stage] [data-avatar-owner="${character.id}"]`);
+    const place = (item: Locator) =>
+      item.evaluate((element: HTMLElement) => [parseFloat(element.style.left), parseFloat(element.style.top)]);
+    await expect(sprite).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    await expect(avatar.getByRole("img", { name: "Arrange fixture's avatar" })).toBeVisible({
+      timeout: FIRST_LOAD_TIMEOUT_MS,
+    });
+    expect(await place(sprite)).toEqual([25, 85]);
+    expect(await place(avatar)).toEqual([75, 85]);
+
+    // Arrange mode, from the Expression Engine's sprite settings.
+    await page.evaluate(async () => {
+      const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+      useChatStore.getState().setShouldOpenSettings(true);
+    });
+    const drawer = page.locator(".mari-chat-settings-drawer");
+    const agents = drawer.locator('[data-chat-settings-section="roleplay-agents"]');
+    const agentsHeader = agents.getByRole("button", { name: "Agents", exact: true });
+    await expect(agentsHeader).toBeVisible();
+    if ((await agentsHeader.getAttribute("aria-expanded")) !== "true") await agentsHeader.click();
+    const arrange = agents.getByRole("button", { name: "Arrange", exact: true });
+    await arrange.evaluate((element) => element.scrollIntoView({ block: "center" }));
+    await arrange.click();
+    await drawer.getByRole("button", { name: "Close Chat Settings" }).click();
+    await expect(drawer).toHaveCount(0);
+
+    // The item follows the pointer by the share of the stage it moved, and stays where it is dropped.
+    const drag = async (item: Locator, dxPercent: number, dyPercent: number) => {
+      const [width, height] = await item.evaluate((element) => [
+        element.parentElement!.clientWidth,
+        element.parentElement!.clientHeight,
+      ]);
+      const box = (await item.getByRole("img").boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + (width! * dxPercent) / 200, y + (height! * dyPercent) / 200, { steps: 3 });
+      await expect(item.getByText("Release to Save", { exact: true })).toBeVisible();
+      await page.mouse.move(x + (width! * dxPercent) / 100, y + (height! * dyPercent) / 100, { steps: 3 });
+      await page.mouse.up();
+      await expect(item.getByText("Drag to Move", { exact: true })).toBeVisible();
+    };
+    const near = async (item: Locator, expected: [number, number]) => {
+      const [left, top] = await place(item);
+      expect(Math.abs(left! - expected[0]), `left ${left}`).toBeLessThan(0.5);
+      expect(Math.abs(top! - expected[1]), `top ${top}`).toBeLessThan(0.5);
+    };
+    await drag(sprite, 10, -10);
+    await near(sprite, [35, 75]);
+    await drag(avatar, -10, -10);
+    await near(avatar, [65, 75]);
+    await near(sprite, [35, 75]);
+
+    // The sprite's check button saves its place and ends Arrange mode for both.
+    await sprite.getByRole("button", { name: "Finish placing sprite", exact: true }).click();
+    await expect(page.getByText("Drag to Move", { exact: true })).toHaveCount(0);
+    await expect(sprite).toHaveClass(/pointer-events-none/u);
+    await expect(avatar).toHaveClass(/pointer-events-none/u);
+
+    // Both places are kept.
+    await page.reload();
+    await expect(sprite).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    await expect(avatar).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    await near(sprite, [35, 75]);
+    await near(avatar, [65, 75]);
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);

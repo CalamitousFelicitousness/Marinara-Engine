@@ -2897,7 +2897,7 @@ function carriesPushAndTurn(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   const senses = plainRecord(record.senses);
-  if (senses && Object.values(senses).some((one) => plainRecord(one) !== null)) return true;
+  if (senses && Object.values(senses).some((one) => plainRecord(one) !== undefined)) return true;
   for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use)]) {
     if (!mechanics) continue;
     if (mechanics.push !== undefined) return true;

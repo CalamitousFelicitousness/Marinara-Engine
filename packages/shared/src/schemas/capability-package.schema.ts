@@ -1068,6 +1068,76 @@ const capabilityPackageManifestBaseSchema = z
 //        and refusal.
 // 1.265: an aura's `needs`, `harms` and `save` (Countercharm, a balor's Fire Aura, a pit fiend's Fear
 //        Aura); a save modifier's `against.casts` (Holy Nimbus).
+// 1.266: a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun
+//        stuck, a save rolled only out of sight, and a condition that destroys by threat tier.
+// 1.267: senses any one of which serves, targets kept near each other, an area that grows with its
+//        cost, more uses on an item, and things a stat block holds.
+// 1.268: auras reaching only some kinds of creature or whoever holds their holder, an aura save
+//        worse when failed by enough or one whose holder's eyes can be averted, and a save rolled
+//        leaning while its source is in sight.
+// 1.269: up to 320 conditions (160 before), an aura save whose aura stays off once what it put on
+//        ends (`immuneWhenEnds`), an item use's `sheetDifficulty`, and `chargeStep` (more charges
+//        spent for more).
+// 1.270: a catalog entry whose creature type is chosen as it is used (`kindChoice`), an aura reaching
+//        only that kind or whoever sees its holder, and a save that ends a condition only from far
+//        enough away.
+// 1.271: an item whose first use is named, an item use adding a value off its holder's sheet, more charges
+//        that push farther, and a last charge's die that gives charges back.
+// 1.272: an item that becomes another when its last charge is spent.
+// 1.273: a weapon whose charges are spent on its hits.
+// 1.274: a condition put on with a value off its applier, temporary points a condition gives each turn, an
+//        aura save against its applier's difficulty, a save on harm from a condition's source, a walk kept
+//        within reach, and a kind chosen as an item is used.
+// 1.275: a condition that holds while its source is near as well as in sight, and one condition that holds
+//        others off.
+// 1.276: spells, items and creatures that teleport.
+// 1.277: a spell, an item or a creature action that puts on more than four conditions.
+// 1.278: a save its user's side may fail, a condition that keeps its holder off a whole side, and one that
+//        ends on an attack, on harm from a catalog or on a friend harmed in sight.
+// 1.279: a teleport that leaves the fight, takes along only those its user sees, or leaves smoke behind.
+// 1.280: a creature's teleport that strikes before or after it.
+// 1.281: a blow whose maker regains the damage it dealt.
+// 1.282: a burst centred on its user.
+// 1.283: a legendary move.
+// 1.284: a legendary cast.
+// 1.285: a legendary move after its action or on one speed.
+// 1.286: a lightly obscuring fog, and a fog or wind that blows it away.
+// 1.287: hiding for real, searching, and a creature that detects.
+// 1.288: readying for real.
+// 1.289: a fog a wind disperses only after a while.
+// 1.290: a passive Perception that reads advantage, and a change to checks made to find somebody.
+// 1.291: a creature's own modes on checks, a printed passive Perception, and standard actions with their own
+//        budget.
+// 1.292: somebody's own ways of hiding or of finding the hidden.
+// 1.293: creatures whose attacks are rolled twice where they stand.
+// 1.294: fights kept dark, and things that shed light.
+// 1.295: a carried light's name and its price to put out and light again.
+// 1.296: creatures that light or put out their own light, and items that shed light while switched off.
+// 1.297: zones that shed light or end magical darkness, and light that shows the invisible.
+// 1.298: creatures whose light goes out under a condition, and light that is sunlight.
+// 1.299: darkness that puts out spell light, magical light, and a dispelling reach.
+// 1.300: what a higher cost adds only every so many steps.
+// 1.301: zones carried with somebody, and copies set down apart.
+// 1.302: entries that change another entry each time it is used.
+// 1.303: uses only in some light, and conditions that moving or acting ends.
+// 1.304: uses once a creature until a rest.
+// 1.305: targets that grow with the sheet, and the same target more than once.
+// 1.306: weapons put in hand, and amends that add damage of a type or strikes.
+// 1.307: creature actions held by concentration, conditions ended by using a named action, and uses that put
+//        conditions on their own user.
+// 1.308: an item use whose targets grow with the sheet, or that takes the same target more than once.
+// 1.309: hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden
+//        start, and a weapon bound out of the fight.
+// 1.310: an entry made again while its user concentrates on it, and a condition that ends at a distance from
+//        whoever put it on.
+// 1.311: an item use that puts conditions on its reader, creature actions that slay the dying, and conditions
+//        a rule ends when their holder moves or acts.
+// 1.312: a weapon mode whose hit claps around the one it hit.
+// 1.313: a creature sent away that still takes turns, a condition ended by a check, standard actions taken
+//        with a use, a casting's choices made again, an ability add capped, and an item bound only with
+//        others worn.
+// 1.314: a condition that shuts its holder away from everybody else, and an entry aimed only at creatures up
+//        to a size.
 export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 314 } as const);
 
 const capabilityApiVersionSchema = z

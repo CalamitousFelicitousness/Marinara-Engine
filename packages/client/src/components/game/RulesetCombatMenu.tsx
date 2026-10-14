@@ -596,7 +596,7 @@ export function RulesetCombatMenu({
             onKeyDown={(event) => {
               if (event.key === "Enter" && valid) chooseAmount(typed);
             }}
-            className="min-h-11 w-20 rounded-lg border border-white/15 bg-white/5 px-2 text-xs tabular-nums text-white/90"
+            className="min-h-11 w-20 rounded-lg border border-white/15 bg-white/5 px-2 text-base tabular-nums text-white/90 sm:text-xs"
           />
           <button
             ref={first}

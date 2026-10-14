@@ -435,6 +435,19 @@ try {
       gate,
       "a carried burst",
     );
+    // A sense given as a plain range is 1.178's and 1.180's, whoever carries it.
+    assert.notEqual(
+      getCapabilityPackageInstallIssue(
+        manifest(181) as never,
+        fiveE((doc) => {
+          doc.combat.senses = [{ id: "darkvision", label: "Darkvision" }];
+          doc.sheet.live.conditions.push({ id: "x", label: "X" });
+          doc.combat.conditions.push({ condition: "x", senses: { darkvision: 60 } });
+        }),
+      ),
+      gate,
+      "a plain sense range",
+    );
   }
 
   console.log(

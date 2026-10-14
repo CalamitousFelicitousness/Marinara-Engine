@@ -453,7 +453,7 @@ export function RulesetCombatBoard({
                   )}
                   {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-sky-100">
+                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.section.health}
                     </span>
                   )}
@@ -555,7 +555,7 @@ export function RulesetCombatBoard({
                   )}
                   {/* Caught unaware (1.237): marked until their first turn is over. */}
                   {combatant.surprised && !combatant.defeated && !combatant.down && (
-                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-amber-400 drop-shadow" />
+                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
                   )}
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the

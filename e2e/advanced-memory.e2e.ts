@@ -1839,6 +1839,46 @@ test("Advanced Memory offers automatic message visibility only in individual gro
   }
 });
 
+test("Advanced Memory lines up side-by-side fields and explains message excerpts", async ({ page, request }, info) => {
+  const fixture = await createFixture(request);
+  try {
+    expect(
+      (await request.patch(`/api/chats/${fixture.chat.id}/advanced-memory/settings`, { data: { enabled: true } })).ok(),
+    ).toBeTruthy();
+    await openChat(page, fixture.chat.id);
+    const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
+    await drawerToggle(section).click();
+    const settings = section.locator('[data-component="AdvancedMemorySettings"]');
+    const cap = settings.getByLabel("Maximum allowed context before compression (tokens)");
+    const budget = settings.getByLabel("Summary and recall budget (tokens)");
+    const minimum = settings.getByLabel("Minimum messages per excerpt");
+    const maximum = settings.getByLabel("Maximum messages per excerpt");
+    // One help line explains both message limits and is read with either field.
+    const excerptHelp =
+      "Choose how many exact messages from a selected scene summary recall get appended to it. Change both values to 0 to never include those.";
+    await expect(settings.getByText(excerptHelp, { exact: true })).toBeVisible();
+    await expect(minimum).toHaveAccessibleDescription(excerptHelp);
+    await expect(maximum).toHaveAccessibleDescription(excerptHelp);
+    if (info.project.name.includes("mobile")) return;
+    // In the desktop window the context label wraps and the budget label doesn't; both inputs still share a row.
+    const box = async (field: Locator) => {
+      const bounds = await field.boundingBox();
+      if (!bounds) throw new Error("Expected a visible field");
+      return bounds;
+    };
+    await expect(cap).toBeVisible();
+    expect((await box(budget)).x).toBeGreaterThan((await box(cap)).x);
+    await expect
+      .poll(async () => [
+        Math.round((await box(budget)).y - (await box(cap)).y),
+        Math.round((await box(maximum)).y - (await box(minimum)).y),
+      ])
+      .toEqual([0, 0]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("Advanced Memory problems show a dot and one notice, Fix repairs them and lists changed scenes", async ({
   page,
   request,

@@ -25,6 +25,7 @@ import {
 
 import { isExperienceSeed } from "./game-experience-setup";
 import { translate } from "../localization/i18n";
+import { generationLevelLabel } from "./generation-level-label";
 
 export const GAME_SETUP_SHARE_FORMAT = "marinara-game-setup";
 export const GAME_SETUP_SHARE_VERSION = 1;
@@ -852,7 +853,13 @@ function tacticalBattlefieldRows(config: GameSetupConfig): GameSetupSummaryRow[]
 function generationParameterRows(parameters: Partial<GenerationParameters> | null | undefined): GameSetupSummaryRow[] {
   const entries = Object.entries(parameters ?? {}).filter(([, value]) => value !== undefined);
   if (entries.length === 0) return [{ label: "Generation parameters", value: "Connection defaults (not captured)" }];
-  return entries.map(([key, value]) => ({ label: titleCaseToken(key), value: formatValue(value) }));
+  return entries.map(([key, value]) => ({
+    label: titleCaseToken(key),
+    value:
+      (key === "reasoningEffort" || key === "verbosity") && typeof value === "string"
+        ? generationLevelLabel(value, translate)
+        : formatValue(value),
+  }));
 }
 
 export function buildGameSetupSummarySections(source: GameSetupShareSource): GameSetupSummarySection[] {

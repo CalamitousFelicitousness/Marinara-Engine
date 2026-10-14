@@ -143,6 +143,9 @@ try {
   } finally {
     process.env.MARINARA_OVERWORLD_GAMES = overworldBefore ?? "true";
   }
+  // A room game that chooses the Overworld RPG needs its kit and world; a Classic one is made without them.
+  assert.throws(() => parseRoomGameConfig({ ...config, gameStyle: "overworld" }), /needs a setting kit and a world/);
+  assert.equal(parseRoomGameConfig({ ...config, gameStyle: "classic" }).gameStyle, "classic");
   const chat = await chats.create({
     name: "Room Game",
     mode: "game",

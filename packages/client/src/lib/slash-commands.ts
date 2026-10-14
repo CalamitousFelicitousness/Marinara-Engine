@@ -112,7 +112,10 @@ export function withComposerReplyAndAttachments(
     ...ctx,
     createMessage: async (data) => {
       if (data.role !== "user") return ctx.createMessage(data);
-      if (replyTo) useChatStore.getState().setReplyDraft(ctx.chatId, null);
+      // A reply picked while the command was preparing its text stays for the next message.
+      if (replyTo && useChatStore.getState().replyDrafts.get(ctx.chatId) === replyTo) {
+        useChatStore.getState().setReplyDraft(ctx.chatId, null);
+      }
       try {
         await ctx.createMessage({
           ...data,

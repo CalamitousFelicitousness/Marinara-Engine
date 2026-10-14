@@ -7047,13 +7047,14 @@ function GameSurfaceComponent({
       // log and the model read the same {{random}} pick. Macros only: a turn skips user-input regex and
       // translation, as it always has, and carries engine tags ([choice: …], [dice: …]) those could rewrite.
       if (userMessage.includes("{{")) {
+        const submittingChat = useChatStore.getState().activeChat;
         // Waits only while a list is still loading after the page opens, so a turn otherwise stays
         // synchronous up to the generation (see handleSendGameTurn).
         if (!queryClient.getQueryData(characterKeys.list()) || !queryClient.getQueryData(characterKeys.personas)) {
           await ensureCharacterAndPersonaLists(queryClient);
         }
         userMessage = createInputMacroResolverForChat(
-          useChatStore.getState().activeChat,
+          submittingChat,
           queryClient.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
           queryClient.getQueryData<Persona[]>(characterKeys.personas),
           userMessage,

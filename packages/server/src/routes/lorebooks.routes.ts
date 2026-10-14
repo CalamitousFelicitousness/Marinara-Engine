@@ -35,7 +35,9 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   canReparentFolder,
   estimateTextTokens,
+  expandLorebookIncludes,
   parseLorebookDecisionActivation,
+  stripMacroComments,
   type CreateLorebookEntryInput,
   type LorebookEntryTimingState,
   type Lorebook,
@@ -52,6 +54,7 @@ import { createGameStateStorage } from "../services/storage/game-state.storage.j
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
 import { runLorebookTestScan } from "../services/lorebook/test-scan.js";
+import { loadLorebookIncludesFor } from "../services/prompt/macro-context.js";
 import { listLorebookActivationStats } from "../services/lorebook/activation-stats.js";
 import {
   buildLorebookEntryEmbeddingText,
@@ -1025,6 +1028,18 @@ export async function lorebooksRoutes(app: FastifyInstance) {
 
   app.get("/active/entries", async () => {
     return storage.listActiveEntries();
+  });
+
+  // ── Fill in {{include::...}} in a message the user is sending (#7607) ──
+  // Only the includes: the client then fills in every other macro, the included entry's too, so a
+  // {{random}} in the entry is rolled once and stored. Comments go first, as in resolveMacros.
+
+  app.post<{ Body: { text?: unknown; chatId?: unknown } }>("/expand-includes", async (req, reply) => {
+    const text = req.body?.text;
+    if (typeof text !== "string") return reply.status(400).send({ error: "text must be a string" });
+    const chatId = typeof req.body?.chatId === "string" && req.body.chatId ? req.body.chatId : undefined;
+    const includes = await loadLorebookIncludesFor(app.db, chatId, [text]);
+    return { text: includes ? expandLorebookIncludes(stripMacroComments(text), includes) : text };
   });
 
   // ── Scan chat for activated entries ──

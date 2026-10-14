@@ -12,7 +12,11 @@
  *     Tripo asks when busy, polls tasks, and stops at once on Cancel;
  *   - the whole run sends Tripo exactly the tested settings, reports each step with the credits used, checks
  *     the balance before spending, stops before the paid skeleton when Tripo can't rig the model, refuses an
- *     arms-down model before anything is saved, and the route streams progress and plain errors.
+ *     arms-down model before anything is saved, and the route streams progress and plain errors;
+ *   - the key is saved on the 3D Avatars page, encrypted: its routes only say whether one is saved, it never
+ *     reaches a log or a profile export, and a missing key is a plain refusal; Tripo is no longer a provider
+ *     in Connections, and the boot migration moves an old Tripo connection's key there and deletes the
+ *     connection (and what pointed to it), once.
  * Tripo is mocked; the model is built here, so no Tripo file is committed and no credit is spent.
  */
 import assert from "node:assert/strict";
@@ -20,6 +24,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { format } from "node:util";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-avatar-vrm-generation-"));
 process.env.DATA_DIR = dataDir;
@@ -28,11 +33,23 @@ process.env.NODE_ENV = "test";
 process.env.LOG_LEVEL = "silent";
 
 const Fastify = createRequire(new URL("../../packages/server/package.json", import.meta.url))("fastify");
-const { characterDataSchema, createConnectionSchema, TRIPO_VRM_MODEL_CREDITS } =
-  await import("../../packages/shared/src/index.js");
+const {
+  PROVIDERS,
+  apiProviderSchema,
+  characterDataSchema,
+  createAgentConfigSchema,
+  createConnectionSchema,
+  TRIPO_VRM_MODEL_CREDITS,
+} = await import("../../packages/shared/src/index.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
+const { createAppSettingsStorage } = await import("../../packages/server/src/services/storage/app-settings.storage.js");
+const { apiConnections } = await import("../../packages/server/src/db/schema/index.js");
+const { eq } = await import("../../packages/server/src/db/file-query.js");
+const { encryptApiKey } = await import("../../packages/server/src/utils/crypto.js");
+const { sanitizeProfileTableRows } = await import("../../packages/server/src/routes/backup.routes.js");
 const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
 const { logger } = await import("../../packages/server/src/lib/logger.js");
 const { vrmImporter, buildVrmImport, VRM_MODEL_FILE } =
@@ -44,6 +61,8 @@ const { TripoError, createTripoClient } =
   await import("../../packages/server/src/services/avatars/generation/tripo-client.js");
 const { generateVrmModel, tripoSourceImage, TRIPO_REQUESTS } =
   await import("../../packages/server/src/services/avatars/generation/tripo-vrm.js");
+const { TRIPO_API_KEY_SETTING, migrateTripoConnectionsToApiKey, readTripoApiKey, removeTripoApiKey } =
+  await import("../../packages/server/src/services/avatars/generation/tripo-key.js");
 const { AvatarGenerationError, cancelAvatarGenerationJob } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
@@ -524,8 +543,8 @@ const tripoError = (kind: string, pattern: RegExp) => (error: unknown) =>
 
 {
   for (const [answer, kind, pattern] of [
-    [fail(401, 1000), "bad-key", /Check the key of your Tripo connection in Connections\./u],
-    [fail(401, 1001), "bad-key", /Connections/u],
+    [fail(401, 1000), "bad-key", /Check your Tripo API key on the 3D Avatars page\./u],
+    [fail(401, 1001), "bad-key", /3D Avatars page/u],
     [fail(403, 2010), "no-credits", /Top up at Tripo/u],
     [fail(400, 2008), "content-policy", /content policy/u],
     [fail(500, 9999), "unavailable", /problem on its side/u],
@@ -673,25 +692,79 @@ try {
   const character = await characters.create(characterDataSchema.parse({ name: "Maukie", description: "A cat." }));
   const runOwner = { ownerType: "character" as const, ownerId: character.id };
   const connections = createConnectionsStorage(db);
-  const tripo = await connections.create(
-    createConnectionSchema.parse({
-      name: "My Tripo",
-      provider: "tripo",
-      apiKey: KEY,
-      isDefault: true,
-      useForRandom: true,
-    }),
-  );
+  const settings = createAppSettingsStorage(db);
+
+  // Tripo is no longer a provider in Connections.
+  assert.equal("tripo" in PROVIDERS, false, "Connections doesn't offer Tripo");
+  assert.equal(apiProviderSchema.safeParse("tripo").success, false);
+  assert.equal(createConnectionSchema.safeParse({ name: "Tripo", provider: "tripo", apiKey: KEY }).success, false);
+
+  // Staging testers have Tripo connections from before the key moved to the 3D Avatars page. The one listed
+  // first has a key that can't be read (encrypted with another encryption key); the next one's key moves.
+  const legacyTripo = async (name: string, apiKeyEncrypted: string, updatedAt: string) => {
+    const row = await connections.create(createConnectionSchema.parse({ name, provider: "custom", apiKey: "x" }));
+    await db
+      .update(apiConnections)
+      .set({ provider: "tripo" as never, apiKeyEncrypted, isDefault: "true", defaultForAgents: "true", updatedAt })
+      .where(eq(apiConnections.id, row.id));
+    return row.id;
+  };
+  const brokenId = await legacyTripo("Old Tripo", "00ff:abcd:1234", "2026-10-14T12:00:02.000Z");
+  const tripoId = await legacyTripo("My Tripo", encryptApiKey(KEY), "2026-10-14T12:00:01.000Z");
   const chat = await connections.create(
     createConnectionSchema.parse({ name: "Chat", provider: "openai", apiKey: "sk" }),
   );
-  assert.equal(
-    (await connections.getById(tripo.id))?.isDefault,
-    "false",
-    "a Tripo connection never becomes the chat default",
+  const agents = createAgentsStorage(db);
+  const agent = await agents.create(
+    createAgentConfigSchema.parse({
+      type: "tripo-fixture",
+      name: "Fixture",
+      phase: "post_processing",
+      connectionId: tripoId,
+    }),
   );
-  assert.equal((await connections.getById(tripo.id))?.useForRandom, "false");
-  assert.equal((await connections.getById(tripo.id))?.apiKeyEncrypted === KEY, false, "the key is stored encrypted");
+  const migrationLog: string[] = [];
+  const quiet = { info: logger.info, warn: logger.warn, debug: logger.debug };
+  for (const level of ["info", "warn", "debug"] as const) {
+    (logger as Record<string, unknown>)[level] = (...args: unknown[]) => migrationLog.push(format(...args));
+  }
+  try {
+    await migrateTripoConnectionsToApiKey(db);
+  } finally {
+    Object.assign(logger, quiet);
+  }
+  assert.equal(await readTripoApiKey(db), KEY, "the readable key moved to the 3D Avatars page");
+  const storedKey = (await settings.get(TRIPO_API_KEY_SETTING)) ?? "";
+  assert.ok(storedKey && !storedKey.includes(KEY), "the moved key is stored encrypted");
+  assert.deepEqual(
+    (await connections.list()).filter((row: { provider: unknown }) => String(row.provider) === "tripo"),
+    [],
+    "every Tripo connection is deleted",
+  );
+  assert.equal(await connections.getById(brokenId), null, "even one whose key can't be read");
+  assert.equal((await agents.getById(agent.id))?.connectionId ?? null, null, "an agent that used one is cleared");
+  assert.ok((await connections.getById(chat.id)) !== null, "other connections stay");
+  assert.ok(
+    migrationLog.some((line) => line.includes("Removed 2 Tripo connection(s)")),
+    migrationLog.join("\n"),
+  );
+  assert.equal(migrationLog.join("\n").includes(KEY), false, "the migration never logs the key");
+  // Running again (every boot) changes nothing; a later stray Tripo connection never replaces a saved key.
+  await migrateTripoConnectionsToApiKey(db);
+  assert.equal(await settings.get(TRIPO_API_KEY_SETTING), storedKey, "a second run is a no-op");
+  const strayId = await legacyTripo("Stray Tripo", encryptApiKey("tsk_other_key"), "2026-10-14T12:00:03.000Z");
+  await migrateTripoConnectionsToApiKey(db);
+  assert.equal(await readTripoApiKey(db), KEY, "a saved key is kept");
+  assert.equal(await connections.getById(strayId), null);
+
+  // Profile exports leave the key out, as they blank connection keys.
+  assert.deepEqual(
+    sanitizeProfileTableRows("app_settings", [
+      { key: TRIPO_API_KEY_SETTING, value: storedKey },
+      { key: "ui", value: "{}" },
+    ]).map((row) => row.key),
+    ["ui"],
+  );
   // A cut-out sprite on a canvas, as sprite folders hold them.
   const spriteDir = join(dataDir, "sprites", character.id);
   mkdirSync(spriteDir, { recursive: true });
@@ -770,7 +843,7 @@ try {
   try {
     draft = await generateVrmModel(
       db,
-      { owner: runOwner, sourceLabel: "full_neutral", connectionId: tripo.id, debugMode: true },
+      { owner: runOwner, sourceLabel: "full_neutral", debugMode: true },
       { fetch: happy.fetch, wait: noWait, onProgress: (event) => events.push(event) },
     );
   } finally {
@@ -868,11 +941,7 @@ try {
   // Not enough credits: refused before anything is paid for.
   const poor = script(riggedGlb(), { balance: 40 });
   await assert.rejects(
-    generateVrmModel(
-      db,
-      { owner: runOwner, sourceLabel: "full_neutral", connectionId: tripo.id },
-      { fetch: poor.fetch, wait: noWait },
-    ),
+    generateVrmModel(db, { owner: runOwner, sourceLabel: "full_neutral" }, { fetch: poor.fetch, wait: noWait }),
     (error: unknown) =>
       error instanceof AvatarGenerationError &&
       error.statusCode === 402 &&
@@ -884,11 +953,7 @@ try {
   const unriggable = script(riggedGlb(), { riggable: false });
   for (const key of Object.keys(tasks)) delete tasks[key];
   await assert.rejects(
-    generateVrmModel(
-      db,
-      { owner: runOwner, sourceLabel: "full_neutral", connectionId: tripo.id },
-      { fetch: unriggable.fetch, wait: noWait },
-    ),
+    generateVrmModel(db, { owner: runOwner, sourceLabel: "full_neutral" }, { fetch: unriggable.fetch, wait: noWait }),
     /can't give this model a skeleton\. Use a full-body sprite where the whole character is visible\./u,
   );
   assert.equal(
@@ -901,11 +966,7 @@ try {
   for (const key of Object.keys(tasks)) delete tasks[key];
   const armsDown = script(riggedGlb({ pose: "arms-down" }));
   await assert.rejects(
-    generateVrmModel(
-      db,
-      { owner: runOwner, sourceLabel: "full_neutral", connectionId: tripo.id },
-      { fetch: armsDown.fetch, wait: noWait },
-    ),
+    generateVrmModel(db, { owner: runOwner, sourceLabel: "full_neutral" }, { fetch: armsDown.fetch, wait: noWait }),
     (error: unknown) =>
       error instanceof AvatarGenerationError &&
       error.statusCode === 422 &&
@@ -932,7 +993,7 @@ try {
   const waiting = script(riggedGlb());
   const stopped = generateVrmModel(
     db,
-    { owner: runOwner, sourceLabel: "full_neutral", connectionId: tripo.id },
+    { owner: runOwner, sourceLabel: "full_neutral" },
     {
       fetch: async (url, init) => {
         if (url.includes("/tasks/")) polls += 1;
@@ -957,42 +1018,76 @@ try {
   assert.equal(polls, pollsWhenStopped, "no more polling after Cancel");
   assert.equal(cancelAvatarGenerationJob(runOwner, "vrm"), false, "the avatar is free again");
 
-  // Only a Tripo connection with a key will do.
+  // Without a saved key: a plain refusal.
+  const NO_KEY = "Add your Tripo API key on the 3D Avatars page first.";
+  await removeTripoApiKey(db);
   await assert.rejects(
-    generateVrmModel(db, { owner: runOwner, sourceLabel: "full_neutral", connectionId: chat.id }),
-    /Choose a Tripo connection/u,
+    generateVrmModel(db, { owner: runOwner, sourceLabel: "full_neutral" }),
+    (error: unknown) => error instanceof AvatarGenerationError && error.statusCode === 400 && error.message === NO_KEY,
   );
 
-  // The route: a bad body is a 400; a refusal streams as a plain error event.
+  // The routes: the key's routes only ever say whether one is saved; a bad body is a 400; a refusal streams as
+  // a plain error event.
   const app = Fastify();
   app.decorate("db", db);
   await app.register(avatarGenerationRoutes);
+  const routeLog: string[] = [];
+  const loud = { info: logger.info, warn: logger.warn, error: logger.error, debug: logger.debug };
+  for (const level of ["info", "warn", "error", "debug"] as const) {
+    (logger as Record<string, unknown>)[level] = (...args: unknown[]) => routeLog.push(format(...args));
+  }
   try {
+    assert.deepEqual((await app.inject({ method: "GET", url: "/tripo-key" })).json(), { saved: false });
+    const balance = await app.inject({ method: "GET", url: "/vrm-model/balance" });
+    assert.equal(balance.statusCode, 400);
+    assert.deepEqual(balance.json(), { error: NO_KEY }, "the balance needs a saved key");
     const bad = await app.inject({ method: "POST", url: "/vrm-model", payload: { owner: runOwner } });
     assert.equal(bad.statusCode, 400);
-    const refused = await app.inject({
+    const old = await app.inject({
       method: "POST",
       url: "/vrm-model",
       payload: { owner: runOwner, sourceLabel: "full_neutral", connectionId: chat.id },
+    });
+    assert.equal(old.statusCode, 400, "a connection is no longer part of the request");
+    const refused = await app.inject({
+      method: "POST",
+      url: "/vrm-model",
+      payload: { owner: runOwner, sourceLabel: "full_neutral" },
     });
     assert.match(String(refused.headers["content-type"]), /text\/event-stream/u);
     const events = refused.body
       .split("\n\n")
       .filter((block) => block.startsWith("data: "))
       .map((block) => JSON.parse(block.slice(6)));
-    assert.deepEqual(events, [
-      {
-        type: "error",
-        data: { message: "Choose a Tripo connection. Add one in Connections with your Tripo API key." },
-      },
-    ]);
+    assert.deepEqual(events, [{ type: "error", data: { message: NO_KEY } }]);
+
+    for (const apiKey of ["", "   ", "tsk with spaces", "tsk_line\nbreak", 42]) {
+      const refusedKey = await app.inject({ method: "PUT", url: "/tripo-key", payload: { apiKey } });
+      assert.equal(refusedKey.statusCode, 400, JSON.stringify(apiKey));
+      assert.deepEqual(refusedKey.json(), { error: "That doesn't look like a Tripo API key." });
+    }
+    assert.equal(await settings.get(TRIPO_API_KEY_SETTING), null, "nothing is saved from a refused key");
+    const saved = await app.inject({ method: "PUT", url: "/tripo-key", payload: { apiKey: `  ${KEY}\n` } });
+    assert.deepEqual(saved.json(), { saved: true });
+    assert.equal(await readTripoApiKey(db), KEY, "the key is saved trimmed");
+    assert.ok(!(await settings.get(TRIPO_API_KEY_SETTING))?.includes(KEY), "and encrypted");
+    const status = await app.inject({ method: "GET", url: "/tripo-key" });
+    assert.equal(status.body, '{"saved":true}', "the status route says only whether a key is saved");
+    for (const answer of [saved.body, status.body]) {
+      assert.equal(answer.includes(KEY.slice(-6)), false, "no part of the key comes back");
+    }
+    const removed = await app.inject({ method: "DELETE", url: "/tripo-key" });
+    assert.deepEqual(removed.json(), { saved: false });
+    assert.equal(await readTripoApiKey(db), "");
+    assert.deepEqual((await app.inject({ method: "GET", url: "/tripo-key" })).json(), { saved: false });
+
     const cancelled = await app.inject({ method: "POST", url: "/cancel", payload: { owner: runOwner, kind: "vrm" } });
     assert.deepEqual(cancelled.json(), { cancelled: false }, "the shared Cancel route takes VRM jobs");
-    const balance = await app.inject({ method: "GET", url: "/vrm-model/balance" });
-    assert.equal(balance.statusCode, 400, "the balance needs a connection");
   } finally {
+    Object.assign(logger, loud);
     await app.close();
   }
+  assert.equal(routeLog.join("\n").includes(KEY), false, "the key routes never log the key");
 } finally {
   await closeDB();
   rmSync(dataDir, { recursive: true, force: true });

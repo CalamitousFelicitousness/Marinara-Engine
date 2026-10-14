@@ -8,7 +8,9 @@
 //   POST /pngtuber-variants/save      { owner, images } → AvatarGenerationResponse
 //   POST /mesh-rig                    AvatarMeshRigRequest → draft
 //   POST /mesh-rig/save               { owner, archive } → AvatarGenerationResponse
-//   GET  /vrm-model/balance?connectionId=   a Tripo connection's credits → { balance, frozen, cost }
+//   GET  /tripo-key                   { saved }: whether a Tripo API key is saved (never the key itself)
+//   PUT  /tripo-key                   { apiKey } → { saved: true }; DELETE /tripo-key → { saved: false }
+//   GET  /vrm-model/balance           the saved key's Tripo credits → { balance, frozen, cost }
 //   POST /vrm-model                   AvatarVrmModelRequest → server-sent events: { type: "progress", data:
 //                                     AvatarVrmModelProgress } while Tripo works, then { type: "done", data:
 //                                     AvatarVrmModelDraft } or { type: "error", data: { message } }
@@ -16,7 +18,7 @@
 // Backed by services/avatars/generation/. Requests accept `debugMode`, and every prompt and Tripo request is
 // logged with logDebugOverride, honouring DEBUG_AGENTS. Cancel and a closed connection both abort the provider
 // requests and free the avatar for a new job.
-// A VRM model is made only through the user's own Tripo connection; the draft is kept by importing it.
+// A VRM model is made only with the user's own Tripo API key (tripo-key.ts); the draft is kept by importing it.
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import {
@@ -36,6 +38,7 @@ import {
 } from "../services/avatars/generation/generation-context.js";
 import { generateMeshRig, saveMeshRig } from "../services/avatars/generation/mesh-rig.js";
 import { generateVrmModel, tripoBalance } from "../services/avatars/generation/tripo-vrm.js";
+import { readTripoApiKey, removeTripoApiKey, saveTripoApiKey } from "../services/avatars/generation/tripo-key.js";
 import {
   generatePngtuberVariants,
   previewPngtuberVariantPrompts,
@@ -80,7 +83,18 @@ const pngtuberSaveBodySchema = z
 
 const meshSaveBodySchema = z.object({ owner: avatarOwnerRefSchema, archive: z.string().min(1) }).strict();
 
-const balanceQuerySchema = z.object({ connectionId: z.string().min(1).max(128), debugMode: z.string().optional() });
+const balanceQuerySchema = z.object({ debugMode: z.string().optional() });
+/** A pasted key: trimmed, with no spaces or line breaks inside. */
+const tripoKeyBodySchema = z
+  .object({
+    apiKey: z
+      .string()
+      .trim()
+      .min(1)
+      .max(512)
+      .regex(/^[\x21-\x7e]+$/u),
+  })
+  .strict();
 const cancelBodySchema = z
   .object({ owner: avatarOwnerRefSchema, kind: z.enum(["pngtuber", "mesh-avatar", "vrm"]) })
   .strict();
@@ -158,10 +172,26 @@ export async function avatarGenerationRoutes(app: FastifyInstance) {
     }
   });
 
+  // The answers only ever say whether a key is saved: the key never leaves the server.
+  app.get("/tripo-key", async () => ({ saved: !!(await readTripoApiKey(app.db)) }));
+
+  app.put("/tripo-key", async (req, reply) => {
+    const body = tripoKeyBodySchema.safeParse(req.body);
+    // One plain sentence instead of sendFailure's list of schema issues.
+    if (!body.success) return reply.status(400).send({ error: "That doesn't look like a Tripo API key." });
+    await saveTripoApiKey(app.db, body.data.apiKey);
+    return { saved: true };
+  });
+
+  app.delete("/tripo-key", async () => {
+    await removeTripoApiKey(app.db);
+    return { saved: false };
+  });
+
   app.get("/vrm-model/balance", async (req, reply) => {
     try {
       const query = balanceQuerySchema.parse(req.query);
-      return await tripoBalance(app.db, query.connectionId, { debugMode: query.debugMode === "true" });
+      return await tripoBalance(app.db, { debugMode: query.debugMode === "true" });
     } catch (error) {
       return sendFailure(reply, error, "Reading the Tripo balance");
     }

@@ -614,16 +614,19 @@ export interface AvatarMeshRigRequest {
 }
 
 /** Body of `POST /api/avatar-generation/vrm-model`: a 3D model of the owner made from one full-body sprite
- *  through the user's own Tripo connection, turned into a VRM. The answer is a stream of
- *  AvatarVrmModelProgress events, then the AvatarVrmModelDraft; nothing is stored until it is imported. */
+ *  with the user's own Tripo API key (saved on the 3D Avatars page), turned into a VRM. The answer is a stream
+ *  of AvatarVrmModelProgress events, then the AvatarVrmModelDraft; nothing is stored until it is imported. */
 export interface AvatarVrmModelRequest {
   owner: AvatarOwnerRef;
   /** Sprite label of the source picture: a full-body sprite where the whole character is visible. */
   sourceLabel: string;
-  /** A Tripo connection. */
-  connectionId: string;
   debugMode?: boolean;
 }
+
+/** Tripo's API: the only address the Tripo API key is ever sent to. */
+export const TRIPO_API_BASE_URL = "https://openapi.tripo3d.ai/v3";
+/** Where a Tripo API key is made. */
+export const TRIPO_API_KEYS_URL = "https://developers.tripo3d.ai/en/keys";
 
 /** Making a VRM model: a T-pose picture of the sprite, the 3D model, its skeleton, then the VRM file. */
 export const AVATAR_VRM_MODEL_STEPS = ["redraw", "model", "rig", "convert"] as const;

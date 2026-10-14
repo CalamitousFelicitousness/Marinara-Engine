@@ -25,7 +25,7 @@ export class TripoError extends Error {
 }
 
 export const TRIPO_ERROR_MESSAGES: Readonly<Record<Exclude<TripoErrorKind, "task-failed" | "refused">, string>> = {
-  "bad-key": "Tripo didn't accept the API key. Check the key of your Tripo connection in Connections.",
+  "bad-key": "Tripo didn't accept the API key. Check your Tripo API key on the 3D Avatars page.",
   "no-credits": "Your Tripo account doesn't have enough credits. Top up at Tripo, then try again.",
   "content-policy": "Tripo refused this picture under its content policy. Try another sprite.",
   "rate-limited": "Tripo is busy or limiting requests right now. Try again in a minute.",

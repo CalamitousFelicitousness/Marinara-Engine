@@ -72,6 +72,8 @@ Mesh avatars need WebGL2, which current browsers have. Without it, or when the b
 
 **3D Avatars** shows VRM models, the format that VRoid Studio, the VRM add-on for Blender and UniVRM for Unity export. VRM 1.0 and VRM 0.x files both work.
 
+You can also make a VRM model from a full-body sprite with Tripo, using your own Tripo account. See [Make a 3D model with Tripo](#make-a-3d-model-with-tripo).
+
 1. Open **3D Avatars** in the Agent editor and pick the character or persona.
 2. Under **VRM model**, select **Import VRM** and choose a `.vrm` file.
 3. Read **The author's terms**. They come from the model file and say who may use the model as an avatar, whether commercial use is allowed, whether you may change the model, whether sexual or very violent content is allowed, and for VRM 1.0 models whether you must credit the author and may share the file. When the file links to a license or to the author's own terms, open them too. Marinara Engine shows the terms but does not enforce them, so please follow them yourself.
@@ -169,6 +171,32 @@ A generated mesh avatar moves its head, eyes, brows and mouth, and blinks and ta
 Blink and talk pictures, imported costumes and mesh avatars saved by an older version of Marinara Engine keep their background until you make or import them again. For a face whose sprite has a background, saving a new blink or talk picture drops that face's older pictures, because they would still show the background. Make those again too.
 
 Your sprite is sent to the image connection for blink and talk pictures (and to that connection's fallback image connection if it fails and one is set), and to the chat connection for a mesh avatar. The prompts come with the 2D Avatars agent. With **Expose media prompts before sending** on, you can read and change each picture's prompt before it is sent. With debug mode on, every prompt is written to the server log.
+
+## Make a 3D model with Tripo
+
+Tripo is a paid service that makes 3D models from pictures. On the **3D Avatars** page, **Make 3D model** under **Get a 3D model** turns one full-body sprite into a VRM model with your own Tripo account. A model costs about 60 Tripo credits (about $0.60) and takes about 3 minutes.
+
+1. Get an API key on [Tripo's key page](https://developers.tripo3d.ai/en/keys), and buy credits there.
+2. In **Connections**, create a connection, pick **Tripo**, paste the key and save. **Test Connection** shows how many credits you have.
+3. Open **3D Avatars** in **Agents** and pick the character or persona. Under **Get a 3D model**, the full-body neutral sprite is picked for you; you can choose another. Use a full-body sprite where the whole character is visible: a bust or a cropped sprite gives a model without legs, and it is refused.
+4. Check your balance and the cost, then select **Make 3D model**. Each step shows as it finishes, with the credits used so far: Tripo draws the sprite standing in a T-pose (5 credits), makes the 3D model (30 credits) and adds a skeleton (25 credits), then Marinara Engine turns it into a VRM file.
+5. Look at the pictures, then select **Save as the VRM model**, or **Discard**. Saving replaces the character's or persona's current VRM model.
+
+**Body only.** A Tripo model moves its body, arms and head, but its face doesn't move: it has no face expressions, so it can't smile, blink or move its mouth. **Faces and mouth shapes** says so instead of offering faces to pick. Hair, coats and tails are part of the body and don't swing, and the hands have no fingers to bend.
+
+**Cancel** stops waiting at once. Tripo can't stop a step it has already started, so it may still finish that step and charge for it. Tripo gives back the credits of a step that fails.
+
+If something goes wrong, the setup says what to do:
+
+- **Key not accepted:** check the key of your Tripo connection in **Connections**.
+- **Not enough credits:** top up at Tripo. The balance is checked before anything starts, so nothing is spent.
+- **Content policy:** Tripo refused the picture. Try another sprite.
+- **Busy:** try again in a minute.
+- **Arms down or no legs:** the model can't move like an avatar, so it's refused before anything is saved. Try another full-body sprite.
+
+**What is sent.** Your sprite goes to Tripo, with a flat background removed first when it has one. The key is stored encrypted like every connection key, is sent only to Tripo's API, and is never shown in the app or written to a log. With debug mode on, the server log shows each Tripo request's settings and task numbers.
+
+**Who may use the model.** Under Tripo's terms, models made by paying users belong to them, and Tripo keeps the rights to models made for free. The art in your sprite may also belong to someone else. So the model file claims only personal, non-commercial use by you, asks for credit, says not to share the file, and links to [Tripo's terms](https://developers.tripo3d.ai/en/terms). **The author's terms** shows these. Check them before you share the model.
 
 ## Make your own model
 

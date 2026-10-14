@@ -11,6 +11,7 @@ import {
   type StoryboardAgentSettings,
   type StoryboardAutoGenerateMode,
   type StoryboardViewerMode,
+  isChatProvider,
 } from "@marinara-engine/shared";
 import { mergeBuiltInAgentSettings, normalizeStoryboardAgentSettings } from "@marinara-engine/shared";
 import { useAgentConfigs, type AgentConfigRow } from "../../hooks/use-agents";
@@ -604,13 +605,7 @@ function RoleplayStoryboardChatSettingsPanel({
   );
   const imageConnections = connections.filter((connection) => connection.provider === "image_generation");
   const videoConnections = connections.filter((connection) => connection.provider === "video_generation");
-  const promptConnections = connections.filter(
-    (connection) =>
-      connection.provider !== "image_generation" &&
-      connection.provider !== "video_generation" &&
-      connection.provider !== "audio" &&
-      connection.provider !== "decision",
-  );
+  const promptConnections = connections.filter((connection) => isChatProvider(connection.provider));
   const autoModeOverridden =
     metadata.roleplayStoryboardAutoGenerateMode === "manual" ||
     metadata.roleplayStoryboardAutoGenerateMode === "illustration" ||

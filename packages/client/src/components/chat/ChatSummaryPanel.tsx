@@ -70,6 +70,7 @@ import {
   type ChatSummaryEntry,
   type ChatSummaryPromptSettings,
   type ChatSummaryPromptTemplate,
+  isChatProvider,
 } from "@marinara-engine/shared";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
@@ -232,10 +233,7 @@ function isSummaryConnectionOption(value: unknown): value is SummaryConnectionOp
     typeof record.name === "string" &&
     typeof record.model === "string" &&
     typeof record.provider === "string" &&
-    record.provider !== "image_generation" &&
-    record.provider !== "video_generation" &&
-    record.provider !== "audio" &&
-    record.provider !== "decision"
+    isChatProvider(record.provider)
   );
 }
 

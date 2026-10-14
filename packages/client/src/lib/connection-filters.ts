@@ -1,4 +1,4 @@
-import { LOCAL_SIDECAR_CONNECTION_ID } from "@marinara-engine/shared";
+import { LOCAL_SIDECAR_CONNECTION_ID, isChatProvider } from "@marinara-engine/shared";
 
 export type ConnectionProviderLike = {
   id?: string | null;
@@ -41,12 +41,7 @@ export function resolveNanoGptUsageConnection<
 }
 
 export function isLanguageGenerationConnection(connection: ConnectionProviderLike): boolean {
-  return (
-    connection.provider !== "image_generation" &&
-    connection.provider !== "video_generation" &&
-    connection.provider !== "audio" &&
-    connection.provider !== "decision"
-  );
+  return isChatProvider(connection.provider);
 }
 
 export function filterLanguageGenerationConnections<T extends ConnectionProviderLike>(

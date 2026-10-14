@@ -15,6 +15,7 @@ import {
   AVATAR_PROMPT_TEMPLATE_VARIABLES,
   LOCAL_SIDECAR_CONNECTION_ID,
   compileImagePrompt,
+  isChatProvider,
   isOpenAIGptImageModel,
   mergeBuiltInAgentSettings,
   normalizeAgentPromptTemplateOptions,
@@ -245,11 +246,8 @@ export function renderAvatarPromptTemplate(
   return renderTemplate(template, vars, AVATAR_PROMPT_TEMPLATE_VARIABLES[id]).trim();
 }
 
-/** Connections that can't answer a chat request (the same list the Agent editor leaves out). */
-const NON_LANGUAGE_PROVIDERS = new Set(["image_generation", "video_generation", "audio", "decision"]);
-
 function isLanguageConnection(conn: { provider: string } | null): boolean {
-  return !!conn && !NON_LANGUAGE_PROVIDERS.has(conn.provider);
+  return !!conn && isChatProvider(conn.provider);
 }
 
 /** The chat connection that reads the sprite: the one chosen for this run, else the 2D Avatars agent's

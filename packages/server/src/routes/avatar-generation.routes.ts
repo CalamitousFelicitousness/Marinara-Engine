@@ -8,10 +8,15 @@
 //   POST /pngtuber-variants/save      { owner, images } → AvatarGenerationResponse
 //   POST /mesh-rig                    AvatarMeshRigRequest → draft
 //   POST /mesh-rig/save               { owner, archive } → AvatarGenerationResponse
+//   GET  /vrm-model/balance?connectionId=   a Tripo connection's credits → { balance, frozen, cost }
+//   POST /vrm-model                   AvatarVrmModelRequest → server-sent events: { type: "progress", data:
+//                                     AvatarVrmModelProgress } while Tripo works, then { type: "done", data:
+//                                     AvatarVrmModelDraft } or { type: "error", data: { message } }
 //   POST /cancel                      { owner, kind: "pngtuber" | "mesh-avatar" } → { cancelled }
-// Backed by services/avatars/generation/. Requests accept `debugMode`, and every prompt is logged with
-// logDebugOverride, honouring DEBUG_AGENTS. Cancel and a closed connection both abort the provider
-// requests and free the avatar for a new job. Hosted 3D generation is out of scope.
+// Backed by services/avatars/generation/. Requests accept `debugMode`, and every prompt and Tripo request is
+// logged with logDebugOverride, honouring DEBUG_AGENTS. Cancel and a closed connection both abort the provider
+// requests and free the avatar for a new job.
+// A VRM model is made only through the user's own Tripo connection; the draft is kept by importing it.
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import {
@@ -19,15 +24,18 @@ import {
   avatarMeshRigRequestSchema,
   avatarOwnerRefSchema,
   avatarPngtuberVariantsRequestSchema,
+  avatarVrmModelRequestSchema,
 } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { failureLevel } from "../lib/log-context.js";
+import { sendSseEvent, startSseKeepalive, startSseReply } from "./generate/sse.js";
 import {
   AvatarGenerationError,
   cancelAvatarGenerationJob,
   plainErrorText,
 } from "../services/avatars/generation/generation-context.js";
 import { generateMeshRig, saveMeshRig } from "../services/avatars/generation/mesh-rig.js";
+import { generateVrmModel, tripoBalance } from "../services/avatars/generation/tripo-vrm.js";
 import {
   generatePngtuberVariants,
   previewPngtuberVariantPrompts,
@@ -72,6 +80,7 @@ const pngtuberSaveBodySchema = z
 
 const meshSaveBodySchema = z.object({ owner: avatarOwnerRefSchema, archive: z.string().min(1) }).strict();
 
+const balanceQuerySchema = z.object({ connectionId: z.string().min(1).max(128), debugMode: z.string().optional() });
 const cancelBodySchema = z.object({ owner: avatarOwnerRefSchema, kind: z.enum(["pngtuber", "mesh-avatar"]) }).strict();
 
 /** Aborted when the browser goes away (Cancel, a closed tab) before the reply is sent. The reason is an
@@ -84,16 +93,22 @@ function abortOnClose(reply: FastifyReply): AbortSignal {
   return controller.signal;
 }
 
+/** Logs a failure as sendFailure does and returns the status and the message to show. */
+function describeFailure(error: unknown, what: string): { status: number; message: string } {
+  if (error instanceof AvatarGenerationError) {
+    if (error.statusCode >= 500) logger.warn(error, "%s failed", what);
+    return { status: error.statusCode, message: error.message };
+  }
+  logger[failureLevel(error)](error, "%s failed", what);
+  return { status: 500, message: plainErrorText(error, `${what} failed.`) };
+}
+
 function sendFailure(reply: FastifyReply, error: unknown, what: string) {
   if (error instanceof z.ZodError) {
     return reply.status(400).send({ error: "The request isn't valid.", issues: error.issues.slice(0, 5) });
   }
-  if (error instanceof AvatarGenerationError) {
-    if (error.statusCode >= 500) logger.warn(error, "%s failed", what);
-    return reply.status(error.statusCode).send({ error: error.message });
-  }
-  logger[failureLevel(error)](error, "%s failed", what);
-  return reply.status(500).send({ error: plainErrorText(error, `${what} failed.`) });
+  const { status, message } = describeFailure(error, what);
+  return reply.status(status).send({ error: message });
 }
 
 export async function avatarGenerationRoutes(app: FastifyInstance) {
@@ -138,6 +153,42 @@ export async function avatarGenerationRoutes(app: FastifyInstance) {
       return await saveMeshRig(meshSaveBodySchema.parse(req.body));
     } catch (error) {
       return sendFailure(reply, error, "Saving the mesh avatar");
+    }
+  });
+
+  app.get("/vrm-model/balance", async (req, reply) => {
+    try {
+      const query = balanceQuerySchema.parse(req.query);
+      return await tripoBalance(app.db, query.connectionId, { debugMode: query.debugMode === "true" });
+    } catch (error) {
+      return sendFailure(reply, error, "Reading the Tripo balance");
+    }
+  });
+
+  // Minutes of work: progress is streamed, and closing the stream (Cancel) stops waiting for Tripo.
+  app.post("/vrm-model", async (req, reply) => {
+    let body;
+    try {
+      body = avatarVrmModelRequestSchema.parse(req.body);
+    } catch (error) {
+      return sendFailure(reply, error, "VRM model generation");
+    }
+    const signal = abortOnClose(reply);
+    reply.hijack();
+    startSseReply(reply, { "X-Accel-Buffering": "no" });
+    const stopKeepalive = startSseKeepalive(reply);
+    try {
+      const draft = await generateVrmModel(app.db, body, {
+        signal,
+        onProgress: (progress) => sendSseEvent(reply, { type: "progress", data: progress }),
+      });
+      sendSseEvent(reply, { type: "done", data: draft });
+    } catch (error) {
+      const { message } = describeFailure(error, "VRM model generation");
+      sendSseEvent(reply, { type: "error", data: { message } });
+    } finally {
+      stopKeepalive();
+      if (!reply.raw.writableEnded) reply.raw.end();
     }
   });
 

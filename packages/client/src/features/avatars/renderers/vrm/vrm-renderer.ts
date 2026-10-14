@@ -12,6 +12,7 @@
 import {
   AmbientLight,
   AnimationMixer,
+  Box3,
   DirectionalLight,
   LoadingManager,
   Object3D,
@@ -390,10 +391,17 @@ class VrmAvatarRenderer implements AvatarRenderer {
 
 const boneWorld = new Vector3();
 
+/** Bone heights and the top of the posed model (skinned meshes measure where their bones put them). */
 function measureBody(vrm: VRM): BodyHeights {
   const height = (bone: "head" | "hips" | "leftFoot" | "rightFoot") =>
     vrm.humanoid.getRawBoneNode(bone)?.getWorldPosition(boneWorld).y ?? 0;
-  return { headY: height("head"), hipsY: height("hips"), footY: Math.min(height("leftFoot"), height("rightFoot")) };
+  const topY = new Box3().setFromObject(vrm.scene).max.y;
+  return {
+    headY: height("head"),
+    hipsY: height("hips"),
+    footY: Math.min(height("leftFoot"), height("rightFoot")),
+    ...(Number.isFinite(topY) ? { topY } : {}),
+  };
 }
 
 export function createAvatarRenderer(): AvatarRenderer {

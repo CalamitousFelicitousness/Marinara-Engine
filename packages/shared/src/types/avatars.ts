@@ -613,6 +613,47 @@ export interface AvatarMeshRigRequest {
   debugMode?: boolean;
 }
 
+/** Body of `POST /api/avatar-generation/vrm-model`: a 3D model of the owner made from one full-body sprite
+ *  through the user's own Tripo connection, turned into a VRM. The answer is a stream of
+ *  AvatarVrmModelProgress events, then the AvatarVrmModelDraft; nothing is stored until it is imported. */
+export interface AvatarVrmModelRequest {
+  owner: AvatarOwnerRef;
+  /** Sprite label of the source picture: a full-body sprite where the whole character is visible. */
+  sourceLabel: string;
+  /** A Tripo connection. */
+  connectionId: string;
+  debugMode?: boolean;
+}
+
+/** Making a VRM model: a T-pose picture of the sprite, the 3D model, its skeleton, then the VRM file. */
+export const AVATAR_VRM_MODEL_STEPS = ["redraw", "model", "rig", "convert"] as const;
+export type AvatarVrmModelStep = (typeof AVATAR_VRM_MODEL_STEPS)[number];
+
+/** About what one model costs in Tripo credits (T-pose picture 5, model 30, skeleton 25; 1 credit = $0.01). */
+export const TRIPO_VRM_MODEL_CREDITS = 60;
+
+export interface AvatarVrmModelProgress {
+  step: AvatarVrmModelStep;
+  status: "running" | "done";
+  /** Tripo's own progress for the step, 0 to 100, when it reports one. */
+  progress: number | null;
+  /** Tripo credits this model has used so far. */
+  creditsUsed: number;
+}
+
+/** A made VRM model that is not stored yet. */
+export interface AvatarVrmModelDraft {
+  /** The `.vrm`, base64. It is kept by importing it like any VRM file. */
+  vrm: string;
+  fileName: string;
+  /** Tripo's picture of the finished model, as a data URL, when there is one. */
+  preview: string | null;
+  /** The T-pose picture the model was made from, as a data URL, when there is one. */
+  tpose: string | null;
+  creditsUsed: number;
+  warnings: string[];
+}
+
 export interface AvatarGenerationResponse {
   kind: AvatarKind;
   config: AvatarConfig;

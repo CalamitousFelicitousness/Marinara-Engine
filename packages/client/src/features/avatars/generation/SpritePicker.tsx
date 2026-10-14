@@ -2,6 +2,15 @@
 import { Check } from "lucide-react";
 import type { SpriteInfo } from "../../../hooks/use-characters";
 import { cn } from "../../../lib/utils";
+import { isSpriteVariant } from "../renderers/pngtuber/pngtuber-layers";
+
+/** Sprites an image model can read (the server refuses SVG sprites the same way). */
+const RASTER_SPRITE = /\.(?:png|jpe?g|webp|avif|gif)$/iu;
+
+/** The sprites an avatar can be made from: raster faces, never a talk or blink picture of another face. */
+export function avatarSourceSprites(sprites: readonly SpriteInfo[] | undefined): SpriteInfo[] {
+  return (sprites ?? []).filter((sprite) => RASTER_SPRITE.test(sprite.filename) && !isSpriteVariant(sprite.expression));
+}
 
 export function SpritePicker({
   sprites,

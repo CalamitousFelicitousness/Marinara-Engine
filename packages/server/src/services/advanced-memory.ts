@@ -393,18 +393,22 @@ export function advancedMemorySourceFingerprint(messages: readonly AdvancedMemor
         extra.conversationStartForCharacterIds,
         extra.commandOnly,
         extra.personaSnapshot,
+        // A video clip is never memory text, and one attached to the newest reply mid-send must not look like
+        // a history change.
         Array.isArray(extra.attachments)
-          ? extra.attachments.map((item) => {
-              const attachment = object(item);
-              return [
-                attachment.type,
-                attachment.filename,
-                attachment.name,
-                attachment.data,
-                attachment.url,
-                attachment.imageCaption,
-              ];
-            })
+          ? extra.attachments
+              .filter((item) => object(item).type !== "video")
+              .map((item) => {
+                const attachment = object(item);
+                return [
+                  attachment.type,
+                  attachment.filename,
+                  attachment.name,
+                  attachment.data,
+                  attachment.url,
+                  attachment.imageCaption,
+                ];
+              })
           : [],
       ];
     }),
@@ -806,7 +810,7 @@ function messageText(ctx: Context, message: AdvancedMemoryMessage, index: number
     ? extras.attachments.map((item) => object(item) as PromptAttachment)
     : [];
   const readable = attachments.map((attachment) => {
-    if (/^image(?:\/|$)/iu.test(attachment.type ?? "")) return "";
+    if (/^(?:image|video)(?:\/|$)/iu.test(attachment.type ?? "")) return "";
     const text = readableAttachmentText(attachment);
     if (text) return `Attachment ${text.filename}:\n${text.text}`;
     return `Attachment ${getAttachmentFilename(attachment)}: ${attachment.imageCaption?.trim() || "content unavailable to this textual memory; the original attachment is preserved"}`;

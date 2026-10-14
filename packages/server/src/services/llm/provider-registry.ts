@@ -66,8 +66,6 @@ export function createLLMProvider(
   switch (provider) {
     case "decision":
       throw new Error("Decision connections cannot generate chat or agent output.");
-    case "tripo":
-      throw new Error("Tripo connections only make 3D models. Choose a chat connection.");
     case "openai":
     case "openrouter":
     case "nanogpt":

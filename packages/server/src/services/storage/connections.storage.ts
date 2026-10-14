@@ -16,7 +16,7 @@ import { sweepDanglingConnectionReferences } from "./connection-reference-cleanu
 import { clearConnectionRateLimit, setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 import { logger } from "../../lib/logger.js";
 
-type ConnectionDefaultCategory = "image_generation" | "video_generation" | "audio" | "decision" | "tripo" | "language";
+type ConnectionDefaultCategory = "image_generation" | "video_generation" | "audio" | "decision" | "language";
 
 /**
  * Decrypt a stored connection for internal use and keep the per-connection outbound throttle
@@ -35,13 +35,12 @@ function defaultCategoryForProvider(provider: string): ConnectionDefaultCategory
   if (provider === "video_generation") return "video_generation";
   if (provider === "audio") return "audio";
   if (provider === "decision") return "decision";
-  if (provider === "tripo") return "tripo";
   return "language";
 }
 
-/** Decision and Tripo connections never become the main connection, a random pick or an agent fallback. */
+/** Decision connections never become the main connection, a random pick or an agent fallback. */
 function takesChatDefaults(provider: string): boolean {
-  return provider !== "decision" && provider !== "tripo";
+  return provider !== "decision";
 }
 
 /** One model in a saved provider list: display and limit fields only, never credentials. */

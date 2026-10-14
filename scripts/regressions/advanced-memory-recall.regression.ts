@@ -114,6 +114,12 @@ try {
           },
           { type: "image/png", filename: "uploaded.png", data: "data:image/png;base64,AAAA" },
           { type: "text/plain", filename: "clue.txt", data: "data:text/plain,READABLE_CLUE_TEXT" },
+          {
+            type: "video",
+            filename: "clip_1.mp4",
+            url: "/api/gallery/scene-videos/file/x/clip_1.mp4",
+            prompt: "VIDEO_PROMPT",
+          },
         ],
       },
     })),
@@ -148,12 +154,12 @@ try {
   assert.equal(recalled.recalledScenes!.match(/SCENE_RECAP/g)?.length, 3);
   assert.doesNotMatch(
     recalled.recalledScenes!,
-    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|content unavailable/u,
+    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|clip_1\.mp4|VIDEO_PROMPT|content unavailable/u,
   );
   assert.match(recalled.recalledScenes!, /READABLE_CLUE_TEXT/u, "readable attachments remain in recalled excerpts");
   assert.doesNotMatch(
     summaryInputs.join("\n"),
-    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|content unavailable/u,
+    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|clip_1\.mp4|VIDEO_PROMPT|content unavailable/u,
   );
   assert.match(
     summaryInputs.join("\n"),

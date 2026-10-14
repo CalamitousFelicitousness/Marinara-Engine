@@ -207,13 +207,6 @@ Each source fills in a default base URL and model. **Default Voice** is the voic
 
 With the **ElevenLabs** source, two more switches appear: **Game sound effects** and **Game music**. They let Game Mode make sound effects and music with this connection. See [Generated sound effects and music](../game/game-assets.md#generated-sound-effects-and-music). For voices and reading messages aloud, see [Text to Speech (TTS) Setup](../media/tts-setup.md).
 
-## Tripo
-
-- Where to get a key: `https://developers.tripo3d.ai/en/keys`
-- Address: always `https://openapi.tripo3d.ai/v3`, so there is no **Base URL** field
-
-**Tripo** is a special provider that makes 3D models. **3D Avatars** uses it to turn a full-body sprite into a VRM model, for about 60 Tripo credits each. It has no model to pick and can't be used for chat. **Test Connection** checks the key and shows how many credits you have. See [Make a 3D model with Tripo](../agents/avatars.md#make-a-3d-model-with-tripo).
-
 ## Embeddings
 
 Embeddings power lorebook semantic search and Memory Recall. They turn text into number lists so Marinara can find related entries. Most chat providers let you set an **Embedding Model** and an optional **Embedding Endpoint URL** in the connection editor.
@@ -229,4 +222,3 @@ Some providers cannot make embeddings. **Anthropic**, **Claude (Subscription)**,
 - [Scene Video Generation](../media/scene-video.md)
 - [Decision Models](decision-models.md)
 - [Text to Speech (TTS) Setup](../media/tts-setup.md)
-- [2D and 3D Avatars](../agents/avatars.md)

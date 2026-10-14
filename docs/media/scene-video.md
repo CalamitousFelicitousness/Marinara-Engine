@@ -132,6 +132,8 @@ To animate the newest picture:
 4. The button changes to **Generating...**, and a banner tells you video generation is running.
 5. When it finishes, the clip appears under the **Videos** tab.
 
+In **Roleplay**, the finished clip also plays inline in the chat, under the latest reply, even when the picture came from an earlier one. Clips no longer open in a floating window on their own. To float one, use **Pin video to chat** under the **Videos** tab. Remove a clip from a message with its **X** button; it stays in the Gallery.
+
 To animate one specific picture instead of the newest one:
 
 1. Open the **Images** tab.

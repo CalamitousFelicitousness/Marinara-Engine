@@ -27,6 +27,7 @@ import { recoverGalleryImages } from "./services/storage/gallery-recovery.js";
 import { createLibraryFoldersStorage } from "./services/storage/library-folders.storage.js";
 import { migrateCharacterExtendedDescriptionsToLorebooks } from "./services/lorebook/extended-descriptions-migration.js";
 import { migrateTtsSettingsToAudioConnection } from "./services/connections/tts-audio-connection-migration.js";
+import { migrateTripoConnectionsToApiKey } from "./services/avatars/generation/tripo-key.js";
 import { migrateLegacyDefaultAgentPrompts } from "./services/agents/default-prompt-migration.js";
 import { APP_VERSION, resetTurnGameRegistry } from "@marinara-engine/shared";
 import { existsSync } from "fs";
@@ -240,6 +241,11 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     await startup.phase("migrate.tts-audio", () => migrateTtsSettingsToAudioConnection(db));
   } catch (error) {
     app.log.warn(error, "TTS audio-connection migration did not complete; it will retry next startup");
+  }
+  try {
+    await startup.phase("migrate.tripo-key", () => migrateTripoConnectionsToApiKey(db));
+  } catch (error) {
+    app.log.warn(error, "Tripo connection migration did not complete; it will retry next startup");
   }
   await startup.phase("seed.backgrounds", () => seedDefaultBackgrounds());
   await startup.phase("seed.game-assets", () => seedDefaultGameAssets());

@@ -83,6 +83,11 @@ import {
 } from "../services/video/prompt-context.js";
 import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../services/video/scene-video-prompt-review.js";
 import {
+  attachVideoToMessage,
+  buildChatVideoAttachment,
+  resolveChatVideoAnchor,
+} from "../services/video/chat-video-messages.js";
+import {
   buildRoleplayVideoDirectionMessages,
   resolveRoleplayVideoDirection,
 } from "../services/video/roleplay-video-direction.js";
@@ -868,6 +873,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     const videoFallback = await resolveVideoConnectionFallback(connections, videoConnectionId);
 
     return {
+      chatMode: chat.mode,
       videoConnectionId,
       galleryImage,
       videoRuntime,
@@ -1124,8 +1130,16 @@ export async function galleryRoutes(app: FastifyInstance) {
       logDebugOverride(debugOverrideEnabled, message, ...args);
     };
     const sceneVideos = createGameSceneVideosStorage(app.db);
-    const { videoConnectionId, galleryImage, videoRuntime, durationSeconds, aspectRatio, prompt, videoFallback } =
-      prepared;
+    const {
+      chatMode,
+      videoConnectionId,
+      galleryImage,
+      videoRuntime,
+      durationSeconds,
+      aspectRatio,
+      prompt,
+      videoFallback,
+    } = prepared;
     const {
       source,
       serviceHint,
@@ -1205,7 +1219,21 @@ export async function galleryRoutes(app: FastifyInstance) {
 
       await chats.patchMetadata(input.chatId, () => ({ sceneLastVideoId: row.id }));
       logger.info("[gallery/generate-scene-video] saved video %s for chat %s", row.id, input.chatId);
-      return { video: serializeSceneVideo(row) };
+      const video = serializeSceneVideo(row);
+      // Shown inline under the newest reply, chosen now rather than before generating: the user may have sent
+      // or swiped a message meanwhile. Game Mode keeps its clips in the gallery only. The video is saved by now,
+      // so a failure to find or update the reply still reports success, with no messageId.
+      let messageId: string | null = null;
+      try {
+        const anchor = chatMode === "game" ? null : resolveChatVideoAnchor(await chats.listMessages(input.chatId));
+        if (anchor) {
+          await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video));
+          messageId = anchor.messageId;
+        }
+      } catch (attachErr) {
+        logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", row.id);
+      }
+      return { video, messageId };
     } catch (err) {
       if (savedFilePath && !metadataSaved) {
         await removeSavedVideoFromDisk(savedFilePath).catch((cleanupErr) => {

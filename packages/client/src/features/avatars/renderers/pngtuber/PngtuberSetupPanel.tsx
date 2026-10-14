@@ -6,11 +6,13 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   AVATAR_EMOTIONS,
+  PNGTUBER_DEFAULT_MOTION,
   type AvatarEmotion,
   type AvatarExpressionMap,
   type PngtuberAvatarData,
   type PngtuberMotion,
 } from "@marinara-engine/shared";
+import { useAvatarModelActions } from "../../../../hooks/use-avatar-models";
 import { useCharacterSprites } from "../../../../hooks/use-characters";
 import { showConfirmDialog } from "../../../../lib/app-dialogs";
 import {
@@ -20,8 +22,8 @@ import {
   ToggleSetting,
 } from "../../../../components/panels/settings/SettingControls";
 import type { AvatarKindSetupPanelProps } from "../../contract";
-import { PNGTUBER_DEFAULT_MOTION, buildPngtuberLayersFromSprites, resolvePngtuberImage } from "./pngtuber-layers";
-import { useAvatarKindActions } from "./use-avatar-kind-actions";
+import { resolveAvatarImage } from "../../stage/avatar-stage-logic";
+import { buildPngtuberLayersFromSprites } from "./pngtuber-layers";
 
 /** Labels of the six feelings, shared with the mesh avatar panel. */
 export const AVATAR_EMOTION_LABEL_KEYS: Readonly<Record<AvatarEmotion, string>> = {
@@ -61,7 +63,7 @@ function keepUserBindings(previous: AvatarExpressionMap, next: PngtuberAvatarDat
 export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
   const sprites = useCharacterSprites(owner.ownerId);
-  const { save, importFile, remove } = useAvatarKindActions(owner, "pngtuber", onChanged);
+  const { save, importFile, remove } = useAvatarModelActions(owner, onChanged);
   const fileInput = useRef<HTMLInputElement>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [motionDraft, setMotionDraft] = useState<PngtuberMotion | null>(null);
@@ -117,13 +119,16 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
     event.target.value = "";
     if (!file) return;
     setWarnings([]);
-    importFile.mutate(file, {
-      onSuccess: (result) => {
-        setWarnings(result.warnings);
-        toast.success(t("avatars.pngtuber.imported"));
+    importFile.mutate(
+      { kind: "pngtuber", file },
+      {
+        onSuccess: (result) => {
+          setWarnings(result.warnings);
+          toast.success(t("avatars.pngtuber.imported"));
+        },
+        onError: (error) => toast.error(t("avatars.pngtuber.importFailed", { reason: errorMessage(error) })),
       },
-      onError: (error) => toast.error(t("avatars.pngtuber.importFailed", { reason: errorMessage(error) })),
-    });
+    );
   };
 
   const onRemove = async () => {
@@ -134,7 +139,7 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
       tone: "destructive",
     });
     if (!confirmed) return;
-    remove.mutate(undefined, {
+    remove.mutate("pngtuber", {
       onError: (error) => toast.error(t("avatars.pngtuber.saveFailed", { reason: errorMessage(error) })),
     });
   };
@@ -163,7 +168,7 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-label={t("avatars.pngtuber.faces")}>
             {faceKeys.map((key) => {
               const set = shown.layers[key]!;
-              const url = resolvePngtuberImage(owner, set.base, spriteList);
+              const url = resolveAvatarImage(owner, config ?? { updatedAt: "" }, spriteList, set.base);
               return (
                 <li
                   key={key}

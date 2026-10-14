@@ -35,7 +35,6 @@ import { getSharp } from "../../image/sharp-runtime.js";
 import { readAvatarConfig, readAvatarFile, updateAvatarConfig, writeAvatarFiles } from "../storage.js";
 import {
   AvatarGenerationError,
-  applyAvatarSourceOutline,
   avatarGenerationDebug,
   avatarImageRequestSize,
   compileAvatarImagePrompt,
@@ -416,8 +415,8 @@ async function keptPicturePng(image: string, source: AvatarSourceSprite): Promis
 }
 
 /** Stores the kept pictures as PNGTuber layers and returns the saved setup. The sprite each picture was
- *  made from is copied next to it as it is, and a picture from a see-through sprite takes its outline, so the
- *  base and its variants always line up; a sprite replaced since its pictures were made is refused. The
+ *  made from is copied next to it as it is, and each kept picture is stored as drawn (one from a see-through
+ *  sprite already has its outline), so the base and its variants always line up; a sprite replaced since its pictures were made is refused. The
  *  files are written first and the setup is merged inside the owner's queue, so a change saved meanwhile
  *  (another tab, an import) is kept, not overwritten.
  *  ponytail: pictures of a replaced imported set stay on disk until the next PNGTuber import or removal
@@ -446,11 +445,9 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
         `The sprite "${entry.label}" changed after its pictures were made. Make them again.`,
       );
     }
-    const kept = await keptPicturePng(entry.image, set.source);
-    files.set(
-      pngtuberVariantFilePath(key, entry.variant),
-      set.source.transparent ? await applyAvatarSourceOutline(kept, set.source) : kept,
-    );
+    // Drawing already gave a picture from a see-through sprite its outline; giving it again would lay it over
+    // the sprite once more and show the sprite through a soft mask.
+    files.set(pngtuberVariantFilePath(key, entry.variant), await keptPicturePng(entry.image, set.source));
     if (!set.variants.includes(entry.variant)) set.variants.push(entry.variant);
   }
   for (const set of sets.values()) {

@@ -365,6 +365,37 @@ try {
       if (before.data[i + 3]! < 250 && after.data.readUInt32LE(i) !== before.data.readUInt32LE(i)) rim += 1;
     }
     assert.equal(rim, 0, "and its own edge");
+
+    // Saving keeps the kept picture exactly. It already has the sprite's outline; giving it the outline again
+    // lays it over the sprite once more, and inside a soft mask the open eyes would show through the blink.
+    const { data: softer } = await rgba(clearBust);
+    for (let i = 3; i < softer.length; i += 4) if (softer[i] === 255) softer[i] = 200;
+    writeFileSync(
+      join(spriteDir, "soft.png"),
+      await sharp(softer, { raw: { width: info.width, height: info.height, channels: 4 } })
+        .png()
+        .toBuffer(),
+    );
+    imageMode = "fill-background";
+    const softDrafts = await generatePngtuberVariants(db, {
+      owner,
+      labels: ["soft"],
+      variants: ["eyes-closed"],
+      connectionId: image.id,
+    });
+    const softDraft = softDrafts.drafts[0]!;
+    const softSaved = await savePngtuberVariants({
+      owner,
+      images: [
+        { label: "soft", variant: "eyes-closed", image: softDraft.image, sourceHash: softDraft.sourceHash },
+      ],
+    });
+    const blink = softSaved.config.kinds.pngtuber!.layers.soft!.eyesClosed as { path: string };
+    assert.deepEqual(
+      (await rgba(readFileSync(join(avatarOwnerDir(owner), blink.path)))).data,
+      (await rgba(dataUrlPng(softDraft.image))).data,
+      "a saved picture from a see-through sprite is the kept picture as it is",
+    );
   }
 
   // ── A PNGTuber Plus costume drawn on a background ──

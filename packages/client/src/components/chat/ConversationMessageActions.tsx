@@ -21,6 +21,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 import { cn } from "../../lib/utils";
 import { MsgAction } from "./ConversationMessageShared";
 import { MESSAGE_ACTION_ICON_SIZE } from "./MessageActionButton";
+import { MessageAttachButton } from "./MessageAttachButton";
 import { ReactionAddButton } from "./ReactionAddButton";
 import { MessageMarksAction } from "./MessageMarks";
 
@@ -158,6 +159,9 @@ export function ConversationMessageActions({
         onClick={onEdit}
         title={localizeUi("ui.noodle.noodlepostcard.edit")}
       />
+      {!thinkingOnly && !message.id.startsWith("__") && (
+        <MessageAttachButton chatId={message.chatId} messageId={message.id} stopPropagation />
+      )}
       {canRegenerate && onRegenerate && (
         <MsgAction
           icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}

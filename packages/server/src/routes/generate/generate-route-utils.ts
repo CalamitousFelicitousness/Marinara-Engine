@@ -63,6 +63,7 @@ export {
 export {
   appendReadableAttachmentsToContent,
   buildReadableAttachmentBlocks,
+  describeAttachmentsForNonUserTurn,
   escapeXmlAttribute,
   extractFileAttachmentInputs,
   extractImageAttachmentDataUrls,

@@ -39,6 +39,7 @@ import type {
   ConversationNote,
   ExportEnvelope,
   Message,
+  MessageAttachment,
   MessageSwipe,
   MessageTrashEntry,
   DaySummaryEntry,
@@ -1640,6 +1641,23 @@ export function useUpdateMessageExtra(chatId: string | null) {
           qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
         }
       }
+    },
+  });
+}
+
+/** Append files to a sent message's active swipe */
+export function useAppendMessageAttachments(chatId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      messageId,
+      attachments,
+    }: {
+      messageId: string;
+      attachments: Array<Pick<MessageAttachment, "type" | "filename" | "name"> & { data: string }>;
+    }) => api.post<Message>(`/chats/${chatId}/messages/${messageId}/attachments`, { attachments }),
+    onSettled: () => {
+      if (chatId) qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
     },
   });
 }

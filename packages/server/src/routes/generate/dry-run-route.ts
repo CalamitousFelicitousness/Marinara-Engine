@@ -146,6 +146,7 @@ import {
   buildGenerationGuideInstruction,
   createLocalSidecarGenerationConnection,
   dedupeLastMessageWrappers,
+  describeAttachmentsForNonUserTurn,
   extractFileAttachmentInputs,
   extractImageAttachmentDataUrls,
   findTrackerContextInsertIndex,
@@ -794,24 +795,26 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
       const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
       const providerMetadata = pastReasoning.get(m.id);
+      const isUserTurn = m.role === "user";
       return {
         id: typeof m.id === "string" ? m.id : null,
         role: m.role === "narrator" ? ("system" as const) : (m.role as "user" | "assistant" | "system"),
-        content: withLatestMessageReply(
-          appendReadableAttachmentsToContent(
-            chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
-            attachments,
-          ),
-          extra.replyTo,
-          m.role === "user" && m.id === latestReplyUserMessageId,
-        ),
+        content:
+          withLatestMessageReply(
+            appendReadableAttachmentsToContent(
+              chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
+              attachments,
+            ),
+            extra.replyTo,
+            isUserTurn && m.id === latestReplyUserMessageId,
+          ) + (isUserTurn ? "" : describeAttachmentsForNonUserTurn(attachments)),
         contextKind: "history" as const,
         characterId: typeof m.characterId === "string" && m.characterId ? m.characterId : null,
         ...(personaSnapshotName ? { personaSnapshotName } : {}),
         ...(hiddenFromAICharacterIds.length ? { hiddenFromAICharacterIds } : {}),
         ...(conversationStartForCharacterIds.length ? { conversationStartForCharacterIds } : {}),
-        ...(images?.length ? { images } : {}),
-        ...(files.length ? { files } : {}),
+        ...(isUserTurn && images?.length ? { images } : {}),
+        ...(isUserTurn && files.length ? { files } : {}),
         ...(providerMetadata ? { providerMetadata } : {}),
       };
     });

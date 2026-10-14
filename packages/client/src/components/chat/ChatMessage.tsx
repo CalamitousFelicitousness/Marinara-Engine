@@ -141,6 +141,7 @@ import { MultiSwipePendingBadge, MultiSwipeProgressBadge, useMultiSwipeRegenerat
 import { toast } from "sonner";
 import { MessageThinkingModal } from "./MessageThinkingModal";
 import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton } from "./MessageActionButton";
+import { MessageAttachButton } from "./MessageAttachButton";
 import { MessageMarkIndicators, MessageMarksAction, type MessageNoteSharing } from "./MessageMarks";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
 
@@ -2398,6 +2399,8 @@ export const ChatMessage = memo(function ChatMessage({
   const diceRollResult = isDiceRollResult(extra.diceRollResult) ? extra.diceRollResult : null;
   const diceReplacesContent = diceRollReplacesMessageContent(message.role, diceRollResult);
   const canCreateNextSwipe = Boolean(onRegenerate && !isUser);
+  // Optimistic and streaming placeholders ("__optimistic_*", "__streaming__") have no server row yet.
+  const canAttachFiles = !isStreaming && !message.id.startsWith("__");
   // Right-click / long-press on regenerate or the create-next chevron asks for
   // several candidates at once; a plain click stays a single swipe.
   const multiSwipePending = !isUser && readMultiSwipePendingMarker(extra) !== null;
@@ -3881,6 +3884,7 @@ export const ChatMessage = memo(function ChatMessage({
             onClick={startEditing}
             title={localizeUi("ui.noodle.noodlepostcard.edit")}
           />
+          {canAttachFiles && <MessageAttachButton chatId={message.chatId} messageId={message.id} />}
           {hasRewriteVersions && (
             <ActionBtn
               icon={
@@ -4405,6 +4409,7 @@ export const ChatMessage = memo(function ChatMessage({
           onClick={startEditing}
           title={localizeUi("ui.noodle.noodlepostcard.edit")}
         />
+        {canAttachFiles && <MessageAttachButton chatId={message.chatId} messageId={message.id} />}
         {hasRewriteVersions && (
           <ActionBtn
             icon={

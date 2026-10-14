@@ -433,6 +433,7 @@ import {
   dedupeLastMessageWrappers,
   findTrackerContextInsertIndex,
   formatConversationInstructionsForWrap,
+  describeAttachmentsForNonUserTurn,
   extractFileAttachmentInputs,
   buildGenerationGuideInstruction,
   findInventoryTrackerAcquisitions,
@@ -2091,11 +2092,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const personaSnapshotName = m.role === "user" ? readPersonaSnapshotName(extra) : null;
         const attachments = normalizePromptAttachments(m.extra);
         const providerMetadata = pastReasoning.get(m.id);
+        // Providers reject native image and file parts outside user turns.
+        const isUserTurn = m.role === "user";
 
-        // Annotate assistant messages that have user-uploaded image attachments
-        // so the model is aware it sent a photo in prior turns.
-        // Skip illustration/selfie attachments (type "image") — those are generated
-        // by agents and should be invisible to the main model.
         const attachmentInputs = await resolvePromptAttachmentInputs({
           content: conversationPromptHistoryContent(m, chatMode),
           attachments,
@@ -2114,13 +2113,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let content = withLatestMessageReply(
           attachmentInputs.content,
           extra.replyTo,
-          m.role === "user" && m.id === latestUserMessageId,
+          isUserTurn && m.id === latestUserMessageId,
         );
-        const userUploadedImages = attachments?.filter((a) => a.type?.startsWith("image/"));
-        if (m.role === "assistant" && userUploadedImages?.length) {
-          const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
-          content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
-        }
+        if (!isUserTurn) content += describeAttachmentsForNonUserTurn(attachments);
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 
@@ -2133,8 +2128,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           ...(personaSnapshotName ? { personaSnapshotName } : {}),
           ...(hiddenFromAICharacterIds.length ? { hiddenFromAICharacterIds } : {}),
           ...(conversationStartForCharacterIds.length ? { conversationStartForCharacterIds } : {}),
-          ...(attachmentInputs.images.length ? { images: attachmentInputs.images } : {}),
-          ...(attachmentInputs.files.length ? { files: attachmentInputs.files } : {}),
+          ...(isUserTurn && attachmentInputs.images.length ? { images: attachmentInputs.images } : {}),
+          ...(isUserTurn && attachmentInputs.files.length ? { files: attachmentInputs.files } : {}),
           ...(providerMetadata ? { providerMetadata } : {}),
         };
       };

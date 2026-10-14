@@ -2899,6 +2899,40 @@ Patches to upstream files: `ui.store.ts`, `ChatMessage.tsx`, `ConversationMessag
 `ConversationMessageGrouped.tsx`, `SettingsPanel.tsx`, and `en.json`. Covered by
 `scripts/regressions/message-controls-position.regression.mjs`.
 
+### Files can be attached to a sent message
+
+A paperclip in the message action row appends files to a user or assistant message that is already
+sent: both rows in `ChatMessage.tsx`, and `ConversationMessageActions` in Conversation mode. It
+follows the composer's rules (20 MB per file, the same type filter and accept list, images resized
+by `prepareImageAttachment`). Those rules lived as identical copies in `ChatInput.tsx` and
+`ConversationInput.tsx`; all three now import them from `lib/chat-attachment-files.ts`.
+Optimistic and streaming placeholders have no server row and do not show the button.
+
+`POST /chats/:chatId/messages/:messageId/attachments` appends to the active swipe through
+`appendSwipeAttachment` and `appendMessageAttachmentForActiveSwipe`, the path illustrations use.
+Attachment removal sends the whole array to `/extra`, which would drop an illustration appended
+after the client last read the message; each append here re-reads the row inside the patch queue.
+The route accepts only `data:` URLs and returns 409 while the chat is generating, because a
+user-message regeneration writes back the attachment list it read when it started
+(`resolveUserRegenerationPersistentAttachments`).
+
+Native image and PDF inputs travel only on user turns, in real generation and in the dry run.
+OpenAI Chat Completions accepts only text and refusal parts on an assistant message, so an image
+there would fail every later request. Assistant and narrator turns instead end with
+`[Attached: a.png, doc.pdf]` from `describeAttachmentsForNonUserTurn`, naming every image and PDF
+in role-neutral words since narrator turns go out as system messages. It replaces upstream's
+inline `[Sent a photo: name]`, which named only the first image on assistant turns. Captions and
+readable text files still reach the model as text. This also applies to assistant images saved
+before the change, which compatible backends used to receive natively. Upstream's dry run had no
+photo note at all.
+
+Patches to upstream files: `chats.routes.ts`, `generate.routes.ts`, `generate/dry-run-route.ts`,
+`generate/generate-route-utils.ts`, `prompt-attachments.ts`, `ChatMessage.tsx`,
+`ConversationMessageActions.tsx`, `ChatInput.tsx`, `ConversationInput.tsx`, `use-chats.ts`, and
+`en.json` (3 keys). Covered by `scripts/regressions/message-attachment-append.regression.ts`,
+which also reads the Anthropic request bodies from both `/generate` and `/generate/dryRun` and
+fails on either route when its user-turn gate is removed.
+
 ### Validation skill
 
 `.claude/skills/marinara-validation/SKILL.md` records how to validate a change here: which lane

@@ -174,6 +174,23 @@ export function buildReadableAttachmentBlocks(attachments: PromptAttachment[] | 
   });
 }
 
+/**
+ * Note appended to an assistant or narrator turn, which cannot carry native image or file parts.
+ * Readable text files are already inlined; image captions already appear as <attached_image> blocks.
+ * Generated illustrations use type "image" (no subtype) and stay invisible to the model.
+ */
+export function describeAttachmentsForNonUserTurn(attachments: PromptAttachment[] | undefined): string {
+  const names = (attachments ?? [])
+    .filter(
+      (attachment) =>
+        (typeof attachment.type === "string" && attachment.type.startsWith("image/")) ||
+        normalizeProviderFileAttachmentType(attachment) !== null,
+    )
+    .map(getAttachmentFilename);
+  // Role-neutral wording: narrator turns are sent as system messages.
+  return names.length ? `\n[Attached: ${names.join(", ")}]` : "";
+}
+
 export function appendReadableAttachmentsToContent(
   content: string,
   attachments: PromptAttachment[] | undefined,

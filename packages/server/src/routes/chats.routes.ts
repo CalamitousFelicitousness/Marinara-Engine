@@ -2571,6 +2571,41 @@ export async function chatsRoutes(app: FastifyInstance) {
     },
   );
 
+  // Append files to the active swipe. Each append re-reads the row, so it cannot drop a concurrent illustration.
+  app.post<{ Params: { chatId: string; messageId: string } }>(
+    "/:chatId/messages/:messageId/attachments",
+    async (req, reply) => {
+      const body = z
+        .object({
+          attachments: z
+            .array(
+              z.object({
+                type: z.string().min(1),
+                data: z.string().startsWith("data:"),
+                filename: z.string().optional(),
+                name: z.string().optional(),
+              }),
+            )
+            .min(1),
+        })
+        .safeParse(req.body);
+      if (!body.success) return reply.status(400).send({ error: "At least one data-URL attachment is required." });
+      const message = await storage.getMessage(req.params.messageId);
+      if (!message || message.chatId !== req.params.chatId)
+        return reply.status(404).send({ error: "Message not found" });
+      // A running generation writes back the attachment list it read when it started.
+      const active = (app as unknown as { activeGenerations?: Map<string, unknown> }).activeGenerations;
+      if (active?.has(req.params.chatId))
+        return reply.status(409).send({ error: "Wait for the current generation to finish before attaching files." });
+      const swipeIndex = message.activeSwipeIndex ?? 0;
+      for (const attachment of body.data.attachments) {
+        await storage.appendSwipeAttachment(message.id, swipeIndex, attachment);
+        await storage.appendMessageAttachmentForActiveSwipe(message.id, swipeIndex, attachment);
+      }
+      return storage.getMessage(message.id);
+    },
+  );
+
   // Update message extra (partial merge) — also syncs to the active swipe
   app.patch<{ Params: { chatId: string; messageId: string }; Querystring: { swipeIndex?: string } }>(
     "/:chatId/messages/:messageId/extra",

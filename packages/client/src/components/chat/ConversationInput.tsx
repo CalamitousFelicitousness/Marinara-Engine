@@ -46,6 +46,14 @@ import { cn } from "../../lib/utils";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { translateDraftText } from "../../lib/draft-translation";
 import { prepareImageAttachment } from "../../lib/chat-attachment-images";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  PDF_ATTACHMENT_MIME_TYPE,
+  inferAttachmentType,
+  isSupportedChatAttachment,
+  readFileAsDataUrl,
+} from "../../lib/chat-attachment-files";
 import { isFileDrag } from "../../lib/chat-resource-drag";
 import { CARD_ASSET_INSERT_EVENT, type CardAssetInsertDetail } from "../../lib/card-asset-links";
 import { isGenerationSendBlocked, isIosWebKitBrowser } from "../../lib/generation-stream-policy";
@@ -92,20 +100,6 @@ interface Attachment {
 
 type EmojiCompletion =
   ({ kind: "custom" } & ConversationCustomEmoji) | ({ kind: "standard"; source: "Standard" } & StandardEmojiShortcode);
-
-const TEXT_ATTACHMENT_EXTENSIONS = new Set([
-  "csv",
-  "json",
-  "jsonl",
-  "log",
-  "markdown",
-  "md",
-  "txt",
-  "xml",
-  "yaml",
-  "yml",
-]);
-const PDF_ATTACHMENT_MIME_TYPE = "application/pdf";
 
 const CONVERSATION_HIDDEN_SLASH_COMMANDS = new Set(["impersonate", "impersonate_prompt"]);
 
@@ -258,49 +252,6 @@ function buildConversationSlashCompletions(
         kind: "command" as const,
       };
     });
-}
-
-function getFileExtension(fileName: string): string {
-  const match = fileName.toLowerCase().match(/\.([a-z0-9]+)$/);
-  return match?.[1] ?? "";
-}
-
-function inferAttachmentType(file: File): string {
-  const extension = getFileExtension(file.name);
-  if (extension === "pdf") return PDF_ATTACHMENT_MIME_TYPE;
-  if (file.type) return file.type;
-  if (extension === "json" || extension === "jsonl") return "application/json";
-  if (extension === "csv") return "text/csv";
-  if (extension === "md" || extension === "markdown") return "text/markdown";
-  if (extension === "xml") return "application/xml";
-  if (extension === "yaml" || extension === "yml") return "application/yaml";
-  if (extension === "txt" || extension === "log") return "text/plain";
-  return "application/octet-stream";
-}
-
-function isSupportedChatAttachment(file: File): boolean {
-  if (file.type.startsWith("image/")) return true;
-  if (file.type.startsWith("text/")) return true;
-  const type = inferAttachmentType(file);
-  if (type === PDF_ATTACHMENT_MIME_TYPE) return true;
-  if (
-    type === "application/json" ||
-    type === "application/xml" ||
-    type === "application/yaml" ||
-    type === "application/x-yaml"
-  ) {
-    return true;
-  }
-  return TEXT_ATTACHMENT_EXTENSIONS.has(getFileExtension(file.name));
-}
-
-function readFileAsDataUrl(file: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
 }
 
 function useIsMobileComposerViewport() {
@@ -855,9 +806,8 @@ export function ConversationInput({
       const originChatId = useChatStore.getState().activeChatId;
       if (!originChatId) return;
 
-      const MAX_SIZE = 20 * 1024 * 1024;
       const acceptedFiles = Array.from(files).filter((file) => {
-        if (file.size > MAX_SIZE) {
+        if (file.size > CHAT_ATTACHMENT_MAX_BYTES) {
           toast.error(localizeUi("ui.chat.conversationinput.value1Exceeds20MbLimit", { value1: file.name }));
           return false;
         }
@@ -2270,7 +2220,7 @@ export function ConversationInput({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,application/pdf,.pdf,.txt,.md,.markdown,.json,.jsonl,.csv,.log,.xml,.yaml,.yml"
+          accept={CHAT_ATTACHMENT_ACCEPT}
           multiple
           className="hidden"
           onChange={(e) => {

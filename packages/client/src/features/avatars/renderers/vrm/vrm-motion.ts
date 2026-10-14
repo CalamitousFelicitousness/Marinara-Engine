@@ -256,6 +256,8 @@ export interface BodyHeights {
   headY: number;
   hipsY: number;
   footY: number;
+  /** The top of the model (hair, ears, a hat), when measured. */
+  topY?: number;
 }
 
 export interface CameraFraming {
@@ -264,13 +266,20 @@ export interface CameraFraming {
 }
 
 /** Fits the head and shoulders into a camera with this aspect and vertical field of view, from bone
- *  heights alone (the head's size scales with the hips-to-head distance). The head stays near the top: a
- *  narrower canvas, which needs the camera further back to fit the shoulders, shows more of the body below,
- *  down to the whole figure. The framing changes smoothly with the canvas shape, so a resize never flips it. */
+ *  heights (the head's size scales with the hips-to-head distance) and the top of the model. The head stays
+ *  near the top: a narrower canvas, which needs the camera further back to fit the shoulders, shows more of
+ *  the body below, down to the whole figure. The framing changes smoothly with the canvas shape, so a resize
+ *  never flips it. */
 export function frameCamera(body: BodyHeights, aspect: number, fovDegrees: number): CameraFraming {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
   const unit = Math.max(0.1, body.headY - body.hipsY);
-  const top = body.headY + 0.42 * unit;
+  // A head and a bit above the head bone reaches the top of most heads. Hair, ears or a hat that rise higher
+  // (a Tripo model's reach 0.3 m and more above its head bone) raise the top, never lower it, so other models
+  // frame as before. At most one unit above the head: a stray part far above must not shrink the face.
+  const top = Math.max(
+    body.headY + 0.42 * unit,
+    Number.isFinite(body.topY) ? Math.min(body.topY!, body.headY + unit) : -Infinity,
+  );
   const bustBottom = body.headY - 0.6 * unit;
   const feet = Math.min(body.footY - 0.03, bustBottom);
   const margin = 1.08;

@@ -22,6 +22,7 @@ import {
   type AvatarExpressionMap,
   type AvatarMeshRigRequest,
   type AvatarPngtuberVariantsRequest,
+  type AvatarVrmModelRequest,
 } from "../types/avatars.js";
 
 /** Most layer sets one PNGTuber setup may hold; well above the 17 suggested sprite labels. */
@@ -214,3 +215,12 @@ export const avatarMeshRigRequestSchema = z
     debugMode: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<AvatarMeshRigRequest>;
+
+export const avatarVrmModelRequestSchema = z
+  .object({
+    owner: avatarOwnerRefSchema,
+    sourceLabel: z.string().min(1).max(64),
+    connectionId: z.string().min(1).max(128),
+    debugMode: z.boolean().optional(),
+  })
+  .strict() satisfies z.ZodType<AvatarVrmModelRequest>;

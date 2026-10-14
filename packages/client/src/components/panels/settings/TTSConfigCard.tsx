@@ -50,6 +50,7 @@ import {
   TTS_DIALOGUE_PAUSE_MAX_SECONDS,
   TTS_DIALOGUE_PAUSE_MIN_SECONDS,
   ttsSourceProfileFromConfig,
+  isChatProvider,
 } from "@marinara-engine/shared";
 import { HelpTooltip } from "../../ui/HelpTooltip";
 import { SettingsCheckbox, SettingsSwitch } from "./SettingControls";
@@ -184,10 +185,7 @@ function isTTSLanguageConnectionOption(value: unknown): value is TTSLanguageConn
     typeof connection.id === "string" &&
     typeof connection.name === "string" &&
     typeof connection.model === "string" &&
-    connection.provider !== "image_generation" &&
-    connection.provider !== "video_generation" &&
-    connection.provider !== "audio" &&
-    connection.provider !== "decision"
+    isChatProvider(connection.provider)
   );
 }
 

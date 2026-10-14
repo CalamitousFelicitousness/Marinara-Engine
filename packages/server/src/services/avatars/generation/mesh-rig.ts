@@ -6,8 +6,9 @@
 // (mesh-layer-builder.ts) cuts the layers, and the result is packed as a `.mavatar` that blinks and talks
 // with mesh-avatar's own eyelids and mouth. Generating returns a draft and stores nothing; saving checks
 // the archive with the 2D importer (formats/mavatar.ts) like any import and stores it through
-// services/avatars/storage.ts. No Python, OpenCV or GPU. Every prompt is logged with logDebugOverride
-// (debugMode / DEBUG_AGENTS).
+// services/avatars/storage.ts. No Python, OpenCV or GPU. The layers are cut from the sprite's cut-out
+// (services/avatars/cutouts.ts), so the avatar has no background. Every prompt is logged with
+// logDebugOverride (debugMode / DEBUG_AGENTS).
 import {
   AVATAR_PROMPT_TEMPLATE_IDS,
   AvatarImportError,
@@ -49,7 +50,7 @@ import {
   type MeshRig,
   type MeshRigLayout,
 } from "./mesh-rig-layout.js";
-import type { AvatarGenerationOptions } from "./pngtuber-variants.js";
+import { spriteCutout, type AvatarGenerationOptions } from "./pngtuber-variants.js";
 
 /** A built mesh avatar that is not stored yet. */
 export interface MeshRigDraft {
@@ -244,17 +245,21 @@ export async function generateMeshRig(
   options: AvatarGenerationOptions = {},
 ): Promise<MeshRigDraft> {
   assertMeshImporterReady();
-  return withAvatarGenerationJob(request.owner, "mesh-avatar", async () => {
+  const job = async (signal: AbortSignal) => {
     const debug = avatarGenerationDebug(request.debugMode);
     const [owner, agent] = await Promise.all([readAvatarOwnerInfo(db, request.owner), readAvatarAgentSettings(db)]);
-    const sprite = await readAvatarSourceSprite(request.owner.ownerId, request.sourceLabel);
+    const sprite = await spriteCutout(
+      request.owner,
+      await readAvatarSourceSprite(request.owner.ownerId, request.sourceLabel),
+    );
+    signal.throwIfAborted();
     let source = await meshSource(sprite);
     let layout = await requestMeshRigLayout({
       ...(await meshRigVisionProvider(db, request.connectionId, agent)),
       template: agent.template(AVATAR_PROMPT_TEMPLATE_IDS.meshRigLayout),
       owner,
       source,
-      signal: options.signal,
+      signal,
       debug,
     });
     // Very big eyes (a close-up, or a careless answer) are built from a smaller copy of the sprite.
@@ -267,7 +272,7 @@ export async function generateMeshRig(
     const rig = deriveMeshRig(layout, source.width, source.height);
     const files = new Map<string, Buffer>();
     try {
-      for (const [path, bytes] of (await buildMeshAvatarLayers(source, rig, options.signal)).files) {
+      for (const [path, bytes] of (await buildMeshAvatarLayers(source, rig, signal)).files) {
         files.set(path, bytes);
       }
     } catch (error) {
@@ -286,7 +291,8 @@ export async function generateMeshRig(
       preview: await layoutPreview(source, rig),
       warnings: extracted.warnings,
     };
-  });
+  };
+  return withAvatarGenerationJob(request.owner, "mesh-avatar", job, options.signal);
 }
 
 /** Stores a kept mesh avatar draft. The archive comes back from the browser, so it is checked by the

@@ -122,6 +122,7 @@ import {
   type CustomAgentContextSource,
   type CustomAgentContextSources,
   type ToolDefinition,
+  isChatProvider,
 } from "@marinara-engine/shared";
 import {
   createAgentFolderPackageFilename,
@@ -702,15 +703,7 @@ export function AgentEditor() {
     connectionIndexRef.current = {
       loaded: Array.isArray(connections),
       llmIds: new Set(
-        rows
-          .filter(
-            (connection) =>
-              connection.provider !== "image_generation" &&
-              connection.provider !== "video_generation" &&
-              connection.provider !== "audio" &&
-              connection.provider !== "decision",
-          )
-          .map((connection) => connection.id),
+        rows.filter((connection) => isChatProvider(connection.provider)).map((connection) => connection.id),
       ),
       imageIds: new Set(
         rows.filter((connection) => connection.provider === "image_generation").map((connection) => connection.id),
@@ -1359,22 +1352,11 @@ export function AgentEditor() {
     };
   }, [utilityAgentType]);
 
-  const llmConnections = allConnections.filter(
-    (conn) =>
-      conn.provider !== "image_generation" &&
-      conn.provider !== "video_generation" &&
-      conn.provider !== "audio" &&
-      conn.provider !== "decision",
-  );
+  const llmConnections = allConnections.filter((conn) => isChatProvider(conn.provider));
   const imageConnections = allConnections.filter((conn) => conn.provider === "image_generation");
 
   const defaultAgentConn = allConnections.find(
-    (c) =>
-      c.provider !== "image_generation" &&
-      c.provider !== "video_generation" &&
-      c.provider !== "audio" &&
-      c.provider !== "decision" &&
-      (c.defaultForAgents === true || c.defaultForAgents === "true"),
+    (c) => isChatProvider(c.provider) && (c.defaultForAgents === true || c.defaultForAgents === "true"),
   );
   // The sidecar can be the agents default without owning a connection row
   // (#5539); while available it takes precedence over a row default, matching

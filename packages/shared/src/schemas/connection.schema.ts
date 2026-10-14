@@ -32,6 +32,7 @@ export const apiProviderSchema = z.enum([
   "video_generation",
   "audio",
   "decision",
+  "tripo",
 ]);
 
 export const audioGenerationSourceSchema = z.enum(["openai", "elevenlabs", "pockettts", "xai"]);

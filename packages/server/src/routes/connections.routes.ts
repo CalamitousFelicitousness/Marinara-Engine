@@ -97,6 +97,7 @@ import {
   listAtlasCloudModelOptionFields,
 } from "../services/media/atlas-cloud-video-schema.js";
 import { fetchAtlasCloudModels } from "../services/media/atlas-cloud.js";
+import { tripoBalance } from "../services/avatars/generation/tripo-vrm.js";
 import {
   buildNanoGptVideoUrl,
   fetchNanoGptVideoModels,
@@ -642,6 +643,25 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const debugLog = (message: string, ...args: any[]) => logDebugOverride(requestDebug, message, ...args);
     const start = Date.now();
     try {
+      if (conn.provider === "tripo") {
+        // The key is checked by reading the account's credits, which costs nothing.
+        try {
+          const { balance } = await tripoBalance(app.db, conn.id, { debugMode: requestDebug });
+          return {
+            success: true,
+            message: `Connected. Your Tripo account has ${balance} credits.`,
+            latencyMs: Date.now() - start,
+            modelName: null,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            message: error instanceof Error ? error.message : "Couldn't reach Tripo.",
+            latencyMs: Date.now() - start,
+            modelName: null,
+          };
+        }
+      }
       if (conn.provider === "decision") {
         const resolved = await resolveDecisionConnection(conn, (id) => storage.getWithKey(id));
         if (!resolved.connection)
@@ -992,6 +1012,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     conn: NonNullable<Awaited<ReturnType<typeof storage.getWithKey>>>,
     reply: FastifyReply,
   ): Promise<{ models: Array<{ id: string; name: string }>; loras?: unknown[]; builtIn?: true } | FastifyReply> => {
+    if (conn.provider === "tripo") return { models: [], builtIn: true };
     if (conn.provider === "decision") {
       // Jev is only the default of the System One sources; a chat server needs the
       // model name the user entered.

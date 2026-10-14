@@ -84,14 +84,15 @@ assert.equal(
   resolveAvatarImage(owner, saved, [], { source: "file", path: "pngtuber/a.png" }),
   "/api/avatar-models/character/c/files/pngtuber/a.png?v=2026-10-13T12%3A00%3A00.000Z",
 );
+// A sprite face is shown as the server's cut-out of that sprite (no background).
 assert.equal(
   resolveAvatarImage(owner, saved, [sprite("full_happy"), sprite("happy")], { source: "sprite", label: "happy" }),
-  "/api/sprites/c/file/happy.png",
+  "/api/avatar-models/character/c/sprite-cutouts/happy",
   "the portrait wins over the full-body sprite with the same face",
 );
 assert.equal(
   resolveAvatarImage(owner, saved, [sprite("full_happy")], { source: "sprite", label: "happy" }),
-  "/api/sprites/c/file/full_happy.png",
+  "/api/avatar-models/character/c/sprite-cutouts/full_happy",
   "a full-body face resolves when there is no portrait",
 );
 assert.equal(resolveAvatarImage(owner, saved, [sprite("happy")], { source: "sprite", label: "gone" }), null);

@@ -56,6 +56,7 @@ import {
   type ConnectionFolder,
   type SidecarSpeechModelId,
   type SidecarSpeechRuntimeDiagnostics,
+  isChatProvider,
 } from "@marinara-engine/shared";
 import { confirmNonEmptyFolderDelete, showConfirmDialog } from "../../lib/app-dialogs";
 import {
@@ -82,6 +83,7 @@ import {
   ImageIcon,
   Film,
   Music,
+  Box,
   Mic,
   Loader2,
   HardDriveDownload,
@@ -137,6 +139,7 @@ const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; 
   video_generation: CONNECTION_ICON_COLORS,
   audio: CONNECTION_ICON_COLORS,
   decision: CONNECTION_ICON_COLORS,
+  tripo: CONNECTION_ICON_COLORS,
 };
 const DEFAULT_COLOR = CONNECTION_ICON_COLORS;
 
@@ -144,6 +147,7 @@ function getConnectionFallbackIcon(provider: string) {
   if (provider === "image_generation") return <ImageIcon size="1rem" />;
   if (provider === "video_generation") return <Film size="1rem" />;
   if (provider === "audio") return <Music size="1rem" />;
+  if (provider === "tripo") return <Box size="1rem" />;
   return <Link size="1rem" />;
 }
 
@@ -1040,14 +1044,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const languageConnections = useMemo(
-    () =>
-      connectionsList.filter(
-        (connection) =>
-          connection.provider !== "image_generation" &&
-          connection.provider !== "video_generation" &&
-          connection.provider !== "audio" &&
-          connection.provider !== "decision",
-      ),
+    () => connectionsList.filter((connection) => isChatProvider(connection.provider)),
     [connectionsList],
   );
   const imageConnections = useMemo(
@@ -1391,7 +1388,7 @@ function ConnectionRow({
             ...(isLanguageGenerationConnection(conn) ? {} : { unsupported: "connection-kind" as const }),
           }}
         />
-        {conn.provider !== "audio" && conn.provider !== "decision" && (
+        {conn.provider !== "audio" && conn.provider !== "decision" && conn.provider !== "tripo" && (
           <button
             onClick={(e) => {
               e.stopPropagation();

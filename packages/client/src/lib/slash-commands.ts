@@ -18,6 +18,7 @@ import {
   normalizeTextForMatch,
   parseDiceNotation,
   rollParsedDice,
+  type MessageReply,
   type ParsedDiceNotation,
 } from "@marinara-engine/shared";
 
@@ -92,6 +93,39 @@ export interface SlashCommandContext {
   availableCapabilityIds?: ReadonlySet<string>;
   /** Installed Conversation games that contribute manual slash launchers. */
   conversationGames?: readonly ConversationGameSlashContribution[];
+}
+
+/**
+ * A typed command runs after the composer is cleared. The user message it posts (/send) takes the
+ * composer's attachments and reply target with it, as Send does. Other messages are unchanged.
+ */
+export function withComposerReplyAndAttachments(
+  ctx: SlashCommandContext,
+  composer: {
+    replyTo?: MessageReply | null;
+    attachments: ReadonlyArray<{ type: string; data: string; name: string }>;
+  },
+): SlashCommandContext {
+  const { replyTo } = composer;
+  const attachments = composer.attachments.map(({ type, data, name }) => ({ type, data, filename: name, name }));
+  return {
+    ...ctx,
+    createMessage: async (data) => {
+      if (data.role !== "user") return ctx.createMessage(data);
+      if (replyTo) useChatStore.getState().setReplyDraft(ctx.chatId, null);
+      try {
+        await ctx.createMessage({
+          ...data,
+          extra: { ...data.extra, ...(replyTo ? { replyTo } : {}), ...(attachments.length ? { attachments } : {}) },
+        });
+      } catch (error) {
+        if (replyTo && !useChatStore.getState().replyDrafts.has(ctx.chatId)) {
+          useChatStore.getState().setReplyDraft(ctx.chatId, replyTo);
+        }
+        throw error;
+      }
+    },
+  };
 }
 
 export interface ConversationGameSlashContribution {

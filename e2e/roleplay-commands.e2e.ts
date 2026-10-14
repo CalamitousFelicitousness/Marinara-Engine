@@ -130,6 +130,59 @@ for (const mode of ["roleplay", "conversation"] as const) {
       await request.delete(`/api/characters/personas/${persona.id}`);
     }
   });
+
+  test(`/send posts the composer's attachment and reply like Send in ${mode}`, async ({ page, request }) => {
+    const response = await request.post("/api/chats", { data: { name: "Send attachments", mode } });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const chat = (await response.json()) as { id: string };
+    const replied = await (
+      await request.post(`/api/chats/${chat.id}/messages`, { data: { role: "assistant", content: "Bring the map." } })
+    ).json();
+    try {
+      await openChat(page, chat.id, {
+        chatHelpSeenModes: ["roleplay", "conversation"],
+        enterToSendRP: true,
+        enterToSendConvo: true,
+      });
+      const input = page.locator(".chat-input-container");
+      // Only Conversation offers Reply; Roleplay has no reply target to keep.
+      const reply = { messageId: replied.id as string, name: "Mira", content: "Bring the map." };
+      if (mode === "conversation") {
+        await page.evaluate(
+          async ({ chatId, reply }) => {
+            const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+            useChatStore.getState().setReplyDraft(chatId, reply);
+          },
+          { chatId: chat.id, reply },
+        );
+        await expect(input.getByRole("button", { name: "Cancel reply", exact: true })).toBeVisible();
+      }
+      await input.locator('input[type="file"]').setInputFiles({
+        name: "map-note.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("North gate."),
+      });
+      await expect(input.getByText("map-note.txt", { exact: true })).toBeVisible();
+      const composer = page.locator("textarea[data-chat-composer]");
+      await composer.fill("/send Here it is.");
+      await composer.press("Enter");
+      const posted = async () =>
+        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as any[]).filter(
+          (message) => message.role === "user",
+        );
+      await expect.poll(async () => (await posted()).length).toBe(1);
+      const [message] = await posted();
+      expect(message.content).toBe("Here it is.");
+      expect(extra(message.extra).attachments).toEqual([
+        expect.objectContaining({ type: "text/plain", name: "map-note.txt" }),
+      ]);
+      if (mode === "conversation") expect(extra(message.extra).replyTo).toEqual(reply);
+      await expect(input.getByText("map-note.txt", { exact: true })).toHaveCount(0);
+      await expect(input.getByRole("button", { name: "Cancel reply", exact: true })).toHaveCount(0);
+    } finally {
+      await request.delete(`/api/chats/${chat.id}`);
+    }
+  });
 }
 
 test("Roleplay interruptions trim the latest message and restore its original safely", async ({

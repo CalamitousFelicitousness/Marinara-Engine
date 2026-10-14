@@ -56,6 +56,9 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
    *  after soak, a summed fight's damage. A spending blow throws its maker's number and is never
    *  raised to it. */
   floor?: number;
+  /** The first amount's own dice at or below this are thrown again once, the new face standing: a
+   *  weapon wielded two-handed by a fighter whose sheet gives it (1.98, 5e's Great Weapon Fighting). */
+  reroll?: number;
 }
 
 /** A condition a hit or a failed save puts on its target. */
@@ -506,6 +509,9 @@ export interface RulesetCombatant {
   defeated: boolean;
   /** Read from the sheet or the block once, when the fight began. */
   defense: number;
+  /** The lowest natural attack face that is a critical for this fighter, read off their sheet
+   *  (`attackRoll.criticalFrom`, 1.81). The die's highest face when absent. */
+  criticalFrom?: number;
   saves: Record<string, number>;
   /** What this combatant adds in a contest, by check id. Present only when the ruleset has checks. */
   checks?: Record<string, number>;

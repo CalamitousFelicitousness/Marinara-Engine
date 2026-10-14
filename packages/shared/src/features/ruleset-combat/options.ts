@@ -749,13 +749,15 @@ export function rulesetHitChance(
   mode: RulesetCombatRollMode = "normal",
   /** What the attacker's conditions add on top of the dice, rolled once whichever throw is kept. */
   bonus?: RulesetBonusDice,
+  /** The lowest natural face that is a critical for this attacker (1.81), which always lands. */
+  criticalFrom?: number,
 ): number | null {
   if (bonus && (bonus.flat !== 0 || bonus.dice.length > 0)) {
     const shares = bonusDistribution(bonus);
     if (!shares) return null;
     let chance = 0;
     for (const [amount, share] of shares) {
-      const one = rulesetHitChance(combat, toHit + amount, defense, mode);
+      const one = rulesetHitChance(combat, toHit + amount, defense, mode, undefined, criticalFrom);
       if (one === null) return null;
       chance += share * one;
     }
@@ -767,8 +769,10 @@ export function rulesetHitChance(
   let single: number | null = null;
   if (dice.count === 1) {
     let hits = 0;
+    const landsFrom =
+      naturals.max === "critical" ? Math.max(2, Math.min(dice.sides, criticalFrom ?? dice.sides)) : dice.sides;
     for (let facing = 1; facing <= dice.sides; facing++) {
-      if (facing === dice.sides && naturals.max !== "none") hits += 1;
+      if (facing >= landsFrom && naturals.max !== "none") hits += 1;
       else if (facing === 1 && naturals.min === "miss") continue;
       else if (facing + toHit >= defense) hits += 1;
     }
@@ -965,7 +969,7 @@ function forecastFor(
           mode,
           action.target,
         )
-      : rulesetHitChance(combat, action.toHit, defense, mode, bonus);
+      : rulesetHitChance(combat, action.toHit, defense, mode, bonus, actor.criticalFrom);
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }
   // The whole blow, clauses and all. A clause with a save of its own is counted in full: a forecast

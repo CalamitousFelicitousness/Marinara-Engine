@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { seedUIState } from "./ui-state-fixture.js";
 
 // #7537 (base lane): a character with expression sprites already has a PNGTuber avatar in a Roleplay chat
@@ -73,6 +74,12 @@ async function preparePage(page: Page, characterId: string, ui: Record<string, u
         filename: `${expression}.png`,
         url: "/sprites/avatar-demo/base.png",
       })),
+    }),
+  );
+  // The avatar shows each sprite face as the server's cut-out of it; the demo picture stands in.
+  await page.route(`**/api/avatar-models/character/${characterId}/sprite-cutouts/*`, (route) =>
+    route.fulfill({
+      path: fileURLToPath(new URL("../packages/client/public/sprites/avatar-demo/base.png", import.meta.url)),
     }),
   );
   await seedUIState(page, {

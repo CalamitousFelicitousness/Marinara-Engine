@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { boardCellArt, boardSliceStyle, useBoardArt } from "../../lib/board-art";
 import { audioManager } from "../../lib/game-audio";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";

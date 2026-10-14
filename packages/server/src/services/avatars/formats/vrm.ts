@@ -140,6 +140,8 @@ export type ValidatedVrmFile =
       specVersion: VrmAvatarData["specVersion"];
       expressionNames: string[];
       presetNames: ReadonlySet<string>;
+      /** Expressions that bind nothing, so showing them changes nothing. */
+      inertNames: ReadonlySet<string>;
       meta: VrmModelMeta;
       warnings: string[];
     }
@@ -372,15 +374,20 @@ interface ExpressionNames {
   /** Every distinct usable name seen, so duplicates cost O(1) however many entries a file holds. */
   seen: Set<string>;
   presets: Set<string>;
+  inert: Set<string>;
   skippedLongNames: boolean;
   tooMany: boolean;
 }
 
 function emptyExpressionNames(): ExpressionNames {
-  return { names: [], seen: new Set(), presets: new Set(), skippedLongNames: false, tooMany: false };
+  return { names: [], seen: new Set(), presets: new Set(), inert: new Set(), skippedLongNames: false, tooMany: false };
 }
 
-function addExpressionName(result: ExpressionNames, name: string, preset: boolean): void {
+function hasEntries(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function addExpressionName(result: ExpressionNames, name: string, preset: boolean, inert: boolean): void {
   if (name.length > MAX_EXPRESSION_NAME_LENGTH) {
     result.skippedLongNames = true;
     return;
@@ -389,11 +396,26 @@ function addExpressionName(result: ExpressionNames, name: string, preset: boolea
   result.seen.add(name);
   // A preset still binds past the cap: the model has it even when the list cannot show it.
   if (preset) result.presets.add(name);
+  // Exporters often write every preset whether or not it was set up (the VRM add-on for Blender does for a
+  // VRM 0.x export of a VRM 1.0 model); such an expression moves no shape or material.
+  if (inert) result.inert.add(name);
   if (result.names.length >= MAX_EXPRESSION_NAMES) {
     result.tooMany = true;
     return;
   }
   result.names.push(name);
+}
+
+/** A VRM 1.0 expression with no morph target, material colour or texture binds. */
+function isInertVrm1Expression(definition: unknown): boolean {
+  return (
+    !isRecord(definition) ||
+    !(
+      hasEntries(definition.morphTargetBinds) ||
+      hasEntries(definition.materialColorBinds) ||
+      hasEntries(definition.textureTransformBinds)
+    )
+  );
 }
 
 /** The names three-vrm registers for a VRM 1.0 model: known presets, then customs that are not presets. */
@@ -402,7 +424,9 @@ function vrm1ExpressionNames(expressions: unknown): ExpressionNames {
   if (!isRecord(expressions)) return result;
   if (isRecord(expressions.preset)) {
     for (const [name, definition] of Object.entries(expressions.preset)) {
-      if (definition != null && VRM1_PRESET_NAMES.has(name)) addExpressionName(result, name, true);
+      if (definition != null && VRM1_PRESET_NAMES.has(name)) {
+        addExpressionName(result, name, true, isInertVrm1Expression(definition));
+      }
     }
   }
   if (isRecord(expressions.custom)) {
@@ -410,7 +434,7 @@ function vrm1ExpressionNames(expressions: unknown): ExpressionNames {
       if (VRM1_PRESET_NAMES.has(name)) continue;
       // three-vrm reads every custom definition and fails on one that is not an object.
       if (!isRecord(definition)) throw new AvatarImportError("invalid-file", DAMAGED);
-      if (name) addExpressionName(result, name, false);
+      if (name) addExpressionName(result, name, false, isInertVrm1Expression(definition));
     }
   }
   return result;
@@ -426,25 +450,32 @@ function vrm0ExpressionNames(blendShapeMaster: unknown): ExpressionNames {
     if (!isRecord(group)) throw new AvatarImportError("invalid-file", DAMAGED);
     const preset = typeof group.presetName === "string" ? VRM0_PRESET_NAMES.get(group.presetName) : undefined;
     const name = preset ?? (typeof group.name === "string" ? group.name : "");
-    if (name) addExpressionName(result, name, preset !== undefined);
+    const inert = !hasEntries(group.binds) && !hasEntries(group.materialValues);
+    if (name) addExpressionName(result, name, preset !== undefined, inert);
   }
   return result;
 }
 
 /** Binds each slot to the model's own preset, else to a custom name that clearly means it, else to a
- *  custom name whose words carry the emotion; a slot with none of these is `missing`. */
-export function bindVrmExpressions(names: readonly string[], presets: ReadonlySet<string>): AvatarExpressionMap {
+ *  custom name whose words carry the emotion; a slot with none of these is `missing`. An inert expression
+ *  never binds, except as the resting face: neutral is the model at rest. */
+export function bindVrmExpressions(
+  names: readonly string[],
+  presets: ReadonlySet<string>,
+  inert: ReadonlySet<string> = new Set(),
+): AvatarExpressionMap {
   const map: AvatarExpressionMap = {};
   const emotions: readonly string[] = AVATAR_EMOTIONS;
   for (const slot of AVATAR_EXPRESSION_SLOTS) {
     let best: AvatarExpressionBinding = { target: null, source: "missing", confidence: 0 };
-    if (presets.has(slot)) {
+    const usable = (name: string) => slot === "neutral" || !inert.has(name);
+    if (presets.has(slot) && usable(slot)) {
       map[slot] = { target: slot, source: "preset", confidence: 1 };
       continue;
     }
     const aliases = SLOT_ALIAS_TOKENS.get(slot);
     for (const name of names) {
-      if (presets.has(name)) continue;
+      if (presets.has(name) || !usable(name)) continue;
       const token = normalizeSpriteLookupToken(name);
       let confidence = aliases?.has(token) ? NAME_MATCH_CONFIDENCE : 0;
       if (!confidence && emotions.includes(slot)) {
@@ -505,6 +536,7 @@ function inspectModel(json: JsonRecord): ValidatedVrmFile | null {
     specVersion,
     expressionNames: expressions.names,
     presetNames: expressions.presets,
+    inertNames: expressions.inert,
     meta,
     warnings,
   };
@@ -544,8 +576,15 @@ export function buildVrmImport(
       warnings: [],
     };
   }
-  const expressionMap = bindVrmExpressions(validated.expressionNames, validated.presetNames);
+  const expressionMap = bindVrmExpressions(validated.expressionNames, validated.presetNames, validated.inertNames);
   const warnings = [...validated.warnings];
+  if (
+    AVATAR_EXPRESSION_SLOTS.some(
+      (slot) => slot !== "neutral" && validated.presetNames.has(slot) && validated.inertNames.has(slot),
+    )
+  ) {
+    warnings.push("Some of this model's expressions are empty and change nothing, so they weren't used.");
+  }
   if ((["happy", "angry", "sad", "surprised", "aa"] as const).some((slot) => !expressionMap[slot]?.target)) {
     warnings.push("Some faces or mouth shapes have no matching expression. You can pick them in setup.");
   }

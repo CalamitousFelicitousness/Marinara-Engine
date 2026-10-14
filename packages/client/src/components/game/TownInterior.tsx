@@ -165,7 +165,7 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
             onClick={() => setSelected(selected === person.id ? null : person.id)}
             className={cn(
               "absolute rounded-sm outline-none hover:ring-2 hover:ring-white/50 focus-visible:ring-2 focus-visible:ring-white",
-              selected === person.id && "ring-2 ring-amber-300",
+              selected === person.id && "ring-2 ring-[var(--primary)]",
             )}
             style={{ left: origin.x + at.x * cell, top: origin.y + at.y * cell, width: cell, height: cell }}
             aria-label={personLabel(person)}

@@ -124,11 +124,22 @@ try {
   const worker = town.people.find((person) => town.workOf[person.id])!;
   assert.ok(worker, "someone works in the city");
   assert.equal(worldTownWhere(town, worker.id, 10), town.workOf[worker.id], "at work by day");
-  // At dusk in the square, at a tavern or home (worldgen W13 split the evening).
-  const taverns = town.buildings.filter((building) => building.use === "tavern").map((building) => building.id);
+  // At dusk a third of the town is in the square, a third at the first tavern and a third at home, each
+  // person always the same third (worldgen W13 split the evening); a tavern's own staff are at work.
+  const taverns = town.buildings
+    .filter((building) => building.kind !== "home" && building.use === "tavern")
+    .map((building) => building.id);
+  const third = (id: string) => [...id].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 3;
+  const evening = town.people.filter((person) => !taverns.includes(town.workOf[person.id] ?? ""));
+  for (const person of evening) {
+    const home = town.homeOf[person.id];
+    const expected =
+      third(person.id) === 1 && taverns[0] ? taverns[0] : third(person.id) === 2 && home ? home : "square";
+    assert.equal(worldTownWhere(town, person.id, 19), expected, `${person.id} at dusk`);
+  }
   assert.ok(
-    ["square", town.homeOf[worker.id], ...taverns].includes(worldTownWhere(town, worker.id, 19)),
-    "in the square, home or at a tavern at dusk",
+    evening.some((person) => worldTownWhere(town, person.id, 19) === "square"),
+    "someone is in the square at dusk",
   );
   assert.equal(worldTownWhere(town, worker.id, 23), town.homeOf[worker.id], "home at night");
   const known = game.kit.people?.roles.find((role) => role.tags?.some((tag) => city.tags.includes(tag)));

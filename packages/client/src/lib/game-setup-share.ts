@@ -313,7 +313,7 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     throw new Error("This file has an invalid Spatial Map Grounding Mode value.");
   }
   if (value.gameStyle !== undefined && value.gameStyle !== "classic" && value.gameStyle !== "overworld") {
-    throw new Error("This file has an invalid Game Mode style.");
+    throw new Error(translate("ui.game.gamesetupshare.invalidGameStyle"));
   }
   if (
     value.spotifySourceType !== undefined &&

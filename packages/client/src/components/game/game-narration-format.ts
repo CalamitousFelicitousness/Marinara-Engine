@@ -127,8 +127,8 @@ export function formatNarration(content: string, boldDialogue = true): string {
       // A reveal opens a closed place to the party, not a map.
       const reveal = /^\s*reveal\b/iu.test(rawAttrs) || attrs.action === "reveal";
       return commandBadge(
-        "bg-stone-500/15 text-stone-200 ring-1 ring-stone-400/20",
-        reveal ? translate("game.narration.siteOpened") : "▦ Map",
+        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        reveal ? translate("game.narration.siteOpened") : `▦ ${translate("game.narration.placeMap")}`,
         attrs.name || rawAttrs.trim(),
       );
     })

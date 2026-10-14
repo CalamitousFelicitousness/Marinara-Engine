@@ -47,6 +47,7 @@ import {
   rulesetConditionEconomy,
   rulesetIsAttack,
   rulesetOnOwnTurn,
+  rulesetCombatHurt,
   refreshRulesetMovement,
   rulesetCombatant,
   rulesetCopyDispersed,
@@ -7718,10 +7719,14 @@ function firingRider(
   action: RulesetCombatAction,
   target: RulesetCombatant,
   mode: RulesetCombatRollMode,
+  /** Whether the target was hurt before this blow landed (1.343). */
+  hurt: boolean,
 ): RulesetCombatRider | null {
   const spent = actor.ridersSpent ?? [];
   for (const rider of actor.riders ?? []) {
     if (rider.on !== "hit" || spent.includes(rider.id)) continue;
+    // Once on each of its holder's own turns (1.343), and never on anybody else's.
+    if (rider.oncePer === "own-turn" && !rulesetOnOwnTurn(ctx.state, actor)) continue;
     if (rider.actions && !rider.actions.includes(action.id)) continue;
     // Any-of: one of the things it asked for being true is enough.
     if (
@@ -7729,7 +7734,9 @@ function firingRider(
       !rider.when.some((when) =>
         when === "advantage"
           ? mode === "advantage"
-          : allyAdjacent(ctx, actor, target) && (when !== "ally-adjacent-no-disadvantage" || mode !== "disadvantage"),
+          : when === "target-hurt"
+            ? hurt
+            : allyAdjacent(ctx, actor, target) && (when !== "ally-adjacent-no-disadvantage" || mode !== "disadvantage"),
       )
     ) {
       continue;
@@ -9070,6 +9077,8 @@ function resolveActionBody(
     // Keep the old path unchanged unless this hit actually has damage modifiers. A modified blow
     // collects its amounts so additions happen once and times changes the whole hit before hide.
     const land = (part: RulesetDamageInput) => (modifiers.length ? parts.push(part) : landNow(part));
+    // Whether it was hurt as the blow came (1.343), before any of the blow lands: Colossus Slayer.
+    const hurtBefore = rulesetCombatHurt(ctx.definition, ctx.combat, target);
     if (pooled && action.damage && spends && target.hardness !== undefined && spends.number < target.hardness) {
       // A number below the target's hardness lands and does nothing: the maker's number still goes
       // back to the base, as it does for any spending blow that landed.
@@ -9204,7 +9213,7 @@ function resolveActionBody(
     // And whatever adds itself to a hit without anybody choosing it: one more clause of this blow,
     // doubled by a critical exactly as the rest of it is. Only a blow that DEALS something can carry
     // one, because a rider is extra damage on a hit and an action with none never struck for any.
-    const rider = action.damage && !spends ? firingRider(ctx, actor, action, target, mode) : null;
+    const rider = action.damage && !spends ? firingRider(ctx, actor, action, target, mode, hurtBefore) : null;
     if (rider) {
       ctx.events.push({ type: "rider", actorId: actor.id, targetId: target.id, riderId: rider.id, label: rider.label });
       const type = rider.type ?? action.damage?.type;

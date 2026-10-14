@@ -300,8 +300,9 @@ export interface RulesetCombatRider {
   actions?: string[];
   /** Any-of: one of them being true is enough. "ally-adjacent-no-disadvantage" (Capability API
    *  1.126) also needs the roll's final mode not to be disadvantage. */
-  when?: Array<"advantage" | "ally-adjacent" | "ally-adjacent-no-disadvantage">;
-  oncePer: "turn" | "round";
+  when?: Array<"advantage" | "ally-adjacent" | "ally-adjacent-no-disadvantage" | "target-hurt">;
+  /** "own-turn" (1.343): only on its holder's own turn, once in it. */
+  oncePer: "turn" | "round" | "own-turn";
   amount: RulesetCombatAmount;
   type?: string;
 }
@@ -1948,8 +1949,9 @@ export interface RulesetCheckModeRule {
 }
 
 /** A creature's own attack rolls rolled twice (1.293), only where it says, as a mode on its checks
- *  holds: 5e's Sunlight Sensitivity (seeing, in sunlight). */
-export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills">;
+ *  holds: 5e's Sunlight Sensitivity (seeing, in sunlight). `allyAdjacent` and `targetHurt` (1.343)
+ *  read the target as well: Pack Tactics, Blood Frenzy. */
+export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills"> & { allyAdjacent?: true; targetHurt?: true };
 
 /**
  * A thing standing on the board that may be broken (Capability API 1.316): a jar, a lantern, a

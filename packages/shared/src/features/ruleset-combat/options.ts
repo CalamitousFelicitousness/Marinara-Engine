@@ -61,6 +61,8 @@ import {
   rulesetDamageMinimum,
   rulesetCombatEffects,
   rulesetCombatStanding,
+  rulesetAllyBeside,
+  rulesetCombatHurt,
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
   rulesetCheckMode,
@@ -2752,7 +2754,11 @@ export function rulesetAttackMode(
   for (const entry of against) if (entry.mode) leans.add(entry.mode);
   // A creature's own (1.293): sensitivity to sunlight, where it holds.
   for (const rule of actor.block?.attackModes ?? []) {
-    if (rulesetModeRuleHolds(definition, combat, actor, where?.state, rule)) leans.add(rule.mode);
+    if (!rulesetModeRuleHolds(definition, combat, actor, where?.state, rule)) continue;
+    // Pack Tactics and Blood Frenzy (1.343): who stands beside the target, and how hurt it is.
+    if (rule.allyAdjacent && !rulesetAllyBeside(definition, combat, where?.state, actor, target)) continue;
+    if (rule.targetHurt && !rulesetCombatHurt(definition, combat, target)) continue;
+    leans.add(rule.mode);
   }
   // Another weapon's mark still standing (1.192): an oathbow's disadvantage with every other weapon
   // while its sworn enemy lives.

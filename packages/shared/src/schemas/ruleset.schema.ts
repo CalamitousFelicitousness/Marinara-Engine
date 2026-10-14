@@ -3783,16 +3783,20 @@ function linkedApplies(list: RulesetCatalogApplies[], ctx: z.RefinementCtx): voi
  *  `when` is any-of: one of the listed things being true is enough. "advantage" is how the attack
  *  roll finally leaned, and "ally-adjacent" is a standing ally of the attacker who can act, within
  *  one cell of the target on a board and anywhere at all without one. "ally-adjacent-no-disadvantage"
- *  (Capability API 1.126) also needs the roll's final mode not to be disadvantage. */
+ *  (Capability API 1.126) also needs the roll's final mode not to be disadvantage. "target-hurt"
+ *  (Capability API 1.343) is a target below its most health: Colossus Slayer.
+ *
+ *  `oncePer` "own-turn" (Capability API 1.343) fires only on its holder's own turn, once in it:
+ *  "once on each of your turns" (Divine Strike), never on an opportunity attack between. */
 const riderCoreShape = {
   /** The one moment a rider fires. More of them arrive with the slice that builds windows. */
   on: z.literal("hit"),
   when: z
-    .array(z.enum(["advantage", "ally-adjacent", "ally-adjacent-no-disadvantage"]))
+    .array(z.enum(["advantage", "ally-adjacent", "ally-adjacent-no-disadvantage", "target-hurt"]))
     .min(1)
-    .max(3)
+    .max(4)
     .optional(),
-  oncePer: z.enum(["turn", "round"]),
+  oncePer: z.enum(["turn", "round", "own-turn"]),
   // Marked so the published JSON Schema can find it by name rather than by guessing from its keys,
   // which would also match every other pair of dice and flat in the file.
   amount: z.object(catalogAmountShape).strict().describe("rider-amount"),
@@ -6065,7 +6069,10 @@ const creatureFields = {
    *  comes back when it ends: a will-o'-wisp invisible, its light with it. */
   lightOutWhile: z.array(sheetId).min(1).max(8).optional(),
   /** Its own attack rolls rolled twice (Capability API 1.293), where it says, as `checkModes` hold:
-   *  5e's Sunlight Sensitivity `{ "mode": "disadvantage", "sight": true, "light": ["sunlight"] }`. */
+   *  5e's Sunlight Sensitivity `{ "mode": "disadvantage", "sight": true, "light": ["sunlight"] }`.
+   *  `allyAdjacent` (Capability API 1.343): only while one of its allies who can act stands beside
+   *  the target, Pack Tactics. `targetHurt` (1.343): only at a target below its most health, Blood
+   *  Frenzy. Everything it names must hold. */
   attackModes: z
     .array(
       z
@@ -6078,10 +6085,12 @@ const creatureFields = {
             .max(4)
             .optional(),
           terrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
+          allyAdjacent: z.literal(true).optional(),
+          targetHurt: z.literal(true).optional(),
         })
         .strict()
-        .refine((rule) => rule.sight || rule.light || rule.terrain, {
-          message: "A mode on attacks says where it holds: sight, light or terrain",
+        .refine((rule) => rule.sight || rule.light || rule.terrain || rule.allyAdjacent || rule.targetHurt, {
+          message: "A mode on attacks says where it holds: sight, light, terrain, allyAdjacent or targetHurt",
         }),
     )
     .min(1)

@@ -1179,6 +1179,37 @@ export function rulesetCombatStanding(combatant: RulesetCombatant): boolean {
   return !combatant.defeated && !combatant.down;
 }
 
+/** Below its most health (1.343): Colossus Slayer's "below its hit point maximum", Blood Frenzy's
+ *  "doesn't have all its hit points". */
+export function rulesetCombatHurt(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+): boolean {
+  const health = rulesetCombatHealth(definition, combat, combatant);
+  return health.value < health.max;
+}
+
+/** Whether an ally of `actor` who can act stands beside `target` (1.343): Pack Tactics. Without a
+ *  board there is no distance to read, so any ally still on their feet is beside them. */
+export function rulesetAllyBeside(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState | undefined,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+): boolean {
+  if (!state) return false;
+  const positioned = !!state.board?.grid && !!rulesetPositionOf(target);
+  return state.combatants.some((combatant) => {
+    if (combatant.id === actor.id || combatant.id === target.id || combatant.side !== actor.side) return false;
+    if (!rulesetCombatStanding(combatant)) return false;
+    if (rulesetCombatEffects(definition, combat, combatant, state).has("cannot-act")) return false;
+    if (!positioned) return true;
+    return !!rulesetPositionOf(combatant) && rulesetGap(combatant, target) <= 1;
+  });
+}
+
 // ── Building what a combatant can do ──
 
 const ABILITY_COLUMN_MISS = 0;

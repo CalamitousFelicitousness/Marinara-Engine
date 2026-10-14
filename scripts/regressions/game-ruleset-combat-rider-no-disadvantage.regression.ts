@@ -80,7 +80,7 @@ try {
     const definition = parsedOrThrow(document(kind, all));
     const carried = definition.catalogs!.find((catalog) => catalog.id === "sneak")!.entries![0]!;
     assert.deepEqual(kind === "catalog" ? carried.mechanics!.rider!.when : carried.creature!.riders![0]!.when, all);
-    for (const when of [[], ["adjacent"], [...all, word]]) {
+    for (const when of [[], ["adjacent"], [...all, "target-hurt", word]]) {
       const parsed = parseRulesetDefinition(document(kind, when));
       assert.equal(parsed.ok, false, `${kind}: invalid when ${JSON.stringify(when)} should be refused`);
       if (!parsed.ok) assert.match(parsed.issues.join("; "), /when/);
@@ -94,9 +94,9 @@ try {
     if (!node || typeof node !== "object") return;
     if (node.properties?.on?.const === "hit" && node.properties?.oncePer && node.properties?.when) {
       shapes++;
-      assert.deepEqual(node.properties.when.items.enum, ["advantage", "ally-adjacent", word]);
+      assert.deepEqual(node.properties.when.items.enum, ["advantage", "ally-adjacent", word, "target-hurt"]);
       assert.equal(node.properties.when.minItems, 1);
-      assert.equal(node.properties.when.maxItems, 3);
+      assert.equal(node.properties.when.maxItems, 4);
     }
     Object.values(node).forEach(walk);
   };

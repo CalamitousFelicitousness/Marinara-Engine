@@ -2114,6 +2114,18 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
+/** Attack gates on who stands beside and who is hurt (1.343): a creature's attack mode with
+ *  `allyAdjacent` or `targetHurt`, a rider `when` "target-hurt", or a rider once on its holder's own turn. */
+function carriesAttackGates343(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAttackGates343(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.allyAdjacent === true || record.targetHurt === true || record.oncePer === "own-turn") return true;
+  if (Array.isArray(record.when) && record.when.includes("target-hurt")) return true;
+  return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
+}
+
 /** A shape change (1.342): an entry or a creature's action offering `forms`, or a condition with a `shape`. */
 function carriesShapes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5147,6 +5159,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Pack Tactics, Blood Frenzy, Colossus Slayer, Divine Strike, 1.343.
+  if (
+    !declaresApi(343) &&
+    (carriesAttackGates343(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAttackGates343(document)))
+  ) {
+    return "A ruleset with a creature attack mode by an ally beside or a hurt target, a rider on a hurt target, or a rider once on its holder's own turn, requires schemaVersion 2 and capabilityApi 1.343 or newer";
   }
   // Shape changes, 1.342.
   if (

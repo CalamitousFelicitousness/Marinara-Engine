@@ -257,7 +257,7 @@
   "avatars.vrm.getModel.copied": "Prompt copied.",
   "avatars.vrm.getModel.copyFailed": "The prompt couldn't be copied.",
   "avatars.vrm.getModel.copyPrompt": "Copy prompt",
-  "avatars.vrm.getModel.description": "The guide shows how to make a VRM model for free, and the prompt describes this character for it.",
+  "avatars.vrm.getModel.description": "The guide shows how to make a VRM model for free, and the prompt describes their look so you can make a picture to work from.",
   "avatars.vrm.getModel.guide": "Read the guide",
   "avatars.vrm.getModel.title": "Get a 3D model",
   "avatars.vrm.idle.add": "Add animation",

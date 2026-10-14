@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import {
   AVATAR_PROMPT_TEMPLATE_IDS,
+  PNGTUBER_DEFAULT_MOTION,
   SPRITE_EXPRESSION_LABELS,
   avatarKindDataSchema,
   createAvatarConfig,
@@ -112,9 +113,6 @@ const MAX_LAYER_SETS = 64;
 const MOUTH_OPEN_SUFFIXES = ["mouth_open", "open_mouth", "talking", "talk", "speaking", "speak"];
 const EYES_CLOSED_SUFFIXES = ["eyes_closed", "closed_eyes", "eyes_shut", "blinking", "blink"];
 
-/** The 2D renderer's motion for a setup built from sprites. */
-const DEFAULT_PNGTUBER_MOTION = Object.freeze({ bounceOnTalk: true, bounceHeight: 0.06, blinkIntervalSeconds: 4.5 });
-
 /** The sprites a PNGTuber avatar uses: portraits when there are any, otherwise full-body ones, so its faces
  *  never mix the two framings (and `full_happy` never lands in the portrait `happy` slot). */
 export function pngtuberSpriteFamily(labels: readonly string[]): string[] {
@@ -170,7 +168,7 @@ export function spriteBuiltPngtuber(labels: readonly string[]): PngtuberAvatarDa
   return {
     layers: Object.fromEntries(keys.map((key) => [key, layers.get(key)!])),
     expressionMap: detectSpriteEmotionBindings(keys),
-    motion: { ...DEFAULT_PNGTUBER_MOTION },
+    motion: { ...PNGTUBER_DEFAULT_MOTION },
     source: "sprites",
   };
 }
@@ -239,7 +237,7 @@ export function mergePngtuberVariants(
   return {
     layers,
     expressionMap,
-    motion: current?.motion ?? { ...DEFAULT_PNGTUBER_MOTION },
+    motion: current?.motion ?? { ...PNGTUBER_DEFAULT_MOTION },
     source: current?.source === "pngtuber-plus" ? "pngtuber-plus" : "generated",
   };
 }

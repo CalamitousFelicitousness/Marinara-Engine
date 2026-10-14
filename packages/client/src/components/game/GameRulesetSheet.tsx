@@ -337,11 +337,15 @@ export function GameRulesetSheet({
     [definition, build, items, resolved],
   );
 
-  const hideLines = useMemo(
-    () => rulesetHideLines(definition, rulesetCheckSources(definition, build, live, items), localizeUi),
-    [definition, build, live, items, localizeUi],
+  const checkSources = useMemo(
+    () => rulesetCheckSources(definition, build, live, items),
+    [definition, build, live, items],
   );
-  const saveModifiers = rulesetCheckSources(definition, build, live, items).flatMap((source) =>
+  const hideLines = useMemo(
+    () => rulesetHideLines(definition, checkSources, localizeUi),
+    [definition, checkSources, localizeUi],
+  );
+  const saveModifiers = checkSources.flatMap((source) =>
     rulesetItemEffectFacts(definition, {
       modifiers: source.modifiers?.filter((one) => one.against),
       saves: source.saves ? [...source.saves] : undefined,
@@ -674,7 +678,7 @@ export function GameRulesetSheet({
             </div>
           )}
 
-          {rulesetCheckSources(definition, build, live, items).flatMap((source, index) => {
+          {checkSources.flatMap((source, index) => {
             const modifiers = source.modifiers?.filter((one) => one.to === "damage");
             return modifiers?.length ? (
               <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">

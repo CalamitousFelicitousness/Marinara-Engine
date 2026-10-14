@@ -15,6 +15,7 @@ import {
   AVATAR_EMOTIONS,
   AVATAR_IMPORT_EXTENSIONS,
   AvatarImportError,
+  PNGTUBER_DEFAULT_MOTION,
   mapSpriteExpressionToAvatarEmotion,
   type AvatarEmotionWeight,
   type AvatarExpressionMap,
@@ -45,12 +46,6 @@ const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/u;
 /** Talk and blink rules of one sprite: 0 always shows, 1 shows only when quiet / eyes open, 2 only when
  *  talking / blinking (spriteObject.gd talkBlink). */
 type ShowRule = 0 | 1 | 2;
-
-export const PNGTUBER_DEFAULT_MOTION = Object.freeze({
-  bounceOnTalk: true,
-  bounceHeight: 0.06,
-  blinkIntervalSeconds: 4.5,
-});
 
 interface PlusSprite {
   id: number;

@@ -777,6 +777,8 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
       "times" in change ? (change.times === 0.5 ? "half" : "double") : "value" in change ? change.value : "";
     return `${amount} damage ${fact.to === "damage-taken" ? "taken" : "dealt"} on attack hits${scope ? ` (${scope})` : ""}`;
   }
+  // The health maximum is only ever halved (the schema refuses anything else).
+  if (fact.to === "health-max") return "half health maximum";
   if ("times" in change) return change.times === 0.5 ? "half speed" : "double speed";
   if (fact.to === "defense" || fact.to === "speed") {
     return `${"value" in change ? change.value : ""} ${fact.to === "speed" ? "speed" : list || "defense"}`;

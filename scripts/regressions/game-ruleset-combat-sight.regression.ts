@@ -297,6 +297,28 @@ try {
     });
     who(blindsight, "a").tracked.push({ condition: "blinded", source: "mage" } as never);
     assert.equal(sees(blindsight, "a", "mage"), true, "blindsight works blind, within range");
+    // Off a board too, a blind viewer's blindsight finds only what its own sense pierces.
+    const offBlind = fight({
+      board: false,
+      mageLive: { conditions: ["invisible"] },
+      a: { senses: { blindsight: 10 }, conditionImmunities: [] },
+    });
+    who(offBlind, "a").tracked.push({ condition: "blinded", source: "mage" } as never);
+    assert.equal(sees(offBlind, "a", "mage"), true, "off a board, blindsight finds the invisible");
+    const truesightOnly: RulesetDefinition = {
+      ...definition,
+      combat: {
+        ...combat,
+        conditions: combat.conditions!.map((entry) =>
+          entry.condition === "invisible" ? { ...entry, unseen: { pierced: ["truesight"] } } : entry,
+        ),
+      },
+    };
+    assert.equal(
+      rulesetCanSee(truesightOnly, offBlind, who(offBlind, "a"), who(offBlind, "mage")),
+      false,
+      "off a board, a blind viewer does not see what only truesight pierces",
+    );
     const tooFar = fight({ placements: { a: { x: 10, y: 7 } }, a: { senses: { blindsight: 10, truesight: 120 } } });
     who(tooFar, "a").tracked.push({ condition: "blinded", source: "mage" } as never);
     assert.equal(sees(tooFar, "a", "mage"), false, "truesight needs eyes; blindsight does not reach");

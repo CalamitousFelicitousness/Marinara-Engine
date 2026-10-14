@@ -1,7 +1,8 @@
 // The 2D avatar renderers and setup panels in a real browser, before the base lane mounts them in chats:
 // the PNGTuber renderer swaps talk, blink and face pictures, crossfades and hops; mesh avatars draw through
 // one shared WebGL2 context, load under the server's Content-Security-Policy, reuse their pictures, and fall
-// back to the owner's sprites; both redraw when resized; the setup panels save what the user picks.
+// back to the owner's sprites; both redraw when resized; the setup panels save what the user picks, and the
+// VRM panel still reports a failed import after it closes.
 import { expect, test, type Page } from "@playwright/test";
 import { securityHeadersHook } from "../packages/server/src/middleware/security-headers.js";
 import { meshAvatarFiles, paintPng, solid, zipFiles } from "../scripts/regressions/fixtures/avatar-2d-fixtures.js";
@@ -136,7 +137,8 @@ async function serveWithServerCsp(page: Page) {
 }
 
 /** Mounts renderers of one kind on fresh canvases (100 x 200 CSS px unless `sizes` says, ratio 1) and keeps
- *  them on window. */
+ *  them on window. Like the stage, it hands them the owner's sprites as the PNGTuber setup until one is saved,
+ *  and resolves pictures from the sprite list it fetched. */
 async function mountRenderers(
   page: Page,
   module: string,
@@ -147,20 +149,32 @@ async function mountRenderers(
   sizes: [number, number][] = [],
 ) {
   await page.evaluate(
-    async ({ module, ownerId, kinds, count, reducedMotion, features, sizes }) => {
+    async ({ module, stageModule, layersModule, ownerId, kinds, count, reducedMotion, features, sizes }) => {
       const { createAvatarRenderer } = (await import(module)) as {
         createAvatarRenderer: () => PageAvatar["renderers"][number] & { mount(options: unknown): Promise<void> };
       };
-      const owner = { ownerType: "character", ownerId };
-      const config = {
-        version: 1,
-        owner,
-        enabled: true,
-        activeKind: null,
-        features,
-        kinds,
-        updatedAt: "2026-10-13T12:00:00.000Z",
+      const { resolveAvatarImage, withSpriteAvatar } = (await import(stageModule)) as {
+        resolveAvatarImage(owner: unknown, config: unknown, sprites: unknown, ref: unknown): string | null;
+        withSpriteAvatar(owner: unknown, config: unknown, fromSprites: unknown): unknown;
       };
+      const { buildPngtuberLayersFromSprites } = (await import(layersModule)) as {
+        buildPngtuberLayersFromSprites(sprites: unknown): unknown;
+      };
+      const owner = { ownerType: "character", ownerId };
+      const sprites = (await (await fetch(`/api/sprites/${ownerId}`)).json()) as unknown[];
+      const config = withSpriteAvatar(
+        owner,
+        {
+          version: 1,
+          owner,
+          enabled: true,
+          activeKind: null,
+          features,
+          kinds,
+          updatedAt: "2026-10-13T12:00:00.000Z",
+        },
+        buildPngtuberLayersFromSprites(sprites),
+      );
       const sizeOf = (index: number) => sizes[index] ?? [100, 200];
       const canvases = Array.from({ length: count }, (_, index) => {
         const canvas = document.createElement("canvas");
@@ -176,7 +190,7 @@ async function mountRenderers(
             owner,
             config,
             canvas: canvases[index],
-            resolveImage: () => null,
+            resolveImage: (ref: unknown) => resolveAvatarImage(owner, config, sprites, ref),
             reducedMotion,
             signal: new AbortController().signal,
           }),
@@ -185,7 +199,17 @@ async function mountRenderers(
       renderers.forEach((renderer, index) => renderer.resize(...sizeOf(index), 1));
       window.__avatar2d = { renderers, canvases };
     },
-    { module, ownerId, kinds, count, reducedMotion, features: FEATURES, sizes },
+    {
+      module,
+      stageModule: STAGE_LOGIC,
+      layersModule: PNGTUBER_LAYERS,
+      ownerId,
+      kinds,
+      count,
+      reducedMotion,
+      features: FEATURES,
+      sizes,
+    },
   );
 }
 
@@ -217,6 +241,8 @@ async function step(page: Page, frame: unknown, dtMs: number) {
 }
 
 const PNGTUBER_RENDERER = "/src/features/avatars/renderers/pngtuber/pngtuber-renderer.ts";
+const PNGTUBER_LAYERS = "/src/features/avatars/renderers/pngtuber/pngtuber-layers.ts";
+const STAGE_LOGIC = "/src/features/avatars/stage/avatar-stage-logic.ts";
 const MESH_RENDERER = "/src/features/avatars/renderers/mesh-avatar/mesh-avatar-renderer.ts";
 
 /** Until avatars are mounted in the app, Vite first meets mesh-avatar when a test imports the renderer:
@@ -446,7 +472,10 @@ async function mountPanel(page: Page, module: string, name: string, ownerId: str
       mount.style.cssText =
         "position:fixed;inset:0;z-index:99999;overflow:auto;background:var(--background);color:var(--foreground);padding:12px";
       document.body.append(mount);
-      ReactDOM.createRoot(mount).render(
+      const root = ReactDOM.createRoot(mount);
+      // Closes the panel the way switching owner or leaving the page does: React unmounts it.
+      mount.addEventListener("avatar-panel-close", () => root.unmount(), { once: true });
+      root.render(
         React.createElement(
           QueryClientProvider,
           { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
@@ -515,6 +544,36 @@ test("the PNGTuber setup saves the owner's sprites, a chosen face and an importe
   await expect(panel.getByRole("status")).toContainText("Animated layers show only their first frame.");
   expect(upload).toContain('name="kind"');
   expect(upload).toContain('filename="avatar.save"');
+});
+
+test("the VRM setup still reports a rejected import after the panel closes", async ({ page }) => {
+  let answer!: () => void;
+  const closed = new Promise<void>((resolve) => (answer = resolve));
+  let uploads = 0;
+  await page.route("**/api/avatar-models/character/e2e-vrm-panel/import", async (route) => {
+    uploads += 1;
+    await closed;
+    await route.fulfill({ status: 400, json: { error: "This file is not a VRM model." } });
+  });
+  await openApp(page);
+  await mountPanel(
+    page,
+    "/src/features/avatars/renderers/vrm/VrmSetupPanel.tsx",
+    "VrmSetupPanel",
+    "e2e-vrm-panel",
+    null,
+  );
+  const panel = page.locator("[data-avatar-panel]");
+  await panel.locator('input[type="file"]').setInputFiles({
+    name: "model.vrm",
+    mimeType: "model/gltf-binary",
+    buffer: Buffer.from("glTF"),
+  });
+  await expect.poll(() => uploads).toBe(1);
+  await panel.evaluate((mount) => mount.dispatchEvent(new Event("avatar-panel-close")));
+  await expect(panel.locator("button")).toHaveCount(0);
+  answer();
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "This file is not a VRM model." })).toBeVisible();
 });
 
 test("the mesh avatar setup imports a file and saves the look for a feeling", async ({ page }) => {

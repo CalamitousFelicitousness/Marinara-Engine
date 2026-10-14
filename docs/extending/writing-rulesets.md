@@ -595,7 +595,7 @@ A zone held at a point can move and change its ground (Capability API 1.173). `m
     "area": { "shape": "burst", "size": 5 },
     "amount": { "dice": "2d10" },
     "damageType": "radiant",
-    "save": { "ability": "con", "half": true },
+    "save": { "save": "con_save", "onSuccess": "half" },
     "concentration": true,
     "zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "move": { "budget": "action", "distance": 60 } }
   }
@@ -3325,15 +3325,12 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
   Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody
   breaking away and the pause between two turns, are opened by the fight itself and are not moments
   an entry can ask for. There is no moment for a save being rolled or a death.
-- **A counter stops what it answers outright.** It cannot tell one entry of a catalog from another,
-  and there is no check to stop something bigger than itself.
 - **No chain of them.** The fight keeps one window rather than a stack, so nothing opened inside a
   window opens another: a counter cannot itself be countered, what a reaction deals opens no
   further moment, and an attack made inside a window is not held when it hits. An answerable fall
   caused during a window is held until it closes and then asked about in turn.
 - **Only an attack roll is a hit.** Something that lands without one (darts that simply hit, an area
-  everyone saves against) opens no `hit` moment, and an answer cannot tell a swing from a shot, so a
-  Parry the rules keep to swords parries arrows too.
+  everyone saves against) opens no `hit` moment.
 - **Damage modifiers belong to attack hits.** An answer can put a damage modifier on its holder
   or halve incoming harm with `resist-all`; damage modifiers never change a save-only effect.
 - **Nothing is refunded.** What a cancelled action cost is spent.

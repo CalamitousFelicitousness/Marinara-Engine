@@ -573,7 +573,8 @@ function projectCombatant(
   const combat = definition.combat!;
   const health = rulesetCombatHealth(definition, combat, combatant);
   const deathTrack = deathTrackOf(definition, combatant);
-  const saveModifiers = rulesetActiveConditions(definition, combat, combatant, state).flatMap((source) =>
+  const active = rulesetActiveConditions(definition, combat, combatant, state);
+  const saveModifiers = active.flatMap((source) =>
     rulesetItemEffectFacts(definition, {
       modifiers: source.modifiers?.filter((one) => one.against),
       saves: source.saves,
@@ -589,7 +590,7 @@ function projectCombatant(
     defense: combatant.defense,
     conditions: conditionsOf(definition, combatant, state),
     hides: rulesetCombatHide(definition, combatant, state),
-    damageModifiers: rulesetActiveConditions(definition, combat, combatant, state).flatMap((source) => {
+    damageModifiers: active.flatMap((source) => {
       const modifiers = source.modifiers?.filter((one) => one.to === "damage" || one.to === "damage-taken");
       if (!modifiers?.length) return [];
       const name = source.item

@@ -739,7 +739,7 @@ export function formatCatalogMechanics(
       parts.push(
         t("game.ruleset.catalog.mechanics.zoneWhileHeld", {
           amount: [held.amount.dice, held.amount.flat].filter((part) => part !== undefined).join("+"),
-          condition: held.condition,
+          condition: labels.conditions?.[held.condition] ?? held.condition,
         }),
       );
     }
@@ -772,7 +772,9 @@ export function formatCatalogMechanics(
     const inside = mechanics.zone.inside;
     if (inside?.conditions?.length) {
       parts.push(
-        t("game.ruleset.catalog.mechanics.zoneInsideConditions", { conditions: inside.conditions.join(", ") }),
+        t("game.ruleset.catalog.mechanics.zoneInsideConditions", {
+          conditions: inside.conditions.map((id) => labels.conditions?.[id] ?? id).join(", "),
+        }),
       );
     }
     if (inside?.immune?.length) {

@@ -2666,8 +2666,9 @@ export async function retryOnProviderBusy(
   for (let attempt = 0; ; attempt += 1) {
     const resp = await send();
     if (resp.status !== 429 || attempt >= delaysMs.length || signal?.aborted) return resp;
+    const delayMs = delaysMs[attempt] ?? 0;
     await resp.body?.cancel().catch(() => undefined);
-    logger.warn("[image] Provider is busy (429); retrying in %dms", delaysMs[attempt]);
+    logger.warn("[image] Provider is busy (429); retrying in %dms", delayMs);
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {
         clearTimeout(timer);
@@ -2676,7 +2677,7 @@ export async function retryOnProviderBusy(
       const timer = setTimeout(() => {
         signal?.removeEventListener("abort", onAbort);
         resolve();
-      }, delaysMs[attempt]);
+      }, delayMs);
       signal?.addEventListener("abort", onAbort, { once: true });
     });
   }

@@ -347,15 +347,27 @@ export function mediaProviderLaneKey(endpointKey: string, apiKey: string): strin
   return `${endpointKey.trim() || "default"}|${account}`;
 }
 
+// Some providers keep their own one-at-a-time lock for a moment after they answer,
+// so a request sent the instant the previous one returns can still be rejected.
+// The lane stays closed for this long after each request; the caller is not held.
+const MEDIA_PROVIDER_LANE_GAP_MS: Readonly<Record<string, number>> = { novelai: 1_000 };
+
+/** Breathing room between back-to-back requests in one lane, by resolved backend. */
+export function mediaProviderLaneGapMs(resolvedSource: string): number {
+  return MEDIA_PROVIDER_LANE_GAP_MS[resolvedSource] ?? 0;
+}
+
 /**
  * Run `task` alone in its provider lane when the queue setting is on. Re-entrant:
  * a task that already holds this lane (a nested generateImage call) runs straight
- * through instead of waiting on itself.
+ * through instead of waiting on itself. `gapMs` keeps the lane closed after the
+ * task settles, without delaying the task's own caller.
  */
 export async function runInMediaProviderLane<T>(args: {
   laneKey: string;
   task: MediaGenerationQueueTask<T>;
   signal?: AbortSignal;
+  gapMs?: number;
 }): Promise<T> {
   if (!providerLanesEnabled) return args.task();
   const held = heldProviderLanes.getStore();
@@ -377,7 +389,9 @@ export async function runInMediaProviderLane<T>(args: {
     nextHeld.add(laneKey);
     return await heldProviderLanes.run(nextHeld, () => args.task());
   } finally {
-    releaseCurrent();
+    const gapMs = args.gapMs ?? 0;
+    if (gapMs > 0) setTimeout(releaseCurrent, gapMs);
+    else releaseCurrent();
     void queuedTail.finally(() => {
       if (providerLaneTails.get(laneKey) === queuedTail) providerLaneTails.delete(laneKey);
     });

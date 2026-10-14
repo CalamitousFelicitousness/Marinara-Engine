@@ -39,7 +39,12 @@ import {
   supportsNovelAiCharacterPrompts,
 } from "./character-prompts.js";
 import { isImageLocalUrlsEnabled } from "../../config/runtime-config.js";
-import { mediaProviderLaneKey, runInMediaProviderLane, runMediaGenerationRequest } from "./image-generation-queue.js";
+import {
+  mediaProviderLaneGapMs,
+  mediaProviderLaneKey,
+  runInMediaProviderLane,
+  runMediaGenerationRequest,
+} from "./image-generation-queue.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -235,16 +240,14 @@ export async function generateImage(
 ): Promise<ImageGenResult> {
   // The provider lane comes first and the global permit second, so requests waiting
   // their turn at one account never hold permits other providers could use.
+  const resolvedSource = resolveImageBackend(source, baseUrl, serviceHint, request.model);
   const laneKey = mediaProviderLaneKey(
-    imageAdmissionKey(
-      normalizeImageUrl(baseUrl),
-      resolveImageBackend(source, baseUrl, serviceHint, request.model),
-      request.imageEndpointId,
-    ),
+    imageAdmissionKey(normalizeImageUrl(baseUrl), resolvedSource, request.imageEndpointId),
     apiKey,
   );
   return runInMediaProviderLane({
     laneKey,
+    gapMs: mediaProviderLaneGapMs(resolvedSource),
     signal: request.signal,
     task: () =>
       runMediaGenerationRequest({

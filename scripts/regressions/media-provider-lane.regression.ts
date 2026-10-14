@@ -6,7 +6,8 @@
 // work. Pinned here: the lane itself (serial per key, parallel across keys, re-entrant,
 // abort and throw leave nothing behind, toggle off restores parallel requests), the
 // server mirror of the synced `ui` setting, and the real generateImage path against a
-// local fixture provider reached through two different "connections".
+// local fixture provider reached through two different "connections". Also pinned:
+// the gap a lane keeps after each request for providers that need it (NovelAI).
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 
@@ -14,6 +15,7 @@ process.env.MARINARA_MEDIA_GENERATION_CONCURRENCY = "4";
 const {
   applyMediaQueueUiSettingsValue,
   inspectMediaProviderLanesForTests,
+  mediaProviderLaneGapMs,
   mediaProviderLaneKey,
   mediaProviderLanesEnabled,
   runInMediaProviderLane,
@@ -163,6 +165,37 @@ idle();
   gate.resolve();
   await Promise.all(runs);
   applyMediaQueueUiSettingsValue(null);
+  idle();
+}
+
+// ── 6b) Gap: the lane stays closed after a request, but its caller returns at once ──
+{
+  assert.equal(mediaProviderLaneGapMs("novelai"), 1_000, "NovelAI gets breathing room");
+  assert.equal(mediaProviderLaneGapMs("openai"), 0, "other providers keep back-to-back requests");
+  const gapMs = 80;
+  let firstEndedAt = 0;
+  let secondStartedAt = 0;
+  const first = runInMediaProviderLane({
+    laneKey: "lane-gap",
+    gapMs,
+    task: async () => {
+      firstEndedAt = Date.now();
+      return "first";
+    },
+  });
+  const second = runInMediaProviderLane({
+    laneKey: "lane-gap",
+    gapMs,
+    task: async () => {
+      secondStartedAt = Date.now();
+      return "second";
+    },
+  });
+  const firstReturnedAt = await first.then(() => Date.now());
+  assert.ok(firstReturnedAt - firstEndedAt < gapMs / 2, "the gap must not delay the finished request's caller");
+  assert.equal(await second, "second");
+  assert.ok(secondStartedAt - firstEndedAt >= gapMs - 5, "the next request waits out the gap");
+  await sleep(gapMs + 20);
   idle();
 }
 

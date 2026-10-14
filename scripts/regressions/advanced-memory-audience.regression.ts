@@ -934,6 +934,22 @@ try {
     "LINES_OPEN\n\nMaukie kept LINES_MAUKIE.\n\nLINES_PANTALONE\n\nLINES_CLOSE",
     "the narrator reads every section",
   );
+  // A summary that ends with a section no reader gets, or is only sections, still meets the next one with a
+  // single blank line in a merged reply.
+  const trailNotes = [
+    'TRAIL_OPEN {{user}}.\n\n{{#if char == "Cyno"}}\nTRAIL_HIDDEN\n{{/if}}',
+    '{{#if char == "Maukie"}}\nTRAIL_MAUKIE\n{{/if}}\n{{#if char == "Cyno"}}\nTRAIL_HIDDEN\n{{/if}}',
+    "TRAIL_NEXT",
+  ].map((content, index) =>
+    createChatSummaryEntry({ content, enabled: true, messageIds: [groupSource[3 + index]!.id] }),
+  );
+  await chats.patchMetadata(group.id, { groupChatMode: "merged", summaryEntries: [...groupEntries, ...trailNotes] });
+  const trailView = (await groupRecall(["maukie", "pantalone", "narrator"])).chatSummary!;
+  assert.match(
+    trailView,
+    /\nTRAIL_OPEN [^\n]+\.\n\nMessages #5–#5; [^\n]+\n\[Known only to Maukie: TRAIL_MAUKIE\]\n\nMessages #6–#6; [^\n]+\nTRAIL_NEXT/u,
+  );
+  assert.doesNotMatch(trailView, /TRAIL_HIDDEN/u);
   await chats.patchMetadata(group.id, { groupChatMode: "individual", summaryEntries: [...groupEntries, narratorNote] });
   // A story date keeps the header only for characters who read part of that range, never for a newcomer.
   await chats.updateMessageContent(groupSource[2]!.id, `Date: June 12\n${groupSource[2]!.content}`);

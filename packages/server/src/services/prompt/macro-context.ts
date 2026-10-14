@@ -908,13 +908,11 @@ export function resolveChatSummaryMacros(
   options?: ResolveMacroOptions,
   readers?: readonly CharacterMacroProfile[],
 ): string {
-  // ponytail: splitting a group block (`[` … `]`) at a condition would undo its per-character repeat, so a
-  // summary with one keeps the single reading, and its layout, since `[` and `]` must stay on lines of their
-  // own. Expand group blocks before scoping if that ever matters.
-  const groupBlock = /^[ \t]*\[[ \t]*\r?$/mu.test(summary);
   // A section for someone who is not replying leaves no empty line: its line breaks go with it.
-  if (!groupBlock) summary = attachConditionalLineBreaks(summary);
-  if (!readers?.length || groupBlock) return resolveMacros(summary, macroCtx, options);
+  summary = attachConditionalLineBreaks(summary);
+  // ponytail: splitting a group block (`[` … `]`) at a condition would undo its per-character repeat, so a
+  // summary with one keeps the single reading. Expand group blocks before scoping if that ever matters.
+  if (!readers?.length || /^[ \t]*\[[ \t]*\r?$/mu.test(summary)) return resolveMacros(summary, macroCtx, options);
   const profiles = new Map(readers.map((profile) => [profile.name, profile]));
   const partOptions = { ...options, trimResult: false };
   // A top-level part with a condition is one scoping kept whole, such as a name mixed with a variable.

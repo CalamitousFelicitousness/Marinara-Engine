@@ -1923,11 +1923,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       readers.length > 1
         ? scopeCharacterSummary(text, readers, 0, (part, known) =>
             // Check what scoping left (variable conditions mixed with names, {{char}}) for each reader. A part
-            // keeps its line breaks, as the Chat Summary's parts do, since a section's own line break is in it.
+            // keeps its line breaks, as the Chat Summary's parts do, since a section's own line break is in it;
+            // the whole is trimmed, as a single reader's is.
             markReaderVersions(known, readers.length, (reader) =>
               part.includes("{{") ? render(part, reader, false) : part,
             ),
-          )
+          ).trim()
         : render(text, char ? (ctx.names.get(char) ?? "Character") : (names[0] ?? "Character"));
     return parseRoleplayUserCommands(rendered).content;
   }

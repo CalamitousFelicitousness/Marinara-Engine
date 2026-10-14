@@ -23,7 +23,7 @@ const { assemblePrompt, appendFallbackChatSummaryToSystemPrompt } =
   await import("../../packages/server/src/services/prompt/assembler.js");
 const { buildPromptMacroContext, resolveCharacterMacroData } =
   await import("../../packages/server/src/services/prompt/macro-context.js");
-const { characterDataSchema } = await import("../../packages/shared/src/index.js");
+const { characterDataSchema, resolveDeferredCharacterMacros } = await import("../../packages/shared/src/index.js");
 
 const SUMMARY = [
   "{{user}} and {{char}} reached the harbor.",
@@ -159,15 +159,15 @@ try {
   );
 
   // Exact output without readers: Individual mode (deferred, or one chosen speaker) and solo chats. Each
-  // section that fills its own line takes that line's break with it, so a hidden one leaves no empty line.
+  // section that fills its own line takes the line break before it along, so a hidden one leaves no empty line.
   const individual =
     MAIN +
-    "<chat_summary>\n    Mari and \u001eMARINARA_DEFERRED_CHARACTER_CHAR\u001f reached the harbor.\n" +
-    "    \u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Maukie%5C%22%22%2C%22content%22%3A%22%7B%7Bchar%7D%7D%20hid%20the%20compass.%5Cn%22%7D%5D%7D\u001f" +
-    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Maukie%5C%22%20%7C%7C%20char%20%3D%3D%20%5C%22Pantalone%5C%22%22%2C%22content%22%3A%22The%20travelers%20kept%20the%20compass%20promise.%5Cn%22%7D%5D%7D\u001f" +
-    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Narrator%5C%22%22%2C%22content%22%3A%22NARRATOR_ONLY%20The%20storm%20was%20planned.%5Cn%22%7D%5D%7D\u001f" +
-    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Pantalone%5C%22%22%2C%22content%22%3A%22Pantalone%20owes%20Cara%20a%20debt.%5Cn%22%7D%2C%7B%22condition%22%3Anull%2C%22content%22%3A%22Nobody%20mentions%20the%20debt.%5Cn%22%7D%5D%7D\u001f" +
-    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Pantalone%5C%22%20%26%26%20getvar%3A%3Aready%20%3D%3D%20%5C%22yes%5C%22%22%2C%22content%22%3A%22MIXED_SECRET%22%7D%5D%7D\u001f\n" +
+    "<chat_summary>\n    Mari and \u001eMARINARA_DEFERRED_CHARACTER_CHAR\u001f reached the harbor." +
+    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Maukie%5C%22%22%2C%22content%22%3A%22%7B%7Bnoop%7D%7D%5Cn%7B%7Bchar%7D%7D%20hid%20the%20compass.%22%7D%5D%7D\u001f" +
+    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Maukie%5C%22%20%7C%7C%20char%20%3D%3D%20%5C%22Pantalone%5C%22%22%2C%22content%22%3A%22%7B%7Bnoop%7D%7D%5CnThe%20travelers%20kept%20the%20compass%20promise.%22%7D%5D%7D\u001f" +
+    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Narrator%5C%22%22%2C%22content%22%3A%22%7B%7Bnoop%7D%7D%5CnNARRATOR_ONLY%20The%20storm%20was%20planned.%22%7D%5D%7D\u001f" +
+    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Pantalone%5C%22%22%2C%22content%22%3A%22%7B%7Bnoop%7D%7D%5CnPantalone%20owes%20Cara%20a%20debt.%22%7D%2C%7B%22condition%22%3Anull%2C%22content%22%3A%22%5CnNobody%20mentions%20the%20debt.%22%7D%5D%7D\u001f" +
+    "\u001eMARINARA_DEFERRED_CHARACTER_IF:%7B%22branches%22%3A%5B%7B%22condition%22%3A%22char%20%3D%3D%20%5C%22Pantalone%5C%22%20%26%26%20getvar%3A%3Aready%20%3D%3D%20%5C%22yes%5C%22%22%2C%22content%22%3A%22%7B%7Bnoop%7D%7D%5CnMIXED_SECRET%22%7D%5D%7D\u001f\n" +
     "</chat_summary>";
   const pinned =
     MAIN +
@@ -181,6 +181,19 @@ try {
     assert.equal(await summaryBlock([pantalone.id], marker), pinned, "an Individual-mode reply for one chosen speaker");
     assert.equal(await summaryBlock([maukie.id], marker, { groupCharacterIds: undefined }), MAIN + single, "solo");
   }
+  // Filled in for each responder, Individual mode reads that responder's lines, a hidden last section included,
+  // with no empty line. (Lines filled into the XML wrapper start at its margin.)
+  const summaryLines = (prompt: string) =>
+    prompt
+      .slice(prompt.indexOf("<chat_summary>"))
+      .split("\n")
+      .map((line) => line.trim());
+  for (const id of all)
+    assert.deepEqual(
+      summaryLines(resolveDeferredCharacterMacros(individual, profiles.get(id)!, mergedCtx)),
+      summaryLines(await summaryBlock([id], true)),
+      `Individual mode filled in for ${profiles.get(id)!.name}`,
+    );
   const soloCtx = await buildPromptMacroContext({
     db,
     characterIds: [maukie.id],

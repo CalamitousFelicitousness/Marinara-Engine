@@ -770,7 +770,7 @@ import {
   TEXT_REWRITE_PENDING_MESSAGE,
 } from "../../packages/server/src/services/generation/prose-guardian-settings.js";
 import type { DB } from "../../packages/server/src/db/connection.js";
-import { passThroughLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
+import { passThroughLeaf, sanitizePromptLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
 import { wrapContent } from "../../packages/server/src/services/prompt/format-engine.js";
 import {
   escapeStandaloneGameNarrationAngleLines,
@@ -10449,13 +10449,16 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const cases: Array<[string, Record<string, string>]> = [
         [summary, { Cyno: "Shared opening.\n\nCyno alone saw the ruins.\n\nShared closing.", Maukie: nobody }],
         // Sections written inline on lines of their own.
-        [`A\n{{#if char == "Cyno"}}x{{/if}}\n{{#if char == "Tighnari"}}y{{/if}}\nB`, { Tighnari: "A\ny\nB", Maukie: "A\nB" }],
+        [
+          `A\n{{#if char == "Cyno"}}x{{/if}}\n{{#if char == "Tighnari"}}y{{/if}}\nB`,
+          { Tighnari: "A\ny\nB", Maukie: "A\nB" },
+        ],
         // Tags on lines of their own, in a paragraph that goes on after a blank line.
         [`A\n${section("Cyno", "x")}\n\nB`, { Cyno: "A\nx\n\nB", Maukie: "A\n\nB" }],
-        // Hidden at the start and at the end of the text.
+        // Hidden at the start and at the end of the text, where deferred sections are filled in after the trim.
         [
           `${section("Cyno", "x")}\n\nMiddle.\n\n${section("Tighnari", "y")}`,
-          { Cyno: "x\n\nMiddle.\n\n", Tighnari: "Middle.\n\ny\n", Maukie: "Middle.\n\n" },
+          { Cyno: "x\n\nMiddle.", Tighnari: "Middle.\n\ny", Maukie: "Middle." },
         ],
         [elseChain, { Cyno: "A\nc\nB", Tighnari: "A\nt\nB", Maukie: "A\no\nB" }],
         [`A\n{{#if char == "Cyno"}}{{else}}Not Cyno.{{/if}}\nB`, { Cyno: "A\nB", Maukie: "A\nNot Cyno.\nB" }],
@@ -10463,11 +10466,30 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         [list, { Cyno: "List:\n  - c\n  - standalone\nEnd", Tighnari: "List:\n  - t\nEnd" }],
         // A section that starts with a blank line keeps it.
         [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, { Cyno: "P\n\n\nx\n\nQ", Maukie: "P\n\nQ" }],
+        // A section at the top of another that is not a paragraph keeps the blank line written after it.
+        [
+          `A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "Tighnari note.")}\n\nShared by both.\n{{/if}}\nB`,
+          { Cyno: "A\n\nShared by both.\nB", Tighnari: "A\nTighnari note.\n\nShared by both.\nB", Maukie: "A\nB" },
+        ],
+        // A section that is all another one holds goes with that one's line break.
+        [`A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "t")}\n{{/if}}\nB`, { Cyno: "A\nB" }],
+        [
+          `A\n{{#if char == "Cyno"}}\nx\n{{#if char == "Tighnari"}}\nt\n{{else}}\n\no\n{{/if}}\n{{/if}}\nB`,
+          { Cyno: "A\nx\n\no\nB", Maukie: "A\nB" },
+        ],
+        // A comment line reads the same now and deferred.
+        [`A\n\n${section("Cyno", "c")}\n{{// note}}\n\nB`, { Cyno: "A\n\nc\n\n\nB", Maukie: "A\n\n\nB" }],
+        // A group block keeps its `[` and `]` lines, and the sections around and in it lose their lines too.
+        [
+          `A\n\n${section("Cyno", "c")}\n\n[\n{{char}}:\n${section("Cyno", "g")}\n]\nB`,
+          { Cyno: "A\n\nc\n\n[\nCyno:\ng\n]\nB", Maukie: "A\n\n[\nMaukie:\n]\nB" },
+        ],
         // A section sharing its line with other text stays as written.
         [`A {{#if char == "Cyno"}}x{{/if}} B\nC`, { Cyno: "A x B\nC", Maukie: "A  B\nC" }],
       ];
       for (const [template, expected] of cases) {
-        for (const [who, text] of Object.entries(expected)) assert.equal(read(template, who), text, `${who}: ${template}`);
+        for (const [who, text] of Object.entries(expected))
+          assert.equal(read(template, who), text, `${who}: ${template}`);
         const attached = attachConditionalLineBreaks(template);
         assert.equal(attachConditionalLineBreaks(attached), attached, `rewriting is idempotent: ${template}`);
       }
@@ -10482,11 +10504,52 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         [nested, "Tighnari"],
       ])
         assert.equal(read(template!, who!), resolveMacros(template!, ctx(who!), { trimResult: false }), template);
+      const merged = (template: string) =>
+        resolveChatSummaryMacros(template, ctx("Narrator"), undefined, [{ name: "Cyno" }, { name: "Maukie" }]);
       assert.equal(
-        resolveChatSummaryMacros(elseChain, ctx("Narrator"), undefined, [{ name: "Tighnari" }, { name: "Maukie" }]),
-        "A\n[Known only to Tighnari: t]\n[Known only to Maukie: o]\nB",
+        merged(elseChain),
+        "A\n[Known only to Cyno: c]\n[Known only to Maukie: o]\nB",
         "each reader's version of a section keeps its own line",
       );
+      assert.equal(
+        merged(`T\n{{#if char == "Cyno"}}c{{else}}o{{/if}}`),
+        "T\n[Known only to Cyno: c]\n[Known only to Maukie: o]",
+        "at the end of the text too",
+      );
+      assert.equal(
+        merged(`T\n\n  {{#if char == "Cyno"}}\n  s\n  {{else}}\n  o\n  {{/if}}`),
+        "T\n\n  [Known only to Cyno: s]\n\n  [Known only to Maukie: o]",
+        "an indented section keeps its indent once",
+      );
+      // Windows line endings read as the same lines.
+      const windows = summary.replace(/\n/gu, "\r\n");
+      assert.equal(resolveChatSummaryMacros(windows, ctx("Tighnari")), tighnari, "Windows line endings");
+      assert.equal(
+        resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(windows, ctx("Narrator"), { deferCharacterMacros: "all" }),
+          { name: "Maukie" },
+        ),
+        nobody,
+        "Windows line endings, deferred",
+      );
+      // Filled in after the wrapper, the line after a section still starts its own line: Markdown escapes a
+      // heading there and XML indents it, whether the section shows or not.
+      const rules = `Shared.\n${section("Cyno", "Cyno saw the ruins.")}\n# Rules\nObey.`;
+      const wrapped = (format: "markdown" | "xml", who: string) =>
+        resolveDeferredCharacterMacros(
+          wrapContent(
+            sanitizePromptLeaf(
+              resolveChatSummaryMacros(rules, ctx("Narrator"), { deferCharacterMacros: "all" }),
+              format,
+            ),
+            "Chat Summary",
+            format,
+          ),
+          { name: who },
+        );
+      assert.equal(wrapped("markdown", "Cyno"), "## Chat Summary\nShared.\nCyno saw the ruins.\n\\# Rules\nObey.");
+      assert.equal(wrapped("markdown", "Maukie"), "## Chat Summary\nShared.\n\\# Rules\nObey.");
+      assert.equal(wrapped("xml", "Maukie"), "<chat_summary>\n    Shared.\n    # Rules\n    Obey.\n</chat_summary>");
     },
   },
   {

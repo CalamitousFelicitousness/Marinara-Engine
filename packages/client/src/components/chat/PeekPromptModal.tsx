@@ -4,6 +4,7 @@
 import { useState, useMemo } from "react";
 import { X, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { generationLevelLabel } from "../../lib/generation-level-label";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import {
   NEUTRAL_PANEL_HEADER,
@@ -550,8 +551,9 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
       if (gen.temperature != null) pills.push({ label: "Temperature", value: String(gen.temperature) });
       if (gen.maxTokens != null) pills.push({ label: "Max Output Tokens", value: fmtTokens(gen.maxTokens) });
       if (gen.showThoughts) pills.push({ label: "Thinking", value: "On" });
-      if (gen.reasoningEffort) pills.push({ label: "Reasoning", value: gen.reasoningEffort });
-      if (gen.verbosity) pills.push({ label: "Verbosity", value: gen.verbosity });
+      if (gen.reasoningEffort)
+        pills.push({ label: "Reasoning", value: generationLevelLabel(gen.reasoningEffort, localizeUi) });
+      if (gen.verbosity) pills.push({ label: "Verbosity", value: generationLevelLabel(gen.verbosity, localizeUi) });
       if (gen.serviceTier) pills.push({ label: "Service Tier", value: gen.serviceTier });
       if (gen.assistantPrefill) pills.push({ label: "Assistant Prefill", value: "On" });
     } else if (params) {
@@ -566,13 +568,15 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
       if (params.presencePenalty != null && params.presencePenalty !== 0)
         pills.push({ label: "Pres Penalty", value: String(params.presencePenalty) });
       if (params.showThoughts) pills.push({ label: "Thinking", value: "On" });
-      if (params.reasoningEffort) pills.push({ label: "Reasoning", value: String(params.reasoningEffort) });
-      if (params.verbosity) pills.push({ label: "Verbosity", value: String(params.verbosity) });
+      if (params.reasoningEffort)
+        pills.push({ label: "Reasoning", value: generationLevelLabel(String(params.reasoningEffort), localizeUi) });
+      if (params.verbosity)
+        pills.push({ label: "Verbosity", value: generationLevelLabel(String(params.verbosity), localizeUi) });
       if (params.serviceTier) pills.push({ label: "Service Tier", value: String(params.serviceTier) });
       if (params.assistantPrefill) pills.push({ label: "Assistant Prefill", value: "On" });
     }
     return pills;
-  }, [gen, params]);
+  }, [gen, params, localizeUi]);
 
   const sectionRoleColor = (role: string, label: string) => {
     if (/last.?message/i.test(label) || role === "assistant") return PROMPT_TAG_ACTIVE_CLASS;

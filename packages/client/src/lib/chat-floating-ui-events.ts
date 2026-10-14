@@ -69,6 +69,29 @@ export function blurActiveChatFloatingUiControl(options?: { keepWindowFocus?: bo
   activeElement.blur();
 }
 
+/**
+ * True for UI a browser extension adds to the page outside the app, such as Grammarly's suggestion cards.
+ * Extensions put it in their own custom element (usually with a shadow root) under <body> or <html>; the
+ * app's root and its portals are plain elements under <body>. A press, focus or key there is not the user
+ * leaving one of our windows or editors, so handlers that dismiss on those ignore it.
+ * ponytail: an extension that hosts its UI in a plain element under <body> still counts as outside;
+ * telling those apart from our portals would need a marker on every portal the app renders.
+ */
+export function isBrowserExtensionUi(target: EventTarget | null) {
+  if (typeof document === "undefined" || !(target instanceof Node)) return false;
+  let node = target;
+  // Step out of shadow roots to the element on the page that hosts them.
+  for (let root = node.getRootNode(); root instanceof ShadowRoot; root = node.getRootNode()) node = root.host;
+  // Climb to the element added directly to <body> or <html>.
+  let element = node instanceof Element ? node : node.parentElement;
+  while (element && element.parentElement !== document.body && element.parentElement !== document.documentElement) {
+    element = element.parentElement;
+  }
+  if (!element) return false;
+  if (element.parentElement === document.documentElement) return element !== document.body && element !== document.head;
+  return element.localName.includes("-");
+}
+
 export function isDesktopShellNavigationTarget(target: EventTarget | null) {
   if (typeof window === "undefined" || window.matchMedia("(max-width: 767px)").matches) return false;
   const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;

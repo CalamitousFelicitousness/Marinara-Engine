@@ -221,37 +221,45 @@ function ExpressionBindings({
 
 export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
-  const { save: saveData, importFile, remove: removeModel } = useAvatarModelActions(owner, onChanged);
   const [warnings, setWarnings] = useState<string[]>([]);
   // A change shows at once; it is dropped when the saved config arrives (a new data object) or the save fails.
   const [pending, setPending] = useState<{ base: VrmAvatarData; data: VrmAvatarData } | null>(null);
+  // Toasts are given to the hook, so a result still shows after the user switches owner or leaves the page.
+  const {
+    save: saveData,
+    importFile,
+    remove: removeModel,
+  } = useAvatarModelActions(owner, onChanged, {
+    importFile: {
+      onSuccess: (result, { file }) => {
+        setWarnings(result.warnings);
+        toast.success(t(/\.vrma$/iu.test(file.name) ? "avatars.vrm.idle.added" : "avatars.vrm.imported"));
+      },
+      onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.importFailed"))),
+    },
+    save: {
+      onError: (error) => {
+        setPending(null);
+        toast.error(errorMessage(error, t("avatars.vrm.saveFailed")));
+      },
+    },
+    remove: {
+      onSuccess: () => {
+        setWarnings([]);
+        toast.success(t("avatars.vrm.removed"));
+      },
+      onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.removeFailed"))),
+    },
+  });
   const stored = config?.kinds.vrm ?? null;
   const data = pending && pending.base === stored ? pending.data : stored;
 
-  const importVrmFile = (file: File) =>
-    importFile.mutate(
-      { kind: "vrm", file },
-      {
-        onSuccess: (result) => {
-          setWarnings(result.warnings);
-          toast.success(t(/\.vrma$/iu.test(file.name) ? "avatars.vrm.idle.added" : "avatars.vrm.imported"));
-        },
-        onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.importFailed"))),
-      },
-    );
+  const importVrmFile = (file: File) => importFile.mutate({ kind: "vrm", file });
 
   const busy = importFile.isPending || saveData.isPending || removeModel.isPending;
   const save = (next: VrmAvatarData) => {
     if (stored) setPending({ base: stored, data: next });
-    saveData.mutate(
-      { kinds: { vrm: next } },
-      {
-        onError: (error) => {
-          setPending(null);
-          toast.error(errorMessage(error, t("avatars.vrm.saveFailed")));
-        },
-      },
-    );
+    saveData.mutate({ kinds: { vrm: next } });
   };
   const confirmRemove = async () => {
     const confirmed = await showConfirmDialog({
@@ -260,14 +268,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
       confirmLabel: t("avatars.vrm.remove"),
       tone: "destructive",
     });
-    if (!confirmed) return;
-    removeModel.mutate("vrm", {
-      onSuccess: () => {
-        setWarnings([]);
-        toast.success(t("avatars.vrm.removed"));
-      },
-      onError: (error) => toast.error(errorMessage(error, t("avatars.vrm.removeFailed"))),
-    });
+    if (confirmed) removeModel.mutate("vrm");
   };
 
   const warningList =

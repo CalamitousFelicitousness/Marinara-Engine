@@ -1,7 +1,8 @@
 // The 2D avatar renderers and setup panels in a real browser, before the base lane mounts them in chats:
 // the PNGTuber renderer swaps talk, blink and face pictures, crossfades and hops; mesh avatars draw through
 // one shared WebGL2 context, load under the server's Content-Security-Policy, reuse their pictures, and fall
-// back to the owner's sprites; both redraw when resized; the setup panels save what the user picks.
+// back to the owner's sprites; both redraw when resized; the setup panels save what the user picks, and the
+// VRM panel still reports a failed import after it closes.
 import { expect, test, type Page } from "@playwright/test";
 import { securityHeadersHook } from "../packages/server/src/middleware/security-headers.js";
 import { meshAvatarFiles, paintPng, solid, zipFiles } from "../scripts/regressions/fixtures/avatar-2d-fixtures.js";
@@ -471,7 +472,10 @@ async function mountPanel(page: Page, module: string, name: string, ownerId: str
       mount.style.cssText =
         "position:fixed;inset:0;z-index:99999;overflow:auto;background:var(--background);color:var(--foreground);padding:12px";
       document.body.append(mount);
-      ReactDOM.createRoot(mount).render(
+      const root = ReactDOM.createRoot(mount);
+      // Closes the panel the way switching owner or leaving the page does: React unmounts it.
+      mount.addEventListener("avatar-panel-close", () => root.unmount(), { once: true });
+      root.render(
         React.createElement(
           QueryClientProvider,
           { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
@@ -540,6 +544,36 @@ test("the PNGTuber setup saves the owner's sprites, a chosen face and an importe
   await expect(panel.getByRole("status")).toContainText("Animated layers show only their first frame.");
   expect(upload).toContain('name="kind"');
   expect(upload).toContain('filename="avatar.save"');
+});
+
+test("the VRM setup still reports a rejected import after the panel closes", async ({ page }) => {
+  let answer!: () => void;
+  const closed = new Promise<void>((resolve) => (answer = resolve));
+  let uploads = 0;
+  await page.route("**/api/avatar-models/character/e2e-vrm-panel/import", async (route) => {
+    uploads += 1;
+    await closed;
+    await route.fulfill({ status: 400, json: { error: "This file is not a VRM model." } });
+  });
+  await openApp(page);
+  await mountPanel(
+    page,
+    "/src/features/avatars/renderers/vrm/VrmSetupPanel.tsx",
+    "VrmSetupPanel",
+    "e2e-vrm-panel",
+    null,
+  );
+  const panel = page.locator("[data-avatar-panel]");
+  await panel.locator('input[type="file"]').setInputFiles({
+    name: "model.vrm",
+    mimeType: "model/gltf-binary",
+    buffer: Buffer.from("glTF"),
+  });
+  await expect.poll(() => uploads).toBe(1);
+  await panel.evaluate((mount) => mount.dispatchEvent(new Event("avatar-panel-close")));
+  await expect(panel.locator("button")).toHaveCount(0);
+  answer();
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "This file is not a VRM model." })).toBeVisible();
 });
 
 test("the mesh avatar setup imports a file and saves the look for a feeling", async ({ page }) => {

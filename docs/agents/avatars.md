@@ -8,7 +8,7 @@ Live2D models are not supported. Live2D's licence needs a separate agreement wit
 
 ## Downloading the agents
 
-Both agents are still in development and are not in **Download Agents** yet. The steps below apply once they are listed.
+Both agents are being tested. For now, **Download Agents** offers them only when Marinara Engine runs on the `staging` branch.
 
 **2D Avatars** and **3D Avatars** are separate downloads, so you can install only the one you want. Both work for characters and personas in Roleplay and Game chats.
 

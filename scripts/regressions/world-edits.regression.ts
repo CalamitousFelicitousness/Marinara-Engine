@@ -410,7 +410,7 @@ try {
     const refused = await save({ editsVersion: 1, places: [{ id: "p9999", name: "X" }] });
     assert.equal(refused.statusCode, 400);
     assert.match(refused.json().error, /No place/);
-    assert.equal((await save({ editsVersion: 2 })).statusCode, 400, "a layer that does not read");
+    assert.equal((await save({ editsVersion: 4 })).statusCode, 400, "a layer that does not read");
     assert.deepEqual((await meta()).gameWorld.edits, additions, "a refused layer changes nothing");
     assert.equal((await save({ editsVersion: 1 })).statusCode, 200);
     assert.equal("edits" in (await meta()).gameWorld, false, "an empty layer clears it");

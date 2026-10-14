@@ -23,6 +23,7 @@ import {
   worldEditIssues,
   worldTownEditIssues,
   worldEditsEmpty,
+  worldEditsVersioned,
   worldEditsSchema,
   worldFile,
   worldKitArtFamily,
@@ -39,6 +40,7 @@ import {
   worldForEditor,
   worldPeopleOf,
   worldTownForEditor,
+  worldInteriorForEditor,
 } from "../services/game/world-editor.service.js";
 import { createGameWorldsStorage, type GameWorldRow } from "../services/storage/game-worlds.storage.js";
 
@@ -55,6 +57,7 @@ function readRow(row: GameWorldRow): { game: GameWorld; story: StoryScript | nul
     seed: read.world.seed,
     grounding: read.world.grounding,
     brief: read.world.brief,
+    generatorVersion: read.world.generatorVersion,
     ...(read.world.edits ? { edits: read.world.edits } : {}),
   };
   return { game: { ...inputs, world: compileGameWorld(inputs) }, story: read.story ?? null };
@@ -69,7 +72,7 @@ function fileOf(name: string, game: GameWorld | Omit<GameWorld, "world">, story:
       full.kit,
       {
         seed: full.seed,
-        generatorVersion: full.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION,
+        generatorVersion: full.frozen?.generatorVersion ?? full.generatorVersion ?? WORLD_GENERATOR_VERSION,
         grounding: full.grounding,
         brief: full.brief,
         ...(full.edits && !worldEditsEmpty(full.edits) ? { edits: full.edits } : {}),
@@ -250,6 +253,21 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Params: { id: string } }>(
+    "/:id/world/interior",
+    { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
+    async (req, reply) => {
+      const { settlement, building } = z
+        .object({ settlement: z.string().min(1).max(16), building: z.string().min(1).max(16) })
+        .parse(req.query);
+      const world = await worldOr404(req.params.id, reply);
+      if (!world) return;
+      if (!worldMadeByThisGenerator(world.game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
+      const found = worldInteriorForEditor(world.game, settlement, building);
+      return found ?? reply.status(404).send({ error: "No building with rooms there." });
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
     "/:id/world/people",
     { config: { rateLimit: GAME_WORLDS_RATE_LIMIT } },
     async (req, reply) => {
@@ -271,7 +289,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
         const issue = parsed.error.issues[0];
         return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
       }
-      const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+      const edits = worldEditsEmpty(parsed.data) ? undefined : worldEditsVersioned(parsed.data);
       const updated = await store.update(req.params.id, (row) => {
         const read = readRow(row);
         if (!read) return { refused: "This world no longer reads." };

@@ -122,6 +122,16 @@ export function formatNarration(content: string, boldDialogue = true): string {
         attrs.table || rawAttrs.trim(),
       );
     })
+    .replace(/\[map:\s*([^\]]*)\]/gi, (_match, rawAttrs: string) => {
+      const attrs = parseCommandAttributes(rawAttrs);
+      // A reveal opens a closed place to the party, not a map.
+      const reveal = /^\s*reveal\b/iu.test(rawAttrs) || attrs.action === "reveal";
+      return commandBadge(
+        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        reveal ? translate("game.narration.siteOpened") : `▦ ${translate("game.narration.placeMap")}`,
+        attrs.name || rawAttrs.trim(),
+      );
+    })
     .replace(/\[map_update:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(

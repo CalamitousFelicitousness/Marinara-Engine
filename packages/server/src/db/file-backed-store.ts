@@ -424,6 +424,7 @@ const BUILT_IN_FILE_BACKED_TABLES = [
   "game_ruleset_catalogs",
   "game_tile_packs",
   "game_creature_packs",
+  "game_board_packs",
   "game_worlds",
   "regex_scripts",
   "chat_images",

@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  artIconFor,
   gameInventoryBagKey,
   rulesetStartingGearKind,
   rulesetStartingGearTakenBy,
@@ -44,10 +45,12 @@ import {
   type RulesetStartingGearSelection,
 } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { RulesetItemPicker, rulesetItemEffectLines, rulesetItemStatsLine } from "./RulesetItemPicker";
 import { StartingGearPicker, type StartingGearTaken } from "./StartingGearPicker";
+import { ArtIcon } from "./ArtIcon";
 
 /** One stack. Two stacks may hold the same item, so a stack is told apart by its id, never its name. */
 export interface InventoryItem {
@@ -569,7 +572,13 @@ export function GameInventory({
         right: "var(--mari-chat-ui-inset-right, 0px)",
       }}
     >
-      <div className="relative flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-white/10 bg-black shadow-[0_0_40px_rgba(0,0,0,0.8)] supports-[height:100dvh]:max-h-[85dvh]">
+      <div
+        data-game-section="inventory"
+        className={cn(
+          GAME_SECTION_CLASS,
+          "relative flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-white/10 bg-black shadow-[0_0_40px_rgba(0,0,0,0.8)] supports-[height:100dvh]:max-h-[85dvh]",
+        )}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/8 bg-white/[0.02] px-4 py-3">
           <div className="flex items-center gap-2">
@@ -714,6 +723,7 @@ export function GameInventory({
                         globalIndex={globalIndex}
                         holderName={showBags && activeView.kind === "all" && item ? bagName(item.holder) : undefined}
                         bindingLabel={bindingLabel}
+                        icons={item ? stackIcons(item, itemBook) : undefined}
                         selected={Boolean(item && selectedItem === item.id)}
                         reorderEnabled={Boolean(onSwapItems || onMergeItems || onGiveItem)}
                         onClick={() => item && handleItemClick(item)}
@@ -1361,9 +1371,25 @@ interface InventorySlotProps {
   holderName?: string;
   /** The ruleset's word for bound, said of a bound stack. */
   bindingLabel?: string;
+  /** The icons it may be drawn with, best first (1.338); its first letter when the pack has none. */
+  icons?: ReadonlyArray<string | null>;
   selected: boolean;
   reorderEnabled: boolean;
   onClick: () => void;
+}
+
+/** The icons a stack may be drawn with, best first (1.338): its ruleset item's own, the one named by its
+ *  entry, then the one named by its own name. */
+function stackIcons(stack: InventoryItem, itemBook: RulesetItemBook | undefined): Array<string | null> {
+  const cut = stack.item?.indexOf("/") ?? -1;
+  const entry = stack.item ? itemBook?.itemOf(stack.item) : undefined;
+  return [
+    entry?.entry.icon ?? null,
+    stack.item && cut > 0
+      ? artIconFor({ catalog: stack.item.slice(0, cut), entry: stack.item.slice(cut + 1), item: true })
+      : null,
+    artIconFor({ item: stack.name }),
+  ];
 }
 
 function InventorySlot({
@@ -1371,6 +1397,7 @@ function InventorySlot({
   globalIndex,
   holderName,
   bindingLabel,
+  icons,
   selected,
   reorderEnabled,
   onClick,
@@ -1470,9 +1497,15 @@ function InventorySlot({
       )}
       {item && (
         <>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gradient-to-b from-white/8 to-white/[0.02] text-sm font-bold text-amber-400/80 ring-1 ring-white/8">
-            {label.charAt(0).toUpperCase()}
-          </div>
+          <ArtIcon
+            ids={icons ?? []}
+            className="h-8 w-8"
+            fallback={
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gradient-to-b from-white/8 to-white/[0.02] text-sm font-bold text-amber-400/80 ring-1 ring-white/8">
+                {label.charAt(0).toUpperCase()}
+              </div>
+            }
+          />
           <div className="mt-1 flex min-h-0 w-full min-w-0 flex-1 flex-col items-center justify-center px-1">
             <div className="flex max-h-full min-h-0 w-full min-w-0 flex-col items-center gap-0.5 overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain max-md:touch-pan-y">
               <span className="block w-full whitespace-normal break-words text-center text-[0.58rem] font-medium leading-tight text-white/80 [overflow-wrap:anywhere]">

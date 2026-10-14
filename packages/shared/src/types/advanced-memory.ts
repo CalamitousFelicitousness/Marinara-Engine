@@ -13,6 +13,7 @@ export const ADVANCED_MEMORY_SCENE_AUDIENCE_UNRESOLVED = {
 export const advancedMemorySettingsSchema = z.object({
   enabled: z.boolean().default(false),
   maxContextTokens: z.number().int().min(1024).max(10_000_000).default(65_000),
+  /** Saved settings without a budget keep 4,096. New settings start at 10% of the context (see the defaults below). */
   summaryBudgetTokens: z.number().int().min(64).max(131_072).default(4096),
   helperConnectionId: z.string().nullable().default(null),
   decisionEnabled: z.boolean().default(false),
@@ -34,11 +35,17 @@ export const advancedMemorySettingsSchema = z.object({
 });
 
 export type AdvancedMemorySettings = z.infer<typeof advancedMemorySettingsSchema>;
-export const DEFAULT_ADVANCED_MEMORY_SETTINGS: AdvancedMemorySettings = advancedMemorySettingsSchema.parse({});
+const parsedDefaults = advancedMemorySettingsSchema.parse({});
+/** Settings for a chat with none saved: the summary and recall budget is 10% of the context limit. */
+export const DEFAULT_ADVANCED_MEMORY_SETTINGS: AdvancedMemorySettings = {
+  ...parsedDefaults,
+  summaryBudgetTokens: Math.round(parsedDefaults.maxContextTokens / 10),
+};
 
 export function normalizeAdvancedMemorySettings(value: unknown): AdvancedMemorySettings {
-  const parsed = advancedMemorySettingsSchema.safeParse(value ?? {});
-  return parsed.success ? parsed.data : { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, knowledgeStarts: {} };
+  // Nothing saved yet means new settings; saved ones keep their own values.
+  const parsed = value == null ? null : advancedMemorySettingsSchema.safeParse(value);
+  return parsed?.success ? parsed.data : { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, knowledgeStarts: {} };
 }
 
 /** Compact, saved evidence from actual memory decisions, never a new preview call. */

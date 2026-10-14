@@ -82,6 +82,22 @@ try {
     3,
     "old settings gain the default",
   );
+  // A new chat's summary and recall budget is 10% of its context limit; saved settings keep their budget.
+  const savedBudget = async (chatId: string) =>
+    JSON.parse((await chats.getById(chatId))!.metadata as string).advancedMemory.summaryBudgetTokens;
+  assert.equal(normalizeAdvancedMemorySettings(undefined).summaryBudgetTokens, 6500);
+  assert.equal((await memory.status(chat.id)).settings.summaryBudgetTokens, 6500, "the new chat saved 10% of 65,000");
+  assert.equal(await savedBudget(chat.id), 6500);
+  for (const saved of [
+    { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, enabled: true, summaryBudgetTokens: 4096 },
+    { enabled: true, maxContextTokens: 32_000 },
+  ]) {
+    const older = await chats.create({ name: "Older settings", mode: "roleplay", characterIds: [] });
+    assert(older);
+    await chats.patchMetadata(older.id, { advancedMemory: saved });
+    await memory.updateSettings(older.id, { retrieveMaxScenes: 2 });
+    assert.equal(await savedBudget(older.id), 4096, "an existing chat keeps its budget, or the old 4,096 default");
+  }
   await chats.createMessagesBatch(
     chat.id,
     Array.from({ length: 65 }, (_, index) => ({

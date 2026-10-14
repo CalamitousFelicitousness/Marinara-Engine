@@ -106,6 +106,8 @@ const directedCombatantFields = z.object({
   side: z.enum(["player", "enemy"]),
   /** Caught unaware as the fight begins (1.237): read by a ruleset fight only. */
   surprised: z.boolean().optional(),
+  /** Fights in its own lair (1.315): read by a ruleset fight only. */
+  inLair: z.boolean().optional(),
   hp: num,
   maxHp: num.min(1),
   mp: num.optional(),
@@ -710,6 +712,8 @@ export async function combatDirectorRoutes(
         environment: z.string().max(80).optional(),
         formation: z.string().max(80).optional(),
         battlefield: z.unknown().optional(),
+        /** The board pack a ruleset fight is drawn with (1.333), by library id. */
+        boardPack: z.string().max(80).optional(),
         /** Whether a ruleset fight is fought on a board, which is what the game's Tactical combat
          *  preference asks for. The ruleset still has to say what a cell is worth. */
         positioned: z.boolean().optional(),
@@ -888,6 +892,7 @@ export async function combatDirectorRoutes(
             positioned: input.positioned === true,
             environment: environment ?? null,
             formation: input.formation ?? null,
+            ...(input.boardPack ? { pack: input.boardPack } : {}),
             ...(here ? { made: here } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),
             enemies: input.enemies.map((enemy) => ({
@@ -908,6 +913,8 @@ export async function combatDirectorRoutes(
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
             // Who the scene caught unaware (1.237).
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
+            // Who fights in its own lair (1.315).
+            inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
             // The scene's time of day, for the light it is fought in (1.291).
             time: liveRow?.time ?? null,
           });

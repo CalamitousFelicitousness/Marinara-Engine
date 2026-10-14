@@ -7,7 +7,9 @@ import { seedUIState } from "./ui-state-fixture.js";
 // base switches above the 2D lane's PNGTuber panel), saves the sprites with `_talk` sprites as open mouths,
 // and the faces can be changed by hand. On phones the chat stays mounted under the agent's page, and its
 // avatars stop drawing while covered. Making an avatar from a sprite never offers a talk picture as the
-// source, and Arrange mode drags full-body sprites and avatars with one shared gesture.
+// source, and Arrange mode drags full-body sprites and avatars with one shared gesture. The 2D and 3D Avatars
+// pages leave out the agent pipeline's settings, which never run for them; 2D keeps its connection, which
+// the Mesh Avatar Layout uses to look at the sprite.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -311,5 +313,66 @@ test("Arrange mode drags full-body sprites and avatars with the same gesture", a
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
+  }
+});
+
+test("The avatar agents' pages leave out the agent pipeline's settings, which other agents' pages keep", async ({
+  page,
+  request,
+}) => {
+  const agentResponse = await request.post("/api/agents", {
+    data: {
+      type: "custom-avatar-context-fixture",
+      name: "Context fixture",
+      phase: "pre_generation",
+      promptTemplate: "Summarize the scene.",
+      settings: { resultType: "context_injection" },
+    },
+  });
+  expect(agentResponse.ok(), await agentResponse.text()).toBeTruthy();
+  const agent = (await agentResponse.json()) as { id: string };
+
+  try {
+    await preparePage(page, "no-owner", { agentDetailId: "2d-avatars" });
+    // Both avatar packages are installed here.
+    const PACKAGE_3D = { ...PACKAGE, id: "3d-avatars", manifest: { ...PACKAGE.manifest, id: "3d-avatars" } };
+    const AGENT_3D = { ...AGENT, id: "3d-avatars", packageId: "3d-avatars", name: "3D Avatars" };
+    await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [PACKAGE, PACKAGE_3D] }));
+    await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [AGENT, AGENT_3D] }));
+    await page.goto("/");
+    const editor = page.locator(".mari-editor-shell");
+    const section = (name: string) => editor.locator(`h3:text-is("${name}")`);
+    const control = (name: string) => editor.getByText(name, { exact: true });
+    // The pipeline never runs the avatar agents, so none of these do anything for them.
+    const PIPELINE_SECTIONS = [
+      "Pipeline Phase",
+      "Context Sources",
+      "Agent Budget",
+      "Add as Prompt Section",
+      "Prompt Template",
+      "Tools / Function Calling",
+    ];
+    const PIPELINE_CONTROLS = ["Share requests with other agents", "Named prompt options"];
+    const open = (id: string) =>
+      page.evaluate(async (id) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().openAgentDetail(id);
+      }, id);
+
+    for (const id of ["2d-avatars", "3d-avatars"]) {
+      await open(id);
+      await expect(page.locator(`[data-avatar-setup="${id}"]`)).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+      await expect(section("Description")).toBeVisible();
+      for (const name of PIPELINE_SECTIONS) await expect(section(name), `${id}: ${name}`).toHaveCount(0);
+      for (const name of PIPELINE_CONTROLS) await expect(control(name), `${id}: ${name}`).toHaveCount(0);
+      // The Mesh Avatar Layout reads the 2D agent's connection; the 3D agent never uses one.
+      await expect(section("Connection Override"), id).toHaveCount(id === "2d-avatars" ? 1 : 0);
+    }
+
+    await open(agent.id);
+    for (const name of [...PIPELINE_SECTIONS, "Connection Override"]) await expect(section(name), name).toBeVisible();
+    for (const name of PIPELINE_CONTROLS) await expect(control(name), name).toBeVisible();
+  } finally {
+    await request.delete(`/api/agents/${agent.id}`).catch(() => undefined);
   }
 });

@@ -56,8 +56,12 @@ A flag is a value the story keeps: `"bool"` (true or false) or `"number"`.
 - Flags are hidden from the player. A flag becomes a **quest objective** in the journal with `quest`:
 
 ```json
-{ "id": "favours", "kind": "number", "initial": 0,
-  "quest": { "title": "Favours", "text": "Do the town three favours", "goal": 3 } }
+{
+  "id": "favours",
+  "kind": "number",
+  "initial": 0,
+  "quest": { "title": "Favours", "text": "Do the town three favours", "goal": 3 }
+}
 ```
 
 A yes-or-no objective is done when its flag is true; a number objective when it reaches its `goal`
@@ -82,9 +86,12 @@ must hold. A yes-or-no flag is only compared with `=` or `!=`.
 An event is something that happens: when its trigger fires and its conditions hold, it does its actions.
 
 ```json
-{ "id": "gates", "when": { "on": "arrive", "place": "p11" },
+{
+  "id": "gates",
+  "when": { "on": "arrive", "place": "p11" },
   "if": [{ "flag": "banished", "is": "=", "value": false }],
-  "do": [{ "cutscene": "gates" }, { "set": "arrived", "value": true }, { "show": "key" }] }
+  "do": [{ "cutscene": "gates" }, { "set": "arrived", "value": true }, { "show": "key" }]
+}
 ```
 
 An event happens once, unless it has `"repeat": true` (which `start`, `turn` and `day` ignore). At most
@@ -92,30 +99,31 @@ An event happens once, unless it has `"repeat": true` (which `start`, `turn` and
 
 **Triggers** (`when.on`), all read from what the game has recorded:
 
-| Trigger | Fires |
-| --- | --- |
-| `start` | On the game's first reply. |
-| `turn` | On or after the Game Master's reply number `turn` in the whole game, across sessions. |
-| `day` | Once the world's day (moved by the Game Master's time passing and by walks) is `day` or later. |
+| Trigger  | Fires                                                                                                                                                                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start`  | On the game's first reply.                                                                                                                                                                                                                     |
+| `turn`   | On or after the Game Master's reply number `turn` in the whole game, across sessions.                                                                                                                                                          |
+| `day`    | Once the world's day (moved by the Game Master's time passing and by walks) is `day` or later.                                                                                                                                                 |
 | `arrive` | While the party is in `place` (a place id) or a place inside it, having come there by starting there, a walk on the overworld, a visit in town, or a place the Game Master names. With `repeat`, again each time it comes back from elsewhere. |
-| `meet` | Once a reply has named `person` (a person id such as `p11-3`, or `p11-e1` for one added by hand) in full. With `repeat`, again for each reply that names them. Only this session's replies are read for names. |
-| `deed` | Once the world has recorded a deed of the party, of kind `deed` and at `place` when given. With `repeat`, again for each reply that records one. |
-| `fight` | When a fight ends in `outcome`: `victory`, `defeat` or `flee`. |
-| `flags` | When its conditions hold. With `repeat`, again each time they come true after being false. |
-| `gm` | Only when the Game Master trips it (the event needs `"gm": true`). |
+| `meet`   | Once a reply has named `person` (a person id such as `p11-3`, or `p11-e1` for one added by hand) in full. With `repeat`, again for each reply that names them. Only this session's replies are read for names.                                 |
+| `deed`   | Once the world has recorded a deed of the party, of kind `deed` and at `place` when given. With `repeat`, again for each reply that records one.                                                                                               |
+| `fight`  | When a fight ends in `outcome`: `victory`, `defeat` or `flee`.                                                                                                                                                                                 |
+| `broke`  | When a fight broke the prop called `prop` (Capability API 1.316), matched without case. Only a prop painted on one of the world's battlefields can be named.                                                                                   |
+| `flags`  | When its conditions hold. With `repeat`, again each time they come true after being false.                                                                                                                                                     |
+| `gm`     | Only when the Game Master trips it (the event needs `"gm": true`).                                                                                                                                                                             |
 
 A repeating `meet` event whose own scene names that person, or a repeating `deed` event that does the
 deed it waits for, would set itself off every turn, so the Engine refuses it.
 
 **Actions** (`do`):
 
-| Action | Does |
-| --- | --- |
-| `{ "set": "<flag>", "value": <value> }` | Sets a flag. |
-| `{ "add": "<flag>", "amount": <number> }` | Adds to a number flag. |
-| `{ "tell": "<text>" }` | Asks something of the Game Master, once, this turn. |
-| `{ "cutscene": "<id>" }` | Plays a cutscene. |
-| `{ "show": "<flag>" }` | Shows a hidden quest objective in the journal. |
+| Action                                                                                                  | Does                                                                     |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `{ "set": "<flag>", "value": <value> }`                                                                 | Sets a flag.                                                             |
+| `{ "add": "<flag>", "amount": <number> }`                                                               | Adds to a number flag.                                                   |
+| `{ "tell": "<text>" }`                                                                                  | Asks something of the Game Master, once, this turn.                      |
+| `{ "cutscene": "<id>" }`                                                                                | Plays a cutscene.                                                        |
+| `{ "show": "<flag>" }`                                                                                  | Shows a hidden quest objective in the journal.                           |
 | `{ "world": { "deed": "<kind>", "group": "...", "with": "...", "place": "<place id>", "who": "..." } }` | Records a deed in the world, answered as the Game Master's own would be. |
 
 A story does not give items, start fights, move the party or end the game: those stay with the Game
@@ -126,12 +134,16 @@ Master and the player. Ask the Game Master for them with `tell`.
 A cutscene is either shown to the player exactly as written, or told to the Game Master to narrate.
 
 ```json
-{ "id": "gates", "kind": "pages", "background": "backgrounds:generated:town-gates",
+{
+  "id": "gates",
+  "kind": "pages",
+  "background": "backgrounds:generated:town-gates",
   "pages": [
     { "text": "The gates creak open." },
     { "speaker": "p11-3", "expression": "happy", "text": "Welcome, travellers." },
     { "speaker": "player", "text": "We come in peace." }
-  ] }
+  ]
+}
 ```
 
 A `pages` cutscene plays before the Game Master's reply, in the narration, one page at a time: a page
@@ -149,6 +161,22 @@ A `beats` cutscene is narrated by the Game Master in its own words, beat by beat
 that marks the moment. So a beats scene a `gm` event uses is known to the Game Master from the start,
 even when an Engine event plays it too. Since it is told them on every turn, the beats of all `gm`
 events together are kept to 16,000 characters.
+
+### The intro message
+
+`intro` (Capability API 1.339) sets how the game opens, the same choice the GM setup offers any game:
+
+```json
+"intro": { "mode": "defined", "text": "The leaves have not fallen in Hollowmere for nine years.", "locked": true }
+```
+
+`"defined"` makes the game's first message exactly `text`; the Game Master writes nothing for it, and
+regenerating it gives the same text. `"guided"` only shapes the opening the Game Master writes, as guidance
+it reads for that first reply alone. `text` is 1 to 8000 characters and may hold line breaks (the one text
+in a story that may), but never `{{`; guided text may not hold square brackets either. With `locked`, the
+player sees the intro in the GM setup and cannot change it; without it, the intro only fills the setup's
+field, and the player may change or clear it. A game whose first reply was already written, or that
+carries its party over, has no intro.
 
 ## How a story plays
 

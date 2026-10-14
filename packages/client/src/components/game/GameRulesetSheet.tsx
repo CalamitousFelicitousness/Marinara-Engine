@@ -14,6 +14,7 @@ import { Minus, Pencil, Plus } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  rulesetConditionIcons,
   rulesetItemEffectFacts,
   applyRulesetSheetOp,
   readResolvedSheetCommandTags,
@@ -35,6 +36,7 @@ import {
   type RulesetSheetOp,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
@@ -672,6 +674,10 @@ export function GameRulesetSheet({
                       : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                   }`}
                 >
+                  <ArtIcon
+                    ids={rulesetConditionIcons(definition, condition.id)}
+                    className="mr-1 h-4 w-4 align-[-0.2em]"
+                  />
                   {condition.label}
                 </button>
               ))}

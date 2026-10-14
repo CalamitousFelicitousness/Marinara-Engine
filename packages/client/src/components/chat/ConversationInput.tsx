@@ -29,7 +29,7 @@ import { useGenerate } from "../../hooks/use-generate";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { useCreateMessage, useDeleteMessage, useUpdateMessageExtra, useChat, chatKeys } from "../../hooks/use-chats";
 import { useConnections } from "../../hooks/use-connections";
-import { characterKeys } from "../../hooks/use-characters";
+import { characterKeys, ensureCharacterAndPersonaLists } from "../../hooks/use-characters";
 import {
   matchSlashCommand,
   shouldExecuteQuickPostAsCommand,
@@ -1003,14 +1003,17 @@ export function ConversationInput({
   );
 
   const prepareUserMessage = useCallback(
-    (text: string, onTranslationError: () => void) =>
-      prepareUserInputMessage(text, {
-        chat: useChatStore.getState().activeChat,
+    async (text: string, onTranslationError: () => void) => {
+      const chat = useChatStore.getState().activeChat;
+      await ensureCharacterAndPersonaLists(qc);
+      return prepareUserInputMessage(text, {
+        chat,
         characters: qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
         personas: qc.getQueryData<Persona[]>(characterKeys.personas),
         applyToUserInput,
         onTranslationError,
-      }),
+      });
+    },
     [applyToUserInput, qc],
   );
 

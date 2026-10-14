@@ -31,7 +31,7 @@ import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { useCreateMessage, useDeleteMessage, useUpdateMessageExtra, chatKeys } from "../../hooks/use-chats";
 import { useConnections } from "../../hooks/use-connections";
-import { characterKeys } from "../../hooks/use-characters";
+import { characterKeys, ensureCharacterAndPersonaLists } from "../../hooks/use-characters";
 import {
   buildGuidedGenerationInstructionMessage,
   formatTextQuotes,
@@ -789,14 +789,17 @@ export const ChatInput = memo(function ChatInput({
   const getValue = () => textareaRef.current?.value ?? "";
 
   const prepareUserMessage = useCallback(
-    (text: string, onTranslationError: () => void) =>
-      prepareUserInputMessage(text, {
-        chat: useChatStore.getState().activeChat,
+    async (text: string, onTranslationError: () => void) => {
+      const chat = useChatStore.getState().activeChat;
+      await ensureCharacterAndPersonaLists(qc);
+      return prepareUserInputMessage(text, {
+        chat,
         characters: qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
         personas: qc.getQueryData<Persona[]>(characterKeys.personas),
         applyToUserInput,
         onTranslationError,
-      }),
+      });
+    },
     [applyToUserInput, qc],
   );
 

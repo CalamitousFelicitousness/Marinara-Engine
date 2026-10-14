@@ -536,7 +536,7 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
 
     // ── A character without sprites ──
     await setup.getByLabel("Character or persona").selectOption(`character:${character.id}`);
-    await expect(setup.getByText("Add sprites in the character or persona editor first.")).toBeVisible({
+    await expect(setup.getByText("Make faces from the avatar first, then add blinking and talking.")).toBeVisible({
       timeout: FIRST_LOAD_TIMEOUT_MS,
     });
     await expect(
@@ -568,7 +568,7 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
     await dialog.getByRole("button", { name: /^Save \d+ Sprites?$/u }).click();
     await expect(dialog).toBeHidden();
     // The saved faces are the character's sprites, and the panel offers them at once.
-    await expect(setup.getByText("Add sprites in the character or persona editor first.")).toHaveCount(0);
+    await expect(setup.getByText("Make faces from the avatar first, then add blinking and talking.")).toHaveCount(0);
     await expect(
       setup.getByRole("group", { name: "Sprites", exact: true }).getByRole("button", { name: "neutral" }),
     ).toBeVisible();

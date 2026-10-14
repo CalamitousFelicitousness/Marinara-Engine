@@ -191,14 +191,14 @@
 }
 
 /* Inside a section each element paints its own color, now that the tints follow the style:
-   muted labels stay muted, buttons keep their contrast and party and enemy colors show.
-   A fallback name or dialogue color set inline still follows the preset text, as on the
-   other chat surfaces; a character's own color keeps its paint (#7296). */
+   muted labels stay muted, buttons keep their contrast and party, enemy and element colors
+   show. In the logs a fallback name or dialogue color set inline still follows the preset
+   text, as on the other chat surfaces; a character's own color keeps its paint (#7296). */
 :root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface * {
   -webkit-text-fill-color: currentColor;
 }
 :root[data-chat-widget-apply-colors="true"]
-  .mari-game-section.mari-chat-style-surface
+  .mari-game-section.mari-chat-style-surface[data-game-section="logs"]
   :is([style^="color"], [style*=" color:"]):not(.mari-character-color) {
   -webkit-text-fill-color: var(--mari-chat-resolved-text);
 }

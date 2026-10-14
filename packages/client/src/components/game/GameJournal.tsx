@@ -326,6 +326,7 @@ export function GameJournal({
         message: localizeUi("ui.game.gamejournal.deleteJournalEntryConfirmation", { title: entry.title }),
         confirmLabel: localizeUi("ui.game.gamejournal.deleteEntry"),
         tone: "destructive",
+        chatStyle: true,
       });
       if (!confirmed) return;
 

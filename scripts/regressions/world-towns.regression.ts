@@ -5,7 +5,7 @@
  *     each other, the streets or the square, each with its door on a street. The places in it (the
  *     world's own and those the story added) are buildings, a bigger place has its hall, the trades it is
  *     known for have workplaces, and everyone has a home.
- *   - People are at work by day, in the square at dusk, at home at night.
+ *   - People are at work by day, out at dusk, at home at night.
  *   - A walk across town passes its minutes on the clock and is told on the next turn; a visit to a named
  *     place makes it the place in force; a regeneration tells it again.
  */
@@ -24,6 +24,7 @@ import {
   lastGamePlace,
   parseWorldKit,
   worldPresent,
+  worldIsSite,
   worldTown,
   worldTownDoor,
   worldTownMinutes,
@@ -35,6 +36,9 @@ import {
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-towns-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+// No local embedding model: memory recall would download one in the background after each turn, and the
+// process would wait for that download (or its timeout) before exiting.
+process.env.MARINARA_LITE = "true";
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
@@ -92,7 +96,10 @@ try {
         assert.ok(beside, `${label}: ${building.id}'s door is at the building`);
       }
       // The places in town are buildings; everyone has a home.
-      for (const inside of game.world.places.filter((place) => place.parentId === settlement.id)) {
+      // (A site a few steps out of town, generator 2, is on the overworld instead.)
+      for (const inside of game.world.places.filter(
+        (place) => place.parentId === settlement.id && !worldIsSite(game, place.id),
+      )) {
         assert.ok(
           town.buildings.some((building) => building.placeId === inside.id),
           `${label}: ${inside.name} is in town`,
@@ -117,7 +124,23 @@ try {
   const worker = town.people.find((person) => town.workOf[person.id])!;
   assert.ok(worker, "someone works in the city");
   assert.equal(worldTownWhere(town, worker.id, 10), town.workOf[worker.id], "at work by day");
-  assert.equal(worldTownWhere(town, worker.id, 19), "square", "in the square at dusk");
+  // At dusk a third of the town is in the square, a third at the first tavern and a third at home, each
+  // person always the same third (worldgen W13 split the evening); a tavern's own staff are at work.
+  const taverns = town.buildings
+    .filter((building) => building.kind !== "home" && building.use === "tavern")
+    .map((building) => building.id);
+  const third = (id: string) => [...id].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7) % 3;
+  const evening = town.people.filter((person) => !taverns.includes(town.workOf[person.id] ?? ""));
+  for (const person of evening) {
+    const home = town.homeOf[person.id];
+    const expected =
+      third(person.id) === 1 && taverns[0] ? taverns[0] : third(person.id) === 2 && home ? home : "square";
+    assert.equal(worldTownWhere(town, person.id, 19), expected, `${person.id} at dusk`);
+  }
+  assert.ok(
+    evening.some((person) => worldTownWhere(town, person.id, 19) === "square"),
+    "someone is in the square at dusk",
+  );
   assert.equal(worldTownWhere(town, worker.id, 23), town.homeOf[worker.id], "home at night");
   const known = game.kit.people?.roles.find((role) => role.tags?.some((tag) => city.tags.includes(tag)));
   if (known && town.people.some((person) => person.role === known.label)) {

@@ -922,7 +922,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.equal(eventsOf(flub.events, "damage").length, 0);
 }
 
-// ── A critical range off the sheet (Capability API 1.80) ──
+// ── A critical range off the sheet (Capability API 1.81) ──
 {
   // A Champion's sheet says 19: a natural 19 is a critical, with the critical's damage; without the
   // range it is a plain hit. A sheet reading past the die's top face is held to it.
@@ -1008,7 +1008,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   );
 }
 
-// ── A sheet value added to an amount (Capability API 1.82) ──
+// ── A sheet value added to an amount (Capability API 1.83) ──
 {
   // Mending Light adding the caster's level to its 1d8+4: the menu's action carries it in its flat.
   const added = {
@@ -1205,7 +1205,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
 // ── A price the sheet would refuse is offered only from a higher pool, and refused if asked for anyway ──
 {
   const state = fight(fiveE, [wizard({ pools: { slots_3: { value: 0 } } }), snag()], 20, 5);
-  // No third-level slot: Fireball is cast with a higher one or not at all (1.170).
+  // No third-level slot: Fireball is cast with a higher one or not at all (1.171).
   const fireball = rulesetCombatOptions(fiveE, state, "corwin").find((option) => option.label === "Fireball");
   assert.equal(fireball?.upcastOnly, true, "no third-level slot, Fireball only from a higher one");
   assert.ok(!fireball?.payWith?.includes("slots_3"));

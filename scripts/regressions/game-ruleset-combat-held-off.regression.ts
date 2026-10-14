@@ -1,5 +1,5 @@
 /**
- * Conditions held off rather than ended (Capability API 1.274).
+ * Conditions held off rather than ended (Capability API 1.275).
  *
  *   - `orSourceWithin` beside `whileSourceInSight`: Antipathy's fright holds while its holder can see
  *     the target or stands within 60 feet of it; out of both it is held off, still on, and holds
@@ -188,19 +188,19 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a condition that holds while its source is near as well as in sight, or one condition that holds others off, requires schemaVersion 2 and capabilityApi 1.274 or newer";
+      "A ruleset with a condition that holds while its source is near as well as in sight, or one condition that holds others off, requires schemaVersion 2 and capabilityApi 1.275 or newer";
     const issue = (minor: number, doc: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, undefined as never);
     const plain = document((doc) => {
       delete conditionOf(doc, "repelled").orSourceWithin;
       delete conditionOf(doc, "calmed").suppresses;
     });
-    assert.notEqual(issue(273, plain), gate, "nothing of 1.274 left");
-    assert.equal(issue(273, document()), gate);
-    assert.notEqual(issue(274, document()), gate);
+    assert.notEqual(issue(274, plain), gate, "nothing of 1.275 left");
+    assert.equal(issue(274, document()), gate);
+    assert.notEqual(issue(275, document()), gate);
     assert.equal(
       issue(
-        273,
+        274,
         document((doc) => delete conditionOf(doc, "calmed").suppresses),
       ),
       gate,
@@ -208,7 +208,7 @@ try {
     );
     assert.equal(
       issue(
-        273,
+        274,
         document((doc) => delete conditionOf(doc, "repelled").orSourceWithin),
       ),
       gate,
@@ -217,7 +217,7 @@ try {
   }
 
   console.log(
-    "Ruleset held off: Antipathy's fright holds within 60 feet or in sight and is held off, still on, out of both; Calm Emotions holds a fright off until it ends; gated at 1.274.",
+    "Ruleset held off: Antipathy's fright holds within 60 feet or in sight and is held off, still on, out of both; Calm Emotions holds a fright off until it ends; gated at 1.275.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

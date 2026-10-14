@@ -1,5 +1,5 @@
 /**
- * Zones that work on whoever stands in them (Capability API 1.178).
+ * Zones that work on whoever stands in them (Capability API 1.179).
  *
  *   - `zone.inside`: conditions on whoever is inside, damage types kept off them (Silence).
  *   - `combat.components` and an entry's `components`; `zone.forbids` and a condition's `forbids`
@@ -477,28 +477,28 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with combat components, or zones that work on whoever stands inside, stop components or ward off spells, requires schemaVersion 2 and capabilityApi 1.178 or newer";
+      "A ruleset with combat components, or zones that work on whoever stands inside, stop components or ward off spells, requires schemaVersion 2 and capabilityApi 1.179 or newer";
     const withEntry = (entry: RulesetCatalogEntry) =>
       fiveE((doc) => {
         doc.catalogs.push({ id: "x", label: "X", entries: [entry] });
       });
     for (const entry of [silence, shout, globe]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(177) as never, withEntry(entry)), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(178) as never, withEntry(entry)), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(178) as never, withEntry(entry)), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(179) as never, withEntry(entry)), gate, entry.id);
     }
     const components = fiveE((doc) => {
       doc.combat.components = [{ id: "verbal", label: "Verbal" }];
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(177) as never, components), gate, "combat components");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(178) as never, components), gate, "combat components");
     const gag = fiveE((doc) => {
       doc.combat.conditions.find((entry: any) => entry.condition === "stunned").forbids = { components: ["verbal"] };
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(177) as never, gag), gate, "a condition that forbids");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(177) as never, withEntry(stink)), gate, "a plain zone");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(178) as never, gag), gate, "a condition that forbids");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(178) as never, withEntry(stink)), gate, "a plain zone");
   }
 
   console.log(
-    "Zone inside: Silence deafens, keeps thunder out and stops verbal spells inside; a gag stops them too; Globe of Invulnerability wards off level-1 spells from outside but not from inside or paid higher; Stinking Cloud takes the turn's action; gated at 1.178.",
+    "Zone inside: Silence deafens, keeps thunder out and stops verbal spells inside; a gag stops them too; Globe of Invulnerability wards off level-1 spells from outside but not from inside or paid higher; Stinking Cloud takes the turn's action; gated at 1.179.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

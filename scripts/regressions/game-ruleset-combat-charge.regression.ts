@@ -1,5 +1,5 @@
 /**
- * Breaths that recharge together, and a charging blow (Capability API 1.185).
+ * Breaths that recharge together, and a charging blow (Capability API 1.186).
  *
  *   - `recharge.group`: a dragon's two breaths. Using either spends both, and one roll at the start of
  *     its turn brings both back, or leaves both spent.
@@ -388,15 +388,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creature actions that recharge together or charge requires schemaVersion 2 and capabilityApi 1.185 or newer";
+      "A ruleset with creature actions that recharge together or charge requires schemaVersion 2 and capabilityApi 1.186 or newer";
     for (const [label, doc] of [
       ["charge", withCreature(minotaur)],
       ["recharge group", withCreature(dragon)],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(184) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(185) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(185) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(186) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(184) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(185) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

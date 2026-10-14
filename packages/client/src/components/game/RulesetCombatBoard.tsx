@@ -170,7 +170,7 @@ export function RulesetCombatBoard({
       onChoose(step.option.id, [], step.payWith, { to: { x: cell.x, y: cell.y } }, step.style, step.mode);
       return;
     }
-    // A wall set down waits for the way it runs, and any square turns it (1.176).
+    // A wall set down waits for the way it runs, and any square turns it (1.177).
     if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
       const taken = rulesetAimTake(step.option, step.lay, cell);
       if ("lay" in taken) {
@@ -178,14 +178,14 @@ export function RulesetCombatBoard({
         return;
       }
       // Who it spares and who it heightens are picked in the menu first, where there is a pick
-      // (1.253, 1.254).
+      // (1.254, 1.255).
       const picks = rulesetPicksStep(view, step, [], taken.send);
       if (picks) {
         setStep(picks);
         return;
       }
       setStep(null);
-      // Who goes along on a teleport (1.275), picked in the menu while it is aimed.
+      // Who goes along on a teleport (1.276), picked in the menu while it is aimed.
       const carries = step.option.teleport ? step.targets : [];
       onChoose(
         step.option.id,
@@ -199,7 +199,7 @@ export function RulesetCombatBoard({
       );
       return;
     }
-    // A wall's section the attack may strike (1.199): sent at once, as one target is.
+    // A wall's section the attack may strike (1.200): sent at once, as one target is.
     if (step.stage === "target" && cell.strikable) {
       setStep(null);
       onChoose(
@@ -541,7 +541,7 @@ export function RulesetCombatBoard({
                     ))}
                   {/* A wall's section (1.199): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-sky-100">
+                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.section.health}
                     </span>
                   )}
@@ -614,7 +614,7 @@ export function RulesetCombatBoard({
               board has exactly one focusable thing per square and the arrow keys mean one thing. */}
           {cells.map((cell) => {
             const combatant = cell.occupant;
-            // Drawn once, from its top-left cell, across every cell it fills (1.193).
+            // Drawn once, from its top-left cell, across every cell it fills (1.194).
             if (!combatant || !cell.anchor) return null;
             const span = Math.max(1, combatant.span ?? 1);
             const key = rulesetCellKey(cell);
@@ -685,9 +685,9 @@ export function RulesetCombatBoard({
                   {(combatant.defeated || combatant.down) && (
                     <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
                   )}
-                  {/* Caught unaware (1.236): marked until their first turn is over. */}
+                  {/* Caught unaware (1.237): marked until their first turn is over. */}
                   {combatant.surprised && !combatant.defeated && !combatant.down && (
-                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-amber-400 drop-shadow" />
+                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
                   )}
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the

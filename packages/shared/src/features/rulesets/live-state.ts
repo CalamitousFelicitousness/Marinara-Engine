@@ -42,13 +42,13 @@ import {
 export interface RulesetLivePoolValue {
   value: number;
   temp?: number;
-  /** Points lost that only a rest gives back (Capability API 1.192): a sword of wounding's. A
+  /** Points lost that only a rest gives back (Capability API 1.193): a sword of wounding's. A
    *  restore never lifts the pool past its maximum less these; any rest clears them. */
   sealed?: number;
-  /** The part of `sealed` no rest gives back (Capability API 1.202), only something that unseals:
+  /** The part of `sealed` no rest gives back (Capability API 1.203), only something that unseals:
    *  a clay golem's Slam. */
   lasting?: number;
-  /** How many it holds past its maximum (Capability API 1.251): Font of Magic's spell slots. A rest
+  /** How many it holds past its maximum (Capability API 1.252): Font of Magic's spell slots. A rest
    *  that sets the pool back to its maximum takes them away. */
   above?: number;
 }
@@ -72,10 +72,10 @@ export interface RulesetLiveState {
   conditions?: string[];
   /** Live states away from their default, keyed by state id: the value they are at. */
   states?: Record<string, string>;
-  /** What each condition's rests took off health's maximum for good (1.260), keyed by condition
+  /** What each condition's rests took off health's maximum for good (1.261), keyed by condition
    *  id, for one that gives it back when it is cured (`restoredWhenCured`). */
   lowered?: Record<string, number>;
-  /** Whom an entry used once a creature until a rest went to (1.303), by name, keyed `rest|action`:
+  /** Whom an entry used once a creature until a rest went to (1.304), by name, keyed `rest|action`:
    *  that rest clears its lists. */
   usedOn?: Record<string, string[]>;
 }
@@ -94,7 +94,7 @@ const MAX_LIVE_KEY_LENGTH = 200;
 const MAX_LIVE_TRACKS = 30;
 const MAX_LIVE_TEXTS = 12;
 const MAX_LIVE_TEXT_LENGTH = 500;
-// As many as a sheet may declare (160 since Capability API 1.187).
+// As many as a sheet may declare (320 since Capability API 1.269, 160 from 1.188).
 const MAX_LIVE_CONDITIONS = RULESET_CONDITIONS_MAX;
 const MAX_LIVE_CONDITION_LENGTH = 80;
 const MAX_LIVE_STATES = 30;
@@ -115,7 +115,7 @@ export const rulesetLivePoolValueSchema = z
     temp: liveNumber.min(0).optional(),
     sealed: liveNumber.min(0).optional(),
     lasting: liveNumber.min(0).optional(),
-    /** How many it holds past its maximum (1.251): spell slots Font of Magic made, which go when a
+    /** How many it holds past its maximum (1.252): spell slots Font of Magic made, which go when a
      *  rest sets the pool back to its maximum. */
     above: liveNumber.min(0).optional(),
   })
@@ -614,7 +614,7 @@ function readStoredLiveState(
 }
 
 /**
- * A stored live state as the current layout reads it (`routeLive`, Capability API 1.76). Live state
+ * A stored live state as the current layout reads it (`routeLive`, Capability API 1.77). Live state
  * has no version of its own, so every step runs on every read, and each is safe to: the old key
  * always goes, and its value moves only while the new key is not there yet. A writer reads through
  * here too, so the first write stores the new layout; a value written since (a spent die, a rest
@@ -735,7 +735,7 @@ function resolveLive(
       const fallback = spec.start === "full" ? spec.max : 0;
       return {
         ...spec,
-        // What it holds past its maximum (1.251) counts on top, wherever the stored value stands.
+        // What it holds past its maximum (1.252) counts on top, wherever the stored value stands.
         value: Math.min(MAX_LIVE_NUMBER, clamp(entry?.value ?? fallback, 0, spec.max) + Math.max(0, entry?.above ?? 0)),
         // A pool that carries no buffer can never show one, however the blob got written.
         temp: spec.allowTemp ? Math.max(0, entry?.temp ?? 0) : 0,
@@ -848,17 +848,17 @@ export type RulesetSheetOp =
       op: "spend" | "restore" | "damage" | "temp";
       pool: string;
       amount: number;
-      /** On `damage`: what it takes off the pool comes back only with a rest (1.192). */
+      /** On `damage`: what it takes off the pool comes back only with a rest (1.193). */
       seals?: true;
-      /** On `damage` that `seals`: not even a rest gives it back, only something that unseals (1.202). */
+      /** On `damage` that `seals`: not even a rest gives it back, only something that unseals (1.203). */
       lasting?: true;
-      /** On `restore`: what only a rest gives back is given back too (1.200), and then `amount` may
+      /** On `restore`: what only a rest gives back is given back too (1.201), and then `amount` may
        *  be nothing. */
       unseals?: true;
-      /** On `restore`: it may go past the maximum (1.251), and what is past it goes when a rest sets
+      /** On `restore`: it may go past the maximum (1.252), and what is past it goes when a rest sets
        *  the pool back to its maximum: Font of Magic's spell slots. */
       overMax?: true;
-      /** On `restore` of health: a magical heal (1.260), which a condition keeping off only other
+      /** On `restore` of health: a magical heal (1.261), which a condition keeping off only other
        *  heals lets through. */
       magical?: true;
     }
@@ -904,7 +904,7 @@ export type RulesetSheetRefusal =
   | "unknown-entry"
   | "ambiguous-entry"
   | "bad-pool"
-  /** A heal its holder's conditions keep off (1.260): a diseased giant rat's bite. */
+  /** A heal its holder's conditions keep off (1.261): a diseased giant rat's bite. */
   | "cannot-heal"
   | "malformed";
 
@@ -960,7 +960,7 @@ function isAmount(amount: number, allowZero = false): boolean {
 /** Apply one command to one character's live state. Pure: the input blob is never touched, and the
  *  result is a new sparse state. A refusal changes nothing, which is what lets the Game Master's
  *  fiction be corrected rather than silently accepted. */
-/** The condition held on this sheet that keeps a heal off health (1.260), by its label: any heal
+/** The condition held on this sheet that keeps a heal off health (1.261), by its label: any heal
  *  for "cannot-heal", one that is not magical for "cannot-heal-nonmagical". */
 function healKeptOffBy(definition: RulesetDefinition, conditions: readonly string[], magical: boolean): string | null {
   for (const entry of definition.combat?.conditions ?? []) {
@@ -977,7 +977,7 @@ export function applyRulesetSheetOp(
   build: RulesetSheetBuild,
   stored: unknown,
   op: RulesetSheetOp,
-  /** What a rest rolls for a condition that lowers health's maximum (1.259). Without one, each die
+  /** What a rest rolls for a condition that lowers health's maximum (1.260). Without one, each die
    *  counts its average, rounded down over them all. */
   roll?: (sides: number) => number,
   /** The items the character carries, which a rest's dice read for an `itemStat` (1.336). */
@@ -993,15 +993,15 @@ export function applyRulesetSheetOp(
     spec: RulesetLivePoolSpec,
     value: number,
     temp: number,
-    /** What only a rest gives back (1.192); what is stored already when left out. */
+    /** What only a rest gives back (1.193); what is stored already when left out. */
     sealed = own(next.pools, spec.key)?.sealed ?? 0,
-    /** What of it no rest gives back (1.202); what is stored already, within `sealed`, when left out. */
+    /** What of it no rest gives back (1.203); what is stored already, within `sealed`, when left out. */
     lasting = Math.min(sealed, own(next.pools, spec.key)?.lasting ?? 0),
   ): void => {
     const pools = next.pools ?? {};
     // Back at its default, with no buffer, the entry goes away again: that is what lets an
     // untouched pool follow its maximum when a level-up raises it.
-    // Past the maximum is held apart (1.251), so the stored value never reads as more than it may.
+    // Past the maximum is held apart (1.252), so the stored value never reads as more than it may.
     const above = Math.max(0, value - spec.max);
     if (above > 0) value = spec.max;
     if (value === (spec.start === "full" ? spec.max : 0) && temp === 0 && sealed === 0 && above === 0) {
@@ -1044,7 +1044,7 @@ export function applyRulesetSheetOp(
     else delete text[id];
     next.text = text;
   };
-  /** What a cured condition's rests took off health's maximum for good, given back (1.260). */
+  /** What a cured condition's rests took off health's maximum for good, given back (1.261). */
   const giveBackLowered = (conditionId: string): string => {
     const amount = own(next.lowered, conditionId) ?? 0;
     if (!next.lowered || amount <= 0) return "";
@@ -1144,8 +1144,8 @@ export function applyRulesetSheetOp(
       ) {
         return { ok: false, reason: "cannot-heal" };
       }
-      // Never past what only a rest gives back (1.192), and never down for it either, unless it is
-      // given back too (1.200).
+      // Never past what only a rest gives back (1.193), and never down for it either, unless it is
+      // given back too (1.201).
       const sealed = op.unseals ? 0 : pool.sealed;
       const value = op.overMax
         ? Math.min(MAX_LIVE_NUMBER, pool.value + op.amount)
@@ -1158,7 +1158,7 @@ export function applyRulesetSheetOp(
     const fromTemp = Math.min(pool.temp, op.amount);
     const temp = pool.temp - fromTemp;
     const value = Math.max(0, pool.value - (op.amount - fromTemp));
-    // What it took off the pool itself, not the buffer, comes back only with a rest (1.192).
+    // What it took off the pool itself, not the buffer, comes back only with a rest (1.193).
     const sealed = op.seals ? Math.min(pool.max, pool.sealed + (pool.value - value)) : pool.sealed;
     const lasting = op.seals && op.lasting ? Math.min(sealed, pool.lasting + (pool.value - value)) : pool.lasting;
     setPool(pool, value, temp, sealed, lasting);
@@ -1307,7 +1307,7 @@ export function applyRulesetSheetOp(
       if (pool.listId !== step.listPools) return false;
       return !step.recharge || (pool.recharge !== undefined && step.recharge.includes(pool.recharge));
     });
-    // Shared (1.76): the fraction of the whole group's maximum, handed to its pools in the order the
+    // Shared (1.77): the fraction of the whole group's maximum, handed to its pools in the order the
     // sheet lists them, each up to what it is missing.
     let share =
       step.shared && step.by && "fractionOfMax" in step.by
@@ -1328,9 +1328,9 @@ export function applyRulesetSheetOp(
       } else {
         value = clamp(moved(target.value, target.pool.max, 0), 0, target.pool.max);
       }
-      // Never past what no rest gives back (1.202), and never down for it either.
+      // Never past what no rest gives back (1.203), and never down for it either.
       value = Math.min(value, Math.max(target.value, target.pool.max - target.pool.lasting));
-      // A rest is no magical heal (1.260).
+      // A rest is no magical heal (1.261).
       if (value > target.value && target.pool.key === restHealth) {
         const by = healKeptOffBy(definition, next.conditions ?? [], false);
         if (by) {
@@ -1343,14 +1343,14 @@ export function applyRulesetSheetOp(
       setPool(target.pool, value, target.temp);
     }
   }
-  // Any rest gives back what only a rest could (1.192): nothing is sealed after one but what no rest
-  // gives back (1.202).
+  // Any rest gives back what only a rest could (1.193): nothing is sealed after one but what no rest
+  // gives back (1.203).
   for (const pool of resolved.pools) {
     if (pool.sealed === pool.lasting) continue;
     const now = values.get(pool.key);
     setPool(pool, now?.value ?? pool.value, now?.temp ?? pool.temp, pool.lasting, pool.lasting);
   }
-  // What a condition on them does with each such rest (1.259): Mummy Rot's lower maximum, a day at
+  // What a condition on them does with each such rest (1.260): Mummy Rot's lower maximum, a day at
   // a time. Sealed after the rest has given back what it gives back, so this rest keeps it.
   const health = definition.combat?.health;
   const healthPool = health && "pool" in health ? resolved.pools.find((pool) => pool.key === health.pool) : undefined;
@@ -1406,7 +1406,7 @@ export function applyRulesetSheetOp(
     const value = Math.min(now?.value ?? healthPool.value, healthPool.max - sealed);
     if (now) now.value = value;
     setPool(healthPool, value, now?.temp ?? healthPool.temp, sealed, lasting);
-    // Kept apart for a cure that gives it back (1.260).
+    // Kept apart for a cure that gives it back (1.261).
     if (onRest.lasting && onRest.restoredWhenCured && sealed > sealedBefore) {
       next.lowered = {
         ...next.lowered,
@@ -1416,7 +1416,7 @@ export function applyRulesetSheetOp(
     changes.push(`${label} lowers ${healthPool.label}'s maximum by ${sealed - sealedBefore}`);
   }
   for (const id of rest.clear.text) setText(id, "");
-  // What may be used on a creature once until this rest may be again (1.303).
+  // What may be used on a creature once until this rest may be again (1.304).
   for (const key of Object.keys(next.usedOn ?? {})) if (key.startsWith(`${rest.id}|`)) delete next.usedOn![key];
   const before = next.conditions ?? [];
   if (rest.clear.conditions === "all") next.conditions = [];
@@ -1424,7 +1424,7 @@ export function applyRulesetSheetOp(
     const cleared = new Set<string>(rest.clear.conditions);
     next.conditions = (next.conditions ?? []).filter((id) => !cleared.has(id));
   }
-  // Whatever came off by this rest, a cure by it, gives back what it took for good (1.260).
+  // Whatever came off by this rest, a cure by it, gives back what it took for good (1.261).
   for (const id of before) {
     if ((next.conditions ?? []).includes(id)) continue;
     const back = giveBackLowered(id);
@@ -1515,12 +1515,12 @@ export function planRulesetUse(
   stored: unknown,
   catalogs: RulesetCatalogEntriesById,
   op: Extract<RulesetSheetOp, { op: "use" }>,
-  /** How many of its rows' uses one use spends (1.244): Quivering Palm's 3 ki. */
+  /** How many of its rows' uses one use spends (1.245): Quivering Palm's 3 ki. */
   uses = 1,
-  /** A pool the use gives back to, which it never spends (1.251): Font of Magic turning a slot into
+  /** A pool the use gives back to, which it never spends (1.252): Font of Magic turning a slot into
    *  the Sorcery Points its own row counts. */
   keeps?: string,
-  /** Spending another entry's counter by name (1.238 `usesOf`): the price is these terms, the using
+  /** Spending another entry's counter by name (1.239 `usesOf`): the price is these terms, the using
    *  entry's own, and of the named entry only the counter the name is, never its cost or its other
    *  rows (Flurry of Blows' ki is not a Martial Arts use). */
   borrowed?: { cost: ReadonlyArray<{ pool: string; amount: number }> },
@@ -1542,7 +1542,7 @@ export function planRulesetUse(
     return definition.sheet.live.pools.some((entry) => entry.group === target) ? target : undefined;
   };
 
-  /** The level of what a pool pays at: its own `level`, else its place in its group (1.115). */
+  /** The level of what a pool pays at: its own `level`, else its place in its group (1.116). */
   const poolLevel = (id: string): number => {
     const pool = definition.sheet.live.pools.find((one) => one.id === id);
     if (!pool) return 0;
@@ -1560,7 +1560,7 @@ export function planRulesetUse(
     const target = named
       ? declared.find((pool) => sameName(pool.key, named) || sameName(pool.label, named))
       : undefined;
-    // A pool of another group pays too where it says so (1.170): 5e's pact slots, for a spell
+    // A pool of another group pays too where it says so (1.171): 5e's pact slots, for a spell
     // costed from the spell slots, and at no lower a level than the cost's own.
     const pays = definition.sheet.live.pools.find((pool) => pool.id === target?.key)?.pays;
     if (!group || !target) return { ok: false, reason: "bad-pool" };

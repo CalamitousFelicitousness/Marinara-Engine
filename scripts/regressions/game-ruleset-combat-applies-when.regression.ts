@@ -1,4 +1,4 @@
-/** Conditions applied only while the applier's sheet allows (Capability API 1.166): Rage's damage
+/** Conditions applied only while the applier's sheet allows (Capability API 1.167): Rage's damage
  *  bonus by barbarian level, read off whoever applies it as it goes on. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -184,15 +184,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose conditions are applied only while the applier's sheet allows requires schemaVersion 2 and capabilityApi 1.166 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(165) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(166) as never, document()), gate);
+      "A ruleset whose conditions are applied only while the applier's sheet allows requires schemaVersion 2 and capabilityApi 1.167 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(166) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(167) as never, document()), gate);
     const plain = structuredClone(rage);
     plain.mechanics.applies = [plain.mechanics.applies[0]!] as typeof plain.mechanics.applies;
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(165) as never, document([plain])), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(166) as never, document([plain])), gate);
   }
 
-  console.log("Applied only while the applier's sheet allows: Rage's +2/+3/+4 by level, gated at 1.166.");
+  console.log("Applied only while the applier's sheet allows: Rage's +2/+3/+4 by level, gated at 1.167.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

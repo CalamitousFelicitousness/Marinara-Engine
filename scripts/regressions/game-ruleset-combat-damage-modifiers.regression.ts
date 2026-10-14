@@ -1,4 +1,4 @@
-/** Damage dealt and taken on attack hits (Capability API 1.132): 5e's Favor, Rage, Ray and Mark. */
+/** Damage dealt and taken on attack hits (Capability API 1.133): 5e's Favor, Rage, Ray and Mark. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -312,9 +312,9 @@ try {
       damageType: "radiant",
       fromSource: true,
     })) {
-      // Attacks are narrowed by ability since 1.187 (game-ruleset-combat-ability-narrowing).
+      // Attacks are narrowed by ability since 1.188 (game-ruleset-combat-ability-narrowing).
       if (key === "ability" && to === "attacks") continue;
-      // Attacks are narrowed by kind of attack and blow since 1.246 (game-ruleset-combat-reckless).
+      // Attacks are narrowed by kind of attack and blow since 1.247 (game-ruleset-combat-reckless).
       if ((key === "attacks" || key === "blow") && to === "attacks") continue;
       const doc = document((one) => {
         one.combat.conditions.at(-1).modifiers = [
@@ -402,7 +402,7 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  const gate = "A ruleset whose modifiers change damage requires schemaVersion 2 and capabilityApi 1.132 or newer";
+  const gate = "A ruleset whose modifiers change damage requires schemaVersion 2 and capabilityApi 1.133 or newer";
   for (const to of ["damage", "damage-taken"]) {
     for (const where of ["condition", "level", "worn", "carried", "otherwise"]) {
       for (const file of where === "condition" || where === "level" ? [false] : [false, true]) {
@@ -431,21 +431,21 @@ try {
         }
         parse(doc);
         assert.equal(
-          getCapabilityPackageInstallIssue(manifest(131) as any, doc, documents),
+          getCapabilityPackageInstallIssue(manifest(132) as any, doc, documents),
           gate,
           `${where} file=${file}`,
         );
-        assert.equal(getCapabilityPackageInstallIssue(manifest(132) as any, doc, documents), null);
+        assert.equal(getCapabilityPackageInstallIssue(manifest(133) as any, doc, documents), null);
         assert.match(
-          getCapabilityPackageInstallIssue(manifest(132, 1) as any, doc, documents) ?? "",
+          getCapabilityPackageInstallIssue(manifest(133, 1) as any, doc, documents) ?? "",
           /requires schemaVersion 2/,
         );
       }
     }
   }
-  assert.equal(getCapabilityPackageInstallIssue(manifest(131) as any, JSON.parse(fiveE)), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(132) as any, JSON.parse(fiveE)), null);
   console.info(
-    "Damage modifiers: hit filters, source-bound marks, criticals, typed resistance, once per hit, forecasts, summaries and 1.132 gate.",
+    "Damage modifiers: hit filters, source-bound marks, criticals, typed resistance, once per hit, forecasts, summaries and 1.133 gate.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

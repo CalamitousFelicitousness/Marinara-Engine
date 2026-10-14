@@ -1,5 +1,5 @@
 /**
- * Areas that stay (Capability API 1.171): a zone held where it was cast (Cloudkill), and one carried
+ * Areas that stay (Capability API 1.172): a zone held where it was cast (Cloudkill), and one carried
  * by its caster (Spirit Guardians).
  *
  *   - The cast catches who is in it unless `atCast: false`, and that counts as their catch this turn.
@@ -344,17 +344,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with lasting zones requires schemaVersion 2 and capabilityApi 1.171 or newer";
+    const gate = "A ruleset with lasting zones requires schemaVersion 2 and capabilityApi 1.172 or newer";
     const withCloud = fiveE((doc) => {
       doc.catalogs.push({ id: "zones", label: "Zones", entries: [cloud] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(170) as never, withCloud), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(171) as never, withCloud), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(170) as never, fiveE()), gate, "nothing without the key");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(171) as never, withCloud), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(172) as never, withCloud), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(171) as never, fiveE()), gate, "nothing without the key");
   }
 
   console.log(
-    "Zones: Cloudkill catches at the cast, a turn's start and a walk in, once a turn; Spirit Guardians goes with its caster; gated at 1.171.",
+    "Zones: Cloudkill catches at the cast, a turn's start and a walk in, once a turn; Spirit Guardians goes with its caster; gated at 1.172.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

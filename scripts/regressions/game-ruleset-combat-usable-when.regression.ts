@@ -1,4 +1,4 @@
-/** Abilities usable only while the sheet allows (Capability API 1.165): a shield for Protection,
+/** Abilities usable only while the sheet allows (Capability API 1.166): a shield for Protection,
  *  no heavy armor for Rage, read each time a menu or a reaction window is drawn. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -163,7 +163,11 @@ try {
     const ruled = applyRulesetCombatChoice(
       definition,
       fight([plate], "holder"),
-      { actorId: "holder", optionId: rulesetCombatOptions(definition, free, "holder").find((o) => o.label === "Rage")!.id, targetIds: ["holder"] },
+      {
+        actorId: "holder",
+        optionId: rulesetCombatOptions(definition, free, "holder").find((o) => o.label === "Rage")!.id,
+        targetIds: ["holder"],
+      },
       () => 10,
     );
     assert.ok(
@@ -213,17 +217,17 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose abilities are usable only while the sheet allows requires schemaVersion 2 and capabilityApi 1.165 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(164) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(165) as never, document()), gate);
+      "A ruleset whose abilities are usable only while the sheet allows requires schemaVersion 2 and capabilityApi 1.166 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(165) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(166) as never, document()), gate);
     const plain = structuredClone(rage);
     delete (plain.mechanics as Record<string, unknown>).usableWhen;
     const bare = structuredClone(protection);
     delete (bare.mechanics as Record<string, unknown>).usableWhen;
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(164) as never, document([bare, plain])), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(165) as never, document([bare, plain])), gate);
   }
 
-  console.log("Usable only while the sheet allows: Protection needs a shield, Rage no heavy armor, gated at 1.165.");
+  console.log("Usable only while the sheet allows: Protection needs a shield, Rage no heavy armor, gated at 1.166.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

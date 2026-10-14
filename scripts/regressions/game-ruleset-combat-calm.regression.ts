@@ -1,5 +1,5 @@
 /**
- * Calm Emotions (Capability API 1.277).
+ * Calm Emotions (Capability API 1.278).
  *
  *   - `save.alliesMayFail`: its user's own side fails the save without rolling; anybody else rolls.
  *   - `cannot-target-source-side`: its holder points nothing at whoever put it on them or at their
@@ -311,7 +311,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a save its user's side may fail, a condition that keeps its holder off a whole side, or one that ends on an attack, on harm from a catalog or on a friend harmed in sight requires schemaVersion 2 and capabilityApi 1.277 or newer";
+      "A ruleset with a save its user's side may fail, a condition that keeps its holder off a whole side, or one that ends on an attack, on harm from a catalog or on a friend harmed in sight requires schemaVersion 2 and capabilityApi 1.278 or newer";
     const plain = () => {
       const doc = JSON.parse(fiveEText);
       doc.sheet.live.conditions.push({ id: "calm", label: "calm" });
@@ -337,16 +337,16 @@ try {
     for (const variant of variants) {
       const doc = plain();
       variant(doc);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(276) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(277) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(277) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(278) as never, doc), gate);
     }
     const older = plain();
     older.combat.conditions.push({ condition: "calm", endsWhen: ["damaged", "harmed-by-source-side"] });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(276) as never, older), gate, "older endings");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(277) as never, older), gate, "older endings");
   }
 
   console.log(
-    "Ruleset Calm Emotions: friends fail its save unrolled, its holder is kept off the caster's side, and it ends when attacked, harmed by a spell or a friend is harmed in sight; gated at 1.277.",
+    "Ruleset Calm Emotions: friends fail its save unrolled, its holder is kept off the caster's side, and it ends when attacked, harmed by a spell or a friend is harmed in sight; gated at 1.278.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

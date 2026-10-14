@@ -1,5 +1,5 @@
 /**
- * Surprise (Capability API 1.236).
+ * Surprise (Capability API 1.237).
  *
  *   - A fight can begin with some caught unaware: on their first turn they neither move nor act,
  *     and they take no reaction until that turn ends (or the first round is over).
@@ -238,23 +238,23 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions that keep surprise off or uses that shake it off requires schemaVersion 2 and capabilityApi 1.236 or newer";
+      "A ruleset with conditions that keep surprise off or uses that shake it off requires schemaVersion 2 and capabilityApi 1.237 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     const keeps = structuredClone(without);
     keeps.combat.conditions.push({ condition: "foresight", effects: [], cannotBeSurprised: true });
-    assert.equal(issue(235, keeps), gate);
-    assert.notEqual(issue(236, keeps), gate);
+    assert.equal(issue(236, keeps), gate);
+    assert.notEqual(issue(237, keeps), gate);
     const shakes = { ...without, extra: { feral: { mechanics: { ignoresSurpriseWith: "rages/rage" } } } };
-    assert.equal(issue(235, shakes), gate);
-    assert.notEqual(issue(236, shakes), gate);
-    assert.notEqual(issue(235, without), gate);
-    assert.equal(issue(235, without, new Map([["rages.json", { entries: [feral] }]])), gate);
+    assert.equal(issue(236, shakes), gate);
+    assert.notEqual(issue(237, shakes), gate);
+    assert.notEqual(issue(236, without), gate);
+    assert.equal(issue(236, without, new Map([["rages.json", { entries: [feral] }]])), gate);
   }
 
   console.log(
-    "Ruleset surprise: the caught-unaware lose their first turn and reactions, Foresight keeps it off, Feral Instinct's rage shakes it; gated at 1.236.",
+    "Ruleset surprise: the caught-unaware lose their first turn and reactions, Foresight keeps it off, Feral Instinct's rage shakes it; gated at 1.237.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -104,7 +104,7 @@ const directedCombatantFields = z.object({
   id: key,
   name: z.string().min(1).max(200),
   side: z.enum(["player", "enemy"]),
-  /** Caught unaware as the fight begins (1.236): read by a ruleset fight only. */
+  /** Caught unaware as the fight begins (1.237): read by a ruleset fight only. */
   surprised: z.boolean().optional(),
   /** Fights in its own lair (1.314): read by a ruleset fight only. */
   inLair: z.boolean().optional(),
@@ -214,22 +214,22 @@ const command = z.discriminatedUnion("type", [
      *  the menu by the resolver; this only bounds them to a board's own size. */
     to: coord.optional(),
     at: coord.optional(),
-    /** How a wall is laid (1.176) and where further copies go (1.177), checked by the resolver. */
+    /** How a wall is laid (1.177) and where further copies go (1.178), checked by the resolver. */
     toward: coord.optional(),
     side: z.enum(["near", "far"]).optional(),
     ring: z.boolean().optional(),
     also: z.array(coord).max(9).optional(),
-    /** A wall's section struck at instead of a creature (1.199), checked by the resolver. */
+    /** A wall's section struck at instead of a creature (1.200), checked by the resolver. */
     wall: coord.optional(),
-    /** Who goes along on a teleport (1.275), checked against the menu by the resolver. */
+    /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */
     carries: z.array(key).max(8).optional(),
-    /** How many uses it spends (1.250), checked against the menu by the resolver. */
+    /** How many uses it spends (1.251), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
-    /** The alterations it is used with (1.252), checked against the action by the resolver. */
+    /** The alterations it is used with (1.253), checked against the action by the resolver. */
     alters: z.array(z.string().min(1).max(200)).max(8).optional(),
-    /** Who of its user's side it spares (1.253), checked against the alterations by the resolver. */
+    /** Who of its user's side it spares (1.254), checked against the alterations by the resolver. */
     spares: z.array(z.string().min(1).max(200)).max(20).optional(),
-    /** Who it heightens (1.254), checked against the alterations by the resolver. */
+    /** Who it heightens (1.255), checked against the alterations by the resolver. */
     heightens: z.string().min(1).max(200).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
@@ -909,7 +909,7 @@ export async function combatDirectorRoutes(
             ...(fightItems ? { items: fightItems } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
-            // Who the scene caught unaware (1.236).
+            // Who the scene caught unaware (1.237).
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
             // Who fights in its own lair (1.314).
             inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
@@ -1026,7 +1026,7 @@ export async function combatDirectorRoutes(
           const gate = await rollGameFightItemGate(app.db, input.chatId, who, usedLine.item);
           if (gate && !gate.success) (used!.action as { failed?: string }).failed = gate.line;
         }
-        // A use that comes out of a fake does what the fake truly does (1.78); the fight lists it as what
+        // A use that comes out of a fake does what the fake truly does (1.79); the fight lists it as what
         // it passes for, so only the stack it is spent from says so.
         const usedEffect = usedLine && state.itemEffects.find((effect) => effect.name === usedLine.name);
         if (usedLine && usedEffect) {

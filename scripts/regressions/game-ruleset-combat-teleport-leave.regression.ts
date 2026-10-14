@@ -1,5 +1,5 @@
 /**
- * Teleports that leave the fight, take along only who they see, and leave smoke (Capability API 1.278).
+ * Teleports that leave the fight, take along only who they see, and leave smoke (Capability API 1.279).
  *
  *   - `teleport.leaves`: the choice names no cell and its user, with whoever goes along, is out of
  *     the fight alive (`away.left`). Off a board that is the only place it goes. A party gone from
@@ -398,7 +398,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a teleport that leaves the fight, takes along only those its user sees, or leaves smoke behind requires schemaVersion 2 and capabilityApi 1.278 or newer";
+      "A ruleset with a teleport that leaves the fight, takes along only those its user sees, or leaves smoke behind requires schemaVersion 2 and capabilityApi 1.279 or newer";
     const withTeleport = (teleport: Record<string, unknown>) => {
       const doc = JSON.parse(fiveEText);
       doc.catalogs.push({ id: "x", label: "X", entries: [spell("y", { kind: "utility", teleport })] });
@@ -406,17 +406,17 @@ try {
     };
     for (const extra of [{ leaves: true }, { carries: 1, carriesSeen: true }, { smoke: {} }]) {
       const doc = withTeleport({ distance: 30, ...extra });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(277) as never, doc), gate, JSON.stringify(extra));
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(278) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(278) as never, doc), gate, JSON.stringify(extra));
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(279) as never, doc), gate);
     }
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(277) as never, withTeleport({ distance: 30, carries: 1 })),
+      getCapabilityPackageInstallIssue(manifest(278) as never, withTeleport({ distance: 30, carries: 1 })),
       gate,
     );
   }
 
   console.log(
-    "Ruleset teleports out: a unicorn leaves the fight with whoever it sees beside it, a party gone that way has fled, and a cape leaves smoke at both ends; gated at 1.278.",
+    "Ruleset teleports out: a unicorn leaves the fight with whoever it sees beside it, a party gone that way has fled, and a cape leaves smoke at both ends; gated at 1.279.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

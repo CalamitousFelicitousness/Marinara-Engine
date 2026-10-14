@@ -1,15 +1,15 @@
 /**
- * Ruleset keys 5e needed (Capability API 1.80 to 1.84):
+ * Ruleset keys 5e needed (Capability API 1.81 to 1.85):
  *
- *   - 1.80 `combat.attackRoll.criticalFrom`: a critical range off the attacker's sheet (its fight is
+ *   - 1.81 `combat.attackRoll.criticalFrom`: a critical range off the attacker's sheet (its fight is
  *     proven in game-ruleset-combat-core). Gated here.
- *   - 1.81 a derived value that `multiply`s: a 5e hit point maximum's Constitution modifier times the
+ *   - 1.82 a derived value that `multiply`s: a 5e hit point maximum's Constitution modifier times the
  *     level. Worked out with the rest of the sheet, in the order the sheet lists them; gated.
- *   - 1.82 a catalog entry's `amountAdd`: a sheet value added to its amount (Second Wind's 1d10 plus the
+ *   - 1.83 a catalog entry's `amountAdd`: a sheet value added to its amount (Second Wind's 1d10 plus the
  *     fighter's level; its fight is proven in game-ruleset-combat-core). Refused without an amount and
  *     on a rider; the catalog's line names it; gated inline and in a catalog file.
- *   - 1.83 up to 120 derived values on a sheet (60 before); more than 60 is gated.
- *   - 1.84 a list's number column filled by a roll: its dice read off the row's own column, a number
+ *   - 1.84 up to 120 derived values on a sheet (60 before); more than 60 is gated.
+ *   - 1.85 a list's number column filled by a roll: its dice read off the row's own column, a number
  *     or the sheet; refused where the sides cannot be read; gated.
  */
 import assert from "node:assert/strict";
@@ -49,7 +49,7 @@ try {
     return result.definition;
   };
 
-  // ── 1.81 multiply ──
+  // ── 1.82 multiply ──
   const multiplied = variant((doc) => {
     doc.sheet.derived.push(
       {
@@ -75,7 +75,7 @@ try {
     assert.equal(one.ok, false, "multiplying needs two values");
   }
 
-  // ── 1.82 amountAdd ──
+  // ── 1.83 amountAdd ──
   const secondWind = {
     id: "second-wind",
     label: "Second Wind",
@@ -100,7 +100,7 @@ try {
       issues({ ...secondWind, mechanics: { ...secondWind.mechanics, amountAdd: { field: "nope" } } }),
       /nope/,
     );
-    // An item's use adds a value off its holder's sheet too since 1.270 (a Staff of Healing's), and
+    // An item's use adds a value off its holder's sheet too since 1.271 (a Staff of Healing's), and
     // still only beside an amount.
     const gravewatch = JSON.parse(read("../../docs/examples/rulesets/gravewatch.json"));
     const tonicUse = gravewatch.catalogs
@@ -121,7 +121,7 @@ try {
     assert.ok(line.includes(`1d10 + ${level}`), line);
   }
 
-  // ── 1.84 a list column filled by a roll ──
+  // ── 1.85 a list column filled by a roll ──
   const rolled = (sides: unknown, edit: (doc: Record<string, any>) => void = () => {}) =>
     variant((doc) => {
       doc.sheet.lists.push({
@@ -224,15 +224,15 @@ try {
         files as any,
       );
     const critical = variant((doc) => (doc.combat.attackRoll.criticalFrom = { const: 19 }));
-    assert.match(issue(79, critical) ?? "", /critical range.*1\.80/);
-    assert.equal(issue(80, critical), null);
-    assert.match(issue(80, multiplied) ?? "", /multiplies.*1\.81/);
-    assert.equal(issue(81, multiplied), null);
+    assert.match(issue(80, critical) ?? "", /critical range.*1\.81/);
+    assert.equal(issue(81, critical), null);
+    assert.match(issue(81, multiplied) ?? "", /multiplies.*1\.82/);
+    assert.equal(issue(82, multiplied), null);
     const inline = variant((doc) =>
       doc.catalogs.find((catalog: { holds?: string }) => !catalog.holds).entries.push(secondWind),
     );
-    assert.match(issue(81, inline) ?? "", /add a sheet value to their amount.*1\.82/);
-    assert.equal(issue(82, inline), null);
+    assert.match(issue(82, inline) ?? "", /add a sheet value to their amount.*1\.83/);
+    assert.equal(issue(83, inline), null);
     // In a catalog file, read at install.
     const filed = variant((doc) => {
       doc.catalogs[0].asset = "catalogs/one.json";
@@ -241,10 +241,10 @@ try {
     const entries = [...(JSON.parse(fiveEText).catalogs[0].entries ?? []), secondWind];
     const files = new Map<string, unknown>([["catalogs/one.json", { entries }]]);
     const paths = ["ruleset.json", "catalogs/one.json"];
-    assert.match(issue(81, filed, files, paths) ?? "", /1\.82/);
-    assert.equal(issue(82, filed, files, paths), null);
-    assert.equal(issue(78, variant()), null, "an older package still validates");
-    // 1.83: more than 60 derived values, up to 120.
+    assert.match(issue(82, filed, files, paths) ?? "", /1\.83/);
+    assert.equal(issue(83, filed, files, paths), null);
+    assert.equal(issue(79, variant()), null, "an older package still validates");
+    // 1.84: more than 60 derived values, up to 120.
     const many = (count: number) =>
       variant((doc) => {
         const have = doc.sheet.derived.length;
@@ -252,18 +252,18 @@ try {
           doc.sheet.derived.push({ id: `extra_${i}`, label: `Extra ${i}`, op: "sum", of: [{ const: 1 }] });
       });
     assert.equal(parseRulesetDefinition(many(120)).ok, true, "120 derived values read");
-    assert.equal(parseRulesetDefinition(many(240)).ok, true, "240 since 1.87");
-    assert.equal(parseRulesetDefinition(many(400)).ok, true, "400 since 1.110");
+    assert.equal(parseRulesetDefinition(many(240)).ok, true, "240 since 1.88");
+    assert.equal(parseRulesetDefinition(many(400)).ok, true, "400 since 1.111");
     assert.equal(parseRulesetDefinition(many(401)).ok, false, "401 do not");
-    assert.match(issue(82, many(61)) ?? "", /more than 60 derived values.*1\.83/);
-    assert.equal(issue(83, many(61)), null);
-    assert.equal(issue(82, many(60)), null, "60 is still 1.82's");
-    // 1.87: more than 120, up to 240.
-    assert.match(issue(86, many(121)) ?? "", /more than 120 derived values.*1\.87/);
-    assert.equal(issue(87, many(121)), null);
-    assert.equal(issue(86, many(120)), null, "120 is still 1.83's");
-    assert.match(issue(83, rolled({ column: "die" })) ?? "", /list column filled by a roll.*1\.84/);
-    assert.equal(issue(84, rolled({ column: "die" })), null);
+    assert.match(issue(83, many(61)) ?? "", /more than 60 derived values.*1\.84/);
+    assert.equal(issue(84, many(61)), null);
+    assert.equal(issue(83, many(60)), null, "60 is still 1.83's");
+    // 1.88: more than 120, up to 240.
+    assert.match(issue(87, many(121)) ?? "", /more than 120 derived values.*1\.88/);
+    assert.equal(issue(88, many(121)), null);
+    assert.equal(issue(87, many(120)), null, "120 is still 1.84's");
+    assert.match(issue(84, rolled({ column: "die" })) ?? "", /list column filled by a roll.*1\.85/);
+    assert.equal(issue(85, rolled({ column: "die" })), null);
   }
 
   console.log(

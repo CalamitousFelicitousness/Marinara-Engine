@@ -1,5 +1,5 @@
 /**
- * Metamagic as its user picks it (Capability API 1.253).
+ * Metamagic as its user picks it (Capability API 1.254).
  *
  *   - Empowered throws again the lowest of ALL a spell's damage dice: its own, its clauses', and on
  *     a critical hit the extra ones, never more than it rerolls in all.

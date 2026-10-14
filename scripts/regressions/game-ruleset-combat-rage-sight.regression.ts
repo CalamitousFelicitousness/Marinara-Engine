@@ -1,12 +1,12 @@
 /**
- * Six conditions at once, and sight that is really seeing (Capability API 1.276).
+ * Six conditions at once, and sight that is really seeing (Capability API 1.277).
  *
  *   - `applies` holds up to 6 on a catalog entry, an item use and a creature action (4 before):
  *     Rage and Frenzy each add Mindless Rage's condition beside their four.
  *   - `whileSourceInSight` reads the holder's own sight, as an aura's `orSeen` does: a blinded
  *     holder, or a source it cannot see (invisible), no longer "sees" the source of its fear.
  *   - A condition its holder's own condition holds off is not cured by the immunity that condition
- *     gives (1.277): a fright on when a rage begins is suspended and back when the rage ends.
+ *     gives (1.278): a fright on when a rage begins is suspended and back when the rage ends.
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -166,7 +166,7 @@ try {
     assert.ok(!effects(unseen).includes("own-attacks-disadvantage"), "an invisible source is out of sight");
   }
 
-  // ── A rage holds a fright already on off, and it comes back after (1.277) ──
+  // ── A rage holds a fright already on off, and it comes back after (1.278) ──
   {
     const raging = parsed(
       fiveE((doc) => {
@@ -274,7 +274,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a spell, an item or a creature action that puts on more than four conditions requires schemaVersion 2 and capabilityApi 1.276 or newer";
+      "A ruleset with a spell, an item or a creature action that puts on more than four conditions requires schemaVersion 2 and capabilityApi 1.277 or newer";
     const withSpell = (count: number) =>
       fiveE((doc) =>
         doc.catalogs.push({
@@ -283,13 +283,13 @@ try {
           entries: [spell("s", { kind: "buff", applies: marks.slice(0, count).map((condition) => ({ condition })) })],
         }),
       );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(275) as never, withSpell(5)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(276) as never, withSpell(5)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(275) as never, withSpell(4)), gate, "four is older");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(276) as never, withSpell(5)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(277) as never, withSpell(5)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(276) as never, withSpell(4)), gate, "four is older");
   }
 
   console.log(
-    "Ruleset rage and sight: an entry puts on six conditions at once, and a fright holds only while its holder really sees its source; gated at 1.276.",
+    "Ruleset rage and sight: an entry puts on six conditions at once, and a fright holds only while its holder really sees its source; gated at 1.277.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

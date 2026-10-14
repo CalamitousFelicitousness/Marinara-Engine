@@ -1,5 +1,5 @@
 /**
- * Zones that go off later or burn away (Capability API 1.182).
+ * Zones that go off later or burn away (Capability API 1.183).
  *
  *   - `zone.detonates`: nothing as it is cast or while it stands; when it ends it does the entry's own
  *     effect once, grown by `grows` for each of its caster's turns that ended, and `touched` sets it
@@ -356,7 +356,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with zones that go off later or burn away requires schemaVersion 2 and capabilityApi 1.182 or newer";
+      "A ruleset with zones that go off later or burn away requires schemaVersion 2 and capabilityApi 1.183 or newer";
     const withEntries = (entries: unknown[]) =>
       fiveE((doc) => {
         doc.catalogs.push({ id: "x", label: "X", entries });
@@ -376,10 +376,10 @@ try {
       ],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(181) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(182) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(182) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(183) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(181) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(182) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

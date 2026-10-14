@@ -1,5 +1,5 @@
 /**
- * Gazes, and auras by who they reach (Capability API 1.267).
+ * Gazes, and auras by who they reach (Capability API 1.268).
  *
  *   - `save.failedBy`: a medusa's gaze, restrained on a failure, petrified on a failure by 5 or more.
  *   - `save.avert`: a creature that averts its eyes skips the gaze's save and cannot see its holder
@@ -305,7 +305,7 @@ try {
     const resave = savesOf(ended.events, "hero")[0]!;
     assert.equal(resave.rolls.length, 2, "rolled twice");
     assert.equal(resave.kept, 2, "the lower kept");
-    // Saved off at last, the fright ended: her aura stays off the hero for the fight (1.268).
+    // Saved off at last, the fright ended: her aura stays off the hero for the fight (1.269).
     const shaken = structuredClone(hero.state);
     faces = { 20: [20, 20] };
     const freed = endTurn(shaken, "hero");
@@ -383,7 +383,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with auras reaching only some kinds of creature or whoever holds its holder, an aura save worse when failed by enough or one whose holder's eyes can be averted, or a save rolled leaning while its source is in sight, requires schemaVersion 2 and capabilityApi 1.267 or newer";
+      "A ruleset with auras reaching only some kinds of creature or whoever holds its holder, an aura save worse when failed by enough or one whose holder's eyes can be averted, or a save rolled leaning while its source is in sight, requires schemaVersion 2 and capabilityApi 1.268 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const only = (keep: (doc: Record<string, any>) => void) =>
@@ -398,11 +398,11 @@ try {
       });
     assert.notEqual(
       issue(
-        266,
+        267,
         only(() => {}),
       ),
       gate,
-      "nothing of 1.267 left",
+      "nothing of 1.268 left",
     );
     const cases: Array<[string, (doc: Record<string, any>) => void]> = [
       ["avert", (doc) => (conditionOf(doc, "gazing").auras[0].save.avert = true)],
@@ -421,12 +421,12 @@ try {
     for (const [name, keep] of cases) {
       const doc = only(keep);
       parsed(doc);
-      assert.equal(issue(266, doc), gate, name);
-      assert.notEqual(issue(267, doc), gate, name);
+      assert.equal(issue(267, doc), gate, name);
+      assert.notEqual(issue(268, doc), gate, name);
     }
     assert.equal(
       issue(
-        266,
+        267,
         only(() => {}),
         new Map([["extra.json", { saveEnds: { save: "wis_save", seenLean: "advantage" } }]]),
       ),
@@ -435,7 +435,7 @@ try {
   }
 
   console.log(
-    "Ruleset gazes: a medusa's gaze restrains, or petrifies on a failure by 5 or more; averted eyes skip it and lose sight of her until they look again; a sea hag frightens humanoids only and her repeated save has disadvantage in sight; a barbed devil harms only its grappler; gated at 1.267.",
+    "Ruleset gazes: a medusa's gaze restrains, or petrifies on a failure by 5 or more; averted eyes skip it and lose sight of her until they look again; a sea hag frightens humanoids only and her repeated save has disadvantage in sight; a barbed devil harms only its grappler; gated at 1.268.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Answers to more kinds of roll (Capability API 1.256).
+ * Answers to more kinds of roll (Capability API 1.257).
  *
  *   - `lowersRoll.also`: Cutting Words off somebody else's ability check (a contest, an item's gate,
  *     Counterspell's check) and off their damage roll, spent as the roll is made where its most could
@@ -165,7 +165,7 @@ try {
       items?: RulesetSheetItem[];
       /** The bard on the hero's own side. */
       ally?: boolean;
-      /** Cutting Words off attack rolls only, as before 1.256. */
+      /** Cutting Words off attack rolls only, as before 1.257. */
       plain?: boolean;
       /** Cutting Words pointed at anybody, either side. */
       anybody?: boolean;
@@ -554,7 +554,7 @@ try {
     refused(scrollDoc({ attackRoll: true, toHit: { bonus: 5 } }), /"halfOnMiss" is on a use that rolls to hit/);
   }
 
-  // ── The install gate: 1.256 ──
+  // ── The install gate: 1.257 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -570,7 +570,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with answers taking dice off checks or damage, rescues narrowed to some saves or spending a budget, or item uses dealing half on a miss, requires schemaVersion 2 and capabilityApi 1.256 or newer";
+      "A ruleset with answers taking dice off checks or damage, rescues narrowed to some saves or spending a budget, or item uses dealing half on a miss, requires schemaVersion 2 and capabilityApi 1.257 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -582,18 +582,18 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(255, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(256, document), gate);
+      assert.equal(issue(256, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(257, document), gate);
     }
     const older = structuredClone(without);
     older.extra = { entry: { mechanics: { lowersRoll: { dice: "1d6" } } } };
-    assert.notEqual(issue(255, older), gate, "off an attack roll is older");
-    assert.notEqual(issue(255, without), gate);
-    assert.equal(issue(255, without, new Map([["heroic.json", { entries: [ring] }]])), gate);
+    assert.notEqual(issue(256, older), gate, "off an attack roll is older");
+    assert.notEqual(issue(256, without), gate);
+    assert.equal(issue(256, without, new Map([["heroic.json", { entries: [ring] }]])), gate);
   }
 
   console.log(
-    "Ruleset roll answers: Cutting Words off checks and damage where it could turn them, not on the deaf or the charm-immune, a ring of evasion on Dexterity saves for the reaction, and a scroll's half on a miss; gated at 1.256.",
+    "Ruleset roll answers: Cutting Words off checks and damage where it could turn them, not on the deaf or the charm-immune, a ring of evasion on Dexterity saves for the reaction, and a scroll's half on a miss; gated at 1.257.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

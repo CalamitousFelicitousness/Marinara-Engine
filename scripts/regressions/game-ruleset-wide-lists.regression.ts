@@ -1,4 +1,4 @@
-/** Wide sheet lists (Capability API 1.164): a list may have up to 24 columns, and more than 12 is gated. */
+/** Wide sheet lists (Capability API 1.165): a list may have up to 24 columns, and more than 12 is gated. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +22,12 @@ try {
       id: "wide",
       label: "Wide",
       maxItems: 10,
-      columns: Array.from({ length: count }, (_, index) => ({ id: `c${index}`, label: `C${index}`, type: "text", maxLength: 40 })),
+      columns: Array.from({ length: count }, (_, index) => ({
+        id: `c${index}`,
+        label: `C${index}`,
+        type: "text",
+        maxLength: 40,
+      })),
     });
     return doc;
   };
@@ -48,11 +53,11 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset with a sheet list of more than 12 columns requires schemaVersion 2 and capabilityApi 1.164 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(131) as never, withColumns(13)), gate);
-  assert.equal(getCapabilityPackageInstallIssue(manifest(164) as never, withColumns(13)), null);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(131) as never, withColumns(12)), gate);
-  console.log("Wide sheet lists: up to 24 columns, more than 12 gated at 1.164.");
+    "A ruleset with a sheet list of more than 12 columns requires schemaVersion 2 and capabilityApi 1.165 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(132) as never, withColumns(13)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(165) as never, withColumns(13)), null);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(132) as never, withColumns(12)), gate);
+  console.log("Wide sheet lists: up to 24 columns, more than 12 gated at 1.165.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

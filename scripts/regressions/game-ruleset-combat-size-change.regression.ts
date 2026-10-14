@@ -1,5 +1,5 @@
 /**
- * Conditions that make their holder bigger or smaller (Capability API 1.194).
+ * Conditions that make their holder bigger or smaller (Capability API 1.195).
  *
  *   - A combat condition's `size.steps`: while it holds, its holder is that many of `combat.sizes`
  *     further along, or back along, never past either end; ended, they are their own size again.
@@ -306,11 +306,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with conditions that change size requires schemaVersion 2 and capabilityApi 1.194 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(193) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(194) as never, document()), gate);
+    const gate = "A ruleset with conditions that change size requires schemaVersion 2 and capabilityApi 1.195 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(194) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(195) as never, document()), gate);
     const plain = JSON.parse(fiveE);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(193) as never, plain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(194) as never, plain), gate);
   }
 
   console.log(

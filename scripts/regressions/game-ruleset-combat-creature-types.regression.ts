@@ -1,4 +1,4 @@
-/** Creature types and target tests (Capability API 1.167): a slayer's extra dice against dragons,
+/** Creature types and target tests (Capability API 1.168): a slayer's extra dice against dragons,
  *  holy water's harm to fiends and undead, Animal Friendship's beasts only and Sleep's pass over the
  *  undead, with a character's type read off a field or the ruleset's default. */
 import assert from "node:assert/strict";
@@ -293,17 +293,17 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creature types or target tests requires schemaVersion 2 and capabilityApi 1.167 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(166) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(167) as never, document()), gate);
+      "A ruleset with creature types or target tests requires schemaVersion 2 and capabilityApi 1.168 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(167) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(168) as never, document()), gate);
     const bare = JSON.parse(fiveE);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(166) as never, bare), gate, "nothing without the keys");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(167) as never, bare), gate, "nothing without the keys");
     const typed = JSON.parse(fiveE);
     typed.catalogs[0].entries[0].creature.type = "plant";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(166) as never, typed), gate, "a creature's own type");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(167) as never, typed), gate, "a creature's own type");
   }
 
-  console.log("Creature types: slayer dice, holy water, beasts only, Sleep past the undead, gated at 1.167.");
+  console.log("Creature types: slayer dice, holy water, beasts only, Sleep past the undead, gated at 1.168.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

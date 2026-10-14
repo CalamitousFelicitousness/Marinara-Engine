@@ -1,5 +1,5 @@
 /**
- * Font of Magic (Capability API 1.251).
+ * Font of Magic (Capability API 1.252).
  *
  *   - An entry's `restore`: a spell slot paid for Sorcery Points, one more for each slot level above
  *     the first, never past the points' maximum.
@@ -257,26 +257,26 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with entries that give back to a pool, or past its maximum, requires schemaVersion 2 and capabilityApi 1.251 or newer";
+      "A ruleset with entries that give back to a pool, or past its maximum, requires schemaVersion 2 and capabilityApi 1.252 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     for (const extra of [{ mechanics: { restore: { pool: "slots_1" } } }, { overMax: true }]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(250, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(251, document), gate);
+      assert.equal(issue(251, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(252, document), gate);
     }
     // An item's own use.restore is older than this.
     const item = structuredClone(without);
     item.extra = { item: { use: { restore: { pool: "slots_1" } } } };
-    assert.notEqual(issue(250, item), gate);
-    assert.notEqual(issue(250, without), gate);
-    assert.equal(issue(250, without, new Map([["sorcery.json", { entries: [toPoints] }]])), gate);
+    assert.notEqual(issue(251, item), gate);
+    assert.notEqual(issue(251, without), gate);
+    assert.equal(issue(251, without, new Map([["sorcery.json", { entries: [toPoints] }]])), gate);
   }
 
   console.log(
-    "Ruleset Font of Magic: a slot becomes Sorcery Points equal to its level, points make a slot past the maximum that a long rest takes away, none of a level the sorcerer lacks; gated at 1.251.",
+    "Ruleset Font of Magic: a slot becomes Sorcery Points equal to its level, points make a slot past the maximum that a long rest takes away, none of a level the sorcerer lacks; gated at 1.252.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

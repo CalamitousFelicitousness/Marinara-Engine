@@ -1,5 +1,5 @@
 /**
- * What a creature's blow deals instead, and when (Capability API 1.101).
+ * What a creature's blow deals instead, and when (Capability API 1.102).
  *
  *   - `alternatives` on a creature action's damage are amounts it deals in place of its first, the
  *     first that holds winning: `twoHanded` unless the creature carries a `shield`, and
@@ -8,7 +8,7 @@
  *   - Only the dice and the flat part change: the type and the clauses stay the action's own.
  *   - The menu's forecast reads the same amount the blow then rolls, a sequence's parts included.
  *   - Import checks the shape (dice or flat, a share between nothing and all) and a pool fight's die.
- *   - The install gate asks for 1.101, for an alternative and for a shield, in a catalog file too.
+ *   - The install gate asks for 1.102, for an alternative and for a shield, in a catalog file too.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -209,7 +209,7 @@ try {
     assert.deepEqual(slamOf(swarm, hurt(0.4)), { rolls: [4], flat: 0, type: "bludgeoning" });
   }
 
-  // ── The install gate: 1.101, in the ruleset file and in a catalog file ──
+  // ── The install gate: 1.102, in the ruleset file and in a catalog file ──
   {
     const manifest = (minor: number, paths = ["ruleset.json"]) => ({
       schemaVersion: 2,
@@ -227,15 +227,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /two-handed or when hurt.*capabilityApi 1\.101/;
+    const gate = /two-handed or when hurt.*capabilityApi 1\.102/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
     const shieldOnly = (doc: Record<string, any>) => (sentinel(doc).shield = true);
-    assert.match(issue(100, fiveE(twoHanded)) ?? "", gate, "an alternative");
-    assert.match(issue(100, fiveE(shieldOnly)) ?? "", gate, "a shield");
-    assert.doesNotMatch(issue(101, fiveE(twoHanded)) ?? "", gate);
-    assert.doesNotMatch(issue(101, fiveE(shieldOnly)) ?? "", gate);
-    assert.doesNotMatch(issue(100, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.match(issue(101, fiveE(twoHanded)) ?? "", gate, "an alternative");
+    assert.match(issue(101, fiveE(shieldOnly)) ?? "", gate, "a shield");
+    assert.doesNotMatch(issue(102, fiveE(twoHanded)) ?? "", gate);
+    assert.doesNotMatch(issue(102, fiveE(shieldOnly)) ?? "", gate);
+    assert.doesNotMatch(issue(101, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
     const document = fiveE(twoHanded);
     const creatures = document.catalogs.find((one: { id: string }) => one.id === "creatures");
     const inFile = {
@@ -246,12 +246,12 @@ try {
     };
     const paths = ["ruleset.json", "catalogs/creatures.json"];
     const files = new Map<string, unknown>([["catalogs/creatures.json", { entries: creatures.entries }]]);
-    assert.match(issue(100, inFile, paths, files) ?? "", gate, "a catalog file");
-    assert.doesNotMatch(issue(101, inFile, paths, files) ?? "", gate);
+    assert.match(issue(101, inFile, paths, files) ?? "", gate, "a catalog file");
+    assert.doesNotMatch(issue(102, inFile, paths, files) ?? "", gate);
   }
 
   console.log(
-    "Damage alternatives: two hands, a shield and a bloodied swarm, forecast and dealt alike, gated at 1.101.",
+    "Damage alternatives: two hands, a shield and a bloodied swarm, forecast and dealt alike, gated at 1.102.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * A line's width (Capability API 1.127): distances become cells, and previews and resolution cover
+ * A line's width (Capability API 1.128): distances become cells, and previews and resolution cover
  * the same band. The one-cell path is pinned against the code from before width was supported.
  */
 import assert from "node:assert/strict";
@@ -355,7 +355,7 @@ try {
   }
 
   assert.ok(rulesetItemUseSchema.safeParse({ kind: "attack", area: { shape: "line", size: 15 } }).success);
-  // An item's use gives its line a width too (1.183), and nothing else one.
+  // An item's use gives its line a width too (1.184), and nothing else one.
   assert.ok(rulesetItemUseSchema.safeParse({ kind: "attack", area: { shape: "line", size: 15, width: 10 } }).success);
   assert.equal(
     rulesetItemUseSchema.safeParse({ kind: "attack", area: { shape: "cone", size: 15, width: 10 } }).success,
@@ -401,7 +401,7 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset whose lines are wider than one cell requires schemaVersion 2 and capabilityApi 1.127 or newer";
+    "A ruleset whose lines are wider than one cell requires schemaVersion 2 and capabilityApi 1.128 or newer";
   for (const kind of ["catalog", "creature"] as const) {
     for (const file of [false, true]) {
       for (const width of [undefined, 5, 10]) {
@@ -417,19 +417,19 @@ try {
           catalog.asset = "catalogs/lines.json";
         }
         assert.equal(
-          getCapabilityPackageInstallIssue(manifest(126) as any, doc, documents),
+          getCapabilityPackageInstallIssue(manifest(127) as any, doc, documents),
           width === undefined ? null : gate,
         );
-        assert.equal(getCapabilityPackageInstallIssue(manifest(127) as any, doc, documents), null);
+        assert.equal(getCapabilityPackageInstallIssue(manifest(128) as any, doc, documents), null);
         if (width !== undefined)
           assert.match(
-            getCapabilityPackageInstallIssue({ ...manifest(127), schemaVersion: 1 } as any, doc, documents) ?? "",
+            getCapabilityPackageInstallIssue({ ...manifest(128), schemaVersion: 1 } as any, doc, documents) ?? "",
             /requires schemaVersion 2/,
           );
       }
     }
   }
-  console.info("Line width: legacy cells unchanged, wide lines agree in preview and resolution, gated at 1.127.");
+  console.info("Line width: legacy cells unchanged, wide lines agree in preview and resolution, gated at 1.128.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

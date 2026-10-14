@@ -1,5 +1,5 @@
 /**
- * Forced behavior (Capability API 1.263).
+ * Forced behavior (Capability API 1.264).
  *
  *   - `behavior.only` and `moves: "away"`: 5e's Turn Undead. The turned creature walks only away
  *     from the cleric, may only Dash or break free, and Dodges only with nowhere to go; the
@@ -406,28 +406,28 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a condition that decides its holder's turn, or a save spent an action on, requires schemaVersion 2 and capabilityApi 1.263 or newer";
+      "A ruleset with a condition that decides its holder's turn, or a save spent an action on, requires schemaVersion 2 and capabilityApi 1.264 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const behaving = document();
-    assert.equal(issue(262, behaving), gate);
-    assert.notEqual(issue(263, behaving), gate);
+    assert.equal(issue(263, behaving), gate);
+    assert.notEqual(issue(264, behaving), gate);
     const dance = {
       ...without,
       extra: { dance: { applies: [{ condition: "x", saveEnds: { save: "wis_save", at: "action" } }] } },
     };
-    assert.equal(issue(262, dance), gate);
-    assert.notEqual(issue(263, dance), gate);
-    assert.notEqual(issue(262, without), gate);
+    assert.equal(issue(263, dance), gate);
+    assert.notEqual(issue(264, dance), gate);
+    assert.notEqual(issue(263, without), gate);
     assert.equal(
-      issue(262, without, new Map([["spells.json", { entries: [{ mechanics: dance.extra.dance }] }]])),
+      issue(263, without, new Map([["spells.json", { entries: [{ mechanics: dance.extra.dance }] }]])),
       gate,
     );
   }
 
   console.log(
-    "Ruleset forced behavior: Turn Undead flees and only dashes, Command approaches or halts, Confusion's d10 wanders, freezes or lashes out at whoever is near, Irresistible Dance is a save spent an action on; gated at 1.263.",
+    "Ruleset forced behavior: Turn Undead flees and only dashes, Command approaches or halts, Confusion's d10 wanders, freezes or lashes out at whoever is near, Irresistible Dance is a save spent an action on; gated at 1.264.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

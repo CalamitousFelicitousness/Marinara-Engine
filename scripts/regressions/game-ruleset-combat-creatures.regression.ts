@@ -631,7 +631,7 @@ const traveller = (live: unknown = {}): RulesetCombatantInput => ({
       saveEnds: { save: "str_save", at: "turn-end" },
       difficulty: 12,
       source: "lurker",
-      // What the action is known by, for a save narrowed to it (1.190).
+      // What the action is known by, for a save narrowed to it (1.191).
       action: ["snare_vine", "Snare vine"],
     },
   ]);

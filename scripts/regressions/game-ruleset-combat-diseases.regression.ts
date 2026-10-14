@@ -1,5 +1,5 @@
 /**
- * Diseases (Capability API 1.257).
+ * Diseases (Capability API 1.258).
  *
  *   - A combat condition's `kinds`: a cure's `ends` may name a kind for any condition of it ("one
  *     disease": Lesser Restoration, Lay on Hands), and an immunity may name one (Divine Health).
@@ -320,7 +320,7 @@ try {
     );
   }
 
-  // ── The install gate: 1.257 ──
+  // ── The install gate: 1.258 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -336,7 +336,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with condition kinds, or saves counted to end a condition or to worsen it, requires schemaVersion 2 and capabilityApi 1.257 or newer";
+      "A ruleset with condition kinds, or saves counted to end a condition or to worsen it, requires schemaVersion 2 and capabilityApi 1.258 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
@@ -347,19 +347,19 @@ try {
     ]) {
       const doc = structuredClone(without);
       doc.extra = { entry: extra };
-      assert.equal(issue(256, doc), gate, JSON.stringify(extra));
-      assert.notEqual(issue(257, doc), gate);
+      assert.equal(issue(257, doc), gate, JSON.stringify(extra));
+      assert.notEqual(issue(258, doc), gate);
     }
     // A wound track's kinds are older.
     const older = structuredClone(without);
     older.extra = { track: { id: "wounds", kinds: [{ id: "bashing" }] } };
-    assert.notEqual(issue(256, older), gate);
-    assert.notEqual(issue(256, without), gate);
-    assert.equal(issue(256, without, new Map([["spells.json", { entries: [contagion] }]])), gate);
+    assert.notEqual(issue(257, older), gate);
+    assert.notEqual(issue(257, without), gate);
+    assert.equal(issue(257, without, new Map([["spells.json", { entries: [contagion] }]])), gate);
   }
 
   console.log(
-    "Ruleset diseases: condition kinds cured one at a time or all and kept off by an immunity, and Contagion's saves counted to an end or to the disease; gated at 1.257.",
+    "Ruleset diseases: condition kinds cured one at a time or all and kept off by an immunity, and Contagion's saves counted to an end or to the disease; gated at 1.258.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

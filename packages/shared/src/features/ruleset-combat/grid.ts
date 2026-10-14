@@ -71,19 +71,19 @@ export function rulesetPositionOf(combatant: RulesetCombatant | undefined): Rule
   return { x: combatant.x, y: combatant.y };
 }
 
-/** How many cells a side somebody fills (1.193): one unless their size says more. */
+/** How many cells a side somebody fills (1.194): one unless their size says more. */
 export function rulesetSpanOf(combatant: { span?: number } | undefined): number {
   const span = combatant?.span;
   return typeof span === "number" && Number.isInteger(span) && span > 1 ? Math.min(span, 6) : 1;
 }
 
-/** Every cell somebody fills (1.193), their own cell the top-left one. Empty off the board. */
+/** Every cell somebody fills (1.194), their own cell the top-left one. Empty off the board. */
 export function rulesetFootprint(combatant: RulesetCombatant | undefined): RulesetCombatCell[] {
   const at = rulesetPositionOf(combatant);
   return at ? rulesetFootprintAt(at, rulesetSpanOf(combatant)) : [];
 }
 
-/** The cells `span` a side from `at`, its top-left corner (1.193). */
+/** The cells `span` a side from `at`, its top-left corner (1.194). */
 export function rulesetFootprintAt(at: RulesetCombatCell, span: number): RulesetCombatCell[] {
   if (span <= 1) return [{ x: at.x, y: at.y }];
   const cells: RulesetCombatCell[] = [];
@@ -91,7 +91,7 @@ export function rulesetFootprintAt(at: RulesetCombatCell, span: number): Ruleset
   return cells;
 }
 
-/** Whether somebody fills this cell (1.193). */
+/** Whether somebody fills this cell (1.194). */
 export function rulesetFills(combatant: RulesetCombatant | undefined, cell: RulesetCombatCell | null): boolean {
   const at = rulesetPositionOf(combatant);
   if (!at || !cell) return false;
@@ -99,13 +99,13 @@ export function rulesetFills(combatant: RulesetCombatant | undefined, cell: Rule
   return cell.x >= at.x && cell.y >= at.y && cell.x < at.x + span && cell.y < at.y + span;
 }
 
-/** How far a cell is from the nearest cell somebody fills (1.193): the cell distance for somebody of
+/** How far a cell is from the nearest cell somebody fills (1.194): the cell distance for somebody of
  *  one cell, and nothing at all from a cell they stand in. */
 export function rulesetDistanceTo(cell: RulesetCombatCell, combatant: RulesetCombatant | undefined): number {
   return rulesetCellDistance(cell, rulesetNearestCell(combatant, cell) ?? cell);
 }
 
-/** The cell somebody fills nearest to `toward` (1.193): their own cell when they fill one. */
+/** The cell somebody fills nearest to `toward` (1.194): their own cell when they fill one. */
 export function rulesetNearestCell(
   combatant: RulesetCombatant | undefined,
   toward: RulesetCombatCell | null,
@@ -118,7 +118,7 @@ export function rulesetNearestCell(
   return { x: clamp(toward.x, at.x), y: clamp(toward.y, at.y) };
 }
 
-/** How far apart two people stand on the flat, nearest cell to nearest cell (1.193): a Large ogre
+/** How far apart two people stand on the flat, nearest cell to nearest cell (1.194): a Large ogre
  *  is next to whoever stands beside any of its four cells. */
 export function rulesetGap(a: RulesetCombatant | undefined, b: RulesetCombatant | undefined): number {
   const from = rulesetPositionOf(a);
@@ -128,7 +128,7 @@ export function rulesetGap(a: RulesetCombatant | undefined, b: RulesetCombatant 
 }
 
 /** How far somebody `span` cells a side with their top-left cell at `at` would stand from `b`,
- *  nearest cell to nearest cell (1.193). */
+ *  nearest cell to nearest cell (1.194). */
 export function rulesetGapFrom(at: RulesetCombatCell, span: number, b: RulesetCombatant | undefined): number {
   const to = rulesetPositionOf(b);
   if (!to) return 0;
@@ -137,7 +137,7 @@ export function rulesetGapFrom(at: RulesetCombatCell, span: number, b: RulesetCo
   return Math.max(apart(at.x, to.x), apart(at.y, to.y));
 }
 
-/** Whether a line runs from any cell one fills to any cell the other does (1.193): whoever of
+/** Whether a line runs from any cell one fills to any cell the other does (1.194): whoever of
  *  them is one cell checks exactly the one line it always did. */
 export function rulesetFootprintsSee(
   grid: TacticalGrid,
@@ -185,20 +185,20 @@ export function rulesetStepCost(grid: TacticalGrid, from: RulesetCombatCell, to:
 }
 
 /** How high somebody is, in the board's levels: a flier's altitude while it is up, or the ground under
- *  them (1.113). */
+ *  them (1.114). */
 export function rulesetLevelOf(grid: TacticalGrid, combatant: RulesetCombatant): number {
   const ground = typeof combatant.x === "number" ? elevationAt(grid, combatant.x, combatant.y!) : 0;
   return combatant.altitude !== undefined && combatant.altitude > ground ? combatant.altitude : ground;
 }
 
-/** Whether a flier is up in the air above the ground under it (1.113). */
+/** Whether a flier is up in the air above the ground under it (1.114). */
 export function rulesetAirborne(grid: TacticalGrid | undefined, combatant: RulesetCombatant): boolean {
   if (!grid || combatant.altitude === undefined || typeof combatant.x !== "number") return false;
   return combatant.altitude > elevationAt(grid, combatant.x, combatant.y!);
 }
 
 /**
- * How far apart two combatants are, in cells (1.113): the board's own distance, or the height
+ * How far apart two combatants are, in cells (1.114): the board's own distance, or the height
  * between them when one is up in the air and that is further. Two on the ground are as far apart
  * as their cells, whatever the ground under them, exactly as before anybody flew.
  */
@@ -217,7 +217,7 @@ export function rulesetCombatantDistance(
   return Math.max(flat, Math.abs(rulesetLevelOf(grid, a) - rulesetLevelOf(grid, b)) * levelCells);
 }
 
-/** Whether one combatant sees another (1.117). Nobody sees somebody who has hidden (the Hide
+/** Whether one combatant sees another (1.118). Nobody sees somebody who has hidden (the Hide
  *  standard action, until it wears off); otherwise it is a line of sight between them on the board,
  *  and a fight with no board, or anybody without a place on it, sees everybody, as a condition gated
  *  on sight reads it. */
@@ -227,7 +227,7 @@ export function rulesetSees(
   other: RulesetCombatant | undefined,
 ): boolean {
   if (other?.flags.hidden) return false;
-  // Hidden from this one for real (1.286).
+  // Hidden from this one for real (1.287).
   if (other && other.id !== holder.id && other.hiding?.from.includes(holder.id)) return false;
   const grid = state.board?.grid;
   if (!grid || !rulesetPositionOf(holder) || !rulesetPositionOf(other)) return true;
@@ -235,7 +235,7 @@ export function rulesetSees(
 }
 
 /** How many cells the actor's walk this turn ran straight at the target, ending where the actor stands
- *  now (1.185): counted back from the last step, each one a cell closer to them than the one before.
+ *  now (1.186): counted back from the last step, each one a cell closer to them than the one before.
  *  A step that came no closer ends the run, and so does being moved off the end of the walk. */
 export function rulesetChargeRun(actor: RulesetCombatant, target: RulesetCombatant): number {
   const trail = actor.trail;
@@ -244,7 +244,7 @@ export function rulesetChargeRun(actor: RulesetCombatant, target: RulesetCombata
   if (!trail || trail.length < 2 || !at || !to) return 0;
   const last = trail[trail.length - 1]!;
   if (last.x !== at.x || last.y !== at.y) return 0;
-  // Measured footprint to footprint (1.193).
+  // Measured footprint to footprint (1.194).
   const span = rulesetSpanOf(actor);
   const away = (cell: RulesetCombatCell) => rulesetGapFrom(cell, span, target);
   let run = 0;
@@ -255,7 +255,7 @@ export function rulesetChargeRun(actor: RulesetCombatant, target: RulesetCombata
   return run;
 }
 
-/** Whether a blow is struck in reach or from afar (1.117). Something with a reach and no range is
+/** Whether a blow is struck in reach or from afar (1.118). Something with a reach and no range is
  *  melee and something with a range and no reach is ranged; something with both (a thrown dagger) is
  *  melee while its target stands in its reach, and with no board it is taken as swung in hand. */
 export function rulesetBlowKind(
@@ -270,12 +270,12 @@ export function rulesetBlowKind(
   return rulesetCombatantDistance(state, actor, target) <= Math.max(1, action.reach) ? "melee" : "ranged";
 }
 
-/** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.112). */
+/** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.113). */
 function isWater(grid: TacticalGrid, x: number, y: number): boolean {
   return inBounds(grid, x, y) && grid.tiles[y]?.[x] === "water";
 }
 
-/** What is left this turn of one way of moving, in cells (1.112). Somebody who only walks walks on
+/** What is left this turn of one way of moving, in cells (1.113). Somebody who only walks walks on
  *  what is left of their allowance. */
 function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
   if (!mover.modeLeft) return mode === "walk" ? (mover.movementLeft ?? 0) : 0;
@@ -283,14 +283,14 @@ function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
 }
 
 /** Whether a cell is solid to this mover, for stepping into it and for squeezing past its corner: water
- *  is not, to a swimmer or a flier (1.112). */
+ *  is not, to a swimmer or a flier (1.113). */
 export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mover?: RulesetCombatant): boolean {
   if (!rulesetCellBlocked(grid, x, y)) return false;
   return !(isWater(grid, x, y) && (!!mover?.speeds?.fly || !!mover?.speeds?.swim));
 }
 
 /**
- * The cheapest way this mover takes one step, and what it costs (1.112), with `spent` already moved
+ * The cheapest way this mover takes one step, and what it costs (1.113), with `spent` already moved
  * this turn: a way of moving whose own allowance the step would pass is not one it may use. On foot
  * (and burrowing, which a board moves as a walk) a step costs what `rulesetStepCost` says; a climber
  * takes a step of any height for the ground it steps onto; a flier steps anywhere not solid for one
@@ -306,7 +306,7 @@ export function rulesetMoveStep(
 ): { mode: RulesetMoveMode; cost: number } | null {
   const speeds = mover.speeds ?? {};
   const options: Array<{ mode: RulesetMoveMode; cost: number | null }> = [];
-  // Up in the air (1.113) it only flies, a cell a step over anything not solid. Ground as high as
+  // Up in the air (1.114) it only flies, a cell a step over anything not solid. Ground as high as
   // it is, or higher, it lands on, exactly as a flier on the ground flies onto a cliff.
   const altitude = mover.altitude;
   if (altitude !== undefined && altitude > elevationAt(grid, from.x, from.y)) {
@@ -366,7 +366,7 @@ export function rulesetAreaCells(
 }
 
 /** The cells strictly between two cells, one per step of the straight run from one to the other
- *  (1.189): a javelin of lightning's bolt on its way to its target. */
+ *  (1.190): a javelin of lightning's bolt on its way to its target. */
 export function rulesetPathCells(from: RulesetCombatCell, to: RulesetCombatCell): RulesetCombatCell[] {
   const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
   const cells: RulesetCombatCell[] = [];
@@ -391,7 +391,7 @@ function boardBox(grid: TacticalGrid, around: RulesetCombatCell, reach: number) 
   };
 }
 
-/** A box (1.176): `side` cells a side, its near corner on the cell aimed at, reaching away from its
+/** A box (1.177): `side` cells a side, its near corner on the cell aimed at, reaching away from its
  *  maker. Along an axis the maker is level with, it is centred on that cell instead, so a cube set
  *  down straight ahead covers the cells either side of the line evenly. */
 function boxCells(
@@ -421,7 +421,7 @@ function boxCells(
 }
 
 /**
- * A wall (1.176), in cells, and the cells of its chosen side.
+ * A wall (1.177), in cells, and the cells of its chosen side.
  *
  * A straight wall is `size` cells long, run from `at` toward `toward`, or across the line from its
  * maker to `at` and centred there when no way is given. A diagonal one fills the corner of every step
@@ -437,7 +437,7 @@ export function rulesetWallShape(
   toward?: RulesetCombatCell,
   side?: { distance: number; which: "near" | "far" },
   asRing = false,
-  /** Cut into sections this many cells long (1.199): along its run, or around a ring. */
+  /** Cut into sections this many cells long (1.200): along its run, or around a ring. */
   every?: number,
 ): { cells: RulesetCombatCell[]; side: RulesetCombatCell[]; sections?: RulesetCombatCell[][] } {
   const length = Math.max(1, Math.round(area.size));
@@ -664,12 +664,12 @@ export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCo
     if (!rulesetShotsAvailable(combatant, action) || action.offHandOf !== undefined) continue;
     // Nor is using an item: that is its holder's own choice on their own turn.
     if (action.itemUse) continue;
-    // Nor a weapon lying where it was dropped (1.265).
+    // Nor a weapon lying where it was dropped (1.266).
     if (rulesetActionDropped(combatant, action)) continue;
-    // Nor is an answer to a moment, or what is added to another blow (1.242): Divine Smite is no
+    // Nor is an answer to a moment, or what is added to another blow (1.243): Divine Smite is no
     // strike of its own.
     if (action.reaction || action.addsToBlow) continue;
-    // Nor a strike a condition gives (1.235) while that condition is not on its holder: Flame
+    // Nor a strike a condition gives (1.236) while that condition is not on its holder: Flame
     // Blade's, with the blade not called up.
     if (action.whileHolds && !combatant.tracked.some((entry) => entry.condition === action.whileHolds)) continue;
     const average = action.damage.count * ((action.damage.sides + 1) / 2) + action.damage.flat;
@@ -709,7 +709,7 @@ export function rulesetThreateningEnemies(
   for (const combatant of state.combatants) {
     if (combatant.side === mover.side || !rulesetCombatStanding(combatant)) continue;
     if ((combatant.budgets[opportunity.budget] ?? 0) < 1) continue;
-    // Nobody strikes through a sphere (1.313).
+    // Nobody strikes through a sphere (1.314).
     if (rulesetSealedApart(definition, state, combatant, mover)) continue;
     const effects = rulesetCombatEffects(definition, combat, combatant, state);
     if (effects.has("cannot-act") || effects.has("cannot-react")) continue;
@@ -717,13 +717,13 @@ export function rulesetThreateningEnemies(
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;
     const reach = Math.max(1, strike.reach ?? 1);
-    // Somebody up in the air too high above (or below) to be reached is no threat to them (1.113).
+    // Somebody up in the air too high above (or below) to be reached is no threat to them (1.114).
     const grid = state.board?.grid;
     const levelCells = state.board?.levelCells;
     if (grid && levelCells && (rulesetAirborne(grid, mover) || rulesetAirborne(grid, combatant))) {
       if (Math.abs(rulesetLevelOf(grid, mover) - rulesetLevelOf(grid, combatant)) * levelCells > reach) continue;
     }
-    // Reach runs from any cell it fills to any cell the mover does (1.193).
+    // Reach runs from any cell it fills to any cell the mover does (1.194).
     const span = rulesetSpanOf(combatant);
     const moverSpan = rulesetSpanOf(mover);
     threats.push({
@@ -762,13 +762,13 @@ export function rulesetReachableCells(
   const occupied = new Set<string>();
   for (const combatant of state.combatants) {
     if (combatant.id === actor.id || !rulesetCombatStanding(combatant)) continue;
-    // Every cell they fill (1.193).
+    // Every cell they fill (1.194).
     for (const at of rulesetFootprint(combatant)) {
       occupied.add(`${at.x},${at.y}`);
       if (combatant.side !== actor.side) blockers.add(`${at.x},${at.y}`);
     }
   }
-  // Somebody bigger than one cell moves the whole of themselves (1.193): a step is taken by their
+  // Somebody bigger than one cell moves the whole of themselves (1.194): a step is taken by their
   // top-left cell, and every cell they would fill must be open. The cost is the ground their
   // top-left cell steps onto, the way the one cell of anybody else pays.
   const span = rulesetSpanOf(actor);
@@ -786,7 +786,7 @@ export function rulesetReachableCells(
     const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
     if (rulesetPositionOf(source)) held.push({ source: source!, away: rulesetGap(actor, source) });
   }
-  // Walking only away from, or toward, whoever put a condition on (1.263): never a step the wrong
+  // Walking only away from, or toward, whoever put a condition on (1.264): never a step the wrong
   // way, and somewhere to stop only further off, or nearer, than they began.
   const driven: Array<{ source: RulesetCombatant; start: number; moves: "away" | "toward" }> = [];
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
@@ -798,7 +798,7 @@ export function rulesetReachableCells(
       driven.push({ source, start: rulesetGap(actor, source), moves });
     }
   }
-  // Kept out of a ring around whoever put a condition on (1.265): inside it, only steps further off;
+  // Kept out of a ring around whoever put a condition on (1.266): inside it, only steps further off;
   // and somewhere to stop only outside it while there is anywhere outside it to stop.
   const kept: Array<{ source: RulesetCombatant; ring: number }> = [];
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
@@ -811,7 +811,7 @@ export function rulesetReachableCells(
     }
   }
 
-  // Kept within a ring around whoever put a condition on, once inside it (1.273): Sympathy's.
+  // Kept within a ring around whoever put a condition on, once inside it (1.274): Sympathy's.
   const within: Array<{ source: RulesetCombatant; ring: number }> = [];
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
     const keepsIn = entry.behavior?.keepsIn;
@@ -829,7 +829,7 @@ export function rulesetReachableCells(
       within.push({ source, ring });
     }
   }
-  // Drawn toward somebody and already inside the ring that keeps it near them (1.273): the ring is
+  // Drawn toward somebody and already inside the ring that keeps it near them (1.274): the ring is
   // the leash then, so it may move about within it rather than only ever closer (Sympathy).
   for (let index = driven.length - 1; index >= 0; index--) {
     const one = driven[index]!;
@@ -893,10 +893,10 @@ export function rulesetReachableCells(
         rulesetCellSolidFor(grid, at.x, at.y + dy, actor)
       )
         continue;
-      // The cheapest way they move that takes this step on what that way has left (1.112).
+      // The cheapest way they move that takes this step on what that way has left (1.113).
       const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
       if (plain === undefined) continue;
-      // Ground a lasting area makes hard going (1.172).
+      // Ground a lasting area makes hard going (1.173).
       const step = rulesetSlowedStep(grid, { x, y }, plain, slowed, at);
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
@@ -944,7 +944,7 @@ export function rulesetPushPath(
   const target = rulesetPositionOf(pushed);
   if (!grid || !from || !target) return [];
   // Nearest cell to nearest cell, so somebody bigger than one cell is pushed straight away from
-  // whoever shoves them (1.193).
+  // whoever shoves them (1.194).
   const span = rulesetSpanOf(pushed);
   const near = rulesetNearestCell(pusher, rulesetNearestCell(pushed, from)) ?? from;
   const far = rulesetNearestCell(pushed, near) ?? target;
@@ -964,7 +964,7 @@ export function rulesetPushPath(
     const x = at.x + dx;
     const y = at.y + dy;
     if (rulesetCellBlocked(grid, x, y) || occupied.has(`${x},${y}`)) break;
-    // Every cell they would fill (1.193).
+    // Every cell they would fill (1.194).
     if (
       span > 1 &&
       rulesetFootprintAt({ x, y }, span).some(
@@ -1002,7 +1002,7 @@ export function rulesetPushPath(
 export function rulesetWalkingDistances(
   grid: TacticalGrid,
   goals: ReadonlyArray<RulesetCombatCell>,
-  /** Who is moving, when they move some way besides walking (1.112): their ways count, with no
+  /** Who is moving, when they move some way besides walking (1.113): their ways count, with no
    *  turn's allowance to run out of. */
   mover?: RulesetCombatant,
 ): Map<string, number> {
@@ -1075,7 +1075,7 @@ export function rulesetStepLeavesReach(
   from: RulesetCombatCell,
   to: RulesetCombatCell,
 ): boolean {
-  // Footprint to footprint (1.193): either of them may fill more than the one cell.
+  // Footprint to footprint (1.194): either of them may fill more than the one cell.
   const holder = { x: threat.at.x, y: threat.at.y, span: threat.span } as RulesetCombatant;
   const away = (cell: RulesetCombatCell) => rulesetGapFrom(cell, threat.moverSpan ?? 1, holder);
   return away(from) <= threat.reach && away(to) > threat.reach;
@@ -1115,19 +1115,19 @@ export function rulesetZoneCells(
 ): RulesetCombatCell[] {
   const grid = state.board?.grid;
   if (!grid) return [];
-  // Carried by somebody (1.300): around them, wherever they are now.
+  // Carried by somebody (1.301): around them, wherever they are now.
   const holder = zone.on ? rulesetCombatant(state, zone.on) : undefined;
   if (zone.anchor === "point" && !(holder && rulesetPositionOf(holder))) return zone.cells ?? [];
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   const at = rulesetPositionOf(holder ?? caster);
   if (!action?.area || !at) return [];
-  // A line or cone held by its caster points the way it was cast, or last turned (1.181).
+  // A line or cone held by its caster points the way it was cast, or last turned (1.182).
   if (action.area.shape === "line" || action.area.shape === "cone") {
     if (!zone.facing) return [];
     const toward = { x: at.x + zone.facing.dx, y: at.y + zone.facing.dy };
     return rulesetAreaCells(action.area.shape, action.area.size, at, toward, grid, action.area.width);
   }
-  // Around every cell its caster (or holder) fills (1.193), each cell once.
+  // Around every cell its caster (or holder) fills (1.194), each cell once.
   const cells = new Map<string, RulesetCombatCell>();
   for (const from of rulesetFootprint(holder ?? caster)) {
     for (const cell of rulesetAreaCells("burst", action.area.size, from, from, grid))
@@ -1136,8 +1136,8 @@ export function rulesetZoneCells(
   return [...cells.values()];
 }
 
-/** Where a zone's light and reach are measured from (1.296): the point it was put at and its copies'
- *  (1.300), whoever carries it (1.300), or its caster. */
+/** Where a zone's light and reach are measured from (1.297): the point it was put at and its copies'
+ *  (1.301), whoever carries it (1.301), or its caster. */
 export function rulesetZoneMiddles(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
@@ -1167,17 +1167,17 @@ export function rulesetZoneCatches(
   return true;
 }
 
-/** How a zone slows a cell for one mover: the plain steps moving into it costs at least (1.172, 1.174),
- *  and whether speed is halved there on top (1.174). */
+/** How a zone slows a cell for one mover: the plain steps moving into it costs at least (1.173, 1.175),
+ *  and whether speed is halved there on top (1.175). */
 export interface RulesetSlowedCell {
   times: number;
   halves: boolean;
-  /** Hard going that counts only on a step nearer `at`, its zone's caster (1.181). */
+  /** Hard going that counts only on a step nearer `at`, its zone's caster (1.182). */
   toward?: Array<{ at: RulesetCombatCell; times: number }>;
 }
 
-/** The cells a mover finds hard going because a zone that catches them covers them (1.172): the
- *  slowest of each cell's zones, and halved where any of them halves speed (1.174). */
+/** The cells a mover finds hard going because a zone that catches them covers them (1.173): the
+ *  slowest of each cell's zones, and halved where any of them halves speed (1.175). */
 export function rulesetSlowedCells(
   state: RulesetEncounterState,
   mover: RulesetCombatant,
@@ -1190,7 +1190,7 @@ export function rulesetSlowedCells(
       if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed)) continue;
       if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
       const times = rule.costTimes ?? (rule.difficult ? 2 : 1);
-      // Hard going only toward its caster (1.181): kept apart, and priced by the step.
+      // Hard going only toward its caster (1.182): kept apart, and priced by the step.
       const from = rule.towardCaster ? rulesetPositionOf(caster) : null;
       if (rule.towardCaster && !from) continue;
       for (const cell of rulesetZoneCells(state, caster, zone)) {
@@ -1210,9 +1210,9 @@ export function rulesetSlowedCells(
 }
 
 /** A step into a cell a zone slows costs its times the ground's plain price, without charging again
- *  for ground that was already hard going: difficult terrain does not stack (1.172). Halved speed is
- *  on top of that, as the step costs double again (1.174). Ground hard going only toward a caster
- *  counts when the step, from `from`, brings the mover nearer them (1.181). */
+ *  for ground that was already hard going: difficult terrain does not stack (1.173). Halved speed is
+ *  on top of that, as the step costs double again (1.175). Ground hard going only toward a caster
+ *  counts when the step, from `from`, brings the mover nearer them (1.182). */
 export function rulesetSlowedStep(
   grid: TacticalGrid,
   cell: RulesetCombatCell,

@@ -1,4 +1,4 @@
-/** Typed hides from conditions, levels, sheet rows and items (Capability API 1.131).
+/** Typed hides from conditions, levels, sheet rows and items (Capability API 1.132).
  *  Real blows prove the sources and their exceptions; the sheet and battle projection tell the same story. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -277,6 +277,10 @@ try {
   assert.equal(harm(dwarf, "magical"), 8);
   assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning except magical" }] })), 0);
   assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning except magical" }] }), "magical"), 8);
+  // Any run of spaces or tabs separates the words.
+  assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning\t except \tmagical" }] })), 0);
+  assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning\t except \tmagical" }] }), "magical"), 8);
+  assert.equal(harm(fight({ rows: [{ resistance: `bludgeoning${"\t".repeat(3_900)}x` }] })), 8);
   assert.equal(harm(fight({ rows: [{ vulnerability: "fire" }] }), "fire"), 16);
   assert.equal(harm(fight({ rows: [{ resistance: "fire", vulnerability: "fire" }] }), "fire"), 8);
   assert.equal(harm(fight({ conditions: ["energy"], rows: [{ immunity: "fire", vulnerability: "fire" }] }), "fire"), 0);
@@ -489,7 +493,7 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.131 or newer";
+    "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.132 or newer";
   for (const place of ["conditions", "levels", "sheetHides", "worn", "carried"]) {
     for (const kind of place === "conditions" || place === "levels"
       ? ["resist", "immune", "vulnerable", "conditionImmunities"]
@@ -517,15 +521,15 @@ try {
           catalog.asset = "catalogs/armor.json";
         }
         assert.equal(
-          getCapabilityPackageInstallIssue(manifest(130) as any, doc, documents),
+          getCapabilityPackageInstallIssue(manifest(131) as any, doc, documents),
           gate,
           `${place}/${kind}/${file}`,
         );
-        assert.equal(getCapabilityPackageInstallIssue(manifest(131) as any, doc, documents), null);
+        assert.equal(getCapabilityPackageInstallIssue(manifest(132) as any, doc, documents), null);
       }
     }
   }
-  assert.equal(getCapabilityPackageInstallIssue(manifest(130) as any, JSON.parse(original)), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(131) as any, JSON.parse(original)), null);
   const oldItem = document((doc) => {
     delete doc.combat.sheetHides;
     for (const place of ["conditions", "levels"])
@@ -534,11 +538,11 @@ try {
     doc.catalogs.at(-1).entries[0].item.worn.resist = ["fire"];
   });
   assert.equal(
-    getCapabilityPackageInstallIssue(manifest(130) as any, oldItem),
+    getCapabilityPackageInstallIssue(manifest(131) as any, oldItem),
     null,
     "plain item words stay at their old minor",
   );
-  console.info("Typed hides: all sources, exceptions, immunity endings, lists, imports and the 1.131 gate passed.");
+  console.info("Typed hides: all sources, exceptions, immunity endings, lists, imports and the 1.132 gate passed.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

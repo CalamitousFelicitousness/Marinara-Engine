@@ -1,5 +1,5 @@
 /**
- * Pushes, winds and goggles (Capability API 1.181).
+ * Pushes, winds and goggles (Capability API 1.182).
  *
  *   - `push` on an entry: whoever it lands on and does not save against is pushed away from its
  *     maker, at the cast and each time its zone catches them (5e's Gust of Wind, 15 feet).
@@ -383,7 +383,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.181 or newer";
+      "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.182 or newer";
     const withEntries = (entries: unknown[]) =>
       fiveE((doc) => {
         doc.catalogs.push({ id: "x", label: "X", entries });
@@ -420,20 +420,33 @@ try {
       ],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(180) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(181) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(181) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(182) as never, doc), gate, label);
     }
     // A plain sense, a burst its caster carries and a contest's push are older keys.
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(180) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(181) as never, fiveE()), gate, "the plain 5e example");
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(180) as never,
+        manifest(181) as never,
         withEntries([
           spell("s", { kind: "debuff", area: { shape: "burst", size: 15 }, zone: { rounds: 1, anchor: "caster" } }),
         ]),
       ),
       gate,
       "a carried burst",
+    );
+    // A sense given as a plain range is 1.178's and 1.180's, whoever carries it.
+    assert.notEqual(
+      getCapabilityPackageInstallIssue(
+        manifest(181) as never,
+        fiveE((doc) => {
+          doc.combat.senses = [{ id: "darkvision", label: "Darkvision" }];
+          doc.sheet.live.conditions.push({ id: "x", label: "X" });
+          doc.combat.conditions.push({ condition: "x", senses: { darkvision: 60 } });
+        }),
+      ),
+      gate,
+      "a plain sense range",
     );
   }
 

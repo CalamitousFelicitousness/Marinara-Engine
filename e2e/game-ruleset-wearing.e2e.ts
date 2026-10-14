@@ -486,7 +486,10 @@ test("a rolled list column is filled by the Engine's dice from the sheet editor"
     );
     await openGame(page, chatId);
     const portrait = page.getByTitle("Bram - Click to open character sheet", { exact: true }).filter({ visible: true });
-    const members = page.getByRole("button", { name: "Open party members", exact: true }).filter({ visible: true });
+    // Both layouts open party portraits from the shared Character Profiles button.
+    const members = page
+      .locator('.mari-window-bubble[data-window="control:character-profiles"]')
+      .filter({ visible: true });
     await expect(portrait.or(members).first()).toBeVisible({ timeout: 30000 });
     if (await members.isVisible()) await members.click();
     await portrait.first().click();
@@ -571,7 +574,10 @@ test("the in-game sheet hides what the build hides, names pool groups in words, 
     );
     await openGame(page, chatId);
     const portrait = page.getByTitle("Bram - Click to open character sheet", { exact: true }).filter({ visible: true });
-    const members = page.getByRole("button", { name: "Open party members", exact: true }).filter({ visible: true });
+    // Both layouts open party portraits from the shared Character Profiles button.
+    const members = page
+      .locator('.mari-window-bubble[data-window="control:character-profiles"]')
+      .filter({ visible: true });
     await expect(portrait.or(members).first()).toBeVisible({ timeout: 30000 });
     if (await members.isVisible()) await members.click();
     await portrait.first().click();

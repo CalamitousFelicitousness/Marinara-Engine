@@ -1,4 +1,4 @@
-/** An item's switch (Capability API 1.169): a flame tongue turned on with a bonus action deals its
+/** An item's switch (Capability API 1.170): a flame tongue turned on with a bonus action deals its
  *  fire only while it is on, and the stack keeps it on between fights. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  addToGameInventoryNamed,
   applyGameInventoryOps,
   applyRulesetCombatChoice,
   applyRulesetFightItemChanges,
@@ -196,6 +197,35 @@ try {
     assert.deepEqual(on.results, [{ ok: true, id: "s1" }]);
     assert.equal(on.stacks.find((one) => one.id === "s1")!.on, true);
     const off = applyGameInventoryOps(on.stacks, [{ op: "switch", id: "s1", on: false }], undefined, rules);
+    // One switched on stays one item: more of it goes beside it, unswitched.
+    const more = applyGameInventoryOps(on.stacks, [{ op: "set", id: "s1", quantity: 3 }], undefined, rules).stacks;
+    assert.deepEqual(
+      more.filter((one) => one.item === "gear/tongue" && !one.holder).map((one) => [one.quantity, one.on]),
+      [
+        [1, true],
+        [2, undefined],
+      ],
+    );
+    // A spent one keeps its own charges; the one added beside it is fresh.
+    const spent = on.stacks.map((one) => (one.id === "s1" ? { ...one, charges: 1, loaded: 0 } : one));
+    const fresh = applyGameInventoryOps(spent, [{ op: "set", id: "s1", quantity: 2 }], undefined, rules).stacks;
+    assert.deepEqual(
+      fresh
+        .filter((one) => one.item === "gear/tongue" && !one.holder)
+        .map((one) => [one.quantity, one.on, one.charges, one.loaded]),
+      [
+        [1, true, 1, 0],
+        [1, undefined, undefined, undefined],
+      ],
+    );
+    const added = addToGameInventoryNamed(on.stacks, "Flame Tongue", 1, () => "s4")!.stacks;
+    assert.deepEqual(
+      added.filter((one) => one.item === "gear/tongue" && !one.holder).map((one) => [one.quantity, one.on]),
+      [
+        [1, true],
+        [1, undefined],
+      ],
+    );
     assert.equal(off.stacks.find((one) => one.id === "s1")!.on, undefined);
     assert.deepEqual(
       applyGameInventoryOps(stacks, [{ op: "switch", id: "s2", on: true }], undefined, rules).results,
@@ -247,24 +277,24 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset whose items switch on and off requires schemaVersion 2 and capabilityApi 1.169 or newer";
+    const gate = "A ruleset whose items switch on and off requires schemaVersion 2 and capabilityApi 1.170 or newer";
     const withItem = (item: Record<string, unknown>) =>
       document((doc) => {
         doc.catalogs.push({ id: "gear", label: "Gear", entries: [{ id: "blade", label: "Blade", item }] });
       });
     const lantern = { category: "gear", toggle: { label: "Lit", budget: "action" } };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(168) as never, withItem(lantern)), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(168) as never, withItem(tongueItem as never)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(169) as never, withItem(tongueItem as never)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(169) as never, withItem(lantern)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(169) as never, withItem(tongueItem as never)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(170) as never, withItem(tongueItem as never)), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(168) as never, withItem({ category: "gear" })),
+      getCapabilityPackageInstallIssue(manifest(169) as never, withItem({ category: "gear" })),
       gate,
       "nothing without the keys",
     );
   }
 
   console.log(
-    "Item toggles: a flame tongue switched on its bonus action burns only while on, kept on its stack, gated at 1.169.",
+    "Item toggles: a flame tongue switched on its bonus action burns only while on, kept on its stack, gated at 1.170.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -92,7 +92,7 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
     const left = alive.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ");
     lines.push(`Still standing: ${left}`);
   }
-  // Gone alive by a teleport out of the fight (1.278): neither beaten nor still here.
+  // Gone alive by a teleport out of the fight (1.279): neither beaten nor still here.
   const gone = summary.enemies.filter((enemy) => enemy.left);
   if (gone.length > 0) {
     lines.push(`Got away: ${gone.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ")}`);

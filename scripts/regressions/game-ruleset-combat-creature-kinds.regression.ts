@@ -1,5 +1,5 @@
 /**
- * What a creature is, read further (Capability API 1.184).
+ * What a creature is, read further (Capability API 1.185).
  *
  *   - `save.modes`: a target that is this rolls the save twice (Sunbeam against undead).
  *   - `maxAgainst`: damage at its most against a kind (Blight against plants).
@@ -324,7 +324,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with saves or damage that change by what the target is, targets limited by ability scores or condition immunities, or changes to attacks that roll twice by who is attacking whom, requires schemaVersion 2 and capabilityApi 1.184 or newer";
+      "A ruleset with saves or damage that change by what the target is, targets limited by ability scores or condition immunities, or changes to attacks that roll twice by who is attacking whom, requires schemaVersion 2 and capabilityApi 1.185 or newer";
     const plain = () => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       return doc;
@@ -350,10 +350,10 @@ try {
       ["against from", withModifier({ to: "saves", mode: "advantage", against: { from: { types: ["dragon"] } } })],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(183) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(184) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(184) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(185) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(183) as never, plain()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(184) as never, plain()), gate, "the plain 5e example");
   }
 
   console.log(

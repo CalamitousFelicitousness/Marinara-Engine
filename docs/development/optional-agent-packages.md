@@ -1054,6 +1054,25 @@ definition is older than the pinned version) is reported as unavailable and neve
 another ruleset. The pin is matched on the ruleset id and on the package that supplied it, so
 another package claiming the same id does not take over an existing game.
 
+### Capability API 1.73: the avatar agents
+
+The Engine hosts the two avatar agents, `2d-avatars` (PNGTuber sprites and mesh avatars) and
+`3d-avatars` (VRM models). Their packages stay thin: an agent definition each, default prompts,
+locales and the catalog entry. The Engine owns everything else: per-owner storage under
+`DATA_DIR/avatar-models/`, import, the lazy-loaded renderers, the setup on each agent's Agent editor
+page, the stream director, the expression classifier and the generation routes. The shared contract
+is `packages/shared/src/types/avatars.ts` (its schemas are in `schemas/avatars.schema.ts`), and the
+client half is `packages/client/src/features/avatars/contract.ts`. The user guide is
+[`docs/agents/avatars.md`](../agents/avatars.md).
+
+There is no new manifest field. An avatar package declares schema version 2 and Capability API 1.73,
+so an Engine without these surfaces refuses the install instead of listing an agent that shows
+nothing. The change that introduced 1.73 shipped these surfaces as inert stubs, so the packages are
+published, even to the preview catalog, only once the Engine's setup, stage and a renderer are on
+`staging`. The 2D agent's generation prompts ship as the `avatarGenerationTemplates` prompt template
+collection in its `defaultSettings`, with the ids in `AVATAR_PROMPT_TEMPLATE_IDS`; the Agent editor
+merges and resets them like any other built-in template collection.
+
 ### Capability API 1.72: an Experience's map pack
 
 A `game-surface` package that sets up through the Game wizard (`gameSurface.setup`, 1.18) can ship a
@@ -1088,7 +1107,8 @@ hash-pinned asset.
 world's `snapshot`, the world as it was made (W11): an Engine whose world generator has changed since
 reads the world from it, exactly as it was made, so a pack keeps working across Engine updates. Write
 the files from a game's or library world's **Download** (or `GET /api/game/:chatId/world/file`), which
-include it. With the Experience on, a new game is locked
+include it. A pack file is still at most 2 MB, so a world whose file is larger (a big world's snapshot)
+cannot ship in a pack. With the Experience on, a new game is locked
 to the pack's kit; if the pack ships worlds, the player picks one of them (story included) and makes
 no other. Turning the
 Experience off gives the player's own choices back. `POST /api/game/create` holds a game to the same

@@ -232,6 +232,15 @@ test("a fight by initiative plays out the turns taken before the party's first",
       },
     });
     expect(patched.ok(), await patched.text()).toBeTruthy();
+    // The opening can finish playing before a locator looks, so the page notes whether it was ever shown.
+    await page.addInitScript(() => {
+      const seen = window as unknown as { sawResolving?: boolean };
+      new MutationObserver(() => {
+        if (seen.sawResolving) return;
+        const battle = document.querySelector('[data-component="TacticalCombatUI"]');
+        if (battle?.textContent?.includes("Resolving")) seen.sawResolving = true;
+      }).observe(document, { subtree: true, childList: true, characterData: true });
+    });
     const started = page.waitForResponse((response) => response.url().endsWith("/api/game/combat/tactical/start"));
     await openGame(page, chatId, testInfo);
     const body = await (await started).json();
@@ -239,7 +248,11 @@ test("a fight by initiative plays out the turns taken before the party's first",
     expect(body.opening?.events.length).toBeGreaterThan(0);
     const battle = page.locator('[data-component="TacticalCombatUI"]');
     // The raider's turn is played on the board, then it is a party unit's.
-    await expect(battle.getByText("Resolving")).toBeVisible({ timeout: 40_000 });
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { sawResolving?: boolean }).sawResolving === true), {
+        timeout: 40_000,
+      })
+      .toBe(true);
     await expect(battle.getByText("Resolving")).toHaveCount(0, { timeout: 20_000 });
     await expect(battle.getByText(/^Turn (Scout|Guard)'s turn$/)).toBeVisible();
   } finally {

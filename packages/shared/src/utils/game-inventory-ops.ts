@@ -106,14 +106,14 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("give"), id: stackId, to: holder.optional(), count: amount.optional() }).strict(),
   /** One stack put on or taken off, bound or unbound, by whoever carries it. */
   z.object({ op: z.enum(["equip", "unequip", "bind", "unbind"]), id: stackId }).strict(),
-  /** One stack's switch turned on or off (Capability API 1.169): an item of one with a `toggle`. */
+  /** One stack's switch turned on or off (Capability API 1.170): an item of one with a `toggle`. */
   z.object({ op: z.literal("switch"), id: stackId, on: z.boolean() }).strict(),
 ]);
 
 export type GameInventoryOp = z.infer<typeof gameInventoryOpSchema>;
 
 /** An op the Engine applies itself: an add may also say what a fake truly is (a dishonest seller's
- *  sale, Capability API 1.78), and a take which kind of stack it takes from (a sale, which never takes
+ *  sale, Capability API 1.79), and a take which kind of stack it takes from (a sale, which never takes
  *  a fake with the real thing), which no op a client sends can, since the schema above is strict. */
 export type GameInventoryEngineOp =
   | GameInventoryOp
@@ -150,7 +150,7 @@ export type GameInventoryOpResult =
       count?: number;
       /** How many of the item that bag holds afterwards (the party's total for a take from anyone). */
       now?: number;
-      /** A take of something used that took fakes: what each truly was, by name (1.78). */
+      /** A take of something used that took fakes: what each truly was, by name (1.79). */
       revealed?: string[];
       /** An add into the shared view: how many went into whose bag, and how many that bag now holds. */
       placed?: Array<{ holder?: string; count: number; now: number }>;
@@ -290,7 +290,7 @@ export function applyGameInventoryOps(
           break;
         }
         current = taken.stacks;
-        // A fake used is found out as it goes (1.78): the journal writes it by its true name, and the
+        // A fake used is found out as it goes (1.79): the journal writes it by its true name, and the
         // answer says what it truly was. Lost, sold or removed, it goes as what it seemed.
         const used = op.as === "used" && taken.fakes ? taken.fakes : undefined;
         const revealed = used ? [...used.keys()].map((truly) => rules?.itemOf(truly)?.name ?? truly) : undefined;
@@ -320,7 +320,7 @@ export function applyGameInventoryOps(
         };
         let spent = 0;
         let broke = 0;
-        // A fake's charges spent are found out (1.78): written by its true name.
+        // A fake's charges spent are found out (1.79): written by its true name.
         const fakes = new Map<string, number>();
         for (; spent < op.count; spent++) {
           const stack = gameInventoryChargeStack(current, items, rules, from);
@@ -329,7 +329,7 @@ export function applyGameInventoryOps(
           const held = chargesOf(stack)!;
           const spentTo = left(stack) - held.cost;
           const face = spentTo === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) : undefined;
-          // A high face gives charges back (1.270): a Staff of the Magi's 20.
+          // A high face gives charges back (1.271): a Staff of the Magi's 20.
           const regains = held.breaksOn?.regains;
           const now =
             face !== undefined && regains && roll && face >= regains.atLeast
@@ -346,7 +346,7 @@ export function applyGameInventoryOps(
               : spentTo;
           const cracks =
             face !== undefined && now === 0 && held.breaksOn?.atMost !== undefined && face <= held.breaksOn.atMost;
-          // Or it becomes another item instead (1.271), under that item's name.
+          // Or it becomes another item instead (1.272), under that item's name.
           const into = cracks && held.breaksOn?.becomes ? rules?.itemOf(held.breaksOn.becomes) : undefined;
           if (into) {
             const { charges: _charges, ...plain } = stack;
@@ -516,7 +516,7 @@ export function applyGameInventoryOps(
       }
     }
   }
-  // A binding whose needed items went elsewhere, or came off, is undone (1.312).
+  // A binding whose needed items went elsewhere, or came off, is undone (1.313).
   return { stacks: releaseGameInventoryUnmetBindings(current, rules), results, journal };
 }
 

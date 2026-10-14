@@ -1,7 +1,7 @@
 /**
- * More conditions, and changes narrowed to an ability (Capability API 1.187).
+ * More conditions, and changes narrowed to an ability (Capability API 1.188).
  *
- *   - A sheet's conditions, a rest's cleared ones and the fight's own hold up to 320 (160 before 1.268, 80 before that).
+ *   - A sheet's conditions, a rest's cleared ones and the fight's own hold up to 320 (160 before 1.269, 80 before that).
  *   - A change to attacks may name `ability`: a gold dragon's Weakening Breath takes from Strength
  *     attacks and not from a bow, in the roll, its mode and the forecast.
  *   - A change to checks may name `abilities`: Rage's advantage on Strength checks reaches a grapple
@@ -324,7 +324,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with more than 80 conditions, attacks narrowed by the ability they're made with, or checks narrowed by ability requires schemaVersion 2 and capabilityApi 1.187 or newer";
+      "A ruleset with more than 80 conditions, attacks narrowed by the ability they're made with, or checks narrowed by ability requires schemaVersion 2 and capabilityApi 1.188 or newer";
     const only = (id: string) => {
       const doc = JSON.parse(fiveE);
       doc.combat.conditions.push({ condition: "poisoned", modifiers: narrowed[id] });
@@ -343,14 +343,14 @@ try {
       ["checks by abilities", only("raging")],
       ["81 conditions", wide],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(186) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(187) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(188) as never, doc), gate, label);
     }
     // Damage was narrowed by ability long before.
     const damage = JSON.parse(fiveE);
     damage.combat.conditions.push({ condition: "poisoned", modifiers: [{ to: "damage", flat: 2, ability: "str" }] });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(186) as never, damage), gate, "damage by ability");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(186) as never, JSON.parse(fiveE)), gate, "plain 5e");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, damage), gate, "damage by ability");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, JSON.parse(fiveE)), gate, "plain 5e");
   }
 
   console.log(

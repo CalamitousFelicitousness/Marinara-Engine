@@ -486,9 +486,9 @@ export type CatalogMechanicsLabels = {
   /** Action-economy budget id to the name the ruleset gives it, for the entries that hand a budget
    *  back or buy a standard action with one. Empty for a ruleset that resolves no combat. */
   budgets: Readonly<Record<string, string>>;
-  /** A sheet value by the ruleset's own name, for an amount that adds one (1.82). */
+  /** A sheet value by the ruleset's own name, for an amount that adds one (1.83). */
   value?: (ref: RulesetValueRef) => string;
-  /** Condition id to the name the sheet shows, for a cure that ends some (1.175). */
+  /** Condition id to the name the sheet shows, for a cure that ends some (1.176). */
   conditions?: Readonly<Record<string, string>>;
 };
 
@@ -568,11 +568,11 @@ export function formatCatalogMechanics(
         distance: distance(mechanics.area.size),
       }),
     );
-    // Or laid as a ring, as its caster chooses (1.176).
+    // Or laid as a ring, as its caster chooses (1.177).
     if (mechanics.area.ring !== undefined) {
       parts.push(t("game.ruleset.catalog.mechanics.ringOf", { distance: distance(mechanics.area.ring) }));
     }
-    // Set down several times at once (1.177).
+    // Set down several times at once (1.178).
     if (mechanics.area.copies !== undefined) {
       parts.push(t("game.ruleset.catalog.mechanics.copies", { count: mechanics.area.copies }));
     }
@@ -673,7 +673,7 @@ export function formatCatalogMechanics(
     );
   }
   if (mechanics.concentration) parts.push(t("game.ruleset.catalog.mechanics.concentration"));
-  // What it cures (1.175): conditions it ends, the dying it steadies, the dead it brings back.
+  // What it cures (1.176): conditions it ends, the dying it steadies, the dead it brings back.
   if (mechanics.ends) {
     const named = mechanics.ends.conditions.map((id) => labels.conditions?.[id] ?? id).join(", ");
     const count = mechanics.ends.count;
@@ -692,11 +692,11 @@ export function formatCatalogMechanics(
       }),
     );
   }
-  // An area that stays (1.171): how long, and when it does its effect again.
+  // An area that stays (1.172): how long, and when it does its effect again.
   if (mechanics.zone) {
     parts.push(
       t(
-        // A zone that is only ground (1.172) does nothing "again".
+        // A zone that is only ground (1.173) does nothing "again".
         mechanics.zone.triggers.length === 0
           ? "game.ruleset.catalog.mechanics.zoneStays"
           : mechanics.zone.anchor === "caster"
@@ -708,7 +708,7 @@ export function formatCatalogMechanics(
         },
       ),
     );
-    // Moved by its caster, drifting, and what its ground does (1.172).
+    // Moved by its caster, drifting, and what its ground does (1.173).
     if (mechanics.zone.move) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneMove", { distance: distance(mechanics.zone.move.distance) }));
     }
@@ -717,7 +717,7 @@ export function formatCatalogMechanics(
     }
     if (mechanics.zone.move?.ram) parts.push(t("game.ruleset.catalog.mechanics.zoneRam"));
     if (mechanics.zone.terrain?.difficult) parts.push(t("game.ruleset.catalog.mechanics.zoneDifficult"));
-    // Ground that costs several steps, and halved speed (1.174).
+    // Ground that costs several steps, and halved speed (1.175).
     if (mechanics.zone.terrain?.costTimes !== undefined) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneCostTimes", { count: mechanics.zone.terrain.costTimes }));
     }
@@ -731,22 +731,22 @@ export function formatCatalogMechanics(
         }),
       );
     }
-    // What it does to concentration, and the damage it ends at (1.173).
+    // What it does to concentration, and the damage it ends at (1.174).
     if (mechanics.zone.breaksConcentration) parts.push(t("game.ruleset.catalog.mechanics.zoneBreaksConcentration"));
-    // What it does to whoever it already holds (1.174).
+    // What it does to whoever it already holds (1.175).
     const held = mechanics.zone.whileHeld;
     if (held) {
       parts.push(
         t("game.ruleset.catalog.mechanics.zoneWhileHeld", {
           amount: [held.amount.dice, held.amount.flat].filter((part) => part !== undefined).join("+"),
-          condition: held.condition,
+          condition: labels.conditions?.[held.condition] ?? held.condition,
         }),
       );
     }
     if (mechanics.zone.damageCap !== undefined) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneDamageCap", { count: mechanics.zone.damageCap }));
     }
-    // What a wall stops, and its one side (1.176).
+    // What a wall stops, and its one side (1.177).
     const blocks = mechanics.zone.blocks ?? [];
     if (blocks.length) {
       parts.push(
@@ -759,7 +759,7 @@ export function formatCatalogMechanics(
         ),
       );
     }
-    // Nobody sees into it but by the senses that pierce it (1.177).
+    // Nobody sees into it but by the senses that pierce it (1.178).
     if (mechanics.zone.obscures) {
       const pierced = mechanics.zone.obscures.pierced ?? [];
       parts.push(
@@ -768,11 +768,13 @@ export function formatCatalogMechanics(
           : t("game.ruleset.catalog.mechanics.zoneObscures"),
       );
     }
-    // What standing inside does, what it stops and what it wards off (1.178).
+    // What standing inside does, what it stops and what it wards off (1.179).
     const inside = mechanics.zone.inside;
     if (inside?.conditions?.length) {
       parts.push(
-        t("game.ruleset.catalog.mechanics.zoneInsideConditions", { conditions: inside.conditions.join(", ") }),
+        t("game.ruleset.catalog.mechanics.zoneInsideConditions", {
+          conditions: inside.conditions.map((id) => labels.conditions?.[id] ?? id).join(", "),
+        }),
       );
     }
     if (inside?.immune?.length) {
@@ -804,7 +806,7 @@ export function formatCatalogMechanics(
   return parts.join(" · ");
 }
 
-/** What each of a zone's triggers is called (1.171). */
+/** What each of a zone's triggers is called (1.172). */
 const ZONE_WHEN_KEYS = {
   enter: "game.ruleset.catalog.mechanics.zoneWhenEnter",
   "turn-start": "game.ruleset.catalog.mechanics.zoneWhenTurnStart",

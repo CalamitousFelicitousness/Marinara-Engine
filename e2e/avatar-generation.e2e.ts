@@ -46,9 +46,32 @@ async function alphaAt(png: Buffer, x: number, y: number) {
   return data[(y * info.width + x) * 4 + 3];
 }
 
-/** Image and vision models on one local server. While `hold` is on, a request waits for Cancel. */
+/** Image and vision models on one local server. While `hold` is on, a request waits until the test answers
+ *  it (`respond`) or the Engine closes it (Cancel). */
 function fakeModels() {
-  const state = { hold: true, held: [] as string[], closed: [] as string[], open: [] as ServerResponse[] };
+  const state = {
+    hold: true,
+    held: [] as Array<{ url: string; respond: () => Promise<void> }>,
+    closed: [] as string[],
+    open: [] as ServerResponse[],
+  };
+  const answer = async (url: string, body: Buffer, res: ServerResponse) => {
+    res.setHeader("content-type", "application/json");
+    if (url.endsWith("/chat/completions")) {
+      res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify(LAYOUT) } }] }));
+      return;
+    }
+    // An edit that keeps the picture in place on the canvas GPT Image 1 is asked for, with the background
+    // filled in white as most image models do.
+    const start = body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const sent = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
+    const picture = await sharp(sent)
+      .resize(1024, 1536, { fit: "cover" })
+      .flatten({ background: "#fff" })
+      .png()
+      .toBuffer();
+    res.end(JSON.stringify({ data: [{ b64_json: picture.toString("base64") }] }));
+  };
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -62,27 +85,13 @@ function fakeModels() {
     res.on("close", () => {
       if (!res.writableFinished) state.closed.push(url);
     });
+    const body = Buffer.concat(chunks);
     if (state.hold) {
-      state.held.push(url);
+      state.held.push({ url, respond: () => answer(url, body, res) });
       state.open.push(res);
       return;
     }
-    res.setHeader("content-type", "application/json");
-    if (url.endsWith("/chat/completions")) {
-      res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify(LAYOUT) } }] }));
-      return;
-    }
-    // An edit that keeps the picture in place on the canvas GPT Image 1 is asked for, with the background
-    // filled in white as most image models do.
-    const body = Buffer.concat(chunks);
-    const start = body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    const sent = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
-    const picture = await sharp(sent)
-      .resize(1024, 1536, { fit: "cover" })
-      .flatten({ background: "#fff" })
-      .png()
-      .toBuffer();
-    res.end(JSON.stringify({ data: [{ b64_json: picture.toString("base64") }] }));
+    await answer(url, body, res);
   });
   return { server, state };
 }
@@ -167,21 +176,31 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
     await panel.getByRole("group", { name: "Sprites", exact: true }).getByRole("button", { name: "neutral" }).click();
     await panel.getByRole("button", { name: "Make 2 pictures" }).click();
     await expect.poll(() => models.state.held.length).toBe(1);
-    expect(models.state.held[0]).toMatch(/\/images\/edits$/u);
+    expect(models.state.held[0]!.url).toMatch(/\/images\/edits$/u);
     await expect(panel.getByRole("status")).toHaveText("Making picture 1 of 2…");
+    // Cancel's own request reaches the server late, as through a slow proxy.
+    let cancelDelivered = false;
+    await page.route("**/api/avatar-generation/cancel", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      await route.fulfill({ response: await route.fetch() });
+      cancelDelivered = true;
+    });
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect
-      .poll(() => models.state.closed, { message: "the image request in flight is aborted" })
-      .toEqual([models.state.held[0]]);
     await expect(panel.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
     await expect(panel.getByText("Waiting", { exact: true })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Make 2 pictures" })).toBeEnabled();
     await page.screenshot({ path: testInfo.outputPath("cancelled.png"), animations: "disabled" });
+    await expect
+      .poll(() => models.state.closed, { message: "the image request in flight is aborted" })
+      .toEqual([models.state.held[0]!.url]);
 
-    // ── The next picture is made at once (the avatar isn't stuck "already being made"), without a background ──
-    models.state.hold = false;
+    // ── The next picture starts at once, the late cancel doesn't stop it, and it has no background ──
     await panel.getByRole("checkbox", { name: "Mouth open" }).uncheck();
     await panel.getByRole("button", { name: "Make 1 picture" }).click();
+    await expect.poll(() => models.state.held.length).toBe(2);
+    await expect.poll(() => cancelDelivered).toBe(true);
+    expect(models.state.closed, "the late cancel left the new picture alone").toHaveLength(1);
+    await models.state.held[1]!.respond();
     const drawn = panel.getByRole("img", { name: "New picture: neutral: Eyes closed" });
     await expect(drawn).toBeVisible({ timeout: 30_000 });
     const src = await drawn.getAttribute("src");
@@ -191,15 +210,14 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
     await page.screenshot({ path: testInfo.outputPath("pngtuber-picture.png"), animations: "disabled" });
 
     // ── Cancel while the vision model looks at the sprite for the mesh avatar ──
-    models.state.hold = true;
     await panel.getByLabel("Chat connection that can see pictures").selectOption(visionId);
     // The neutral sprite is picked for a mesh avatar until the user picks another.
     await expect(
       panel.getByRole("group", { name: "Sprite to use" }).getByRole("button", { name: "neutral" }),
     ).toHaveAttribute("aria-pressed", "true");
     await panel.getByRole("button", { name: "Make mesh avatar" }).click();
-    await expect.poll(() => models.state.held.length).toBe(2);
-    expect(models.state.held[1]).toMatch(/\/chat\/completions$/u);
+    await expect.poll(() => models.state.held.length).toBe(3);
+    expect(models.state.held[2]!.url).toMatch(/\/chat\/completions$/u);
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.poll(() => models.state.closed.length, { message: "the vision request is aborted" }).toBe(2);
     await expect(panel.getByText("Building the mesh avatar…")).toHaveCount(0);

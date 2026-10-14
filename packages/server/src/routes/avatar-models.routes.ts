@@ -282,7 +282,10 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
       if (!owner || !label || label.length > 255 || /[\\/]/u.test(label)) {
         return reply.status(400).send({ error: "Invalid path" });
       }
+      if (!(await ownerExists(owner))) return reply.status(404).send({ error: "Not found" });
       const shown = await avatarSpriteDisplayFile(owner, label);
+      // A cut-out written while the character or persona was being deleted goes with its folder.
+      if (await ownerGoneAfterWrite(owner)) return reply.status(404).send({ error: "Not found" });
       const image = shown ? await validateImageAssetFile(shown.file, shown.name) : null;
       if (!shown || !image) return reply.status(404).send({ error: "Not found" });
       return sendValidatedMediaFile(reply, image, {

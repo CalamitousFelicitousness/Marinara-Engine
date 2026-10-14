@@ -71,12 +71,16 @@ interface RunningJob {
   owner: AvatarOwnerRef;
 }
 
+/** The last Cancel's request to the server. A new start waits for it, so a cancel that arrives late never
+ *  stops the job started after it. */
+let pendingCancel: Promise<unknown> = Promise.resolve();
+
 /** Stops a running job: closes its request and asks the server to stop it too, since a proxy between the
  *  browser and the server can keep the server's side of a closed request going. */
 function stopJob(job: RunningJob | null, kind: "pngtuber" | "mesh-avatar") {
   if (!job || job.controller.signal.aborted) return;
   job.controller.abort();
-  api.post(`${PREFIX}/cancel`, { owner: job.owner, kind }).catch((error: unknown) => {
+  pendingCancel = api.post(`${PREFIX}/cancel`, { owner: job.owner, kind }).catch((error: unknown) => {
     console.warn("[avatars] Cancel request failed", error);
   });
 }
@@ -150,6 +154,7 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
       const controller = new AbortController();
       jobRef.current = { controller, owner };
       try {
+        await pendingCancel;
         for (const item of queue) {
           if (controller.signal.aborted) break;
           update(item.id, { status: "running", error: undefined });
@@ -266,6 +271,8 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
       const controller = new AbortController();
       jobRef.current = { controller, owner };
       try {
+        await pendingCancel;
+        controller.signal.throwIfAborted();
         const result = await api.post<MeshRigDraft>(
           `${PREFIX}/mesh-rig`,
           { owner, ...body, debugMode: useUIStore.getState().debugMode },

@@ -69,7 +69,8 @@ interface ChatGalleryProps {
   /** Generate a scene video from the latest illustration, or a Conversation character's video message. */
   onGenerateVideo?: (characterId?: string) => void | Promise<void>;
   /** Generate a scene video from a specific gallery illustration. */
-  onAnimateImage?: (image: ChatImage) => void | Promise<void>;
+  /** In Conversation, `characterId` is the character picked to send it. */
+  onAnimateImage?: (image: ChatImage, characterId?: string) => void | Promise<void>;
 }
 
 const EMPTY_SCENE_VIDEOS: GeneratedSceneVideo[] = [];
@@ -473,7 +474,7 @@ export function ChatGallery({
 
     setChatGeneratingVideo(chatId, true);
     try {
-      await onAnimateImage(image);
+      await onAnimateImage(image, selfieCharacters.length > 1 ? selectedSelfieCharacterId : selfieCharacters[0]?.id);
       await sceneVideosQuery.refetch();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : localizeUi("ui.chat.chatgallery.videoGenerationFailed"));
@@ -680,23 +681,25 @@ export function ChatGallery({
                       : localizeUi("ui.chat.chatgallery.selfie")}
                   </span>
                 </button>
-                {selfieCharacters.length > 1 && (
-                  <select
-                    value={selectedSelfieCharacterId}
-                    onChange={(event) => setSelectedSelfieCharacterId(event.target.value)}
-                    disabled={isGeneratingSelfie}
-                    className="min-w-0 rounded-lg bg-[var(--secondary)] px-2 py-1.5 text-[0.6875rem] text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] disabled:cursor-wait disabled:opacity-70"
-                    aria-label={localizeUi("ui.chat.chatgallery.selfieCharacter")}
-                  >
-                    {selfieCharacters.map((character) => (
-                      <option key={character.id} value={character.id}>
-                        {character.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
               </div>
             )}
+            {/* One picker for who sends a selfie or a video message, so it shows whenever either is available. */}
+            {selfieCharacters.length > 1 &&
+              (onGenerateSelfie || (mode === "conversation" && (onGenerateVideo || onAnimateImage))) && (
+                <select
+                  value={selectedSelfieCharacterId}
+                  onChange={(event) => setSelectedSelfieCharacterId(event.target.value)}
+                  disabled={isGeneratingSelfie || isGeneratingVideo}
+                  className="min-w-0 self-start rounded-lg bg-[var(--secondary)] px-2 py-1.5 text-[0.6875rem] text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] disabled:cursor-wait disabled:opacity-70"
+                  aria-label={localizeUi("ui.chat.chatgallery.messageCharacter")}
+                >
+                  {selfieCharacters.map((character) => (
+                    <option key={character.id} value={character.id}>
+                      {character.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             {onGenerateStoryboard && (
               <button
                 type="button"
@@ -1184,9 +1187,11 @@ export function ChatGallery({
                 <Film size="1.5rem" className="opacity-40" />
                 <p className="text-xs">{localizeUi("ui.chat.chatgallery.noVideosYet")}</p>
                 <p className="text-[0.625rem] opacity-60">
-                  {onGenerateVideo || onAnimateImage
-                    ? localizeUi("ui.chat.chatgallery.generateOrAnimateSceneVideosToFillThisTab")
-                    : localizeUi("ui.chat.chatgallery.generatedSceneVideosWillAppearHere")}
+                  {mode === "conversation"
+                    ? localizeUi("ui.chat.chatgallery.sendOrAnimateVideoMessagesToFillThisTab")
+                    : onGenerateVideo || onAnimateImage
+                      ? localizeUi("ui.chat.chatgallery.generateOrAnimateSceneVideosToFillThisTab")
+                      : localizeUi("ui.chat.chatgallery.generatedSceneVideosWillAppearHere")}
                 </p>
               </div>
             )}
@@ -1195,7 +1200,9 @@ export function ChatGallery({
               <section className="space-y-2">
                 <div className="flex items-center gap-2 text-[0.6875rem] font-medium uppercase text-[var(--muted-foreground)]">
                   <Film size="0.75rem" />
-                  {localizeUi("ui.chat.chatgallery.sceneVideos")}
+                  {localizeUi(
+                    mode === "conversation" ? "ui.chat.chatgallery.videoMessages" : "ui.chat.chatgallery.sceneVideos",
+                  )}
                 </div>
                 <div className="grid grid-cols-1 gap-2 @sm:grid-cols-2">
                   {sceneVideos.map((video) => (

@@ -27,9 +27,11 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
+const { formatRecentVideoContext } = await import("../../packages/server/src/services/video/prompt-context.js");
 const { formatSentVideoNotes } =
   await import("../../packages/server/src/routes/generate/conversation-prompt-formatting.js");
-const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
+const { characterDataSchema, LOCAL_SIDECAR_CONNECTION_ID } = await import("../../packages/shared/dist/index.js");
+const sharp = requireServer("sharp") as typeof import("sharp").default;
 
 // Two distinct PNGs, so the clip's first frame can be traced back to the avatar or the selfie.
 const avatarPng = Buffer.from(
@@ -50,6 +52,9 @@ const writerRequests: string[] = [];
 const selfieWriterRequests: string[] = [];
 const writerMaxTokens: number[] = [];
 const comfyPrompts: string[] = [];
+// What the image service returns for a selfie (Venice always returns WebP), and what it was asked to draw.
+let selfieImage: Buffer | null = null;
+const imageRequests: string[] = [];
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -76,7 +81,10 @@ const provider = createServer(async (request, response) => {
     response.end(mp4);
     return;
   }
-  if (url.endsWith("/images/generations")) return json({ data: [{ b64_json: selfiePng.toString("base64") }] });
+  if (url.endsWith("/images/generations")) {
+    imageRequests.push(body);
+    return json({ data: [{ b64_json: (selfieImage ?? selfiePng).toString("base64") }] });
+  }
   const messages = JSON.stringify(JSON.parse(body).messages);
   const isVideoWriter = messages.includes("video prompt writer");
   if (isVideoWriter) writerRequests.push(messages);
@@ -292,12 +300,59 @@ try {
   await setFirstFrame("picture", null);
   const noSelfie = await send({});
   assert.equal(noSelfie.statusCode, 400, "a missing Selfie Connection is a setting to fix");
-  assert.match(noSelfie.body, /Choose a Selfie Connection/u);
+  assert.match(noSelfie.body, /choose a Selfie Connection/u);
+  // The settings check runs before any paid call, in a preview too: no prompt was written.
+  const writersBefore = writerRequests.length;
+  assert.equal((await send({ previewOnly: true })).statusCode, 400);
+  assert.equal(writerRequests.length, writersBefore, "no prompt is written for a request that can't work");
+
+  // With Generated Selfies off, the default first frame uses the avatar, even with a Selfie Connection still set.
+  const setToggles = async (toggles: Record<string, boolean>) => {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${convo.id}/metadata`,
+      payload: { conversationCommandToggles: toggles },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+  };
+  await setFirstFrame("picture_or_avatar", image.id);
+  await setToggles({ selfie: false });
+  const imagesBefore = imageRequests.length;
+  const selfiesOff = await send({});
+  assert.equal((selfiesOff.json() as { firstFrame: string }).firstFrame, "avatar");
+  assert.equal(imageRequests.length, imagesBefore, "no selfie is paid for while selfies are off");
+  await setToggles({ selfie: true });
+
+  // A WebP selfie is converted to PNG and used, not thrown away for the avatar.
+  selfieImage = await sharp(selfiePng).webp().toBuffer();
+  const webpClip = await send({});
+  assert.equal(webpClip.statusCode, 200, webpClip.body);
+  assert.equal((webpClip.json() as { firstFrame: string }).firstFrame, "selfie");
+  const firstFrameBytes = Buffer.from(lastComfyImage()?.image ?? "", "base64");
+  assert.equal(firstFrameBytes.subarray(1, 4).toString("ascii"), "PNG", "the WebP selfie reaches the video as PNG");
+  assert.notEqual(lastComfyImage()?.image, avatarPng.toString("base64"));
+  selfieImage = null;
+
+  // The selfie is reviewed with the clip: the preview returns its prompt without drawing, and a reviewed selfie
+  // prompt is drawn as the user left it.
+  await setFirstFrame("picture", image.id);
+  const imagesBeforeReview = imageRequests.length;
+  const reviewed = await send({ previewOnly: true });
+  assert.equal(reviewed.statusCode, 200, reviewed.body);
+  assert.match((reviewed.json() as { selfie?: { prompt: string } }).selfie?.prompt ?? "", /Aster, selfie, smiling/u);
+  assert.equal(imageRequests.length, imagesBeforeReview, "a preview draws nothing");
+  const reviewedSend = await send({ promptOverride: VIDEO_PROMPT, selfiePromptOverride: "REVIEWED_SELFIE_PROMPT" });
+  assert.equal(reviewedSend.statusCode, 200, reviewedSend.body);
+  assert.match(imageRequests.at(-1) ?? "", /REVIEWED_SELFIE_PROMPT/u);
 
   // Animating a gallery picture joins the newest reply, even when an earlier one shows it; no new message is made.
   mkdirSync(join(fixtureDir, "gallery", convo.id), { recursive: true });
   writeFileSync(join(fixtureDir, "gallery", convo.id, "pic.png"), avatarPng);
-  const picture = await gallery.create({ chatId: convo.id, filePath: `${convo.id}/pic.png`, prompt: "Pic" });
+  const picture = await gallery.create({
+    chatId: convo.id,
+    filePath: `${convo.id}/pic.png`,
+    prompt: "Aster beside a koi pond at sunset",
+  });
   assert.ok(picture);
   const holder = await chats.createMessage({
     chatId: convo.id,
@@ -319,6 +374,13 @@ try {
   assert.equal(animate.statusCode, 200, animate.body);
   assert.equal((animate.json() as { messageId: string }).messageId, newest.id);
   assert.equal((await chats.listMessages(convo.id)).length, messageCount);
+  // The writer continues the picture itself, and the clip under someone's reply credits no sender.
+  assert.match(writerRequests.at(-1) ?? "", /The clip starts from this picture:[\s\S]*koi pond at sunset/u);
+  const newestExtra = JSON.parse(String((await chats.getMessage(newest.id))?.extra)) as {
+    attachments: Array<Record<string, unknown>>;
+  };
+  assert.equal(newestExtra.attachments.at(-1)?.type, "video");
+  assert.equal(newestExtra.attachments.at(-1)?.characterName, undefined, "no sent-video note for an animation");
 
   // A reasoning model gets room to think: the writer asks for the same budget as the selfie writer.
   assert.equal(Math.max(...writerMaxTokens), 8196);
@@ -351,6 +413,39 @@ try {
     payload: { characterId: aster.id },
   });
   assert.equal(rejected.statusCode, 400);
+
+  // The built-in local model reaches the Prompt Model with its id, as /selfie does, instead of "no text connection".
+  const local = await chats.create({
+    name: "Local",
+    mode: "conversation",
+    characterIds: [aster.id],
+    connectionId: LOCAL_SIDECAR_CONNECTION_ID,
+  });
+  assert.ok(local);
+  await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${local.id}/metadata`,
+    payload: { sceneVideoConnectionId: video.id, sceneVideoFirstFrame: "prompt_only" },
+  });
+  const localVideo = await app.inject({
+    method: "POST",
+    url: `/api/gallery/${local.id}/video`,
+    payload: { characterId: aster.id, previewOnly: true },
+  });
+  assert.doesNotMatch(localVideo.body, /No text connection is configured/u);
+
+  // Recent context starts at the latest conversation start and leaves out what is hidden from this character.
+  const recentText = formatRecentVideoContext(
+    [
+      { id: "1", role: "user", content: "BEFORE_START" },
+      { id: "2", role: "user", content: "After the start", extra: { isConversationStart: true } },
+      { id: "3", role: "assistant", content: "HIDDEN_FROM_ASTER", extra: { hiddenFromAICharacterIds: ["aster"] } },
+      { id: "4", role: "assistant", content: "Seen by everyone" },
+    ],
+    { count: 10, characterId: "aster" },
+  );
+  assert.match(recentText, /After the start[\s\S]*Seen by everyone/u);
+  assert.doesNotMatch(recentText, /BEFORE_START|HIDDEN_FROM_ASTER/u);
 
   // Later replies see who sent a video and what it shows; Roleplay clips (no sender) stay hidden.
   assert.equal(

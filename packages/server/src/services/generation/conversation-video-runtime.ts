@@ -23,10 +23,10 @@ import { createPromptOverridesStorage } from "../storage/prompt-overrides.storag
 import {
   ChatVideoError,
   generateAndSaveChatVideo,
-  readVideoReferenceImage,
   resolveChatVideoSetup,
+  toVideoReferenceImage,
 } from "../video/chat-video-generation.js";
-import { formatRecentVideoContext } from "../video/prompt-context.js";
+import { excerptIllustrationPromptForVideo, formatRecentVideoContext } from "../video/prompt-context.js";
 import { createAgentsStorage } from "../storage/agents.storage.js";
 import { normalizeAgentContextSize } from "../agents/agent-executor.js";
 import { resolveSceneVideoPrompt } from "../video/scene-video-prompt-review.js";
@@ -41,6 +41,8 @@ export interface ConversationVideoPreview {
   aspectRatio: "16:9" | "9:16";
   resolution: string | null;
   maxPromptLength: number | null;
+  /** The selfie the clip starts from, when First frame makes one, so its prompt is reviewed too. */
+  selfie: { prompt: string; negativePrompt: string; width: number; height: number } | null;
 }
 
 export interface ConversationVideoResult {
@@ -52,9 +54,34 @@ export interface ConversationVideoResult {
 
 const VIDEO_PROMPT_WRITER_MAX_TOKENS = 8_196;
 const SELFIE_CONTEXT_MAX_CHARS = 2_000;
+const PICTURE_PROMPT_MAX_CHARS = 1_500;
 const UNCLOSED_THINKING_RE = /^<(?:think|thinking|reasoning)\b/iu;
 
 type PromptCharacter = Parameters<typeof handleConversationSelfieCommand>[0]["charInfo"][number];
+type ReadyFrame = {
+  kind: ConversationVideoResult["firstFrame"];
+  image: VideoReferenceImage | undefined;
+  tag: string | null;
+  path: string | null;
+};
+/** What a clip starts from, decided and checked before any paid call. A selfie is only taken after review. */
+type FirstFramePlan =
+  | (ReadyFrame & { kind: "gallery" | "avatar" | "none"; picturePrompt?: string })
+  | { kind: "selfie"; avatarFallback: boolean };
+
+/**
+ * Whether this chat takes selfies: Generated Selfies on and a Selfie Connection set, the same test as the
+ * Chat Settings drawer. With selfies off, the Selfie Connection is hidden there, so it must not be used here.
+ */
+export function conversationSelfiesAvailable(chatMeta: Record<string, unknown>): boolean {
+  const toggles = parseRecord(chatMeta.conversationCommandToggles);
+  return (
+    chatMeta.characterCommands !== false &&
+    toggles.selfie !== false &&
+    typeof chatMeta.imageGenConnectionId === "string" &&
+    chatMeta.imageGenConnectionId.trim().length > 0
+  );
+}
 
 export async function generateConversationVideo(args: {
   db: DB;
@@ -63,11 +90,14 @@ export async function generateConversationVideo(args: {
   characterId: string;
   /** Every character in the chat, for the selfie first frame. */
   charInfo: PromptCharacter[];
-  /** The chat's own text connection; the chat's Prompt Model override wins over it. */
+  /** The chat's own text connection (null for the built-in local model); the Prompt Model override wins. */
   promptConnection: IllustratorPromptConnection | null;
   promptConnectionId: string | null;
   context?: string | null;
   promptOverride?: string | null;
+  /** A reviewed prompt for the selfie first frame. */
+  selfiePromptOverride?: string | null;
+  selfieNegativePromptOverride?: string | null;
   /** Animate this gallery image instead of using the chat's first-frame setting. */
   galleryImageId?: string | null;
   previewOnly?: boolean;
@@ -90,6 +120,9 @@ export async function generateConversationVideo(args: {
   const extensions = parseRecord(charData.extensions);
   const characterName = typeof charData.name === "string" && charData.name.trim() ? charData.name.trim() : "character";
 
+  // Settings and pictures are checked first, so a request that can't work fails before any paid call.
+  const plan = await planFirstFrame({ ...args, characterName, avatarPath: characterRow.avatarPath ?? null });
+
   // A clip the user asks for (/video, the Gallery's Video button) has no context of its own: it reads the recent
   // conversation instead, as much of it as Illustrator reads for a picture (its Agent Budget). The video prompt and
   // a selfie first frame both use it, so the clip and its starting picture show the same moment.
@@ -98,6 +131,7 @@ export async function generateConversationVideo(args: {
     ? ""
     : formatRecentVideoContext(await chats.listMessages(args.chatId), {
         count: await loadIllustratorContextSize(args.db),
+        characterId: args.characterId,
         speaker: (message) =>
           message.role === "user"
             ? "User"
@@ -126,12 +160,24 @@ export async function generateConversationVideo(args: {
       personality: typeof charData.personality === "string" ? charData.personality.trim() : "",
       durationSeconds,
     });
-    let request = `Write a short video message from ${characterName} that fits the current conversation.`;
-    if (args.context?.trim()) {
-      request = `Context for the video message: ${args.context.trim()}`;
-    } else if (recent) {
-      request = `Recent conversation:\n${recent}\n\nWrite a short video message from ${characterName} that shows the latest moment of this conversation.`;
+    // An animated picture is the clip's first frame, so the writer continues that picture instead of a new scene.
+    const picture = plan.kind === "gallery" && plan.picturePrompt ? plan.picturePrompt : "";
+    const ownContext = args.context?.trim() ?? "";
+    const parts = picture ? [`The clip starts from this picture:\n${picture}`] : [];
+    if (ownContext) parts.push(`Context for the video message: ${ownContext}`);
+    else if (recent) parts.push(`Recent conversation:\n${recent}`);
+    if (picture) {
+      parts.push(
+        `Write a short video message from ${characterName} that brings this picture to life, continuing from it.`,
+      );
+    } else if (!ownContext) {
+      parts.push(
+        recent
+          ? `Write a short video message from ${characterName} that shows the latest moment of this conversation.`
+          : `Write a short video message from ${characterName} that fits the current conversation.`,
+      );
     }
+    const request = parts.join("\n\n");
     const user = appendVideoPromptInstructions(request, videoConn.videoPromptInstructions);
     logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] prompt-builder system:\n%s", system);
     logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] prompt-builder user:\n%s", user);
@@ -174,22 +220,26 @@ export async function generateConversationVideo(args: {
   });
   logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] final prompt:\n%s", prompt);
 
+  const selfieArgs = { ...args, selfieContext };
   if (args.previewOnly) {
+    // The selfie is reviewed with the clip, the same way /selfie is reviewed on its own.
+    const selfie = plan.kind === "selfie" ? await previewSelfie(selfieArgs) : null;
     return {
       prompt,
       durationSeconds,
       aspectRatio,
       resolution: runtime.resolution ?? null,
       maxPromptLength: runtime.promptLimits.finalPrompt,
+      selfie,
     };
   }
 
-  const firstFrame = await resolveFirstFrame({
-    ...args,
-    characterName,
-    avatarPath: characterRow.avatarPath ?? null,
-    selfieContext,
-  });
+  const firstFrame: ReadyFrame =
+    plan.kind !== "selfie"
+      ? plan
+      : await takeSelfieFrame(selfieArgs, plan.avatarFallback, () =>
+          readAvatarFrame({ ...args, characterName, avatarPath: characterRow.avatarPath ?? null }),
+        );
 
   const video = await generateAndSaveChatVideo(args.db, setup, {
     chatId: args.chatId,
@@ -205,72 +255,99 @@ export async function generateConversationVideo(args: {
   return { video, characterName, firstFrame: firstFrame.kind };
 }
 
-async function resolveFirstFrame(
-  args: Parameters<typeof generateConversationVideo>[0] & {
-    characterName: string;
-    avatarPath: string | null;
-    selfieContext: string;
-  },
-): Promise<{
-  kind: ConversationVideoResult["firstFrame"];
-  image: VideoReferenceImage | undefined;
-  tag: string | null;
-  path: string | null;
-}> {
-  const gallery = createGalleryStorage(args.db);
-  const fromGallery = async (galleryImageId: string) => {
-    const image = await gallery.getById(galleryImageId, args.chatId);
+async function planFirstFrame(
+  args: Parameters<typeof generateConversationVideo>[0] & { characterName: string; avatarPath: string | null },
+): Promise<FirstFramePlan> {
+  if (args.galleryImageId?.trim()) {
+    const image = await createGalleryStorage(args.db).getById(args.galleryImageId.trim(), args.chatId);
     const path = image ? resolveGalleryImagePath(image) : null;
     if (!image || !path) throw new ChatVideoError(404, "Gallery image not found");
-    const reference = readVideoReferenceImage(readFileSync(path).toString("base64"));
-    if (!reference) throw new ChatVideoError(400, "Video messages need a PNG or JPEG picture to start from.");
     return {
-      kind: "gallery" as const,
-      image: reference,
+      kind: "gallery",
+      image: await toVideoReferenceImage(readFileSync(path).toString("base64")),
       tag: `gallery:${image.id}`,
       path: `gallery/${image.filePath.replace(/\\/g, "/")}`,
+      picturePrompt: excerptIllustrationPromptForVideo(image.prompt, PICTURE_PROMPT_MAX_CHARS),
     };
-  };
-  if (args.galleryImageId?.trim()) return fromGallery(args.galleryImageId.trim());
+  }
 
   const mode = normalizeVideoFirstFrame(args.chatMeta.sceneVideoFirstFrame);
   if (mode === "prompt_only") return { kind: "none", image: undefined, tag: null, path: null };
-
-  const hasSelfieConnection =
-    typeof args.chatMeta.imageGenConnectionId === "string" && args.chatMeta.imageGenConnectionId.trim().length > 0;
-  // A missing Selfie Connection is a setting to fix, not a failed request.
-  if (mode === "picture" && !hasSelfieConnection) {
-    throw new ChatVideoError(400, "Choose a Selfie Connection in Chat Settings, or pick another first frame.");
+  const selfiesOn = conversationSelfiesAvailable(args.chatMeta);
+  // Selfies off or no Selfie Connection is a setting to fix, not a failed request.
+  if (mode === "picture" && !selfiesOn) {
+    throw new ChatVideoError(
+      400,
+      "Turn on Generated Selfies and choose a Selfie Connection in Chat Settings, or pick another first frame.",
+    );
   }
-  if (mode === "picture" || (mode === "picture_or_avatar" && hasSelfieConnection)) {
-    try {
-      const selfie = await takeSelfie(args);
-      return { ...(await fromGallery(selfie)), kind: "selfie" };
-    } catch (err) {
-      if (mode === "picture") throw err;
-      logger.warn(err, "[conversation/video] Selfie first frame failed; using the avatar instead");
-    }
+  if (mode === "picture" || (mode === "picture_or_avatar" && selfiesOn)) {
+    return { kind: "selfie", avatarFallback: mode === "picture_or_avatar" };
   }
+  return readAvatarFrame(args);
+}
 
+async function readAvatarFrame(
+  args: Parameters<typeof generateConversationVideo>[0] & { characterName: string; avatarPath: string | null },
+): Promise<ReadyFrame & { kind: "avatar" }> {
   const avatar = await readPreferredCharacterReferenceImage({
     characterId: args.characterId,
     avatarPath: args.avatarPath,
     characterGallery: createCharacterGalleryStorage(args.db),
   });
-  const reference = avatar ? readVideoReferenceImage(avatar.base64) : null;
+  const reference = avatar ? await toVideoReferenceImage(avatar.base64).catch(() => null) : null;
   if (!reference) {
     throw new ChatVideoError(
       400,
-      `${args.characterName} needs a PNG or JPEG avatar or sprite to start a video from. Pick another first frame in Chat Settings.`,
+      `${args.characterName} needs a readable avatar or sprite to start a video from. Pick another first frame in Chat Settings.`,
     );
   }
   return { kind: "avatar", image: reference, tag: `avatar:${args.characterId}`, path: null };
 }
 
-/** Run the chat's selfie pipeline for one image and return its gallery id. */
-async function takeSelfie(
-  args: Parameters<typeof generateConversationVideo>[0] & { characterName: string; selfieContext: string },
-): Promise<string> {
+type SelfieArgs = Parameters<typeof generateConversationVideo>[0] & { selfieContext: string };
+
+/** Take the selfie the clip starts from; with the avatar fallback, a failed selfie uses the avatar instead. */
+async function takeSelfieFrame(
+  args: SelfieArgs,
+  avatarFallback: boolean,
+  readAvatar: () => Promise<ReadyFrame>,
+): Promise<ReadyFrame> {
+  try {
+    const galleryId = await runSelfie(args, false);
+    const image = galleryId ? await createGalleryStorage(args.db).getById(galleryId, args.chatId) : null;
+    const path = image ? resolveGalleryImagePath(image) : null;
+    if (!image || !path) throw new ChatVideoError(502, "The selfie for this video could not be saved.");
+    return {
+      kind: "selfie",
+      image: await toVideoReferenceImage(readFileSync(path).toString("base64")),
+      tag: `gallery:${image.id}`,
+      path: `gallery/${image.filePath.replace(/\\/g, "/")}`,
+    };
+  } catch (err) {
+    if (!avatarFallback || args.signal?.aborted) throw err;
+    logger.warn(err, "[conversation/video] Selfie first frame failed; using the avatar instead");
+    return readAvatar();
+  }
+}
+
+/** The selfie's prompt, written the way it will be drawn, for the prompt review. Null when none could be written. */
+async function previewSelfie(args: SelfieArgs): Promise<ConversationVideoPreview["selfie"]> {
+  let preview: ConversationVideoPreview["selfie"] = null;
+  await runSelfie(args, true, (selfie) => {
+    preview = selfie;
+  }).catch((err) => {
+    logger.warn(err, "[conversation/video] Selfie prompt preview failed");
+  });
+  return preview;
+}
+
+/** Run the chat's selfie pipeline for one image; returns its gallery id, or null for a preview. */
+async function runSelfie(
+  args: SelfieArgs,
+  previewOnly: boolean,
+  onPreview?: (selfie: NonNullable<ConversationVideoPreview["selfie"]>) => void,
+): Promise<string | null> {
   let galleryId: string | null = null;
   let error: string | null = null;
   await handleConversationSelfieCommand({
@@ -290,13 +367,20 @@ async function takeSelfie(
     chars: createCharactersStorage(args.db),
     chats: createChatsStorage(args.db),
     connections: createConnectionsStorage(args.db),
+    signal: args.signal,
+    queue: args.queue ?? true,
+    previewOnly,
+    onPreview,
+    promptOverride: args.selfiePromptOverride,
+    negativePromptOverride: args.selfieNegativePromptOverride,
     sendEvent: (event) => {
       const data = parseRecord(event.data);
       if (event.type === "selfie" && typeof data.galleryId === "string") galleryId ??= data.galleryId;
       if (event.type === "selfie_error") error = typeof data.error === "string" ? data.error : "Selfie failed";
     },
   });
-  if (!galleryId) throw new ChatVideoError(502, error ?? "The selfie for this video could not be made.");
+  if (error) throw new ChatVideoError(502, error);
+  if (!previewOnly && !galleryId) throw new ChatVideoError(502, "The selfie for this video could not be made.");
   return galleryId;
 }
 

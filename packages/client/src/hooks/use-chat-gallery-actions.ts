@@ -26,7 +26,7 @@ export interface ChatGalleryActions {
   /** Generate a scene video from the latest illustration, or a Conversation character's video message. */
   onGenerateVideo?: (characterId?: string) => void | Promise<void>;
   /** Generate a scene video from a specific gallery illustration. */
-  onAnimateImage?: (image: ChatImage) => void | Promise<void>;
+  onAnimateImage?: (image: ChatImage, characterId?: string) => void | Promise<void>;
 }
 
 const useChatGalleryActionsStore = create<{ byChat: Record<string, ChatGalleryActions> }>(() => ({ byChat: {} }));

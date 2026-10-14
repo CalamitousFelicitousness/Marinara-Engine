@@ -11,6 +11,7 @@ import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createConnectionsStorage } from "../storage/connections.storage.js";
 import { createGameSceneVideosStorage } from "../storage/game-scene-videos.storage.js";
+import { getSharp } from "../../utils/sharp.js";
 import { resolveSceneVideoConnectionId, serializeSceneVideo } from "./chat-video-messages.js";
 import { resolveGameVideoRuntime } from "./game-video-runtime.js";
 import { generateVideo, removeSavedVideoFromDisk, saveVideoToDisk } from "./video-generation.js";
@@ -59,7 +60,7 @@ export async function resolveChatVideoSetup(db: DB, chatMeta: Record<string, unk
 /** Generate the clip, save it to disk and the chat's scene videos, and return it. */
 export async function generateAndSaveChatVideo(
   db: DB,
-  setup: ChatVideoSetup,
+  setup: Pick<ChatVideoSetup, "videoConnectionId" | "runtime" | "durationSeconds" | "aspectRatio">,
   args: {
     chatId: string;
     prompt: string;
@@ -118,12 +119,31 @@ export async function generateAndSaveChatVideo(
   }
 }
 
-/** A video backend takes PNG or JPEG; tell them apart by their first bytes. */
-export function readVideoReferenceImage(base64: string): VideoReferenceImage | null {
+/**
+ * A picture as a video first frame. Video backends take PNG or JPEG, told apart by their first bytes; anything else
+ * an image provider returns (WebP from Venice, AVIF, ...) is converted to PNG with sharp. Throws a ChatVideoError
+ * when the picture can't be read or sharp is unavailable.
+ */
+export async function toVideoReferenceImage(base64: string, url?: string | null): Promise<VideoReferenceImage> {
   const raw = base64.replace(/^data:[^,]+,/u, "");
   const head = Buffer.from(raw.slice(0, 16), "base64");
-  if (head[0] === 0x89 && head.subarray(1, 4).toString("ascii") === "PNG")
-    return { base64: raw, mimeType: "image/png" };
-  if (head[0] === 0xff && head[1] === 0xd8) return { base64: raw, mimeType: "image/jpeg" };
-  return null;
+  const withUrl = url ? { url } : {};
+  if (head[0] === 0x89 && head.subarray(1, 4).toString("ascii") === "PNG") {
+    return { base64: raw, mimeType: "image/png", ...withUrl };
+  }
+  if (head[0] === 0xff && head[1] === 0xd8) return { base64: raw, mimeType: "image/jpeg", ...withUrl };
+  const sharp = await getSharp();
+  if (!sharp) {
+    throw new ChatVideoError(
+      400,
+      "This picture needs converting to PNG for video, but image processing is unavailable.",
+    );
+  }
+  try {
+    const png = await sharp(Buffer.from(raw, "base64")).png().toBuffer();
+    // A converted copy has no public link of its own, so a provider that fetches by URL gets the PNG data instead.
+    return { base64: png.toString("base64"), mimeType: "image/png" };
+  } catch {
+    throw new ChatVideoError(400, "This picture can't be read as a video first frame.");
+  }
 }

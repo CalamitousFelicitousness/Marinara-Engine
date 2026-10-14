@@ -25,12 +25,7 @@ import { createGameSceneVideosStorage } from "../services/storage/game-scene-vid
 import { createPromptOverridesStorage } from "../services/storage/prompt-overrides.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { loadGameVideoPrompt } from "../services/video/game-video-prompt.js";
-import {
-  generateVideo,
-  removeSavedVideoFromDisk,
-  saveVideoToDisk,
-  type VideoReferenceImage,
-} from "../services/video/video-generation.js";
+import { removeSavedVideoFromDisk, type VideoReferenceImage } from "../services/video/video-generation.js";
 import { resolveGameVideoRuntime } from "../services/video/game-video-runtime.js";
 import { generateImage, removeSavedImageFromDisk, saveImageToDisk } from "../services/image/image-generation.js";
 import { resolveGalleryImagePath } from "../services/image/gallery-image-path.js";
@@ -60,10 +55,7 @@ import {
   resolveStoredGalleryFile,
   storedGalleryFilename,
 } from "../services/image/gallery-file-lifecycle.js";
-import {
-  resolveImageConnectionFallback,
-  resolveVideoConnectionFallback,
-} from "../services/generation/media-connection-fallback.js";
+import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import { resolveIllustratorPromptRuntime } from "../services/generation/illustrator-prompt-runtime.js";
 import { resolveIllustratorImageConnectionId } from "../services/generation/illustrator-background-generation.js";
 import { resolveConversationSelfieSystemPrompt } from "../services/conversation/selfie-prompt.js";
@@ -81,7 +73,11 @@ import {
 } from "../services/video/prompt-context.js";
 import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../services/video/scene-video-prompt-review.js";
 import { generateConversationVideo } from "../services/generation/conversation-video-runtime.js";
-import { ChatVideoError } from "../services/video/chat-video-generation.js";
+import {
+  ChatVideoError,
+  generateAndSaveChatVideo,
+  toVideoReferenceImage,
+} from "../services/video/chat-video-generation.js";
 import {
   attachVideoToMessage,
   buildChatVideoAttachment,
@@ -170,6 +166,9 @@ const generateConversationVideoSchema = z.object({
   /** Animate this gallery image (the clip then joins the newest reply) instead of sending a new video message. */
   galleryImageId: z.string().min(1).optional(),
   promptOverride: z.string().trim().min(1).max(200_000).optional(),
+  /** The reviewed prompt of the selfie the clip starts from, when First frame makes one. */
+  selfiePromptOverride: z.string().trim().min(1).max(200_000).optional(),
+  selfieNegativePromptOverride: z.string().max(200_000).optional(),
   previewOnly: z.boolean().optional().default(false),
   queueMediaGenerationRequests: z.boolean().optional().default(true),
   debugMode: z.boolean().optional().default(false),
@@ -397,19 +396,6 @@ function sceneTitleFromGalleryImage(image: ChatGalleryImageRow): string {
 
 function sourceGalleryImagePathForMetadata(image: ChatGalleryImageRow): string {
   return `gallery/${image.filePath.replace(/\\/g, "/")}`;
-}
-
-function imageMimeTypeForPath(path: string): VideoReferenceImage["mimeType"] | null {
-  const ext = extname(path).toLowerCase();
-  if (ext === ".png") return "image/png";
-  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
-  return null;
-}
-
-function readSceneVideoReferenceImage(path: string, url?: string | null): VideoReferenceImage {
-  const mimeType = imageMimeTypeForPath(path);
-  if (!mimeType) throw new Error("Scene videos require a PNG or JPEG gallery image");
-  return { base64: readFileSync(path).toString("base64"), mimeType, url };
 }
 
 function buildRoleplayVideoSettingLine(chat: ChatRow, meta: Record<string, unknown>, maxPartLength: number): string {
@@ -848,8 +834,6 @@ export async function galleryRoutes(app: FastifyInstance) {
       promptOverride: input.promptOverride,
       maxPromptLength: videoRuntime.promptLimits.finalPrompt,
     });
-    const videoFallback = await resolveVideoConnectionFallback(connections, videoConnectionId);
-
     return {
       chatMode: chat.mode,
       videoConnectionId,
@@ -858,7 +842,6 @@ export async function galleryRoutes(app: FastifyInstance) {
       durationSeconds,
       aspectRatio,
       prompt,
-      videoFallback,
     };
   }
 
@@ -1107,30 +1090,8 @@ export async function galleryRoutes(app: FastifyInstance) {
     const debugLog = (message: string, ...args: unknown[]) => {
       logDebugOverride(debugOverrideEnabled, message, ...args);
     };
-    const sceneVideos = createGameSceneVideosStorage(app.db);
-    const {
-      chatMode,
-      videoConnectionId,
-      galleryImage,
-      videoRuntime,
-      durationSeconds,
-      aspectRatio,
-      prompt,
-      videoFallback,
-    } = prepared;
-    const {
-      source,
-      serviceHint,
-      baseUrl,
-      apiKey,
-      model,
-      resolution,
-      publicReferenceUpload,
-      comfyWorkflow,
-      comfyLoras,
-      comfyFps,
-      atlasModelOptions,
-    } = videoRuntime;
+    const { chatMode, videoConnectionId, galleryImage, videoRuntime, durationSeconds, aspectRatio, prompt } = prepared;
+    const { source, model } = videoRuntime;
 
     const galleryImagePath = resolveGalleryImagePath(galleryImage);
     if (!galleryImagePath) {
@@ -1139,7 +1100,10 @@ export async function galleryRoutes(app: FastifyInstance) {
 
     let referenceImage: VideoReferenceImage;
     try {
-      referenceImage = readSceneVideoReferenceImage(galleryImagePath, sourceGalleryImagePathForMetadata(galleryImage));
+      referenceImage = await toVideoReferenceImage(
+        readFileSync(galleryImagePath).toString("base64"),
+        sourceGalleryImagePathForMetadata(galleryImage),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "The selected gallery image cannot be used.";
       return reply.status(400).send({ error: message });
@@ -1159,45 +1123,20 @@ export async function galleryRoutes(app: FastifyInstance) {
       debugLog("[debug/gallery/scene-video] prompt:\n%s", prompt);
     }
 
-    let savedFilePath: string | null = null;
-    let metadataSaved = false;
     try {
-      const generated = await generateVideo(source, baseUrl, apiKey, serviceHint, {
-        prompt,
-        model,
-        durationSeconds,
-        aspectRatio,
-        resolution,
-        comfyWorkflow,
-        comfyLoras,
-        fps: comfyFps,
-        atlasModelOptions,
-        referenceImage,
-        publicReferenceUpload,
-        queue: input.queueMediaGenerationRequests,
-        connectionKey: videoConnectionId,
-        signal: sceneVideoAbortSignal,
-        fallback: videoFallback,
-      });
-      const filePath = await saveVideoToDisk(input.chatId, generated.base64);
-      savedFilePath = filePath;
-      const row = await sceneVideos.create({
-        chatId: input.chatId,
-        filePath,
-        sourceIllustrationTag: `gallery:${galleryImage.id}`,
-        sourceIllustrationPath: sourceGalleryImagePathForMetadata(galleryImage),
-        prompt,
-        provider: source,
-        model,
-        durationSeconds,
-        aspectRatio,
-      });
-      if (!row) throw new Error("Scene video metadata could not be saved");
-      metadataSaved = true;
-
-      await chats.patchMetadata(input.chatId, () => ({ sceneLastVideoId: row.id }));
-      logger.info("[gallery/generate-scene-video] saved video %s for chat %s", row.id, input.chatId);
-      const video = serializeSceneVideo(row);
+      const video = await generateAndSaveChatVideo(
+        app.db,
+        { videoConnectionId, runtime: videoRuntime, durationSeconds, aspectRatio },
+        {
+          chatId: input.chatId,
+          prompt,
+          referenceImage,
+          sourceTag: `gallery:${galleryImage.id}`,
+          sourcePath: sourceGalleryImagePathForMetadata(galleryImage),
+          queue: input.queueMediaGenerationRequests,
+          signal: sceneVideoAbortSignal,
+        },
+      );
       // Shown inline under the newest reply, chosen now rather than before generating: the user may have sent
       // or swiped a message meanwhile. Game Mode keeps its clips in the gallery only. The video is saved by now,
       // so a failure to find or update the reply still reports success, with no messageId.
@@ -1209,19 +1148,10 @@ export async function galleryRoutes(app: FastifyInstance) {
           messageId = anchor.messageId;
         }
       } catch (attachErr) {
-        logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", row.id);
+        logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", video.id);
       }
       return { video, messageId };
     } catch (err) {
-      if (savedFilePath && !metadataSaved) {
-        await removeSavedVideoFromDisk(savedFilePath).catch((cleanupErr) => {
-          logger.warn(
-            cleanupErr,
-            "[gallery/generate-scene-video] Failed to clean up orphaned video file %s",
-            savedFilePath,
-          );
-        });
-      }
       logger.warn(err, "[gallery/generate-scene-video] Scene video generation failed for chat %s", input.chatId);
       const message = err instanceof Error ? err.message : "Scene video generation failed";
       return reply.status(502).send({ error: message });
@@ -1256,8 +1186,10 @@ export async function galleryRoutes(app: FastifyInstance) {
         imageAppearanceOverride: imageAppearance || null,
       });
     }
-    const promptConnectionId =
-      chat.connectionId && chat.connectionId !== LOCAL_SIDECAR_CONNECTION_ID ? chat.connectionId : null;
+    // The built-in local model has no stored connection; its id still reaches the Prompt Model, as /selfie does.
+    const promptConnectionId = chat.connectionId ?? null;
+    const storedPromptConnectionId =
+      promptConnectionId && promptConnectionId !== LOCAL_SIDECAR_CONNECTION_ID ? promptConnectionId : null;
 
     try {
       const result = await generateConversationVideo({
@@ -1266,12 +1198,14 @@ export async function galleryRoutes(app: FastifyInstance) {
         chatMeta: parseChatMetadata(chat.metadata),
         characterId: input.characterId,
         charInfo,
-        promptConnection: promptConnectionId
-          ? await createConnectionsStorage(app.db).getWithKey(promptConnectionId)
+        promptConnection: storedPromptConnectionId
+          ? await createConnectionsStorage(app.db).getWithKey(storedPromptConnectionId)
           : null,
         promptConnectionId,
         context: input.context,
         promptOverride: input.promptOverride,
+        selfiePromptOverride: input.selfiePromptOverride,
+        selfieNegativePromptOverride: input.selfieNegativePromptOverride,
         galleryImageId: input.galleryImageId,
         previewOnly: input.previewOnly,
         queue: input.queueMediaGenerationRequests,
@@ -1300,7 +1234,13 @@ export async function galleryRoutes(app: FastifyInstance) {
           anchor = message ? { messageId: message.id, swipeIndex: 0 } : null;
         }
         if (anchor) {
-          await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(result.video, result.characterName));
+          // Only a video message the character sent names it; an animated picture under someone's reply doesn't, so
+          // later prompts never credit the character with a clip it didn't send.
+          await attachVideoToMessage(
+            chats,
+            anchor,
+            buildChatVideoAttachment(result.video, input.galleryImageId ? undefined : result.characterName),
+          );
           messageId = anchor.messageId;
         }
       } catch (attachErr) {

@@ -7328,7 +7328,7 @@ export function ChatSettingsDrawer({
                             </select>
                           </label>
                           {videoConnectionsList.length === 0 && (
-                            <p className="text-[0.625rem] text-[var(--warning)]">
+                            <p className="text-[0.625rem] text-amber-700 dark:text-amber-400/80">
                               {localizeUi(
                                 "ui.chat.chatsettingsdrawer.noVideoGenerationConnectionsFoundAddOneInSettings",
                               )}

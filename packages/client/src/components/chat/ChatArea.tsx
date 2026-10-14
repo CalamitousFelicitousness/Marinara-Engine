@@ -41,7 +41,7 @@ import { ChatSettingsBubble } from "./ChatSettingsBubble";
 import { ChatWindowWelcomeModal } from "../modals/ChatWindowWelcomeModal";
 import { useGameModeStore } from "../../stores/game-mode.store";
 import { useGenerate } from "../../hooks/use-generate";
-import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
+import { useGenerateGallerySelfie, type ChatImage } from "../../hooks/use-gallery";
 import {
   characterKeys,
   spriteKeys,
@@ -219,6 +219,11 @@ type RoleplaySceneVideoPromptPreview = {
   aspectRatio: "16:9" | "9:16";
   resolution: string | null;
   maxPromptLength: number | null;
+};
+
+type ConversationVideoPromptPreview = Omit<RoleplaySceneVideoPromptPreview, "galleryImageId"> & {
+  /** The selfie the clip starts from, when First frame makes one. */
+  selfie?: { prompt: string; negativePrompt: string; width: number; height: number } | null;
 };
 
 type GenerateConversationSelfiePayload = {
@@ -1636,11 +1641,13 @@ const LocalChatArea = memo(function LocalChatArea({
         queueMediaGenerationRequests: useUIStore.getState().queueImageGenerationRequests,
         debugMode: useUIStore.getState().debugMode,
       };
+      // Closing the review is left to the call that opened it; it can belong to another chat's request.
+      let reviewOpened = false;
       try {
         if (useUIStore.getState().reviewImagePromptsBeforeSend) {
-          let preview: RoleplaySceneVideoPromptPreview | undefined;
+          let preview: ConversationVideoPromptPreview | undefined;
           try {
-            preview = await api.post<RoleplaySceneVideoPromptPreview>(
+            preview = await api.post<ConversationVideoPromptPreview>(
               `/gallery/${activeChatId}/video`,
               { ...payload, previewOnly: true },
               { signal: AbortSignal.timeout(MEDIA_PROMPT_PREVIEW_TIMEOUT_MS) },
@@ -1653,7 +1660,7 @@ const LocalChatArea = memo(function LocalChatArea({
             const details = [`${preview.durationSeconds}s`, preview.aspectRatio, preview.resolution].filter(
               (value): value is string => Boolean(value),
             );
-            const overrides = await openRoleplayVideoPromptReview([
+            const items: ImagePromptReviewItem[] = [
               {
                 id: "conversation-video",
                 kind: "video",
@@ -1664,22 +1671,46 @@ const LocalChatArea = memo(function LocalChatArea({
                 details: details.join(" | "),
                 maxLength: preview.maxPromptLength ?? undefined,
               },
-            ]);
+            ];
+            // A selfie first frame is reviewed with the clip, as /selfie is reviewed on its own.
+            if (preview.selfie) {
+              items.push({
+                id: "conversation-video-selfie",
+                kind: "portrait",
+                title: localizeUi("ui.chat.chatarea.videoFirstFrameSelfie"),
+                prompt: preview.selfie.prompt,
+                negativePrompt: preview.selfie.negativePrompt || undefined,
+                width: preview.selfie.width,
+                height: preview.selfie.height,
+              });
+            }
+            reviewOpened = !roleplayVideoReviewResolveRef.current;
+            const overrides = await openRoleplayVideoPromptReview(items);
             if (!overrides) return;
-            const reviewedPrompt = overrides[0]?.prompt.trim();
+            const reviewedPrompt = overrides.find((item) => item.id === "conversation-video")?.prompt.trim();
             if (!reviewedPrompt) return;
             payload.promptOverride = reviewedPrompt;
+            const reviewedSelfie = overrides.find((item) => item.id === "conversation-video-selfie");
+            if (reviewedSelfie?.prompt.trim()) {
+              payload.selfiePromptOverride = reviewedSelfie.prompt.trim();
+              if (reviewedSelfie.negativePrompt !== undefined) {
+                payload.selfieNegativePromptOverride = reviewedSelfie.negativePrompt;
+              }
+            }
           }
         }
-        await api.post(`/gallery/${activeChatId}/video`, payload, {
+        const result = await api.post<{ messageId?: string | null }>(`/gallery/${activeChatId}/video`, payload, {
           signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS),
         });
+        // Saved but not added to the chat: say where it is, since the Videos tab may not be the one open.
+        if (!result?.messageId) toast(localizeUi("ui.chat.chatarea.videoSavedToGalleryOnly"));
         void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
-        void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
-        void queryClient.invalidateQueries({ queryKey: ["gallery", activeChatId] });
       } finally {
         conversationVideoGeneratingRef.current = false;
-        closeRoleplayVideoPromptReview(null);
+        // A selfie or clip can be saved even when the request then failed, so the Gallery always refreshes.
+        void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
+        void queryClient.invalidateQueries({ queryKey: ["gallery", activeChatId] });
+        if (reviewOpened) closeRoleplayVideoPromptReview(null);
       }
     },
     [
@@ -1692,6 +1723,17 @@ const LocalChatArea = memo(function LocalChatArea({
       queryClient,
       localizeUi,
     ],
+  );
+
+  // Stable, so the Gallery's memoized actions don't change on every render (while a reply streams, too).
+  const handleConversationGalleryVideo = useCallback(
+    (characterId?: string) => handleGenerateConversationVideo(characterId),
+    [handleGenerateConversationVideo],
+  );
+  // Animate sends as the character picked in the Gallery, the same one its Video button uses.
+  const handleConversationAnimateImage = useCallback(
+    (image: ChatImage, characterId?: string) => handleGenerateConversationVideo(characterId, image.id),
+    [handleGenerateConversationVideo],
   );
 
   const handleGenerateConversationSelfie = useCallback(
@@ -3668,8 +3710,8 @@ const LocalChatArea = memo(function LocalChatArea({
             onIllustrate={handleIllustrate}
             onIllustrateWithAgent={handleIllustrateWithAgent}
             onGenerateSelfie={handleGenerateConversationSelfie}
-            onGenerateVideo={(characterId) => handleGenerateConversationVideo(characterId)}
-            onAnimateImage={(image) => handleGenerateConversationVideo(undefined, image.id)}
+            onGenerateVideo={handleConversationGalleryVideo}
+            onAnimateImage={handleConversationAnimateImage}
             onWizardFinish={() => {
               setWizardOpen(false);
               handleOpenSettingsPanel();

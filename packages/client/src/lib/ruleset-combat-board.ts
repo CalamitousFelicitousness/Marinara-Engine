@@ -48,25 +48,25 @@ export interface RulesetBoardCell {
   laid?: true;
   /** The labels of the lasting areas covering it (1.172), first cast first. */
   zones?: string[];
-  /** Their looks in the board's pack (1.332), first cast first, for those that have one. */
+  /** Their looks in the board's pack (1.333), first cast first, for those that have one. */
   zoneArt?: string[];
-  /** A wall's section standing here (1.199): whose wall, and what it has left of what; 0 is broken. */
+  /** A wall's section standing here (1.200): whose wall, and what it has left of what; 0 is broken. */
   section?: { wall: string; health: number; max: number };
-  /** Growth here (1.317): hard going, lightly obscuring. */
+  /** Growth here (1.318): hard going, lightly obscuring. */
   growth?: true;
-  /** The season on this cell (1.317), when it has one of its own. */
+  /** The season on this cell (1.318), when it has one of its own. */
   season?: string;
-  /** A prop standing here (1.315): what it is, and what it has left of what; 0 is broken. */
+  /** A prop standing here (1.316): what it is, and what it has left of what; 0 is broken. */
   prop?: {
     label: string;
     health: number;
     max: number;
-    /** Its sprite (1.332), and where this cell sits in the box its cells fill, from its top-left. */
+    /** Its sprite (1.333), and where this cell sits in the box its cells fill, from its top-left. */
     art?: string;
     dx: number;
     dy: number;
   };
-  /** Set while a target is being chosen and the attack may strike the section here (1.199). */
+  /** Set while a target is being chosen and the attack may strike the section here (1.200). */
   strikable?: true;
   /** The light here when it is not bright: sunlight, dim light or darkness. */
   light?: "sunlight" | "dim" | "dark";

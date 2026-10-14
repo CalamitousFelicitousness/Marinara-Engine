@@ -2021,7 +2021,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
       // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
       // tell the same turn. A continuation trips nothing, as it tells no walk.
-      // The Game Master's intro message (1.338), on the reply that opens the game: the Experience's when its
+      // The Game Master's intro message (1.339), on the reply that opens the game: the Experience's when its
       // creator locked it, else what the setup chose, else the Experience's own. A new session of a game
       // already under way opens with none.
       let gameIntroRead: Promise<GameIntro | null> | undefined;
@@ -4399,7 +4399,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           primaryProvider: agentChatProvider,
           provider: runtimeProvider,
         } = providerRuntime;
-        // A defined Game Master intro (1.338) is the game's first message exactly as set: streamed as written.
+        // A defined Game Master intro (1.339) is the game's first message exactly as set: streamed as written.
         const definedIntro = await gameIntroNow();
         const provider =
           definedIntro?.mode === "defined" ? fixedTextProvider(definedIntro.text, runtimeProvider) : runtimeProvider;
@@ -5005,7 +5005,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // force, the scene just shown, and what it asks now.
           const promptTurnStory = await turnStory();
           const promptStoryNow = [
-            // A guided intro (1.338), on the reply that opens the game.
+            // A guided intro (1.339), on the reply that opens the game.
             gameIntroGuidanceText(await gameIntroNow()),
             promptTurnStory ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn) : "",
           ]

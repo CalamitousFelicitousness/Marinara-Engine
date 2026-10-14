@@ -1,5 +1,5 @@
 /**
- * Props in a boss's rules, and an aura that feeds (Capability API 1.330).
+ * Props in a boss's rules, and an aura that feeds (Capability API 1.331).
  *
  *   - A condition's `whileNearProp {prop, within}`: held only within that distance of a standing prop
  *     named by id or loosely by label (the Wheel's Favour by The Year-Wheel); held off elsewhere, or once it is broken.
@@ -200,7 +200,7 @@ try {
     );
     assert.equal(bad.ok, false);
     const gate =
-      "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.330 or newer";
+      "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.331 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -214,9 +214,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(329) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(330) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(329) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(330) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(331) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(330) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

@@ -1133,13 +1133,13 @@ function renderRulesetSheetSection(
     ...(ruleset.rests.length > 0
       ? [`- [sheet: who="Name" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}.`]
       : []),
-    // Dice a rest may spend to heal (1.334): 5e's Hit Dice, as many as the player chooses.
+    // Dice a rest may spend to heal (1.335): 5e's Hit Dice, as many as the player chooses.
     ...(ruleset.rests.some((rest) => rest.dice)
       ? [
           `- [sheet: who="Name" op="rest" rest="Rest" dice="N"] - on ${names(ruleset.rests.filter((rest) => rest.dice))}, spends N of their dice to heal first, as many as the player chooses; the Engine rolls them.`,
         ]
       : []),
-    // From several pools (1.336): a multiclass character's hit dice, each pool its own die.
+    // From several pools (1.337): a multiclass character's hit dice, each pool its own die.
     ...(ruleset.rests.some((rest) => Array.isArray(rest.dice))
       ? [
           `- Add pool="Pool" to that to spend from one pool only (${[...new Set(ruleset.rests.flatMap((rest) => (Array.isArray(rest.dice) ? rest.dice.map((entry) => entry.pool) : [])))].join(", ")}); without it they come from the first pool that has any.`,

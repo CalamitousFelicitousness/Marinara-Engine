@@ -610,7 +610,7 @@ export function GameSetupWizard({
   const [gmBossControl, setGmBossControl] = useState(true);
   const [tacticalBattlefieldSize, setTacticalBattlefieldSize] = useState<"auto" | TacticalBattlefieldSize>("auto");
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
-  // The GM intro message (1.338): null follows the Experience's own.
+  // The GM intro message (1.339): null follows the Experience's own.
   const [gameIntro, setGameIntro] = useState<GameIntroChoice | null>(null);
   const [gmCharacterId, setGmCharacterId] = useState<string | null>(null);
   const [partyCharacterIds, setPartyCharacterIds] = useState<string[]>(() =>
@@ -2443,7 +2443,7 @@ export function GameSetupWizard({
                       </div>
                     </div>
 
-                    {/* The GM intro message (1.338) */}
+                    {/* The GM intro message (1.339) */}
                     <GameSetupGmIntro
                       value={gameIntro}
                       onChange={setGameIntro}

@@ -1,5 +1,5 @@
 /**
- * Props on the fight board that may be broken (Capability API 1.315): a jar, a crate, a door.
+ * Props on the fight board that may be broken (Capability API 1.316): a jar, a crate, a door.
  *
  *   - An encounter's `board.props`: kept on the board with their health, off-board cells and empty
  *     ones dropped; one that closes its cells closes them from the start, and nobody stands in it.

@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Game: the Game Master's intro message (Capability API 1.338), part of the GM setup. Defined is the
+// Game: the Game Master's intro message (Capability API 1.339), part of the GM setup. Defined is the
 // game's first message exactly as written; guided only shapes the one the Game Master writes. An
 // Experience may set its own: locked, it is shown and cannot be changed; unlocked, it starts the field.
 // ──────────────────────────────────────────────

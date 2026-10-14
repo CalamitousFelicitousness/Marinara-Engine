@@ -1,5 +1,5 @@
 /**
- * Save difficulty moved by a condition (Capability API 1.327): the Miller of Hours' Un-age.
+ * Save difficulty moved by a condition (Capability API 1.328): the Miller of Hours' Un-age.
  *
  *   - `{ to: "save-difficulty", flat: -2 }` on a condition: every save its holder calls for while they
  *     hold it is 2 easier, its own and the save that ends what it put on; nothing else of theirs moves.
@@ -167,7 +167,7 @@ try {
         bad.issues.join("; "),
       );
     const gate =
-      "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.327 or newer";
+      "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.328 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -181,9 +181,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(326) as never, withMiller()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(327) as never, withMiller()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(326) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(327) as never, withMiller()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(328) as never, withMiller()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(327) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

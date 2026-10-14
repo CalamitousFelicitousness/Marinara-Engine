@@ -800,7 +800,7 @@ const liveTrackSchema = z
 /** How many live states one sheet may carry. */
 export const RULESET_LIVE_STATES_MAX = 12;
 
-/** Its icon (Capability API 1.337): a tile of the game's icons pack, `ic_` then lowercase words joined
+/** Its icon (Capability API 1.338): a tile of the game's icons pack, `ic_` then lowercase words joined
  *  by _. Without one, the derived name (`ic_cond_<id>`, `ic_item_<id>`, `ic_<catalog>_<entry>`), then
  *  today's look. */
 const artIconRef = z
@@ -1242,7 +1242,7 @@ const restRestoreSchema = z
     }
   });
 
-/** Dice a rest may spend to heal (Capability API 1.334): 5e's Hit Dice on a short rest. `pool` is spent a
+/** Dice a rest may spend to heal (Capability API 1.335): 5e's Hit Dice on a short rest. `pool` is spent a
  *  die at a time; each die has `die` sides (a number, or an enum field whose value reads "d8") and adds
  *  `add` (Constitution), never below 0, to `heals`. `extra` is a die more for whoever spends any, from the
  *  party member with the most sides of it, plus their `add` on it: Song of Rest, and Pell's Teapot's +1. */
@@ -1261,7 +1261,7 @@ const restSchema = z
     id: sheetId,
     label,
     restore: z.array(restRestoreSchema).max(40).default([]),
-    /** Dice it may spend to heal (1.334); a list draws from several pools, each its own die (1.336):
+    /** Dice it may spend to heal (1.335); a list draws from several pools, each its own die (1.337):
      *  5e's hit dice of a multiclass character, a d10 pool and a d6 pool. */
     dice: z.union([restDiceSchema, z.array(restDiceSchema).min(1).max(12)]).optional(),
     clear: z
@@ -1521,7 +1521,7 @@ const lightRadiusSchema: z.ZodType<RulesetLightRadius, z.ZodTypeDef, unknown> = 
     /** Magical light (Capability API 1.299), which shines into magical darkness where other light
      *  does not: a sun blade's. A spell's light, on a zone or a condition, always is. */
     magical: z.literal(true).optional(),
-    /** It sheds shade (Capability API 1.318): dim light as far as it reaches, and bright light or
+    /** It sheds shade (Capability API 1.319): dim light as far as it reaches, and bright light or
      *  sunlight there is dim too. The showcase's Lantern of Dusk, `{ "bright": 0, "dim": 15,
      *  "shade": true }`, against Noonfield's light rule. */
     shade: z.literal(true).optional(),
@@ -1645,7 +1645,7 @@ const zoneSectionsSchema: z.ZodType<RulesetZoneSections, z.ZodTypeDef, unknown> 
   .strict();
 
 export interface RulesetCatalogZone {
-  /** How it looks on a fight's board (1.332): `bz_<name>` in the board's pack. */
+  /** How it looks on a fight's board (1.333): `bz_<name>` in the board's pack. */
   art?: string;
   rounds: number;
   untilLair?: true;
@@ -1682,7 +1682,7 @@ export interface RulesetCatalogZone {
   burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
 }
 
-/** What a creature's action does to the ground (Capability API 1.323): the tactical terrains, a
+/** What a creature's action does to the ground (Capability API 1.324): the tactical terrains, a
  *  height of 0 to 3, a cell's own light or obscurement (`clear` takes it off), growth, a season. */
 export interface RulesetCreatureGround {
   terrain?: "plains" | "forest" | "mountain" | "ruin" | "water" | "wall";
@@ -1703,7 +1703,7 @@ const creatureGroundSchema: z.ZodType<RulesetCreatureGround, z.ZodTypeDef, unkno
     growth: z.boolean().optional(),
     season: z.union([z.string().trim().min(1).max(40), z.null()]).optional(),
     tell: promptSafeText(200).optional(),
-    /** Whoever stands where its terrain turns to ground nobody stands on (Capability API 1.331):
+    /** Whoever stands where its terrain turns to ground nobody stands on (Capability API 1.332):
      *  `shove`d to the nearest open cell (the default), or left to `stay` in it, fallen through the
      *  ice into the water. */
     occupants: z.enum(["stay", "shove"]).optional(),
@@ -1719,7 +1719,7 @@ const creatureGroundSchema: z.ZodType<RulesetCreatureGround, z.ZodTypeDef, unkno
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
   .object({
-    /** How it looks on a fight's board (Capability API 1.332): a tile of the board's pack, `bz_` and
+    /** How it looks on a fight's board (Capability API 1.333): a tile of the board's pack, `bz_` and
      *  lowercase words joined by _ (`bz_fog`, `bz_wall_of_fire`), drawn on every cell it covers. */
     art: z
       .string()
@@ -1727,7 +1727,7 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .regex(/^bz_[a-z0-9]+(?:_[a-z0-9]+)*$/, "A zone's art is bz_ then lowercase words joined by _")
       .optional(),
     rounds: z.number().int().min(1).max(1000),
-    /** It ends as its maker's lair count next comes round (Capability API 1.323), if `rounds` has
+    /** It ends as its maker's lair count next comes round (Capability API 1.324), if `rounds` has
      *  not ended it first: "until the next lair action", The Owed's Freezing Fog. */
     untilLair: z.literal(true).optional(),
     anchor: z.enum(["point", "caster"]).optional(),
@@ -2402,7 +2402,7 @@ const catalogDurationSchema = z.union([
        *  "until the end of your next turn", as Guiding Bolt's advantage lasts. */
       of: z.literal("source").optional(),
       /** Or until whoever put it on next comes to their lair's count, if that is sooner (Capability
-       *  API 1.326): the Hour Bell's "until the next lair action". */
+       *  API 1.327): the Hour Bell's "until the next lair action". */
       untilLair: z.literal(true).optional(),
     })
     .strict(),
@@ -2638,7 +2638,7 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  that breaks free of it (Capability API 1.103): 5e's "the target is grappled (escape DC 13)".
      *  `"save"` is the save difficulty of whatever applied it (1.174): Web and Black Tentacles. */
     escapeDc: z.union([z.number().int().min(1).max(1000), z.literal("save")]).optional(),
-    /** Its source holds no more than this many with it at once (Capability API 1.319): a third does
+    /** Its source holds no more than this many with it at once (Capability API 1.320): a third does
      *  not take it. The showcase's Owed, whose Grasps hold two at most. */
     heldAtMost: z.number().int().min(1).max(20).optional(),
     /** The contest checks that may break it, in place of the breaking-free contest's own attacker
@@ -3353,7 +3353,7 @@ const catalogMechanicsObject = z
       .strict()
       .optional(),
     /** Used only while its user stands within `within` (the ruleset's distance) of a standing prop of
-     *  the board named `prop`, by its id or its label (Capability API 1.331): Fennick's Hymnal, a
+     *  the board named `prop`, by its id or its label (Capability API 1.332): Fennick's Hymnal, a
      *  verse sung at the Year-Wheel. A fight with no board never offers it. */
     usableNear: z
       .object({ prop: z.string().trim().min(1).max(60), within: z.number().finite().gt(0).max(10000) })
@@ -3629,7 +3629,7 @@ const catalogMechanicsObject = z
     /** Pointed only at a creature no bigger than this one of `combat.sizes` (Capability API 1.314):
      *  Resilient Sphere's "a creature of Large size or smaller". Not on an area or its user. */
     targetsUpTo: sheetId.optional(),
-    /** Takes growth off the cells its area covers (Capability API 1.317): a druid's clearing word. */
+    /** Takes growth off the cells its area covers (Capability API 1.318): a druid's clearing word. */
     clears: z.literal("growth").optional(),
     /** Used on a creature, not used on that one again until its user takes this rest (Capability API
      *  1.304), however many fights come between: Chains of Carceri's "You must finish a long rest
@@ -4395,7 +4395,7 @@ const creatureActionSchema = z
          *  around corners". Only with `around`. */
         throughWalls: z.literal(true).optional(),
         /** Everybody within `size` of a standing prop of the board with this label (Capability API
-         *  1.330), wherever it is aimed: Shelves Lean, around the Granary's shelf rows. Only a burst,
+         *  1.331), wherever it is aimed: Shelves Lean, around the Granary's shelf rows. Only a burst,
          *  never `around`. */
         aroundProp: z.string().trim().min(1).max(60).optional(),
       })
@@ -4463,7 +4463,7 @@ const creatureActionSchema = z
       .object({ cost: z.number().int().min(1).max(20) })
       .strict()
       .optional(),
-    /** A lair action (Capability API 1.314): taken, while the creature fights in its lair, once a
+    /** A lair action (Capability API 1.315): taken, while the creature fights in its lair, once a
      *  round as the fight's count passes its `lairInitiative` (losing ties), never the same one two
      *  rounds running. Aimed and resolved as on its own turn, with its `budget` lent for it and
      *  nothing of its own turn spent. 5e's dragons' lair actions on initiative count 20. */
@@ -4507,14 +4507,14 @@ const creatureActionSchema = z
      *  magmin's Ignited Illumination, one action to set itself ablaze and one to put its flames
      *  out, or a will-o'-wisp's Variable Illumination, one action for each reach. */
     sheds: z.union([lightRadiusSchema, z.literal("out")]).optional(),
-    /** An area that stays where it is aimed (Capability API 1.323), as a catalog entry's `zone`
+    /** An area that stays where it is aimed (Capability API 1.324), as a catalog entry's `zone`
      *  says it: The Owed's Freezing Fog, Scatter Flour's cube of flour. It needs an `area`. */
     zone: catalogZoneSchema.optional(),
-    /** What it does to the ground its `area` covers, for good (Capability API 1.323), as a board
+    /** What it does to the ground its `area` covers, for good (Capability API 1.324), as a board
      *  event's `change` says it: the bonfire gutters (`"light": "dark"`), the ice cracks
      *  (`"terrain": "water"`). It needs an `area`. */
     ground: creatureGroundSchema.optional(),
-    /** A permission (Capability API 1.290): the standard actions named, from `combat.standard`,
+    /** A permission (Capability API 1.291): the standard actions named, from `combat.standard`,
      *  taken with this action's budget, and with `while: "obscured"` only while it stands lightly
      *  or heavily obscured (in a fog, or in dim light or darkness). 5e's goblin's Nimble Escape is
      *  `{ "name": "Nimble Escape", "budget": "bonus", "standard": { "actions": ["disengage", "hide"] } }`. */
@@ -4532,9 +4532,9 @@ const creatureActionSchema = z
      *  regains that much for each one that does: Consume Life's "or die ... regains 10 (3d6)". */
     slaysOnFailedSave: z.literal(true).optional(),
     healsOnSlay: z.object(catalogAmountShape).strict().optional(),
-    /** Who it fells on Held Ground is reaped there and then (Capability API 1.322), and stays down. */
+    /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
-    /** Creatures it calls into the fight (Capability API 1.324), on its side: `creature` names a
+    /** Creatures it calls into the fight (Capability API 1.325), on its side: `creature` names a
      *  bestiary entry as `"<catalogId>/<entryId>"`, from this ruleset's catalogs or the fight's
      *  bestiary, and `count` how many (`{"dice": "1d4"}`, or `{"flat": 2}`), eight at most. They
      *  appear in the action's `area` where it is aimed, or beside it without one, and roll their
@@ -4557,22 +4557,22 @@ const creatureActionSchema = z
       .strict()
       .optional(),
     /** Whoever it lands on spends `spends` from their own budgets, if they have it left, to walk up
-     *  to their speed toward the creature there and then (Capability API 1.325), by the shortest
+     *  to their speed toward the creature there and then (Capability API 1.326), by the shortest
      *  open way and drawing no strikes; with a save, only on a failed one. The Owed's Whisper a
      *  Name: `{ "spends": "reaction" }`. */
     draws: z.object({ spends: sheetId }).strict().optional(),
     /** Only somebody who has already taken their turn this round may be picked (Capability API
-     *  1.326): the Hour Bell's "one creature that has already acted this round". */
+     *  1.327): the Hour Bell's "one creature that has already acted this round". */
     actedOnly: z.literal(true).optional(),
     /** Held by its `concentration`, which once broken (by harm, by going down, or by what a zone
-     *  does) makes this lair action of its own the next it takes (Capability API 1.326): Father
-     *  Ivo's Litany of Keeping, the shelves leaning. A list (Capability API 1.335) makes the next one of
+     *  does) makes this lair action of its own the next it takes (Capability API 1.327): Father
+     *  Ivo's Litany of Keeping, the shelves leaning. A list (Capability API 1.336) makes the next one of
      *  those, whoever runs it picking: the shelves leaning north or south. */
     brokenNextLair: z.union([sheetId, z.array(sheetId).min(1).max(8)]).optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
-    // Where it stands and what ground it changes is where its area is aimed (1.323).
+    // Where it stands and what ground it changes is where its area is aimed (1.324).
     for (const key of ["zone", "ground"] as const) {
       if (action[key] && !action.area) {
         ctx.addIssue({
@@ -4783,7 +4783,7 @@ const creatureActionSchema = z
         message: "A reaction is taken at its moment, so it is not bought between turns as well",
       });
     }
-    // A lair action is the lair's, on its own count (1.314): not a reaction, not bought with points.
+    // A lair action is the lair's, on its own count (1.315): not a reaction, not bought with points.
     if (action.lair && (action.reaction || action.signature)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -5048,14 +5048,14 @@ const creatureFields = {
     .optional(),
   /** Points given back at the start of its own turn, spent on `signature` actions. */
   signaturePoints: z.number().int().min(1).max(20).optional(),
-  /** The count its `lair` actions are taken on (Capability API 1.314), losing ties: 20 when left
+  /** The count its `lair` actions are taken on (Capability API 1.315), losing ties: 20 when left
    *  out. */
   lairInitiative: z.number().int().min(-100).max(1000).optional(),
-  /** How many failed saves it may turn into successes (Capability API 1.316), each fight: 5e's
+  /** How many failed saves it may turn into successes (Capability API 1.317), each fight: 5e's
    *  Legendary Resistance (3/Day). */
   legendaryResistance: z.number().int().min(1).max(20).optional(),
   /** Dropping to 0 hit points, it is left at 1 instead, `uses` times a fight, and with `extraTurn`
-   *  takes a turn of its own straight after the one it happened in (Capability API 1.319): the
+   *  takes a turn of its own straight after the one it happened in (Capability API 1.320): the
    *  showcase's Miller of Hours and its Hourglass. Not against what slays outright. */
   hangsOn: z
     .object({
@@ -5065,7 +5065,7 @@ const creatureFields = {
     })
     .strict()
     .optional(),
-  /** It does not move while any of its cells is in one of these lights (Capability API 1.318): the
+  /** It does not move while any of its cells is in one of these lights (Capability API 1.319): the
    *  showcase's Lantern-Shy, `["bright", "sunlight"]`. */
   stillIn: z
     .array(z.enum(["sunlight", "bright", "dim", "dark"]))
@@ -5982,7 +5982,7 @@ export const rulesetItemAttackSchema = z
     /** Its damage ignores the target's resistance to its own damage type (Capability API 1.192),
      *  resistance to every kind of harm included: a vorpal sword's slashing. */
     ignoresResistance: z.literal(true).optional(),
-    /** Who it fells on Held Ground is reaped there and then (Capability API 1.322): the showcase's
+    /** Who it fells on Held Ground is reaped there and then (Capability API 1.323): the showcase's
      *  Reaping Hook. */
     reaps: z.literal(true).optional(),
     /** What its damage takes off the target's health comes back only with a rest, never from a heal
@@ -6175,10 +6175,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** Using it casts an entry of this catalog (Capability API 1.180), as a scroll or a wand does: a
      *  condition that ends when its holder casts from that catalog ends when they use it. */
     casts: sheetId.optional(),
-    /** Only a creature this size or smaller is a target (Capability API 1.316), one of
+    /** Only a creature this size or smaller is a target (Capability API 1.317), one of
      *  `combat.sizes`: a scroll of Resilient Sphere's "Large size or smaller". */
     targetsUpTo: sheetId.optional(),
-    /** Takes growth off the cells its area covers (Capability API 1.317): pruning shears. */
+    /** Takes growth off the cells its area covers (Capability API 1.318): pruning shears. */
     clears: z.literal("growth").optional(),
     charges: z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX).optional(),
     /** A pool of the user's sheet it gives back some of, as a blood bag gives back blood. */
@@ -6213,7 +6213,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       issue("halfOnMiss", '"halfOnMiss" is on a use that rolls to hit ("attackRoll") and deals an "amount"');
     }
     if (use.free && use.budget !== undefined) issue("free", "Something free spends no budget, so it names none");
-    // Taken as a reaction (Capability API 1.321): Liesl's Coffin, the Straw Proxy. It says what it answers.
+    // Taken as a reaction (Capability API 1.322): Liesl's Coffin, the Straw Proxy. It says what it answers.
     if (use.reaction === true) issue("reaction", "An item's use taken as a reaction says the moment it answers");
     if (use.consumes && use.charges !== undefined) {
       issue("charges", "A use that uses the item up spends no charges of it");
@@ -6865,7 +6865,7 @@ export const RULESET_COMBAT_MODIFIER_TARGETS = [
    *  `skills` to the skill rolled: an opponent's Search for them and its passive Perception
    *  against their hiding. 5e's Cloak of Elvenkind, disadvantage on Perception to see its wearer. */
   "checks-taken",
-  /** The difficulty of the saves the holder makes others roll (Capability API 1.327), by a flat
+  /** The difficulty of the saves the holder makes others roll (Capability API 1.328), by a flat
    *  amount: the Miller of Hours' Un-age, a spell save DC 2 lower. */
   "save-difficulty",
 ] as const;
@@ -7461,16 +7461,16 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
      *  "can see the target or comes within 60 feet". */
     orSeen: z.literal(true).optional(),
     /** It reaches `by` further as each of its holder's turns starts, to no more than `upTo`, in the
-     *  ruleset's distance (Capability API 1.319): Frost Debt, 20 feet growing by 10 to 40. */
+     *  ruleset's distance (Capability API 1.320): Frost Debt, 20 feet growing by 10 to 40. */
     grows: z
       .object({ by: z.number().finite().gt(0).max(10000), upTo: z.number().finite().gt(0).max(10000) })
       .strict()
       .optional(),
     /** Its holder regains this many hit points whenever somebody it reaches is felled, goes down or
-     *  is slain (Capability API 1.330): The Owed's Collector, 15. */
+     *  is slain (Capability API 1.331): The Owed's Collector, 15. */
     feeds: z.number().int().min(1).max(10000).optional(),
     /** What it spreads stays on whoever it no longer reaches until their next turn starts
-     *  (Capability API 1.319): Frost Debt's no healing. */
+     *  (Capability API 1.320): Frost Debt's no healing. */
     lingers: z.literal(true).optional(),
     /** Dealt by the holder to everybody it reaches as each of the holder's own turns starts
      *  (Capability API 1.265): a balor's Fire Aura, 3d6 fire. */
@@ -7480,7 +7480,7 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
         flat: z.number().int().min(0).max(1000).optional(),
         type: promptSafeText(40).optional(),
         /** As each of the holder's own turns starts (the default), or as each turn of whoever it
-         *  reaches starts (Capability API 1.319): The Owed's Frost Debt. */
+         *  reaches starts (Capability API 1.320): The Owed's Frost Debt. */
         on: z.enum(["holder-turn", "their-turn"]).optional(),
       })
       .strict()
@@ -7641,10 +7641,10 @@ const combatConditionSchema = z
     /** The light its holder sheds while it holds (Capability API 1.294): 5e's Light cantrip, a lit
      *  torch. Read where `combat.sight.darkness` makes the dark real. */
     light: lightRadiusSchema.optional(),
-    /** Whoever moves unseen this near its holder is given away while it holds (Capability API 1.318),
+    /** Whoever moves unseen this near its holder is given away while it holds (Capability API 1.319),
      *  in the ruleset's distance: an alarm, a wind-chime. */
     alerts: z.number().finite().gt(0).max(10000).optional(),
-    /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.179):
+    /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.180):
      *  5e's Faerie Fire, under which the invisible are outlined. */
     cancelsUnseen: z.literal(true).optional(),
     effects: z.array(combatConditionEffectSchema).max(12).default([]),
@@ -7669,7 +7669,7 @@ const combatConditionSchema = z
      *  holds again the moment either is true: Antipathy's fright, within 60 feet or in sight. */
     orSourceWithin: z.number().finite().gt(0).max(10000).optional(),
     /** Only while its holder stands within `within` (the ruleset's own distance) of a standing prop
-     *  of the board whose label is `prop` (Capability API 1.330); held off, not ended, anywhere else.
+     *  of the board whose label is `prop` (Capability API 1.331); held off, not ended, anywhere else.
      *  A fight with no board holds it. The Wheel's Favour, within 10 feet of the Year-Wheel. */
     whileNearProp: z
       .object({ prop: z.string().trim().min(1).max(60), within: z.number().finite().gt(0).max(10000) })
@@ -7699,8 +7699,8 @@ const combatConditionSchema = z
      *  A holder with no saveEnds or DC has nothing to roll. */
     saveWhenDamaged: z.literal(true).optional(),
     /** Another combatant on the holder's side can spend this budget on their turn to end it
-     *  (Capability API 1.124). Reach is in the ruleset's unit; omitted, it is one cell. `self`: its
-     *  holder may too (Capability API 1.319), with no check: the showcase's Seed Hopper, torn free
+     *  (Capability API 1.125). Reach is in the ruleset's unit; omitted, it is one cell. `self`: its
+     *  holder may too (Capability API 1.320), with no check: the showcase's Seed Hopper, torn free
      *  with an action by the held or an ally. */
     shakeOff: z
       .object({
@@ -7959,7 +7959,7 @@ export const rulesetItemEffectSchema = z
     senses: senseRangesSchema.optional(),
     /** The light it sheds for its holder (Capability API 1.294): a lantern, a sun blade. */
     light: lightRadiusSchema.optional(),
-    /** It gives away whoever moves unseen this near its holder (Capability API 1.318), in the
+    /** It gives away whoever moves unseen this near its holder (Capability API 1.319), in the
      *  ruleset's distance: the showcase's Wind-Chime, `15`. */
     alerts: z.number().finite().gt(0).max(10000).optional(),
   })
@@ -12281,7 +12281,7 @@ function creatureIssues(
       // A signature action is bought with points while somebody else is acting. Inside a sequence it
       // would be had for a budget on the creature's own turn, which is neither.
       if (named.signature) add(where, `"${step.action}" is bought with points, so a sequence cannot name it`);
-      // Nor a lair's (1.314), taken on its own count.
+      // Nor a lair's (1.315), taken on its own count.
       if (named.lair) add(where, `"${step.action}" is a lair action, so a sequence cannot name it`);
     });
     // A blink dog's bite before or after its teleport (1.280): one of its other plain actions.
@@ -12717,7 +12717,7 @@ function useIssues(
   componentIssues(definition, use.components, [...at, "components"], add);
   if (use.casts !== undefined)
     castsIssues(definition, [use.casts], at, (_path, message) => add([...at, "casts"], message));
-  // The biggest it reaches is one of the fight's sizes, and it is aimed at somebody (1.316).
+  // The biggest it reaches is one of the fight's sizes, and it is aimed at somebody (1.317).
   if (use.targetsUpTo !== undefined) {
     if (!definition.combat?.sizes?.order.some((one) => one.id === use.targetsUpTo)) {
       add(
@@ -12731,7 +12731,7 @@ function useIssues(
   }
   if (use.clears && !use.area)
     add([...at, "clears"], '"clears" takes growth off the cells of an area, so the use has one');
-  // What it puts on its own reader (1.310): a scroll of Sunbeam's mote.
+  // What it puts on its own reader (1.311): a scroll of Sunbeam's mote.
   use.appliesSelf?.forEach((applies, index) => {
     if (!conditions.has(applies.condition)) {
       add([...at, "appliesSelf", index, "condition"], `Unknown condition "${applies.condition}"`);

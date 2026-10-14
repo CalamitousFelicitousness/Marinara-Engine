@@ -43,9 +43,9 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
     if (!world.ok) return { ok: false, reason: `${path} does not read: ${world.issues[0]}` };
     if (!sameJson(world.kit, kit.kit)) return { ok: false, reason: `${path} was made with another kit` };
     if (world.notes.length) return { ok: false, reason: `${path} does not fit its kit: ${world.notes[0]}` };
-    // A story's intro message is Capability API 1.338.
+    // A story's intro message is Capability API 1.339.
     if (world.story?.intro && !declaresIntro) {
-      return { ok: false, reason: `${path} sets an intro message, which needs Capability API 1.338` };
+      return { ok: false, reason: `${path} sets an intro message, which needs Capability API 1.339` };
     }
     worlds.push({
       path,

@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Storage: board packs (fight-board art slots, Capability API 1.332)
+// Storage: board packs (fight-board art slots, Capability API 1.333)
 //
 // The write side of `game_board_packs`, as tile packs': a version is never rewritten (the same bytes
 // again are a no-op, different bytes under a stored version a conflict the maker resolves by raising the

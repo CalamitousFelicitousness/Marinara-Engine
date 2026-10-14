@@ -1,5 +1,5 @@
 /**
- * The board doing things on its own (Capability API 1.317): growth spreading, ice cracking, a wheel
+ * The board doing things on its own (Capability API 1.318): growth spreading, ice cracking, a wheel
  * turning, the ground freezing in rings. Each event happens at the start or end of the rounds it
  * names, on the cells its `where` reaches that time, and changes what its `change` says. Growth on a
  * cell is hard going and lightly obscures it; it is cut back, burnt away or cleared.
@@ -37,7 +37,7 @@ const STEP: Record<RulesetBoardEdge, RulesetCombatCell> = {
   west: { x: -1, y: 0 },
 };
 
-/** A board event as a fight is handed it (1.317), before it is checked. */
+/** A board event as a fight is handed it (1.318), before it is checked. */
 export interface RulesetBoardEventInput {
   id?: string;
   label?: string;
@@ -50,7 +50,7 @@ export interface RulesetBoardEventInput {
   change: RulesetBoardEventChange;
 }
 
-/** The events a board is handed (1.317), as a fight keeps them: each with somewhere to happen and
+/** The events a board is handed (1.318), as a fight keeps them: each with somewhere to happen and
  *  something to do. One that is neither is left out, as is a rotation of anything but a square. */
 export function rulesetBoardEvents(
   grid: TacticalGrid,
@@ -212,7 +212,7 @@ export function rulesetBoardEventTime(
 }
 
 /**
- * Every board event due at this moment of this round (1.317), in the order the board lists them,
+ * Every board event due at this moment of this round (1.318), in the order the board lists them,
  * done to the fight: the log lines they make. Whoever is left standing on a cell nobody may stand on
  * is moved to the nearest open one.
  */
@@ -248,7 +248,7 @@ export function rulesetRunBoardEvents(
   return said;
 }
 
-/** What obscures these cells, blown `squares` toward an edge (1.328), coming back in at the far side
+/** What obscures these cells, blown `squares` toward an edge (1.329), coming back in at the far side
  *  of the block, or of the board. Nothing else on the cells moves. */
 function drift(
   grid: TacticalGrid,
@@ -279,7 +279,7 @@ function drift(
   }
 }
 
-/** Whoever stands on the ground on these cells, carried `squares` toward an edge (1.328), a cell at a
+/** Whoever stands on the ground on these cells, carried `squares` toward an edge (1.329), a cell at a
  *  time: never off the board, into a wall or a closed prop, onto ground nobody may stand on, or into
  *  anybody else. Nobody strikes at them for it. The nearest to that edge go first. */
 function push(
@@ -321,13 +321,13 @@ function push(
   return pushed;
 }
 
-/** The ground an action changes (1.323), as a board event changes it: whoever is left standing on a
+/** The ground an action changes (1.324), as a board event changes it: whoever is left standing on a
  *  cell nobody may stand on is moved to the nearest open one. */
 export function rulesetChangeGround(
   state: RulesetEncounterState,
   cells: readonly RulesetCombatCell[],
   change: RulesetBoardEventChange,
-  /** Whoever stands on these cells stays there, fallen in (1.331), rather than being moved off. */
+  /** Whoever stands on these cells stays there, fallen in (1.332), rather than being moved off. */
   occupants: "stay" | "shove" = "shove",
 ): Array<{ id: string; to: RulesetCombatCell }> {
   const grid = state.board?.grid;
@@ -447,7 +447,7 @@ function settle(
   return moved;
 }
 
-/** Growth taken off these cells (1.317): how many had any. */
+/** Growth taken off these cells (1.318): how many had any. */
 export function rulesetClearGrowth(grid: TacticalGrid, cells: readonly RulesetCombatCell[]): number {
   let cleared = 0;
   for (const cell of cells) {
@@ -460,7 +460,7 @@ export function rulesetClearGrowth(grid: TacticalGrid, cells: readonly RulesetCo
   return cleared;
 }
 
-/** The growth rule a board keeps (1.317): what burns it and what cuts it, lowercased. */
+/** The growth rule a board keeps (1.318): what burns it and what cuts it, lowercased. */
 export function rulesetGrowthRule(state: RulesetEncounterState): { burnedBy: string[]; cutBy: string[] } {
   return state.board?.growth ?? { burnedBy: ["fire"], cutBy: ["slashing"] };
 }

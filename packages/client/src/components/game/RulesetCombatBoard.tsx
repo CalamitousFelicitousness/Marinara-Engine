@@ -260,7 +260,7 @@ export function RulesetCombatBoard({
   const palette = TERRAIN_PALETTES[environment ?? "default"] ?? TERRAIN_PALETTES.default;
   const tintAlpha = environment && TERRAIN_PALETTES[environment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
   const sprites = useMemo(() => new Map(units.map((unit) => [unit.id, unit.sprite])), [units]);
-  // Board art (1.332): the pack the board names, else its environment's, and the props pack. Without
+  // Board art (1.333): the pack the board names, else its environment's, and the props pack. Without
   // one, every square is drawn as before.
   const boardArt = useBoardArt(grid.pack, grid.scene ?? grid.environment ?? environment);
   const cellArt = useMemo(
@@ -393,7 +393,7 @@ export function RulesetCombatBoard({
                   style={{ backgroundColor: palette[cell.terrain] + TILE_ALPHA, boxShadow: tileShadow(cell.terrain) }}
                 >
                   {art?.ground ? (
-                    // The pack's ground (1.332), then its edge blocks over it, a quarter of a corner each.
+                    // The pack's ground (1.333), then its edge blocks over it, a quarter of a corner each.
                     <>
                       <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ground)} />
                       {art.edges.map(({ quarter, slice }) => (
@@ -522,7 +522,7 @@ export function RulesetCombatBoard({
                   {art?.ice && (
                     <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ice)} />
                   )}
-                  {/* A lasting area (1.171): tinted, with its name in the tooltip of the square. */}
+                  {/* A lasting area (1.172): tinted, with its name in the tooltip of the square. */}
                   {cell.zones &&
                     (art?.zones.length ? (
                       art.zones.map((slice, n) => (
@@ -539,13 +539,13 @@ export function RulesetCombatBoard({
                         title={cell.zones.join(", ")}
                       />
                     ))}
-                  {/* A wall's section (1.199): how much it has left, and a ring while it may be struck. */}
+                  {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (
                     <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.section.health}
                     </span>
                   )}
-                  {/* Growth (1.317): a green tangle over the square. */}
+                  {/* Growth (1.318): a green tangle over the square. */}
                   {cell.growth && (
                     <span
                       className={cn(
@@ -556,7 +556,7 @@ export function RulesetCombatBoard({
                       title={t("game.combat.ruleset.board.growth")}
                     />
                   )}
-                  {/* A prop (1.315): drawn as a crate standing in the square, its health in the corner;
+                  {/* A prop (1.316): drawn as a crate standing in the square, its health in the corner;
                       broken, as its rubble. */}
                   {cell.prop && (
                     <span

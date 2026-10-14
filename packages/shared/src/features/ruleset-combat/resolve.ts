@@ -302,10 +302,10 @@ interface RulesetCombatContext {
   chosenAmount?: number;
   /** How many more of an item's charges its user spends on the action being resolved (1.269). */
   moreCharges?: number;
-  /** Who is making a blow that reaps (1.322): whoever it fells on Held Ground is reaped. */
+  /** Who is making a blow that reaps (1.323): whoever it fells on Held Ground is reaped. */
   reaping?: string;
-  /** Where the teleport being resolved goes, and who goes along (1.275); nowhere is out of the
-   *  fight (1.278). */
+  /** Where the teleport being resolved goes, and who goes along (1.276); nowhere is out of the
+   *  fight (1.279). */
   teleport?: { to?: RulesetCombatCell; carries: string[] };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.278). */
   harming?: { catalog: string; applies: string[] };
@@ -1088,7 +1088,7 @@ function endConditionsFromSource(ctx: RulesetCombatContext, source: RulesetComba
 }
 
 function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain = false): void {
-  // Hanging on at 1 instead (1.319): the Miller's Hourglass, once, with a turn of its own straight
+  // Hanging on at 1 instead (1.320): the Miller's Hourglass, once, with a turn of its own straight
   // after this one.
   const hangs = target.block?.hangsOn;
   // A creature that fights with a sheet hangs on in its hit point pool; a wound track has no 1 to hang
@@ -1124,7 +1124,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   }
   feedAuras(ctx, target);
   target.down = true;
-  // Held Ground (1.322): felled, out of the fight but never dying, unless the blow reaps.
+  // Held Ground (1.323): felled, out of the fight but never dying, unless the blow reaps.
   const held = ctx.state.heldGround;
   if (held && !target.object) {
     fell(ctx, target, held);
@@ -1153,7 +1153,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   ctx.events.push({ type: "down", actorId: target.id, dying: !!dying });
 }
 
-/** Whoever holds an aura that feeds (1.330) and reaches somebody now falling regains what it says:
+/** Whoever holds an aura that feeds (1.331) and reaches somebody now falling regains what it says:
  *  The Owed's Collector. Read before the one falling is out of the fight, so the aura still reaches
  *  them. */
 function feedAuras(ctx: RulesetCombatContext, target: RulesetCombatant): void {
@@ -1174,7 +1174,7 @@ function feedAuras(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   }
 }
 
-/** Felled on Held Ground (1.322): out of the fight, stable and never dying, with its condition and a
+/** Felled on Held Ground (1.323): out of the fight, stable and never dying, with its condition and a
  *  mark on its sheet; reaped instead where the blow that felled it reaps. */
 function fell(ctx: RulesetCombatContext, target: RulesetCombatant, held: RulesetHeldGround): void {
   target.felled = true;
@@ -1327,7 +1327,7 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 
 // ── Saves ──
 
-/** A save, and a creature's legendary resistance (Capability API 1.316) turning a failure into a
+/** A save, and a creature's legendary resistance (Capability API 1.317) turning a failure into a
  *  success while it has uses left: 5e's "If the dragon fails a saving throw, it can choose to succeed
  *  instead." A creature run by the Engine always chooses to. */
 function rollSave(
@@ -1369,7 +1369,7 @@ function throwSave(
   const source = sourceId ? rulesetCombatant(ctx.state, sourceId) : undefined;
   if (source) against = { ...against, from: rulesetCreatureKind(ctx.definition, source) };
   // A condition that fails this save takes the roll away entirely, rather than rolling and ignoring
-  // the dice, so a log never shows a number that decided nothing. A thing (1.315) has no save to make.
+  // the dice, so a log never shows a number that decided nothing. A thing (1.316) has no save to make.
   if (combatant.object || rulesetCombatFailsSave(ctx.definition, ctx.combat, combatant, save, ctx.state)) {
     ctx.events.push({
       type: "save",
@@ -1875,7 +1875,7 @@ function applyConditionId(
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "already" });
     return;
   }
-  // Its source holding as many with it as it may (1.319): the Owed's Grasps, two at most.
+  // Its source holding as many with it as it may (1.320): the Owed's Grasps, two at most.
   if (
     applies.heldAtMost !== undefined &&
     extra.sourceId &&
@@ -1915,7 +1915,7 @@ function applyConditionId(
     ...(clock ? { clock } : {}),
     ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),
     ...(sourced ? { clockOf: "source" as const } : {}),
-    // Or until its putter's lair count (1.326).
+    // Or until its putter's lair count (1.327).
     ...(typeof applies.duration === "object" && applies.duration.untilLair && extra.sourceId
       ? { untilLair: true as const }
       : {}),
@@ -2735,7 +2735,7 @@ function spendZone(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Ru
 function igniteZones(ctx: RulesetCombatContext, types: Array<string | undefined>, cells: RulesetCombatCell[]): void {
   const lower = new Set(types.flatMap((type) => (type ? [type.trim().toLowerCase()] : [])));
   if (lower.size === 0 || cells.length === 0) return;
-  // Growth it reaches is burnt away (1.317).
+  // Growth it reaches is burnt away (1.318).
   const grid = ctx.state.board?.grid;
   if (grid?.ground && rulesetGrowthRule(ctx.state).burnedBy.some((type) => lower.has(type))) {
     const burnt = rulesetClearGrowth(grid, cells);
@@ -2843,7 +2843,7 @@ function placeZone(
     rounds: rule.rounds,
     anchor: rule.anchor,
     triggers: [...rule.triggers],
-    // Until its maker's next lair count (1.323).
+    // Until its maker's next lair count (1.324).
     ...(rule.untilLair ? { untilLair: true as const } : {}),
     ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
     ...(also.length ? { also } : {}),
@@ -3305,7 +3305,7 @@ function endConcentration(
   }
   endSummons(ctx, actor, held.actionId);
   endZones(ctx, actor, held.actionId);
-  // Broken, it makes its lair's next action this one (1.326), or one of these (1.335): the Litany of Keeping.
+  // Broken, it makes its lair's next action this one (1.327), or one of these (1.336): the Litany of Keeping.
   const next = actor.actions.find((action) => action.id === held.actionId)?.brokenNextLair;
   if (next && actor.lair && (reason === "damage" || reason === "down" || reason === "zone"))
     actor.lair.next = typeof next === "string" ? next : [...next];
@@ -3604,7 +3604,7 @@ export function applyRulesetCombatChoice(
   choice: RulesetCombatChoice,
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
-  // What its user makes others save against, lowered or raised by what they hold (1.327): the
+  // What its user makes others save against, lowered or raised by what they hold (1.328): the
   // Miller's Un-age, a spell save DC 2 lower. Set on their actions for this step only.
   const actor = rulesetCombatant(state, choice.actorId);
   const by = actor ? rulesetSaveDifficultyShift(definition, actor, state) : 0;
@@ -3616,7 +3616,7 @@ export function applyRulesetCombatChoice(
 }
 
 /** How much what a combatant holds (a condition, an item, a level) moves the difficulty of the saves
- *  they call for (1.327). */
+ *  they call for (1.328). */
 export function rulesetSaveDifficultyShift(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -3630,7 +3630,7 @@ export function rulesetSaveDifficultyShift(
   );
 }
 
-/** The fight with one combatant's actions changed (1.327). */
+/** The fight with one combatant's actions changed (1.328). */
 function withRulesetActions(
   state: RulesetEncounterState,
   actorId: string,
@@ -3646,7 +3646,7 @@ function withRulesetActions(
 
 /** Actions with every save they call for moved `by`: a save's own difficulty, wherever it is written
  *  on them, and a save difficulty given for saves that end what they put on. Never a check's, and
- *  never inside a stat block they call up (1.324), whose creatures are their own. */
+ *  never inside a stat block they call up (1.325), whose creatures are their own. */
 function shiftedDifficulties(actions: RulesetCombatAction[], by: number): RulesetCombatAction[] {
   const walk = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(walk);
@@ -4137,7 +4137,7 @@ function applyChoice(
     return finish();
   }
 
-  // A prop lit again (1.331): the bonfire after Bonfire Gutters.
+  // A prop lit again (1.332): the bonfire after Bonfire Gutters.
   if (option.relights) {
     const prop = ctx.state.board?.props?.find((one) => one.id === option.relights!.propId);
     if (prop?.relight) {
@@ -4434,7 +4434,7 @@ function applyChoice(
 /** Who stands in for a wall's section while a blow is struck at it (1.200). */
 const SECTION_ID = "wall-section";
 
-/** A wall's section or a prop (1.199, 1.315) standing in as a creature for one blow or one area: its
+/** A wall's section or a prop (1.200, 1.316) standing in as a creature for one blow or one area: its
  *  defense, its health, what it shrugs off or suffers double, on the side against whoever strikes it. */
 function objectStandIn(
   id: string,
@@ -4482,7 +4482,7 @@ function objectStandIn(
   };
 }
 
-/** What happened to stand-ins since `from` (1.199, 1.315), taken out of the log: each one's attack roll,
+/** What happened to stand-ins since `from` (1.200, 1.316), taken out of the log: each one's attack roll,
  *  the damage it was dealt, and whether anything reached it at all. The rest of the log stays. */
 function objectBlows(
   ctx: RulesetCombatContext,
@@ -4507,7 +4507,7 @@ function objectBlows(
   );
 }
 
-/** What a blow or an area did to a prop (1.315), written back and told: a fragile one anything reaches
+/** What a blow or an area did to a prop (1.316), written back and told: a fragile one anything reaches
  *  is broken outright. Broken, its label goes on the board's list and it stops closing its cells. */
 function breakProp(
   ctx: RulesetCombatContext,
@@ -4538,7 +4538,7 @@ function breakProp(
 }
 
 /**
- * A blow struck at a wall's section (1.199), paid for as any attack is. The section stands in as a
+ * A blow struck at a wall's section (1.200), paid for as any attack is. The section stands in as a
  * creature with its defense, its health and what it shrugs off or suffers double, for that blow only;
  * the attack is made at it as at anybody, and what it took is written back to the section. Nobody's
  * answers are asked: a wall is not anybody. At 0 it is broken and stops closing its cells.
@@ -4583,7 +4583,7 @@ function strikeSection(
   spendAvailability(ctx, working, action);
   const standing = rulesetStandingSections(ctx.state).find(({ section }) => at(section.cells));
   const prop = standing ? undefined : rulesetStandingProps(ctx.state).find((one) => at(one.cells));
-  // Growth, cut back (1.317): no roll, the square cleared.
+  // Growth, cut back (1.318): no roll, the square cleared.
   if (!standing && !prop) {
     const cut = rulesetClearGrowth(ctx.state.board!.grid, [cell]);
     ctx.events.push({ type: "growth", actorId: working.id, label: action.label, cells: cut, by: "cut" });
@@ -4951,7 +4951,7 @@ function pushTarget(ctx: RulesetCombatContext, actor: RulesetCombatant, target: 
   if (levels >= 2) fall(ctx, actor, target, levels);
 }
 
-/** Somebody spending `spends` to walk up to their speed toward `actor` (1.325), by the shortest
+/** Somebody spending `spends` to walk up to their speed toward `actor` (1.326), by the shortest
  *  open way to the cell that brings them nearest, drawing no strikes: The Owed's Whisper a Name.
  *  Nothing is spent by somebody who has none of it left, or who could come no nearer. */
 function drawTarget(
@@ -5124,7 +5124,7 @@ function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounte
   ctx.events.push({ type: "outcome", outcome });
 }
 
-/** How Held Ground lets go in a running fight (1.329). */
+/** How Held Ground lets go in a running fight (1.330). */
 export interface RulesetHeldGroundRelease {
   /** What becomes of the felled: they die (the default), or a character goes down as anywhere else,
    *  dying by the ruleset's own rule. */
@@ -5135,7 +5135,7 @@ export interface RulesetHeldGroundRelease {
 }
 
 /**
- * Held Ground let go in the middle of a fight (1.329): the year turns. From here whoever reaches no
+ * Held Ground let go in the middle of a fight (1.330): the year turns. From here whoever reaches no
  * health dies or goes down as anywhere else; the felled die (or go down, dying); and each character's
  * marks come due, one dying save a mark, rolled until they run out or the count is decided. The
  * Held Autumn's last roll. A fight not on Held Ground is handed back as it was.
@@ -5364,11 +5364,11 @@ function applyInWindow(
 
   const option = rulesetWindowOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
   if (!option) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
-  // A lair action (1.314), resolved as its maker's own turn would resolve it.
+  // A lair action (1.315), resolved as its maker's own turn would resolve it.
   if (window.kind === "signature" && option.lairOf) {
     return takeLairAction(definition, combat, state, window, actor, option.lairOf, choice, roller);
   }
-  // A spell cast with points (1.283), resolved as its maker's own turn would resolve it.
+  // A spell cast with points (1.284), resolved as its maker's own turn would resolve it.
   if (window.kind === "signature" && option.castOf) {
     return castWithPoints(definition, combat, state, window, actor, option.castOf, choice, roller);
   }
@@ -5791,7 +5791,7 @@ function windowClosed(
     }
     return;
   }
-  // Before the very first turn (1.314), that turn goes on as it was handed out: only what its start
+  // Before the very first turn (1.315), that turn goes on as it was handed out: only what its start
   // asks is asked now.
   if (!over && trigger.kind === "between-turns" && trigger.opening) {
     const first = currentRulesetActor(ctx.state);
@@ -5952,7 +5952,7 @@ function castWithPoints(
 }
 
 /**
- * A lair action (1.314): chosen, aimed and resolved exactly as on its maker's own turn, with the
+ * A lair action (1.315): chosen, aimed and resolved exactly as on its maker's own turn, with the
  * budget it is taken with lent for it, and nothing of its maker's own turn spent. It is this
  * round's, and the next round's may not be the same one. Anything it opens holds the window it was
  * taken in, which is asked on from once all of it has closed.
@@ -6014,7 +6014,7 @@ function takeLairAction(
   };
 }
 
-/** Calls an action's creatures into the fight (1.324), as many as its count throws, and says so. */
+/** Calls an action's creatures into the fight (1.325), as many as its count throws, and says so. */
 function callCreatures(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -6028,7 +6028,7 @@ function callCreatures(
 }
 
 /**
- * The window before the fight's very first turn (Capability API 1.314), opened when somebody's
+ * The window before the fight's very first turn (Capability API 1.315), opened when somebody's
  * lair's count comes before everybody's: their lair actions are taken in it, and the first turn
  * goes on as it was handed out once it closes. Anything that turn's start was asking waits behind
  * it. The fight as it was when nobody's lair is due.
@@ -6048,7 +6048,7 @@ export function rulesetOpenLairWindow(
     trigger: { kind: "between-turns", nextActorId: first.id, opening: true },
     waiting: [],
   };
-  // Nobody's turn has begun yet (1.326): the first one's begins as this window closes.
+  // Nobody's turn has begun yet (1.327): the first one's begins as this window closes.
   next.acted = [];
   const waiting = [...new Set(next.order)].filter((id) =>
     rulesetSignatureOptions(definition, next, id).some((option) => option.lairOf),
@@ -6065,7 +6065,7 @@ export function rulesetOpenLairWindow(
 }
 
 /**
- * Readying (1.287): what it readies and what for. A spell, where the ruleset holds readied spells
+ * Readying (1.288): what it readies and what for. A spell, where the ruleset holds readied spells
  * by concentration, is paid for now (with `payWith`, as the menu offered) and held: its holder's
  * concentration is now on it. False when it cannot be paid.
  */
@@ -6767,7 +6767,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
             (target): target is RulesetCombatant =>
               !!target && (!target.defeated || rulesetCanRevive(ctx.state, action, target)),
           );
-  // Props its area covers (1.315) take it as anybody caught does, from the same roll, first: nothing
+  // Props its area covers (1.316) take it as anybody caught does, from the same roll, first: nothing
   // answers for a prop, so none of it waits on a window.
   const reaches =
     grid &&
@@ -6850,7 +6850,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
     }
     return hold;
   });
-  // Growth cleared where it lands (1.317): pruning shears.
+  // Growth cleared where it lands (1.318): pruning shears.
   if (grid && at && action.area && action.clears === "growth" && !resume.held) {
     const cleared = rulesetClearGrowth(
       grid,
@@ -6861,7 +6861,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
     );
     ctx.events.push({ type: "growth", actorId: actor.id, label: action.label, cells: cleared, by: "cleared" });
   }
-  // The ground it changes (1.323): a bonfire guttering, the ice cracking.
+  // The ground it changes (1.324): a bonfire guttering, the ice cracking.
   if (grid && at && action.area && action.ground && !resume.held) {
     const cells = areaCellsFor(ctx.state, actor, action.id, at, {
       ...(resume.also ? { also: resume.also } : {}),
@@ -6877,7 +6877,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
       ...(moved.length ? { moved } : {}),
     });
   }
-  // Creatures called into the area (1.324): Shelves Lean's specters among the fallen jars.
+  // Creatures called into the area (1.325): Shelves Lean's specters among the fallen jars.
   if (action.area && action.calls && !resume.held) {
     callCreatures(
       ctx,
@@ -6891,7 +6891,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
         : undefined,
     );
   }
-  // Fire landing on a web with nobody in it sets it alight all the same (1.182).
+  // Fire landing on a web with nobody in it sets it alight all the same (1.183).
   if (grid && at && action.area && action.damage && !action.zone?.detonates) {
     igniteZones(
       ctx,
@@ -6960,7 +6960,7 @@ function harmedBy(
   // The uses its user chose, read as it heals (1.251).
   if (resume.amount) ctx.chosenAmount = resume.amount;
   else delete ctx.chosenAmount;
-  // A blow that reaps (1.322), held or resumed alike.
+  // A blow that reaps (1.323), held or resumed alike.
   const reaping = ctx.reaping;
   if (action.reaps) ctx.reaping = actor.id;
   else delete ctx.reaping;
@@ -7271,7 +7271,7 @@ function search(
 }
 
 /**
- * A board's light rule as a round ends (1.318): everybody standing wholly in one of its lights counts
+ * A board's light rule as a round ends (1.319): everybody standing wholly in one of its lights counts
  * one more round end there, and on every `rounds`th their tracks move and its conditions go on them.
  * Out of it, even in one cell's shade, the count starts again.
  */
@@ -7298,7 +7298,7 @@ function lightRuleAtRoundEnd(ctx: RulesetCombatContext): void {
       rounds: rule.rounds,
     };
     ctx.events.push(caught);
-    // A made save escapes it this time (1.320): Noonfield's Constitution save, a straw hat's advantage.
+    // A made save escapes it this time (1.321): Noonfield's Constitution save, a straw hat's advantage.
     if (rule.save) {
       const from = ctx.events.length;
       const saved = rollSave(ctx, combatant, rule.save.save, rule.save.difficulty, undefined, null, rule.save.against);
@@ -7314,7 +7314,7 @@ function lightRuleAtRoundEnd(ctx: RulesetCombatContext): void {
     }
     for (const moved of rule.tracks ?? []) {
       if (combatant.defeated) continue;
-      // No further than its most (1.320): exhaustion 3 at most.
+      // No further than its most (1.321): exhaustion 3 at most.
       let by = moved.by;
       if (moved.upTo !== undefined) {
         const declared = ctx.definition.sheet.live.tracks.find((entry) => entry.id === moved.track);
@@ -7336,7 +7336,7 @@ function lightRuleAtRoundEnd(ctx: RulesetCombatContext): void {
 }
 
 /**
- * A hider moving or acting (1.291): what standing still added to its total is gone, and somebody
+ * A hider moving or acting (1.292): what standing still added to its total is gone, and somebody
  * hidden in plain sight that moves is hidden no more. Whether the smaller total still hides it is
  * asked as every step ends, and on every cell of a walk.
  */
@@ -7365,7 +7365,7 @@ function stirs(ctx: RulesetCombatContext, actor: RulesetCombatant, how: "moved" 
   }
 }
 
-/** A hider moving near something that `alerts` (1.318): a Wind-Chime held by an opponent rings,
+/** A hider moving near something that `alerts` (1.319): a Wind-Chime held by an opponent rings,
  *  and they are hidden from nobody. */
 function chimes(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const hiding = actor.hiding;
@@ -7390,7 +7390,7 @@ function chimes(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   delete actor.hiding;
 }
 
-/** What Hide in Plain Sight needs (1.308): the condition its camouflage is, and something solid
+/** What Hide in Plain Sight needs (1.309): the condition its camouflage is, and something solid
  *  beside its holder that blocks sight. */
 function stillHolds(
   ctx: RulesetCombatContext,
@@ -7681,12 +7681,12 @@ function resolveAction(
     });
     return null;
   }
-  // Creatures called beside it (1.324), and nothing else: Jars Burst.
+  // Creatures called beside it (1.325), and nothing else: Jars Burst.
   if (action.calls && !action.area && !action.damage) {
     callCreatures(ctx, actor, action);
     return null;
   }
-  // A legendary Detect (1.286): the looking, and nothing else.
+  // A legendary Detect (1.287): the looking, and nothing else.
   if (action.search) {
     if (ctx.combat.hiding) {
       const { check, found, apart } = search(ctx, actor);
@@ -8197,7 +8197,7 @@ function clapAround(
 
 function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: string, label: string): void {
   emptyHealth(ctx, target);
-  // Nobody dies on Held Ground (1.322): felled, not slain.
+  // Nobody dies on Held Ground (1.323): felled, not slain.
   if (ctx.state.heldGround && !target.object) {
     if (!target.down) dropToZero(ctx, target, true);
     return;
@@ -9371,11 +9371,11 @@ function resolveActionBody(
       if (pushBy !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
         pushTarget(ctx, actor, target, pushBy);
       }
-      // Drawn toward its maker on their own budget (1.325): Whisper a Name.
+      // Drawn toward its maker on their own budget (1.326): Whisper a Name.
       if (action.draws && target.id !== actor.id && rulesetCombatStanding(target)) {
         drawTarget(ctx, actor, target, action.draws.spends);
       }
-      // Sent out of the fight (1.235), last of all.
+      // Sent out of the fight (1.236), last of all.
       if (action.dismisses && target.id !== actor.id) dismiss(ctx, actor, action, target);
     }
     spendUsed();
@@ -9586,10 +9586,10 @@ export function advanceRulesetTurn(
  *  that asks them. Nobody is asked when nobody can afford anything: an empty window would hold the
  *  fight open for an answer with nothing in it. */
 function openSignatureWindow(ctx: RulesetCombatContext): boolean {
-  // What lasts until the next lair action ends as its maker's lair count comes round (1.323).
+  // What lasts until the next lair action ends as its maker's lair count comes round (1.324).
   for (const maker of ctx.state.combatants) {
     if (!maker.lair || rulesetLairRound(ctx.definition, ctx.state, maker) === null) continue;
-    // And what it put on anybody until then (1.326): the Hour Bell's.
+    // And what it put on anybody until then (1.327): the Hour Bell's.
     for (const holder of ctx.state.combatants) {
       for (const entry of [...holder.tracked]) {
         if (entry.untilLair && entry.source === maker.id) removeCondition(ctx, holder, entry.condition, "expired");
@@ -9632,7 +9632,7 @@ function nextTurnActor(state: RulesetEncounterState): { combatant: RulesetCombat
  *  so the window between the two can hold it: the turn-end books are closed either way, and this
  *  runs once, after the window rather than before it. */
 function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx: RulesetCombatContext): void {
-  // A turn put in after another (1.319), the Hourglass's, is taken once and leaves the order again.
+  // A turn put in after another (1.320), the Hourglass's, is taken once and leaves the order again.
   // Taken, or passed over by somebody who could not take it.
   if (ctx.state.interjected !== undefined && ctx.state.turn >= ctx.state.interjected) {
     ctx.state.order.splice(ctx.state.interjected, 1);
@@ -9645,7 +9645,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
   for (let step = 0; step < ctx.state.order.length; step++) {
     turn += 1;
     if (turn >= ctx.state.order.length) {
-      // Passed over on the way round (1.319): out of the order before the next round.
+      // Passed over on the way round (1.320): out of the order before the next round.
       if (ctx.state.interjected !== undefined) {
         ctx.state.order.splice(ctx.state.interjected, 1);
         delete ctx.state.interjected;
@@ -9661,20 +9661,20 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
   }
   ctx.state.turn = turn;
   ctx.state.round = round;
-  // Who has begun a turn this round (1.326), afresh as it turns over.
+  // Who has begun a turn this round (1.327), afresh as it turns over.
   if (fresh) ctx.state.acted = [];
   if (fresh) {
     for (const combatant of ctx.state.combatants) {
       refreshRulesetBudgets(combat, combatant.budgets, "round");
       refreshSpendLimits(combatant, "round");
     }
-    // What standing in the board's light does as the round ends (1.318): Noonfield's.
+    // What standing in the board's light does as the round ends (1.319): Noonfield's.
     lightRuleAtRoundEnd(ctx);
-    // What the board does as the round ends, and as the next begins (1.317).
+    // What the board does as the round ends, and as the next begins (1.318).
     ctx.events.push(...rulesetRunBoardEvents(ctx.state, "round-end", round - 1));
     ctx.events.push({ type: "round", round });
     ctx.events.push(...rulesetRunBoardEvents(ctx.state, "round-start", round));
-    // A first round in which they took no turn (down, held) still ends their surprise (1.236).
+    // A first round in which they took no turn (down, held) still ends their surprise (1.237).
     for (const combatant of ctx.state.combatants) endSurprise(ctx, combatant);
     // A ruleset whose initiative is thrown every round throws it again now, and the round starts at
     // whoever is first in the new order and can take a turn.
@@ -9752,7 +9752,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
  */
 function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const spreading = rulesetAuraSpreaders(ctx.definition, ctx.state);
-  // Its own auras grow as its turn starts (1.319): Frost Debt. Who it now reaches it spreads to as
+  // Its own auras grow as its turn starts (1.320): Frost Debt. Who it now reaches it spreads to as
   // this step ends, as every aura does.
   for (const { holder, aura, condition } of spreading) {
     if (holder.id !== actor.id || !aura.grows) continue;
@@ -9768,7 +9768,7 @@ function aurasAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   }
   for (const { holder, aura, condition } of spreading) {
     if (!aura.harms) continue;
-    // As the turn of whoever it reaches starts (1.319), or its holder's own.
+    // As the turn of whoever it reaches starts (1.320), or its holder's own.
     if (aura.harms.on === "their-turn") {
       if (!actor.defeated && rulesetAuraReaches(ctx.definition, ctx.state, holder, aura, actor, condition)) {
         conditionHarm(ctx, actor, condition, holder.id, aura.harms, 1);

@@ -229,7 +229,7 @@ try {
     assert.ok(targetsOf(state, "mage", "Bolt").includes("giant"), "the size limit is the sphere's own");
     giant.size = "large";
     assert.ok(targetsOf(state, "mage", "Resilient Sphere").includes("giant"), "Large still fits");
-    // A scroll of it holds to the same size (1.316).
+    // A scroll of it holds to the same size (1.317).
     const scroll = (upTo?: string): RulesetSheetItem => ({
       name: "Sphere Scroll",
       quantity: 1,

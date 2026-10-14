@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Game: board packs (fight-board art slots, Capability API 1.332)
+// Game: board packs (fight-board art slots, Capability API 1.333)
 //
 // The art fights' boards are drawn with, made in Pixelforge or imported from a file: one row per
 // (namespaced pack id, VERSION), the file kept exactly as it was saved, as tile packs are. Nothing owns a

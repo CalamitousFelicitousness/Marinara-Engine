@@ -1,5 +1,5 @@
 /**
- * Drawn toward a creature on one's own reaction (Capability API 1.325): The Owed's Whisper a Name.
+ * Drawn toward a creature on one's own reaction (Capability API 1.326): The Owed's Whisper a Name.
  *
  *   - `draws: { spends }` on a creature's action: whoever it lands on (on a failed save) spends that
  *     budget to walk up to their speed toward it there and then, by the open way to the nearest
@@ -177,7 +177,7 @@ try {
         bad.issues.join("; "),
       );
     const gate =
-      "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.325 or newer";
+      "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -191,9 +191,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(324) as never, withOwed()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(325) as never, withOwed()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(324) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(325) as never, withOwed()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(326) as never, withOwed()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(325) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

@@ -225,7 +225,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
-    // Who it fells on Held Ground stays down (1.322).
+    // Who it fells on Held Ground stays down (1.323).
     ...(action.reaps ? { reaps: true as const } : {}),
     ...(action.targetCount !== undefined ? { targetCount: action.targetCount } : {}),
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
@@ -273,15 +273,15 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.sheds !== undefined ? { sheds: action.sheds === "out" ? ("out" as const) : { ...action.sheds } } : {}),
     // Standard actions with its own budget (1.291): Nimble Escape.
     ...(action.standard ? { standard: structuredClone(action.standard) } : {}),
-    // The area it leaves standing, and the ground it changes (1.323).
+    // The area it leaves standing, and the ground it changes (1.324).
     ...(action.zone ? { zone: structuredClone(action.zone) } : {}),
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
-    // Whoever it lands on walks toward it (1.325).
+    // Whoever it lands on walks toward it (1.326).
     ...(action.draws ? { draws: { ...action.draws } } : {}),
-    // The Hour Bell, and the Litany broken (1.326).
+    // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
-    // Who it calls into the fight (1.324), found in the bestiary as the fight begins.
+    // Who it calls into the fight (1.325), found in the bestiary as the fight begins.
     ...(action.calls && amountOf(action.calls.count)
       ? {
           calls: {

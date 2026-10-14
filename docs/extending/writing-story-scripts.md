@@ -108,7 +108,7 @@ An event happens once, unless it has `"repeat": true` (which `start`, `turn` and
 | `meet`   | Once a reply has named `person` (a person id such as `p11-3`, or `p11-e1` for one added by hand) in full. With `repeat`, again for each reply that names them. Only this session's replies are read for names.                                 |
 | `deed`   | Once the world has recorded a deed of the party, of kind `deed` and at `place` when given. With `repeat`, again for each reply that records one.                                                                                               |
 | `fight`  | When a fight ends in `outcome`: `victory`, `defeat` or `flee`.                                                                                                                                                                                 |
-| `broke`  | When a fight broke the prop called `prop` (Capability API 1.315), matched without case. Only a prop painted on one of the world's battlefields can be named.                                                                                   |
+| `broke`  | When a fight broke the prop called `prop` (Capability API 1.316), matched without case. Only a prop painted on one of the world's battlefields can be named.                                                                                   |
 | `flags`  | When its conditions hold. With `repeat`, again each time they come true after being false.                                                                                                                                                     |
 | `gm`     | Only when the Game Master trips it (the event needs `"gm": true`).                                                                                                                                                                             |
 
@@ -164,7 +164,7 @@ events together are kept to 16,000 characters.
 
 ### The intro message
 
-`intro` (Capability API 1.338) sets how the game opens, the same choice the GM setup offers any game:
+`intro` (Capability API 1.339) sets how the game opens, the same choice the GM setup offers any game:
 
 ```json
 "intro": { "mode": "defined", "text": "The leaves have not fallen in Hollowmere for nine years.", "locked": true }

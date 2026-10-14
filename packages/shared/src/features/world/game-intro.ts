@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// The Game Master's intro message (Capability API 1.338): how a game opens, set in the game's setup and,
+// The Game Master's intro message (Capability API 1.339): how a game opens, set in the game's setup and,
 // for an Experience, by its creator. A defined intro IS the Game Master's first message, exactly as set;
 // a guided one only shapes the first message the Game Master writes. A creator may lock theirs, so a
 // player cannot set an intro that breaks the Experience; one left unlocked the player may change or clear.

@@ -1,5 +1,5 @@
 /**
- * Dice a rest spends to heal (Capability API 1.334): 5e's Hit Dice on a short rest, Song of Rest's extra
+ * Dice a rest spends to heal (Capability API 1.335): 5e's Hit Dice on a short rest, Song of Rest's extra
  * die from whoever in the party has it, and Pell's Teapot's +1 on that die.
  *
  *   - `[sheet: op="rest" rest="short" dice="2"]` spends two hit dice, rolls each (the hit die field's
@@ -7,7 +7,7 @@
  *   - The party's best extra die is added once to everybody who spends any, with its holder's bonus.
  *   - Too few dice, or a rest without dice, is refused and changes nothing.
  *   - The tag is written back with its dice; the GM is told about them; the install gate.
- *   - Over several pools (1.336), each its own die: from the pool named, else the first listed that
+ *   - Over several pools (1.337), each its own die: from the pool named, else the first listed that
  *     has any, then the next; the extra die still once.
  */
 import assert from "node:assert/strict";
@@ -140,12 +140,12 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.334 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(333) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(334) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(333) as never, document(false)), gate);
+    "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.335 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(334) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(335) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(334) as never, document(false)), gate);
 
-  // ── Several pools, each its own die (1.336): a fighter 1 / wizard 1 has one d10 and one d6 ──
+  // ── Several pools, each its own die (1.337): a fighter 1 / wizard 1 has one d10 and one d6 ──
   {
     const multi = (() => {
       const doc = document(false);
@@ -227,13 +227,13 @@ try {
     assert.equal(tagged.live.ada?.pools?.hp?.value, 16, JSON.stringify(tagged.outcomes));
     assert.ok(tagged.content.includes('pool="hit_dice_d6"'), tagged.content);
     const severalGate =
-      "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.336 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(335) as never, multi), severalGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(336) as never, multi), severalGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(335) as never, document()), severalGate);
+      "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.337 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(336) as never, multi), severalGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(337) as never, multi), severalGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(336) as never, document()), severalGate);
   }
 
-  // ── The Teapot carried (1.336): an `itemStat` in the extra die's add reads what its holder carries ──
+  // ── The Teapot carried (1.337): an `itemStat` in the extra die's add reads what its holder carries ──
   {
     const doc = document();
     doc.items = {

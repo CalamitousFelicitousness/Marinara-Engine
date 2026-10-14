@@ -127,7 +127,7 @@ function amountOf(amount: RulesetCatalogMechanics["amount"]): RulesetCombatAmoun
 // ── Reading a combatant ──
 
 /**
- * The round whose lair action this combatant may take right now (Capability API 1.314), or null.
+ * The round whose lair action this combatant may take right now (Capability API 1.315), or null.
  * Its lair's count comes once a round, after everybody at that count or above it and before
  * anybody below it: between the two turns it falls between, before the very first turn when
  * everybody is below it, or after the last when nobody is. A round that throws initiative again
@@ -397,7 +397,7 @@ function sourceWithin(
   return rulesetGap(combatant, source) <= rulesetInCells(distance, combat.distance.perCell);
 }
 
-/** Whether somebody stands within `within` of a standing prop named `prop`, by id or label (1.330). A fight with
+/** Whether somebody stands within `within` of a standing prop named `prop`, by id or label (1.331). A fight with
  *  no board, or somebody off it, counts as near. */
 function nearProp(
   combatant: RulesetCombatant,
@@ -410,7 +410,7 @@ function nearProp(
 }
 
 /** A prop's label or id loosely: lower case, a leading "the" dropped, and only letters and digits
- *  kept, so "Year-Wheel", "year wheel" and "The Year-Wheel" are one prop (1.331). */
+ *  kept, so "Year-Wheel", "year wheel" and "The Year-Wheel" are one prop (1.332). */
 function looseProp(name: string): string {
   return name
     .trim()
@@ -426,7 +426,7 @@ export function rulesetPropNamed(prop: { id: string; label: string }, name: stri
 }
 
 /** Whether somebody stands within `cells` of a standing prop of the board named `prop`, by its id or
- *  its label (1.330, 1.331). Never off a board. */
+ *  its label (1.331, 1.332). Never off a board. */
 export function rulesetNearProp(
   state: RulesetEncounterState,
   combatant: RulesetCombatant,
@@ -630,12 +630,12 @@ export function rulesetTargetIs(
   );
 }
 
-/** Whether somebody has begun their turn this round (1.326), the one going on included. */
+/** Whether somebody has begun their turn this round (1.327), the one going on included. */
 export function rulesetActedThisRound(state: RulesetEncounterState, id: string): boolean {
   return !!state.acted?.includes(id);
 }
 
-/** Whether an action may be pointed at or catch this combatant, by what it is (1.167). */
+/** Whether an action may be pointed at or catch this combatant, by what it is (1.168). */
 export function rulesetTargetTypesAllow(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -1658,8 +1658,8 @@ function lastChargeDie(
   };
 }
 
-/** A zone as a fight holds it (1.171), in cells: a catalog entry's, an item use's, or a creature
- *  action's (1.323). */
+/** A zone as a fight holds it (1.172), in cells: a catalog entry's, an item use's, or a creature
+ *  action's (1.324). */
 export function rulesetZoneAction(
   zone: RulesetCatalogZone,
   perCell: number | undefined,
@@ -1751,7 +1751,7 @@ export function rulesetZoneAction(
       ...(zone.obscures.darkness ? { darkness: true as const } : {}),
     };
   }
-  // The light it sheds (1.296), in cells; and the magical darkness it ends.
+  // The light it sheds (1.297), in cells; and the magical darkness it ends.
   const lights = zone.lights;
   if (lights) {
     out.lights = {
@@ -1811,7 +1811,7 @@ export function rulesetZoneAction(
   return out;
 }
 
-/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.78). */
+/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.79). */
 export const RULESET_FAKE_EFFECT_KEYS = [
   "toHit",
   "ability",
@@ -2333,7 +2333,7 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
   // One that leaves an area standing (1.178: Fog Cloud, Darkness) is set down wherever its caster
   // likes, and off a board held on whoever it is cast on.
-  // So is one that clears growth from an area (1.317): Prune, a pair of shears.
+  // So is one that clears growth from an area (1.318): Prune, a pair of shears.
   if (mechanics.kind === "utility" && (mechanics.zone || mechanics.clears) && mechanics.area) {
     return { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
   }
@@ -2444,9 +2444,9 @@ function mechanicsAction(
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
   // And so is leaving an area standing that only hides or blocks (1.178).
   const places = !!mechanics.zone && !!mechanics.area;
-  // Clearing growth from an area is as well (1.317).
+  // Clearing growth from an area is as well (1.318).
   const clears = !!mechanics.clears && !!mechanics.area;
-  // Spent when its holder's roll fails is something to resolve too (1.248): Indomitable.
+  // Spent when its holder's roll fails is something to resolve too (1.249): Indomitable.
   if (
     mechanics.kind === "utility" &&
     !mechanics.gives &&
@@ -2642,7 +2642,7 @@ function mechanicsAction(
   // Never on its own user (1.256).
   if (mechanics.notSelf) action.notSelf = true;
   if (mechanics.targetsUpTo) action.targetsUpTo = mechanics.targetsUpTo;
-  // Clears growth where it lands (1.317).
+  // Clears growth where it lands (1.318).
   if (mechanics.clears) action.clears = mechanics.clears;
   if (mechanics.oncePerTarget) action.oncePerTarget = { until: mechanics.oncePerTarget.until };
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
@@ -2692,13 +2692,13 @@ function mechanicsAction(
   // Made again while concentrated on (1.310): Vampiric Touch.
   if ("repeats" in mechanics && mechanics.repeats) action.repeats = { ...mechanics.repeats };
   if (mechanics.usableIn) action.usableIn = { light: [...mechanics.usableIn.light] };
-  // Only beside a prop (1.331): a verse sung at the Year-Wheel.
+  // Only beside a prop (1.332): a verse sung at the Year-Wheel.
   if (mechanics.usableNear && perCell !== undefined)
     action.usableNear = {
       prop: mechanics.usableNear.prop,
       within: rulesetInCells(mechanics.usableNear.within, perCell),
     };
-  // Sent out of the fight (1.235): Dismissal, Banishment.
+  // Sent out of the fight (1.236): Dismissal, Banishment.
   if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
   if (mechanics.stabilizes) action.stabilizes = true;
   if (mechanics.tracks) action.tracks = mechanics.tracks.map((entry) => ({ ...entry }));
@@ -3195,7 +3195,7 @@ function blockActions(
       action.search ||
       action.standard ||
       action.sheds !== undefined ||
-      // Calling creatures, and nothing aimed (1.324).
+      // Calling creatures, and nothing aimed (1.325).
       (action.calls && !action.area && !action.damage)
         ? { side: "self" as const, count: 0 }
         : {
@@ -3247,12 +3247,12 @@ function blockActions(
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.reaps ? { reaps: true as const } : {}),
-    // An area that stays, and the ground changed (1.323): The Owed's Freezing Fog, a bonfire guttering.
+    // An area that stays, and the ground changed (1.324): The Owed's Freezing Fog, a bonfire guttering.
     ...(action.zone ? { zone: rulesetZoneAction(action.zone, perCell) } : {}),
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
-    // Whisper a Name (1.325).
+    // Whisper a Name (1.326).
     ...(action.draws ? { draws: { ...action.draws } } : {}),
-    // The Hour Bell, and the Litany broken (1.326).
+    // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
     ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
@@ -3974,31 +3974,31 @@ export interface RulesetEncounterInput {
     /** The light it is fought in, and the kind of place it is (1.291). */
     light?: RulesetBoardLight;
     environment?: string;
-    /** The board pack it is drawn with (1.332), by library id; none for its environment's. */
+    /** The board pack it is drawn with (1.333), by library id; none for its environment's. */
     pack?: string;
-    /** What stands on it that may be broken (1.315): a jar, a lantern, a door. Its cells off the
+    /** What stands on it that may be broken (1.316): a jar, a lantern, a door. Its cells off the
      *  board are dropped, and one with none on it is left out; its `defense` is 10 when not said. */
     props?: RulesetBoardPropInput[];
-    /** What the board does on its own each round (1.317), and what burns and cuts its growth. */
+    /** What the board does on its own each round (1.318), and what burns and cuts its growth. */
     events?: RulesetBoardEventInput[];
     growth?: { burnedBy?: string[]; cutBy?: string[] };
-    /** What lies on its cells from the start (1.317), by "x,y": growth, light, fog, a season. */
+    /** What lies on its cells from the start (1.318), by "x,y": growth, light, fog, a season. */
     ground?: Record<string, TacticalGroundCell>;
-    /** What standing in some light does here (1.318): Noonfield's. Bright light and sunlight, every
+    /** What standing in some light does here (1.319): Noonfield's. Bright light and sunlight, every
      *  round end, when it does not say. */
     lightRule?: Partial<RulesetBoardLightRule>;
   };
   /** Who is caught unaware as it begins (1.237): no move or action on their first turn, and no
    *  reaction until it ends. One whose conditions say they cannot be surprised is not. */
   surprised?: string[];
-  /** Who fights in its own lair (1.314): its lair actions are taken on its lair count. */
+  /** Who fights in its own lair (1.315): its lair actions are taken on its lair count. */
   inLair?: string[];
-  /** Held Ground (1.322): whoever reaches no health here is felled instead. A `condition` the fight
+  /** Held Ground (1.323): whoever reaches no health here is felled instead. A `condition` the fight
    *  does not know and `marks` on a track the sheet does not have are dropped. */
   heldGround?: RulesetHeldGround;
 }
 
-/** A prop as a fight is handed it (1.315): its health is what it starts with, and at most. */
+/** A prop as a fight is handed it (1.316): its health is what it starts with, and at most. */
 export interface RulesetBoardPropInput {
   id?: string;
   label: string;
@@ -4010,14 +4010,14 @@ export interface RulesetBoardPropInput {
   immune?: string[];
   blocks?: { move?: boolean; sight?: boolean };
   fragile?: boolean;
-  /** Lit again by somebody beside it (1.331): `light` on every cell within `squares` of it, for
+  /** Lit again by somebody beside it (1.332): `light` on every cell within `squares` of it, for
    *  `budget` ("action" when not said). */
   relight?: { light: "bright" | "dim" | "sunlight"; squares: number; budget?: string };
-  /** Its sprite in the board's pack (1.332), `bp_<name>`; `bp_<name>_broken` once broken. */
+  /** Its sprite in the board's pack (1.333), `bp_<name>`; `bp_<name>_broken` once broken. */
   art?: string;
 }
 
-/** The props a board is handed (1.315), as a fight keeps them: on the board, each with health. */
+/** The props a board is handed (1.316), as a fight keeps them: on the board, each with health. */
 export function rulesetBoardProps(grid: TacticalGrid, props: RulesetBoardPropInput[] | undefined): RulesetBoardProp[] {
   const used = new Set<string>();
   const words = (list: string[] | undefined) =>
@@ -4338,13 +4338,13 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (out.length) combatant.surpriseOut = [...new Set(out)];
   };
   for (const id of input.surprised ?? []) surprise(id);
-  // In its lair (1.314), a creature with lair actions takes them on its lair's count.
+  // In its lair (1.315), a creature with lair actions takes them on its lair's count.
   for (const id of new Set(input.inLair ?? [])) {
     const combatant = rulesetCombatant(state, id);
     if (!combatant?.actions.some((action) => action.lair)) continue;
     combatant.lair = { at: combatant.block?.lairInitiative ?? 20 };
   }
-  // Who a creature's action calls (1.324), found now in the ruleset's catalogs or the fight's
+  // Who a creature's action calls (1.325), found now in the ruleset's catalogs or the fight's
   // bestiary: one nobody can find calls nobody.
   const callable = (): RulesetCatalogEntriesById => {
     const all: RulesetCatalogEntriesById = {};
@@ -4374,7 +4374,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       };
     });
   }
-  // Held Ground (1.322): nobody dies here.
+  // Held Ground (1.323): nobody dies here.
   const held = heldGroundOf(definition, input.heldGround);
   if (held) state.heldGround = held;
 
@@ -4523,14 +4523,14 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     ...(surprised.length ? ([{ type: "surprised", actorIds: surprised }] as RulesetCombatEvent[]) : []),
     ...extraTurns,
     { type: "round", round: 1 },
-    // A board event at round 1's start (1.317) happens as the fight begins: a board opening dark.
+    // A board event at round 1's start (1.318) happens as the fight begins: a board opening dark.
     ...rulesetRunBoardEvents(state, "round-start", 1),
     ...(state.order[state.turn]
       ? ([{ type: "turn", actorId: state.order[state.turn], round: 1 }] as RulesetCombatEvent[])
       : []),
   ];
   const first = currentRulesetActor(state);
-  // Whose turn has begun this round (1.326): the first one's, as the fight begins.
+  // Whose turn has begun this round (1.327): the first one's, as the fight begins.
   if (first) state.acted = [first.id];
   if (first) {
     const waiting = [...new Set(state.order)].filter((id) => {
@@ -4892,7 +4892,7 @@ export function rulesetAuraReaches(
   return true;
 }
 
-/** How far an aura reaches now (1.319), in the ruleset's distance: grown as its holder's turns
+/** How far an aura reaches now (1.320), in the ruleset's distance: grown as its holder's turns
  *  started, to no more than it grows to. */
 export function rulesetAuraDistance(
   holder: RulesetCombatant,
@@ -4934,7 +4934,7 @@ export function rulesetSyncAuras(
   const spreading = rulesetAuraSpreaders(definition, state);
   for (const target of state.combatants) {
     const want = new Map<string, string>();
-    // What lingers once its holder parts (1.319), by condition.
+    // What lingers once its holder parts (1.320), by condition.
     const lingers = new Set<string>();
     if (!target.defeated) {
       for (const { holder, aura, condition: spreads } of spreading) {
@@ -4961,7 +4961,7 @@ export function rulesetSyncAuras(
         entry.source = by;
         continue;
       }
-      // Left on until their next turn starts (1.319): Frost Debt's no healing.
+      // Left on until their next turn starts (1.320): Frost Debt's no healing.
       if (lingers.has(entry.condition) && !target.defeated) {
         delete entry.aura;
         entry.lingering = true;
@@ -5087,7 +5087,7 @@ function placeRulesetCombatants(
   // nearest such place to where they were asked to stand.
   // The big are set down first, and anybody of one cell asked to stand inside one of them steps
   // aside to the nearest open cell; nobody else moves from where they were asked to stand.
-  // Nobody stands inside a prop that closes its cells (1.315): asked to, they step aside.
+  // Nobody stands inside a prop that closes its cells (1.316): asked to, they step aside.
   const props = rulesetBoardProps(grid, board.props);
   const taken = new Set<string>(
     props.filter((prop) => prop.blocks?.move).flatMap((prop) => prop.cells.map((cell) => `${cell.x},${cell.y}`)),
@@ -5136,7 +5136,7 @@ function placeRulesetCombatants(
       ? { levelCells: rulesetInCells(combat.elevation.levelHeight, combat.distance.perCell) }
       : {}),
   };
-  // What the props close, closed from the start (1.315); a wall cast later is added to it.
+  // What the props close, closed from the start (1.316); a wall cast later is added to it.
   const walls: Record<string, number> = {};
   for (const prop of props) {
     const bits = (prop.blocks?.move ? 1 : 0) | (prop.blocks?.sight ? 2 : 0);
@@ -5144,7 +5144,7 @@ function placeRulesetCombatants(
       walls[`${cell.x},${cell.y}`] = (walls[`${cell.x},${cell.y}`] ?? 0) | bits;
   }
   if (Object.keys(walls).length > 0) state.board.grid = { ...grid, walls };
-  // What lies on the cells from the start (1.317), only on the board and only what a cell holds.
+  // What lies on the cells from the start (1.318), only on the board and only what a cell holds.
   const ground = groundOf(grid, board.ground);
   if (ground) state.board.grid = { ...state.board.grid, ground };
 }
@@ -5182,7 +5182,7 @@ export function rulesetCopyDispersed(dispersed: true | { after: number }): true 
   return dispersed === true ? true : { after: dispersed.after };
 }
 
-/** Held Ground as a fight keeps it (1.322): its condition when the fight knows it, and its marks on
+/** Held Ground as a fight keeps it (1.323): its condition when the fight knows it, and its marks on
  *  tracks the sheet has. */
 function heldGroundOf(definition: RulesetDefinition, held: RulesetHeldGround | undefined): RulesetHeldGround | null {
   if (!held || typeof held !== "object") return null;
@@ -5202,7 +5202,7 @@ function heldGroundOf(definition: RulesetDefinition, held: RulesetHeldGround | u
   };
 }
 
-/** A board's light rule as a fight keeps it (1.318): one that does something, to the tracks and
+/** A board's light rule as a fight keeps it (1.319): one that does something, to the tracks and
  *  conditions the ruleset has. Bright light and sunlight, every round end, when it does not say. */
 function lightRuleOf(
   definition: RulesetDefinition,
@@ -5226,7 +5226,7 @@ function lightRuleOf(
   );
   if (!inLight.length || (!tracks.length && !applies.length)) return null;
   const rounds = Number.isInteger(rule.rounds) && rule.rounds! >= 1 ? rule.rounds! : 1;
-  // Its save (1.320), against the conditions the fight knows and any damage it names.
+  // Its save (1.321), against the conditions the fight knows and any damage it names.
   const save =
     rule.save && typeof rule.save.save === "string" && rule.save.save.trim() && Number.isInteger(rule.save.difficulty)
       ? rule.save

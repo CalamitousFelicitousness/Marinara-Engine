@@ -76,7 +76,7 @@ function PartyAvatar({ visual, className }: { visual: PartyMemberVisual; classNa
     );
   }
 
-  // No picture of their own: their pixel bust from the portraits pack (1.337), else their initial.
+  // No picture of their own: their pixel bust from the portraits pack (1.338), else their initial.
   return (
     <ArtIcon
       kind="portraits"

@@ -1,5 +1,5 @@
 /**
- * Creatures called into a fight (Capability API 1.324): the Owed's Jars Burst, two Unreaped
+ * Creatures called into a fight (Capability API 1.325): the Owed's Jars Burst, two Unreaped
  * zombies; Shelves Lean's specters. Built as the fight built its own, on their caller's side, set
  * down in the area the call was aimed at or as near it as they fit (beside their caller without
  * one), and given their turns: their own initiative, or right after their caller.
@@ -109,14 +109,14 @@ export function rulesetCallCreatures(
     }
     order.splice(place, 0, combatant.id);
     if (place <= state.turn) state.turn += 1;
-    // A turn put in after another (1.319) is where it was.
+    // A turn put in after another (1.320) is where it was.
     if (state.interjected !== undefined && place <= state.interjected) state.interjected += 1;
   }
   return came.map((combatant) => combatant.id);
 }
 
 /** Where the turn that was `before`'s stands in `after`'s order, once anybody called has joined it
- *  (1.324): the same turn, however many were set in front of it. */
+ *  (1.325): the same turn, however many were set in front of it. */
 export function rulesetTurnAfterCalls(before: RulesetEncounterState, after: RulesetEncounterState): number {
   const was = new Set(before.order);
   let passed = 0;

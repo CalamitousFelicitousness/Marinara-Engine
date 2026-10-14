@@ -1138,9 +1138,37 @@ const capabilityPackageManifestBaseSchema = z
 //        others worn.
 // 1.314: a condition that shuts its holder away from everybody else, and an entry aimed only at creatures up
 //        to a size.
-// 1.338: the Game Master's intro message, part of the GM setup and a story's `intro`: defined is the game's
+// 1.315: a creature's lair actions, taken on its lair's count.
+// 1.316: props: what stands on a board that may be broken, and attacks pointed at them.
+// 1.317: Legendary Resistance, and an item use's `targetsUpTo`.
+// 1.318: board events and growth, and an entry or an item use that clears growth.
+// 1.319: a light that sheds shade, something that alerts (chimes), and a creature held still by light.
+// 1.320: an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free and
+//        hanging on.
+// 1.321: a save against a board's light rule, and how far it moves a track at most.
+// 1.322: an item use taken as a reaction.
+// 1.323: Held Ground, and a blow that reaps.
+// 1.324: a creature action that leaves an area standing or changes the ground, and an area that lasts until
+//        the next lair action.
+// 1.325: a creature action that calls creatures into the fight.
+// 1.326: a creature action that draws whoever it lands on toward it.
+// 1.327: lair timing: a creature action only at whoever has acted this round, a broken concentration that
+//        picks the next lair action, and a condition lasting until the next lair action.
+// 1.328: a condition that moves the difficulty of the saves its holder calls for.
+// 1.329: a board event that carries what obscures and whoever stands on the ground toward an edge.
+// 1.330: Held Ground let go in the middle of a fight, and marks coming due.
+// 1.331: a condition held only near a prop, an area around props, and an aura that feeds on the felled.
+// 1.332: a prop lit again, a use only beside a prop, and a change to the ground that leaves whoever stands
+//        there in it.
+// 1.333: fight-board art: the board pack a fight is drawn with, and a lasting area drawn with its own art.
+// 1.334: an item use that gives its user more of the turn.
+// 1.335: a rest that spends dice to heal (5e's Hit Dice).
+// 1.336: a broken concentration that picks one of a list of lair actions.
+// 1.337: a rest that spends dice from several pools.
+// 1.338: icons on a catalog entry or a condition, and portraits, from packs of their own kind.
+// 1.339: the Game Master's intro message, part of the GM setup and a story's `intro`: defined is the game's
 //        first message exactly, guided only shapes it; an Experience may lock its own.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 338 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 339 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

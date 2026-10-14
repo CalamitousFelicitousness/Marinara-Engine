@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Icons for a ruleset's things (Capability API 1.337): which tile of the game's icons pack a condition,
+// Icons for a ruleset's things (Capability API 1.338): which tile of the game's icons pack a condition,
 // an item or any catalog entry is drawn with. The ruleset's own `icon` first, else the name derived from
 // its ids (`ic_cond_<id>`, `ic_item_<id>`, `ic_<catalog>_<entry>`). The client draws the first of these the
 // icons pack has, and today's look when it has none.

@@ -97,7 +97,7 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
   if (gone.length > 0) {
     lines.push(`Got away: ${gone.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ")}`);
   }
-  // What the fight broke (1.315): the story goes on with it broken.
+  // What the fight broke (1.316): the story goes on with it broken.
   if (summary.broken?.length) lines.push(`Broken: ${summary.broken.join("; ")}`);
   lines.push(
     `Sheets: the ${definition.name} sheets were kept up to date while the fight ran, so every cost is already paid. Do not change those numbers again.`,

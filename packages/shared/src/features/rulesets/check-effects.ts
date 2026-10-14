@@ -89,7 +89,7 @@ export interface RulesetCheckSource {
   senses?: Readonly<Record<string, number | { add: number }>>;
   /** The light it sheds for its holder (Capability API 1.294). */
   light?: Readonly<{ bright: number; dim: number }>;
-  /** How near it gives away whoever moves unseen (Capability API 1.318). */
+  /** How near it gives away whoever moves unseen (Capability API 1.319). */
   alerts?: number;
 }
 

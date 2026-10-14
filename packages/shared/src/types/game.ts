@@ -223,7 +223,7 @@ export interface GameSetupConfig {
   gmMode: GameGmMode;
   /** Content rating: sfw or nsfw */
   rating: "sfw" | "nsfw";
-  /** The Game Master's intro message (Capability API 1.338), stored as `chat.metadata.gameIntro`: defined
+  /** The Game Master's intro message (Capability API 1.339), stored as `chat.metadata.gameIntro`: defined
    *  (the first message, exactly) or guided, or `{ mode: "none" }`. Absent is the Experience's own. An
    *  Experience's locked intro wins over it. */
   gameIntro?: import("../features/world/game-intro.js").GameIntroChoice;

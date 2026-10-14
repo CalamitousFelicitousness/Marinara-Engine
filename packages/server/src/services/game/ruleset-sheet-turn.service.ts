@@ -139,7 +139,7 @@ export async function loadGameRulesetSheetContext(
   const persona = roomHostIdentity() ?? (personaId ? await createCharactersStorage(db).getPersona(personaId) : null);
   const playerName = persona?.name?.trim() || null;
   const built = sheetCommandCards(pinned.definition, cards);
-  // What each one carries, where the ruleset reads items (1.336): a rest's dice read Pell's Teapot.
+  // What each one carries, where the ruleset reads items (1.337): a rest's dice read Pell's Teapot.
   const stacks = normalizeGameInventoryStacks(meta.gameInventory);
   if (rulesetReadsItems(pinned.definition) && stacks.some((stack) => stack.item)) {
     // Imported here: the inventory service reads this module's cards.

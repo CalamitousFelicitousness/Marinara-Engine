@@ -249,7 +249,15 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     await expect(cancel).toBeVisible();
     await expect(maker.getByText("Keep this page open until it's done. Leaving it works like Cancel.")).toBeVisible();
     await expect(maker.getByRole("alert")).toHaveCount(0);
+    const serverCancel = page.waitForRequest(
+      (sent) => new URL(sent.url()).pathname === "/api/avatar-generation/cancel",
+    );
     await cancel.click();
+    // The server is told too, since a proxy can keep its side of a closed stream going.
+    expect((await serverCancel).postDataJSON()).toEqual({
+      owner: { ownerType: "character", ownerId: character.id },
+      kind: "vrm",
+    });
     await expect(
       maker.getByText("Stopped. Tripo may still finish the step it was on and charge for it."),
     ).toBeVisible();

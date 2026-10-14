@@ -6,9 +6,8 @@
 // (mesh-layer-builder.ts) cuts the layers, and the result is packed as a `.mavatar` that blinks and talks
 // with mesh-avatar's own eyelids and mouth. Generating returns a draft and stores nothing; saving checks
 // the archive with the 2D importer (formats/mavatar.ts) like any import and stores it through
-// services/avatars/storage.ts. No Python, OpenCV or GPU. The layers are cut from the sprite's cut-out
-// (services/avatars/cutouts.ts), so the avatar has no background. Every prompt is logged with
-// logDebugOverride (debugMode / DEBUG_AGENTS).
+// services/avatars/storage.ts. No Python, OpenCV or GPU. Every prompt is logged with logDebugOverride
+// (debugMode / DEBUG_AGENTS).
 import {
   AVATAR_PROMPT_TEMPLATE_IDS,
   AvatarImportError,
@@ -50,7 +49,7 @@ import {
   type MeshRig,
   type MeshRigLayout,
 } from "./mesh-rig-layout.js";
-import { spriteCutout, type AvatarGenerationOptions } from "./pngtuber-variants.js";
+import type { AvatarGenerationOptions } from "./pngtuber-variants.js";
 
 /** A built mesh avatar that is not stored yet. */
 export interface MeshRigDraft {
@@ -248,10 +247,7 @@ export async function generateMeshRig(
   const job = async (signal: AbortSignal) => {
     const debug = avatarGenerationDebug(request.debugMode);
     const [owner, agent] = await Promise.all([readAvatarOwnerInfo(db, request.owner), readAvatarAgentSettings(db)]);
-    const sprite = await spriteCutout(
-      request.owner,
-      await readAvatarSourceSprite(request.owner.ownerId, request.sourceLabel),
-    );
+    const sprite = await readAvatarSourceSprite(request.owner.ownerId, request.sourceLabel);
     signal.throwIfAborted();
     let source = await meshSource(sprite);
     let layout = await requestMeshRigLayout({

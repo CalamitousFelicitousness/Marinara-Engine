@@ -15,7 +15,9 @@ import type { TFunction } from "i18next";
  * Game Master's prompt and therefore has to stay in English.
  */
 export function rulesetCheckValueText(definition: RulesetDefinition, value: number, t: TFunction): string {
-  if (definition.resolution.kind === "dice-pool") return t("game.ruleset.check.dice", { count: value });
+  const kind = definition.resolution.kind;
+  if (kind !== "dice-sum" && kind !== "roll-against" && kind !== "symbol-pool")
+    return t("game.ruleset.check.dice", { count: value });
   return formatRulesetCheckValue(definition, value);
 }
 
@@ -27,6 +29,61 @@ export function rulesetRulesSummary(definition: RulesetDefinition, t: TFunction)
   const resolution = definition.resolution;
   if (resolution.kind === "dice-sum") {
     return [t("game.ruleset.import.resolutionDiceSum", { dice: `${resolution.dice.count}d${resolution.dice.sides}` })];
+  }
+  if (resolution.kind === "symbol-pool") {
+    return [
+      t(resolution.pool.build === "sum" ? "game.ruleset.rules.symbolSum" : "game.ruleset.rules.symbolPool"),
+      t("game.ruleset.rules.symbolSuccess", {
+        needed: resolution.success.needed,
+        symbol: resolution.symbols.find((symbol) => symbol.id === resolution.success.symbol)?.label,
+      }),
+      t("game.ruleset.rules.symbolDifficulty", { max: resolution.difficulty.max }),
+    ];
+  }
+  if (resolution.kind === "roll-against") {
+    // Against the sheet's number (1.139): which way, on what dice, and what changes the number.
+    const dice = `${resolution.dice.count}d${resolution.dice.sides}`;
+    const lines = [
+      t(resolution.against === "at-most" ? "game.ruleset.rules.againstAtMost" : "game.ruleset.rules.againstAtLeast", {
+        dice,
+      }),
+    ];
+    if (resolution.difficultyLadder.some((step) => "divide" in step && step.divide)) {
+      lines.push(t("game.ruleset.rules.againstDivide"));
+    }
+    if (resolution.criticalSuccess || resolution.criticalFailure) lines.push(t("game.ruleset.rules.againstCriticals"));
+    if (resolution.tens) lines.push(t("game.ruleset.rules.againstTens", { max: resolution.tens.max }));
+    return lines;
+  }
+  if (resolution.kind === "dice-highest") {
+    // Keep the highest (1.138): one line for the read, then each rule the file turned on.
+    const sides = resolution.die.sides;
+    const lines = [
+      resolution.keep === 1
+        ? t("game.ruleset.rules.highest", { sides })
+        : t("game.ruleset.rules.highestKeep", { sides, keep: resolution.keep }),
+      t(resolution.zeroDice === "fail" ? "game.ruleset.rules.zeroFail" : "game.ruleset.rules.zeroLowest"),
+    ];
+    if (resolution.critical) {
+      lines.push(
+        t("game.ruleset.rules.highestCritical", {
+          count: resolution.critical.count,
+          face: resolution.critical.face ?? sides,
+        }),
+      );
+    }
+    if (resolution.dark) {
+      lines.push(t("game.ruleset.rules.dark", { max: resolution.dark.max, label: resolution.dark.label }));
+    }
+    if (resolution.situationalDice) {
+      lines.push(
+        t("game.ruleset.rules.situational", {
+          min: resolution.situationalDice.min,
+          max: resolution.situationalDice.max,
+        }),
+      );
+    }
+    return lines;
   }
   const sides = resolution.die.sides;
   const lines: string[] = [

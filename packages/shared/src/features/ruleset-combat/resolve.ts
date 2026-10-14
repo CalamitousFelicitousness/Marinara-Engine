@@ -63,6 +63,9 @@ import {
   rulesetLairRound,
   rulesetCombatFailsSave,
   rulesetCombatDamageKind,
+  rulesetCombatValue,
+  rulesetDamageMinimum,
+  rulesetTargetDamageKind,
   rulesetCombatHealth,
   rulesetCombatStanding,
   rulesetDamageInEffect,
@@ -504,13 +507,15 @@ function throwHarm(
   extra?: { amount: RulesetCombatAmount; times: number },
   /** Whether the target's soak is taken off at all. A spending blow's harm is never soaked. */
   withSoak = true,
+  attack?: { minimum?: number; qualities?: readonly string[] },
 ): {
   rolls: number[];
   flat: number;
   total: number;
   pool: NonNullable<RulesetDamageInput["pool"]>;
 } {
-  const kind = ctx.combat.damageKinds ? rulesetCombatDamageKind(ctx.combat, damageType) : undefined;
+  const mapped = rulesetTargetDamageKind(ctx.definition, ctx.combat, target, damageType, attack?.qualities);
+  const kind = mapped.kind;
   const soak = withSoak ? rulesetSoakOf(target, kind) : 0;
   const rule = ctx.combat.pool?.soak;
   let dice = amount.count + extraDice + (extra && extra.times > 0 ? extra.amount.count * extra.times : 0);
@@ -521,6 +526,8 @@ function throwHarm(
     dice -= taken;
     soaked = { value: soak, taken };
   }
+  const minimum = withSoak ? attack?.minimum : undefined;
+  if (minimum !== undefined) dice = Math.max(dice, minimum);
   const thrown = throwRulesetDamageDice(ctx.definition, ctx.combat, ctx.roll, dice);
   const counted = thrown.successes + Math.max(0, flat);
   let total = counted;
@@ -535,7 +542,13 @@ function throwHarm(
     rolls: thrown.rolls,
     flat: Math.max(0, flat),
     total,
-    pool: { target: thrown.target, successes: counted, ...(soaked ? { soak: soaked } : {}) },
+    pool: {
+      target: thrown.target,
+      successes: counted,
+      ...(soaked ? { soak: soaked } : {}),
+      ...(minimum !== undefined ? { minimum } : {}),
+      ...(mapped.remappedFrom !== undefined ? mapped : {}),
+    },
   };
 }
 
@@ -688,7 +701,8 @@ function applyDamage(
   const toTemp = Math.min(before.temp, dealt);
   if (dealt > 0) {
     if (target.sheet) {
-      if (!deferWound) writeHealthLoss(ctx, target, dealt, input.damageType, input.seals, input.lasting);
+      if (!deferWound)
+        writeHealthLoss(ctx, target, dealt, input.damageType, input.seals, input.lasting, input.pool?.kind);
     } else if (target.health) {
       target.health.temp = before.temp - toTemp;
       const value = Math.max(0, before.value - (dealt - toTemp));
@@ -782,6 +796,7 @@ function writeHealthLoss(
   seals?: true,
   /** Not even with a rest (1.203). */
   lasting?: true,
+  kind?: string,
 ): void {
   const health = ctx.combat.health;
   if (!("track" in health)) {
@@ -801,7 +816,7 @@ function writeHealthLoss(
   markWound(ctx, target, {
     op: "damage",
     track: health.track,
-    kind: rulesetCombatDamageKind(ctx.combat, damageType),
+    kind: kind ?? rulesetCombatDamageKind(ctx.combat, damageType),
     ...(indexed ? { amount: 1, box: perPoint } : { amount: perPoint }),
   });
 }
@@ -2060,6 +2075,7 @@ function removeCondition(
     | "worsened"
     | "dispelled",
 ): void {
+  if (target.dazed?.condition === condition) return;
   const removed = target.tracked.find((entry) => entry.condition === condition);
   // Already gone, with what it was put on with (1.202): a loop over a list read before that is not
   // told twice.
@@ -5302,6 +5318,9 @@ export function liftRulesetFightEffects(
       if (entry.endsWith === condition) lift(combatant, entry.condition, "linked");
   };
   for (const combatant of state.combatants) {
+    const dazed = combatant.dazed;
+    delete combatant.dazed;
+    if (dazed?.condition) lift(combatant, dazed.condition, "expired");
     // What an aura spread or the fight kept on (1.263) was never on a sheet, so it simply goes.
     if (combatant.tracked.some((entry) => entry.aura || entry.kept)) {
       combatant.tracked = combatant.tracked.filter((entry) => !entry.aura && !entry.kept);
@@ -8862,6 +8881,14 @@ function resolveActionBody(
     // Everything this blow is made of: the first amount, and every clause beside it. Rolled and
     // typed one at a time, taken off one at a time, and finished ONCE at the end: the health the
     // target had before the FIRST of them is what decides whether the blow put them down.
+    const daze = ctx.combat.daze;
+    const dazeOver = daze ? rulesetCombatValue(ctx.definition, target, daze.over) : undefined;
+    const attack = action.damage
+      ? {
+          minimum: rulesetDamageMinimum(ctx.definition, actor, action.damage),
+          qualities: action.damage.qualities,
+        }
+      : undefined;
     let before: { value: number } | null = null;
     let dealt = 0;
     const health = ctx.combat.health;
@@ -8958,7 +8985,7 @@ function resolveActionBody(
       // A compound hit marks once, using the most severe kind that actually landed.
       if (woundTrack && partDealt > 0) {
         const kind = woundTrack.kinds?.find(
-          (entry) => entry.id === rulesetCombatDamageKind(ctx.combat, part.damageType),
+          (entry) => entry.id === (part.pool?.kind ?? rulesetCombatDamageKind(ctx.combat, part.damageType)),
         );
         if (kind && (!woundKind || kind.severity > woundKind.severity)) woundKind = kind;
       }
@@ -8990,6 +9017,7 @@ function resolveActionBody(
         0,
         undefined,
         false,
+        attack,
       );
       land({
         sourceId: actor.id,
@@ -9005,7 +9033,7 @@ function resolveActionBody(
       // Every target's damage is thrown for them, because what the hit added past its needed
       // successes and what they soak are theirs. The first amount carries the extra dice; each
       // clause and a rider is its own pool of its own kind.
-      const first = throwHarm(ctx, target, action.damage, action.damage.type, extraDice, extra);
+      const first = throwHarm(ctx, target, action.damage, action.damage.type, extraDice, extra, true, attack);
       // Never less than the weapon's floor, whatever was soaked.
       const firstTotal = Math.max(first.total, action.damage.floor ?? 0);
       land({
@@ -9030,7 +9058,7 @@ function resolveActionBody(
         if (own && clause.save?.onSuccess === "none") return;
         const clauseHalved = clause.save ? own : halved;
         const type = clause.type ?? action.damage?.type;
-        const thrown = throwHarm(ctx, target, clause, type, 0);
+        const thrown = throwHarm(ctx, target, clause, type, 0, undefined, true, { qualities: attack?.qualities });
         land({
           sourceId: actor.id,
           label: action.label,
@@ -9104,7 +9132,7 @@ function resolveActionBody(
       ctx.events.push({ type: "rider", actorId: actor.id, targetId: target.id, riderId: rider.id, label: rider.label });
       const type = rider.type ?? action.damage?.type;
       const rolled: { rolls: number[]; flat: number; total: number; pool?: RulesetDamageInput["pool"] } = pooled
-        ? throwHarm(ctx, target, rider.amount, type, 0)
+        ? throwHarm(ctx, target, rider.amount, type, 0, undefined, true, { qualities: attack?.qualities })
         : rollAmount(ctx, rider.amount);
       const bonus = critical ? criticalExtra(ctx, rider.amount) : { rolls: [], flat: 0 };
       const total = rolled.total + sumOf(bonus.rolls) + bonus.flat;
@@ -9217,6 +9245,33 @@ function resolveActionBody(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    // One hit, including its clauses, never accumulated wounds from previous hits.
+    const levels = ctx.combat.damageKinds?.marks === "per-blow" ? Math.min(1, dealt) : dealt;
+    if (before && daze && dazeOver !== undefined && levels > 0 && levels > dazeOver) {
+      // A second hit before the skipped turn adds no second skip, so it is not told again.
+      const newlyDazed = target.dazed === undefined;
+      target.dazed ??= {};
+      const condition = daze.condition;
+      if (
+        condition &&
+        !rulesetCombatConditions(ctx.definition, target).includes(condition) &&
+        !rulesetImmuneToCondition(target, condition, ctx.definition)
+      ) {
+        applyConditionId(ctx, target, condition, { condition, duration: "instant" }, { sourceId: actor.id });
+        target.dazed.condition = condition;
+      }
+      if (newlyDazed) {
+        ctx.events.push({
+          type: "daze",
+          targetId: target.id,
+          sourceId: actor.id,
+          damage: levels,
+          over: dazeOver,
+          ...(condition ? { condition } : {}),
+          ...(daze.text ? { text: daze.text } : {}),
+        });
+      }
+    }
     // Its maximum lowered to nothing (1.203), it dies.
     if (sappedDealt > 0 && !target.defeated && rulesetSealedAway(ctx, target)) {
       slay(ctx, target, actor.id, action.label);
@@ -9642,7 +9697,7 @@ function nextTurnActor(state: RulesetEncounterState): { combatant: RulesetCombat
     if (turn + 1 >= state.order.length) wraps = true;
     turn = turn + 1 >= state.order.length ? 0 : turn + 1;
     const candidate = rulesetCombatant(state, state.order[turn]!);
-    if (candidate && canTakeTurn(candidate)) return { combatant: candidate, wraps };
+    if (candidate && canTakeTurn(candidate) && !candidate.dazed) return { combatant: candidate, wraps };
   }
   return null;
 }
@@ -9729,7 +9784,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     }
     refreshRulesetMovement(definition, combat, actor, ctx.state);
     delete actor.trail;
-    ctx.events.push({ type: "turn", actorId: actor.id, round });
+    if (!actor.dazed) ctx.events.push({ type: "turn", actorId: actor.id, round });
     if (!ctx.state.acted?.includes(actor.id)) (ctx.state.acted ??= []).push(actor.id);
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
@@ -9753,6 +9808,17 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
       rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
     );
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
+    if (actor.dazed) {
+      const dazed = actor.dazed;
+      tickConditions(ctx, actor, "turn-end");
+      delete actor.dazed;
+      if (dazed.condition) removeCondition(ctx, actor, dazed.condition, "expired");
+      ctx.events.push({ type: "skip", actorId: actor.id, reason: "daze" });
+      if (rulesetEncounterOutcome(ctx.state) === "ongoing") {
+        beginNextTurn(definition, combat, ctx);
+        return;
+      }
+    }
     // What a condition's table makes of this turn (1.264), once nothing else is left to change it.
     compelTurn(ctx, actor);
     // What a delay held over is completed before anything else is done this turn.

@@ -41,7 +41,11 @@ import {
   type WrapFormat,
 } from "@marinara-engine/shared";
 import { wrapContent } from "../../services/prompt/format-engine.js";
-import { parseSceneManualOverrides, parseStoredRulesetLive } from "../../services/storage/game-state.storage.js";
+import {
+  parseSceneManualOverrides,
+  parseStoredRulesetClocks,
+  parseStoredRulesetLive,
+} from "../../services/storage/game-state.storage.js";
 import {
   appendReadableAttachmentsToContent,
   extractFileAttachmentInputs,
@@ -2107,6 +2111,7 @@ export function parseGameStateRow(row: Record<string, unknown>): GameState {
     fieldLocks,
     hiddenTrackerFields,
     rulesetLive: parseStoredRulesetLive(row.rulesetLive),
+    rulesetClocks: parseStoredRulesetClocks(row.rulesetClocks),
     createdAt: row.createdAt as string,
   };
 }

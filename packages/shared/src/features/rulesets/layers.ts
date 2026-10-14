@@ -219,7 +219,12 @@ function withLadder(
   for (const layer of layers) {
     const ladder: readonly RulesetDifficultyLadderStep[] | undefined = layer.difficultyLadder;
     if (!ladder) continue;
-    if (result.kind === "dice-sum") {
+    if (
+      result.kind === "roll-against" ||
+      result.kind === "dice-sum" ||
+      result.kind === "dice-highest" ||
+      result.kind === "symbol-pool"
+    ) {
       const steps = ladder.filter((step) => "dc" in step);
       if (steps.length === ladder.length && steps.length > 0) result = { ...result, difficultyLadder: steps };
     } else {

@@ -188,6 +188,26 @@ try {
     assert.equal(rulesetCombatant(next.state, "corwin")!.delayed, undefined);
   }
 
+  // Daze skips the next turn before a delayed action can complete (1.147 + 1.120).
+  {
+    const held = use(fight(), "Bolt", 11);
+    const snagsTurn = endTurn(held.state, "corwin");
+    rulesetCombatant(snagsTurn.state, "corwin")!.dazed = {};
+    const skipped = endTurn(snagsTurn.state, "snag");
+    assert.deepEqual(eventsOf(skipped.events, "skip"), [{ type: "skip", actorId: "corwin", reason: "daze" }]);
+    assert.deepEqual(eventsOf(skipped.events, "delay"), []);
+    assert.deepEqual(snagHurt(skipped.events), []);
+    assert.equal(rulesetCombatant(skipped.state, "corwin")!.delayed?.label, "Bolt");
+    assert.equal(rulesetCombatant(skipped.state, "corwin")!.dazed, undefined);
+    const resumed = endTurn(skipped.state, "snag");
+    assert.deepEqual(
+      eventsOf(resumed.events, "delay").map((event) => event.outcome),
+      ["completed"],
+    );
+    assert.deepEqual(snagHurt(resumed.events), [4]);
+    assert.equal(rulesetCombatant(resumed.state, "corwin")!.delayed, undefined);
+  }
+
   // ── Unable to act, it is lost ──
   {
     const held = use(fight(), "Bolt", 15);

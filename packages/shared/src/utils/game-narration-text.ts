@@ -1,3 +1,4 @@
+import { stripClockCommandTags } from "./clock-command-tag.js";
 import { stripGameBranchDelimiters } from "./dice-branch.js";
 import { stripSheetCommandTags } from "./sheet-command-tag.js";
 
@@ -152,7 +153,7 @@ export function stripGmTagsKeepReadables(content: string): string {
   // the player already read would be the worse failure.
   // The Engine resolves every sheet command and rewrites it with the outcome it actually
   // applied, so the bookkeeping is never narration.
-  text = stripSheetCommandTags(text);
+  text = stripClockCommandTags(stripSheetCommandTags(text));
   text = stripGameBranchDelimiters(text);
   // Quote-aware catch-all for unknown tags, keeping Note/Book inline.
   // Case-insensitive to match extractBalancedTags (which lowercases the prefix);

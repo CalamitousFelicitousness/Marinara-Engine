@@ -57,7 +57,8 @@ import {
   rulesetAuraSpreaders,
   rulesetCombatant,
   rulesetCombatConditions,
-  rulesetCombatDamageKind,
+  rulesetTargetDamageKind,
+  rulesetDamageMinimum,
   rulesetCombatEffects,
   rulesetCombatStanding,
   rulesetAbilityNarrowing,
@@ -2025,7 +2026,14 @@ function forecastFor(
   // harm is what its dice are worth after what the first target soaks; healing is an amount.
   if (action.damage) {
     const damage = rulesetDamageInEffect(definition, combat, actor, action.damage);
-    const average = averageHarm(definition, combat, damage, target ?? undefined, actor);
+    const average = averageHarm(
+      definition,
+      combat,
+      damage,
+      target ?? undefined,
+      actor,
+      rulesetDamageMinimum(definition, actor, damage),
+    );
     forecast.averageDamage = Math.round(average * 100) / 100;
   } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
   if (action.innate && action.use?.perCostStep && forecast.averageDamage !== undefined) {
@@ -2038,7 +2046,16 @@ function forecastFor(
         flat: damage.flat + action.use.perCostStep.flat * steps,
       };
       forecast.averageDamage =
-        Math.round(averageHarm(definition, combat, scaled, target ?? undefined, actor) * 100) / 100;
+        Math.round(
+          averageHarm(
+            definition,
+            combat,
+            scaled,
+            target ?? undefined,
+            actor,
+            rulesetDamageMinimum(definition, actor, scaled),
+          ) * 100,
+        ) / 100;
     } else forecast.averageDamage += rulesetAverageDamage(action.use.perCostStep) * steps;
   }
   if (action.damage && forecast.averageDamage !== undefined) {
@@ -2173,6 +2190,7 @@ function averageHarm(
   damage: NonNullable<RulesetCombatAction["damage"]>,
   target?: RulesetCombatant,
   actor?: RulesetCombatant,
+  minimum = 0,
 ): number {
   // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.168).
   // One of an item's switch counts only while the item is on (1.170).
@@ -2200,19 +2218,19 @@ function averageHarm(
         : {}),
     });
   }
-  const one = (amount: { count: number; flat: number }, type: string | undefined) => {
-    const kind = combat.damageKinds ? rulesetCombatDamageKind(combat, type) : undefined;
+  const one = (amount: { count: number; flat: number }, type: string | undefined, floor = 0) => {
+    const kind = target ? rulesetTargetDamageKind(definition, combat, target, type, damage.qualities).kind : undefined;
     // Soak is taken only the way the ruleset says; a fight whose pool block says nothing takes none.
     const rule = combat.pool?.soak;
     const soak = target && rule ? rulesetSoakOf(target, kind) : 0;
     const roll = rule?.roll ?? true;
-    const dice = roll ? amount.count : Math.max(0, amount.count - soak);
+    const dice = Math.max(floor, roll ? amount.count : Math.max(0, amount.count - soak));
     // Automatic successes are never fewer than none, as the fight counts them.
     const thrown = rulesetDamageAverage(definition, combat, dice) + Math.max(0, amount.flat);
     return Math.max(0, thrown - (roll ? rulesetDamageAverage(definition, combat, soak) : 0));
   };
   return (
-    one(damage, damage.type) +
+    one(damage, damage.type, minimum) +
     (damage.plus ?? []).filter(reaches).reduce((sum, clause) => sum + one(clause, clause.type ?? damage.type), 0)
   );
 }

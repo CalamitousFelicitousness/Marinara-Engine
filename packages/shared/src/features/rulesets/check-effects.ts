@@ -7,6 +7,9 @@
 // skills or saves. The check resolver rolls what comes out of here; a fight reads its own conditions.
 // ──────────────────────────────────────────────
 import type {
+  RulesetCatalogEntriesById,
+  RulesetContextualCheck,
+  RulesetContextualCost,
   RulesetCombatCondition,
   RulesetCreatureHideEntry,
   RulesetDefinition,
@@ -14,7 +17,7 @@ import type {
   RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
-import { evaluateRulesetSheetLive, readRulesetLive } from "./live-state.js";
+import { evaluateRulesetSheetLive, readRulesetLive, rulesetEntryNamed } from "./live-state.js";
 import {
   resolveRulesetValueRef,
   rulesetHeldItemDoes,
@@ -355,6 +358,146 @@ export function rulesetItemGateCheck(
     modifier: Math.trunc(base) + rulesetCheckAdjust(definition, build, evaluated, target),
     difficulty,
   };
+}
+
+/** One thing the Game Master applied to a roll by name with `apply=` (Capability API 1.156): a row
+ *  of a list that declares `contextual`, or a catalog entry with `mechanics.contextual` the character
+ *  has. Only what applies to this check is here: a row for another skill is left out. */
+export interface RulesetContextualItem {
+  name: string;
+  source: RulesetCheckSource;
+  check?: RulesetContextualCheck;
+  cost?: RulesetContextualCost;
+}
+
+// Curly and straight apostrophes and quotes read alike, so "Rook’s Gambit" is "Rook's Gambit".
+const plainText = (text: string) =>
+  text
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"');
+const sameText = (a: string, b: string) => plainText(a) === plainText(b);
+
+/** What each name the Game Master applied means on this character's sheet, for this one check. A
+ *  name no row or entry answers to, one two rows answer to, and one that does not apply to this check
+ *  are left out, so ownership alone never changes a roll. At most four names are read. */
+export function rulesetContextualItems(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  names: readonly string[],
+  target: RulesetCheckTarget | null,
+): RulesetContextualItem[] {
+  const items: RulesetContextualItem[] = [];
+  const wanted = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 4);
+  const abilityNamed = (cell: string, id: string | undefined) => {
+    const ability = id === undefined ? undefined : definition.sheet.abilities.find((each) => each.id === id);
+    return (
+      !!ability &&
+      (sameText(cell, ability.id) ||
+        sameText(cell, ability.label) ||
+        (!!ability.short && sameText(cell, ability.short)))
+    );
+  };
+  const skillMatches = (cell: unknown, abilities: boolean) => {
+    if (typeof cell !== "string" || cell.trim() === "") return true;
+    if (!target) return false;
+    // An ability named in the cell (1.213): any check rolled with it, its own ability or `with=`'s.
+    if (abilities) {
+      const rolledWith =
+        target.type === "ability" ? [target.id, target.withAbility] : [target.withAbility ?? target.ability];
+      if (rolledWith.some((id) => abilityNamed(cell, id))) return true;
+    }
+    if (target.type === "ability") return false;
+    return sameText(cell, target.id) || sameText(cell, target.label);
+  };
+  for (const name of wanted) {
+    const rows: { list: (typeof definition.sheet.lists)[number]; row: Record<string, unknown> }[] = [];
+    for (const list of definition.sheet.lists) {
+      if (!list.contextual) continue;
+      for (const row of build.lists?.[list.id] ?? []) {
+        const cell = row?.[list.contextual.name];
+        if (typeof cell === "string" && sameText(cell, name)) rows.push({ list, row: row as Record<string, unknown> });
+      }
+    }
+    let item: RulesetContextualItem | null = null;
+    if (rows.length === 1) {
+      const { list, row } = rows[0]!;
+      const contextual = list.contextual!;
+      const to = contextual.to ?? "checks";
+      if (target?.type === (to === "saves" ? "save" : "skill") || (to === "checks" && target?.type === "ability")) {
+        const skill = contextual.skill !== undefined ? row[contextual.skill] : undefined;
+        if (skillMatches(skill, !!contextual.abilities)) {
+          const bonus = contextual.bonus !== undefined ? row[contextual.bonus] : undefined;
+          const dice = contextual.dice !== undefined ? row[contextual.dice] : undefined;
+          const modifier = {
+            to,
+            ...(typeof bonus === "number" && Number.isFinite(bonus) && bonus !== 0 ? { flat: Math.trunc(bonus) } : {}),
+            ...(typeof dice === "string" && parseRulesetCombatDice(dice) ? { dice } : {}),
+          } as RulesetEffectModifier;
+          const changes = "flat" in modifier || "dice" in modifier;
+          if (changes || contextual.check)
+            item = {
+              name: String(row[contextual.name]).trim(),
+              source: { name: String(row[contextual.name]).trim(), ...(changes ? { modifiers: [modifier] } : {}) },
+              ...(contextual.check ? { check: contextual.check } : {}),
+              ...(contextual.cost ? { cost: contextual.cost } : {}),
+            };
+        }
+      }
+    } else if (rows.length === 0) {
+      const found = rulesetEntryNamed(definition, build, catalogs, name);
+      const contextual = found.ok ? found.entry.mechanics?.contextual : undefined;
+      if (found.ok && contextual) {
+        const source: RulesetCheckSource = {
+          name: found.entry.label,
+          ...(contextual.effects ? { effects: contextual.effects } : {}),
+          ...(contextual.modifiers ? { modifiers: contextual.modifiers } : {}),
+          ...(contextual.skills ? { skills: contextual.skills } : {}),
+          ...(contextual.saves ? { saves: contextual.saves } : {}),
+        };
+        const effects = rulesetCheckEffects([source], target);
+        const leans = effects.modifiers.length + effects.advantage.length + effects.disadvantage.length > 0;
+        // A pool effect is narrowed as a condition is: to the skills or saves it names, else any check.
+        const narrowedOut =
+          target?.type === "save"
+            ? !!contextual.skills || (!!contextual.saves && !contextual.saves.includes(target.id))
+            : !!contextual.saves ||
+              (!!contextual.skills && (target?.type !== "skill" || !contextual.skills.includes(target.id)));
+        const check = contextual.check && !narrowedOut ? contextual.check : undefined;
+        if (leans || check)
+          item = {
+            name: found.entry.label,
+            source,
+            ...(check ? { check } : {}),
+            ...(contextual.cost ? { cost: contextual.cost } : {}),
+          };
+      }
+    }
+    if (item && !items.some((each) => sameText(each.name, item!.name))) items.push(item);
+  }
+  return items;
+}
+
+/** The pool check effects of the items applied, together: dice and successes add up, and a face rule
+ *  takes the lowest face any of them names. */
+export function rulesetContextualCheck(items: readonly RulesetContextualItem[]): RulesetContextualCheck | undefined {
+  const checks = items.flatMap((item) => (item.check ? [item.check] : []));
+  if (!checks.length) return undefined;
+  const sum = (key: "dice" | "successes") => checks.reduce((total, check) => total + (check[key] ?? 0), 0);
+  const low = (key: "double" | "explode") => {
+    const faces = checks.flatMap((check) => (check[key] !== undefined ? [check[key]!] : []));
+    return faces.length ? Math.min(...faces) : undefined;
+  };
+  const out: RulesetContextualCheck = {};
+  if (sum("dice")) out.dice = sum("dice");
+  if (sum("successes")) out.successes = sum("successes");
+  if (low("double") !== undefined) out.double = low("double");
+  if (low("explode") !== undefined) out.explode = low("explode");
+  if (checks.some((check) => check.cancel === false)) out.cancel = false;
+  if (checks.some((check) => check.best)) out.best = true;
+  return out;
 }
 
 /** Typed defenses, in the same words on the sheet, battle status and Game Master prompt (1.132). */

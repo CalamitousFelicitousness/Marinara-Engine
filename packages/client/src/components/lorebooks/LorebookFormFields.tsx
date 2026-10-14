@@ -4,8 +4,8 @@
 // and LorebookEntryRow (the per-entry inline drawer).
 // Extracted from LorebookEditor.tsx so styling stays consistent.
 // ──────────────────────────────────────────────
-import { useState } from "react";
-import { FileText } from "lucide-react";
+import { useId, useState } from "react";
+import { ChevronDown, FileText } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { MacroTextarea } from "../ui/MacroTextarea";
@@ -41,20 +41,28 @@ export function FieldGroup({
 export function KeysEditor({ keys, onChange }: { keys: string[]; onChange: (keys: string[]) => void }) {
   const { t: localizeUi } = useUiTranslation();
   const [input, setInput] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const keywordListId = useId();
+  const hiddenCount = keys.length - 10;
+  const visibleKeys = expanded ? keys : keys.slice(0, 10);
 
   const addKey = () => {
     const nextKeys = appendLorebookActivationKeys(keys, input);
-    if (nextKeys.length !== keys.length) onChange(nextKeys);
+    if (nextKeys.length !== keys.length) {
+      setExpanded(true);
+      onChange(nextKeys);
+    }
     if (input.trim()) setInput("");
   };
 
   return (
     <div>
-      <div className="flex flex-wrap gap-1.5">
-        {keys.map((key, i) => (
+      <div id={keywordListId} className="flex flex-wrap gap-1.5">
+        {visibleKeys.map((key, i) => (
           <span key={i} className="mari-editor-chip mari-editor-chip--accent px-2 py-1 text-[0.6875rem]">
             {key}
             <button
+              type="button"
               onClick={() => onChange(keys.filter((_, j) => j !== i))}
               className="ml-0.5 rounded-sm text-[var(--marinara-editor-muted)] hover:text-[var(--destructive)]"
             >
@@ -63,6 +71,22 @@ export function KeysEditor({ keys, onChange }: { keys: string[]; onChange: (keys
           </span>
         ))}
       </div>
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={keywordListId}
+          // Keep mouse focus in the input without cancelling WebKit touch clicks.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setExpanded((value) => !value)}
+          className="mari-editor-action mari-editor-action--compact mt-1.5 inline-flex items-center gap-1 px-2 py-1 text-[0.6875rem]"
+        >
+          <ChevronDown size="0.75rem" aria-hidden="true" className={expanded ? "rotate-180" : ""} />
+          {expanded
+            ? localizeUi("ui.lorebooks.keyseditor.collapse")
+            : localizeUi("ui.lorebooks.keyseditor.showMore", { count: hiddenCount })}
+        </button>
+      )}
       <div className="mt-1.5 flex gap-1.5">
         <input
           value={input}

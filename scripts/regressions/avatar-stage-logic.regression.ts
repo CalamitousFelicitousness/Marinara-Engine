@@ -1,7 +1,9 @@
 /**
  * The avatar stage and setup decisions (base lane, #7537):
  *   - a chat shows an owner's active kind when its agent is on, else falls back pngtuber → mesh-avatar → vrm;
- *   - phones show at most 2 avatars and desktops 4, with the budget's frame rates and pixel-ratio caps;
+ *   - phones show at most 2 avatars and desktops 4, with the budget's frame rates and pixel-ratio caps; in the
+ *     one shared loop only the speaking avatar draws at the talking rate, every other one at the idle rate,
+ *     and a phone is under load when one draw of every avatar is slow, whichever avatars share a tick;
  *   - the owner's lip sync, blink and idle-motion switches (and reduced motion) shape every frame;
  *   - PNGTuber pictures resolve to stored files or the owner's sprites, expression sprites first;
  *   - with 2D Avatars on, an owner's expression sprites are a PNGTuber avatar until one is saved (built by
@@ -21,16 +23,22 @@ import {
 import {
   applyAvatarFeatures,
   avatarDevicePixelRatio,
+  avatarDrawDue,
+  avatarsUnderLoad,
   avatarTargetFps,
   chatAvatarAgentIds,
   chatAvatarParticipants,
   pickAvatarKind,
+  recordAvatarDrawCost,
   resolveAvatarImage,
   selectStageAvatars,
   withSpriteAvatar,
+  type AvatarDrawClock,
 } from "../../packages/client/src/features/avatars/stage/avatar-stage-logic.ts";
 import { avatarAgentKinds } from "../../packages/client/src/features/avatars/setup/avatar-setup-logic.ts";
 import { buildPngtuberLayersFromSprites } from "../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.ts";
+
+const client = (path: string) => readFileSync(new URL(`../../packages/client/src/${path}`, import.meta.url), "utf8");
 
 // ── Which kind shows ──
 assert.equal(pickAvatarKind({ activeKind: "vrm", kinds: ["pngtuber", "vrm"] }, ["2d-avatars", "3d-avatars"]), "vrm");
@@ -132,6 +140,72 @@ assert.equal(avatarTargetFps({ talking: true, phone: true, underLoad: true }), 3
 assert.equal(avatarTargetFps({ talking: false, phone: false, underLoad: false }), 30);
 assert.equal(avatarTargetFps({ talking: false, phone: true, underLoad: false }), 20);
 assert.equal(avatarTargetFps({ talking: false, phone: true, underLoad: true }), 15);
+// One shared 60 Hz loop, one clock per avatar: the speaking avatar draws at the talking rate while every other
+// avatar stays at the idle rate.
+const drawsPerSecond = (budget: { phone: boolean; underLoad: boolean }) => {
+  const clocks: AvatarDrawClock[] = [
+    { lastDrawMs: 0, talking: true, costMs: 0 },
+    { lastDrawMs: 0, talking: false, costMs: 0 },
+  ];
+  const draws = [0, 0];
+  for (let tick = 1; tick <= 180; tick += 1) {
+    const now = (tick * 1000) / 60;
+    clocks.forEach((clock, index) => {
+      if (!avatarDrawDue(clock, now, budget)) return;
+      clock.lastDrawMs = now;
+      draws[index]! += 1;
+    });
+  }
+  return draws.map((count) => count / 3);
+};
+assert.deepEqual(drawsPerSecond({ phone: true, underLoad: false }), [30, 20], "a phone's quiet avatar stays at 20");
+assert.deepEqual(drawsPerSecond({ phone: true, underLoad: true }), [30, 15], "and drops to 15 under load");
+assert.deepEqual(drawsPerSecond({ phone: false, underLoad: false }), [30, 30], "desktops idle at 30");
+assert.match(
+  client("features/avatars/stage/AvatarStage.tsx"),
+  /for \(const \[ownerId, slot\] of slots\) \{[\s\S]{0,240}if \(!avatarDrawDue\(clock, now, \{ phone, underLoad \}\)\) continue;/u,
+  "the stage's one loop asks each avatar's own clock",
+);
+// Load is one draw of every avatar, however the clocks fall into phase. A phone with two avatars that take 8 ms
+// each to draw is under load before, during and after a line: once the speaker's clock drifts away from the
+// quiet one, each tick draws only one avatar, which must not read as "no longer under load".
+const loadedPhone = (drawMs: number) => {
+  const clocks: AvatarDrawClock[] = [
+    { lastDrawMs: 0, talking: false, costMs: 0 },
+    { lastDrawMs: 0, talking: false, costMs: 0 },
+  ];
+  const draws: number[][] = [];
+  let underLoad = false;
+  for (let tick = 1; tick <= 60 * 15; tick += 1) {
+    const now = (tick * 1000) / 60;
+    const second = Math.floor((tick - 1) / 60);
+    let drew = false;
+    clocks.forEach((clock, index) => {
+      if (!avatarDrawDue(clock, now, { phone: true, underLoad })) return;
+      clock.lastDrawMs = now;
+      clock.talking = index === 0 && second >= 5 && second < 8;
+      recordAvatarDrawCost(clock, drawMs + (tick % 7) / 10);
+      (draws[second] ??= [0, 0])[index]! += 1;
+      drew = true;
+    });
+    if (drew) underLoad = avatarsUnderLoad(clocks, true);
+  }
+  return draws;
+};
+const loaded = loadedPhone(8);
+assert.deepEqual(loaded[4], [15, 15], "both quiet avatars idle at 15 on a loaded phone");
+assert.equal(loaded[7]![1], 15, "the quiet avatar stays at 15 while the other one talks");
+assert.ok(loaded[7]![0]! >= 29, `the speaker draws at the talking rate (${loaded[7]![0]})`);
+for (const second of [10, 12, 14]) {
+  assert.deepEqual(loaded[second], [15, 15], `still under load ${second - 8} s after the line`);
+}
+assert.deepEqual(loadedPhone(5)[14], [20, 20], "a phone that keeps up idles at 20");
+assert.equal(avatarsUnderLoad([{ lastDrawMs: 0, talking: false, costMs: 20 }], false), false, "desktops never");
+assert.match(
+  client("features/avatars/stage/AvatarStage.tsx"),
+  /recordAvatarDrawCost\(clock, performance\.now\(\) - started\);[\s\S]{0,120}if \(drew\) underLoad = avatarsUnderLoad\(clocks\.values\(\), phone\);/u,
+  "the stage measures each avatar's own draw and adds them up",
+);
 assert.equal(avatarDevicePixelRatio(3, true), 1.5);
 assert.equal(avatarDevicePixelRatio(3, false), 2);
 assert.equal(avatarDevicePixelRatio(1, false), 1);
@@ -222,7 +296,6 @@ assert.deepEqual(chatAvatarAgentIds({ enableAgents: true, activeAgentIds: ["expr
 assert.deepEqual(chatAvatarAgentIds({ enableAgents: false, activeAgentIds: ["2d-avatars"] }), []);
 assert.deepEqual(chatAvatarAgentIds({ enableAgents: "true", activeAgentIds: ["2d-avatars"] }), ["2d-avatars"]);
 
-const client = (path: string) => readFileSync(new URL(`../../packages/client/src/${path}`, import.meta.url), "utf8");
 for (const surface of ["components/chat/ChatRoleplaySurface.tsx", "components/game/GameSurface.tsx"]) {
   const text = client(surface);
   assert.match(

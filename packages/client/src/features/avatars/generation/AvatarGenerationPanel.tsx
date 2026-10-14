@@ -15,6 +15,7 @@ import {
   type ImagePromptReviewItem,
 } from "../../../components/ui/ImagePromptReviewModal";
 import type { AvatarKindSetupPanelProps } from "../contract";
+import { isSpriteVariant } from "../renderers/pngtuber/pngtuber-layers";
 import { MeshAvatarSection, type ConnectionOption } from "./MeshAvatarSection";
 import { PngtuberVariantsSection } from "./PngtuberVariantsSection";
 
@@ -33,8 +34,10 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
   const [reviewItems, setReviewItems] = useState<ImagePromptReviewItem[]>([]);
   const reviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
+  // Talk and blink pictures belong to another face, so they are never offered as a source.
   const sprites = useMemo(
-    () => (spriteList ?? []).filter((sprite) => RASTER_SPRITE.test(sprite.filename)),
+    () =>
+      (spriteList ?? []).filter((sprite) => RASTER_SPRITE.test(sprite.filename) && !isSpriteVariant(sprite.expression)),
     [spriteList],
   );
   const { imageConnections, languageConnections } = useMemo(() => {

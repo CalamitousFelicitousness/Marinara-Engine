@@ -4,7 +4,7 @@
 // Generating returns drafts the browser holds; nothing is stored until the user keeps a result, so the
 // owner's avatar stays as it was. Draft shapes mirror packages/server/src/services/avatars/generation/.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AVATAR_API_PREFIXES,
@@ -12,10 +12,10 @@ import {
   type AvatarOwnerRef,
   type AvatarPngtuberVariant,
 } from "@marinara-engine/shared";
+import { useAvatarModelChanged } from "../../../hooks/use-avatar-models";
 import { api } from "../../../lib/api-client";
 import { useUIStore } from "../../../stores/ui.store";
 import type { ImagePromptOverride, ImagePromptReviewItem } from "../../../components/ui/ImagePromptReviewModal";
-import { avatarModelKeys } from "../contract";
 
 const PREFIX = AVATAR_API_PREFIXES.generation;
 
@@ -259,28 +259,19 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
   return { draft, running, error, start, cancel, discard };
 }
 
-function useInvalidateAvatar(owner: AvatarOwnerRef) {
-  const qc = useQueryClient();
-  return () =>
-    Promise.all([
-      qc.invalidateQueries({ queryKey: avatarModelKeys.detail(owner) }),
-      qc.invalidateQueries({ queryKey: avatarModelKeys.list() }),
-    ]);
-}
-
 export function useSavePngtuberVariants(owner: AvatarOwnerRef) {
-  const invalidate = useInvalidateAvatar(owner);
+  const changed = useAvatarModelChanged(owner);
   return useMutation({
     mutationFn: (images: Array<{ label: string; variant: AvatarPngtuberVariant; image: string; sourceHash: string }>) =>
       api.post<AvatarGenerationResponse>(`${PREFIX}/pngtuber-variants/save`, { owner, images }),
-    onSuccess: () => invalidate(),
+    onSuccess: (response) => changed(response.config),
   });
 }
 
 export function useSaveMeshRig(owner: AvatarOwnerRef) {
-  const invalidate = useInvalidateAvatar(owner);
+  const changed = useAvatarModelChanged(owner);
   return useMutation({
     mutationFn: (archive: string) => api.post<AvatarGenerationResponse>(`${PREFIX}/mesh-rig/save`, { owner, archive }),
-    onSuccess: () => invalidate(),
+    onSuccess: (response) => changed(response.config),
   });
 }

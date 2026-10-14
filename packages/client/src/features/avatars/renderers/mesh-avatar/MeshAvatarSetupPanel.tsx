@@ -5,11 +5,11 @@ import { Loader2, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AVATAR_EMOTIONS, type AvatarEmotion } from "@marinara-engine/shared";
+import { useAvatarModelActions } from "../../../../hooks/use-avatar-models";
 import { showConfirmDialog } from "../../../../lib/app-dialogs";
 import { SETTINGS_BUTTON_CLASS, SettingsSection } from "../../../../components/panels/settings/SettingControls";
 import type { AvatarKindSetupPanelProps } from "../../contract";
 import { AVATAR_EMOTION_LABEL_KEYS, AVATAR_SETUP_SELECT_CLASS, errorMessage } from "../pngtuber/PngtuberSetupPanel";
-import { useAvatarKindActions } from "../pngtuber/use-avatar-kind-actions";
 import { MESH_AVATAR_EMOTION_TAGS, MESH_AVATAR_EXTRA_EXPRESSIONS } from "./mesh-avatar-face";
 
 const EXTRA_LOOK_KEYS: Readonly<Record<(typeof MESH_AVATAR_EXTRA_EXPRESSIONS)[number], string>> = {
@@ -21,7 +21,7 @@ const EXTRA_LOOK_KEYS: Readonly<Record<(typeof MESH_AVATAR_EXTRA_EXPRESSIONS)[nu
 
 export function MeshAvatarSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
-  const { save, importFile, remove } = useAvatarKindActions(owner, "mesh-avatar", onChanged);
+  const { save, importFile, remove } = useAvatarModelActions(owner, onChanged);
   const fileInput = useRef<HTMLInputElement>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const stored = config?.kinds["mesh-avatar"] ?? null;
@@ -47,13 +47,16 @@ export function MeshAvatarSetupPanel({ owner, config, onChanged }: AvatarKindSet
     event.target.value = "";
     if (!file) return;
     setWarnings([]);
-    importFile.mutate(file, {
-      onSuccess: (result) => {
-        setWarnings(result.warnings);
-        toast.success(t("avatars.meshAvatar.imported"));
+    importFile.mutate(
+      { kind: "mesh-avatar", file },
+      {
+        onSuccess: (result) => {
+          setWarnings(result.warnings);
+          toast.success(t("avatars.meshAvatar.imported"));
+        },
+        onError: (error) => toast.error(t("avatars.meshAvatar.importFailed", { reason: errorMessage(error) })),
       },
-      onError: (error) => toast.error(t("avatars.meshAvatar.importFailed", { reason: errorMessage(error) })),
-    });
+    );
   };
 
   const onRemove = async () => {
@@ -64,7 +67,7 @@ export function MeshAvatarSetupPanel({ owner, config, onChanged }: AvatarKindSet
       tone: "destructive",
     });
     if (!confirmed) return;
-    remove.mutate(undefined, {
+    remove.mutate("mesh-avatar", {
       onError: (error) => toast.error(t("avatars.meshAvatar.saveFailed", { reason: errorMessage(error) })),
     });
   };

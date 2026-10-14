@@ -6,12 +6,12 @@
 import {
   AVATAR_EMOTIONS,
   DEFAULT_AVATAR_FEATURE_FLAGS,
+  PNGTUBER_DEFAULT_MOTION,
   type AvatarConfig,
   type AvatarExpressionMap,
   type AvatarImageRef,
   type AvatarOwnerRef,
 } from "@marinara-engine/shared";
-import { PNGTUBER_DEFAULT_MOTION } from "../renderers/pngtuber/pngtuber-layers";
 
 const DEMO_ROOT = "/sprites/avatar-demo";
 const DEMO_FILES: Readonly<Record<string, string>> = {

@@ -8,16 +8,7 @@
 // cap, fps, pause when hidden, offscreen, covered or effects-paused, reduced motion). It never hides the
 // full-body sprite: the user turns that off by hand. Avatars sit where the sprites would and move with
 // the sprites' Arrange mode (placement key `<ownerId>:avatar`).
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useQueries, type QueryObserverResult } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -33,6 +24,7 @@ import {
   type SpriteSide,
 } from "@marinara-engine/shared";
 import { clampSpritePlacement, getDefaultSpritePlacement } from "../../../components/chat/sprite-placement";
+import { useSpritePlacementDrag } from "../../../components/chat/use-sprite-placement-drag";
 import { SPRITE_DISPLAY_SCALE_MAX, SPRITE_DISPLAY_SCALE_MIN } from "../../../components/chat/sprite-display-modes";
 import { fetchAvatarModel, useAvatarModelList } from "../../../hooks/use-avatar-models";
 import { spriteKeys, type SpriteInfo } from "../../../hooks/use-characters";
@@ -49,12 +41,16 @@ import {
 import { createAvatarDirector } from "../director/avatar-director";
 import { buildPngtuberLayersFromSprites } from "../renderers/pngtuber/pngtuber-layers";
 import {
+  AVATAR_PHONE_QUERY,
   applyAvatarFeatures,
-  avatarTargetFps,
+  avatarDrawDue,
+  avatarsUnderLoad,
   ownerKey,
+  recordAvatarDrawCost,
   resolveAvatarImage,
   selectStageAvatars,
   withSpriteAvatar,
+  type AvatarDrawClock,
   type StageAvatar,
 } from "./avatar-stage-logic";
 import { useAvatarEffectsPaused, useChatCovered, useOnScreen } from "./use-avatar-pause";
@@ -74,11 +70,6 @@ export interface AvatarStageLayout {
   onPlacementChange?: (placementKey: string, placement: SpritePlacement) => void;
   onFinishPlacement?: () => void;
 }
-
-/** "Phone" in the budget: a coarse pointer or a viewport below the md breakpoint. */
-const PHONE_QUERY = "(max-width: 767px), (pointer: coarse)";
-/** Average draw time (ms) above which a phone drops its idle frame rate. */
-const PHONE_LOAD_THRESHOLD_MS = 12;
 
 interface StageSlot {
   renderer: AvatarRenderer;
@@ -118,7 +109,7 @@ export function AvatarStage({
   onFinishPlacement,
 }: AvatarStageProps & AvatarStageLayout) {
   const { t } = useTranslation();
-  const phone = useMatchMedia(PHONE_QUERY);
+  const phone = useMatchMedia(AVATAR_PHONE_QUERY);
   const reducedMotion = useReducedAmbientEffects();
   const effectsPaused = useAvatarEffectsPaused();
   const stageRef = useRef<HTMLDivElement>(null);
@@ -191,25 +182,27 @@ export function AvatarStage({
     for (const slot of slots.values()) slot.renderer.setPaused(paused || !director);
     if (paused || !director || slots.size === 0) return;
     let frameRequest = 0;
-    let lastDraw = performance.now();
-    let talking = false;
+    const loopStarted = performance.now();
+    // One loop, one clock per avatar: the speaking avatar draws at the talking rate, the others at the idle rate.
+    const clocks = new Map<string, AvatarDrawClock>();
     let underLoad = false;
-    let drawCostMs = 0;
     const tick = (now: number) => {
       frameRequest = requestAnimationFrame(tick);
-      const interval = 1000 / avatarTargetFps({ talking, phone, underLoad });
-      if (now - lastDraw < interval - 1) return;
-      const dtMs = Math.min(now - lastDraw, 250);
-      lastDraw = now;
-      const started = performance.now();
-      talking = false;
+      let drew = false;
       for (const [ownerId, slot] of slots) {
+        let clock = clocks.get(ownerId);
+        if (!clock) clocks.set(ownerId, (clock = { lastDrawMs: loopStarted, talking: false, costMs: 0 }));
+        if (!avatarDrawDue(clock, now, { phone, underLoad })) continue;
+        const started = performance.now();
+        const dtMs = Math.min(now - clock.lastDrawMs, 250);
+        clock.lastDrawMs = now;
         const frame = applyAvatarFeatures(director.frame(ownerId, now), slot.features, reducedMotion);
-        if (frame.state === "talking") talking = true;
+        clock.talking = frame.state === "talking";
         slot.renderer.update(frame, dtMs);
+        recordAvatarDrawCost(clock, performance.now() - started);
+        drew = true;
       }
-      drawCostMs = drawCostMs * 0.9 + (performance.now() - started) * 0.1;
-      underLoad = phone && drawCostMs > PHONE_LOAD_THRESHOLD_MS;
+      if (drew) underLoad = avatarsUnderLoad(clocks.values(), phone);
     };
     frameRequest = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameRequest);
@@ -242,7 +235,7 @@ export function AvatarStage({
             avatar={avatar}
             savedConfig={avatar.saved ? configQueries[position]?.data : null}
             spriteSetup={spriteSetupFor(sprites)}
-            sprites={avatar.kind === "pngtuber" ? (sprites ?? null) : undefined}
+            sprites={avatar.kind === "vrm" ? undefined : (sprites ?? null)}
             placementKey={key}
             placement={placement}
             count={shown.length}
@@ -302,7 +295,7 @@ function AvatarSlot({
   savedConfig: AvatarConfig | null | undefined;
   /** The PNGTuber setup the owner's expression sprites make, used while none is saved. */
   spriteSetup: PngtuberAvatarData | null;
-  /** The owner's sprites for a PNGTuber avatar (null while loading), undefined for other kinds. */
+  /** The owner's sprites for a 2D avatar (null while loading); a mesh avatar falls back to them. Undefined for VRM. */
   sprites: SpriteInfo[] | null | undefined;
   placementKey: string;
   placement: SpritePlacement;
@@ -351,7 +344,11 @@ function AvatarSlot({
     return () => onSlot(owner.ownerId, null);
   }, [features, onSlot, owner.ownerId, renderer]);
 
-  const { current, dragging, onPointerDown } = usePlacementDrag({
+  const {
+    placement: current,
+    dragging,
+    onPointerDown,
+  } = useSpritePlacementDrag({
     placement,
     placementKey,
     editing,
@@ -409,83 +406,4 @@ function AvatarSlot({
       />
     </div>
   );
-}
-
-/** Drag-to-place for Arrange mode, the same gesture as the sprites': percentages of the stage, saved on release. */
-function usePlacementDrag({
-  placement,
-  placementKey,
-  editing,
-  stageRef,
-  onPlacementChange,
-}: {
-  placement: SpritePlacement;
-  placementKey: string;
-  editing: boolean;
-  stageRef: RefObject<HTMLDivElement | null>;
-  onPlacementChange?: (placementKey: string, placement: SpritePlacement) => void;
-}) {
-  const [current, setCurrent] = useState(placement);
-  const currentRef = useRef(placement);
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; origin: SpritePlacement } | null>(null);
-  const [dragging, setDragging] = useState(false);
-
-  // Follow the saved place (by value: the stage builds a new object each render) unless a drag is running.
-  const { x, y } = placement;
-  useEffect(() => {
-    if (dragging) return;
-    currentRef.current = { x, y };
-    setCurrent({ x, y });
-  }, [dragging, x, y]);
-
-  useEffect(() => {
-    if (!editing && dragRef.current) {
-      dragRef.current = null;
-      setDragging(false);
-    }
-  }, [editing]);
-
-  useEffect(() => {
-    if (!dragging) return;
-    const move = (event: PointerEvent) => {
-      const drag = dragRef.current;
-      const stage = stageRef.current;
-      if (!drag || !stage || event.pointerId !== drag.pointerId) return;
-      const next = clampSpritePlacement({
-        x: drag.origin.x + ((event.clientX - drag.startX) / Math.max(stage.clientWidth, 1)) * 100,
-        y: drag.origin.y + ((event.clientY - drag.startY) / Math.max(stage.clientHeight, 1)) * 100,
-      });
-      currentRef.current = next;
-      setCurrent(next);
-    };
-    const finish = (event: PointerEvent) => {
-      if (!dragRef.current || event.pointerId !== dragRef.current.pointerId) return;
-      dragRef.current = null;
-      setDragging(false);
-      onPlacementChange?.(placementKey, currentRef.current);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-    };
-  }, [dragging, onPlacementChange, placementKey, stageRef]);
-
-  const onPointerDown = (event: ReactPointerEvent) => {
-    if (!editing || (event.button !== 0 && event.pointerType !== "touch")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      origin: currentRef.current,
-    };
-    setDragging(true);
-  };
-
-  return { current, dragging, onPointerDown };
 }

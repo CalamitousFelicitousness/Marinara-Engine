@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const layers = await import("../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.ts");
 const face = await import("../../packages/client/src/features/avatars/renderers/mesh-avatar/mesh-avatar-face.ts");
+const { resolveAvatarImage } = await import("../../packages/client/src/features/avatars/stage/avatar-stage-logic.ts");
 
 // ── Sprites → PNGTuber setup ──
 const sprite = (expression: string) => ({ expression, url: `/api/sprites/c/file/${expression}.png` });
@@ -68,18 +69,32 @@ assert.deepEqual(layers.splitSpriteVariant("happy_mouth_open_eyes_closed"), {
   eyesClosed: true,
 });
 assert.deepEqual(layers.splitSpriteVariant("talk"), { base: "talk", mouthOpen: false, eyesClosed: false });
+assert.deepEqual(
+  ["happy", "happy_talk", "Happy Blink", "full_sad_mouth_open", "talk"].filter(
+    (expression) => !layers.isSpriteVariant(expression),
+  ),
+  ["happy", "talk"],
+  "a talk or blink picture belongs to another face, so generation never offers it as a source",
+);
 
+// Pictures resolve through the stage's resolveAvatarImage, the one resolver the renderer and the panel use.
 const owner = { ownerType: "character", ownerId: "c" } as const;
+const saved = { updatedAt: "2026-10-13T12:00:00.000Z" };
 assert.equal(
-  layers.resolvePngtuberImage(owner, { source: "file", path: "pngtuber/a.png" }, []),
-  "/api/avatar-models/character/c/files/pngtuber/a.png",
+  resolveAvatarImage(owner, saved, [], { source: "file", path: "pngtuber/a.png" }),
+  "/api/avatar-models/character/c/files/pngtuber/a.png?v=2026-10-13T12%3A00%3A00.000Z",
 );
 assert.equal(
-  layers.resolvePngtuberImage(owner, { source: "sprite", label: "happy" }, [sprite("full_happy"), sprite("happy")]),
+  resolveAvatarImage(owner, saved, [sprite("full_happy"), sprite("happy")], { source: "sprite", label: "happy" }),
   "/api/sprites/c/file/happy.png",
   "the portrait wins over the full-body sprite with the same face",
 );
-assert.equal(layers.resolvePngtuberImage(owner, { source: "sprite", label: "gone" }, [sprite("happy")]), null);
+assert.equal(
+  resolveAvatarImage(owner, saved, [sprite("full_happy")], { source: "sprite", label: "happy" }),
+  "/api/sprites/c/file/full_happy.png",
+  "a full-body face resolves when there is no portrait",
+);
+assert.equal(resolveAvatarImage(owner, saved, [sprite("happy")], { source: "sprite", label: "gone" }), null);
 
 // ── Which face a frame shows ──
 assert.equal(layers.pickPngtuberLayerKey(data, { emotion: "sad", label: "full_Happy" }), "happy", "the exact label");

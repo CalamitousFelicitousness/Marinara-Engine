@@ -138,6 +138,8 @@ export interface APIConnection {
   videoGenerationSource: string | null;
   /** Explicitly selected video generation service ID. Overrides URL/model inference when set. */
   videoService: string | null;
+  /** Instructions for the language model that writes video prompts for this video connection. */
+  videoPromptInstructions: string | null;
   /** Audio backend for audio connections (e.g. "elevenlabs"). Null for non-audio providers. */
   audioSource: AudioGenerationSource | null;
   /** System One backend; absent on older connections. */

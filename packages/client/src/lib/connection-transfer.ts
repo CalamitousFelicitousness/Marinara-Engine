@@ -4,6 +4,7 @@ import {
   resolveDecisionConnectionTimeoutMs,
   type DecisionSource,
   normalizeImagePromptInstructions,
+  normalizeVideoPromptInstructions,
   parsePinnedModels,
   resolveOpenAIImageQuality,
   PROVIDERS,
@@ -40,6 +41,7 @@ export type ConnectionTransferRow = {
   imageService?: unknown;
   videoGenerationSource?: unknown;
   videoService?: unknown;
+  videoPromptInstructions?: unknown;
   audioSource?: unknown;
   decisionSource?: unknown;
   maxStateTokens?: unknown;
@@ -85,6 +87,7 @@ export type SafeConnectionExport = {
   imageService: string | null;
   videoGenerationSource: string | null;
   videoService: string | null;
+  videoPromptInstructions: string | null;
   audioSource: string | null;
   decisionSource: DecisionSource | null;
   maxStateTokens: number | null;
@@ -174,6 +177,8 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       imageGenerationQuality: resolveOpenAIImageQuality(value.imageGenerationQuality, asString(value.model)),
       videoGenerationSource: provider === "video_generation" ? asNullableString(value.videoGenerationSource) : null,
       videoService,
+      videoPromptInstructions:
+        provider === "video_generation" ? normalizeVideoPromptInstructions(value.videoPromptInstructions) : null,
       decisionSource,
       maxStateTokens:
         provider === "decision"
@@ -233,6 +238,9 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     imageService: asNullableString(connection.imageService ?? connection.service),
     videoGenerationSource: isVideoProvider ? asNullableString(connection.videoGenerationSource) : null,
     videoService: isVideoProvider ? asNullableString(connection.videoService ?? connection.service) : null,
+    videoPromptInstructions: isVideoProvider
+      ? normalizeVideoPromptInstructions(connection.videoPromptInstructions)
+      : null,
     decisionSource,
     maxStateTokens:
       provider === "decision"

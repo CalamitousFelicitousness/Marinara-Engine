@@ -4,7 +4,7 @@
 // Generating returns drafts the browser holds; nothing is stored until the user keeps a result, so the
 // owner's avatar stays as it was. Draft shapes mirror packages/server/src/services/avatars/generation/.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AVATAR_API_PREFIXES,
@@ -348,7 +348,7 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
   }, [owner.ownerType, owner.ownerId]);
 
   const start = useCallback(
-    async (body: { sourceLabel: string; connectionId: string }) => {
+    async (body: { sourceLabel: string }) => {
       if (runningRef.current) return;
       runningRef.current = true;
       setRunning(true);
@@ -421,15 +421,41 @@ export function vrmDraftFile(draft: AvatarVrmModelDraft): File {
   return new File([bytes], draft.fileName, { type: "model/gltf-binary" });
 }
 
-/** A Tripo connection's credits and what a model costs, before starting. */
-export function useTripoBalance(connectionId: string | null) {
+const TRIPO_KEY_QUERY = ["avatar-generation", "tripo-key"] as const;
+const TRIPO_BALANCE_QUERY = ["avatar-generation", "tripo-balance"] as const;
+
+/** Whether a Tripo API key is saved. The server never sends the key back, not even part of it. */
+export function useTripoKeyStatus() {
   return useQuery({
-    queryKey: ["avatar-generation", "tripo-balance", connectionId],
-    queryFn: () =>
-      api.get<{ balance: number; frozen: number; cost: number }>(
-        `${PREFIX}/vrm-model/balance?connectionId=${encodeURIComponent(connectionId ?? "")}`,
-      ),
-    enabled: !!connectionId,
+    queryKey: TRIPO_KEY_QUERY,
+    queryFn: () => api.get<{ saved: boolean }>(`${PREFIX}/tripo-key`),
+  });
+}
+
+/** Saves or removes the Tripo API key; the balance is then read again with the new key. */
+export function useTripoKeyActions() {
+  const queryClient = useQueryClient();
+  const onSuccess = (status: { saved: boolean }) => {
+    queryClient.setQueryData(TRIPO_KEY_QUERY, status);
+    void queryClient.resetQueries({ queryKey: TRIPO_BALANCE_QUERY });
+  };
+  const save = useMutation({
+    mutationFn: (apiKey: string) => api.put<{ saved: boolean }>(`${PREFIX}/tripo-key`, { apiKey }),
+    onSuccess,
+  });
+  const remove = useMutation({
+    mutationFn: () => api.delete<{ saved: boolean }>(`${PREFIX}/tripo-key`),
+    onSuccess,
+  });
+  return { save, remove };
+}
+
+/** The saved key's Tripo credits and what a model costs, before starting. */
+export function useTripoBalance(keySaved: boolean) {
+  return useQuery({
+    queryKey: TRIPO_BALANCE_QUERY,
+    queryFn: () => api.get<{ balance: number; frozen: number; cost: number }>(`${PREFIX}/vrm-model/balance`),
+    enabled: keySaved,
     staleTime: 30_000,
     retry: false,
   });

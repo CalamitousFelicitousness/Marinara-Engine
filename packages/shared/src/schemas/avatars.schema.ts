@@ -220,7 +220,6 @@ export const avatarVrmModelRequestSchema = z
   .object({
     owner: avatarOwnerRefSchema,
     sourceLabel: z.string().min(1).max(64),
-    connectionId: z.string().min(1).max(128),
     debugMode: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<AvatarVrmModelRequest>;

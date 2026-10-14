@@ -70,7 +70,6 @@ import {
 } from "../../lib/sprite-expression-state";
 import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { useGameStateStore } from "../../stores/game-state.store";
-import { useGalleryStore } from "../../stores/gallery.store";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
 import {
@@ -1588,12 +1587,11 @@ const LocalChatArea = memo(function LocalChatArea({
           }
         }
 
-        const result = await api.post<{ video: GeneratedSceneVideo }>("/gallery/generate-scene-video", payload, {
+        // The video shows inline under its message; Pin video in the gallery still floats it.
+        await api.post<{ video: GeneratedSceneVideo }>("/gallery/generate-scene-video", payload, {
           signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS),
         });
-        const galleryStore = useGalleryStore.getState();
-        galleryStore.pinVideo(result.video);
-        galleryStore.syncLatestViewer({ ...result.video, kind: "video" as const });
+        void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
         void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
         toast.success(localizeUi("ui.chat.chatarea.sceneVideoGenerated"), { duration: 1800 });
       } catch (error) {

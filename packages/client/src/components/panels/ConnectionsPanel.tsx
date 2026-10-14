@@ -3,6 +3,7 @@ import { useLibraryOrder } from "../../hooks/use-library-order";
 import { useLibraryFolderDrag } from "../../hooks/use-library-folder-drag";
 import { type InsertEdge } from "../../lib/library-order";
 import { DecisionDefaultControl } from "../connections/DecisionDefaultControl";
+import { EmbeddingDefaultControl } from "../connections/EmbeddingDefaultControl";
 import { DecisionModelModal } from "../modals/DecisionModelModal";
 // ──────────────────────────────────────────────
 // Panel: API Connections (polished, with folders)
@@ -83,7 +84,6 @@ import {
   ImageIcon,
   Film,
   Music,
-  Box,
   Mic,
   Loader2,
   HardDriveDownload,
@@ -139,7 +139,6 @@ const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; 
   video_generation: CONNECTION_ICON_COLORS,
   audio: CONNECTION_ICON_COLORS,
   decision: CONNECTION_ICON_COLORS,
-  tripo: CONNECTION_ICON_COLORS,
 };
 const DEFAULT_COLOR = CONNECTION_ICON_COLORS;
 
@@ -147,7 +146,6 @@ function getConnectionFallbackIcon(provider: string) {
   if (provider === "image_generation") return <ImageIcon size="1rem" />;
   if (provider === "video_generation") return <Film size="1rem" />;
   if (provider === "audio") return <Music size="1rem" />;
-  if (provider === "tripo") return <Box size="1rem" />;
   return <Link size="1rem" />;
 }
 
@@ -1229,6 +1227,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.noDefaultAudioConnection")}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
           />
+          <EmbeddingDefaultControl connections={languageConnections} />
           <DecisionDefaultControl />
         </div>
       </SmoothFolderContent>
@@ -1388,7 +1387,7 @@ function ConnectionRow({
             ...(isLanguageGenerationConnection(conn) ? {} : { unsupported: "connection-kind" as const }),
           }}
         />
-        {conn.provider !== "audio" && conn.provider !== "decision" && conn.provider !== "tripo" && (
+        {conn.provider !== "audio" && conn.provider !== "decision" && (
           <button
             onClick={(e) => {
               e.stopPropagation();

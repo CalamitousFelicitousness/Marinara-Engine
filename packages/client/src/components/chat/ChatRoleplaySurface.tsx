@@ -2057,7 +2057,7 @@ export function ChatRoleplaySurface({
                 <div ref={messagesEndRef} />
               </div>
             </div>
-            <PinnedImageOverlay activeChatId={activeChatId} includeSceneVideos />
+            <PinnedImageOverlay activeChatId={activeChatId} />
 
             <div ref={inputChromeRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
               <div

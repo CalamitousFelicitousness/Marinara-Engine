@@ -57,7 +57,7 @@ import {
   resolveChatSummaryTemperatureOptions,
 } from "./chat-summary/connection-resolution.js";
 import { resolveBaseUrl } from "./generation/connection-base-url.js";
-import { describeEmptyModelResponse } from "./generation/empty-response-reason.js";
+import { describeEmptyModelResponse, replyUnfinished } from "./generation/empty-response-reason.js";
 import { parseRoleplayUserCommands, roleplayWhisperOnlyMessageIds } from "./generation/roleplay-commands.js";
 import {
   parseChatSummaryResult,
@@ -393,18 +393,22 @@ export function advancedMemorySourceFingerprint(messages: readonly AdvancedMemor
         extra.conversationStartForCharacterIds,
         extra.commandOnly,
         extra.personaSnapshot,
+        // A video clip is never memory text, and one attached to the newest reply mid-send must not look like
+        // a history change.
         Array.isArray(extra.attachments)
-          ? extra.attachments.map((item) => {
-              const attachment = object(item);
-              return [
-                attachment.type,
-                attachment.filename,
-                attachment.name,
-                attachment.data,
-                attachment.url,
-                attachment.imageCaption,
-              ];
-            })
+          ? extra.attachments
+              .filter((item) => object(item).type !== "video")
+              .map((item) => {
+                const attachment = object(item);
+                return [
+                  attachment.type,
+                  attachment.filename,
+                  attachment.name,
+                  attachment.data,
+                  attachment.url,
+                  attachment.imageCaption,
+                ];
+              })
           : [],
       ];
     }),
@@ -806,7 +810,7 @@ function messageText(ctx: Context, message: AdvancedMemoryMessage, index: number
     ? extras.attachments.map((item) => object(item) as PromptAttachment)
     : [];
   const readable = attachments.map((attachment) => {
-    if (/^image(?:\/|$)/iu.test(attachment.type ?? "")) return "";
+    if (/^(?:image|video)(?:\/|$)/iu.test(attachment.type ?? "")) return "";
     const text = readableAttachmentText(attachment);
     if (text) return `Attachment ${text.filename}:\n${text.text}`;
     return `Attachment ${getAttachmentFilename(attachment)}: ${attachment.imageCaption?.trim() || "content unavailable to this textual memory; the original attachment is preserved"}`;
@@ -1403,7 +1407,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     );
     abortIfNeeded(options.signal);
     if (result.finishReason === "length") throw new Error(errors.length);
-    if (result.finishReason !== "stop" || result.toolCalls?.length) throw new Error(errors.incomplete);
+    if (replyUnfinished(result.finishReason) || result.toolCalls?.length) throw new Error(errors.incomplete);
     return tryParseJsonRecord(
       normalizeGemma4Delimiters(extractLeadingThinkingBlocks(result.content ?? "").content).replace(
         /^```(?:json)?\s*|\s*```$/gu,
@@ -1928,7 +1932,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             throw new Error(
               "The summary model reached its output limit before completing the summary. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then resume preparation.",
             );
-          if (result.finishReason !== "stop" || result.toolCalls?.length)
+          if (replyUnfinished(result.finishReason) || result.toolCalls?.length)
             throw new Error(
               "The summary model did not complete its summary. Resume processing to retry unfinished work.",
             );
@@ -2745,7 +2749,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           throw new Error(
             "The scene helper reached its output limit before completing its decision. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then retry.",
           );
-        if (result.finishReason !== "stop" || result.toolCalls?.length)
+        if (replyUnfinished(result.finishReason) || result.toolCalls?.length)
           throw new Error("The scene helper did not complete its scene decision; retry preparation");
         const parsed = tryParseJsonRecord(
           normalizeGemma4Delimiters(extractLeadingThinkingBlocks(result.content ?? "").content).replace(

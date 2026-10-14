@@ -1149,7 +1149,10 @@ const COMMANDS: SlashCommand[] = [
         };
       }
 
-      const { ms, timeStr, message } = parsed;
+      const { ms, timeStr } = parsed;
+      // The user's own typed words, stored as a normal send stores them, so the chat, the toast and
+      // the model read the same {{random}} pick and names.
+      const message = await ctx.prepareUserMessage(parsed.message);
       const chatId = ctx.chatId;
       const invalidate = ctx.invalidate;
 

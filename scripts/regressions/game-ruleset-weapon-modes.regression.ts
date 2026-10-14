@@ -557,10 +557,11 @@ try {
     };
     assert.equal(rulesetOpportunityAttack(onlyOff), null);
     // With `penalty-only`, the off hand keeps a damage ability only when it takes something away.
-    const keeping = (rule: "full" | "penalty-only", nerve: number) => {
+    const keeping = (rule: "full" | "penalty-only", nerve: number, fullWhen?: Record<string, unknown>) => {
       const ruled = parsedOrThrow(
         variant(gravewatchText, (doc) => {
           doc.combat.offHand.ability = rule;
+          if (fullWhen) doc.combat.offHand.fullWhen = fullWhen;
           itemEntry(doc, "silver-nail").item.attack.damage.abilities = ["nerve"];
         }),
         `an off hand that is ${rule}`,
@@ -577,6 +578,38 @@ try {
     assert.equal(offFull, main, "full keeps it");
     const [mainKept, offKept] = keeping("penalty-only", 3);
     assert.equal(offKept, mainKept - 3, "penalty-only drops a bonus");
+    // A fighter whose sheet says so keeps it (1.97: Two-Weapon Fighting); one whose sheet reads 0 does not.
+    const [mainStyled, offStyled] = keeping("penalty-only", 3, { const: 1 });
+    assert.equal(offStyled, mainStyled, "fullWhen above 0 keeps it");
+    const [mainUnstyled, offUnstyled] = keeping("penalty-only", 3, { const: 0 });
+    assert.equal(offUnstyled, mainUnstyled - 3, "fullWhen at 0 does not");
+    // Checked like any sheet value, and gated at 1.97.
+    const badWhen = parseRulesetDefinition(
+      variant(gravewatchText, (doc) => (doc.combat.offHand.fullWhen = { derived: "nope" })),
+    );
+    assert.ok(!badWhen.ok && badWhen.issues.some((issue) => /nope/.test(issue)), "an unknown fullWhen");
+    const styled = variant(gravewatchText, (doc) => (doc.combat.offHand.fullWhen = { const: 1 }));
+    const styledManifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-off-hand-full",
+      name: "Off hand",
+      version: "0.1.0",
+      description: "A packaged ruleset whose off hand reads the sheet.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    assert.match(
+      getCapabilityPackageInstallIssue(styledManifest(96) as any, styled) ?? "",
+      /off hand reads the sheet.*capabilityApi 1\.97/,
+    );
+    assert.equal(getCapabilityPackageInstallIssue(styledManifest(97) as any, styled), null);
     // An off-hand attack is one blow, whatever strikes the main attack buys.
     const twice = parsedOrThrow(
       variant(gravewatchText, (doc) => (itemEntry(doc, "silver-nail").item.attack.strikes = { const: 2 })),

@@ -208,14 +208,23 @@ function rollAmount(
   ctx: RulesetCombatContext,
   amount: RulesetCombatAmount,
   extra?: { amount: RulesetCombatAmount; times: number },
+  /** The amount's own dice at or below this are thrown again once, the new face standing (1.98). */
+  rerollUpTo?: number,
 ): { rolls: number[]; flat: number; total: number } {
-  const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
+  const rolls = rerollLow(ctx, rollRulesetDice(ctx.roll, amount.count, amount.sides), amount.sides, rerollUpTo);
   let flat = amount.flat;
   if (extra && extra.times > 0) {
     rolls.push(...rollRulesetDice(ctx.roll, extra.amount.count * extra.times, extra.amount.sides));
     flat += extra.amount.flat * extra.times;
   }
   return { rolls, flat, total: sumOf(rolls) + flat };
+}
+
+/** Faces at or below `upTo` thrown again once, each new face standing whatever it is: 5e's Great Weapon
+ *  Fighting ("you can reroll the die and must use the new roll"). */
+function rerollLow(ctx: RulesetCombatContext, rolls: number[], sides: number, upTo: number | undefined): number[] {
+  if (!upTo || upTo < 1) return rolls;
+  return rolls.map((face) => (face <= upTo ? rollRulesetDice(ctx.roll, 1, sides)[0]! : face));
 }
 
 /**
@@ -275,6 +284,8 @@ function criticalExtra(
   ctx: RulesetCombatContext,
   amount: RulesetCombatAmount,
   extra?: { amount: RulesetCombatAmount; times: number },
+  /** As `rollAmount`'s: the amount's own dice thrown again for the critical are rerolled the same way. */
+  rerollUpTo?: number,
 ): { rolls: number[]; flat: number } {
   const rule = ctx.combat.attackRoll?.critical ?? "none";
   const dice: Array<{ count: number; sides: number }> = [{ count: amount.count, sides: amount.sides }];
@@ -282,7 +293,14 @@ function criticalExtra(
     dice.push({ count: extra.amount.count * extra.times, sides: extra.amount.sides });
   }
   if (rule === "double-dice") {
-    return { rolls: dice.flatMap((entry) => rollRulesetDice(ctx.roll, entry.count, entry.sides)), flat: 0 };
+    return {
+      rolls: dice.flatMap((entry, index) =>
+        index === 0
+          ? rerollLow(ctx, rollRulesetDice(ctx.roll, entry.count, entry.sides), entry.sides, rerollUpTo)
+          : rollRulesetDice(ctx.roll, entry.count, entry.sides),
+      ),
+      flat: 0,
+    };
   }
   if (rule === "max-dice") {
     return { rolls: [], flat: dice.reduce((total, entry) => total + entry.count * entry.sides, 0) };
@@ -2448,12 +2466,14 @@ function resolveAction(
   // rolled until a target actually needs it, so a use that misses everything costs no dice at all.
   type Rolled = { rolls: number[]; flat: number; total: number };
   const perTarget = action.toHit !== undefined && !action.autoHit;
-  const once = (amount: RulesetCombatAmount | undefined) => {
+  const once = (amount: RulesetCombatAmount | undefined, rerollUpTo?: number) => {
     let rolled: Rolled | null = null;
     if (!amount) return null;
-    return perTarget ? () => rollAmount(ctx, amount, extra) : () => (rolled ??= rollAmount(ctx, amount, extra));
+    return perTarget
+      ? () => rollAmount(ctx, amount, extra, rerollUpTo)
+      : () => (rolled ??= rollAmount(ctx, amount, extra, rerollUpTo));
   };
-  const damage = once(action.damage);
+  const damage = once(action.damage, action.damage?.reroll);
   // One roller per clause, read the same way: an ability that lands on several targets without
   // rolling to hit rolls every clause once and everybody takes those numbers.
   const clauses = (action.damage?.plus ?? []).map((clause) => once(clause)!);
@@ -2592,7 +2612,12 @@ function resolveAction(
         );
         const total = kept + action.toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
-        if (single && kept === dice.sides && naturals.max !== "none") {
+        // A critical range the attacker's sheet reads (1.81) widens a critical face down to it.
+        const criticalFrom =
+          naturals.max === "critical"
+            ? Math.max(2, Math.min(dice.sides, actor.criticalFrom ?? dice.sides))
+            : dice.sides;
+        if (single && kept >= criticalFrom && naturals.max !== "none") {
           outcome = naturals.max === "critical" ? "critical" : "hit";
         } else if (single && kept === 1 && naturals.min === "miss") outcome = "miss";
         // A condition that says a blow from the next cell always tells is read last, so a hit that
@@ -2638,7 +2663,7 @@ function resolveAction(
               total,
               defense: guarded.defense,
               critical,
-              natural: single && kept === dice.sides && naturals.max !== "none",
+              natural: single && kept >= criticalFrom && naturals.max !== "none",
             },
             mine: used.mine.map((entry) => entry.condition),
             hurt: [],
@@ -2792,7 +2817,7 @@ function resolveAction(
       });
     } else if (damage && action.damage) {
       const rolled = damage();
-      const bonus = critical ? criticalExtra(ctx, action.damage, extra) : { rolls: [], flat: 0 };
+      const bonus = critical ? criticalExtra(ctx, action.damage, extra, action.damage.reroll) : { rolls: [], flat: 0 };
       const thrown = rolled.total + sumOf(bonus.rolls) + bonus.flat;
       // Never less than the weapon's floor.
       const total = Math.max(thrown, action.damage.floor ?? 0);

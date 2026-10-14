@@ -7,7 +7,12 @@
  * cost times a level, worked out in the smallest coin of the cost's family and rounded there, and said
  * in the largest coin the game's layers leave that pays it exactly.
  */
-import { rulesetFakeIssue, type RulesetCatalogItem, type RulesetDefinition } from "../../schemas/ruleset.schema.js";
+import {
+  rulesetCoinAmount,
+  rulesetFakeIssue,
+  type RulesetCatalogItem,
+  type RulesetDefinition,
+} from "../../schemas/ruleset.schema.js";
 import {
   gameInventoryCoinRef,
   gameInventoryNameKey,
@@ -132,12 +137,22 @@ export function rulesetMarketPrice(
   const owed = each * count;
   const family = [...left.units]
     .sort((a, b) => b.value - a.value)
-    .map((coin) => ({ item: gameInventoryCoinRef(coin.id), name: coin.label, value: coin.value }));
+    .map((coin) => ({
+      item: gameInventoryCoinRef(coin.id),
+      name: coin.label,
+      ...(coin.one ? { one: coin.one } : {}),
+      value: coin.value,
+    }));
   // The family's smallest coin, worth 1, is always left, so some coin says the price exactly.
   const own = family.find((coin) => coin.item === gameInventoryCoinRef(cost.unit));
   const shown =
     (own && owed % own.value === 0 ? own : family.find((coin) => owed % coin.value === 0)) ?? family.at(-1)!;
-  return { owed, family, familyId: full.id, said: `${owed / shown.value} ${shown.name}` };
+  return {
+    owed,
+    family,
+    familyId: full.id,
+    said: rulesetCoinAmount({ label: shown.name, one: shown.one }, owed / shown.value),
+  };
 }
 
 /**
@@ -494,7 +509,7 @@ export function rulesetMarketPromptText(
             // In the purse's own coin when it says it exactly, else the largest that does.
             const coins = [unit!, ...[...family.units].sort((a, b) => b.value - a.value)];
             const shown = coins.find((coin) => Math.max(0, left) % coin.value === 0) ?? coins.at(-1)!;
-            return `, up to ${purse!.amount} ${unit!.label} a day (${Math.max(0, left) / shown.value} ${shown.label} left today)`;
+            return `, up to ${rulesetCoinAmount(unit!, purse!.amount)} a day (${rulesetCoinAmount(shown, Math.max(0, left) / shown.value)} left today)`;
           })();
     lines.push(`Selling: sellers here buy what they sell at ×${market.buyBack} of the ${fair.label} price${said}.`);
     if (here?.some((seller) => seller.honest === false)) {

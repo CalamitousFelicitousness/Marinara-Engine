@@ -9,8 +9,7 @@
 // The file is untrusted: every field is type-checked, sprites and costumes are bounded, PNGs are checked by
 // signature and header before sharp decodes them, and the flattened canvas is scaled to fit a fixed side.
 // Each distinct costume becomes one layer set (`costume_<n>`) flattened at rest (no wobble, drag or
-// stretch) into a base picture plus mouth-open, eyes-closed and both variants when the save has them. A
-// costume drawn on a background of its own is stored as cut-outs (services/avatars/cutouts.ts).
+// stretch) into a base picture plus mouth-open, eyes-closed and both variants when the save has them.
 import { createHash } from "node:crypto";
 import {
   AVATAR_EMOTIONS,
@@ -27,7 +26,6 @@ import {
 } from "@marinara-engine/shared";
 import { readImageDimensionsFromBuffer } from "../../../utils/image-metadata.js";
 import { getSharp } from "../../../utils/sharp.js";
-import { avatarCutoutSet } from "../cutouts.js";
 
 /** PNGTuber Plus avatars have tens of sprites; this only stops a hostile file from asking for thousands. */
 const MAX_SPRITES = 512;
@@ -653,33 +651,23 @@ export const pngtuberImporter: AvatarFormatImporter<"pngtuber", ValidatedPngtube
     const cache = new Map<PlacedSprite, CompositeInput | null>();
     const files: AvatarExtractedFile[] = [];
     const layers: Record<string, PngtuberLayerSet> = {};
-    const states = [
-      ["base", "", false, false],
-      ["mouthOpen", "-talk", true, false],
-      ["eyesClosed", "-blink", false, true],
-      ["eyesClosedMouthOpen", "-blink-talk", true, true],
-    ] as const;
-    for (const costume of costumes) {
-      const shown = states.filter(
-        ([, , talking, blinking]) => (!talking || costume.hasTalk) && (!blinking || costume.hasBlink),
-      );
-      const pictures: Buffer[] = [];
-      try {
-        for (const [, , talking, blinking] of shown) {
-          pictures.push(await flattenPngtuberState(sharp, canvas, costume, talking, blinking, cache));
-        }
-      } catch (error) {
-        if (error instanceof AvatarImportError) throw error;
-        refuse("A picture inside this PNGTuber Plus save is damaged.");
+    const write = async (costume: PngtuberCostume, suffix: string, talking: boolean, blinking: boolean) => {
+      const path = `pngtuber/plus-${validated.hash}-${costume.number}${suffix}.png`;
+      files.push({ path, bytes: await flattenPngtuberState(sharp, canvas, costume, talking, blinking, cache) });
+      return { source: "file" as const, path };
+    };
+    try {
+      for (const costume of costumes) {
+        const set: PngtuberLayerSet = { base: await write(costume, "", false, false) };
+        if (costume.hasTalk) set.mouthOpen = await write(costume, "-talk", true, false);
+        if (costume.hasBlink) set.eyesClosed = await write(costume, "-blink", false, true);
+        if (costume.hasTalk && costume.hasBlink)
+          set.eyesClosedMouthOpen = await write(costume, "-blink-talk", true, true);
+        layers[costumeKey(costume)] = set;
       }
-      const cutouts = await avatarCutoutSet(pictures[0]!, pictures.slice(1));
-      const set = {} as PngtuberLayerSet;
-      shown.forEach(([slot, suffix], index) => {
-        const path = `pngtuber/plus-${validated.hash}-${costume.number}${suffix}.png`;
-        files.push({ path, bytes: cutouts[index]! });
-        set[slot] = { source: "file", path };
-      });
-      layers[costumeKey(costume)] = set;
+    } catch (error) {
+      if (error instanceof AvatarImportError) throw error;
+      refuse("A picture inside this PNGTuber Plus save is damaged.");
     }
 
     const { expressionMap, unbound } = bindPngtuberCostumes(costumes);

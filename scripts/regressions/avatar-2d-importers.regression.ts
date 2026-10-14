@@ -75,11 +75,7 @@ const RED = [200, 30, 30, 255];
 const GREEN = [30, 200, 30, 255];
 const BLUE = [30, 30, 200, 255];
 const BODY = [220, 220, 220, 255];
-// A cut-out body (see-through edge), as PNGTuber Plus sprites are: an opaque costume would be cleaned
-// (avatar-backgrounds.regression.ts covers that).
-const body = await paintPng(40, 40, (x, y) =>
-  x === 0 || y === 0 || x === 39 || y === 39 ? [0, 0, 0, 0] : [220, 220, 220, 255],
-);
+const body = await paintPng(40, 40, solid(220, 220, 220));
 const mouth = (color: number[]) => paintPng(10, 4, solid(color[0]!, color[1]!, color[2]!));
 const eyes = (color: number[]) => paintPng(20, 4, solid(color[0]!, color[1]!, color[2]!));
 const twoFrames = await paintPng(20, 10, (x) => (x < 10 ? [10, 10, 10, 255] : [250, 250, 0, 255]));

@@ -1055,7 +1055,7 @@ function resolveRulesetSkillCheck(
     const roller = request.who
       ? ruleset.sheets.get(normalizeCharacterLookupName(request.who))
       : ((ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank);
-    if (roller) modifier = Math.max(modifier, ...Object.values(roller.skillMods));
+    if (roller) modifier = Math.max(modifier, ...Object.values(roller.skillMods).filter(Number.isFinite));
   }
   // A standing re-throw the Game Master named. It costs nothing, so it needs no persisting caller;
   // beside one that was bought, the wider of the two is the one thrown.

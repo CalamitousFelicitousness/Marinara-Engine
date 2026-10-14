@@ -39,7 +39,7 @@ import {
   type SlashCommand,
   type SlashCommandContext,
 } from "../../lib/slash-commands";
-import { createInputMacroResolverForChat, isPromptPreviewMacro } from "../../lib/chat-macros";
+import { isPromptPreviewMacro, prepareUserInputMessage } from "../../lib/chat-macros";
 import { parseChatMetadata } from "../../lib/chat-display";
 import type { AvatarCrop } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
@@ -1002,6 +1002,18 @@ export function ConversationInput({
     [activeChatId, emojiStartPos, setInputDraft, syncInputState],
   );
 
+  const prepareUserMessage = useCallback(
+    (text: string, onTranslationError: () => void) =>
+      prepareUserInputMessage(text, {
+        chat: useChatStore.getState().activeChat,
+        characters: qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
+        personas: qc.getQueryData<Persona[]>(characterKeys.personas),
+        applyToUserInput,
+        onTranslationError,
+      }),
+    [applyToUserInput, qc],
+  );
+
   const handleSend = useCallback(async () => {
     if (!activeChatId || isSendBlocked) return;
     if (isReadingAttachments) {
@@ -1052,6 +1064,10 @@ export function ConversationInput({
           await createMessage.mutateAsync(data);
           requestChatScrollToBottom({ chatId: activeChatId, behavior: "auto" });
         },
+        prepareUserMessage: (text) =>
+          prepareUserMessage(text, () =>
+            toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+          ),
         invalidate: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
         invalidateCharacter: (characterId) => qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) }),
         characterNames: activeCharacterNames,
@@ -1112,30 +1128,9 @@ export function ConversationInput({
       }
     }
 
-    const activeChat = useChatStore.getState().activeChat;
-    const cachedCharacters = qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list());
-    const cachedPersonas = qc.getQueryData<Persona[]>(characterKeys.personas);
-    const resolveInputMacros = createInputMacroResolverForChat(activeChat, cachedCharacters, cachedPersonas, raw);
-    const chatMeta = parseChatMetadata(activeChat?.metadata);
-    // First pass: resolve macros against raw input, so {{input}} uses the pre-translation text.
-    let message = applyToUserInput(raw, {
-      resolveMacros: resolveInputMacros,
-      scopedMode: chatMeta.scopedRegexMode,
-    });
-
-    // Input translation: translate user's message before sending
-    if (chatMeta.translateInput && message.trim()) {
-      try {
-        const { translateText } = await import("../../lib/translate-text");
-        const translated = await translateText(message, "input");
-        if (translated.trim()) message = translated;
-      } catch {
-        toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessageSendingOriginal"));
-      }
-    }
-
-    // Final pass: resolve macros introduced by translation while {{input}} still points to raw.
-    message = resolveInputMacros(message);
+    const message = await prepareUserMessage(raw, () =>
+      toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessageSendingOriginal")),
+    );
 
     const submittedInput: SubmittedConversationInput = {
       chatId: activeChatId,
@@ -1215,7 +1210,7 @@ export function ConversationInput({
     isSendBlocked,
     delayedCharacterInfo,
     generate,
-    applyToUserInput,
+    prepareUserMessage,
     extractMentions,
     clearInputDraft,
     createDurableMessageWithRollback,
@@ -1264,6 +1259,10 @@ export function ConversationInput({
           await createMessage.mutateAsync(data);
           requestChatScrollToBottom({ chatId: submittingChatId, behavior: "auto" });
         },
+        prepareUserMessage: (text) =>
+          prepareUserMessage(text, () =>
+            toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+          ),
         invalidate: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
         invalidateCharacter: (characterId) => qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) }),
         characterNames: activeCharacterNames,
@@ -1323,6 +1322,7 @@ export function ConversationInput({
       _mentionQuery,
       mentionCompletions,
       createMessage,
+      prepareUserMessage,
       generate,
       latestAssistantMessage,
       onIllustrate,
@@ -1364,27 +1364,9 @@ export function ConversationInput({
       draftTimerRef.current = null;
     }
 
-    const activeChatData = useChatStore.getState().activeChat;
-    const cachedCharacters = qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list());
-    const cachedPersonas = qc.getQueryData<Persona[]>(characterKeys.personas);
-    const resolveInputMacros = createInputMacroResolverForChat(activeChatData, cachedCharacters, cachedPersonas, raw);
-    const chatMeta = parseChatMetadata(activeChatData?.metadata);
-    let message = applyToUserInput(raw, {
-      resolveMacros: resolveInputMacros,
-      scopedMode: chatMeta.scopedRegexMode,
-    });
-
-    if (chatMeta.translateInput && message.trim()) {
-      try {
-        const { translateText } = await import("../../lib/translate-text");
-        const translated = await translateText(message, "input");
-        if (translated.trim()) message = translated;
-      } catch {
-        toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal"));
-      }
-    }
-
-    message = resolveInputMacros(message);
+    const message = await prepareUserMessage(raw, () =>
+      toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+    );
     const submittedInput: SubmittedConversationInput = {
       chatId: submittingChatId,
       replyTo: replyDraft,
@@ -1429,8 +1411,7 @@ export function ConversationInput({
     completions,
     _mentionQuery,
     mentionCompletions,
-    applyToUserInput,
-    qc,
+    prepareUserMessage,
     clearInputDraft,
     createDurableMessageWithRollback,
     syncInputState,

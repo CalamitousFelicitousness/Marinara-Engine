@@ -9,6 +9,7 @@ import {
 } from "../llm/base-provider.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { tryParseJsonRecord } from "../../lib/json-repair.js";
+import { replyUnfinished } from "../generation/empty-response-reason.js";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { normalizeGemma4Delimiters } from "../llm/textual-tool-call-parser.js";
 import { minContextLimit, normalizeMaxContext } from "../generation/generation-parameters.js";
@@ -167,7 +168,7 @@ export async function completeAgentCall(
         if (
           !options.signal?.aborted &&
           !context.signal?.aborted &&
-          result.finishReason === "stop" &&
+          !replyUnfinished(result.finishReason) &&
           !result.toolCalls.length &&
           payload &&
           typeof payload === "object" &&

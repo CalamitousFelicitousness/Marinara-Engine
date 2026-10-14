@@ -307,7 +307,12 @@ try {
   assert.equal((await imagesOn(noMotion?.id)).length, 1, "the picture is shown");
 
   // Clips only with no First frame chosen: no picture is drawn; the clip is written from the scene alone.
-  await saveChatSettings(roleplay.id, { ...roleplayMeta, illustratorVideoMode: "clips_only" });
+  // Clips only runs Illustrator on the Video Run Interval.
+  await saveChatSettings(roleplay.id, {
+    ...roleplayMeta,
+    illustratorVideoMode: "clips_only",
+    illustratorVideoRunInterval: 1,
+  });
   illustratorReply = {
     shouldGenerate: true,
     prompt: "1girl, lantern, rain",
@@ -327,6 +332,7 @@ try {
   await saveChatSettings(roleplay.id, {
     ...roleplayMeta,
     illustratorVideoMode: "clips_only",
+    illustratorVideoRunInterval: 1,
     sceneVideoFirstFrame: "picture",
   });
   illustratorReply = { shouldGenerate: true, prompt: "1girl, lantern, rain" };
@@ -407,6 +413,7 @@ try {
   await saveChatSettings(withPersona.id, {
     ...roleplayMeta,
     illustratorVideoMode: "pictures_and_clips",
+    illustratorVideoRunInterval: 1,
     sceneVideoFirstFrame: "prompt_only",
   });
   illustratorReply = {
@@ -492,6 +499,7 @@ try {
     ...convoMeta,
     conversationCommandToggles: { video: true },
     selfieVideoIncludeCharacterAppearance: true,
+    illustratorVideoRunInterval: 1,
   });
   const setInstructions = async (videoPromptInstructions: string) => {
     const response = await app.inject({

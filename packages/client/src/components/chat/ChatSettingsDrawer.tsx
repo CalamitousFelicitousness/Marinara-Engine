@@ -2127,6 +2127,10 @@ export function ChatSettingsDrawer({
   // The agent's value may be saved as text ("0"); read it the way the server does.
   const illustratorRunInterval =
     illustratorChatRunInterval ?? normalizeIllustratorRunInterval(illustratorDefaults.runInterval) ?? 5;
+  // Videos made on their own: this chat's Video Run Interval, else the agent's, else the server default (5).
+  const illustratorChatVideoRunInterval = normalizeIllustratorRunInterval(metadata.illustratorVideoRunInterval);
+  const illustratorVideoRunInterval =
+    illustratorChatVideoRunInterval ?? normalizeIllustratorRunInterval(illustratorDefaults.videoRunInterval) ?? 5;
   const illustratorAutoBackgroundsEnabled = metadata.illustratorAutoBackgroundsEnabled === true;
   const selectedIllustratorPromptConnectionMissing =
     illustratorPromptConnectionId.length > 0 &&
@@ -2363,7 +2367,7 @@ export function ChatSettingsDrawer({
     <div className="flex flex-col gap-1">
       <label className="flex flex-col gap-1">
         <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
-          {localizeUi("ui.agents.agenteditor.runInterval")}
+          {localizeUi("ui.agents.agenteditor.imageRunInterval")}
         </span>
         <span className="flex items-center gap-2">
           <DraftNumberInput
@@ -2387,6 +2391,38 @@ export function ChatSettingsDrawer({
       <AgentDefaultStatus
         overridden={illustratorChatRunInterval !== null}
         onReset={() => updateMeta.mutate({ id: chat.id, illustratorRunInterval: null })}
+      />
+    </div>
+  );
+  const renderIllustratorVideoRunInterval = () => (
+    <div className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1">
+        <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+          {localizeUi("ui.agents.agenteditor.videoRunInterval")}
+        </span>
+        <span className="flex items-center gap-2">
+          <DraftNumberInput
+            value={illustratorVideoRunInterval}
+            min={0}
+            max={MAX_ILLUSTRATOR_RUN_INTERVAL}
+            onCommit={(value) => {
+              if (value !== illustratorVideoRunInterval) {
+                updateMeta.mutate({ id: chat.id, illustratorVideoRunInterval: value });
+              }
+            }}
+            className="w-24 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs tabular-nums text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+          />
+          <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.agents.agenteditor.messages")}
+          </span>
+        </span>
+        <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+          {localizeUi("agents.illustrator.chatVideoRunIntervalHelp")}
+        </span>
+      </label>
+      <AgentDefaultStatus
+        overridden={illustratorChatVideoRunInterval !== null}
+        onReset={() => updateMeta.mutate({ id: chat.id, illustratorVideoRunInterval: null })}
       />
     </div>
   );
@@ -7532,6 +7568,9 @@ export function ChatSettingsDrawer({
                               });
                             }}
                           />
+                          {conversationCommandsEnabled &&
+                            conversationCommandToggles.video === true &&
+                            renderIllustratorVideoRunInterval()}
                           <label className="flex flex-col gap-1">
                             <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
                               {localizeUi("ui.chat.chatsettingsdrawer.videoConnection")}
@@ -9130,7 +9169,9 @@ export function ChatSettingsDrawer({
                           />
                           {renderIllustratorPromptConnectionSelect()}
                           {renderIllustratorImageConnectionSelect()}
-                          {renderIllustratorRunInterval()}
+                          {/* Clips only runs on the Video Run Interval, shown with the clip settings. */}
+                          {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "clips_only" &&
+                            renderIllustratorRunInterval()}
                           <AgentSettingsToggle
                             label={localizeUi("ui.chat.chatsettingsdrawer.generateSceneBackgrounds")}
                             description={localizeUi(
@@ -9163,6 +9204,8 @@ export function ChatSettingsDrawer({
                               ))}
                             </select>
                           </label>
+                          {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "pictures" &&
+                            renderIllustratorVideoRunInterval()}
                           {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "pictures" && (
                             <label className="flex flex-col gap-1">
                               <span className="text-[0.625rem] font-medium text-[var(--foreground)]">

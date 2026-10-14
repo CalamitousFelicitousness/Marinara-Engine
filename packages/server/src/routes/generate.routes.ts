@@ -922,6 +922,8 @@ import { mergeConversationCharacterMemories } from "../services/generation/conve
 import { injectMemoryRecallContext } from "../services/generation/memory-recall-context.js";
 import {
   applyIllustratorChatRunInterval,
+  automaticVideoAllowed,
+  loadVideoRunInterval,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
 import {
@@ -4127,6 +4129,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             db: app.db,
             wrapFormat,
             resolvePromptMacros,
+            videoCommandAllowed: automaticVideoAllowed(
+              chatMessages,
+              chatMeta,
+              await loadVideoRunInterval(agentsStore, chatMeta),
+              true,
+              input.regenerateMessageId,
+            ),
           });
 
           // ── Home Professor Mari: inject assistant knowledge & commands ──
@@ -6942,7 +6951,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
           // Offer the generateVideo/videoPrompt fields, guided by the video connection's instructions.
           delete memory._generatedVideos;
-          const videoOffer = await resolveIllustratorVideoOffer(chatMode, chatMeta, connections);
+          // Offered only once the Video Run Interval has passed (re-runs from a message are asked for, so not gated).
+          const videoOffer = automaticVideoAllowed(
+            chatMessages,
+            chatMeta,
+            await loadVideoRunInterval(agentsStore, chatMeta),
+            true,
+            input.regenerateMessageId,
+          )
+            ? await resolveIllustratorVideoOffer(chatMode, chatMeta, connections)
+            : null;
           if (videoOffer) memory._generatedVideos = videoOffer;
           return { ...trackerContext, memory };
         };
@@ -13616,6 +13634,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 } catch (attachErr) {
                   logger.warn(attachErr, "[illustrator] Saved clip %s but could not attach it", video.id);
                 }
+                // The Video Run Interval counts from this reply, attached or not: the clip was made.
+                await chats
+                  .patchMetadata(input.chatId, () => ({ lastAutomaticVideoMessageId: clipMessageId }))
+                  .catch((err) => logger.warn(err, "[illustrator] Could not record the clip for the run interval"));
                 sendSseEvent(reply, {
                   type: "video",
                   data: {
@@ -13800,6 +13822,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   pendingRoleplayMedia.push(
                     (async () => {
                       try {
+                        const latestMeta = parseExtra((await chats.getById(input.chatId))?.metadata);
+                        const allowed = automaticVideoAllowed(
+                          await chats.listMessages(input.chatId),
+                          latestMeta,
+                          await loadVideoRunInterval(agentsStore, latestMeta),
+                          false,
+                          messageId,
+                        );
+                        if (!allowed) return;
                         const motion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
                         // No picture shows this moment, so the Clip Director writes the whole clip (scene and motion)
                         // to the video connection's instructions.
@@ -14211,7 +14242,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           await show().catch((err) => logger.warn(err, "[illustrator] Could not show a picture"));
                         }
                       };
-                      if (wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay") {
+                      const latestVideoMeta = wantsVideo
+                        ? parseExtra((await chats.getById(input.chatId))?.metadata)
+                        : chatMeta;
+                      if (
+                        wantsVideo &&
+                        firstGalleryImageId &&
+                        messageId &&
+                        chatMode === "roleplay" &&
+                        // Re-checked here: another clip may have landed since the agent was offered one.
+                        automaticVideoAllowed(
+                          await chats.listMessages(input.chatId),
+                          latestVideoMeta,
+                          await loadVideoRunInterval(agentsStore, latestVideoMeta),
+                          false,
+                          messageId,
+                        )
+                      ) {
                         try {
                           const appearanceBlock =
                             chatMeta.illustratorVideoIncludeCharacterAppearance === true
@@ -14585,6 +14632,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             return members;
           };
           try {
+            // At most one automatic video per reply, and only once the Video Run Interval has passed.
+            let videoCommandAllowed =
+              collectedCommands.some(({ command }) => command.type === "video") &&
+              automaticVideoAllowed(
+                await chats.listMessages(input.chatId),
+                chatMeta,
+                await loadVideoRunInterval(agentsStore, chatMeta),
+                false,
+                input.regenerateMessageId,
+              );
             for (const { command, characterId, messageId, swipeIndex } of collectedCommands) {
               if (
                 !roomConversationCommandAllowed(command.type) ||
@@ -14652,34 +14709,41 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 });
 
                 // A clip takes minutes; it finishes after "done" while the stream stays open for media.
-                const videoMessage = startConversationVideoCommand({
-                  command,
-                  // Who the user is: the persona, or a character played as the user who is not one of the chat's
-                  // characters (the cast lists that character after the chat's own).
-                  persona: (() => {
-                    const cast = illustratorCast();
-                    return (
-                      cast.persona ??
-                      cast.chatCharacters.find((entry) => !charInfo.some((character) => character.id === entry.id)) ??
-                      null
-                    );
-                  })(),
-                  characterId,
-                  chatId: input.chatId,
-                  messageId,
-                  swipeIndex,
-                  chatMeta,
-                  charInfo,
-                  promptConnection: conn,
-                  promptConnectionId: conn.id,
-                  debugMode: input.debugMode,
-                  serviceTier,
-                  db: app.db,
-                  sendEvent: (payload) => {
-                    sendSseEvent(reply, payload);
-                  },
-                });
-                if (videoMessage) pendingRoleplayMedia.push(videoMessage);
+                const videoMessage = !videoCommandAllowed
+                  ? null
+                  : startConversationVideoCommand({
+                      command,
+                      // Who the user is: the persona, or a character played as the user who is not one of the chat's
+                      // characters (the cast lists that character after the chat's own).
+                      persona: (() => {
+                        const cast = illustratorCast();
+                        return (
+                          cast.persona ??
+                          cast.chatCharacters.find(
+                            (entry) => !charInfo.some((character) => character.id === entry.id),
+                          ) ??
+                          null
+                        );
+                      })(),
+                      characterId,
+                      chatId: input.chatId,
+                      messageId,
+                      swipeIndex,
+                      chatMeta,
+                      charInfo,
+                      promptConnection: conn,
+                      promptConnectionId: conn.id,
+                      debugMode: input.debugMode,
+                      serviceTier,
+                      db: app.db,
+                      sendEvent: (payload) => {
+                        sendSseEvent(reply, payload);
+                      },
+                    });
+                if (videoMessage) {
+                  videoCommandAllowed = false;
+                  pendingRoleplayMedia.push(videoMessage);
+                }
 
                 await handleConversationCallCommand({
                   command,

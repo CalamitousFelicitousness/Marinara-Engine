@@ -628,6 +628,10 @@ export function startConversationVideoCommand(args: {
       } catch (attachErr) {
         logger.warn(attachErr, "[commands] Saved video %s but could not attach it", result.video.id);
       }
+      // The Video Run Interval counts from here, attached or not: the clip was made.
+      await createChatsStorage(args.db)
+        .patchMetadata(args.chatId, () => ({ lastAutomaticVideoMessageId: args.messageId }))
+        .catch((err) => logger.warn(err, "[commands] Could not record the video message for the run interval"));
       args.sendEvent({
         type: "video",
         data: {

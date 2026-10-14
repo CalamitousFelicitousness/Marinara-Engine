@@ -410,6 +410,13 @@ export interface ChatMetadata {
    */
   illustratorRunInterval?: number | null;
   /**
+   * Messages between videos made on their own (Generated Videos, a character's [video]): 0 to 100, where 0
+   * means only when the user asks. Missing/null = the Illustrator agent's Video Run Interval, else 5.
+   */
+  illustratorVideoRunInterval?: number | null;
+  /** The message the last automatic video joined; the Video Run Interval counts from it. */
+  lastAutomaticVideoMessageId?: string | null;
+  /**
    * What a Roleplay Illustrator (and custom image agents) makes: pictures only, pictures that it may animate
    * into short clips when motion adds to the moment, or a clip instead of every picture. See
    * normalizeIllustratorVideoMode; clips use the chat's scene-video connection.

@@ -150,6 +150,8 @@ export async function buildConversationCommandsReminder(args: {
   db: Parameters<typeof getActiveTurnGame>[0];
   wrapFormat: WrapFormat;
   resolvePromptMacros: (value: string) => string;
+  /** False while the Video Run Interval holds back automatic videos. */
+  videoCommandAllowed?: boolean;
 }): Promise<string | null> {
   if (!args.enabled) return null;
   const { chatMeta, chatMode, characterIds, personaName } = args;
@@ -161,7 +163,8 @@ export async function buildConversationCommandsReminder(args: {
   const videoCommandEnabled =
     isConversationCommandAvailable("video") &&
     roomConversationCommandAllowed("video") &&
-    readConversationCommandToggles(chatMeta).video === true;
+    readConversationCommandToggles(chatMeta).video === true &&
+    args.videoCommandAllowed !== false;
   const memoryCommandEnabled = isConversationCommandEnabled(chatMeta, "memory");
   const sceneCommandEnabled = isConversationCommandEnabled(chatMeta, "scene");
   const reactCommandEnabled = isConversationCommandEnabled(chatMeta, "react");

@@ -238,6 +238,10 @@ async function resolveFirstFrame(
 
   const hasSelfieConnection =
     typeof args.chatMeta.imageGenConnectionId === "string" && args.chatMeta.imageGenConnectionId.trim().length > 0;
+  // A missing Selfie Connection is a setting to fix, not a failed request.
+  if (mode === "picture" && !hasSelfieConnection) {
+    throw new ChatVideoError(400, "Choose a Selfie Connection in Chat Settings, or pick another first frame.");
+  }
   if (mode === "picture" || (mode === "picture_or_avatar" && hasSelfieConnection)) {
     try {
       const selfie = await takeSelfie(args);

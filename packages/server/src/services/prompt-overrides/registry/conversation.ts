@@ -135,8 +135,7 @@ export const CONVERSATION_SELFIE: PromptOverrideKeyDef<ConversationSelfieCtx> = 
 // ── Video message wrapper ──
 //
 // The text LLM writes the prompt for a short video message the character
-// sends in a Conversation (`/video`, the Gallery Video button, or the
-// character's own `[video]` command).
+// sends in a Conversation (`/video` or the Gallery Video button).
 
 export interface ConversationVideoCtx extends Record<string, string | number | undefined> {
   charName: string;

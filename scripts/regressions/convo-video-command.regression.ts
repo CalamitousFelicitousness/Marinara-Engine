@@ -291,7 +291,8 @@ try {
   // Selfie mode without a selfie connection fails instead of silently using something else.
   await setFirstFrame("picture", null);
   const noSelfie = await send({});
-  assert.notEqual(noSelfie.statusCode, 200);
+  assert.equal(noSelfie.statusCode, 400, "a missing Selfie Connection is a setting to fix");
+  assert.match(noSelfie.body, /Choose a Selfie Connection/u);
 
   // Animating a gallery picture joins the newest reply, even when an earlier one shows it; no new message is made.
   mkdirSync(join(fixtureDir, "gallery", convo.id), { recursive: true });

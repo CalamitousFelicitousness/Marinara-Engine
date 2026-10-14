@@ -1450,6 +1450,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const [conversationSelfieReviewItems, setConversationSelfieReviewItems] = useState<ImagePromptReviewItem[]>([]);
   const [conversationSelfieReviewSubmitting, setConversationSelfieReviewSubmitting] = useState(false);
   const roleplaySceneVideoGeneratingRef = useRef(false);
+  const conversationVideoGeneratingRef = useRef(false);
   const roleplayVideoReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
   const conversationSelfieReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
@@ -1626,6 +1627,9 @@ const LocalChatArea = memo(function LocalChatArea({
           ? characterId
           : (chatCharIds.find((id) => characterMap.has(id)) ?? chatCharIds[0]);
       if (!targetCharacterId) throw new Error(localizeUi("ui.chat.chatarea.addACharacterBeforeSendingAVideo"));
+      // One at a time: a second action would find the review window taken, and its cleanup would cancel the first.
+      if (conversationVideoGeneratingRef.current) throw new Error(localizeUi("ui.chat.slash.video.alreadyRunning"));
+      conversationVideoGeneratingRef.current = true;
       const payload: Record<string, unknown> = {
         characterId: targetCharacterId,
         ...(galleryImageId ? { galleryImageId } : {}),
@@ -1674,6 +1678,7 @@ const LocalChatArea = memo(function LocalChatArea({
         void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
         void queryClient.invalidateQueries({ queryKey: ["gallery", activeChatId] });
       } finally {
+        conversationVideoGeneratingRef.current = false;
         closeRoleplayVideoPromptReview(null);
       }
     },

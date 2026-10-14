@@ -8,9 +8,10 @@ import { seedUIState } from "./ui-state-fixture.js";
 // base switches above the 2D lane's PNGTuber panel), saves the sprites with `_talk` sprites as open mouths,
 // and the faces can be changed by hand. On phones the chat stays mounted under the agent's page, and its
 // avatars stop drawing while covered. Making an avatar from a sprite never offers a talk picture as the
-// source, and Arrange mode drags full-body sprites and avatars with one shared gesture. The 2D and 3D Avatars
-// pages leave out the agent pipeline's settings, which never run for them; 2D keeps its connection, which
-// the Mesh Avatar Layout uses to look at the sprite.
+// source, and Arrange mode drags full-body sprites and avatars with one shared gesture. The 3D Avatars page
+// links the guide to getting a 3D model and copies a prompt with only the owner's name and look. The 2D and
+// 3D Avatars pages leave out the agent pipeline's settings, which never run for them; 2D keeps its
+// connection, which the Mesh Avatar Layout uses to look at the sprite.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -320,6 +321,145 @@ test("Arrange mode drags full-body sprites and avatars with the same gesture", a
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
+  }
+});
+
+test("3D Avatars links the 3D model guide and copies a prompt with the owner's name and look only", async ({
+  page,
+  request,
+}, info) => {
+  const LOOK = "long silver hair in a braid, red eyes, black hoodie with gold zips, slim build, round glasses.";
+  const PERSONA_LOOK = "Short black bob, green eyes, yellow raincoat over a grey dress.";
+  const OVERRIDE_LOOK = "1girl, twin tails, pastel pink hair, blue eyes, sailor uniform";
+  const OVERRIDDEN = "Plain appearance that the Image Appearance Override replaces.";
+  // Card fields other than the look, and chat text, must never reach a prompt meant for an outside tool.
+  const PRIVATE = ["DESCRIPTION-SECRET", "PERSONALITY-SECRET", "SCENARIO-SECRET", "GREETING-SECRET", "CHAT-SECRET"];
+  const characterResponse = await request.post("/api/characters", {
+    data: {
+      data: {
+        name: "Model guide fixture",
+        description: "DESCRIPTION-SECRET",
+        personality: "PERSONALITY-SECRET",
+        scenario: "SCENARIO-SECRET",
+        first_mes: "GREETING-SECRET",
+        // Another macro means nothing to an outside tool, so only the owner's own name is filled in.
+        extensions: { appearance: `{{char}} has ${LOOK} She keeps the scarf {{user}} gave her.` },
+      },
+    },
+  });
+  expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string };
+  const personaResponse = await request.post("/api/characters/personas", {
+    data: {
+      name: "Guide persona",
+      // A blank appearance counts as none.
+      appearance: "   ",
+      description: `${PERSONA_LOOK} Often seen with {{char}}.`,
+      personality: "PERSONALITY-SECRET",
+    },
+  });
+  expect(personaResponse.ok(), await personaResponse.text()).toBeTruthy();
+  const persona = (await personaResponse.json()) as { id: string };
+  const overridePersonaResponse = await request.post("/api/characters/personas", {
+    data: {
+      name: "Override persona",
+      appearance: OVERRIDDEN,
+      imageAppearanceEnabled: true,
+      imageAppearance: OVERRIDE_LOOK,
+    },
+  });
+  expect(overridePersonaResponse.ok(), await overridePersonaResponse.text()).toBeTruthy();
+  const overridePersona = (await overridePersonaResponse.json()) as { id: string };
+  const chatResponse = await request.post("/api/chats", {
+    data: { name: "Model guide chat", mode: "roleplay", characterIds: [character.id] },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+  expect(
+    (
+      await request.post(`/api/chats/${chat.id}/messages`, {
+        data: { role: "assistant", characterId: character.id, content: "CHAT-SECRET" },
+      })
+    ).ok(),
+  ).toBeTruthy();
+
+  try {
+    await preparePage(page, character.id, { agentDetailId: "3d-avatars" });
+    const PACKAGE_3D = { ...PACKAGE, id: "3d-avatars", manifest: { ...PACKAGE.manifest, id: "3d-avatars" } };
+    const AGENT_3D = { ...AGENT, id: "3d-avatars", packageId: "3d-avatars", name: "3D Avatars" };
+    await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [PACKAGE_3D] }));
+    await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [AGENT_3D] }));
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            (window as { __copiedPrompt?: string }).__copiedPrompt = text;
+          },
+        },
+      });
+    });
+    const copied = () => page.evaluate(() => (window as { __copiedPrompt?: string }).__copiedPrompt ?? "");
+    await page.goto("/");
+    const setup = page.locator('[data-avatar-setup="3d-avatars"]');
+    await expect(setup).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    await setup.getByLabel("Character or persona").selectOption(`character:${character.id}`);
+    await expect(setup.getByRole("button", { name: "Import VRM", exact: true })).toBeVisible({
+      timeout: FIRST_LOAD_TIMEOUT_MS,
+    });
+
+    // ── The section sits next to the VRM import ──
+    const guide = setup.locator("section").filter({ has: page.getByRole("heading", { name: "Get a 3D model" }) });
+    await expect(guide).toBeVisible();
+    await expect(guide.getByRole("button", { name: "Read the guide", exact: true })).toBeVisible();
+    await guide.screenshot({ path: info.outputPath("avatar-3d-model-guide.png"), animations: "disabled" });
+
+    // ── Copy prompt: the character's name and look, posed for 3D ──
+    await guide.getByRole("button", { name: "Copy prompt", exact: true }).click();
+    await expect.poll(copied).toContain("Model guide fixture has long silver hair in a braid");
+    const prompt = await copied();
+    expect(prompt).toContain(LOOK);
+    expect(prompt).toMatch(/full-body/iu);
+    expect(prompt).toMatch(/T-pose/u);
+    expect(prompt).toMatch(/front view/iu);
+    expect(prompt).not.toContain("{{");
+    for (const secret of PRIVATE) expect(prompt, secret).not.toContain(secret);
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Prompt copied." })).toBeVisible();
+
+    // ── A persona with a blank appearance uses its description ──
+    await setup.getByLabel("Character or persona").selectOption(`persona:${persona.id}`);
+    await guide.getByRole("button", { name: "Copy prompt", exact: true }).click();
+    await expect.poll(copied).toContain("Guide persona");
+    const personaPrompt = await copied();
+    expect(personaPrompt).toContain(PERSONA_LOOK);
+    expect(personaPrompt).not.toContain("{{");
+    for (const secret of PRIVATE) expect(personaPrompt, secret).not.toContain(secret);
+
+    // ── An Image Appearance Override that is on replaces the appearance ──
+    await setup.getByLabel("Character or persona").selectOption(`persona:${overridePersona.id}`);
+    await guide.getByRole("button", { name: "Copy prompt", exact: true }).click();
+    await expect.poll(copied).toContain("Override persona");
+    const overridePrompt = await copied();
+    expect(overridePrompt).toContain(OVERRIDE_LOOK);
+    expect(overridePrompt).not.toContain(OVERRIDDEN);
+
+    // ── Read the guide opens the docs at the section ──
+    const docRequest = page.waitForRequest((req) => {
+      const url = new URL(req.url());
+      return url.pathname.endsWith("/api/docs/content") && url.searchParams.get("path") === "agents/avatars.md";
+    });
+    await guide.getByRole("button", { name: "Read the guide", exact: true }).click();
+    await docRequest;
+    const reader = page.locator(".docs-reader-content");
+    const heading = reader.getByRole("heading", { name: "Get a 3D model" });
+    await expect(heading).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    await expect(reader.locator("mark.docs-search-mark").first()).toHaveText("Get a 3D model");
+    await expect(heading).toBeInViewport();
+  } finally {
+    await request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
+    await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
+    await request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined);
+    await request.delete(`/api/characters/personas/${overridePersona.id}`).catch(() => undefined);
   }
 });
 

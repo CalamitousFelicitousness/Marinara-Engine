@@ -92,11 +92,8 @@ type UseCharactersOptions =
       includeBuiltIn?: boolean;
     };
 
-export function useCharacters(options: UseCharactersOptions = true) {
-  const enabled = typeof options === "boolean" ? options : (options.enabled ?? true);
-  const includeBuiltIn = typeof options === "object" ? options.includeBuiltIn === true : false;
-
-  return useQuery({
+function characterListQuery(includeBuiltIn: boolean) {
+  return {
     queryKey: includeBuiltIn ? characterKeys.listWithBuiltIns() : characterKeys.list(),
     queryFn: async () => {
       const characters = await api.get<Array<{ id?: unknown }>>(
@@ -105,9 +102,15 @@ export function useCharacters(options: UseCharactersOptions = true) {
       if (includeBuiltIn) return characters;
       return characters.filter((character) => character.id !== PROFESSOR_MARI_ID);
     },
-    enabled,
     staleTime: 5 * 60_000,
-  });
+  };
+}
+
+export function useCharacters(options: UseCharactersOptions = true) {
+  const enabled = typeof options === "boolean" ? options : (options.enabled ?? true);
+  const includeBuiltIn = typeof options === "object" ? options.includeBuiltIn === true : false;
+
+  return useQuery({ ...characterListQuery(includeBuiltIn), enabled });
 }
 
 export function useCharacterPages(options: {
@@ -1170,13 +1173,22 @@ function invalidatePersonaVersions(qc: QueryClient, id: string) {
   return qc.invalidateQueries({ queryKey: characterKeys.personaVersions(id), exact: true });
 }
 
+const personaListQuery = {
+  queryKey: characterKeys.personas,
+  queryFn: () => api.get<Persona[]>("/characters/personas/list"),
+  staleTime: 5 * 60_000,
+};
+
 export function usePersonas(enabled = true) {
-  return useQuery({
-    queryKey: characterKeys.personas,
-    queryFn: () => api.get<Persona[]>("/characters/personas/list"),
-    enabled,
-    staleTime: 5 * 60_000,
-  });
+  return useQuery({ ...personaListQuery, enabled });
+}
+
+/**
+ * Waits for the character and persona lists while they are still loading (right after the page
+ * opens), so a sent message fills {{char}} and {{user}} with real names, not "Character" and "User".
+ */
+export async function ensureCharacterAndPersonaLists(qc: QueryClient) {
+  await Promise.allSettled([qc.ensureQueryData(characterListQuery(false)), qc.ensureQueryData(personaListQuery)]);
 }
 
 export function usePersonaPages(options: { enabled?: boolean; search?: string; sort?: string }) {

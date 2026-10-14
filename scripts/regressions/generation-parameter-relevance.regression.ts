@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -741,6 +742,125 @@ try {
       ["medium", ""],
       ["high", ""],
     ],
+  );
+
+  // The panel shows those levels as people read them ("Low", "Extra high"), tooltips and effective values included,
+  // while the values above stay the ones saved and sent.
+  const clientRequire = createRequire(new URL("../../packages/client/package.json", import.meta.url));
+  const React = clientRequire("react");
+  // The Node regression host compiles JSX in classic mode; the client uses the automatic runtime.
+  Object.assign(globalThis, { React });
+  const { renderToStaticMarkup } = clientRequire("react-dom/server");
+  const { I18nextProvider } = await import("../../packages/client/node_modules/react-i18next/dist/es/index.js");
+  const { QueryClient, QueryClientProvider } =
+    await import("../../packages/client/node_modules/@tanstack/react-query/build/modern/index.js");
+  const i18n = clientRequire("i18next").createInstance();
+  await i18n.init({
+    lng: "en",
+    keySeparator: false,
+    nsSeparator: false,
+    resources: {
+      en: {
+        translation: JSON.parse(
+          readFileSync(new URL("../../packages/client/src/localization/locales/en.json", import.meta.url), "utf8"),
+        ),
+      },
+    },
+  });
+  const { CHAT_PARAMETER_DEFAULTS, GenerationParametersFields, getEditableGenerationParameters } =
+    await import("../../packages/client/src/components/ui/GenerationParametersEditor.js");
+  const { generationLevelLabel } = await import("../../packages/client/src/lib/generation-level-label.js");
+  const panelRows = (props: Record<string, unknown>) => {
+    const html: string = renderToStaticMarkup(
+      React.createElement(
+        I18nextProvider,
+        { i18n },
+        React.createElement(
+          QueryClientProvider,
+          { client: new QueryClient() },
+          React.createElement(GenerationParametersFields, {
+            value: getEditableGenerationParameters(CHAT_PARAMETER_DEFAULTS),
+            onChange: () => {},
+            ...props,
+          }),
+        ),
+      ),
+    );
+    const row = (label: string) => {
+      const rest = html.slice(html.indexOf(`>${label}<`));
+      const buttons = /<div class="mt-1 flex flex-wrap gap-1.5">(.*?)<\/div>/su.exec(rest)?.[1] ?? "";
+      return {
+        effective: /data-effective-parameter="[^"]*">([^<]*)</u.exec(rest)?.[1],
+        choices: [...buttons.matchAll(/<button([^>]*)>([^<]*)<\/button>/gu)].map(([, attrs, text]) => [
+          text,
+          /title="([^"]*)"/u.exec(attrs!)?.[1] ?? "",
+        ]),
+      };
+    };
+    return { effort: row("Reasoning Effort"), verbosity: row("Verbosity") };
+  };
+  assert.deepEqual(
+    panelRows({
+      provider: "openai_chatgpt",
+      model: "gpt-5.6-sol",
+      modelCapabilities: {
+        effortLevels: ["low", "medium", "high", "xhigh", "maximum"],
+        effortLabels: { low: "low", medium: "medium", high: "high", xhigh: "xhigh", maximum: "max" },
+        defaultEffort: "low",
+      },
+      effectiveParameters: { reasoningEffort: { value: "xhigh", source: "connection", enabled: true } },
+    }).effort,
+    {
+      effective: "Effective: Extra high · from connection",
+      choices: [
+        ["Default", "Provider default: Low"],
+        ["Low", ""],
+        ["Medium", ""],
+        ["High", ""],
+        ["Extra high", ""],
+        ["Max", ""],
+      ],
+    },
+    "Codex effort buttons, their default and the effective level are capitalized",
+  );
+  assert.deepEqual(
+    panelRows({
+      provider: "openai",
+      model: "gpt-5.6-sol",
+      modelCapabilities: { verbosity: { supported: true, default: "medium" } },
+      effectiveParameters: {
+        reasoningEffort: { value: "high", source: "chat", enabled: true },
+        verbosity: { value: "low", source: "preset", enabled: true },
+      },
+    }),
+    {
+      effort: {
+        effective: "Effective: High · this chat",
+        choices: [
+          ["Off", ""],
+          ["Low", ""],
+          ["Medium", ""],
+          ["High", ""],
+          ["Extra high", ""],
+          ["Max", ""],
+        ],
+      },
+      verbosity: {
+        effective: "Effective: Low · from preset",
+        choices: [
+          ["None", "Provider default: Medium"],
+          ["Low", ""],
+          ["Medium", "Provider default"],
+          ["High", ""],
+        ],
+      },
+    },
+    "OpenAI effort and verbosity buttons are capitalized",
+  );
+  // A level with no name of its own (a provider's own label) keeps its text with a capital first letter.
+  assert.deepEqual(
+    ["maximum", "ultra"].map((level) => generationLevelLabel(level, (key: string) => i18n.t(key))),
+    ["Maximum", "Ultra"],
   );
 
   __setSdkForTesting(null);

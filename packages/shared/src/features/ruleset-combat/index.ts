@@ -49,6 +49,8 @@
 
 export * from "./types.js";
 export * from "./zones.js";
+export * from "./board-events.js";
+export * from "./calls.js";
 export * from "./sight.js";
 export {
   RULESET_PICK_UP_OPTION_PREFIX,
@@ -134,6 +136,7 @@ export {
   rulesetConditionModifiers,
   rulesetDamageInEffect,
   rulesetSizeRank,
+  rulesetAuraDistance,
   rulesetAuraReaches,
   rulesetAuraSpreaders,
   rulesetSyncAuras,
@@ -146,6 +149,8 @@ export {
   rulesetInitiativeOrder,
   rulesetMovementAllowance,
   rulesetSealed,
+  rulesetLairRound,
+  rulesetActedThisRound,
   rulesetSealedApart,
   grantRulesetMovement,
   rulesetFastestSpeed,
@@ -156,6 +161,8 @@ export {
   type RulesetActiveCondition,
   type RulesetConditionModifier,
   type RulesetEncounterInput,
+  type RulesetBoardPropInput,
+  rulesetBoardProps,
 } from "./encounter.js";
 export {
   rulesetAreaCells,
@@ -241,6 +248,9 @@ export {
   rulesetPoolPaysFor,
   rulesetProneCondition,
   rulesetSignatureOptions,
+  rulesetLairOptions,
+  rulesetLentLairTurn,
+  RULESET_LAIR_OPTION_PREFIX,
   rulesetStandCost,
   rulesetStandardBudget,
   rulesetStandardName,
@@ -262,6 +272,8 @@ export {
   RULESET_STAND_OPTION,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
+  RULESET_RELIGHT_OPTION_PREFIX,
+  rulesetRelightCells,
   RULESET_FLY_CEILING,
   type RulesetBonusDice,
   type RulesetCombatCost,
@@ -269,9 +281,13 @@ export {
 } from "./options.js";
 export {
   advanceRulesetTurn,
+  rulesetOpenLairWindow,
   applyRulesetCombatChoice,
+  rulesetSaveDifficultyShift,
   liftRulesetFightEffects,
   settleRulesetFledFight,
+  rulesetReleaseHeldGround,
+  type RulesetHeldGroundRelease,
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
 } from "./resolve.js";

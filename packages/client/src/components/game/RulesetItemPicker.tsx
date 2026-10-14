@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
+  artIconFor,
   defaultRulesetSheetBuild,
   type RulesetDefinition,
   type RulesetItemBook,
@@ -16,6 +17,7 @@ import {
   type RulesetItemEffectFact,
   type RulesetItemFacts,
 } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { useRulesetCatalog } from "../../hooks/use-capability-packages";
 import {
   CATALOG_FILTER_ANY,
@@ -24,6 +26,7 @@ import {
   filterCatalogEntries,
 } from "../../lib/ruleset-catalog";
 import { Modal } from "../ui/Modal";
+import { GAME_DIALOG_CLASS } from "../../lib/chat-widget-colors";
 
 const inputClass =
   "w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs text-[var(--foreground)]";
@@ -342,6 +345,7 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
   }
   if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
   if (fact.to === "attacks-taken") return t("ui.game.gameinventory.effectOnAttacksTaken", { change });
+  if (fact.to === "save-difficulty") return t("ui.game.gameinventory.effectSaveDifficulty", { change });
   if (fact.to === "checks-taken") {
     return names
       ? t("ui.game.gameinventory.effectOnNamedChecksTaken", { change, names })
@@ -457,6 +461,7 @@ export function RulesetItemPicker({
       title={t("game.ruleset.items.pickerTitle")}
       width="max-w-2xl"
       mobileFullscreen
+      panelClassName={GAME_DIALOG_CLASS}
       initialFocusRef={searchRef}
       contentClassName="flex flex-col"
     >
@@ -550,6 +555,14 @@ export function RulesetItemPicker({
                   />
                   <span className="min-w-0 flex-1 space-y-1">
                     <span className="flex flex-wrap items-center gap-1.5">
+                      <ArtIcon
+                        ids={[
+                          each.entry.icon,
+                          artIconFor({ catalog: each.catalogId, entry: each.entry.id, item: true }),
+                          artIconFor({ item: each.name }),
+                        ]}
+                        className="h-5 w-5"
+                      />
                       <span className="text-xs font-medium text-[var(--foreground)]">{each.name}</span>
                       {kind.map((word) => (
                         <span key={word} className={chipClass}>

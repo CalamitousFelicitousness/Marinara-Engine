@@ -799,6 +799,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         referenceImagePrompt: galleryImage.prompt ?? "",
         characterNames,
         setting: buildRoleplayVideoSettingLine(chat, meta, videoRuntime.promptLimits.artStyle),
+        videoPromptInstructions: videoConn.videoPromptInstructions,
       });
       const [systemMessage, userMessage] = directionMessages;
       const debugOverrideEnabled = input.debugMode === true || isDebugAgentsEnabled();
@@ -817,7 +818,11 @@ export async function galleryRoutes(app: FastifyInstance) {
           enableCaching: promptRuntime.enableCaching,
           anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
         });
-        promptDraft = resolveRoleplayVideoDirection(result.content, videoRuntime.promptLimits.finalPrompt);
+        // A sentence of the connection's instructions the director copied word for word is not video-model text.
+        promptDraft = removeCopiedPromptGuidance(
+          resolveRoleplayVideoDirection(result.content, videoRuntime.promptLimits.finalPrompt),
+          [videoConn.videoPromptInstructions],
+        );
       } catch (err) {
         logger.warn(err, "[gallery/roleplay-video-director] Failed to plan animation for chat %s", input.chatId);
         const message =

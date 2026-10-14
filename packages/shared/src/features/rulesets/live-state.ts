@@ -873,7 +873,10 @@ export type RulesetSheetOp =
   /** Sets a live state to one of its values, named by the value or its label. */
   | { op: "state"; state: string; value: string }
   | { op: "note"; field: string; value: string }
-  | { op: "rest"; rest: string }
+  /** `dice` (1.335): spend that many of the rest's dice to heal first, as its `dice` says. `extra` is the
+   *  party's best extra die for it (Song of Rest), worked out where the party is known; without it, the
+   *  sheet's own. */
+  | { op: "rest"; rest: string; dice?: number; pool?: string; extra?: { sides: number; add: number } }
   /** Uses something the character picked from a catalog, paying everything it costs. Resolved by
    *  `planRulesetUse` before it reaches `applyRulesetSheetOp`, because it needs the catalogs. */
   | { op: "use"; name: string; pool?: string };
@@ -977,6 +980,8 @@ export function applyRulesetSheetOp(
   /** What a rest rolls for a condition that lowers health's maximum (1.260). Without one, each die
    *  counts its average, rounded down over them all. */
   roll?: (sides: number) => number,
+  /** The items the character carries, which a rest's dice read for an `itemStat` (1.337). */
+  items?: ReadonlyArray<RulesetSheetItem>,
 ): RulesetSheetOpResult {
   // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
   // ruleset's catalogs, which this function deliberately does not take.
@@ -1214,6 +1219,25 @@ export function applyRulesetSheetOp(
   if (op.op !== "rest") return { ok: false, reason: "malformed" };
   const rest = definition.rests.find((entry) => sameName(entry.id, op.rest) || sameName(entry.label, op.rest));
   if (!rest) return { ok: false, reason: "unknown-rest" };
+  // Dice spent to heal first (1.335), then the rest itself.
+  if (op.dice !== undefined && op.dice !== 0) {
+    if (!rest.dice || !isAmount(op.dice)) return { ok: false, reason: "bad-amount" };
+    const spent = rulesetSpendRestDice(
+      definition,
+      build,
+      stored,
+      rest.id,
+      rest.dice,
+      op.dice,
+      op.pool,
+      op.extra,
+      roll,
+      items,
+    );
+    if (!spent.ok) return spent;
+    const after = applyRulesetSheetOp(definition, build, spent.live, { op: "rest", rest: rest.id }, roll, items);
+    return after.ok ? { ...after, now: `${spent.now}; ${after.now}`.slice(0, MAX_NOW_LENGTH) } : after;
+  }
 
   // A rest does exactly what the definition says and nothing else — no implied healing, and no
   // temporary buffers dropped, because no ruleset asked for that here.
@@ -1624,4 +1648,135 @@ export function planRulesetUse(
     }
   }
   return { ok: true, label: entry.label, steps };
+}
+
+type RestDiceList = NonNullable<RulesetDefinition["rests"][number]["dice"]>;
+type RestDice = Extract<RestDiceList, { pool: string }>;
+
+/** A rest's dice as a list (1.337), one entry a pool. */
+export function rulesetRestDiceEntries(dice: RestDiceList | undefined): RestDice[] {
+  return dice === undefined ? [] : Array.isArray(dice) ? dice : [dice];
+}
+
+/** A die's sides read off the sheet (1.335): a number, or an enum field's value written "d8". */
+export function rulesetRestDieSides(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  ref: RestDice["die"],
+  evaluated = evaluateRulesetSheet(definition, build),
+): number {
+  if (ref.field !== undefined) {
+    const written = build.fields?.[ref.field];
+    const match = typeof written === "string" ? /^\s*d(\d+)\s*$/i.exec(written) : null;
+    if (match) return Math.min(100, Number(match[1]));
+  }
+  const value = resolveRulesetValueRef(definition, build, ref, evaluated);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.trunc(value))) : 0;
+}
+
+/** The extra die a sheet gives a rest's dice (1.335), Song of Rest: its sides and what is added to it;
+ *  null where it gives none. */
+export function rulesetRestExtraDie(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  restId: string,
+  /** What the character carries, for an `itemStat` in it (1.337): Pell's Teapot. */
+  items?: ReadonlyArray<RulesetSheetItem>,
+  stored?: unknown,
+): { sides: number; add: number } | null {
+  const extra = rulesetRestDiceEntries(definition.rests.find((rest) => rest.id === restId)?.dice).find(
+    (entry) => entry.extra,
+  )?.extra;
+  if (!extra) return null;
+  const evaluated = evaluateRulesetSheetLive(definition, build, stored, items);
+  const sides = rulesetRestDieSides(definition, build, extra.die, evaluated);
+  if (sides < 1) return null;
+  const add = extra.add ? resolveRulesetValueRef(definition, build, extra.add, evaluated) : 0;
+  return { sides, add: Number.isFinite(add) ? Math.trunc(add) : 0 };
+}
+
+/** Spend `count` of a rest's dice to heal (1.335): each die rolled plus `add`, never below 0, and the
+ *  extra die once, all given back to `heals` as a heal that is not magical. Without a roller each die
+ *  counts its average, rounded down. Over several pools (1.337) they come from `pool` when it is
+ *  named, else from the first listed pool that has any, then the next. */
+function rulesetSpendRestDice(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  restId: string,
+  dice: RestDiceList,
+  count: number,
+  pool: string | undefined,
+  given: { sides: number; add: number } | undefined,
+  roll: ((sides: number) => number) | undefined,
+  items: ReadonlyArray<RulesetSheetItem> | undefined,
+): RulesetSheetOpResult {
+  const evaluated = evaluateRulesetSheetLive(definition, build, stored, items);
+  const entries = rulesetRestDiceEntries(dice).filter((entry) => pool === undefined || sameName(entry.pool, pool));
+  if (entries.length === 0) return { ok: false, reason: "bad-pool" };
+  // How many each pool gives, in order, before anything is spent: too few in all is refused whole.
+  const pools = readRulesetLive(definition, build, stored).pools;
+  const plan: Array<{ entry: RestDice; count: number }> = [];
+  let left = count;
+  for (const entry of entries) {
+    if (left === 0) break;
+    const has = Math.max(0, Math.trunc(pools.find((one) => one.key === entry.pool)?.value ?? 0));
+    const taken = Math.min(has, left);
+    if (taken > 0) plan.push({ entry, count: taken });
+    left -= taken;
+  }
+  if (left > 0) return { ok: false, reason: "insufficient" };
+  const throwOne = (faces: number) => (roll ? Math.max(1, Math.min(faces, Math.trunc(roll(faces)))) : null);
+  let live: unknown = stored;
+  let last: RulesetSheetOpResult | null = null;
+  const healing = new Map<string, number>();
+  const rolls: Array<number | null> = [];
+  for (const step of plan) {
+    const sides = rulesetRestDieSides(definition, build, step.entry.die, evaluated);
+    if (sides < 1) return { ok: false, reason: "malformed" };
+    const addRead = step.entry.add ? resolveRulesetValueRef(definition, build, step.entry.add, evaluated) : 0;
+    const add = Number.isFinite(addRead) ? Math.trunc(addRead) : 0;
+    const spent = applyRulesetSheetOp(definition, build, live, {
+      op: "spend",
+      pool: step.entry.pool,
+      amount: step.count,
+    });
+    if (!spent.ok) return spent;
+    live = spent.live;
+    last = spent;
+    const thrown = Array.from({ length: step.count }, () => throwOne(sides));
+    rolls.push(...thrown);
+    const each = thrown.map((rolled) => Math.max(0, (rolled ?? (sides + 1) / 2) + add));
+    healing.set(step.entry.heals, (healing.get(step.entry.heals) ?? 0) + each.reduce((sum, one) => sum + one, 0));
+  }
+  // The extra die once, whatever pools paid (Song of Rest), onto what the first of them heals.
+  const extra = given ?? rulesetRestExtraDie(definition, build, restId, items, stored);
+  let extraSaid = "";
+  if (extra && extra.sides >= 1) {
+    const rolled = throwOne(extra.sides);
+    const gained = Math.max(0, Math.floor((rolled ?? (extra.sides + 1) / 2) + extra.add));
+    const heals = plan[0]!.entry.heals;
+    healing.set(heals, (healing.get(heals) ?? 0) + gained);
+    extraSaid = ` +${gained}`;
+  }
+  const said = rolls.every((one) => one !== null) ? ` (${rolls.join(", ")})` : "";
+  const healed: string[] = [];
+  for (const [heals, amount] of healing) {
+    const total = Math.floor(amount);
+    if (total === 0) continue;
+    const restored = applyRulesetSheetOp(definition, build, live, { op: "restore", pool: heals, amount: total });
+    // A condition that keeps them from healing (Mummy Rot) costs the dice and heals nothing, and the
+    // rest goes on, as a rest's own healing does.
+    if (!restored.ok && restored.reason === "cannot-heal") {
+      const by = healKeptOffBy(definition, readStoredLiveState(definition, build, live).conditions ?? [], false);
+      healed.push(`${by ?? "a condition"} keeps it from healing`);
+      continue;
+    }
+    if (!restored.ok) return restored;
+    live = restored.live;
+    last = restored;
+    healed.push(restored.now);
+  }
+  if (healed.length === 0) return { ...last!, now: `${count} spent${said}, no healing` };
+  return { ...last!, now: `${count} spent${said}${extraSaid}: ${healed.join("; ")}` };
 }

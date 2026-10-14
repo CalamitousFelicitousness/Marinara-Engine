@@ -20,6 +20,7 @@ import {
   readStoryLedger,
   storyObjectives,
   storyScriptSchema,
+  gameIntroChoiceSchema,
   storyState,
   type StoryScript,
   worldEditsEmpty,
@@ -1974,6 +1975,8 @@ const gameSetupConfigSchema = z.object({
   setting: z.string().min(1),
   tone: z.string().min(1).max(200),
   difficulty: z.string().min(1).max(100).transform(normalizeGameDifficulty),
+  /** The Game Master's intro message (1.339). */
+  gameIntro: gameIntroChoiceSchema.optional(),
   combatStyle: z.enum(["classic", "tactical"]).optional(),
   combatDirector: z.boolean().optional(),
   gmBossControl: z.boolean().optional(),
@@ -7014,6 +7017,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // Likewise fixed for the game's lifetime. Written only when a ruleset was chosen, so a game
       // on Marinara's own rules carries exactly the metadata it always has.
       ...(gameRuleset ? { gameRuleset } : {}),
+      // The Game Master's intro message (1.339), as the setup set it; a locked Experience intro wins over it.
+      ...(setupConfig.gameIntro ? { gameIntro: setupConfig.gameIntro } : {}),
       // The setting kit, likewise only when one was chosen, and the world made in its words.
       ...(setupConfig.worldKit ? { gameWorldKit: setupConfig.worldKit } : {}),
       ...(gameWorld ? { gameWorld } : {}),
@@ -14412,6 +14417,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       );
 
       let videoRuntime: GameVideoRuntime | null = null;
+      let videoPromptInstructions: string | null = null;
       let videoFallback: Awaited<ReturnType<typeof resolveVideoConnectionFallback>> = undefined;
       if (generateStoryboardVideos && !usedFallbackStoryboardPlanner) {
         const videoConnectionId =
@@ -14420,6 +14426,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const videoConn = videoConnectionId ? await connections.getWithKey(videoConnectionId) : null;
         if (videoConn?.provider === "video_generation") {
           videoRuntime = resolveGameVideoRuntime(videoConn);
+          videoPromptInstructions = videoConn.videoPromptInstructions;
           videoFallback = await resolveVideoConnectionFallback(connections, videoConn.id);
         }
       }
@@ -14561,6 +14568,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                     durationSeconds: plannedFrame.durationSeconds,
                     aspectRatio: plannedFrame.aspectRatio,
                     referenceImage: exactReferenceImage,
+                    videoPromptInstructions,
                   });
                   if (debugLogsEnabled) {
                     debugLog(
@@ -14594,6 +14602,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                   const refinement = resolveStoryboardAnimationRefinement(
                     extraction.content,
                     plannedFrame.narrationBeat,
+                    [videoPromptInstructions],
                   );
                   if (!refinement) {
                     throw new Error("Animation Planner returned no usable image-aware motion beat");

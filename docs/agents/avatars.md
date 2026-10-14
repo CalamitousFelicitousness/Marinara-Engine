@@ -180,7 +180,7 @@ On the **2D Avatars** page in the Agent editor, choose a character or persona, t
 
 ### Faces from the avatar
 
-**Make faces from the avatar** makes faces without a background, also for a character or persona with no sprites yet. It opens sprite generation, the same one as in the character and persona editors, with the avatar checked as the reference. It draws new expression sprites from the avatar on a plain color, removes that color, and saves them as the character's or persona's sprites. A new sprite replaces the one with the same name, so rename it in the last step to keep the old one. It needs an image generation connection.
+**Make faces from the avatar** makes faces without a background, also for a character or persona with no sprites yet. It opens sprite generation, the same one as in the character and persona editors, with the avatar checked as the reference. It draws new expression sprites from the avatar on a plain color, removes that color, and saves them as the character's or persona's sprites. A new sprite replaces the one with the same name, so rename it in the last step to keep the old one. It needs an avatar and an image generation connection.
 
 ### Blink and talk pictures
 

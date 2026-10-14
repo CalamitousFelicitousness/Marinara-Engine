@@ -485,6 +485,11 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
   });
   expect(personaResponse.ok(), await personaResponse.text()).toBeTruthy();
   const persona = (await personaResponse.json()) as { id: string };
+  const noAvatarResponse = await request.post("/api/characters/personas", {
+    data: { name: "Faceless persona", appearance: "Short, brown hair." },
+  });
+  expect(noAvatarResponse.ok(), await noAvatarResponse.text()).toBeTruthy();
+  const noAvatar = (await noAvatarResponse.json()) as { id: string };
   const connectionResponse = await request.post("/api/connections", {
     data: {
       name: `Faces image ${info.project.name}`,
@@ -582,9 +587,19 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
       personaAvatar,
     );
     await expect(dialog.locator("textarea").first()).toHaveValue("Tall, silver hair, grey coat.");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    // ── Without an avatar there is nothing to draw the faces from ──
+    await setup.getByLabel("Character or persona").selectOption(`persona:${noAvatar.id}`);
+    await expect(setup.getByText("Add an avatar to this character or persona first.")).toBeVisible({
+      timeout: FIRST_LOAD_TIMEOUT_MS,
+    });
+    await expect(makeFaces).toBeDisabled();
   } finally {
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
     await request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined);
+    await request.delete(`/api/characters/personas/${noAvatar.id}`).catch(() => undefined);
     await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
   }
 });

@@ -143,7 +143,7 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
           <button
             type="button"
             // Opened once the card is loaded, so its avatar is the reference from the start.
-            disabled={!seed}
+            disabled={!seed?.avatarUrl}
             onClick={() => setFacesOpen(true)}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary)]/85 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -151,7 +151,9 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
             {t("avatars.generation.facesFromAvatar")}
           </button>
           <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-            {t("avatars.generation.facesFromAvatarHelp")}
+            {t(
+              seed && !seed.avatarUrl ? "avatars.generation.facesNeedAvatar" : "avatars.generation.facesFromAvatarHelp",
+            )}
           </p>
         </div>
       )}
@@ -215,7 +217,7 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
         onConfirm={(overrides) => closeReview(overrides)}
       />
       <Suspense fallback={null}>
-        {facesOpen && seed ? (
+        {facesOpen && seed?.avatarUrl ? (
           <SpriteGenerationModal
             open
             onClose={() => setFacesOpen(false)}

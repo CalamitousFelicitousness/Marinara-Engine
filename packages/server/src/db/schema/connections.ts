@@ -92,6 +92,8 @@ export const apiConnections = fileTable("api_connections", {
   videoGenerationSource: text("video_generation_source"),
   /** Video generation: explicitly selected service ID. */
   videoService: text("video_service"),
+  /** Instructions for the language model that writes video prompts for this connection. */
+  videoPromptInstructions: text("video_prompt_instructions"),
   /** Audio backend for audio connections (openai | elevenlabs | pockettts | xai). */
   audioSource: text("audio_source"),
   decisionSource: text("decision_source"),

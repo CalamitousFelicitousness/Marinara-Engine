@@ -4620,7 +4620,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   .mari-connection-picker__open {
     position: relative;
     display: flex;
-    width: 2.75rem;
+    width: 3rem;
     flex: none;
     align-items: center;
     justify-content: center;

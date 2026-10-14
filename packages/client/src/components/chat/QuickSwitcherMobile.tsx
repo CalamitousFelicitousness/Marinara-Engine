@@ -580,7 +580,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                               </span>
                             )}
                           </span>
-                          {isActive && !hasModels && (
+                          {isActive && (
                             <Check size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-accent)]" />
                           )}
                         </button>
@@ -595,18 +595,9 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                             title={localizeUi("connections.modelPicker.showModels", {
                               connection: conn.name || conn.id,
                             })}
-                            className="relative flex min-w-11 shrink-0 items-center justify-end gap-2 rounded-r-lg px-3 text-foreground/40 transition-colors hover:bg-foreground/10 hover:text-foreground/70"
+                            className="relative flex w-12 shrink-0 items-center justify-center rounded-r-lg text-foreground/40 transition-colors hover:bg-foreground/10 hover:text-foreground/70"
                           >
                             <span aria-hidden className="absolute inset-y-2.5 left-0 border-l border-foreground/15" />
-                            {/* Reserved on every row so the dividers line up. */}
-                            <Check
-                              size="0.75rem"
-                              aria-hidden
-                              className={cn(
-                                "shrink-0 text-[var(--marinara-chat-chrome-accent)]",
-                                !isActive && "invisible",
-                              )}
-                            />
                             <ChevronRight size="0.875rem" aria-hidden />
                           </button>
                         )}

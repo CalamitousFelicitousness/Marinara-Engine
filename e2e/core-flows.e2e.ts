@@ -1720,10 +1720,7 @@ test("Author's Notes presets name on save and guard unsaved edits", async ({ pag
 
   try {
     await page.goto("/");
-    await page.getByRole("button", { name: "Author's Notes", exact: true }).filter({ visible: true }).click();
-    const heading = page.locator("h3").filter({ hasText: "Author's Notes" });
-    await expect(heading).toBeVisible();
-    const panel = heading.locator("..");
+    const panel = await openChatSettingsTool(page, "author-notes");
     const noteField = panel.getByRole("textbox", { name: "Author's Notes", exact: true });
     const saveButton = panel.getByRole("button", { name: "Save", exact: true });
 

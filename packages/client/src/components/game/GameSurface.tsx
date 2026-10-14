@@ -3149,6 +3149,7 @@ function GameSurfaceComponent({
                   description: card.title ?? card.summary,
                   avatar: { url: card.avatarPath, crop: normalizeAvatarCrop(card.avatarCrop) },
                 })),
+                chatStyle: true,
               }),
             );
             partyCardChoiceQueueRef.current = choice.catch(() => {});
@@ -8804,6 +8805,7 @@ function GameSurfaceComponent({
         confirmLabel: localizeUi("settings.notifications.customSound.actions.remove"),
         cancelLabel: "Keep",
         tone: "destructive",
+        chatStyle: true,
       });
       if (!confirmed) return;
 
@@ -9833,6 +9835,7 @@ function GameSurfaceComponent({
       message: localizeUi("ui.game.gamesurfacecomponent.generateATacticalCombatEncounterFromTheCurrentGame"),
       confirmLabel: localizeUi("ui.game.gamesurfacecomponent.yes"),
       cancelLabel: "No",
+      chatStyle: true,
     });
     if (!confirmed) return;
     startCombatGeneration(true);
@@ -12952,7 +12955,13 @@ function GameSurfaceComponent({
 
                 {!replayActive && sidecarStartupFailed && (
                   <div className="pointer-events-auto absolute top-4 left-1/2 z-30 w-[min(92vw,42rem)] -translate-x-1/2">
-                    <div className="rounded-xl border border-amber-500/20 bg-black/80 px-4 py-3 shadow-lg backdrop-blur-sm">
+                    <div
+                      data-game-section="scene-alert"
+                      className={cn(
+                        GAME_SECTION_CLASS,
+                        "rounded-xl border border-amber-500/20 bg-black/80 px-4 py-3 shadow-lg backdrop-blur-sm",
+                      )}
+                    >
                       <div className="flex items-start gap-3">
                         <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
                         <div className="min-w-0 flex-1">
@@ -12988,7 +12997,13 @@ function GameSurfaceComponent({
                 {/* Image generation failed — retry banner */}
                 {!replayActive && assetGenerationFailed && pendingAssetGeneration && (
                   <div className="pointer-events-auto absolute bottom-32 left-1/2 z-30 -translate-x-1/2">
-                    <div className="flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm">
+                    <div
+                      data-game-section="scene-retry"
+                      className={cn(
+                        GAME_SECTION_CLASS,
+                        "flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
+                      )}
+                    >
                       <AlertTriangle size={14} className="shrink-0 text-amber-400" />
                       <span className="text-xs text-white/70">
                         {localizeUi("ui.game.gamesurfacecomponent.imageGenerationFailed")}
@@ -13017,7 +13032,13 @@ function GameSurfaceComponent({
                 {/* Scene analysis failed — retry banner (only when narration is still blocked) */}
                 {!replayActive && sceneAnalysisFailed && introPresented && (
                   <div className="pointer-events-auto absolute bottom-32 left-1/2 z-30 -translate-x-1/2">
-                    <div className="flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm">
+                    <div
+                      data-game-section="scene-retry"
+                      className={cn(
+                        GAME_SECTION_CLASS,
+                        "flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
+                      )}
+                    >
                       <AlertTriangle size={14} className="shrink-0 text-amber-400" />
                       <span className="text-xs text-white/70">
                         {localizeUi("ui.game.gamesurfacecomponent.sceneAnalysisFailed")}

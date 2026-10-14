@@ -21,6 +21,7 @@ import {
   WORLD_ART_FAMILIES,
   WORLD_DAYS_CAP,
   WORLD_GENERATOR_VERSION,
+  WORLD_IMAGE_ONLY_TILE_IDS,
   WORLD_TILE_IDS,
   parseTilePack,
   WORLD_STARTER_KITS,
@@ -36,6 +37,7 @@ import {
   worldRoute,
   worldSetOutFrom,
   worldTerrainLook,
+  WORLD_GROUND_LOOK_FALLBACK,
   worldWalkJoined,
   worldWalkTags,
   worldWalkText,
@@ -46,6 +48,9 @@ import {
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-overworld-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+// No local embedding model: memory recall would download one in the background after each turn, and the
+// process would wait for that download (or its timeout) before exiting.
+process.env.MARINARA_LITE = "true";
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
@@ -116,6 +121,16 @@ try {
   assert.equal(worldTerrainLook({ id: "entry_3", kind: "water" }), "sea", "no words: by kind");
   assert.equal(worldTerrainLook({ id: "entry_4", kind: "barrier" }), "mountains");
   assert.equal(worldTerrainLook({ id: "entry_5", kind: "open" }), "grass");
+  // More forests: conifers for cold regions, jungle, autumn; a plain forest stays a forest.
+  assert.equal(worldTerrainLook({ id: "taiga", kind: "open" }), "conifer_forest");
+  assert.equal(worldTerrainLook({ id: "pine_woods", kind: "open" }), "conifer_forest");
+  assert.equal(worldTerrainLook({ id: "deep_jungle", kind: "open" }), "jungle");
+  assert.equal(worldTerrainLook({ id: "autumn_woods", kind: "open" }), "autumn_forest");
+  assert.equal(worldTerrainLook({ id: "old_forest", kind: "open" }), "forest");
+  assert.equal(worldTerrainLook({ id: "dead_forest", kind: "open" }), "dead_forest");
+  assert.equal(worldTerrainLook({ id: "bamboo_forest", kind: "open" }), "bamboo");
+  for (const look of ["conifer_forest", "autumn_forest", "jungle"] as const)
+    assert.equal(WORLD_GROUND_LOOK_FALLBACK[look], "forest", `${look}: a pack without it draws the forest`);
 
   // ── Each family's tile pack (W9a): every tile the overworld and the towns draw, as the script draws it ──
   const packOf = (root: string, family: string) =>
@@ -125,7 +140,8 @@ try {
     const read = packOf(repo, family);
     assert.ok(read.ok, `${family}: its pack reads`);
     assert.deepEqual(read.notes, [], `${family}: nothing in it the Engine does not draw`);
-    for (const id of WORLD_TILE_IDS) assert.ok(read.pack.tiles[id]?.length, `${family}: ${id}`);
+    for (const id of WORLD_TILE_IDS)
+      if (!WORLD_IMAGE_ONLY_TILE_IDS.includes(id)) assert.ok(read.pack.tiles[id]?.length, `${family}: ${id}`);
   }
   for (const kit of WORLD_STARTER_KITS) {
     assert.ok(

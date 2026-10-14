@@ -337,6 +337,8 @@ for (const raw of WORLD_STARTER_KITS) {
     assert.match(read.issues.join(" "), words);
   };
   refused((value) => (value.snapshotVersion = WORLD_SNAPSHOT_VERSION + 1), /newer version/);
+  // A snapshot made before rooms drawn by hand (version 1) still reads.
+  assert.ok(readWorldSnapshot({ ...structuredClone(snapshot), snapshotVersion: 1 }).ok, "a version 1 snapshot reads");
   refused((value) => ((value.compiled as { ground: string }).ground += "0"), /ground does not fill/);
   refused((value) => (value.extra = true), /extra|Unrecognized/i);
   refused((value) => ((value.kit as { id: unknown }).id = 5), /snapshot\.kit/);
@@ -521,6 +523,7 @@ try {
   for (const [method, path, payload] of [
     ["GET", "world/edit", undefined],
     ["GET", `world/town?settlement=${settlement.id}`, undefined],
+    ["GET", `world/interior?settlement=${settlement.id}&building=h0`, undefined],
     ["PUT", "world/edits", { edits: { editsVersion: 1 } }],
   ] as const) {
     const refused = await app.inject({ method, url: `/api/game/${chatId}/${path}`, payload });

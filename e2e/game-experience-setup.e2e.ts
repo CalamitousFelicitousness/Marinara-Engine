@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 import {
+  WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
   compileGameWorld,
   parseWorldKit,
@@ -776,9 +777,10 @@ test("A setting kit is off by default, can be picked, written for the setting, e
     .selectOption("wizard-connection");
   const { next, back } = stepNavigation(wizard);
   await next();
-  // Off by default: nothing to edit until a kit is picked.
-  await expect(wizard.getByRole("button", { name: /^No setting kit/u })).toHaveAttribute("aria-pressed", "true");
-  await expect(wizard.getByLabel("Name", { exact: true })).toHaveCount(0);
+  // A new game is on the Overworld RPG, whose world needs a kit: the genre's own until another is picked,
+  // and no kit-less card.
+  await expect(wizard.getByRole("button", { name: /^No setting kit/u })).toHaveCount(0);
+  await expect(wizard.getByRole("button", { name: /^High fantasy/u })).toHaveAttribute("aria-pressed", "true");
 
   await wizard.getByRole("button", { name: /^Modern day/u }).click();
   await expect(wizard.getByRole("button", { name: /^Modern day/u })).toHaveAttribute("aria-pressed", "true");
@@ -952,7 +954,10 @@ test("The wizard suggests settings from across settings, and a picked kit brings
     .filter({ has: page.locator('option[value="wizard-connection"]') })
     .first()
     .selectOption("wizard-connection");
-  const { next } = stepNavigation(wizard);
+  // A Classic game has no kit, so its ideas come from across the settings.
+  const styles = wizard.getByTestId("game-style-chooser");
+  await styles.getByRole("radio", { name: /Classic/ }).click();
+  const { next, back } = stepNavigation(wizard);
   await next();
 
   // Without a kit: three ideas from three different settings, beside "Surprise me!".
@@ -961,6 +966,9 @@ test("The wizard suggests settings from across settings, and a picked kit brings
   expect(new Set(first.map((text) => settingOf.get(text))).size).toBe(3);
   await expect(wizard.getByRole("button", { name: "Surprise me!", exact: true }).first()).toBeVisible();
   await expect(wizard.getByRole("button", { name: "Fantasy", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await back();
+  await styles.getByRole("radio", { name: /Overworld RPG/ }).click();
+  await next();
 
   // A picked cyberpunk kit brings its own two ideas first, and its genre while none was chosen.
   await wizard.getByRole("button", { name: /A megacity of districts and stacked blocks/u }).click();
@@ -1108,12 +1116,10 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
     .selectOption("wizard-connection");
   const { next, back } = stepNavigation(wizard);
   await next();
-  // No world is offered without a kit, and none is made unless asked for.
-  await expect(wizard.getByRole("checkbox", { name: /^Make a world/u })).toHaveCount(0);
+  // The Overworld RPG always has a world: one is rolled for the kit, with no switch to leave it out.
   await wizard.getByRole("button", { name: /^High fantasy/u }).click();
-  const makeWorld = wizard.getByRole("checkbox", { name: /^Make a world/u });
-  await expect(makeWorld).not.toBeChecked();
-  await makeWorld.check();
+  await expect(wizard.getByRole("checkbox", { name: /^Make a world/u })).toHaveCount(0);
+  await expect(wizard.getByText("Your world", { exact: true })).toBeVisible();
   const seed = wizard.getByLabel("World seed", { exact: true });
   await expect(seed).toHaveValue(/^\d+$/u);
   await seed.fill("12345");
@@ -1130,22 +1136,19 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   expect(asked.canon[0]).toMatchObject({ connectionId: "wizard-connection", lorebookIds: ["lb-aldmark"] });
   expect(asked.canon[0]!.kit.id).toBe("high_fantasy");
 
-  // A brief that comes back after the world was turned off never turns it back on.
+  // A brief that comes back after the world was changed lands on nothing: the world stays as changed.
   let open!: () => void;
   gate = new Promise<void>((resolve) => (open = resolve));
   await wizard.getByRole("button", { name: "Write the world's brief", exact: true }).click();
   await expect.poll(() => asked.brief.length).toBe(1);
-  await makeWorld.uncheck();
+  await wizard.getByLabel("World seed", { exact: true }).fill("999");
   const answered = page.waitForResponse("**/api/game/world-brief");
   open();
   gate = null;
   await answered;
-  await expect(makeWorld).not.toBeChecked();
-  await makeWorld.check();
+  await expect(wizard.getByText("The brief is written.", { exact: true })).toHaveCount(0);
+  await expect(wizard.getByLabel("World seed", { exact: true })).toHaveValue("999");
   await wizard.getByLabel("World seed", { exact: true }).fill("12345");
-  await wizard.getByRole("checkbox", { name: "Aldmark lore", exact: true }).check();
-  await wizard.getByRole("button", { name: "Read the lore's places", exact: true }).click();
-  await expect(wizard.getByText("From the lore: Thornmere.", { exact: true })).toBeVisible();
 
   await wizard.getByRole("button", { name: "Write the world's brief", exact: true }).click();
   await expect(wizard.getByText("The brief is written.", { exact: true })).toBeVisible();
@@ -1198,7 +1201,11 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   for (let step = 0; step < 5; step++) await next();
   await wizard.getByRole("button", { name: /Start/u }).click();
   const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
-  expect(result.config.world).toMatchObject({ seed: 12345, generatorVersion: 1, grounding: "expand" });
+  expect(result.config.world).toMatchObject({
+    seed: 12345,
+    generatorVersion: WORLD_GENERATOR_VERSION,
+    grounding: "expand",
+  });
   expect(result.config.world.brief.premise).toBe("The old king is dead.");
   expect(result.config.world.brief.events).toEqual(canonEvents);
   expect(result.config.world.brief.groups[0]).toMatchObject({ name: "The River Guild", note: "Wants the bridge." });
@@ -1238,16 +1245,10 @@ test("A game that makes a world can lay it out as its World Maps map, exactly th
   const { next } = stepNavigation(wizard);
   await next();
   await wizard.getByRole("button", { name: /^High fantasy/u }).click();
-  // Agents and World Maps, with no world yet: no map from the world is offered.
-  for (let step = 0; step < 4; step++) await next();
-  await wizard.getByRole("button", { name: /Enable Agents/u }).click();
-  await expect(wizard.getByRole("button", { name: /^From the world/u })).toHaveCount(0);
-  for (let step = 0; step < 4; step++) await stepNavigation(wizard).back();
-
-  await wizard.getByRole("checkbox", { name: /^Make a world/u }).check();
   await wizard.getByLabel("World seed", { exact: true }).fill("12345");
   await expect(wizard.getByTestId("world-preview")).toContainText("The party starts in ");
   for (let step = 0; step < 4; step++) await next();
+  await wizard.getByRole("button", { name: /Enable Agents/u }).click();
   const fromTheWorld = wizard.getByRole("button", { name: /^From the world/u });
   await fromTheWorld.click();
   await expect(fromTheWorld).toHaveAttribute("aria-pressed", "true");
@@ -1309,7 +1310,7 @@ test("A shared setup brings its world to a new game", async ({ page }, testInfo)
   await expect(gameName).toHaveValue("Rivers and lakes");
   const { next } = stepNavigation(wizard);
   await next();
-  await expect(wizard.getByRole("checkbox", { name: /^Make a world/u })).toBeChecked();
+  await expect(wizard.getByText("Your world", { exact: true })).toBeVisible();
   await expect(wizard.getByLabel("World seed", { exact: true })).toHaveValue("7");
   for (let step = 0; step < 5; step++) await next();
   await wizard.getByRole("button", { name: /Start/u }).click();

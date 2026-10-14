@@ -209,6 +209,21 @@ export function AdvancedMemoryInspector({
       },
     );
   };
+  // Saved empty, a recollection is deleted: it leaves prompts and is never written again, until one is typed in.
+  const deleteRecollection = async (recollection: AdvancedMemoryRecord, name: string) => {
+    const confirmed = await showConfirmDialog({
+      title: t("chat.advancedMemory.recollections.deleteFor", { name }),
+      message: t("chat.advancedMemory.recollections.deleteConfirm"),
+      confirmLabel: t("chat.advancedMemory.recollections.delete"),
+      cancelLabel: t("chat.advancedMemory.cancelSetup"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    action.mutate(
+      { action: "record", recordId: recollection.id, patch: { content: "" } },
+      { onSuccess: () => setRecollectionDrafts(({ [recollection.id]: _deleted, ...rest }) => rest) },
+    );
+  };
   const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
@@ -541,6 +556,7 @@ export function AdvancedMemoryInspector({
                 const draftText = recollectionDrafts[recollection.id] ?? recollection.content;
                 // An edited one is left out of prompts once what its character could read changes, until saved again.
                 const review = recollection.manualOverride && recollection.embeddingStatus === "stale";
+                const deleted = recollection.manualOverride && !recollection.content;
                 return (
                   <div key={recollection.id} className="space-y-1.5">
                     <label className="block space-y-1 text-xs">
@@ -557,7 +573,11 @@ export function AdvancedMemoryInspector({
                     </label>
                     <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
                       {!recollection.content ? (
-                        t("chat.advancedMemory.recollections.empty")
+                        t(
+                          deleted
+                            ? "chat.advancedMemory.recollections.deleted"
+                            : "chat.advancedMemory.recollections.empty",
+                        )
                       ) : (
                         <>
                           {t(
@@ -578,24 +598,38 @@ export function AdvancedMemoryInspector({
                         </>
                       )}
                     </p>
-                    <button
-                      type="button"
-                      className={`${buttonClass} w-full`}
-                      aria-label={t("chat.advancedMemory.recollections.saveFor", { name })}
-                      disabled={
-                        action.isPending || !draftText.trim() || (draftText === recollection.content && !review)
-                      }
-                      onClick={() =>
-                        action.mutate(
-                          { action: "record", recordId: recollection.id, patch: { content: draftText } },
-                          {
-                            onSuccess: () => setRecollectionDrafts(({ [recollection.id]: _saved, ...rest }) => rest),
-                          },
-                        )
-                      }
-                    >
-                      {t("chat.advancedMemory.save")}
-                    </button>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        className={`${buttonClass} flex-1`}
+                        aria-label={t("chat.advancedMemory.recollections.saveFor", { name })}
+                        disabled={
+                          action.isPending || !draftText.trim() || (draftText === recollection.content && !review)
+                        }
+                        onClick={() =>
+                          action.mutate(
+                            { action: "record", recordId: recollection.id, patch: { content: draftText } },
+                            {
+                              onSuccess: () => setRecollectionDrafts(({ [recollection.id]: _saved, ...rest }) => rest),
+                            },
+                          )
+                        }
+                      >
+                        {t("chat.advancedMemory.save")}
+                      </button>
+                      {!deleted && (
+                        <button
+                          type="button"
+                          className={`${buttonClass} text-[var(--destructive)]`}
+                          aria-label={t("chat.advancedMemory.recollections.deleteFor", { name })}
+                          disabled={action.isPending}
+                          onClick={() => void deleteRecollection(recollection, name)}
+                        >
+                          <Trash2 size="0.75rem" aria-hidden="true" />
+                          {t("chat.advancedMemory.recollections.delete")}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}

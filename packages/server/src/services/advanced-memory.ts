@@ -1963,7 +1963,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             .update(advancedMemoryRecords)
             .set({ summaryWork: JSON.stringify(completed) })
             .where(eq(advancedMemoryRecords.id, cacheOwner.id));
-          await progress(ctx, { completed: outputs.length + 1, total: batches.length }, options);
+          // A recollection run counts scenes (writeRecollections), not the parts of one scene's request.
+          if (!recollectOnly) await progress(ctx, { completed: outputs.length + 1, total: batches.length }, options);
         }
         abortIfNeeded(options.signal);
         outputs.push(text);
@@ -2376,13 +2377,16 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               request,
             )
           : { recollections: [] };
+        // The paid reply is saved whole even if cancellation arrives meanwhile: Resume asks again only for the
+        // characters still missing, and a request for fewer characters can't reuse this reply.
+        const keep = { ...options, signal: undefined };
         const saved = request
           ? await saveRecollections(
               ctx,
               summary,
               result.recollections,
               request,
-              options,
+              keep,
               entries.map((entry) => entry.content),
             )
           : new Set<string>();
@@ -2392,7 +2396,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             summary.sceneId,
             ctx.names.get(id) ?? id,
           );
-          await putRecollection(ctx, summary, id, "", options);
+          await putRecollection(ctx, summary, id, "", keep);
         }
         await db.delete(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, cache.id));
         ctx.recordCache = ctx.recordCache!.filter((item) => item.id !== cache.id);
@@ -3151,10 +3155,15 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             // Participants still unclear get recollections once the user settles who was there.
             if (recollect && !unclear)
               try {
-                await saveRecollections(ctx, candidate, result.recollections, recollect, options, [
-                  ...entries.map((entry) => entry.content),
-                  ...corrections.map((item) => item.content),
-                ]);
+                // Saved whole even if cancellation arrives meanwhile, so no later request pays for them again.
+                await saveRecollections(
+                  ctx,
+                  candidate,
+                  result.recollections,
+                  recollect,
+                  { ...options, signal: undefined },
+                  [...entries.map((entry) => entry.content), ...corrections.map((item) => item.content)],
+                );
               } catch (error) {
                 abortIfNeeded(options.signal);
                 logger.warn(
@@ -5638,8 +5647,6 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       patch.audienceCharacterIds === undefined
     )
       throw new Error("Memory update must include content, timeframe, enabled or audience");
-    if (patch.content !== undefined && (!patch.content.trim() || patch.content.length > 500_000))
-      throw new Error("Memory text must contain between 1 and 500000 characters");
     if (patch.timeline !== undefined && patch.timeline.length > 2000)
       throw new Error("Memory timeframe must contain at most 2000 characters");
     const validateSceneEdits = async (ctx: Context, record: StoredRecord) => {
@@ -5661,6 +5668,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       }
     };
     const requested = await getRecord(chatId, recordId); // Invalid requests must not interrupt paid preparation.
+    // Saved empty, a recollection is deleted: left out of prompts and never written again until one is typed in.
+    if (
+      patch.content !== undefined &&
+      ((!patch.content.trim() && requested.kind !== "recollection") || patch.content.length > 500_000)
+    )
+      throw new Error("Memory text must contain between 1 and 500000 characters");
     if (patch.timeline !== undefined || patch.audienceCharacterIds !== undefined)
       await validateSceneEdits(await context(chatId), requested);
     // A user edit takes priority over background model work. Keep the write in

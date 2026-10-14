@@ -2028,7 +2028,7 @@
   "game.combat.ruleset.event.healBlocked": "{{target}} regains nothing: something keeps them from healing.",
   "game.combat.ruleset.event.healthPool": "{{actor}}'s {{label}} rolls {{total}}, enough for {{names}}.",
   "game.combat.ruleset.event.healthPoolNone": "{{actor}}'s {{label}} rolls {{total}}, not enough for anybody.",
-  "game.combat.ruleset.event.heldGroundDied": "The felled die: {{names}}.",
+  "game.combat.ruleset.event.heldGroundDied": "{{names}} died.",
   "game.combat.ruleset.event.heldGroundDown": "Down and dying now: {{names}}.",
   "game.combat.ruleset.event.heldGroundReleased": "Death is held here no longer.",
   "game.combat.ruleset.event.heldGroundReleasedNamed": "{{label}} lets go: death is held here no longer.",

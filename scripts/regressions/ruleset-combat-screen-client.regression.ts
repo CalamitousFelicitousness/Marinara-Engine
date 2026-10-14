@@ -960,7 +960,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
   assert.equal(
     printed.get("heldGroundReleased"),
-    "The Wheel lets go: death is held here no longer. The felled die: Thorn Lurker. Down and dying now: Brenna.",
+    "The Wheel lets go: death is held here no longer. Thorn Lurker died. Down and dying now: Brenna.",
   );
   assert.equal(printed.get("owing"), "Brenna's debt comes due, 2 saves (5, 13), and they live.");
   assert.equal(printed.get("search"), "Thorn Lurker uses Detect (12 + 3 = 15) and finds Brenna.");

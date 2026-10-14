@@ -346,6 +346,12 @@ Docker and Podman keep data in the `marinara-data` volume, so run the command in
 
 Loopback sessions can make backups without an admin secret. From another device, a network address, or Docker, backups and profile exports need more. Set `ADMIN_SECRET` on the server and save the same value in **Settings** > **Advanced** > **Admin Access**. If you want loopback to require the secret too, set `MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK=true`.
 
+### Import says the file is not a readable ZIP archive
+
+Marinara reads `.charx` cards, `.marinara` packages, Agent packages and custom Agent repositories as ZIP archives. It refuses an archive that is damaged or whose contents do not match its own file list, and shows **The file is not a readable ZIP archive** (or **Could not read .marinara package** for a `.marinara` package). A partial download is the usual cause, so download the file again. If you made the archive yourself, create it again with a standard tool such as your system's compress option, `zip`, or 7-Zip. Zero padding or a line break added after the archive during a transfer is fine.
+
+**Package contains too many files** means an Agent package or custom repository holds more than 8,192 files. **.marinara package has too many entries** means a `.marinara` package holds more than 8 files. These limits are not new. Remove the extra files and try again.
+
 ## Android and Docker
 
 ### Android app stuck on Connecting or Waiting for Server

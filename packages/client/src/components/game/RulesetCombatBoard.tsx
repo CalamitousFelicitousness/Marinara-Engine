@@ -167,7 +167,7 @@ export function RulesetCombatBoard({
       onChoose(step.option.id, [], step.payWith, { to: { x: cell.x, y: cell.y } }, step.style, step.mode);
       return;
     }
-    // A wall set down waits for the way it runs, and any square turns it (1.176).
+    // A wall set down waits for the way it runs, and any square turns it (1.177).
     if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
       const taken = rulesetAimTake(step.option, step.lay, cell);
       if ("lay" in taken) {
@@ -444,7 +444,7 @@ export function RulesetCombatBoard({
                       {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
                     </span>
                   )}
-                  {/* A lasting area (1.171): tinted, with its name in the tooltip of the square. */}
+                  {/* A lasting area (1.172): tinted, with its name in the tooltip of the square. */}
                   {cell.zones && (
                     <span
                       className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"

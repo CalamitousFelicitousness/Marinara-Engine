@@ -179,7 +179,7 @@ export function rulesetCombatHealth(
     : { value: 0, max: 0, temp: 0 };
 }
 
-/** Health in points as what the holder suffers halves its maximum (1.114), 5e's fourth level of
+/** Health in points as what the holder suffers halves its maximum (1.115), 5e's fourth level of
  *  exhaustion: the maximum rounded down, never below 1, and what they have held to it. A wound track
  *  has boxes rather than a maximum, so nothing halves it. */
 function halvedHealth(
@@ -195,7 +195,7 @@ function halvedHealth(
 }
 
 /**
- * Where a combatant's size sits among `combat.sizes`, 0 for the smallest (Capability API 1.102), or
+ * Where a combatant's size sits among `combat.sizes`, 0 for the smallest (Capability API 1.103), or
  * undefined when the ruleset has no sizes or nothing says this one's.
  */
 export function rulesetSizeRank(combat: RulesetCombat, combatant: RulesetCombatant): number | undefined {
@@ -220,7 +220,7 @@ function sheetSize(
 }
 
 /**
- * The damage an action deals as it stands now (Capability API 1.101). A creature's action may name
+ * The damage an action deals as it stands now (Capability API 1.102). A creature's action may name
  * amounts it deals instead of its first while something holds, the first that holds winning: a
  * `twoHanded` one unless the creature carries a shield, a `selfHealthAtMost` one while its health is
  * at most that share of its most (a wound track counts the levels it has left). Only the dice and
@@ -356,7 +356,7 @@ export function rulesetActiveConditions(
   rawLevels = false,
 ): RulesetActiveCondition[] {
   const active = new Set(rulesetCombatConditions(definition, combatant));
-  // Standing in a zone that says so (1.178): its conditions are on whoever is there, and what it
+  // Standing in a zone that says so (1.179): its conditions are on whoever is there, and what it
   // keeps off or stops reads as one more source, named for the zone.
   // Nor through a sphere (1.314), into it or out of it: read off what holds each of them, as a zone's
   // own conditions could never seal anybody.
@@ -460,12 +460,12 @@ function zonesStoodIn(
   );
 }
 
-/** The conditions standing zones put on this combatant now (1.178): Silence's deafened. */
+/** The conditions standing zones put on this combatant now (1.179): Silence's deafened. */
 export function rulesetZoneConditions(state: RulesetEncounterState, combatant: RulesetCombatant): string[] {
   return [...new Set(zonesStoodIn(state, combatant).flatMap(({ rule }) => rule.inside?.conditions ?? []))];
 }
 
-/** The zones warding whoever stands in them (1.178), each by its caster and action, with what it
+/** The zones warding whoever stands in them (1.179), each by its caster and action, with what it
  *  keeps out. */
 export function rulesetWardsOn(
   state: RulesetEncounterState,
@@ -481,7 +481,7 @@ export function rulesetWardsOn(
   );
 }
 
-/** A condition can take away a sense an effect needs (1.126), so its holder is left out entirely. */
+/** A condition can take away a sense an effect needs (1.127), so its holder is left out entirely. */
 export function rulesetTargetHasSenses(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -498,7 +498,7 @@ export function rulesetTargetHasSenses(
   return any ? needs.some((sense) => !lacked.has(sense)) : !needs.some((sense) => lacked.has(sense));
 }
 
-/** What a combatant is (1.167): a creature's own type and tags, or else a character's type read off
+/** What a combatant is (1.168): a creature's own type and tags, or else a character's type read off
  *  `combat.creatureTypes.field`, or the ruleset's `default`. Nothing without creature types. */
 export function rulesetCreatureKind(
   definition: RulesetDefinition,
@@ -516,7 +516,7 @@ export function rulesetCreatureKind(
   return { ...(type !== undefined ? { type } : {}), tags: [] };
 }
 
-/** Whether a combatant is what a target test asks (1.167): any of its types or tags. No test passes. */
+/** Whether a combatant is what a target test asks (1.168): any of its types or tags. No test passes. */
 export function rulesetTargetIs(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -530,7 +530,7 @@ export function rulesetTargetIs(
   );
 }
 
-/** Whether an action may be pointed at or catch this combatant, by what it is (1.167). */
+/** Whether an action may be pointed at or catch this combatant, by what it is (1.168). */
 export function rulesetTargetTypesAllow(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -596,7 +596,7 @@ function heldSources(definition: RulesetDefinition, combatant: RulesetCombatant)
   );
 }
 
-/** What a fighter's hide is made of, including conditions, levels and sheet rows (Capability API 1.131). */
+/** What a fighter's hide is made of, including conditions, levels and sheet rows (Capability API 1.132). */
 export function rulesetCombatHide(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -632,14 +632,14 @@ export type RulesetActiveCondition = RulesetCombatCondition & {
   level?: number;
   derived?: true;
   item?: true;
-  /** A level that takes its holder out of the fight (1.114). */
+  /** A level that takes its holder out of the fight (1.115). */
   defeats?: true;
-  /** What standing in a zone does (1.178), named for the zone. */
+  /** What standing in a zone does (1.179), named for the zone. */
   zone?: true;
 };
 
 /** The levels of the holder's own tracks, and of their derived values, that are reached. A sheet has
- *  both; a combatant written in plain numbers has only the tracks it was given (1.114). A derived
+ *  both; a combatant written in plain numbers has only the tracks it was given (1.115). A derived
  *  value is worked out with the live state as it stands and what they held as the fight began. A
  *  track the holder is immune to has no levels on them at all. */
 function activeLevels(
@@ -1420,7 +1420,7 @@ function itemToHit(
   const proficient =
     toHit.proficiency !== undefined && resolveRulesetValueRef(definition, build, toHit.proficiency, evaluated) > 0;
   const target = read(toHit.target);
-  // What the holder brings to it off their own sheet (Capability API 1.94: an archer's +2 to ranged).
+  // What the holder brings to it off their own sheet (Capability API 1.95: an archer's +2 to ranged).
   const fromSheet =
     toHit.sheetBonus !== undefined
       ? Math.trunc(resolveRulesetValueRef(definition, build, toHit.sheetBonus, evaluated))
@@ -1487,7 +1487,7 @@ function itemUseActions(
     const label = named ? `${name}: ${named}` : name;
     const action = itemUseMechanics(definition, item, use, { id, label }, build, evaluated, perCell, pooled);
     if (!action) return;
-    // A fake (1.78) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
+    // A fake (1.79) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
     // the menu tells them apart; what it does is what it truly does. One whose true item does nothing a
     // fight can use is spent for nothing.
     const real = held.truly ? fakeUseAction(definition, held.truly.item, build, evaluated, perCell, pooled) : null;
@@ -1553,7 +1553,7 @@ function lastChargeDie(
   };
 }
 
-/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.78). */
+/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.79). */
 export const RULESET_FAKE_EFFECT_KEYS = [
   "toHit",
   "ability",
@@ -1567,11 +1567,11 @@ export const RULESET_FAKE_EFFECT_KEYS = [
   "saveDifficulty",
   "applies",
   "concentration",
-  // What a scroll's spell leaves behind (1.173) is what it truly does too.
+  // What a scroll's spell leaves behind (1.174) is what it truly does too.
   "zone",
 ] as const satisfies ReadonlyArray<keyof RulesetCombatAction>;
 
-/** The action a use resolves as: for a fake (1.78), the one offered with what it truly does in place
+/** The action a use resolves as: for a fake (1.79), the one offered with what it truly does in place
  *  of what it seemed to, so the menu, the forecast and the aim stay what the real thing's are. */
 export function rulesetActionAsUsed(action: RulesetCombatAction): RulesetCombatAction {
   const does = action.itemUse?.fake?.does;
@@ -1643,7 +1643,7 @@ function fakeUseAction(
   return does;
 }
 
-/** The switches on a fighter's items (1.169): one of an item with a `toggle` turned on or off, on its
+/** The switches on a fighter's items (1.170): one of an item with a `toggle` turned on or off, on its
  *  budget. Its place in `sheet.items` is what the fight keeps the state by. */
 function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): RulesetCombatAction[] {
   return (items ?? []).flatMap((held, index): RulesetCombatAction[] => {
@@ -1734,7 +1734,7 @@ function itemAttackActions(
     const damageAbility = dealtWith.length
       ? Math.max(...dealtWith.map((ability) => evaluated.abilityMods[ability] ?? ABILITY_COLUMN_MISS))
       : 0;
-    // What the holder brings to the damage off their own sheet (1.96: a duelist's +2), only while the
+    // What the holder brings to the damage off their own sheet (1.97: a duelist's +2), only while the
     // weapon is held in one hand when it says so: a versatile weapon wielded two-handed, or one that
     // takes two of a slot, is not.
     const twoHanded = free || Object.values(item.slots ?? {}).some((count) => count >= 2);
@@ -1775,7 +1775,7 @@ function itemAttackActions(
       });
     }
     // Low damage dice thrown again once, off the holder's sheet, only while the weapon is wielded
-    // two-handed (1.97: Great Weapon Fighting's 1s and 2s). A pool fight's damage is successes, not
+    // two-handed (1.98: Great Weapon Fighting's 1s and 2s). A pool fight's damage is successes, not
     // faces, so it has none.
     const rerollRead =
       !pooled && attack.damage.rerollUpTo !== undefined && twoHanded
@@ -1800,7 +1800,7 @@ function itemAttackActions(
       ...(rerollUpTo > 0 ? { reroll: rerollUpTo } : {}),
       ...(plus.length ? { plus: plus.map((clause) => ({ ...clause })) } : {}),
     });
-    // More damage on the same blow (1.168), each clause its own dice, type, save and target test. A
+    // More damage on the same blow (1.169), each clause its own dice, type, save and target test. A
     // pool fight throws a clause's count of its own dice, as it throws the weapon's.
     const clausesOf = (clauses: typeof attack.plus) =>
       (clauses ?? []).flatMap((clause): RulesetCombatDamageClause[] => {
@@ -2067,7 +2067,7 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   // A burst centred on its user (1.282) is pointed at nobody: it catches whom it reaches.
   if (mechanics.area?.around) return { side: "self", count: 0 };
   // A `utility` entry is only ever here because it changes what the turn may hold, and what it
-  // changes is the holder's own economy: there is nobody to point it at. One that cures (1.175) is
+  // changes is the holder's own economy: there is nobody to point it at. One that cures (1.176) is
   // pointed at whom it cures, an ally unless it says otherwise.
   // Moving a track or giving back sealed health is one too (1.201).
   const cures =
@@ -2203,7 +2203,7 @@ function mechanicsAction(
   }
   const { build, evaluated, perCell } = from;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
-  // What the sheet adds to it (1.82), read as the entry is put on the menu: 1d10 plus a level.
+  // What the sheet adds to it (1.83), read as the entry is put on the menu: 1d10 plus a level.
   const added = mechanics.amountAdd ? Math.trunc(resolve(mechanics.amountAdd)) : 0;
   const declared = amountOf(mechanics.amount);
   const amount = declared && added ? { ...declared, flat: declared.flat + added } : declared;
@@ -2863,7 +2863,7 @@ function abilityActions(
   return { actions, riders };
 }
 
-/** Spells a creature casts without paying off a sheet (1.122). The entry still supplies everything
+/** Spells a creature casts without paying off a sheet (1.123). The entry still supplies everything
  *  it does; only its numbers, level and remaining uses belong to the creature. */
 function innateActions(
   definition: RulesetDefinition,
@@ -2911,7 +2911,7 @@ function innateActions(
         : {}),
     };
     if (spell.uses) action.uses = { ...spell.uses };
-    // What casting it this way needs, said by the spell or its trait, in place of the entry's (1.180).
+    // What casting it this way needs, said by the spell or its trait, in place of the entry's (1.181).
     const components = spell.components ?? casting.components;
     if (components?.length) action.components = [...components];
     else if (components) delete action.components;
@@ -3569,7 +3569,7 @@ function sheetCombatant(
       const size = sheetSize(definition, combat, build, evaluated);
       return size !== undefined ? { size } : {};
     })(),
-    // How far each of the fight's senses reaches off this sheet (1.177), in cells; nought is none.
+    // How far each of the fight's senses reaches off this sheet (1.178), in cells; nought is none.
     ...(() => {
       const perCell = combat.distance?.perCell;
       if (!combat.senses || perCell === undefined) return {};
@@ -3584,7 +3584,7 @@ function sheetCombatant(
     ...(hardness > 0 ? { hardness } : {}),
     ...(limits ? { limits } : {}),
     speed: combat.economy.movement ? resolveRulesetValueRef(definition, build, combat.economy.movement, evaluated) : 0,
-    // Ways of moving besides walking, off the same sheet (1.112). Nought is not moving that way.
+    // Ways of moving besides walking, off the same sheet (1.113). Nought is not moving that way.
     ...(() => {
       const speeds: RulesetMoveSpeeds = {};
       for (const mode of RULESET_MOVE_MODES) {
@@ -3724,7 +3724,7 @@ export function rulesetMovementAllowance(
   combat: RulesetCombat,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
-  /** One way of moving's own speed (1.112). Their fastest when left out. */
+  /** One way of moving's own speed (1.113). Their fastest when left out. */
   base: number = rulesetFastestSpeed(combatant),
   /** As though nothing sealed them (1.314): how far rolling a sphere is measured from. */
   unsealed = false,
@@ -3744,12 +3744,12 @@ export function rulesetMovementAllowance(
   return Math.max(1, Math.floor(speed / perCell));
 }
 
-/** The fastest way this combatant moves, walking included (1.112). */
+/** The fastest way this combatant moves, walking included (1.113). */
 export function rulesetFastestSpeed(combatant: RulesetCombatant): number {
   return Math.max(combatant.speed, ...Object.values(combatant.speeds ?? {}).map((speed) => speed ?? 0));
 }
 
-/** Each way somebody moves besides walking, and walking, as an allowance in cells (1.112). Undefined
+/** Each way somebody moves besides walking, and walking, as an allowance in cells (1.113). Undefined
  *  for somebody who only walks. */
 export function rulesetModeAllowances(
   definition: RulesetDefinition,
@@ -3768,7 +3768,7 @@ export function rulesetModeAllowances(
   return allowances;
 }
 
-/** A turn's allowance on top of what is left: a dash, or a fresh turn from nothing (1.112 adds each
+/** A turn's allowance on top of what is left: a dash, or a fresh turn from nothing (1.113 adds each
  *  way of moving's own). */
 export function grantRulesetMovement(
   definition: RulesetDefinition,
@@ -3786,7 +3786,7 @@ export function grantRulesetMovement(
   }
 }
 
-/** Cells moved, or spent standing up: off the allowance, and off every way of moving alike (1.112). */
+/** Cells moved, or spent standing up: off the allowance, and off every way of moving alike (1.113). */
 export function spendRulesetMovement(combatant: RulesetCombatant, cells: number): void {
   combatant.movementLeft = Math.max(0, (combatant.movementLeft ?? 0) - cells);
   if (!combatant.modeLeft) return;
@@ -4312,7 +4312,7 @@ export function rulesetImmuneToCondition(
 }
 
 /**
- * What the levels each combatant has reached do as the fight begins (1.114): a halved maximum holds
+ * What the levels each combatant has reached do as the fight begins (1.115): a halved maximum holds
  * the health they bring to it, so a blow is taken off what they really have, and a level that
  * defeats takes them out before anybody moves.
  */
@@ -4795,7 +4795,7 @@ function placeRulesetCombatants(
     ...(board.environment ? { environment: board.environment } : {}),
     // What a shot gains from higher ground, as the ruleset said at the start (combat C6b).
     ...(combat.elevation?.rangeBonus ? { rangeBonus: combat.elevation.rangeBonus } : {}),
-    // What one level is worth in cells, which is what a flier pays to rise one (1.113).
+    // What one level is worth in cells, which is what a flier pays to rise one (1.114).
     ...(combat.elevation && combat.distance
       ? { levelCells: rulesetInCells(combat.elevation.levelHeight, combat.distance.perCell) }
       : {}),

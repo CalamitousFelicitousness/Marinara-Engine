@@ -131,7 +131,7 @@ export function GameMakeWorld({
           disabled={saving || !config?.ok}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
         >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+          {saving ? <Loader2 size={13} className="motion-safe:animate-spin" /> : <Check size={13} />}
           {localizeUi("ui.game.makeworld.save")}
         </button>
       </div>

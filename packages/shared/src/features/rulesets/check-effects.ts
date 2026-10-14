@@ -27,7 +27,7 @@ import {
 
 type RulesetEffectModifier = NonNullable<RulesetCombatCondition["modifiers"]>[number];
 
-/** What a save is rolled against (1.133). Missing context matches no narrowed modifier. */
+/** What a save is rolled against (1.134). Missing context matches no narrowed modifier. */
 export interface RulesetSaveAgainst {
   conditions?: readonly string[];
   damage?: readonly string[];
@@ -80,7 +80,7 @@ export interface RulesetCheckSource {
   failsSaves?: readonly string[];
   saves?: readonly string[];
   skills?: readonly string[];
-  /** What this source keeps off its holder in a fight (Capability API 1.131). A check reads none. */
+  /** What this source keeps off its holder in a fight (Capability API 1.132). A check reads none. */
   resist?: readonly RulesetCreatureHideEntry[];
   vulnerable?: readonly string[];
   immune?: readonly RulesetCreatureHideEntry[];
@@ -137,7 +137,7 @@ export function rulesetCheckSources(
   ];
 }
 
-/** A sheet row's typed hides (Capability API 1.131), read afresh so removing the row removes them.
+/** A sheet row's typed hides (Capability API 1.132), read afresh so removing the row removes them.
  *  Unknown damage words and condition ids are ignored; a ruleset with no damage types allows words. */
 export function rulesetSheetHideSources(definition: RulesetDefinition, build: RulesetSheetBuild): RulesetCheckSource[] {
   const sources: RulesetCheckSource[] = [];
@@ -192,7 +192,7 @@ export function rulesetItemSources(
   const seen = new Set<unknown>();
   for (const held of items ?? []) {
     const name = held.name ?? held.item.category;
-    // A fake does what it truly does (1.78), under the name it is shown by.
+    // A fake does what it truly does (1.79), under the name it is shown by.
     const does = rulesetHeldItemDoes(held);
     const effect = held.worn ? does.worn : does.carried;
     if (effect && !seen.has(effect)) {
@@ -353,7 +353,7 @@ export function rulesetItemGateCheck(
   };
 }
 
-/** Typed defenses, in the same words on the sheet, battle status and Game Master prompt (1.131). */
+/** Typed defenses, in the same words on the sheet, battle status and Game Master prompt (1.132). */
 export function rulesetHideLines(
   definition: RulesetDefinition,
   sources: readonly Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">[],

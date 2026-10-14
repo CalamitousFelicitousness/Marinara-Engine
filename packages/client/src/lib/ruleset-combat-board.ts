@@ -46,7 +46,7 @@ export interface RulesetBoardCell {
   aim?: { targetIds: string[]; teleport?: true };
   /** A cell the shape being laid has already been set down on (1.176, 1.177). */
   laid?: true;
-  /** The labels of the lasting areas covering it (1.171), first cast first. */
+  /** The labels of the lasting areas covering it (1.172), first cast first. */
   zones?: string[];
   /** A wall's section standing here (1.200): whose wall, and what it has left of what; 0 is broken. */
   section?: { wall: string; health: number; max: number };
@@ -69,7 +69,7 @@ export function rulesetOptionHasAim(option: DirectedRulesetOption): boolean {
   return (option.aim?.length ?? 0) > 0;
 }
 
-/** What an aimed shape sends: where it lands, and how it is laid (1.176, 1.177). */
+/** What an aimed shape sends: where it lands, and how it is laid (1.177, 1.178). */
 export interface RulesetAimChoice {
   at: RulesetCombatCell;
   toward?: RulesetCombatCell;
@@ -106,7 +106,7 @@ export function rulesetAimSoFar(lay: RulesetAimLay | undefined): RulesetAimChoic
 /**
  * Picking a cell while a shape is aimed. Most shapes are sent there and then. A wall is set down on
  * the first cell and turned by the second, which is the cell it runs toward (the first again lays
- * it across its maker's line); a ring is sent at once. A shape set down several times (1.177) takes
+ * it across its maker's line); a ring is sent at once. A shape set down several times (1.178) takes
  * one cell for each copy, and is sent with the last one it may have.
  */
 export function rulesetAimTake(
@@ -192,7 +192,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       const key = rulesetCellKey(cell);
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
     }
-    // A wall's side (1.176) is drawn as the zone's too: walking there is caught as it says.
+    // A wall's side (1.177) is drawn as the zone's too: walking there is caught as it says.
     for (const cell of zone.side ?? []) {
       const key = rulesetCellKey(cell);
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
@@ -211,7 +211,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         x,
         y,
         terrain,
-        // A standing wall that blocks movement is as solid as rock while it stands (1.176).
+        // A standing wall that blocks movement is as solid as rock while it stands (1.177).
         solid: TERRAIN_DATA[terrain]?.impassable === true || ((grid.walls?.[key] ?? 0) & 1) === 1,
         height: grid.elevation?.[y]?.[x] ?? 0,
         ...(occupant ? { occupant } : {}),

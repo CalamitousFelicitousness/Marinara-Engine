@@ -55,11 +55,11 @@ export type DirectedCommand =
       mode?: string;
       to?: { x: number; y: number };
       at?: { x: number; y: number };
-      /** How a wall is laid from `at` (1.176): the way it runs, the side it faces, or as a ring. */
+      /** How a wall is laid from `at` (1.177): the way it runs, the side it faces, or as a ring. */
       toward?: { x: number; y: number };
       side?: "near" | "far";
       ring?: boolean;
-      /** Where further copies of an area that allows them are set down (1.177). */
+      /** Where further copies of an area that allows them are set down (1.178). */
       also?: Array<{ x: number; y: number }>;
       /** A wall's section struck at instead of a creature (1.200): one of the option's `walls`. */
       wall?: { x: number; y: number };
@@ -132,9 +132,9 @@ export interface DirectedRulesetCombatant {
    *  the chance it would land against this combatant, so the number is not a secret to keep. */
   defense: number;
   conditions: Array<{ id: string; label: string; rounds?: number }>;
-  /** All active typed defenses, including exceptions (Capability API 1.131). */
+  /** All active typed defenses, including exceptions (Capability API 1.132). */
   hides?: Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">;
-  /** Active damage dealt/taken sources (Capability API 1.132), also read by the Game Master. */
+  /** Active damage dealt/taken sources (Capability API 1.133), also read by the Game Master. */
   damageModifiers?: Array<{ name: string; facts: RulesetItemEffectFact[] }>;
   /** What is left of each budget this turn, keyed by budget id. */
   budgets: Record<string, number>;
@@ -155,9 +155,9 @@ export interface DirectedRulesetCombatant {
   /** An opponent's rung of the threat scale, and the lines the Game Master is shown. */
   tier?: string;
   traits?: Array<{ name: string; text: string }>;
-  /** What it is, in the ruleset's words (1.167): its creature type and tags, read by target tests. */
+  /** What it is, in the ruleset's words (1.168): its creature type and tags, read by target tests. */
   kind?: { type?: string; tags?: string[] };
-  /** Active save modifiers narrowed by what the roll is against (1.133). */
+  /** Active save modifiers narrowed by what the roll is against (1.134). */
   saveModifiers?: RulesetItemEffectFact[];
   /** Where they stand and how many cells of this turn's allowance they have left. Present exactly
    *  when the fight is on a board, and then on everybody at once. */
@@ -165,7 +165,7 @@ export interface DirectedRulesetCombatant {
   y?: number;
   movement?: number;
   movementLeft?: number;
-  /** The level a flier is up at (1.113), present only while it is off the ground. */
+  /** The level a flier is up at (1.114), present only while it is off the ground. */
   altitude?: number;
   /** How many cells a side it fills (1.194), `x`/`y` the top-left one. Absent for one cell. */
   span?: number;
@@ -199,7 +199,7 @@ export interface DirectedRulesetView {
     tiles: TacticalTerrain[][];
     /** How high each cell stands (combat C6b), elevation[y][x]; absent on a flat board. */
     elevation?: number[][];
-    /** Cells standing walls close (1.176), by "x,y": 1 movement, 2 sight, 3 both. */
+    /** Cells standing walls close (1.177), by "x,y": 1 movement, 2 sight, 3 both. */
     walls?: Record<string, number>;
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
@@ -209,14 +209,14 @@ export interface DirectedRulesetView {
   /** Who plays the actor whose turn it is. */
   controller: "manual" | "ai" | "gm";
   combatants: DirectedRulesetCombatant[];
-  /** The areas spells left standing (1.171): whose, what, how many of its caster's turns are left,
+  /** The areas spells left standing (1.172): whose, what, how many of its caster's turns are left,
    *  and the cells it covers now (none off a board). */
   zones?: Array<{
     casterId: string;
     label: string;
     rounds: number;
     cells: Array<{ x: number; y: number }>;
-    /** A wall's chosen side (1.176), the cells that catch beside it. */
+    /** A wall's chosen side (1.177), the cells that catch beside it. */
     side?: Array<{ x: number; y: number }>;
     /** A wall's sections (1.200): their cells and the health each has left; one at 0 is broken. */
     sections?: Array<{ cells: Array<{ x: number; y: number }>; health: number; max: number }>;

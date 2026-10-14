@@ -303,7 +303,7 @@ export function RulesetCombatMenu({
   };
   const paid = (payWith?: string) => {
     if (!step) return;
-    // A pool that lets it take more targets aims at as many as it lets it (1.170).
+    // A pool that lets it take more targets aims at as many as it lets it (1.171).
     const count = payWith ? step.option.targetsWith?.[payWith] : undefined;
     const option = count !== undefined ? { ...step.option, targets: { ...step.option.targets, count } } : step.option;
     const stage = stageFor(option);
@@ -631,7 +631,7 @@ export function RulesetCombatMenu({
           {t("game.combat.ruleset.upcast.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2">
-          {/* Its own pool is empty, so only a higher one pays for it now (1.170). */}
+          {/* Its own pool is empty, so only a higher one pays for it now (1.171). */}
           {!option.upcastOnly && (
             <button
               ref={first}

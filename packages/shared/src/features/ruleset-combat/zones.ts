@@ -1,5 +1,5 @@
 /**
- * Lasting areas (Capability API 1.171): what a zone covers now, and whom it may catch.
+ * Lasting areas (Capability API 1.172): what a zone covers now, and whom it may catch.
  *
  * A zone held at a point keeps the cells it was cast on. One held by its caster is a burst worked
  * out around them wherever they stand, so it goes where they go. Nothing here changes the fight;
@@ -60,7 +60,7 @@ export function rulesetZoneOccupants(
     .map((one) => one.id);
 }
 
-/** Who stands on a wall's chosen side now (1.176), among those it may catch. */
+/** Who stands on a wall's chosen side now (1.177), among those it may catch. */
 export function rulesetZoneSideOccupants(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
@@ -75,7 +75,7 @@ export function rulesetZoneSideOccupants(
 }
 
 /**
- * The cells standing walls close (1.176), written onto the board's grid where moving and seeing read
+ * The cells standing walls close (1.177), written onto the board's grid where moving and seeing read
  * them, and taken off again as each wall ends. Worked out afresh from every standing zone, so a wall
  * that ended however it ended closes nothing any more.
  */

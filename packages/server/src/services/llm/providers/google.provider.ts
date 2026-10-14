@@ -17,6 +17,7 @@ import {
 } from "../base-provider.js";
 import {
   isGeminiArgonModel,
+  isGeminiStrictRequestModel,
   isGeminiThinkingLevelModel,
   shouldSuppressUnknownModelParameters,
   type GenerationParameterSendKey,
@@ -79,7 +80,7 @@ interface GeminiEmbeddingPayload {
 
 type GoogleProviderKind = "google" | "google_vertex";
 
-const GEMINI_ARGON_UNSENT = new Set<GenerationParameterSendKey>([
+const GEMINI_STRICT_UNSENT = new Set<GenerationParameterSendKey>([
   "temperature",
   "topP",
   "topK",
@@ -98,9 +99,17 @@ const GEMINI_SAFETY_SETTINGS_OFF = [
   "HARM_CATEGORY_DANGEROUS_CONTENT",
 ].map((category) => ({ category, threshold: "OFF" }));
 
-/** Runs after custom parameters, so a user's own safety settings (in either spelling) are kept and never doubled. */
+/**
+ * Runs after custom parameters. A user's own safety settings (in either spelling) win for the categories they
+ * name; every other category is still sent as Off, under the user's spelling so the field is never doubled.
+ * A body where the user wrote both spellings is left exactly as written, so nothing contradicts either list.
+ */
 function applyGeminiSafetySettingsOff(body: Record<string, unknown>): void {
-  if (!("safetySettings" in body) && !("safety_settings" in body)) body.safetySettings = GEMINI_SAFETY_SETTINGS_OFF;
+  if ("safetySettings" in body && "safety_settings" in body) return;
+  const key = "safety_settings" in body ? "safety_settings" : "safetySettings";
+  const own = Array.isArray(body[key]) ? (body[key] as Array<{ category?: unknown } | null>) : [];
+  const named = new Set(own.map((setting) => setting?.category));
+  body[key] = [...own, ...GEMINI_SAFETY_SETTINGS_OFF.filter(({ category }) => !named.has(category))];
 }
 
 export function resolveGoogleFunctionCallingMode(toolChoice: ChatOptions["toolChoice"]): "AUTO" | "ANY" {
@@ -586,10 +595,17 @@ function formatGoogleContents(
   return contents;
 }
 
-/** Argon rejects a prefilled final model turn: keep it as history and ask for only the rest of the reply. */
-function withArgonContinuation(model: string, contents: Array<{ role: string; parts: object[] }>) {
+/**
+ * Argon and the newer Flash models reject a prefilled final model turn: keep it as history and ask for only the rest of
+ * the reply. https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
+ */
+function withGeminiContinuation(model: string, contents: Array<{ role: string; parts: object[] }>) {
   const last = contents.at(-1);
-  if (!isGeminiArgonModel(model) || last?.role !== "model" || last.parts.some((part) => "functionCall" in part)) {
+  if (
+    !isGeminiStrictRequestModel(model) ||
+    last?.role !== "model" ||
+    last.parts.some((part) => "functionCall" in part)
+  ) {
     return contents;
   }
   return [...contents, { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] }];
@@ -645,9 +661,9 @@ export class GoogleProvider extends BaseLLMProvider {
     );
   }
 
-  // Argon ignores temperature, top-p and top-k and rejects both penalties with HTTP 400.
+  // Argon and the newer Flash models ignore temperature, top-p and top-k and reject both penalties with HTTP 400.
   protected override shouldSendParameter(options: ChatOptions, key: GenerationParameterSendKey): boolean {
-    if (isGeminiArgonModel(options.model) && GEMINI_ARGON_UNSENT.has(key)) return false;
+    if (isGeminiStrictRequestModel(options.model) && GEMINI_STRICT_UNSENT.has(key)) return false;
     return super.shouldSendParameter(options, key);
   }
 
@@ -690,7 +706,7 @@ export class GoogleProvider extends BaseLLMProvider {
 
     const systemMessages = messages.filter((m) => m.role === "system" && m.content?.trim());
     const body: Record<string, unknown> = {
-      contents: withArgonContinuation(model, formatGoogleContents(messages)),
+      contents: withGeminiContinuation(model, formatGoogleContents(messages)),
       generationConfig: {
         ...(this.shouldSendParameter(options, "temperature") ? { temperature: options.temperature ?? 1 } : {}),
         ...(this.shouldSendParameter(options, "maxTokens") ? { maxOutputTokens: maxTokens } : {}),
@@ -955,8 +971,15 @@ export class GoogleProvider extends BaseLLMProvider {
 
     // Convert to Gemini format — filter out empty-content messages
     const systemMessages = messages.filter((m) => m.role === "system" && m.content?.trim());
+    // Saved Gemini parts keep a turn with no text, as formatGoogleContents does.
     const chatMessages = messages.filter(
-      (m) => m.role !== "system" && (m.content?.trim() || m.images?.length || m.files?.length || m.media?.length),
+      (m) =>
+        m.role !== "system" &&
+        (m.content?.trim() ||
+          m.images?.length ||
+          m.files?.length ||
+          m.media?.length ||
+          (m.role === "assistant" && m.providerMetadata?.geminiParts)),
     );
 
     const contents = chatMessages.map((m) => {
@@ -986,7 +1009,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     const body: Record<string, unknown> = {
-      contents: withArgonContinuation(model, contents),
+      contents: withGeminiContinuation(model, contents),
     };
 
     const outputMaxTokens = maxTokens ?? 4096;

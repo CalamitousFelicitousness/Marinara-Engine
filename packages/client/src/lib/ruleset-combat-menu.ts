@@ -61,7 +61,7 @@ export interface RulesetMenuStep {
   /** The alterations it is used with (1.253): Metamagic. */
   alters?: string[];
   targets: string[];
-  /** How a shape is being laid while it is aimed (1.176, 1.177). */
+  /** How a shape is being laid while it is aimed (1.177, 1.178). */
   lay?: RulesetAimLay;
   /** Where it was aimed, held while who it spares is picked (1.254). */
   cell?: RulesetCellChoice;

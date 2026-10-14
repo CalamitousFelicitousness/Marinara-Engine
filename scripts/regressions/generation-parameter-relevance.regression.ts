@@ -251,6 +251,8 @@ try {
         "x-ai/grok-4.3",
         "google/gemini-3.5-flash",
         "google/gemini-4-argon",
+        "google/gemini-4-argon:online",
+        "google/gemini-3.8-flash",
       ],
       make: registry("openrouter", `${base}/openrouter.ai/api/v1`),
     },
@@ -264,6 +266,7 @@ try {
         "deepseek-v4-pro",
         "claude-opus-5",
         "google/gemini-4-argon",
+        "gemini-3.7-flash",
       ],
       make: registry("nanogpt", `${base}/nano-gpt.com/api/v1`),
     },
@@ -308,7 +311,7 @@ try {
     {
       provider: "custom",
       baseUrl: `${base}/v1`,
-      models: ["llama-3.3-70b", "gpt-5.5", "glm-4.6", "claude-opus-5"],
+      models: ["llama-3.3-70b", "gpt-5.5", "glm-4.6", "claude-opus-5", "gemini-3.8-flash"],
       make: registry("custom", `${base}/v1`),
     },
     {
@@ -339,6 +342,8 @@ try {
         "gemini-2.5-flash",
         "gemini-3-pro-preview",
         "gemini-4-argon",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
         "gemini-2.0-flash",
         "gemma-3-27b-it",
         "gemini-unknown",
@@ -348,7 +353,7 @@ try {
     {
       provider: "google_vertex",
       baseUrl: `${base}/v1/projects/p/locations/global`,
-      models: ["gemini-2.5-flash", "gemini-3-pro-preview", "gemini-4-argon", "gemini-unknown"],
+      models: ["gemini-2.5-flash", "gemini-3-pro-preview", "gemini-4-argon", "gemini-3.8-flash", "gemini-unknown"],
       make: registry("google_vertex", `${base}/v1/projects/p/locations/global`),
     },
     {

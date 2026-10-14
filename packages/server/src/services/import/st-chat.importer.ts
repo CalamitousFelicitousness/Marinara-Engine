@@ -15,6 +15,7 @@ import {
   type ChatMode,
   readWorldSnapshot,
   gameWorldFromSnapshot,
+  WORLD_GENERATOR_VERSION,
   readWorldLedger,
   worldFold,
   worldLedgerCarry,
@@ -470,11 +471,16 @@ export async function importSTChat(jsonlContent: string, db: DB, opts?: ImportST
     delete importedMetadata.advancedMemoryTransfer;
     delete importedMetadata.advancedMemoryState;
     delete importedMetadata.gameWorldSnapshot;
-    // A game's world (worldgen W11): the snapshot it came with, checked whole, kept before the metadata
-    // that names the world; else, for a world this Engine's generator made, made now from its recipe.
+    // A game's world (worldgen W11): a world this Engine's generator made is made now from its recipe, as
+    // its edits are saved later; another generator's comes from the snapshot it came with, checked whole,
+    // kept before the metadata that names the world.
     if (importedMetadata.gameWorld != null) {
       const snapshots = createGameWorldSnapshotsStorage(db);
-      const read = readWorldSnapshot(marinaraMetadata.gameWorldSnapshot);
+      const sent = readWorldSnapshot(marinaraMetadata.gameWorldSnapshot);
+      const read =
+        sent.ok && sent.snapshot.generatorVersion === WORLD_GENERATOR_VERSION
+          ? ({ ok: false, issues: ["its recipe does not make a world"] } as const)
+          : sent;
       if (read.ok) await snapshots.put(chat.id, read.snapshot);
       const game = read.ok
         ? gameWorldFromSnapshot(read.snapshot)

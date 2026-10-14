@@ -1,4 +1,4 @@
-// Starting gear (Capability API 1.77): what a ruleset lets a character take into their bag at the
+// Starting gear (Capability API 1.78): what a ruleset lets a character take into their bag at the
 // start, never on its own. Resolving a choice is shared by the server, which adds what it resolves to,
 // and the client, which shows it: one reading of the gear, so what the player saw is what is added.
 //
@@ -100,7 +100,7 @@ export function rulesetStartingGearFits(
   return resolveRulesetValueRef(definition, build, gear.fits.value) >= gear.fits.atLeast;
 }
 
-/** A strict builder step holds gear to the sheet in legal-only mode (1.108). Gear without `fits`
+/** A strict builder step holds gear to the sheet in legal-only mode (1.109). Gear without `fits`
  *  belongs to everyone. No live state is read, as when the inventory ranks fitting gear first. */
 export function rulesetBuilderStartingGearOptions(
   definition: RulesetDefinition,

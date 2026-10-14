@@ -1321,7 +1321,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   const highGround = { ...fiveE, combat: { ...fiveE.combat!, elevation: { levelHeight: 5 } } };
   assert.equal(line(highGround, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 10 ft.");
   assert.equal(line(fiveE, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 2 levels.");
-  // A flier going up or down a level where it stands (1.113), in the same distance.
+  // A flier going up or down a level where it stands (1.114), in the same distance.
   assert.equal(
     line(highGround, state, { type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 }),
     "Thorn Lurker flies up 5 ft for 1 and has 5 left.",
@@ -2126,7 +2126,7 @@ function drawn(...rows: string[]): TacticalGrid {
   );
 }
 
-// ── Laying a wall, and setting down copies (1.176, 1.177) ──
+// ── Laying a wall, and setting down copies (1.177, 1.178) ──
 {
   const base = { id: "w", kind: "ability", label: "Wall", targets: { side: "any", count: 1 }, targetIds: [] } as const;
   const wall = { ...base, area: { shape: "wall", size: 3, ring: 4, sided: true, range: 12 } } as never;

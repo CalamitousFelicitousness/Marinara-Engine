@@ -33,12 +33,12 @@ import type {
 
 import { rulesetInCells } from "./grid.js";
 
-/** What narrows one moment of a reaction: what it answers, the kind of blow (1.117), and whether its
- *  holder must see the source (1.117). */
+/** What narrows one moment of a reaction: what it answers, the kind of blow (1.118), and whether its
+ *  holder must see the source (1.118). */
 type RulesetMomentNarrowing = Omit<RulesetReactionAlso, "on">;
 
 /** What a reaction answers, copied so whoever holds it owns its own lists: what narrows its first
- *  moment, and the moments it is `also` taken at (1.116), each with what narrows it. */
+ *  moment, and the moments it is `also` taken at (1.117), each with what narrows it. */
 export function rulesetReactionAnswers(
   reaction: RulesetMomentNarrowing & { also?: ReadonlyArray<RulesetReactionAlso> },
   perCell?: number,
@@ -295,7 +295,7 @@ export function rulesetCreatureBlock(
  * The catalogs the creatures of a bestiary read their sheets' lists out of. A creature described by
  * a sheet takes the abilities on its lists from the ruleset's other catalogs, exactly as a
  * character's sheet does, so a fight needs those to hand as well as the bestiary itself. Bounded by
- * catalogs rather than creatures. Spells cast without slots also need their entry catalogs (1.122).
+ * catalogs rather than creatures. Spells cast without slots also need their entry catalogs (1.123).
  */
 export function rulesetBestiarySheetCatalogIds(
   definition: RulesetDefinition,
@@ -658,7 +658,7 @@ export function clampRulesetStatBlock(
   keepKnown("resist");
   keepKnown("vulnerable");
   keepKnown("immune");
-  // A track some level reads may be shrugged off as a condition is (1.114).
+  // A track some level reads may be shrugged off as a condition is (1.115).
   const leveled = new Set((combat.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   if (block.conditionImmunities) {
     // Or a kind of them (1.258): immune to disease.

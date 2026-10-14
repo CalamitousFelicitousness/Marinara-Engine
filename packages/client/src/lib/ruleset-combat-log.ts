@@ -726,8 +726,8 @@ export function rulesetCombatEventLine(
         { actor: names.combatant(event.actorId), label: event.label },
       );
     case "zone":
-      // A lasting area (1.171): where it stands, what ends it, and whom it catches and how. Moved
-      // by its caster or drifting, and hurting whoever crosses its ground (1.172).
+      // A lasting area (1.172): where it stands, what ends it, and whom it catches and how. Moved
+      // by its caster or drifting, and hurting whoever crosses its ground (1.173).
       if (event.outcome === "shoved") {
         return key("zoneShoved", {
           actor: names.combatant(event.actorId),
@@ -781,7 +781,7 @@ export function rulesetCombatEventLine(
             label: event.label,
           });
     case "delay": {
-      // What a slowing condition holds over to its maker's next turn (1.119).
+      // What a slowing condition holds over to its maker's next turn (1.120).
       const said = { actor: names.combatant(event.actorId), label: event.label };
       if (event.outcome === "completed") return key("delayCompleted", said);
       if (event.outcome === "lost") return key("delayLost", said);
@@ -792,7 +792,7 @@ export function rulesetCombatEventLine(
       });
     }
     case "counter":
-      // An answer that reaches only so high (1.115): past it, a check, or nothing at all.
+      // An answer that reaches only so high (1.116): past it, a check, or nothing at all.
       if (event.total === undefined || event.rolls === undefined) {
         return key("counterOutOfReach", {
           actor: names.combatant(event.actorId),

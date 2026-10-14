@@ -395,12 +395,12 @@ const RULESET_AIM_SCAN_CEILING = 64 * 64;
  *  action called "move" or "stand" can never be mistaken for walking. The same trick the standard
  *  actions use (`standard:dodge`). */
 export const RULESET_MOVE_OPTION = "move:walk";
-/** Moving a lasting area (1.172): this, then the id of the action that left it. */
+/** Moving a lasting area (1.173): this, then the id of the action that left it. */
 export const RULESET_ZONE_OPTION_PREFIX = "zone:";
 /** Turning a line or cone its caster carries to face another way (1.182): this, then the action's id. */
 export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 export const RULESET_STAND_OPTION = "move:stand";
-/** A flier going up a level, or down one, where it stands (1.113). */
+/** A flier going up a level, or down one, where it stands (1.114). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
 export const RULESET_FLY_DOWN_OPTION = "move:fly-down";
 /** How high above the ground under it a flier may go, in levels. A board's own heights are a handful
@@ -448,7 +448,7 @@ export function rulesetOptionReach(
   const action = found && range ? { ...found, range } : found;
   if (!action) return { max: 1, normal: 1, shot: false, swing: 1 };
   // Breaking free of a hold that names its escape DC is a struggle against the hold itself, which
-  // its holder throws nothing for, so it is not limited by how far away they stand (1.174).
+  // its holder throws nothing for, so it is not limited by how far away they stand (1.175).
   if (action.contest?.from && rulesetEscapeDc(actor, action.contest) !== undefined) return null;
   if (action.area) {
     // An area is aimed at a cell rather than at anybody. With a distance of its own it may be sent
@@ -456,7 +456,7 @@ export function rulesetOptionReach(
     // goes off where it is set down, while a cone or a line is aimed within its own size, because
     // there the cell only says which way it points.
     const carried = action.range?.long ?? action.range?.normal;
-    // A box with none sits against its maker (1.176), the cell beside them its near corner.
+    // A box with none sits against its maker (1.177), the cell beside them its near corner.
     const max = carried ?? (action.area.shape === "burst" ? 0 : action.area.shape === "box" ? 1 : action.area.size);
     // Only a shape with a distance of its own is SHOT: one that comes off the actor, a breath or a
     // burst set down where they stand, is not made harder by a foe at their elbow.
@@ -504,7 +504,7 @@ export function rulesetTargetRefusal(
   if (!from || !to || !grid) return null;
   if (actorId === targetId) return null;
   const target = rulesetCombatant(state, targetId);
-  // Height counts where somebody is up in the air (1.113).
+  // Height counts where somebody is up in the air (1.114).
   const away = target ? rulesetCombatantDistance(state, rulesetCombatant(state, actorId)!, target) : 0;
   // A shot carries further down from higher ground when the ruleset says so (combat C6b).
   const further =
@@ -604,7 +604,7 @@ export function rulesetAimCells(
   const action = actionOf(rulesetCombatant(state, actorId)!, optionId);
   const shape = action?.area;
   // Something that stays (a zone, a wall) or is set down several times is worth putting down where
-  // nobody stands yet (1.177): a wall across a corridor, a cube beside the one on the foe.
+  // nobody stands yet (1.178): a wall across a corridor, a cube beside the one on the foe.
   const anywhere = !occupiedOnly && (!!action?.zone || !!shape?.copies);
   const boxes =
     shape?.shape === "burst" && !anywhere
@@ -661,7 +661,7 @@ export function rulesetAimCells(
 }
 
 /** How an area is laid from the cell it is aimed at: which way a wall runs or whether it is a ring
- *  (1.176), and the cells further copies are set down on (1.177). */
+ *  (1.177), and the cells further copies are set down on (1.178). */
 export interface RulesetAreaLay {
   toward?: RulesetCombatCell;
   ring?: boolean;
@@ -699,7 +699,7 @@ export function rulesetAimedCells(
 }
 
 /**
- * Whether further copies of an area may be set down where `also` says (1.177): as many as its
+ * Whether further copies of an area may be set down where `also` says (1.178): as many as its
  * `copies` allows, each on a cell it may be aimed at, none twice, and each one's cells touching the
  * cells of those set down before it, as Fire Storm's cubes each touch another.
  */
@@ -738,7 +738,7 @@ export function rulesetAreaTargets(
   actorId: string,
   optionId: string,
   at: RulesetCombatCell,
-  /** How it is laid from `at` (1.176, 1.177): which way a wall runs, a ring, further copies. */
+  /** How it is laid from `at` (1.177, 1.178): which way a wall runs, a ring, further copies. */
   lay?: RulesetAreaLay,
 ): string[] {
   const actor = rulesetCombatant(state, actorId);
@@ -849,7 +849,7 @@ export function rulesetAbove(
   const grid = state.board?.grid;
   const from = rulesetPositionOf(actor);
   const at = rulesetPositionOf(target);
-  // A flier is as high as it flies (1.113).
+  // A flier is as high as it flies (1.114).
   return !!grid && !!actor && !!from && !!at && rulesetLevelOf(grid, actor) > rulesetLevelOf(grid, target);
 }
 
@@ -1040,7 +1040,7 @@ export function rulesetPoolFamily(definition: RulesetDefinition, group: string |
 }
 
 /**
- * The level of what an action was paid with (Capability API 1.115): the pool's own `level` when it
+ * The level of what an action was paid with (Capability API 1.116): the pool's own `level` when it
  * says one, read off its holder's sheet, else its place in its group, the first pool being 1. A
  * pool in no group, and an action that costs nothing, is level 0: a cantrip.
  */
@@ -1065,7 +1065,7 @@ export function rulesetPaidLevel(
 }
 
 /** How many steps up the family a payment is, or 0 when it is not a climb at all. A pool of
- *  another group that pays for this one (`pays`, 1.170) climbs as far as its level is above the
+ *  another group that pays for this one (`pays`, 1.171) climbs as far as its level is above the
  *  action's, read off the payer's sheet. */
 export function rulesetCostSteps(
   definition: RulesetDefinition,
@@ -1105,7 +1105,7 @@ function chargePayments(actor: RulesetCombatant, action: RulesetCombatAction): s
   );
 }
 
-/** Whether a pool of another group may pay for this group's costs (1.170). */
+/** Whether a pool of another group may pay for this group's costs (1.171). */
 export function rulesetPoolPaysFor(definition: RulesetDefinition, pool: string, group: string | undefined): boolean {
   if (!group) return false;
   return definition.sheet.live.pools.find((entry) => entry.id === pool)?.pays?.includes(group) === true;
@@ -1114,7 +1114,7 @@ export function rulesetPoolPaysFor(definition: RulesetDefinition, pool: string, 
 /**
  * The other pools that could pay for an action right now: the higher pools of its own family, in
  * the order the ruleset declared them, then the pools of other groups that pay for it (`pays`,
- * 1.170) at a level no lower than its own. Each is one the sheet would accept the price from.
+ * 1.171) at a level no lower than its own. Each is one the sheet would accept the price from.
  */
 export function rulesetPaymentPools(
   definition: RulesetDefinition,
@@ -1136,7 +1136,7 @@ export function rulesetPaymentPools(
 }
 
 /** How many targets an action takes when paid for this way: one more for each step of a higher cost
- *  by its `targetsPerCostStep` (1.170), up to 20. */
+ *  by its `targetsPerCostStep` (1.171), up to 20. */
 export function rulesetPaidTargetCount(
   definition: RulesetDefinition,
   combatant: Pick<RulesetCombatant, "sheet">,
@@ -1185,7 +1185,7 @@ export function rulesetContestCheck(
   contest: RulesetCombatContest,
   side: "attacker" | "defender",
 ): { check: string; modifier: number } {
-  // A hold that names the checks that break it (1.174) is broken with those.
+  // A hold that names the checks that break it (1.175) is broken with those.
   const named =
     side === "attacker" && contest.from
       ? combatant.tracked.find((entry) => entry.condition === contest.from)?.escapeChecks
@@ -1212,7 +1212,7 @@ export function rulesetContestChance(
 ): number | null {
   const mine = contestTotals(definition, combat, actor, rulesetContestCheck(actor, contest, "attacker"), state);
   // Breaking free of a hold that names its escape DC is a roll against that number, which the
-  // actor meets to win (1.102).
+  // actor meets to win (1.103).
   const escapeDc = rulesetEscapeDc(actor, contest);
   if (mine && escapeDc !== undefined) {
     return mine.reduce((win, [total, chance]) => (total >= escapeDc ? win + chance : win), 0);
@@ -1288,7 +1288,7 @@ function keptDistribution(count: number, sides: number, mode: RulesetCombatRollM
   return kept;
 }
 
-/** What breaking free is rolled against, when what holds the actor names it (1.102). Only a summed
+/** What breaking free is rolled against, when what holds the actor names it (1.103). Only a summed
  *  fight has one: the schema refuses it in a pool fight. */
 export function rulesetEscapeDc(actor: RulesetCombatant, contest: RulesetCombatContest): number | undefined {
   if (!contest.from) return contest.difficulty;
@@ -1304,7 +1304,7 @@ export function rulesetContestHolder(
 ): RulesetCombatant | undefined {
   if (!contest.from) return undefined;
   const hold = actor.tracked.find((entry) => entry.condition === contest.from);
-  // Only a hold that names an escape DC is broken by an `escapable` contest (1.174).
+  // Only a hold that names an escape DC is broken by an `escapable` contest (1.175).
   if (contest.escapable && hold?.escapeDc === undefined) return undefined;
   const source = hold?.source;
   const holder = source === undefined ? undefined : rulesetCombatant(state, source);
@@ -1320,7 +1320,7 @@ export function rulesetHitChance(
   mode: RulesetCombatRollMode = "normal",
   /** What the attacker's conditions add on top of the dice, rolled once whichever throw is kept. */
   bonus?: RulesetBonusDice,
-  /** The lowest natural face that is a critical for this attacker (1.80), which always lands. */
+  /** The lowest natural face that is a critical for this attacker (1.81), which always lands. */
   criticalFrom?: number,
 ): number | null {
   if (bonus && (bonus.flat !== 0 || bonus.dice.length > 0)) {
@@ -1455,7 +1455,7 @@ export function rulesetForbiddenTargets(
  * A combatant who is down can still be healed and can still be hit while they are down. Only one
  * the fight is over for is off the table.
  */
-/** Whether a revive may be aimed at this one: dead, and not for longer than it reaches back (1.175).
+/** Whether a revive may be aimed at this one: dead, and not for longer than it reaches back (1.176).
  *  Somebody a condition took out was never killed, and no round of death is on them to measure. */
 export function rulesetCanRevive(
   state: RulesetEncounterState,
@@ -1466,7 +1466,7 @@ export function rulesetCanRevive(
   return state.round - combatant.diedRound <= action.revives.withinRounds;
 }
 
-/** Whether an action that does nothing but cure has something to cure on this one (1.175): a
+/** Whether an action that does nothing but cure has something to cure on this one (1.176): a
  *  condition it ends that they hold, or a dying they can be steadied from. One that also heals or
  *  harms or puts something on is aimed as that says. */
 function rulesetCureReaches(
@@ -1561,7 +1561,7 @@ export function rulesetOptionTargets(
   // Breaking free is aimed at whoever is holding on, and at nobody else.
   const contest = actionOf(actor, option.id)?.contest;
   const holder = contest?.from ? rulesetContestHolder(state, actor, contest)?.id : undefined;
-  // A grab or a shove is not taken against somebody too much bigger (1.102). Whoever's size nothing
+  // A grab or a shove is not taken against somebody too much bigger (1.103). Whoever's size nothing
   // says is never too big.
   const combat = definition.combat;
   const actorSize = contest?.maxSizeAbove !== undefined && combat ? rulesetSizeRank(combat, actor) : undefined;
@@ -1573,7 +1573,7 @@ export function rulesetOptionTargets(
   return (
     state.combatants
       .filter((combatant) => {
-        // Bringing back the dead is aimed at the dead, and only them (1.175).
+        // Bringing back the dead is aimed at the dead, and only them (1.176).
         if (cure?.revives) {
           if (!rulesetCanRevive(state, cure, combatant)) return false;
         } else if (combatant.defeated) return false;
@@ -1659,7 +1659,7 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
 }
 
 /**
- * Whether a ward keeps this action off this target (1.178): the target stands in a zone that wards
+ * Whether a ward keeps this action off this target (1.179): the target stands in a zone that wards
  * off the action's catalog at its level or lower, and its maker stands outside that zone. Read at
  * the level it is paid at; without a payment, at its own.
  */
@@ -1677,11 +1677,11 @@ export function rulesetWarded(
   if (wards.length === 0) return false;
   const own = new Set(rulesetWardsOn(state, actor).map((ward) => ward.key));
   const paid = rulesetPaidLevel(definition, actor, action, payWith);
-  // Its own base level, however it was paid (1.180): Globe of Invulnerability.
+  // Its own base level, however it was paid (1.181): Globe of Invulnerability.
   const base = action.innate ? action.innate.baseLevel : rulesetPaidLevel(definition, actor, action);
   return wards.some(({ key, wards: ward, caster, zone }) => {
     if (own.has(key) || !ward.catalogs.includes(catalog)) return false;
-    // Raised for each step the ward's own cast was paid above its base (1.180).
+    // Raised for each step the ward's own cast was paid above its base (1.181).
     const cast = caster.actions.find((entry) => entry.id === zone.actionId);
     const steps =
       !ward.maxLevelPerCostStep || !cast
@@ -1695,7 +1695,7 @@ export function rulesetWarded(
   });
 }
 
-/** Uses left on this holder, or shared by its coven for this spell (1.122). */
+/** Uses left on this holder, or shared by its coven for this spell (1.123). */
 export function rulesetActionUses(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
@@ -1707,7 +1707,7 @@ export function rulesetActionUses(
     : (actor.uses[action.id] ?? 0);
 }
 
-/** Whether its holder's sheet, as it stands, allows the action (1.165). A holder without a sheet, or
+/** Whether its holder's sheet, as it stands, allows the action (1.166). A holder without a sheet, or
  *  a caller without the ruleset, has nothing to read, so nothing holds it back. */
 export function rulesetActionUsable(
   definition: RulesetDefinition | undefined,
@@ -1718,7 +1718,7 @@ export function rulesetActionUsable(
 }
 
 /** Whether a value off the combatant's sheet, live state and items stands within the bounds: an
- *  action's `usableWhen` (1.165), one of its conditions' `when` (1.166). No bounds, no sheet or no
+ *  action's `usableWhen` (1.166), one of its conditions' `when` (1.167). No bounds, no sheet or no
  *  ruleset to read it with holds nothing back. */
 export function rulesetSheetWithin(
   definition: RulesetDefinition | undefined,
@@ -1757,7 +1757,7 @@ export function rulesetSheetValue(
 }
 
 /** Whether the action has uses left, has recharged, and has the coven members it needs nearby, and
- *  (given the ruleset) whether its holder's sheet allows it (1.165). */
+ *  (given the ruleset) whether its holder's sheet allows it (1.166). */
 export function rulesetActionAvailable(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
@@ -1982,7 +1982,7 @@ function forecastFor(
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
 }
 
-/** Modifiers that belong to THIS attack hit (Capability API 1.132). Rows and held weapons are
+/** Modifiers that belong to THIS attack hit (Capability API 1.133). Rows and held weapons are
  *  attacks; a single-target stat-block roll is a creature's weapon. Catalog abilities and item
  *  uses are spell/other attacks. A save or an automatic hit never carries these additions. */
 /** Whether an action is a weapon's blow rather than a spell's or an item's: an attack, or a stat
@@ -2240,7 +2240,7 @@ function optionFrom(
   }
   if (!following?.paid && !rulesetActionAvailable(actor, action, state, definition)) return null;
   // Its own price, or, with that pool empty, a higher one that pays for it: a 1st-level spell is
-  // still cast with a 2nd-level slot, or a warlock's pact slot (1.170).
+  // still cast with a 2nd-level slot, or a warlock's pact slot (1.171).
   const paid = planRulesetCombatCost(definition, actor, action);
   const payments = [...rulesetPaymentPools(definition, actor, action), ...chargePayments(actor, action)];
   if (!paid && payments.length === 0) return null;
@@ -2299,7 +2299,7 @@ function optionFrom(
       shape: action.area.shape,
       size: action.area.size,
       ...(action.area.width !== undefined ? { width: action.area.width } : {}),
-      // How a wall may be laid (1.176) and how many times it may be set down (1.177).
+      // How a wall may be laid (1.177) and how many times it may be set down (1.178).
       ...(action.area.ring !== undefined ? { ring: action.area.ring } : {}),
       ...(action.zone?.side ? { sided: true as const } : {}),
       ...(action.area.copies !== undefined ? { copies: action.area.copies } : {}),
@@ -2791,7 +2791,7 @@ function movementOptions(
   if (cells.length > 0) {
     options.push({ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells });
   }
-  // Up or down a level where it stands (1.113): a flier, on a board with levels, paying what a level
+  // Up or down a level where it stands (1.114): a flier, on a board with levels, paying what a level
   // is worth out of what is left of its flight.
   const grid = state.board?.grid;
   const levelCells = state.board?.levelCells;
@@ -2997,7 +2997,7 @@ export function rulesetUncompelledOptions(
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;
     if (!move || (actor.budgets[move.budget] ?? 0) < 1) continue;
-    // Rammed into somebody, it has stopped for the turn (1.174).
+    // Rammed into somebody, it has stopped for the turn (1.175).
     if (zone.rammed === `${state.round}:${state.turn}`) continue;
     const cells = rulesetZoneMoveCells(state, zone, move.distance);
     if (cells.length === 0) continue;
@@ -3610,7 +3610,7 @@ export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReact
  * turns out to be empty.
  */
 /** Whether one of a reaction's moments answers what caused it: its `against`, the kind of blow it
- *  names (1.117), and whether its holder has to see whoever caused it (1.117). */
+ *  names (1.118), and whether its holder has to see whoever caused it (1.118). */
 function momentAnswers(
   state: RulesetEncounterState,
   holder: RulesetCombatant,
@@ -3648,7 +3648,7 @@ function rulesetAgainstMatches(
   );
 }
 
-/** The creature an aimed or hit moment is about, including a nearby ally (1.130). */
+/** The creature an aimed or hit moment is about, including a nearby ally (1.131). */
 export function rulesetReactionTarget(
   state: RulesetEncounterState,
   holder: RulesetCombatant,
@@ -3675,7 +3675,7 @@ export function rulesetReactionTarget(
   })[0];
 }
 
-/** Eligible fallers of this event, nearest first; other events never enter this choice (1.130). */
+/** Eligible fallers of this event, nearest first; other events never enter this choice (1.131). */
 export function rulesetFallTargets(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -3704,7 +3704,7 @@ export function rulesetReactionsAt(
    *  before this one may have taken them out, and nothing is offered that the rules would refuse. */
   sourceId: string,
   /** The catalog and entry behind what caused the moment, when there is one (a reaction that answers
-   *  only some answers nothing without them), and for a hit, the kind of blow (1.117). */
+   *  only some answers nothing without them), and for a hit, the kind of blow (1.118). */
   cause: RulesetMomentCause = {},
 ): RulesetCombatAction[] {
   if (!rulesetCombatStanding(actor)) return [];

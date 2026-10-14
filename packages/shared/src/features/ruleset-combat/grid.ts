@@ -183,20 +183,20 @@ export function rulesetStepCost(grid: TacticalGrid, from: RulesetCombatCell, to:
 }
 
 /** How high somebody is, in the board's levels: a flier's altitude while it is up, or the ground under
- *  them (1.113). */
+ *  them (1.114). */
 export function rulesetLevelOf(grid: TacticalGrid, combatant: RulesetCombatant): number {
   const ground = typeof combatant.x === "number" ? elevationAt(grid, combatant.x, combatant.y!) : 0;
   return combatant.altitude !== undefined && combatant.altitude > ground ? combatant.altitude : ground;
 }
 
-/** Whether a flier is up in the air above the ground under it (1.113). */
+/** Whether a flier is up in the air above the ground under it (1.114). */
 export function rulesetAirborne(grid: TacticalGrid | undefined, combatant: RulesetCombatant): boolean {
   if (!grid || combatant.altitude === undefined || typeof combatant.x !== "number") return false;
   return combatant.altitude > elevationAt(grid, combatant.x, combatant.y!);
 }
 
 /**
- * How far apart two combatants are, in cells (1.113): the board's own distance, or the height
+ * How far apart two combatants are, in cells (1.114): the board's own distance, or the height
  * between them when one is up in the air and that is further. Two on the ground are as far apart
  * as their cells, whatever the ground under them, exactly as before anybody flew.
  */
@@ -215,7 +215,7 @@ export function rulesetCombatantDistance(
   return Math.max(flat, Math.abs(rulesetLevelOf(grid, a) - rulesetLevelOf(grid, b)) * levelCells);
 }
 
-/** Whether one combatant sees another (1.117). Nobody sees somebody who has hidden (the Hide
+/** Whether one combatant sees another (1.118). Nobody sees somebody who has hidden (the Hide
  *  standard action, until it wears off); otherwise it is a line of sight between them on the board,
  *  and a fight with no board, or anybody without a place on it, sees everybody, as a condition gated
  *  on sight reads it. */
@@ -253,7 +253,7 @@ export function rulesetChargeRun(actor: RulesetCombatant, target: RulesetCombata
   return run;
 }
 
-/** Whether a blow is struck in reach or from afar (1.117). Something with a reach and no range is
+/** Whether a blow is struck in reach or from afar (1.118). Something with a reach and no range is
  *  melee and something with a range and no reach is ranged; something with both (a thrown dagger) is
  *  melee while its target stands in its reach, and with no board it is taken as swung in hand. */
 export function rulesetBlowKind(
@@ -268,12 +268,12 @@ export function rulesetBlowKind(
   return rulesetCombatantDistance(state, actor, target) <= Math.max(1, action.reach) ? "melee" : "ranged";
 }
 
-/** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.112). */
+/** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.113). */
 function isWater(grid: TacticalGrid, x: number, y: number): boolean {
   return inBounds(grid, x, y) && grid.tiles[y]?.[x] === "water";
 }
 
-/** What is left this turn of one way of moving, in cells (1.112). Somebody who only walks walks on
+/** What is left this turn of one way of moving, in cells (1.113). Somebody who only walks walks on
  *  what is left of their allowance. */
 function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
   if (!mover.modeLeft) return mode === "walk" ? (mover.movementLeft ?? 0) : 0;
@@ -281,14 +281,14 @@ function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
 }
 
 /** Whether a cell is solid to this mover, for stepping into it and for squeezing past its corner: water
- *  is not, to a swimmer or a flier (1.112). */
+ *  is not, to a swimmer or a flier (1.113). */
 export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mover?: RulesetCombatant): boolean {
   if (!rulesetCellBlocked(grid, x, y)) return false;
   return !(isWater(grid, x, y) && (!!mover?.speeds?.fly || !!mover?.speeds?.swim));
 }
 
 /**
- * The cheapest way this mover takes one step, and what it costs (1.112), with `spent` already moved
+ * The cheapest way this mover takes one step, and what it costs (1.113), with `spent` already moved
  * this turn: a way of moving whose own allowance the step would pass is not one it may use. On foot
  * (and burrowing, which a board moves as a walk) a step costs what `rulesetStepCost` says; a climber
  * takes a step of any height for the ground it steps onto; a flier steps anywhere not solid for one
@@ -304,7 +304,7 @@ export function rulesetMoveStep(
 ): { mode: RulesetMoveMode; cost: number } | null {
   const speeds = mover.speeds ?? {};
   const options: Array<{ mode: RulesetMoveMode; cost: number | null }> = [];
-  // Up in the air (1.113) it only flies, a cell a step over anything not solid. Ground as high as
+  // Up in the air (1.114) it only flies, a cell a step over anything not solid. Ground as high as
   // it is, or higher, it lands on, exactly as a flier on the ground flies onto a cliff.
   const altitude = mover.altitude;
   if (altitude !== undefined && altitude > elevationAt(grid, from.x, from.y)) {
@@ -389,7 +389,7 @@ function boardBox(grid: TacticalGrid, around: RulesetCombatCell, reach: number) 
   };
 }
 
-/** A box (1.176): `side` cells a side, its near corner on the cell aimed at, reaching away from its
+/** A box (1.177): `side` cells a side, its near corner on the cell aimed at, reaching away from its
  *  maker. Along an axis the maker is level with, it is centred on that cell instead, so a cube set
  *  down straight ahead covers the cells either side of the line evenly. */
 function boxCells(
@@ -419,7 +419,7 @@ function boxCells(
 }
 
 /**
- * A wall (1.176), in cells, and the cells of its chosen side.
+ * A wall (1.177), in cells, and the cells of its chosen side.
  *
  * A straight wall is `size` cells long, run from `at` toward `toward`, or across the line from its
  * maker to `at` and centred there when no way is given. A diagonal one fills the corner of every step
@@ -715,7 +715,7 @@ export function rulesetThreateningEnemies(
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;
     const reach = Math.max(1, strike.reach ?? 1);
-    // Somebody up in the air too high above (or below) to be reached is no threat to them (1.113).
+    // Somebody up in the air too high above (or below) to be reached is no threat to them (1.114).
     const grid = state.board?.grid;
     const levelCells = state.board?.levelCells;
     if (grid && levelCells && (rulesetAirborne(grid, mover) || rulesetAirborne(grid, combatant))) {
@@ -891,7 +891,7 @@ export function rulesetReachableCells(
         rulesetCellSolidFor(grid, at.x, at.y + dy, actor)
       )
         continue;
-      // The cheapest way they move that takes this step on what that way has left (1.112).
+      // The cheapest way they move that takes this step on what that way has left (1.113).
       const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
       if (plain === undefined) continue;
       // Ground a lasting area makes hard going (1.172).
@@ -1000,7 +1000,7 @@ export function rulesetPushPath(
 export function rulesetWalkingDistances(
   grid: TacticalGrid,
   goals: ReadonlyArray<RulesetCombatCell>,
-  /** Who is moving, when they move some way besides walking (1.112): their ways count, with no
+  /** Who is moving, when they move some way besides walking (1.113): their ways count, with no
    *  turn's allowance to run out of. */
   mover?: RulesetCombatant,
 ): Map<string, number> {
@@ -1165,8 +1165,8 @@ export function rulesetZoneCatches(
   return true;
 }
 
-/** How a zone slows a cell for one mover: the plain steps moving into it costs at least (1.172, 1.174),
- *  and whether speed is halved there on top (1.174). */
+/** How a zone slows a cell for one mover: the plain steps moving into it costs at least (1.173, 1.175),
+ *  and whether speed is halved there on top (1.175). */
 export interface RulesetSlowedCell {
   times: number;
   halves: boolean;
@@ -1174,8 +1174,8 @@ export interface RulesetSlowedCell {
   toward?: Array<{ at: RulesetCombatCell; times: number }>;
 }
 
-/** The cells a mover finds hard going because a zone that catches them covers them (1.172): the
- *  slowest of each cell's zones, and halved where any of them halves speed (1.174). */
+/** The cells a mover finds hard going because a zone that catches them covers them (1.173): the
+ *  slowest of each cell's zones, and halved where any of them halves speed (1.175). */
 export function rulesetSlowedCells(
   state: RulesetEncounterState,
   mover: RulesetCombatant,

@@ -107,7 +107,7 @@ export function gameFightOffers(
     );
     if (!effect) return [];
     // Only the stacks it may be used from: worn and bound where the item asks it. A fake counts as
-    // what it passes for (1.78).
+    // what it passes for (1.79).
     const usable = stacks.filter((stack) => stack.item === line.item && gameInventoryWearMet(stack, effect.wear));
     // A stack without a count of its own is full, and no stack holds more than its item's most.
     const charges = effect.charges;
@@ -161,7 +161,7 @@ export function gameFightItems(
 
 /**
  * What one use of a fight's line does, when the stack it comes out of (`gameInventoryFightSpendStack`)
- * is a fake (1.78): what its true item does, aimed as the line was; and where its true item does
+ * is a fake (1.79): what its true item does, aimed as the line was; and where its true item does
  * nothing a fight can use, the use is spent for nothing, and the log says what it really was. Unchanged
  * for any other stack. The use is spent as the line's is, and the inventory's journal names it truly.
  */

@@ -34,6 +34,7 @@ import {
 import { getMonorepoRoot } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
+import { GAME_RULESETS_RATE_LIMIT } from "../middleware/rate-limit.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
 import {
   createGameRulesetsStorage,
@@ -87,12 +88,15 @@ function leastCapabilityApi(document: unknown, definition: RulesetDefinition, ca
     "ruleset.json",
     ...(definition.catalogs ?? []).flatMap((catalog) => (catalog.asset ? [catalog.asset] : [])),
   ];
-  const catalogDocuments = new Map(
-    Object.entries(catalogs).map(([id, text]) => {
+  // Keyed by each catalog's file, as an install reads them.
+  const catalogDocuments = new Map<string, unknown>(
+    (definition.catalogs ?? []).flatMap((catalog) => {
+      const text = catalog.asset ? catalogs[catalog.id] : undefined;
+      if (!catalog.asset || text === undefined) return [];
       try {
-        return [id, JSON.parse(text) as unknown] as const;
+        return [[catalog.asset, JSON.parse(text) as unknown] as const];
       } catch {
-        return [id, null] as const;
+        return [[catalog.asset, null] as const];
       }
     }),
   );
@@ -211,97 +215,105 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
 
   // A ruleset package file (RM): read in memory by the one reader, kept as data under
   // `local/<its id>` with its catalog files. `dryRun` reads and checks it for the review, keeping nothing.
-  app.post("/import-package", { bodyLimit: PACKAGE_BODY_LIMIT }, async (req, reply) => {
-    if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset import" })) return;
-    if (!(await getCustomAgentImportPolicy(app.db)).enabled) {
-      return reply.status(403).send({
-        error: "Custom Agent imports are disabled",
-        message: "Enable Agent imports in Advanced Settings → Danger Zone first.",
-        code: "custom_agent_imports_disabled",
-      });
-    }
-    const body = importPackageBody.safeParse(req.body);
-    if (!body.success) {
-      return reply.status(400).send({ error: "Send the ruleset package file (.ruleset.json) as the body's package" });
-    }
-    const { package: file, dryRun } = body.data;
-    const read = readRulesetPackageFile(file);
-    if (!read.ok) return reply.status(400).send({ error: read.issues.slice(0, 5).join("; "), issues: read.issues });
-    let rulesetId: string;
-    try {
-      rulesetId = communityRulesetId(RULESET_LOCAL_NAMESPACE, read.definition.id);
-    } catch (error) {
-      return reply.status(400).send({ error: error instanceof Error ? error.message : "Unusable ruleset id" });
-    }
-    const { version } = read.definition;
-    const catalogs = Object.fromEntries(
-      Object.entries(read.catalogs).map(([id, text]) => [
-        id,
-        (JSON.parse(text) as { entries?: unknown[] }).entries?.length ?? 0,
-      ]),
-    );
-    if (dryRun) return { status: "checked", rulesetId, version, ruleset: read.ruleset, catalogs };
-    try {
-      const { status } = await createGameRulesetsStorage(app.db).put({
-        rulesetId,
-        version,
-        sourceKind: "local",
-        definition: read.ruleset,
-        catalogs: read.catalogs,
-      });
-      logger.info(
-        "[game/rulesets] Package import of %s version %d (%d catalog files): %s",
-        rulesetId,
-        version,
-        Object.keys(catalogs).length,
-        status,
-      );
-      return { status, rulesetId, version, catalogs };
-    } catch (error) {
-      if (error instanceof RulesetVersionConflictError) {
-        return reply.status(409).send({ error: error.message, code: "ruleset_version_conflict" });
+  app.post(
+    "/import-package",
+    { bodyLimit: PACKAGE_BODY_LIMIT, config: { rateLimit: GAME_RULESETS_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset import" })) return;
+      if (!(await getCustomAgentImportPolicy(app.db)).enabled) {
+        return reply.status(403).send({
+          error: "Custom Agent imports are disabled",
+          message: "Enable Agent imports in Advanced Settings → Danger Zone first.",
+          code: "custom_agent_imports_disabled",
+        });
       }
-      if (error instanceof RulesetRefusedError) return reply.status(400).send({ error: error.message });
-      throw error;
-    }
-  });
+      const body = importPackageBody.safeParse(req.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: "Send the ruleset package file (.ruleset.json) as the body's package" });
+      }
+      const { package: file, dryRun } = body.data;
+      const read = readRulesetPackageFile(file);
+      if (!read.ok) return reply.status(400).send({ error: read.issues.slice(0, 5).join("; "), issues: read.issues });
+      let rulesetId: string;
+      try {
+        rulesetId = communityRulesetId(RULESET_LOCAL_NAMESPACE, read.definition.id);
+      } catch (error) {
+        return reply.status(400).send({ error: error instanceof Error ? error.message : "Unusable ruleset id" });
+      }
+      const { version } = read.definition;
+      const catalogs = Object.fromEntries(
+        Object.entries(read.catalogs).map(([id, text]) => [
+          id,
+          (JSON.parse(text) as { entries?: unknown[] }).entries?.length ?? 0,
+        ]),
+      );
+      if (dryRun) return { status: "checked", rulesetId, version, ruleset: read.ruleset, catalogs };
+      try {
+        const { status } = await createGameRulesetsStorage(app.db).put({
+          rulesetId,
+          version,
+          sourceKind: "local",
+          definition: read.ruleset,
+          catalogs: read.catalogs,
+        });
+        logger.info(
+          "[game/rulesets] Package import of %s version %d (%d catalog files): %s",
+          rulesetId,
+          version,
+          Object.keys(catalogs).length,
+          status,
+        );
+        return { status, rulesetId, version, catalogs };
+      } catch (error) {
+        if (error instanceof RulesetVersionConflictError) {
+          return reply.status(409).send({ error: error.message, code: "ruleset_version_conflict" });
+        }
+        if (error instanceof RulesetRefusedError) return reply.status(400).send({ error: error.message });
+        throw error;
+      }
+    },
+  );
 
   // A ruleset checked without saving anything: its text, or a whole package file. The issues come as
   // `{ path, message }` for an editor to show where each points, with the least capability API a package
   // of it needs; a package file also comes back read, so an editor opens one through this reader and no other.
-  app.post("/check", { bodyLimit: PACKAGE_BODY_LIMIT }, async (req, reply) => {
-    // Reading a package costs real work, so only the Engine's own pages (and makers in them) may ask.
-    if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset check" })) return;
-    const body = checkBody.safeParse(req.body);
-    if (!body.success) return reply.status(400).send({ error: body.error.issues[0]?.message ?? "Nothing to check" });
-    if ("package" in body.data) {
-      const read = readRulesetPackageFile(body.data.package);
-      if (!read.ok) return { ok: false, issues: issueObjects(read.issues), capabilityApi: null };
-      return {
-        ok: true,
-        issues: [],
-        capabilityApi: leastCapabilityApi(JSON.parse(read.ruleset), read.definition, read.catalogs),
-        ruleset: read.ruleset,
-        catalogs: read.catalogs,
-      };
-    }
-    const sizeIssue = rulesetSizeIssue(body.data.definition);
-    if (sizeIssue) return { ok: false, issues: issueObjects([sizeIssue]), capabilityApi: null };
-    let document: unknown;
-    try {
-      document = JSON.parse(body.data.definition);
-    } catch {
-      return { ok: false, issues: issueObjects(["(root): the ruleset is not valid JSON"]), capabilityApi: null };
-    }
-    const parsed = parseRulesetDefinition(document);
-    if (!parsed.ok) return { ok: false, issues: issueObjects(parsed.issues), capabilityApi: null };
-    return { ok: true, issues: [], capabilityApi: leastCapabilityApi(document, parsed.definition, {}) };
-  });
+  app.post(
+    "/check",
+    { bodyLimit: PACKAGE_BODY_LIMIT, config: { rateLimit: GAME_RULESETS_RATE_LIMIT } },
+    async (req, reply) => {
+      // Reading a package costs real work, so only the Engine's own pages (and makers in them) may ask.
+      if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset check" })) return;
+      const body = checkBody.safeParse(req.body);
+      if (!body.success) return reply.status(400).send({ error: body.error.issues[0]?.message ?? "Nothing to check" });
+      if ("package" in body.data) {
+        const read = readRulesetPackageFile(body.data.package);
+        if (!read.ok) return { ok: false, issues: issueObjects(read.issues), capabilityApi: null };
+        return {
+          ok: true,
+          issues: [],
+          capabilityApi: leastCapabilityApi(JSON.parse(read.ruleset), read.definition, read.catalogs),
+          ruleset: read.ruleset,
+          catalogs: read.catalogs,
+        };
+      }
+      const sizeIssue = rulesetSizeIssue(body.data.definition);
+      if (sizeIssue) return { ok: false, issues: issueObjects([sizeIssue]), capabilityApi: null };
+      let document: unknown;
+      try {
+        document = JSON.parse(body.data.definition);
+      } catch {
+        return { ok: false, issues: issueObjects(["(root): the ruleset is not valid JSON"]), capabilityApi: null };
+      }
+      const parsed = parseRulesetDefinition(document);
+      if (!parsed.ok) return { ok: false, issues: issueObjects(parsed.issues), capabilityApi: null };
+      return { ok: true, issues: [], capabilityApi: leastCapabilityApi(document, parsed.definition, {}) };
+    },
+  );
 
   // The ruleset JSON Schema the Engine publishes for authors (docs/extending/ruleset.schema.json, kept
   // current by `pnpm ruleset:schema`), so an editor builds its forms from the Engine's own idea of a
   // ruleset instead of a copy of it. An install without the docs has none to give.
-  app.get("/schema", async (_req, reply) => {
+  app.get("/schema", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (_req, reply) => {
     let text: string;
     try {
       text = await readFile(join(getMonorepoRoot(), "docs", "extending", "ruleset.schema.json"), "utf8");
@@ -313,7 +325,7 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
 
   // An installed ruleset's files, as written: a stored one's texts (its catalog files from its row), or a
   // package's ruleset.json and catalogs/*.json (verified reads; a package's assets are public already).
-  app.get("/source", async (req, reply) => {
+  app.get("/source", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (req, reply) => {
     const { rulesetId, version } = sourceQuery.parse(req.query);
     if (isCommunityRulesetId(rulesetId)) {
       const store = createGameRulesetsStorage(app.db);

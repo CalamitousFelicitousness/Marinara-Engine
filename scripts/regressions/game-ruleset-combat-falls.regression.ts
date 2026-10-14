@@ -1,5 +1,5 @@
 /**
- * Catching a fall (Capability API 1.123): Feather Fall before a ledge or a grounded flier lands.
+ * Catching a fall (Capability API 1.124): Feather Fall before a ledge or a grounded flier lands.
  * The answer pays its reaction and slot, and puts its condition on the faller. With no answer the
  * fall lands as before. Each fall from an area is asked about separately, even across a save/load.
  */
@@ -492,14 +492,14 @@ try {
             header.asset = `catalogs/${header.id}.json`;
           }
         assert.equal(
-          getCapabilityPackageInstallIssue(manifest(122) as any, doc, files),
-          "A ruleset whose reactions catch a fall requires schemaVersion 2 and capabilityApi 1.123 or newer",
+          getCapabilityPackageInstallIssue(manifest(123) as any, doc, files),
+          "A ruleset whose reactions catch a fall requires schemaVersion 2 and capabilityApi 1.124 or newer",
           `${kind}, file ${file}`,
         );
-        assert.equal(getCapabilityPackageInstallIssue(manifest(123) as any, doc, files), null);
+        assert.equal(getCapabilityPackageInstallIssue(manifest(124) as any, doc, files), null);
       }
     }
-    assert.equal(getCapabilityPackageInstallIssue(manifest(122) as any, JSON.parse(fiveEText)), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(123) as any, JSON.parse(fiveEText)), null);
   }
   // ── The editor schema says the same thing, for both moment shapes ──
   {
@@ -531,7 +531,7 @@ try {
     visit(schema);
     assert.ok(main > 0 && also > 0 && conditions > 0);
   }
-  console.log("Falls: Feather Fall catches a ledge or grounded flier, with imports gated at 1.123.");
+  console.log("Falls: Feather Fall catches a ledge or grounded flier, with imports gated at 1.124.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

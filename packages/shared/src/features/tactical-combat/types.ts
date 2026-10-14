@@ -125,7 +125,7 @@ export interface TacticalGrid {
   /** How high each cell stands (combat C6b), elevation[y][x] from 0 to 3. Absent on a flat board, which
    *  every board before it was. */
   elevation?: number[][];
-  /** Cells a standing wall closes (Capability API 1.176), by "x,y": 1 nobody moves into, 2 nobody
+  /** Cells a standing wall closes (Capability API 1.177), by "x,y": 1 nobody moves into, 2 nobody
    *  sees through, 3 both. Only a ruleset fight's zones set it, and they take it away as they end. */
   walls?: Record<string, number>;
 }

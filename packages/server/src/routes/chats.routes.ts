@@ -4648,6 +4648,15 @@ export async function chatsRoutes(app: FastifyInstance) {
     const persona = await buildPersonaSnapshotForChat(app, chat);
     // A game's world travels as its snapshot (worldgen W11), so the imported game plays in the same world.
     const worldSnapshotText = chat.mode === "game" ? await createGameWorldSnapshotsStorage(app.db).raw(chat.id) : null;
+    // A stored snapshot that does not read is left out, so the rest of the chat still exports.
+    let worldSnapshot: unknown;
+    if (worldSnapshotText) {
+      try {
+        worldSnapshot = JSON.parse(worldSnapshotText);
+      } catch {
+        logger.warn("World snapshot of chat %s does not read; it is left out of the export", chat.id);
+      }
+    }
     const { buildPromptMacroContext, resolvePromptMessageMacros, normalizeChatMacroVariables } =
       await import("../services/prompt/index.js");
     const exportCharacterIds = resolveActiveCharacterIds(charIds, metadata, {
@@ -4786,7 +4795,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             mode: chat.mode,
             spatialContextHistory,
             ...(advancedMemoryTransfer.length ? { advancedMemoryTransfer } : {}),
-            ...(worldSnapshotText ? { gameWorldSnapshot: JSON.parse(worldSnapshotText) } : {}),
+            ...(worldSnapshot !== undefined ? { gameWorldSnapshot: worldSnapshot } : {}),
           },
         },
       }),

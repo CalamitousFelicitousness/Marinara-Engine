@@ -1,4 +1,4 @@
-/** A builder stamps rows from the first pick that offered the entry (1.129), once on addition. */
+/** A builder stamps rows from the first pick that offered the entry (1.130), once on addition. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -229,19 +229,19 @@ try {
     restartRequired: false,
   });
   const issue =
-    "A ruleset whose builder stamps from the offering pick requires schemaVersion 2 and capabilityApi 1.129 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(128) as any, document), issue);
-  assert.equal(getCapabilityPackageInstallIssue(manifest(129) as any, document), null);
-  const missing = manifest(129) as any;
+    "A ruleset whose builder stamps from the offering pick requires schemaVersion 2 and capabilityApi 1.130 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(129) as any, document), issue);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(130) as any, document), null);
+  const missing = manifest(130) as any;
   delete missing.capabilityApi;
   assert.match(getCapabilityPackageInstallIssue(missing, document) ?? "", /requires schemaVersion 2/);
   assert.match(
-    getCapabilityPackageInstallIssue({ ...manifest(129), schemaVersion: 1 } as any, document) ?? "",
+    getCapabilityPackageInstallIssue({ ...manifest(130), schemaVersion: 1 } as any, document) ?? "",
     /requires schemaVersion 2/,
   );
   const fixed = structuredClone(document);
   fixed.sheet.builder.steps[1].stamp = { class: "wizard", prepared: true };
-  assert.equal(getCapabilityPackageInstallIssue(manifest(128) as any, fixed), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(129) as any, fixed), null);
   assert.equal(applyRulesetBuilder(parsed(fixed), blank, { picks }, catalogs).build.lists.spells![0]!.class, "wizard");
 
   // The emitted schema retains the record bound and the strict new value union.
@@ -261,7 +261,7 @@ try {
   assert.deepEqual(fromWithin.required, ["fromWithin"]);
   assert.equal(fromWithin.additionalProperties, false);
   console.log(
-    "Stamp from within: pick order, row addition, edits, missing values, import, schema and 1.129 gate passed.",
+    "Stamp from within: pick order, row addition, edits, missing values, import, schema and 1.130 gate passed.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

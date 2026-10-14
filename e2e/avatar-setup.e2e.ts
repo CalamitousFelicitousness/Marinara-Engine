@@ -51,6 +51,10 @@ const AGENT = {
 };
 
 async function preparePage(page: Page, characterId: string, ui: Record<string, unknown>, chatId?: string) {
+  // Each page keeps its own UI state: settings the agent page syncs to the server must not reach the chat page.
+  await page.route("**/api/app-settings/ui", (route) =>
+    route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
+  );
   await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [PACKAGE] }));
   await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [AGENT] }));
   // The real list, without avatars other workers save on the same server (the setup page would open on one).
@@ -187,6 +191,9 @@ test("2D Avatars shows a character's sprites as its avatar and saves them as a P
     expect(saved.kinds.pngtuber.layers.happy?.mouthOpen).toEqual({ source: "sprite", label: "happy_talk" });
 
     // ── The chat shows the saved avatar ──
+    // The agent page leaves first: it shares local storage with the chat page and keeps saving its UI state
+    // (the open agent page) there, which could open the agent page in the chat page as it starts.
+    await page.goto("about:blank");
     const savedChatPage = await page.context().newPage();
     await preparePage(savedChatPage, character.id, {}, chat.id);
     await savedChatPage.goto("/");

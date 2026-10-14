@@ -643,7 +643,10 @@ const capabilityPackageManifestBaseSchema = z
 //        Not a soft seam, for the same reason as 1.20 through 1.78: an Engine that cannot read these
 //        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.79.
 //        No permission.
-// 1.80: (reserved by Pixelforge: map pack tiles may be an image pack.)
+// 1.80: an Experience's map pack may ship an image tile pack (tile pack v2, Pixelforge image tiles): PNG
+//        sheets on a grid of cells, sprites of several cells. Not a soft seam: an Engine that cannot read
+//        an image pack refuses the whole map pack, so a package whose map pack tiles are an image pack
+//        declares 1.80. No permission.
 // 1.81: a ruleset's `combat.attackRoll.criticalFrom`: the lowest natural face of the attack die that
 //        is a critical, read off the attacker's sheet (5e's Champion). Not a soft seam, for the same
 //        reason as 1.20 through 1.79: an Engine that cannot read it refuses the whole ruleset file, so

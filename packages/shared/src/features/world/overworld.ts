@@ -44,8 +44,70 @@ export const WORLD_GROUND_LOOKS = Object.freeze([
   "mountains",
   "craters",
   "gravity_well",
+  // More forests (user, 2026-10-05: "Cold regions will need coniferous forests at least"): an image pack
+  // without one draws the forest instead (WORLD_GROUND_LOOK_FALLBACK).
+  "conifer_forest",
+  "autumn_forest",
+  "jungle",
 ] as const);
 export type WorldGroundLook = (typeof WORLD_GROUND_LOOKS)[number];
+
+/** Fringes (user, 2026-10-05, the hard cell lines where forests and fields meet the grass): an image pack's
+ *  `fringe_<look>` is a block of sixteen masks, four cells by four in the edge tiles' order, through which the
+ *  look's own ground spills past its cells' edges onto the ground beside it. Drawn in this order, so taller
+ *  ground (forests, mountains) overhangs lower ground (fields, sand). */
+export const WORLD_FRINGE_ORDER: readonly WorldGroundLook[] = Object.freeze([
+  "sea",
+  "lake",
+  "toxic_water",
+  "space",
+  "nebula",
+  "gravity_well",
+  "asteroids",
+  "desert",
+  "snow",
+  "wasteland",
+  "scrub",
+  "plains",
+  "grass",
+  "farmland",
+  "paddies",
+  "marsh",
+  "craters",
+  "ruins",
+  "suburb",
+  "slums",
+  "industry",
+  "city",
+  "hills",
+  "dead_forest",
+  "bamboo",
+  "autumn_forest",
+  "forest",
+  "conifer_forest",
+  "jungle",
+  "mountains",
+]);
+
+/** Seasons, for drawing only (user, 2026-10-05: "seasonal variants for foliage"). Game Mode keeps no
+ *  calendar beyond the game's day count (a kit's calendar names months but gives them no length), so a season
+ *  is WORLD_SEASON_DAYS days, the first day of a game the first day of spring. */
+export const WORLD_SEASONS = Object.freeze(["spring", "summer", "autumn", "winter"] as const);
+export type WorldSeason = (typeof WORLD_SEASONS)[number];
+export const WORLD_SEASON_DAYS = 90;
+
+/** The season of a game day (1 is the first). */
+export function worldSeason(day: number): WorldSeason {
+  const index = Math.floor((Math.max(1, Math.floor(day)) - 1) / WORLD_SEASON_DAYS) % WORLD_SEASONS.length;
+  return WORLD_SEASONS[index]!;
+}
+
+/** The look a pack without its own tile for a look draws instead. */
+export const WORLD_GROUND_LOOK_FALLBACK: Readonly<Partial<Record<WorldGroundLook, WorldGroundLook>>> = Object.freeze({
+  conifer_forest: "forest",
+  autumn_forest: "forest",
+  jungle: "forest",
+});
 
 type WorldTerrainKind = (typeof WORLD_TERRAIN_KINDS)[number];
 
@@ -74,7 +136,10 @@ const LOOK_WORDS: Record<WorldTerrainKind, Array<[RegExp, WorldGroundLook]>> = {
     [/sprawl|city|urban|core|downtown|corporate|district/, "city"],
     [/farm|field|orchard|vineyard|pasture/, "farmland"],
     [/prairie|plain|steppe|savanna|meadow/, "plains"],
-    [/forest|wood|jungle|grove|taiga/, "forest"],
+    [/taiga|conifer|pine|spruce|boreal|fir\b|firs/, "conifer_forest"],
+    [/jungle|rainforest|tropic/, "jungle"],
+    [/autumn|maple|birch/, "autumn_forest"],
+    [/forest|wood|grove/, "forest"],
     [/hill|highland|moor|upland/, "hills"],
     [/marsh|swamp|bog|fen|wetland/, "marsh"],
     [/scrub|brush|heath|badland/, "scrub"],

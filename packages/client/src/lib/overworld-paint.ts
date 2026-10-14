@@ -126,6 +126,9 @@ const PLAIN: Record<WorldGroundLook, { base: string; paint?: (ctx: Ctx, x: numbe
     toxic_water: { base: "#5f8a2f", paint: both(waves("#a6d44a"), dots("#3e5c1f", 3, 2)) },
     mountains: { base: "#7d7466", paint: peaks("#9b917f", "#6b6255", "#f2f2f2") },
     craters: { base: "#7a6a55", paint: both(dots("#4f4334", 2, 4), dots("#9a8a70", 4)) },
+    conifer_forest: { base: "#3f6e44", paint: trees("#24502f", "#173a22", 3, "#4a3322") },
+    autumn_forest: { base: "#8a7a3a", paint: trees("#b5652a", "#7d3f1c", 3, "#5a3b22") },
+    jungle: { base: "#3d7a35", paint: trees("#2a6a2a", "#174a1d", 4, "#4a3322") },
     gravity_well: {
       base: "#07070d",
       paint: (ctx, x, y) => {
@@ -257,4 +260,15 @@ export function overworldDarkness(hour: number, minute = 0): number {
   if (at < 7) return 0.55 * (1 - (at - 5) / 2);
   if (at < 18) return 0;
   return 0.55 * ((at - 18) / 3);
+}
+
+/** A site's marker (a cave, a mine, a ruin out in the world): a dark mouth in a mound of rock. */
+export function paintSite(ctx: Ctx, cx: number, cy: number) {
+  const x = cx * 16;
+  const y = cy * 16;
+  px(ctx, "#2b2520", x + 2, y + 5, 12, 10);
+  px(ctx, "#8a8172", x + 3, y + 6, 10, 8);
+  px(ctx, "#a69c8b", x + 5, y + 5, 6, 2);
+  px(ctx, "#111014", x + 6, y + 9, 4, 5);
+  px(ctx, "#111014", x + 7, y + 8, 2, 1);
 }

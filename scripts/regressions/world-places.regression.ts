@@ -29,6 +29,7 @@ import {
   applyGamePlaceTags,
   checkWorldBrief,
   compileWorld,
+  worldSites,
   createConnectionSchema,
   createLorebookEntrySchema,
   createLorebookSchema,
@@ -202,7 +203,17 @@ for (const kit of kits) {
   const settlementsDepth = modern.layers.findIndex((layer) => layer.settlements);
   const main = town.places.filter((place) => place.depth === settlementsDepth).sort((a, b) => b.rank! - a.rank!)[0]!;
   assert.ok(main.rank! <= Math.floor((modern.sizes.length - 1) / 2), "a town world's biggest place is no metropolis");
-  const inside = town.places.filter((place) => place.depth === settlementsDepth + 1);
+  // (Its sites, generator 2, are beside any of its settlements: the neighborhoods are the rest.)
+  const sites = new Set(
+    worldSites({
+      kit: modern,
+      seed: 7,
+      grounding: "expand",
+      brief: { briefVersion: 1, premise: "" } as never,
+      world: town,
+    }).map((place) => place.id),
+  );
+  const inside = town.places.filter((place) => place.depth === settlementsDepth + 1 && !sites.has(place.id));
   assert.ok(inside.length >= 4 && inside.every((place) => place.parentId === main.id), "its neighborhoods");
   // A place the brief puts in another of the town world's settlements goes there.
   const twoTowns = checkWorldBrief(modern, {
@@ -306,11 +317,23 @@ const brief = {
 
   // Byte for byte: this world is committed. A change to the compile that moves it is a new
   // generator version (worlds in play pin theirs), and this fingerprint moves with it.
-  const fingerprint = createHash("sha256").update(JSON.stringify(world)).digest("hex");
+  // Version 1 is made exactly as it was (games in play on it are made again from their recipes), and
+  // version 2 is version 1 with its sites after it.
+  const versionOne = compileWorld({ seed: 20261001, kit: fantasy, brief: checked.brief, generatorVersion: 1 });
+  const fingerprint = createHash("sha256").update(JSON.stringify(versionOne)).digest("hex");
   assert.equal(
     fingerprint,
     "10fe126f207278d79e6aaa3b6ae9150c6e433e545477013a1774c11116db6787",
     "the committed world of generator version 1",
+  );
+  assert.deepEqual(
+    { ...world, generatorVersion: 1, places: world.places.slice(0, versionOne.places.length) },
+    versionOne,
+  );
+  assert.equal(
+    createHash("sha256").update(JSON.stringify(world)).digest("hex"),
+    "a309b82f166d841222f19220d5c0bffd3693933f6b7e1e5ed5152f8381e72888",
+    "the committed world of generator version 2",
   );
 
   // Names never move the ground or the places.
@@ -703,6 +726,7 @@ try {
       for (const config of [
         { ...baseConfig, worldKit: fantasy, world: storedWorld },
         { ...baseConfig, worldKit: fantasy },
+        { ...baseConfig, gameStyle: "overworld" },
         { ...baseConfig, world: storedWorld },
       ]) {
         const locked = await create(config);
@@ -716,12 +740,16 @@ try {
     assert.deepEqual((await app.inject({ method: "GET", url: "/api/game/overworld" })).json(), { enabled: true });
     const made = await create({ ...baseConfig, worldKit: fantasy, world: storedWorld });
     assert.equal(made.statusCode, 200, made.body);
+    const chosen = await create({ ...baseConfig, gameStyle: "overworld", worldKit: fantasy, world: storedWorld });
+    assert.equal(chosen.statusCode, 200, `an Overworld game with its kit and world: ${chosen.body}`);
     const meta = JSON.parse(made.json().sessionChat.metadata);
     assert.equal(meta.gameWorld.seed, 20261001);
     assert.ok(gameWorldFromMetadata(meta), "the stored world reads back");
     for (const [config, code] of [
       [{ ...baseConfig, world: storedWorld }, "a world without a kit"],
-      [{ ...baseConfig, worldKit: fantasy, world: { ...storedWorld, generatorVersion: 2 } }, "another generator"],
+      [{ ...baseConfig, gameStyle: "overworld" }, "an Overworld game without a kit or world"],
+      [{ ...baseConfig, gameStyle: "overworld", worldKit: fantasy }, "an Overworld game without a world"],
+      [{ ...baseConfig, worldKit: fantasy, world: { ...storedWorld, generatorVersion: 99 } }, "another generator"],
     ] as const) {
       const refused = await create(config);
       assert.equal(refused.statusCode, 400, `${code}: ${refused.body}`);

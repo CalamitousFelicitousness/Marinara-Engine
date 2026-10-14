@@ -502,7 +502,12 @@ export async function shrinkGlbTextures(
   const { json, bin } = parseGlb(glb);
   const unchanged = { glb: Buffer.from(glb.buffer, glb.byteOffset, glb.byteLength), resized: [], skipped: false };
   const views = json.bufferViews ?? [];
-  if (!json.images?.length || views.some((view) => view.buffer !== 0) || (json.buffers?.length ?? 0) !== 1) {
+  // Only a file whose every view sits inside its one binary chunk is repacked; anything else is left as it is.
+  if (
+    !json.images?.length ||
+    (json.buffers?.length ?? 0) !== 1 ||
+    views.some((view) => view.buffer !== 0 || (view.byteOffset ?? 0) + view.byteLength > bin.length)
+  ) {
     return unchanged;
   }
   let sharp: Sharp;

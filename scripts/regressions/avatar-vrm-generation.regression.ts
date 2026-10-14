@@ -393,6 +393,13 @@ const shrunk = await shrinkGlbTextures(converted.vrm, getSharp);
   });
   assert.equal(noSharp.skipped, true, "without sharp (Lite, Termux) the textures stay as they are");
   assert.ok(noSharp.glb.equals(converted.vrm));
+  // A view that points past the binary chunk is never repacked into a shorter one.
+  const { json: pastEnd, bin: pastEndBin } = parseGlb(converted.vrm);
+  pastEnd.bufferViews![0]!.byteLength = pastEndBin.length + 64;
+  const dishonest = writeGlb(pastEnd, pastEndBin);
+  const leftAlone = await shrinkGlbTextures(dishonest, getSharp);
+  assert.deepEqual(leftAlone.resized, []);
+  assert.ok(leftAlone.glb.equals(dishonest), "a view past the binary chunk leaves the file as it is");
 }
 
 // ── The stage's own loader (three + three-vrm) in Node ──

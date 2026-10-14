@@ -295,6 +295,8 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
+  /** The stream closed before the server said the model was done or failed (a restart, a dropped link). */
+  const [interrupted, setInterrupted] = useState(false);
   const runningRef = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
 
@@ -306,6 +308,7 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
     setDraft(null);
     setError(null);
     setCancelled(false);
+    setInterrupted(false);
   }, [owner.ownerType, owner.ownerId]);
 
   const start = useCallback(
@@ -318,8 +321,10 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
       setDraft(null);
       setError(null);
       setCancelled(false);
+      setInterrupted(false);
       const controller = new AbortController();
       controllerRef.current = controller;
+      let ended = false;
       try {
         const events = api.streamEvents(
           `${PREFIX}/vrm-model`,
@@ -336,12 +341,15 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
             }));
             setCreditsUsed(progress.creditsUsed);
           } else if (event.type === "done") {
+            ended = true;
             setDraft({ ...(event.data as AvatarVrmModelDraft), label: body.sourceLabel });
           } else if (event.type === "error") {
+            ended = true;
             const message = (event.data as { message?: unknown } | null)?.message;
             setError(typeof message === "string" && message ? message : "");
           }
         }
+        if (!ended && !controller.signal.aborted) setInterrupted(true);
       } catch (caught) {
         if (!controller.signal.aborted && !isAbort(caught)) setError(errorMessage(caught));
       } finally {
@@ -364,7 +372,7 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
     setSteps({});
     setCreditsUsed(0);
   }, []);
-  return { steps, creditsUsed, draft, running, error, cancelled, start, cancel, discard };
+  return { steps, creditsUsed, draft, running, error, cancelled, interrupted, start, cancel, discard };
 }
 
 /** A draft's model as a file, for the same import a picked .vrm file goes through. */

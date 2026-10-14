@@ -227,6 +227,14 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
       connectionId: connection.id,
     });
 
+    // A stream that closes before the model is done or failed says so, with the credits it had used.
+    runs.push((route) => route.fulfill(stream([progress("redraw", "running", 0), progress("redraw", "done", 5, 100)])));
+    await maker.getByRole("button", { name: "Make 3D model", exact: true }).click();
+    await expect(maker.getByRole("alert")).toHaveText(
+      "The connection closed before the model was done. Tripo may still have used credits for it.",
+    );
+    await expect(maker.locator("[data-tripo-credits-used]")).toHaveText("Tripo credits used: 5");
+
     // Cancel stops the run at once and says what Tripo may still do.
     let cancelledRequest = false;
     page.on("requestfailed", (failed) => {

@@ -245,6 +245,16 @@ export function VrmModelMaker({
           {t("avatars.vrm.make.cancelled")}
         </p>
       ) : null}
+      {job.interrupted && !job.running ? (
+        <p role="alert" className="flex items-start gap-1.5 text-[0.6875rem] text-[var(--foreground)]">
+          <AlertTriangle
+            size="0.75rem"
+            className="mt-px shrink-0 text-[var(--marinara-app-accent-static)]"
+            aria-hidden
+          />
+          {t("avatars.vrm.make.interrupted")}
+        </p>
+      ) : null}
       {job.error !== null ? (
         <p role="alert" className="flex items-start gap-1.5 text-[0.6875rem] text-[var(--foreground)]">
           <AlertTriangle

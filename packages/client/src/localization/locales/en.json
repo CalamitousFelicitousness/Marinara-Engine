@@ -280,6 +280,7 @@
   "avatars.vrm.make.failed": "The 3D model couldn't be made.",
   "avatars.vrm.make.fullBodyHint": "Use a full-body sprite where the whole character is visible.",
   "avatars.vrm.make.getKey": "Get a Tripo API key",
+  "avatars.vrm.make.interrupted": "The connection closed before the model was done. Tripo may still have used credits for it.",
   "avatars.vrm.make.noConnection": "Add a Tripo connection with your Tripo API key in Connections first.",
   "avatars.vrm.make.notEnough": "That's not enough for a model. Top up at Tripo first.",
   "avatars.vrm.make.previewAlt": "The new 3D model",

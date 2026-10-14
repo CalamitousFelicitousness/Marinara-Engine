@@ -25,6 +25,7 @@ import { useCharacterSprites, useCharacters, usePersonas } from "../../../hooks/
 import { parseCharacterDisplayData } from "../../../lib/character-display";
 import { cn } from "../../../lib/utils";
 import { AVATAR_GENERATION_PANEL, AVATAR_KIND_SETUP_PANELS, type AvatarAgentSetupProps } from "../contract";
+import { AvatarModelStatus } from "../director/AvatarModelStatus";
 import { buildPngtuberLayersFromSprites } from "../renderers/pngtuber/pngtuber-layers";
 import { pickAvatarKind, withSpriteAvatar } from "../stage/avatar-stage-logic";
 import { avatarAgentKinds } from "./avatar-setup-logic";
@@ -97,6 +98,7 @@ export function AvatarAgentSetup({ agentId }: AvatarAgentSetupProps) {
 
   return (
     <div className="space-y-4" data-avatar-setup={agentId}>
+      <AvatarModelStatus />
       <label className="block space-y-1.5">
         <span className="text-xs font-semibold text-[var(--foreground)]">{t("avatars.setup.owner.label")}</span>
         <select

@@ -91,7 +91,29 @@ There is no size limit beyond the app's usual upload limit, but large models tak
 
 ## How faces and mouths follow the reply
 
-How the avatar picks a face while a reply streams in Roleplay and from the Game Master's lines in Game mode, how the Expression Engine sets the final face, and how the mouth follows the text.
+Avatars react on their own; there is nothing to set up for this part.
+
+**Faces in Roleplay.** While a reply streams in, Marinara Engine reads each finished sentence and guesses its mood. To keep the face from flickering:
+
+- The face changes only when the new mood is clearly stronger than the current one.
+- A face stays for at least two seconds.
+- The face goes back to calm only after two calm sentences in a row.
+- About four seconds after the reply ends, the face relaxes back to calm.
+
+**How the mood is read.** Your chat connection is not asked. Your chat text stays with your own Marinara Engine and is never sent to an outside service.
+
+- A built-in word list answers at once, everywhere, and knows common mood words in several languages.
+- On computers that can run it, Marinara Engine reads the sentences with a small emotion model instead, the mood reader. It understands 36 languages. It downloads once, about 300 MB, the first time you open a Roleplay chat with 2D Avatars or 3D Avatars turned on. It does not download while both agents are off. Each avatar agent's page in **Agents** shows the download's progress, and a failed download tries again by itself about 10 minutes later. The word list answers until the mood reader is ready, and after the download it works offline. It uses about 1 GB of memory while in use and unloads after 10 idle minutes. Lite installs, Android and computers with less than 3 GB of memory keep the word list.
+
+**Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it. A character's inner thoughts change the face but not the mouth.
+
+**The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. A pick that arrives after you sent your next message stays with the reply it was for. Avatars work without it too.
+
+**Mouths.** From the text, the mouth moves only for dialogue (words in quotes, `[Name]:` lines and speaker tags), not for narration, at about the pace of speech. If the text appears faster than anyone could say it, the mouth speeds up and then skips ahead so it stays with the words on screen. With streaming off, a reply's dialogue is spoken within eight seconds. When text-to-speech plays a line, the voice moves the mouth instead, so a character's narration read in their voice moves their mouth too.
+
+**Body.** An avatar thinks from the moment you send until its first words, talks while its mouth moves, listens while someone else talks or while you type, and rests otherwise.
+
+**Group chats.** In an Individual group, the member who is replying speaks, including when you swipe one member's message. In a Merged group, each paragraph belongs to the first character it names, or to the one before it. While a paragraph that names nobody is still appearing, its dialogue waits until a name or the paragraph's end shows who says it. With streaming off in an Individual group, only the last member's reply moves an avatar for now.
 
 ## Lip sync with text-to-speech
 

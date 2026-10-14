@@ -288,6 +288,7 @@
   "avatars.vrm.make.fullBodyHint": "Use a full-body sprite where the whole character is visible.",
   "avatars.vrm.make.getKey": "Get a key",
   "avatars.vrm.make.interrupted": "The connection closed before the model was done. Tripo may still have used credits for it.",
+  "avatars.vrm.make.key.checkFailed": "Couldn't check whether your Tripo API key is saved.",
   "avatars.vrm.make.key.help": "Paste your Tripo API key to make 3D models.",
   "avatars.vrm.make.key.label": "Tripo API key",
   "avatars.vrm.make.key.remove": "Remove",

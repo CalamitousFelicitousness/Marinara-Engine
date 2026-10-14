@@ -86,6 +86,7 @@ export function EmbeddingDefaultControl({ connections }: { connections: Embeddin
         ))}
       </select>
       <p className="text-xs text-[var(--muted-foreground)]">{t("connections.embeddingDefault.help")}</p>
+      <p className="text-xs text-[var(--muted-foreground)]">{t("connections.embeddingDefault.revectorize")}</p>
       {ownCount > 0 && (
         <p className="text-xs text-[var(--muted-foreground)]">
           {t("connections.embeddingDefault.ownSettings", { count: ownCount })}

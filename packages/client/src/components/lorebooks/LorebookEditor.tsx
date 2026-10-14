@@ -123,6 +123,8 @@ import { Modal } from "../ui/Modal";
 // ──────────────────────────────────────────────
 const FOLDER_COLLAPSE_KEY_PREFIX = "lorebook-folder-collapsed:";
 const LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY = "marinara:lorebook-vectorize-connection-id";
+/** Stored for an explicit "No semantic search", so the embedding default does not replace it on the next visit. */
+const LOREBOOK_VECTORIZE_NONE = "none";
 
 function closestElementFromPoint(x: number, y: number, selector: string) {
   const element = document.elementFromPoint(x, y);
@@ -3282,6 +3284,7 @@ function VectorizeSection({
     if (selectedConnectionId || embeddingConnections.length === 0) return;
     try {
       const storedConnectionId = window.localStorage.getItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY);
+      if (storedConnectionId === LOREBOOK_VECTORIZE_NONE) return;
       if (storedConnectionId && embeddingConnections.some((connection) => connection.id === storedConnectionId)) {
         setSelectedConnectionId(storedConnectionId);
         return;
@@ -3307,7 +3310,7 @@ function VectorizeSection({
       if (nextConnectionId) {
         window.localStorage.setItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY, nextConnectionId);
       } else {
-        window.localStorage.removeItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY);
+        window.localStorage.setItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY, LOREBOOK_VECTORIZE_NONE);
       }
     } catch {
       // localStorage is optional; keep the in-memory selection.

@@ -884,6 +884,8 @@ export async function combatDirectorRoutes(
               return build ? rulesetCatalogIdsForBuild(definition, build) : [];
             }),
           );
+          // One read of the visible game state, for both its live sheets and its time of day.
+          const liveRow = (await visibleLiveRow(input.chatId)).row;
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
@@ -904,7 +906,7 @@ export async function combatDirectorRoutes(
             })),
             cards,
             playerName: persona?.name ?? null,
-            live: parseStoredRulesetLive((await visibleLiveRow(input.chatId)).row?.rulesetLive),
+            live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
@@ -914,7 +916,7 @@ export async function combatDirectorRoutes(
             // Who fights in its own lair (1.315).
             inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
             // The scene's time of day, for the light it is fought in (1.291).
-            time: (await visibleLiveRow(input.chatId)).row?.time ?? null,
+            time: liveRow?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
           state.rulesetFight = built.fight;

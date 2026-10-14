@@ -829,6 +829,34 @@ function plainRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
+/** Maps keyed by a ruleset's own ids (a sheet's `fields`, a row's `values`, a stat block's `checks`,
+ *  a worn item's `abilities`): what is under them is the ruleset's data, never a feature, so a column
+ *  or a score that happens to be called `magical`, `passive` or `hiding` is not read as one. */
+const ID_KEYED_MAPS = new Set([
+  "abilities",
+  "always",
+  "bonuses",
+  "byKind",
+  "checks",
+  "fields",
+  "filters",
+  "lists",
+  "options",
+  "saves",
+  "sets",
+  "skills",
+  "stats",
+  "valueLabels",
+  "values",
+]);
+
+/** What a feature scan reads further into: every value but an id-keyed map's. */
+function featureValues(record: Record<string, unknown>): unknown[] {
+  return Object.entries(record).flatMap(([key, value]) =>
+    ID_KEYED_MAPS.has(key) && plainRecord(value) ? [] : [value],
+  );
+}
+
 /** The 1.45 keys in the ruleset file itself: `levels` in the combat block, and a combat condition's
  *  `modifiers` or check effects. */
 function rulesetCarriesConditionNumbers145Keys(ruleset: { combat?: unknown } | undefined): boolean {
@@ -1564,7 +1592,7 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const hiding = plainRecord(record.hiding);
   if (hiding && hiding.stealth === undefined) return true;
-  return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
+  return featureValues(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
 /** An aura that grows, lingers or harms on its targets' turns, a holder who tears free, a hold with a
@@ -1795,7 +1823,7 @@ function carriesSphere(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.sealed !== undefined || record.targetsUpTo !== undefined) return true;
-  return Object.values(record).some((one) => carriesSphere(one, depth + 1));
+  return featureValues(record).some((one) => carriesSphere(one, depth + 1));
 }
 
 /** Maze, Expeditious Retreat's Dash, a casting's choices made again, an ability add on top of sets,
@@ -1818,7 +1846,7 @@ function carriesLeftovers308(value: unknown, depth = 0): boolean {
     })
   )
     return true;
-  return Object.values(record).some((one) => carriesLeftovers308(one, depth + 1));
+  return featureValues(record).some((one) => carriesLeftovers308(one, depth + 1));
 }
 
 /** A weapon mode whose hit claps around the one it hit (1.312). */
@@ -1829,7 +1857,7 @@ function carriesThunderclap(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (Array.isArray(record.modes) && record.modes.some((mode) => plainRecord(mode)?.aroundHit !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesThunderclap(one, depth + 1));
+  return featureValues(record).some((one) => carriesThunderclap(one, depth + 1));
 }
 
 /** An item use that puts conditions on its reader, creature actions that slay the dying, and a
@@ -1851,7 +1879,7 @@ function carriesLeftovers306(value: unknown, depth = 0): boolean {
   const conditions = plainRecord(record.combat)?.conditions;
   if (Array.isArray(conditions) && conditions.some((rule) => plainRecord(rule)?.endsWhenHolder !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesLeftovers306(one, depth + 1));
+  return featureValues(record).some((one) => carriesLeftovers306(one, depth + 1));
 }
 
 /** A concentration entry's effect made again, and a condition ended by distance from its putter
@@ -1862,7 +1890,7 @@ function carriesRepeats(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.repeats)?.budget !== undefined || !!plainRecord(record.endsAway)) return true;
-  return Object.values(record).some((one) => carriesRepeats(one, depth + 1));
+  return featureValues(record).some((one) => carriesRepeats(one, depth + 1));
 }
 
 /** Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, and a weapon bound out
@@ -1879,7 +1907,7 @@ function carriesHidingNeeds(value: unknown, depth = 0): boolean {
   )
     return true;
   if (plainRecord(record.conjures)?.boundIn !== undefined) return true;
-  return Object.values(record).some((one) => carriesHidingNeeds(one, depth + 1));
+  return featureValues(record).some((one) => carriesHidingNeeds(one, depth + 1));
 }
 
 /** An item's use whose targets grow with the sheet, or that takes the same target again (1.308). */
@@ -1898,7 +1926,7 @@ function carriesItemBeams(value: unknown, depth = 0): boolean {
     (beams(item.use) || (Array.isArray(item.moreUses) && item.moreUses.some((more) => beams(plainRecord(more)?.use))))
   )
     return true;
-  return Object.values(record).some((one) => carriesItemBeams(one, depth + 1));
+  return featureValues(record).some((one) => carriesItemBeams(one, depth + 1));
 }
 
 /** A creature's own action held by its concentration, ends on using a named action, and what a use
@@ -1913,7 +1941,7 @@ function carriesSelfHeld(value: unknown, depth = 0): boolean {
   // A creature's action is named and budgeted; a catalog entry's concentration sits in its mechanics.
   if (record.concentration !== undefined && typeof record.name === "string" && typeof record.budget === "string")
     return true;
-  return Object.values(record).some((one) => carriesSelfHeld(one, depth + 1));
+  return featureValues(record).some((one) => carriesSelfHeld(one, depth + 1));
 }
 
 /** Weapons put in hand, and amends that add typed damage or strikes (1.306). */
@@ -1926,7 +1954,7 @@ function carriesConjures(value: unknown, depth = 0): boolean {
   const amends = Array.isArray(record.amends) ? record.amends : [];
   if (amends.some((one) => plainRecord(one)?.damagePlus !== undefined || plainRecord(one)?.strikes !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesConjures(one, depth + 1));
+  return featureValues(record).some((one) => carriesConjures(one, depth + 1));
 }
 
 /** Targets that grow with the sheet, and the same target more than once (1.305). */
@@ -1936,7 +1964,7 @@ function carriesBeams(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.targetsScale !== undefined || record.targetsRepeat !== undefined) return true;
-  return Object.values(record).some((one) => carriesBeams(one, depth + 1));
+  return featureValues(record).some((one) => carriesBeams(one, depth + 1));
 }
 
 /** Uses once a creature until a rest (1.304). */
@@ -1946,7 +1974,7 @@ function carriesOncePerTarget(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.oncePerTarget !== undefined) return true;
-  return Object.values(record).some((one) => carriesOncePerTarget(one, depth + 1));
+  return featureValues(record).some((one) => carriesOncePerTarget(one, depth + 1));
 }
 
 /** Uses only in some light, and conditions that moving or acting ends (1.303). */
@@ -1958,7 +1986,7 @@ function carriesShadowUses(value: unknown, depth = 0): boolean {
   if (record.usableIn !== undefined) return true;
   const ends = plainRecord(record.endsWhenHolder);
   if (ends && (ends.moves !== undefined || ends.acts !== undefined)) return true;
-  return Object.values(record).some((one) => carriesShadowUses(one, depth + 1));
+  return featureValues(record).some((one) => carriesShadowUses(one, depth + 1));
 }
 
 /** Entries that change another of their holder's each time it is used (1.302). */
@@ -1968,7 +1996,7 @@ function carriesAmends(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.amends !== undefined) return true;
-  return Object.values(record).some((one) => carriesAmends(one, depth + 1));
+  return featureValues(record).some((one) => carriesAmends(one, depth + 1));
 }
 
 /** Zones carried with somebody, and copies set down apart (1.301). */
@@ -1978,7 +2006,7 @@ function carriesHeldZones(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.carried === "own" || record.carried === "any" || record.copiesWithin !== undefined) return true;
-  return Object.values(record).some((one) => carriesHeldZones(one, depth + 1));
+  return featureValues(record).some((one) => carriesHeldZones(one, depth + 1));
 }
 
 /** What a higher cost adds only every so many steps, and on what a condition gives (1.300). */
@@ -1988,7 +2016,7 @@ function carriesStepsEvery(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.perCostStepsEvery !== undefined) return true;
-  return Object.values(record).some((one) => carriesStepsEvery(one, depth + 1));
+  return featureValues(record).some((one) => carriesStepsEvery(one, depth + 1));
 }
 
 /** Darkness that puts out spell light, magical light, and Daylight's dispelling reach (1.299). */
@@ -1999,7 +2027,7 @@ function carriesDarkAgainstLight(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.dispelsLight !== undefined || record.magical !== undefined) return true;
   if (plainRecord(record.dispelsDark)?.within !== undefined) return true;
-  return Object.values(record).some((one) => carriesDarkAgainstLight(one, depth + 1));
+  return featureValues(record).some((one) => carriesDarkAgainstLight(one, depth + 1));
 }
 
 /** A creature's light out under a condition, and light that is sunlight (1.298). */
@@ -2009,7 +2037,7 @@ function carriesSunAndHiddenLight(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.lightOutWhile !== undefined || record.sunlight !== undefined) return true;
-  return Object.values(record).some((one) => carriesSunAndHiddenLight(one, depth + 1));
+  return featureValues(record).some((one) => carriesSunAndHiddenLight(one, depth + 1));
 }
 
 /** Zones that shed light or end magical darkness, and light that shows the invisible (1.297). */
@@ -2020,7 +2048,7 @@ function carriesLightZones(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.lights !== undefined || record.dispelsDark !== undefined || record.reveals !== undefined) return true;
   if (plainRecord(record.obscures)?.darkness !== undefined) return true;
-  return Object.values(record).some((one) => carriesLightZones(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightZones(one, depth + 1));
 }
 
 /** Lights switched by a creature's own actions, or dim while an item is off (1.296). */
@@ -2030,7 +2058,7 @@ function carriesLightActions(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.sheds !== undefined || record.unlit !== undefined || record.offLight !== undefined) return true;
-  return Object.values(record).some((one) => carriesLightActions(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightActions(one, depth + 1));
 }
 
 /** A carried light with a name or a price to put out and light again (1.295). */
@@ -2041,7 +2069,7 @@ function carriesLightSwitch(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const carried = plainRecord(plainRecord(record.darkness)?.carried);
   if (carried && (carried.label !== undefined || carried.budget !== undefined)) return true;
-  return Object.values(record).some((one) => carriesLightSwitch(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightSwitch(one, depth + 1));
 }
 
 /** The dark kept real, and light shed in it (1.294): `sight.darkness`, a `light` with its reach. */
@@ -2053,7 +2081,7 @@ function carriesDarkness(value: unknown, depth = 0): boolean {
   if (plainRecord(record.darkness)) return true;
   const light = plainRecord(record.light);
   if (light && (light.bright !== undefined || light.dim !== undefined)) return true;
-  return Object.values(record).some((one) => carriesDarkness(one, depth + 1));
+  return featureValues(record).some((one) => carriesDarkness(one, depth + 1));
 }
 
 /** A creature's own modes on attacks (1.293). */
@@ -2063,7 +2091,7 @@ function carriesAttackModes(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.attackModes !== undefined) return true;
-  return Object.values(record).some((one) => carriesAttackModes(one, depth + 1));
+  return featureValues(record).some((one) => carriesAttackModes(one, depth + 1));
 }
 
 /** A creature's own ways of hiding and looking (1.291): modes on its checks, a printed passive,
@@ -2079,7 +2107,7 @@ function carriesCreatureSeeking(value: unknown, depth = 0): boolean {
   // A creature action's permission; a catalog entry's names its budget inside it.
   const standard = plainRecord(record.standard);
   if (standard && standard.budget === undefined) return true;
-  return Object.values(record).some((one) => carriesCreatureSeeking(one, depth + 1));
+  return featureValues(record).some((one) => carriesCreatureSeeking(one, depth + 1));
 }
 
 /** Looking for the hidden, weighed (1.290): a passive's `passiveMode`, a change to checks to find
@@ -2090,7 +2118,7 @@ function carriesSeekingModes(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.to === "checks-taken" || plainRecord(record.hiding)?.passiveMode !== undefined) return true;
-  return Object.values(record).some((one) => carriesSeekingModes(one, depth + 1));
+  return featureValues(record).some((one) => carriesSeekingModes(one, depth + 1));
 }
 
 /** A fog a wind disperses only after a while (1.289): `dispersed: { after }`. */
@@ -2102,7 +2130,7 @@ function carriesSlowDispersal(value: unknown, depth = 0): boolean {
   for (const key of ["obscures", "smoke"]) {
     if (plainRecord(plainRecord(record[key])?.dispersed)) return true;
   }
-  return Object.values(record).some((one) => carriesSlowDispersal(one, depth + 1));
+  return featureValues(record).some((one) => carriesSlowDispersal(one, depth + 1));
 }
 
 /** Readying for real (1.288): the fight's `readying`. */
@@ -2112,7 +2140,7 @@ function carriesReadying(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.readying)) return true;
-  return Object.values(record).some((one) => carriesReadying(one, depth + 1));
+  return featureValues(record).some((one) => carriesReadying(one, depth + 1));
 }
 
 /** Hiding for real (1.287): the fight's `hiding`, the Search standard action, a creature's Detect. */
@@ -2126,7 +2154,7 @@ function carriesHiding(value: unknown, depth = 0): boolean {
     const list = record[key];
     if (Array.isArray(list) && list.includes("search")) return true;
   }
-  return Object.values(record).some((one) => carriesHiding(one, depth + 1));
+  return featureValues(record).some((one) => carriesHiding(one, depth + 1));
 }
 
 /** A fog only lightly obscuring, or one a strong wind blows away, or that wind (1.286): a Cape of the
@@ -2141,7 +2169,7 @@ function carriesLightOrWind(value: unknown, depth = 0): boolean {
     const fog = plainRecord(record[key]);
     if (fog && (fog.light !== undefined || fog.dispersed !== undefined)) return true;
   }
-  return Object.values(record).some((one) => carriesLightOrWind(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightOrWind(one, depth + 1));
 }
 
 /** A legendary move that follows what its action does, or on one named speed (1.285): a dragon's Wing
@@ -2162,7 +2190,7 @@ function carriesMoveAfter(value: unknown, depth = 0): boolean {
   ) {
     return true;
   }
-  return Object.values(record).some((one) => carriesMoveAfter(one, depth + 1));
+  return featureValues(record).some((one) => carriesMoveAfter(one, depth + 1));
 }
 
 /** A spell cast with points between turns (1.284): a sphinx's Cast a Spell, a lich's Cantrip. */
@@ -2173,7 +2201,7 @@ function carriesLegendaryCast(value: unknown, depth = 0): boolean {
   if (!record) return false;
   // Always with its signature: a builder's `casting` column stamp is not one.
   if (plainRecord(record.casting) && plainRecord(record.signature)) return true;
-  return Object.values(record).some((one) => carriesLegendaryCast(one, depth + 1));
+  return featureValues(record).some((one) => carriesLegendaryCast(one, depth + 1));
 }
 
 /** A legendary move (1.283): a tarrasque's Move, a mummy lord's Whirlwind of Sand. A lasting area's
@@ -2185,7 +2213,7 @@ function carriesLegendaryMove(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const move = plainRecord(record.move);
   if (move && move.budget === undefined) return true;
-  return Object.values(record).some((one) => carriesLegendaryMove(one, depth + 1));
+  return featureValues(record).some((one) => carriesLegendaryMove(one, depth + 1));
 }
 
 /** A burst centred on its user, through walls or not (1.282): Channel Negative Energy. */
@@ -2196,7 +2224,7 @@ function carriesAround(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const area = plainRecord(record.area);
   if (area && (area.around !== undefined || area.throughWalls !== undefined)) return true;
-  return Object.values(record).some((one) => carriesAround(one, depth + 1));
+  return featureValues(record).some((one) => carriesAround(one, depth + 1));
 }
 
 /** A blow whose maker regains what it dealt (1.281): Psychic Drain, Vampiric Touch. */
@@ -2206,7 +2234,7 @@ function carriesDrain(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.drain)) return true;
-  return Object.values(record).some((one) => carriesDrain(one, depth + 1));
+  return featureValues(record).some((one) => carriesDrain(one, depth + 1));
 }
 
 /** A teleport that strikes before or after it (1.280): a blink dog's bite. */
@@ -2216,7 +2244,7 @@ function carriesTeleportStrike(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.teleport)?.strike !== undefined) return true;
-  return Object.values(record).some((one) => carriesTeleportStrike(one, depth + 1));
+  return featureValues(record).some((one) => carriesTeleportStrike(one, depth + 1));
 }
 
 /** A teleport that leaves the fight, takes along only those its user sees, or leaves smoke (1.279). */
@@ -2228,7 +2256,7 @@ function carriesTeleportExtras(value: unknown, depth = 0): boolean {
   const teleport = plainRecord(record.teleport);
   if (teleport && (teleport.leaves !== undefined || teleport.carriesSeen !== undefined || teleport.smoke !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesTeleportExtras(one, depth + 1));
+  return featureValues(record).some((one) => carriesTeleportExtras(one, depth + 1));
 }
 
 /** What Calm Emotions needs (1.278): a save its user's side may fail, indifference to a whole side,
@@ -2245,7 +2273,7 @@ function carriesCalm(value: unknown, depth = 0): boolean {
     record.endsWhen.some((one) => one === "attacked" || one === "ally-harmed-in-sight")
   )
     return true;
-  return Object.values(record).some((one) => carriesCalm(one, depth + 1));
+  return featureValues(record).some((one) => carriesCalm(one, depth + 1));
 }
 
 /** More than four conditions put on by one entry, item use or creature action (1.277). */
@@ -2255,7 +2283,7 @@ function carriesManyApplies(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (Array.isArray(record.applies) && record.applies.length > 4) return true;
-  return Object.values(record).some((one) => carriesManyApplies(one, depth + 1));
+  return featureValues(record).some((one) => carriesManyApplies(one, depth + 1));
 }
 
 /** A teleport (1.276), on a catalog entry, an item's use or a creature's action. */
@@ -2266,7 +2294,7 @@ function carriesTeleports(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const teleport = plainRecord(record.teleport);
   if (teleport && typeof teleport.distance === "number") return true;
-  return Object.values(record).some((one) => carriesTeleports(one, depth + 1));
+  return featureValues(record).some((one) => carriesTeleports(one, depth + 1));
 }
 
 /** A condition held off rather than ended (1.275): near its source as well as in sight, or held off
@@ -2278,7 +2306,7 @@ function carriesHeldOff(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (typeof record.condition === "string" && (record.orSourceWithin !== undefined || record.suppresses !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesHeldOff(one, depth + 1));
+  return featureValues(record).some((one) => carriesHeldOff(one, depth + 1));
 }
 
 /** What 1.274 reads off whoever put a condition on, and what Sympathy and a scroll's chosen kind
@@ -2296,7 +2324,7 @@ function carriesSourceNumbers(value: unknown, depth = 0): boolean {
   if (plainRecord(record.behavior)?.keepsIn !== undefined) return true;
   if (plainRecord(record.save)?.appliedDifficulty !== undefined) return true;
   if (plainRecord(record.use)?.kindChoice !== undefined) return true;
-  return Object.values(record).some((one) => carriesSourceNumbers(one, depth + 1));
+  return featureValues(record).some((one) => carriesSourceNumbers(one, depth + 1));
 }
 
 /** A weapon whose charges are spent on its hits (1.273), in catalogs too. */
@@ -2306,7 +2334,7 @@ function carriesChargedHits(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.attack)?.spends !== undefined) return true;
-  return Object.values(record).some((one) => carriesChargedHits(one, depth + 1));
+  return featureValues(record).some((one) => carriesChargedHits(one, depth + 1));
 }
 
 /** A last charge's die that turns the item into another (1.272), in catalogs too. */
@@ -2316,7 +2344,7 @@ function carriesBecomes(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.breaksOn)?.becomes !== undefined) return true;
-  return Object.values(record).some((one) => carriesBecomes(one, depth + 1));
+  return featureValues(record).some((one) => carriesBecomes(one, depth + 1));
 }
 
 /** An item's first use named, a use adding a value off its holder's sheet, more charges pushing
@@ -2336,7 +2364,7 @@ function carriesStaffExtras(value: unknown, depth = 0): boolean {
   if (plainRecord(record.chargeStep)?.push !== undefined) return true;
   // A die with no `atMost` always has `regains`.
   if (plainRecord(record.breaksOn)?.regains !== undefined) return true;
-  return Object.values(record).some((one) => carriesStaffExtras(one, depth + 1));
+  return featureValues(record).some((one) => carriesStaffExtras(one, depth + 1));
 }
 
 /** A creature type chosen as a catalog entry is used, auras reaching only that kind or whoever sees

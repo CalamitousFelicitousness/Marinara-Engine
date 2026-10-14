@@ -412,6 +412,18 @@ try {
       undefined,
       "unbound with the gauntlets off",
     );
+    // A cursed hammer stays bound with its gauntlets off, as the player cannot unbind it by hand.
+    const cursedBook = {
+      ...book,
+      actor: "player" as const,
+      itemOf: (item: string) => {
+        const found = book.itemOf(item);
+        return found && item === "gear/hammer" ? { ...found, binds: { ...found.binds, cursed: true } } : found;
+      },
+    };
+    const cursedOff = wearGameInventoryStack(attuned.stacks, "gauntlets", "unequip", undefined, cursedBook);
+    assert.ok(cursedOff && "stacks" in cursedOff);
+    assert.equal(cursedOff.stacks.find((one) => one.id === "hammer")!.bound, true, "the curse holds");
     const unbelted = wearGameInventoryStack(attuned.stacks, "belt-storm", "unbind", undefined, book);
     assert.ok(unbelted && "stacks" in unbelted);
     assert.equal(unbelted.stacks.find((one) => one.id === "hammer")!.bound, undefined, "unbound with the belt unbound");

@@ -118,7 +118,13 @@ try {
       actions: [{ name: "Claw", budget: "action", toHit: 4, reach: 5, damage: { count: 1, sides: 6, flat: 0 } }],
       ...extra,
     }) as RulesetStatBlock;
-  type Who = { id: string; side: "party" | "enemy"; at: { x: number; y: number }; held?: RulesetCatalogEntry[] };
+  type Who = {
+    id: string;
+    side: "party" | "enemy";
+    at: { x: number; y: number };
+    held?: RulesetCatalogEntry[];
+    conditions?: string[];
+  };
   // A wall down x = 8 from y = 1 to y = 10, unless the board is open.
   const fight = (who: Array<Who & { block?: RulesetStatBlock }>, open = false): RulesetEncounterState => {
     const state = createRulesetEncounter({
@@ -133,7 +139,7 @@ try {
               name: one.id,
               side: one.side,
               build: hero(...(one.held ?? [])),
-              live: {},
+              live: one.conditions ? { conditions: one.conditions } : {},
               catalogs: { feats },
             },
       ),
@@ -310,18 +316,16 @@ try {
     const state = scene();
     assert.deepEqual(who(state, "cube").hiding, { total: 15, from: ["rogue", "sharp"], plain: true });
     assert.equal(rulesetCanSee(definition, state, who(state, "rogue"), who(state, "cube")), false, "out in the open");
-    // Keen eyes: a passive of 15 sees it.
-    const keen = (() => {
-      const made = fight(
-        [
-          { id: "rogue", side: "party", at: { x: 6, y: 5 } },
-          { id: "cube", side: "enemy", at: { x: 12, y: 5 }, block: block({ hiding: { starts: 15 } }) },
-        ],
-        true,
-      );
-      return made;
-    })();
-    assert.deepEqual(who(keen, "cube").hiding?.from, ["rogue"]);
+    // Keen eyes: advantage on Perception makes a passive of 15, which beats a 14.
+    const keen = fight(
+      [
+        { id: "rogue", side: "party", at: { x: 6, y: 5 }, conditions: ["keen"] },
+        { id: "sharp", side: "party", at: { x: 6, y: 7 } },
+        { id: "cube", side: "enemy", at: { x: 12, y: 5 }, block: block({ hiding: { starts: 14 } }) },
+      ],
+      true,
+    );
+    assert.deepEqual(who(keen, "cube").hiding?.from, ["sharp"], "seen by the keen-eyed rogue");
     // A step: seen.
     const moved = walk(state, "cube", { x: 12, y: 6 });
     assert.equal(who(moved.state, "cube").hiding, undefined);
@@ -423,6 +427,20 @@ try {
     const own = JSON.parse(fiveEText) as Record<string, any>;
     own.combat.hiding = { stealth: "sneak", perception: "look" };
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(291) as never, own), gate);
+    // A ruleset's own columns and scores are its data: a row's `passive`, `magical` or `search`, or a
+    // stat block's `passive` check, asks for nothing newer.
+    const columns = JSON.parse(fiveEText) as Record<string, any>;
+    columns.catalogs
+      .find((catalog: { id: string }) => catalog.id === "feats")
+      .entries.push({
+        id: "watchful",
+        label: "Watchful",
+        values: { passive: 3, magical: true, search: true, sunlight: 1 },
+      });
+    assert.doesNotMatch(
+      getCapabilityPackageInstallIssue(manifest(286) as never, columns) ?? "",
+      /capabilityApi 1\.(28[7-9]|29\d|3\d\d) or newer/,
+    );
   }
 
   console.log(

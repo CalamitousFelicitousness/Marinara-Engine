@@ -340,8 +340,10 @@ export function rulesetFightItemChanges(
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
       if (taken === 0 && !reloaded && !spent && !switched && !turned) return;
+      // The stack holds what it became from the step after it turned, so later changes name that.
+      const ref = earlier?.became?.[index] ?? held.stack.ref;
       changes.push({
-        stack: { ...held.stack },
+        stack: { ...held.stack, ref },
         name: held.name ?? held.stack.ref,
         taken,
         ...(reloaded ? { loaded } : {}),

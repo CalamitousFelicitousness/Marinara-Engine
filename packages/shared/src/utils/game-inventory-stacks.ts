@@ -1336,14 +1336,17 @@ function bindingNeedsMet(
 }
 
 /** The stacks with every binding whose needed items are no longer worn undone (1.313): the hammer
- *  unbound once its belt or gauntlets come off, or leave its bearer's bag. */
+ *  unbound once its belt or gauntlets come off, or leave its bearer's bag. A curse still holds what
+ *  it holds, as it does when the player unbinds it by hand. */
 export function releaseGameInventoryUnmetBindings(
   stacks: GameInventoryStack[],
   rules: GameInventoryItemRules | undefined,
 ): GameInventoryStack[] {
   let current = stacks;
   for (;;) {
-    const at = current.findIndex((stack) => stack.bound === true && !bindingNeedsMet(current, stack, rules));
+    const at = current.findIndex(
+      (stack) => stack.bound === true && !keptByCurse(stack, rules) && !bindingNeedsMet(current, stack, rules),
+    );
     if (at < 0) return current;
     const { bound: _bound, ...rest } = current[at]!;
     current = current.map((each, i) => (i === at ? rest : each));

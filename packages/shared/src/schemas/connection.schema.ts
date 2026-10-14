@@ -129,8 +129,11 @@ export const createConnectionSchema = z.object({
    * inference endpoints, so it is never used in place of the API key.
    */
   managementToken: z.string().default(""),
-  /** NanoGPT only: show the subscription usage widget in the connection editor. */
+  /** NanoGPT, Claude (Subscription) and OpenAI (ChatGPT): show the subscription usage widget for this connection. */
   showUsageWidget: z.boolean().default(false),
+  /** Claude (Subscription) and OpenAI (ChatGPT): which plan windows the usage widget shows. */
+  showUsageFiveHour: z.boolean().default(true),
+  showUsageWeekly: z.boolean().default(true),
 });
 
 export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;

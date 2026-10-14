@@ -30,6 +30,19 @@ export function supportsNativeToolCalls(provider: string | null | undefined): bo
   return !!provider && provider !== "claude_subscription" && provider !== "grok_subscription";
 }
 
+/**
+ * Providers whose usage meter shows a plan's rate-limit windows (a short one and
+ * a weekly one, as percentages) that the connection can switch on separately.
+ */
+export function hasPlanUsageWindows(provider: string | null | undefined): boolean {
+  return provider === "claude_subscription" || provider === "openai_chatgpt";
+}
+
+/** Providers whose connections can show a subscription usage meter. */
+export function supportsSubscriptionUsageWidget(provider: string | null | undefined): boolean {
+  return provider === "nanogpt" || hasPlanUsageWindows(provider);
+}
+
 export function isLocalAuthProvider(provider: string | null | undefined): boolean {
   return LOCAL_AUTH_PROVIDERS.includes(provider as (typeof LOCAL_AUTH_PROVIDERS)[number]);
 }

@@ -8,7 +8,7 @@ type OwnedMessage = { id: string; activeSwipeIndex?: number | null };
 export function agentResultMatchesVisibleSwipe(
   messages: ReadonlyArray<OwnedMessage>,
   ownership: AgentResultOwnership,
-  // Replies the live stream saved that the message list does not show yet, such as one held
+  // Replies the live stream shows but the message list does not yet, such as one held
   // for Prose Guardian, which joins the list only after the agent results (#7592).
   unlistedReplies?: ReadonlyMap<string, OwnedMessage>,
 ): boolean {

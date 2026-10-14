@@ -53,6 +53,9 @@ const API_RESPONSE_MAX_BYTES = 1024 * 1024;
 /** Tripo's limit for an uploaded picture. */
 export const TRIPO_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 const POLL_INTERVAL_MS = 3000;
+/** A request Tripo accepted but never answers fails after this long; uploads and downloads get longer. */
+const REQUEST_TIMEOUT_MS = 30_000;
+const TRANSFER_TIMEOUT_MS = 120_000;
 /** One task never takes this long; a model takes about two minutes. */
 const TASK_TIMEOUT_MS = 15 * 60 * 1000;
 /** A busy answer (429) is tried again this many times, waiting as Tripo asks or longer each time. */
@@ -108,6 +111,9 @@ export interface TripoClientOptions {
   wait?: (ms: number, signal?: AbortSignal) => Promise<void>;
   pollIntervalMs?: number;
   taskTimeoutMs?: number;
+  /** Per request: API calls, then uploads and downloads. */
+  requestTimeoutMs?: number;
+  transferTimeoutMs?: number;
   now?: () => number;
 }
 
@@ -121,6 +127,9 @@ export function createTripoClient(options: TripoClientOptions) {
   const now = options.now ?? Date.now;
   const { signal } = options;
   const debug = options.debug === true;
+  /** The caller's signal (Cancel) with a time limit, so a request that never answers can't hold the run. */
+  const limited = (ms: number) =>
+    signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms);
 
   /** The key never leaves this module in text: not in a log line, not in an error. */
   const redact = (text: string) => text.split(key).join("[redacted]");
@@ -167,7 +176,11 @@ export function createTripoClient(options: TripoClientOptions) {
             ...(body !== undefined && !form ? { "Content-Type": "application/json" } : {}),
           },
           body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
-          signal,
+          signal: limited(
+            form
+              ? (options.transferTimeoutMs ?? TRANSFER_TIMEOUT_MS)
+              : (options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS),
+          ),
           maxResponseBytes: API_RESPONSE_MAX_BYTES,
         });
       } catch (error) {
@@ -298,7 +311,11 @@ export function createTripoClient(options: TripoClientOptions) {
       log("[debug/avatar-generation] Tripo download %s", linkShape(url));
       let response: Response;
       try {
-        response = await send(url, { method: "GET", signal, maxResponseBytes: maxBytes });
+        response = await send(url, {
+          method: "GET",
+          signal: limited(options.transferTimeoutMs ?? TRANSFER_TIMEOUT_MS),
+          maxResponseBytes: maxBytes,
+        });
       } catch (error) {
         if (signal?.aborted) throw abortError(signal);
         log("[debug/avatar-generation] Tripo download failed: %s", String((error as Error)?.message ?? error));

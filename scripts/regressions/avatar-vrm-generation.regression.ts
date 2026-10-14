@@ -523,6 +523,19 @@ const tripoError = (kind: string, pattern: RegExp) => (error: unknown) =>
   await assert.rejects(offline.balance(), tripoError("unavailable", /Check your internet connection/u));
 }
 {
+  // A request or download that never answers fails with a plain message instead of holding the run.
+  const silent = async (_url: string, init: RequestInit) =>
+    new Promise<Response>((_, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  const stalled = createTripoClient({ apiKey: KEY, fetch: silent, requestTimeoutMs: 30, transferTimeoutMs: 30 });
+  await assert.rejects(stalled.balance(), tripoError("unavailable", /Couldn't reach Tripo/u));
+  await assert.rejects(
+    stalled.download("https://tripo-data.example.com/a.glb", 1024),
+    tripoError("unavailable", /download/u),
+  );
+}
+{
   // Busy: wait as long as Tripo asks, then go on; still busy after the retries: a plain message.
   const waits: number[] = [];
   const busyOnce = mockTripo((_, index) =>

@@ -8,6 +8,7 @@ import {
   MAX_PINNED_MODELS,
   parsePinnedModels,
   type ModelParameterCapabilities,
+  type PlanUsage,
 } from "@marinara-engine/shared";
 import type { RemoteConnectionModel } from "../lib/connection-model-selection";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -435,13 +436,16 @@ export type NanoGptSubscriptionUsage = {
   provider: string;
 };
 
-/** Read the NanoGPT subscription quotas for the usage widget. */
-export function useNanoGptSubscriptionUsage(connectionId: string | null, enabled: boolean) {
+export type SubscriptionUsage = NanoGptSubscriptionUsage | PlanUsage;
+
+/** Read a connection's subscription usage for the usage widget. */
+export function useSubscriptionUsage(connectionId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: [...connectionKeys.detail(connectionId ?? ""), "subscription-usage"],
-    queryFn: () => api.get<NanoGptSubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
+    queryFn: () => api.get<SubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
     enabled: enabled && !!connectionId,
-    // Quotas move slowly and NanoGPT may rate limit reads; keep it calm.
+    // Quotas move slowly, NanoGPT and ChatGPT may rate limit reads, and a Claude
+    // reading starts a Claude Code process on the host; keep it calm.
     staleTime: 60_000,
     retry: false,
   });

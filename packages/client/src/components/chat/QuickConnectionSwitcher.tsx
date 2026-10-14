@@ -12,13 +12,13 @@ import { useSidecarStore } from "../../stores/sidecar.store";
 import {
   appendLocalSidecarConnectionOption,
   isLocalSidecarConnectionOption,
-  resolveNanoGptUsageConnection,
+  resolveUsageConnection,
 } from "../../lib/connection-filters";
 import { cn } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
 import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
-import { NanoGptUsageWidget } from "../connections/NanoGptUsageWidget";
+import { SubscriptionUsageWidget } from "../connections/SubscriptionUsageWidget";
 import { ConnectionModelPicker } from "../connections/ConnectionModelPicker";
 
 export function QuickConnectionSwitcher({
@@ -62,7 +62,7 @@ export function QuickConnectionSwitcher({
 
   // The NanoGPT quota follows the selected connection, and never Random, which
   // has no single connection to read a quota from.
-  const usageConnection = resolveNanoGptUsageConnection(sorted, activeConnectionId);
+  const usageConnection = resolveUsageConnection(sorted, activeConnectionId);
 
   // The Models column shows the chosen connection's models. Choosing a connection keeps the menu open so a
   // model can be picked next; picking a model closes it. Random has no single connection, so no column.
@@ -230,7 +230,7 @@ export function QuickConnectionSwitcher({
               )}
               {usageConnection && (
                 <div className="border-b border-foreground/10 px-3 pt-1">
-                  <NanoGptUsageWidget connectionId={usageConnection.id} variant="inline" />
+                  <SubscriptionUsageWidget connectionId={usageConnection.id} variant="inline" />
                 </div>
               )}
               <div className="overflow-y-auto p-1">

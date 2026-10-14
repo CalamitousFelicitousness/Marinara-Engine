@@ -251,8 +251,12 @@ test("Arrange mode drags full-body sprites and avatars with the same gesture", a
       useChatStore.getState().setShouldOpenSettings(true);
     });
     const drawer = page.locator(".mari-chat-settings-drawer");
-    const arrange = drawer.getByRole("button", { name: "Arrange", exact: true });
-    await arrange.scrollIntoViewIfNeeded();
+    const agents = drawer.locator('[data-chat-settings-section="roleplay-agents"]');
+    const agentsHeader = agents.getByRole("button", { name: "Agents", exact: true });
+    await expect(agentsHeader).toBeVisible();
+    if ((await agentsHeader.getAttribute("aria-expanded")) !== "true") await agentsHeader.click();
+    const arrange = agents.getByRole("button", { name: "Arrange", exact: true });
+    await arrange.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await arrange.click();
     await drawer.getByRole("button", { name: "Close Chat Settings" }).click();
     await expect(drawer).toHaveCount(0);

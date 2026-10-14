@@ -340,6 +340,14 @@ export interface PngtuberMotion {
   blinkIntervalSeconds: number;
 }
 
+/** Motion for a new PNGTuber setup: a small hop while talking and a blink every 4.5 seconds on average. VRM
+ *  avatars blink at the same rate; mesh avatars keep the mesh-avatar runtime's own blinking. */
+export const PNGTUBER_DEFAULT_MOTION: Readonly<PngtuberMotion> = Object.freeze({
+  bounceOnTalk: true,
+  bounceHeight: 0.06,
+  blinkIntervalSeconds: 4.5,
+});
+
 export interface PngtuberAvatarData {
   /** Layer sets keyed by sprite expression label (normalized with normalizeSpriteExpressionKey). */
   layers: Record<string, PngtuberLayerSet>;
@@ -358,6 +366,38 @@ export interface MeshAvatarData {
   source: "import" | "generated";
 }
 
+/** What a VRM file says about itself, read at import and shown in setup. Values stay in the file's own
+ *  vocabulary (VRM 1.0 or 0.x); the Engine shows the author's terms and does not enforce them. */
+export interface VrmModelMeta {
+  title: string | null;
+  authors: string[];
+  version: string | null;
+  /** Who may use the model as an avatar: VRM 1.0 `avatarPermission` or VRM 0.x `allowedUserName`. */
+  avatarPermission: string | null;
+  /** VRM 1.0 `commercialUsage` or VRM 0.x `commercialUssageName`. */
+  commercialUsage: string | null;
+  /** VRM 1.0 `modification`; VRM 0.x states this through `licenseName`. */
+  modification: string | null;
+  /** VRM 0.x `licenseName`; VRM 1.0 has none. */
+  licenseName: string | null;
+  /** An http(s) link: VRM 1.0 `licenseUrl` or VRM 0.x `otherLicenseUrl`. */
+  licenseUrl: string | null;
+  /** The author's own terms, an http(s) link: VRM 1.0 `otherLicenseUrl` or VRM 0.x `otherPermissionUrl`. */
+  termsUrl?: string | null;
+  /** VRM 1.0 `creditNotation`: whether the author must be credited. */
+  creditNotation?: string | null;
+  /** VRM 1.0 `allowRedistribution`: whether the model file may be shared. */
+  allowRedistribution?: boolean | null;
+  /** VRM 1.0 `allowExcessivelySexualUsage` or VRM 0.x `sexualUssageName` (Allow/Disallow). */
+  allowSexualUse?: boolean | null;
+  /** VRM 1.0 `allowExcessivelyViolentUsage` or VRM 0.x `violentUssageName` (Allow/Disallow). */
+  allowViolentUse?: boolean | null;
+  /** VRM 1.0 `allowPoliticalOrReligiousUsage`. */
+  allowPoliticalOrReligiousUse?: boolean | null;
+  /** VRM 1.0 `allowAntisocialOrHateUsage`. */
+  allowAntisocialOrHateUse?: boolean | null;
+}
+
 export interface VrmAvatarData {
   /** The `.vrm` model, e.g. `vrm/model.vrm`. */
   file: AvatarFilePath;
@@ -366,6 +406,10 @@ export interface VrmAvatarData {
   expressionMap: AvatarExpressionMap;
   /** Optional `.vrma` idle animation. */
   idleAnimation?: AvatarFilePath | null;
+  /** The model's own details, read at import. */
+  meta?: VrmModelMeta | null;
+  /** Every expression name the model has, as three-vrm names them, for choosing bindings in setup. */
+  expressionNames?: string[];
 }
 
 export interface AvatarKindDataMap {

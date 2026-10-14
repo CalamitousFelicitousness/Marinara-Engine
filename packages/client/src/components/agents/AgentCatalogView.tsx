@@ -74,6 +74,8 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   "persona-stats": ["roleplay"],
   quest: ["roleplay"],
   "world-state": ["roleplay"],
+  "2d-avatars": ["roleplay", "game"],
+  "3d-avatars": ["roleplay", "game"],
   eightball: ["conversation"],
   chess: ["conversation"],
   combat: ["roleplay"],

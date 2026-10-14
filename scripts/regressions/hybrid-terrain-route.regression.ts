@@ -183,7 +183,7 @@ try {
   assert.equal(state.units[0].movementMode, "fly");
   assert.deepEqual(state.battlefield, {
     kind: "generated",
-    generatorVersion: 1,
+    generatorVersion: 2,
     size: "large",
     brief: {
       size: "large",
@@ -463,6 +463,36 @@ try {
   });
   assert.equal(tacticalItem.statusCode, 400, tacticalItem.body);
   assert.match(tacticalItem.body, /That item does nothing in this fight/);
+
+  // By initiative (combat C6c), the chat's own choice first: the fight carries an order, and when the
+  // guard rolls ahead of the hero its turn is taken at once and sent back to be played from the board
+  // as it was laid out. A chat set back to side starts without an order.
+  const chatsStorage = createChatsStorage(db);
+  await chatsStorage.patchMetadata(session.id, { gameTacticalTurnOrder: "initiative" });
+  let opened: { state: Record<string, any>; opening?: { before: Record<string, any>; events: unknown[] } } | undefined;
+  for (let seed = 0; seed < 40 && !opened?.opening; seed++) {
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/game/combat/tactical/start",
+      payload: { chatId: session.id, party, enemies, seed },
+    });
+    assert.equal(start.statusCode, 200, start.body);
+    opened = start.json();
+    assert.deepEqual([...opened!.state.initiative.order].sort(), ["guard", "hero"]);
+  }
+  assert.ok(opened?.opening, "some seed rolls the guard first");
+  assert.ok(opened!.opening!.events.length > 0);
+  assert.equal(opened!.opening!.before.units.find((u: { id: string }) => u.id === "guard").hasActed, false);
+  assert.equal(opened!.state.units.find((u: { id: string }) => u.id === "guard").hasActed, true);
+  assert.equal(opened!.state.phase, "player", "and it is the hero's turn");
+  await chatsStorage.patchMetadata(session.id, { gameTacticalTurnOrder: "side" });
+  const bySide = await app.inject({
+    method: "POST",
+    url: "/api/game/combat/tactical/start",
+    payload: { chatId: session.id, party, enemies, seed: 5 },
+  });
+  assert.equal(bySide.json().state.initiative, undefined);
+  assert.equal(bySide.json().opening, undefined);
 } finally {
   await app.close();
   await closeDB();

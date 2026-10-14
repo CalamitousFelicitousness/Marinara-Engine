@@ -2,18 +2,24 @@
 // Game: reading one catalog of a registered ruleset
 // ──────────────────────────────────────────────
 // A catalog's entries sit inline in `ruleset.json` or in a hash-pinned `catalogs/<id>.json` asset
-// beside it. Two callers need them: the route the sheet editor's picker reads, and the turn that
+// beside it: a package's installed file, or, for a ruleset imported from a package file (RM), the file
+// kept with it in the store, under `local/<its id>`. Two callers need them: the route the sheet editor's picker reads, and the turn that
 // resolves a `use` command. Opening and reading are separate steps on purpose, so the route can
 // answer a browser that already holds the file before the megabyte is read and checked.
 
 import {
+  communityRulesetId,
+  isCommunityRulesetId,
   parseRulesetCatalogFile,
+  RULESET_LOCAL_NAMESPACE,
   type RulesetCatalogEntry,
   type RulesetCatalogHeader,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { capabilityPackageManager } from "../capability-packages/package-manager.service.js";
+import { getDB } from "../../db/connection.js";
+import { createGameRulesetsStorage } from "../storage/game-rulesets.storage.js";
 
 /** One catalog's entries, or the author's own issue lines for a file the Engine will not read. */
 export type RulesetCatalogEntriesResult =
@@ -34,11 +40,12 @@ export async function openRulesetCatalog(
   catalog: RulesetCatalogHeader,
 ): Promise<OpenedRulesetCatalog> {
   if (catalog.entries) return { kind: "inline", entries: catalog.entries };
-  // Only a package can ship a catalog file; an imported ruleset carries its catalogs inline, inside
-  // the one file the user imported.
   if (!catalog.asset) return { kind: "unusable", issues: ["(root): this catalog holds no entries"] };
-  if (!packageId) return { kind: "unusable", issues: [`asset: ${catalog.asset} can only be shipped by a package`] };
-  const source = await capabilityPackageManager.rulesetCatalogAsset(packageId, catalog.id);
+  // A package ships its catalog files; of the imported rulesets, only one from a package file has them,
+  // and the package import always files it under `local/` (the JSON and repository imports refuse them).
+  const source = packageId
+    ? await capabilityPackageManager.rulesetCatalogAsset(packageId, catalog.id)
+    : await storedCatalog(definition, catalog.id);
   if (!source) return { kind: "missing" };
   if ("issue" in source) return { kind: "unusable", issues: [source.issue] };
   return {
@@ -67,6 +74,24 @@ export async function openRulesetCatalog(
       return { ok: true, entries: parsed.entries };
     },
   };
+}
+
+/** A package-imported ruleset's catalog file, from the store, in the shape a package's asset comes in. */
+async function storedCatalog(
+  definition: RulesetDefinition,
+  catalogId: string,
+): Promise<{ sha256: string; read: () => Promise<{ data: Buffer } | { issue: string }> } | null> {
+  // The registry hands an imported ruleset out under its namespaced id; a file as written has its own.
+  let rulesetId = definition.id;
+  if (!isCommunityRulesetId(rulesetId)) {
+    try {
+      rulesetId = communityRulesetId(RULESET_LOCAL_NAMESPACE, definition.id);
+    } catch {
+      return null;
+    }
+  }
+  const stored = await createGameRulesetsStorage(await getDB()).catalogText(rulesetId, definition.version, catalogId);
+  return stored ? { sha256: stored.sha256, read: async () => ({ data: Buffer.from(stored.text, "utf8") }) } : null;
 }
 
 /** One catalog's entries, for a caller with no cached copy to compare against. */

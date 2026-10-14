@@ -394,7 +394,7 @@ const brief = {
     /Second Start: only the first starting place is kept/,
     /Lost: "Atlantis" is not a place it can lie in/,
     /Upside: "Thornmere" is not a place it can lie in/,
-    /Sized Province: its size was left out/,
+    /Sized Province: its size was left out, since only a settlement has one/,
     /placeNames: "martians" is not one of the kit's cultures/,
   ]) {
     assert.match(notes, pattern);

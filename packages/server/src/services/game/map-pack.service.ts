@@ -41,7 +41,14 @@ export async function readMapPack(packageId: string): Promise<MapPackRead> {
     if (!world.ok) return { ok: false, reason: `${path} does not read: ${world.issues[0]}` };
     if (!sameJson(world.kit, kit.kit)) return { ok: false, reason: `${path} was made with another kit` };
     if (world.notes.length) return { ok: false, reason: `${path} does not fit its kit: ${world.notes[0]}` };
-    worlds.push({ path, name: world.name, world: world.world, ...(world.story ? { story: world.story } : {}) });
+    worlds.push({
+      path,
+      name: world.name,
+      world: world.world,
+      ...(world.story ? { story: world.story } : {}),
+      // A world another generator made is played from its snapshot (W11).
+      ...(world.snapshot ? { snapshot: world.snapshot } : {}),
+    });
   }
   let tiles: TilePack | null = null;
   if (files.tiles) {

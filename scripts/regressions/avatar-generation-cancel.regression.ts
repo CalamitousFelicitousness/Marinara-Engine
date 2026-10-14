@@ -217,7 +217,10 @@ try {
   // ── The cancel route itself ──
   const idle = await start("/cancel", { owner, kind: "pngtuber" }).answer;
   assert.deepEqual(JSON.parse(idle.body), { cancelled: false }, "nothing is running");
-  assert.equal((await start("/cancel", { owner, kind: "vrm" }).answer).status, 400);
+  // VRM models are made too (Tripo), so "vrm" is a job kind; a kind no generator has is still refused.
+  const vrmIdle = await start("/cancel", { owner, kind: "vrm" }).answer;
+  assert.deepEqual(JSON.parse(vrmIdle.body), { cancelled: false }, "no VRM model is being made");
+  assert.equal((await start("/cancel", { owner, kind: "live2d" }).answer).status, 400);
   assert.equal((await start("/cancel", { owner: { ...owner, ownerId: "../x" }, kind: "pngtuber" }).answer).status, 400);
 } finally {
   for (const held of arrivals) held.res.destroy();

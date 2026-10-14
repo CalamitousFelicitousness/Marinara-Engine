@@ -80,7 +80,7 @@ let pendingCancel: Promise<unknown> = Promise.resolve();
 
 /** Stops a running job: closes its request and asks the server to stop it too, since a proxy between the
  *  browser and the server can keep the server's side of a closed request going. */
-function stopJob(job: RunningJob | null, kind: "pngtuber" | "mesh-avatar") {
+function stopJob(job: RunningJob | null, kind: "pngtuber" | "mesh-avatar" | "vrm") {
   if (!job || job.controller.signal.aborted) return;
   job.controller.abort();
   pendingCancel = api.post(`${PREFIX}/cancel`, { owner: job.owner, kind }).catch((error: unknown) => {
@@ -321,9 +321,9 @@ export interface VrmModelStepState {
   progress: number | null;
 }
 
-/** Makes a VRM model through Tripo with progress per step. Cancel closes the stream, which stops the server
- *  waiting for Tripo; a Tripo task already started may still finish and use its credits. A second start while
- *  one runs does nothing. The draft stays in the browser until it is imported. */
+/** Makes a VRM model through Tripo with progress per step. Cancel closes the stream and asks the server to stop
+ *  (stopJob), which stops it waiting for Tripo; a Tripo task already started may still finish and use its
+ *  credits. A second start while one runs does nothing. The draft stays in the browser until it is imported. */
 export function useVrmModelJob(owner: AvatarOwnerRef) {
   const [steps, setSteps] = useState<Partial<Record<AvatarVrmModelStep, VrmModelStepState>>>({});
   const [creditsUsed, setCreditsUsed] = useState(0);
@@ -334,11 +334,11 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
   /** The stream closed before the server said the model was done or failed (a restart, a dropped link). */
   const [interrupted, setInterrupted] = useState(false);
   const runningRef = useRef(false);
-  const controllerRef = useRef<AbortController | null>(null);
+  const jobRef = useRef<RunningJob | null>(null);
 
-  useEffect(() => () => controllerRef.current?.abort(), []);
+  useEffect(() => () => stopJob(jobRef.current, "vrm"), []);
   useEffect(() => {
-    controllerRef.current?.abort();
+    stopJob(jobRef.current, "vrm");
     setSteps({});
     setCreditsUsed(0);
     setDraft(null);
@@ -359,9 +359,11 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
       setCancelled(false);
       setInterrupted(false);
       const controller = new AbortController();
-      controllerRef.current = controller;
+      jobRef.current = { controller, owner };
       let ended = false;
       try {
+        await pendingCancel;
+        controller.signal.throwIfAborted();
         const events = api.streamEvents(
           `${PREFIX}/vrm-model`,
           { owner, ...body, debugMode: useUIStore.getState().debugMode },
@@ -389,7 +391,7 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
       } catch (caught) {
         if (!controller.signal.aborted && !isAbort(caught)) setError(errorMessage(caught));
       } finally {
-        if (controllerRef.current === controller) controllerRef.current = null;
+        if (jobRef.current?.controller === controller) jobRef.current = null;
         runningRef.current = false;
         setRunning(false);
       }
@@ -398,8 +400,8 @@ export function useVrmModelJob(owner: AvatarOwnerRef) {
   );
 
   const cancel = useCallback(() => {
-    if (!controllerRef.current) return;
-    controllerRef.current.abort();
+    if (!jobRef.current) return;
+    stopJob(jobRef.current, "vrm");
     setCancelled(true);
   }, []);
   /** Drops the draft and the finished run's steps (after Discard, or once the model is kept). */

@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Avatar generation: a VRM model from one sprite through Tripo (lane: 3D generation)
 // ──────────────────────────────────────────────
-// With the user's own Tripo connection: the sprite (its flat background cleaned off when it has one) is
+// With the user's own Tripo connection: the sprite (its background cleaned off when it has one) is
 // redrawn standing in a T-pose (image-to-image, template t_pose, 5 credits), made into a textured 3D model
 // (image-to-model, 30 credits) and given a Mixamo skeleton (rig, 25 credits), then glb-to-vrm.ts turns it into
 // a VRM 1.0 model: about 60 credits ($0.60) and 3 minutes. The rig check (free) only stops a model Tripo can't
@@ -23,8 +23,8 @@ import type { DB } from "../../../db/connection.js";
 import { logDebugOverride, logger } from "../../../lib/logger.js";
 import { isAllowedImageBuffer } from "../../../utils/security.js";
 import { getSharp } from "../../image/sharp-runtime.js";
-import { removeUniformSpriteBackgroundPng } from "../../image/sprite-background.service.js";
 import { createConnectionsStorage } from "../../storage/connections.storage.js";
+import { avatarCutout } from "../cutouts.js";
 import { buildVrmImport, vrmImporter } from "../formats/vrm.js";
 import {
   AvatarGenerationError,
@@ -45,9 +45,6 @@ import {
 
 /** Tripo needs no more than this: its T-pose picture comes back 1024 pixels square. */
 const UPLOAD_MAX_SIDE = 2048;
-/** The sprite cleanup's default strength and the confidence it trusts (POST /api/sprites/cleanup). */
-const CLEANUP_STRENGTH = 35;
-const CLEANUP_MIN_CONFIDENCE = 0.62;
 const MODEL_MAX_BYTES = 64 * 1024 * 1024;
 const PICTURE_MAX_BYTES = 25 * 1024 * 1024;
 const PREVIEW_SIDE = 512;
@@ -169,14 +166,12 @@ export async function tripoSourceImage(
   }
   const sprite = await decodeAvatarSourceSprite(label, bytes);
   let png = sprite.png;
-  if (!sprite.transparent) {
-    try {
-      const cleaned = await removeUniformSpriteBackgroundPng(png, CLEANUP_STRENGTH);
-      if (!cleaned.alreadyTransparent && cleaned.confidence >= CLEANUP_MIN_CONFIDENCE) png = cleaned.buffer;
-    } catch (error) {
-      // A background Tripo can deal with itself (it drew a painted one away when tried) is no reason to stop.
-      logger.warn(error, "[avatars] Couldn't clean the sprite's background before sending it to Tripo");
-    }
+  try {
+    // The avatars' shared background cleanup: the sprite as it is when already a cut-out.
+    png = (await avatarCutout(png)).png;
+  } catch (error) {
+    // A background Tripo can deal with itself (it drew a painted one away when tried) is no reason to stop.
+    logger.warn(error, "[avatars] Couldn't clean the sprite's background before sending it to Tripo");
   }
   if (Math.max(sprite.width, sprite.height) > UPLOAD_MAX_SIDE) {
     png = await sharp(png).resize({ width: UPLOAD_MAX_SIDE, height: UPLOAD_MAX_SIDE, fit: "inside" }).png().toBuffer();
@@ -276,7 +271,7 @@ export async function generateVrmModel(
   request: AvatarVrmModelRequest,
   options: VrmModelOptions = {},
 ): Promise<AvatarVrmModelDraft> {
-  return withAvatarGenerationJob(request.owner, "vrm", async () => {
+  const job = async (signal: AbortSignal): Promise<AvatarVrmModelDraft> => {
     const debug = avatarGenerationDebug(request.debugMode);
     let creditsUsed = 0;
     const report = (step: AvatarVrmModelStep, status: "running" | "done", progress: number | null, credits = 0) => {
@@ -291,7 +286,7 @@ export async function generateVrmModel(
       const image = await tripoSourceImage(request.owner.ownerId, request.sourceLabel);
       const client = createTripoClient({
         apiKey: conn.apiKey,
-        signal: options.signal,
+        signal,
         debug,
         fetch: options.fetch,
         wait: options.wait,
@@ -325,7 +320,9 @@ export async function generateVrmModel(
     } catch (error) {
       throw asGenerationError(error);
     }
-  });
+  };
+  // The job's signal stops on a closed stream (options.signal) and on Cancel (POST /cancel, kind "vrm").
+  return withAvatarGenerationJob(request.owner, "vrm", job, options.signal);
 }
 
 function logDebugReport(

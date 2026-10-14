@@ -55,7 +55,8 @@ export interface TacticalBattlefieldBrief {
 export type TacticalBattlefieldProvenance =
   | {
       kind: "generated";
-      generatorVersion: 1;
+      /** 1: flat; 2: with foothills (combat C6b). A saved fight keeps the board it was fought on. */
+      generatorVersion: 1 | 2;
       size: TacticalBattlefieldSize;
       brief?: TacticalBattlefieldBrief;
     }
@@ -81,16 +82,18 @@ export interface TerrainInfo {
   avoidBonus: number;
   /** Units may never enter or stop on this tile. */
   impassable?: boolean;
+  /** Nothing is seen through it (combat C6): a wall, a mountain. Water and woods are seen across. */
+  blocksSight?: true;
   label: string;
 }
 
 export const TERRAIN_DATA: Record<TacticalTerrain, TerrainInfo> = {
   plains: { moveCost: 1, defenseBonus: 0, avoidBonus: 0, label: "Plains" },
   forest: { moveCost: 2, defenseBonus: 1, avoidBonus: 15, label: "Forest" },
-  mountain: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, label: "Mountain" },
+  mountain: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, blocksSight: true, label: "Mountain" },
   ruin: { moveCost: 1, defenseBonus: 1, avoidBonus: 10, label: "Ruins" },
   water: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, label: "Water" },
-  wall: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, label: "Wall" },
+  wall: { moveCost: 99, defenseBonus: 0, avoidBonus: 0, impassable: true, blocksSight: true, label: "Wall" },
 };
 
 // ── Environment & formation ──
@@ -119,6 +122,9 @@ export interface TacticalGrid {
   height: number;
   /** tiles[y][x] — row-major. */
   tiles: TacticalTerrain[][];
+  /** How high each cell stands (combat C6b), elevation[y][x] from 0 to 3. Absent on a flat board, which
+   *  every board before it was. */
+  elevation?: number[][];
 }
 
 export interface TacticalCoord {
@@ -243,6 +249,9 @@ export interface TacticalEvent {
 // ── State ──
 
 export type TacticalPhase = "player" | "enemy";
+/** Who acts when in a tactical fight (combat C6c): the party's phase then the enemies', or one unit at a
+ *  time in an order rolled at the start. */
+export type TacticalTurnOrder = "side" | "initiative";
 export type TacticalOutcome = "victory" | "defeat" | "fled";
 export type TacticalDifficulty = GameDifficulty;
 
@@ -267,6 +276,10 @@ export interface TacticalCombatState {
   formation?: TacticalFormation;
   /** Provenance for a generated grid. Optional so legacy snapshots remain valid. */
   battlefield?: TacticalBattlefieldProvenance;
+  /** Individual initiative (combat C6c): the order units take their turns in every round, rolled once
+   *  at the start. The unit whose turn it is is the first standing one in it that has not acted. Absent
+   *  on fights by side, which every fight before this was. */
+  initiative?: { order: string[] };
 }
 
 // ── Forecast (shown FE-style before confirming an attack) ──

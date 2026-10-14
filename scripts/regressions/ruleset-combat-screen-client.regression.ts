@@ -585,6 +585,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["uses", say({ type: "uses", actorId: "lurker", optionId: "thorns", label: "Thorns", left: 1, of: 3 })],
     ["broke", say({ type: "broke", actorId: "corwin", optionId: "use:0", label: "Wand of sparks", roll: 1 })],
     [
+      "fake",
+      say({
+        type: "fake",
+        actorId: "corwin",
+        optionId: "use:0",
+        label: "Potion of healing",
+        truly: "Potion of poison",
+      }),
+    ],
+    [
       "gate",
       say({
         type: "gate",
@@ -731,6 +741,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         path: [{ x: 4, y: 2 }],
       }),
     ],
+    ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
     ["shift", say({ type: "shift", actorId: "brenna", amount: 3, total: 9, reason: "gained", sourceId: "lurker" })],
     ["shot", say({ type: "shot", actorId: "brenna", optionId: "item:0", label: "Longbow", left: 11 })],
     [
@@ -748,6 +759,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
   assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
   assert.equal(printed.get("broke"), "Wand of sparks breaks (a 1 on its die).");
+  assert.equal(printed.get("fake"), "The Potion of healing was really Potion of poison.");
+  assert.equal(
+    say({
+      type: "fake",
+      actorId: "corwin",
+      optionId: "use:0",
+      label: "Bag of holding",
+      truly: "Bag of devouring",
+      dud: true,
+    }),
+    "The Bag of holding was really Bag of devouring, and it did nothing.",
+  );
   assert.equal(
     printed.get("gate"),
     "Corwin rolls Arcana to use Scroll of fireball: 6 + 3 = 9 against 13, a failure. It is used up for nothing.",
@@ -878,6 +901,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     }),
     "Brenna is stopped at 2, 2.",
   );
+
+  // A fall is told in the ruleset's own distance, levels times what one level is (combat C6b).
+  const highGround = { ...fiveE, combat: { ...fiveE.combat!, elevation: { levelHeight: 5 } } };
+  assert.equal(line(highGround, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 10 ft.");
+  assert.equal(line(fiveE, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 2 levels.");
 
   // A fight that is still going says nothing, so nobody prints "ongoing" at a player.
   assert.equal(line(fiveE, state, { type: "outcome", outcome: "ongoing" }), null);
@@ -1352,6 +1380,11 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.equal(
     rulesetCellSentences(at(plain, 2, 1), view, t).join(" "),
     "Wall. Solid. Nothing can walk into it or see through it.",
+  );
+  // Water is walked round but seen across (combat C6), and the square says so.
+  assert.equal(
+    rulesetCellSentences({ ...at(plain, 2, 1), terrain: "water" }, view, t).join(" "),
+    "Water. Nothing can walk into it, but it can be seen across.",
   );
   assert.equal(
     rulesetCellSentences(at(plain, 0, 1), view, t).join(" "),

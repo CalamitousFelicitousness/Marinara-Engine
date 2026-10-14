@@ -230,6 +230,9 @@ export interface GameSetupConfig {
   gmBossControl?: boolean;
   /** Optional tactical battlefield preferences used for newly-created encounters. */
   tacticalBattlefield?: TacticalBattlefieldSetup;
+  /** Who acts when in a new tactical fight (combat C6c): one unit at a time in a rolled order, or the
+   *  party's phase then the enemies'. Absent means by side, as every game before it was. */
+  tacticalTurnOrder?: "side" | "initiative";
   /** Optional user prompt used to create the initial hierarchical world map draft. */
   spatialMapInstructions?: string;
   /** Campaign-scale map authority selected during New Game. Older saves default to "standard". */
@@ -263,6 +266,9 @@ export interface GameSetupConfig {
   /** The generated world for a NEW game (worldgen W1): its seed, generator version, grounding and
    *  brief, stored as `chat.metadata.gameWorld`. Needs `worldKit`; absent means no world. */
   world?: import("../features/world/game-world.js").GameWorldInput;
+  /** A world another generator made, as it was made (W11): sent to create a game from it and in a setup
+   *  file, never kept in a game's metadata. */
+  worldSnapshot?: import("../features/world/snapshot.js").WorldSnapshot;
   /** The world's story script (worldgen W10), checked against the world and stored as
    *  `chat.metadata.gameStory`. Needs `world`. */
   story?: import("../features/world/story.js").StoryScript;

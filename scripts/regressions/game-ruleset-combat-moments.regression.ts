@@ -323,6 +323,66 @@ try {
     );
   }
 
+  // ── A fake held while it is answered (Capability API 1.79) ──
+  {
+    // Juno presses a fake poultice on herself (a balm that heals by a flat 3, not the poultice's dice);
+    // the Kindler's Backfire answers the use first, and once the window closes the use goes on as what
+    // it truly is.
+    const doc = JSON.parse(emberText);
+    doc.catalogs
+      .find((catalog: { id: string }) => catalog.id === "knacks")
+      .entries.push({
+        id: "backfire",
+        label: "Backfire",
+        rows: [{ list: "knacks", values: { name: "Backfire", notes: "Burn whoever starts a knack near you." } }],
+        mechanics: {
+          kind: "attack",
+          free: true,
+          range: 8,
+          targets: "enemy",
+          autoHit: true,
+          amount: { flat: 1 },
+          damageType: "coldfire",
+          reaction: { on: "used" },
+        },
+      });
+    const variant = parsedOrThrow(doc, "a variant with an answer that strikes back");
+    const entries = variant.catalogs!.find((catalog) => catalog.id === "knacks")!.entries!;
+    const poultice = variant
+      .catalogs!.find((catalog) => catalog.id === "outfitter")!
+      .entries!.find((entry) => entry.id === "poultice")!.item!;
+    const balm = { ...poultice, use: { ...poultice.use!, amount: { flat: 3 } } };
+    const state = createRulesetEncounter({
+      definition: variant,
+      seed: 7,
+      combatants: [
+        {
+          ...juno(entries),
+          items: [{ item: poultice, quantity: 1, worn: false, name: "Poultice", truly: { item: balm, name: "Balm" } }],
+        },
+        kindler(entries, ["backfire"]),
+      ],
+      roller: dice(6, 6, 1, 1),
+      bestiary: { knacks: entries },
+    });
+    assert.equal(state.order[state.turn], "juno");
+    const held = act(variant, state, { actorId: "juno", optionId: "use:0", targetIds: ["juno"] });
+    assert.equal(held.state.window?.trigger.kind, "used", JSON.stringify(held.events));
+    const through = act(
+      variant,
+      held.state,
+      { actorId: "kindler", optionId: RULESET_PASS_OPTION, targetIds: [], window: held.state.window!.id },
+      4,
+      3,
+    );
+    const healed = eventsOf(through.events, "heal");
+    assert.deepEqual(
+      healed.map((event) => [event.targetId, event.rolls, event.flat]),
+      [["juno", [], 3]],
+      JSON.stringify(through.events),
+    );
+  }
+
   // ── It answers only knacks ──
   {
     const state = fight(ember, [juno(), pell(), kindler()]);

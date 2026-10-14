@@ -32,6 +32,7 @@ import {
   lookupStepTable,
   resolveRulesetValueRef,
   roundRulesetNumber,
+  rulesetSheetMigrationSteps,
   type RulesetSheetItem,
 } from "./sheet-math.js";
 
@@ -570,7 +571,71 @@ function keepValid<T>(value: unknown, schema: z.ZodType<T>, maxEntries: number):
 /** Everything usable in a stored blob, as a fresh object: every key that still validates on its
  *  own, whether or not the definition still declares it. A pool the sheet hides today may be back
  *  tomorrow, and dropping its value here would silently refill it. */
-function readStoredLiveState(stored: unknown): RulesetLiveState {
+function readStoredLiveState(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+): RulesetLiveState {
+  return migrateLiveState(definition, build, readStoredLiveStateAsIs(stored));
+}
+
+/**
+ * A stored live state as the current layout reads it (`routeLive`, Capability API 1.77). Live state
+ * has no version of its own, so every step runs on every read, and each is safe to: the old key
+ * always goes, and its value moves only while the new key is not there yet. A writer reads through
+ * here too, so the first write stores the new layout; a value written since (a spent die, a rest
+ * that left the new key at its default and so absent) is never overwritten by the old one, because
+ * the old one is gone by then.
+ *
+ * The value goes to the one of the step's cases the (already migrated) sheet shows: a pool with a
+ * maximum above 0, a track the sheet does not hide. None or several, and it goes to `else`.
+ */
+function migrateLiveState(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  state: RulesetLiveState,
+): RulesetLiveState {
+  const steps = rulesetSheetMigrationSteps(definition).flatMap((step) => ("routeLive" in step ? [step] : []));
+  if (steps.length === 0) return state;
+  const own = (record: object, key: string) => Object.prototype.hasOwnProperty.call(record, key);
+  const trackOf = (id: string) => definition.sheet.live.tracks.find((entry) => entry.id === id);
+  let shownPools: Set<string> | null = null;
+  for (const step of steps) {
+    // A wound track keeps marks and a plain one a number, so a track's value goes where the targets
+    // keep theirs (the import holds the targets to one shape). A source of the other shape has nowhere
+    // to go, and is dropped all the same.
+    const wound = step.routeLive === "track" && isRulesetWoundTrackId(trackOf(step.else));
+    if (step.routeLive === "track") {
+      const other = wound ? state.tracks : state.wounds;
+      if (other && own(other, step.from)) delete other[step.from];
+    }
+    const bag = (step.routeLive === "pool" ? state.pools : wound ? state.wounds : state.tracks) as
+      Record<string, unknown> | undefined;
+    if (!bag || !own(bag, step.from)) continue;
+    const value = bag[step.from];
+    delete bag[step.from];
+    let shown: string[];
+    if (step.routeLive === "pool") {
+      // Only a pool the sheet has (a maximum above 0) is listed at all.
+      shownPools ??= new Set(listRulesetLivePools(definition, build).map((spec) => spec.key));
+      shown = step.cases.filter((id) => shownPools!.has(id));
+    } else {
+      shown = step.cases.filter((id) => {
+        const track = trackOf(id);
+        return !!track && !isRulesetItemHidden(track, build, definition);
+      });
+    }
+    const target = shown.length === 1 ? shown[0]! : step.else;
+    if (!own(bag, target)) bag[target] = value;
+  }
+  return state;
+}
+
+function isRulesetWoundTrackId(track: RulesetLiveTrack | undefined): boolean {
+  return !!track && isRulesetWoundTrack(track);
+}
+
+function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   const source =
     stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
   const state: RulesetLiveState = {};
@@ -710,7 +775,7 @@ export function readRulesetLive(
   build: RulesetSheetBuild,
   stored: unknown,
 ): ResolvedRulesetLive {
-  return resolveLive(definition, build, readStoredLiveState(stored));
+  return resolveLive(definition, build, readStoredLiveState(definition, build, stored));
 }
 
 /** Every number the sheet yields, with its live tracks and pools read as they stand in `stored`:
@@ -839,7 +904,7 @@ export function applyRulesetSheetOp(
   // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
   // ruleset's catalogs, which this function deliberately does not take.
   if (op.op === "use") return { ok: false, reason: "malformed" };
-  const next = readStoredLiveState(stored);
+  const next = readStoredLiveState(definition, build, stored);
   const resolved = resolveLive(definition, build, next);
 
   const setPool = (spec: RulesetLivePoolSpec, value: number, temp: number): void => {
@@ -1077,8 +1142,27 @@ export function applyRulesetSheetOp(
       if (pool.listId !== step.listPools) return false;
       return !step.recharge || (pool.recharge !== undefined && step.recharge.includes(pool.recharge));
     });
+    // Shared (1.77): the fraction of the whole group's maximum, handed to its pools in the order the
+    // sheet lists them, each up to what it is missing.
+    let share =
+      step.shared && step.by && "fractionOfMax" in step.by
+        ? Math.max(
+            step.by.min,
+            roundRulesetNumber(
+              targets.reduce((total, target) => total + target.pool.max, 0) * step.by.fractionOfMax,
+              step.by.round,
+            ),
+          )
+        : null;
     for (const target of targets) {
-      const value = clamp(moved(target.value, target.pool.max, 0), 0, target.pool.max);
+      let value: number;
+      if (share !== null) {
+        const taken = Math.min(share, target.pool.max - target.value);
+        share -= taken;
+        value = target.value + taken;
+      } else {
+        value = clamp(moved(target.value, target.pool.max, 0), 0, target.pool.max);
+      }
       if (value !== target.value) changes.push(`${target.pool.label} ${value}/${target.pool.max}`);
       target.value = value;
       setPool(target.pool, value, target.temp);

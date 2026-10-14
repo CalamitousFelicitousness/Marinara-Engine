@@ -35,6 +35,7 @@ export function RulesetImportReviewModal({
   installedVersions,
   importing,
   failure,
+  catalogs = [],
   onCancel,
   onConfirm,
 }: {
@@ -47,6 +48,8 @@ export function RulesetImportReviewModal({
   importing: boolean;
   /** Why the last attempt failed, shown here because the panel's banner sits behind the dialog. */
   failure: string | null;
+  /** Its catalogs and how many entries each holds (a package file's files included). */
+  catalogs?: Array<{ label: string; count: number }>;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -102,6 +105,15 @@ export function RulesetImportReviewModal({
                   t("game.ruleset.import.licenseNone")
                 )}
               </ReviewRow>
+              {catalogs.length > 0 && (
+                <ReviewRow label={t("game.ruleset.import.catalogsLabel")}>
+                  {catalogs
+                    .map((catalog) =>
+                      t("game.ruleset.import.catalogEntries", { label: catalog.label, count: catalog.count }),
+                    )
+                    .join(", ")}
+                </ReviewRow>
+              )}
             </section>
 
             <section className="space-y-2 rounded-xl border border-[var(--border)] bg-[var(--background)]/45 p-3">

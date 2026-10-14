@@ -64,7 +64,7 @@ The current Engine's enemy damage multipliers (Casual 0.6, Normal 1, Hard 1.3, B
 
 - `packages/shared/src/types/game.ts`: `Combatant`, `CombatSkill`, Classic results and snapshots. Current stats are generic numbers; `speed` is not a tabletop Dexterity score or feet of movement.
 - `packages/server/src/services/game/combat.service.ts`: Classic rolls initiative each round, resolves one command per participant, and uses generic damage formulas. Legacy games round-trip state through the client; new wizard games use the server-owned combat director ledger.
-- `packages/shared/src/features/tactical-combat/{engine,math,types}.ts`: alternating party/enemy phases, class-based range and speed-derived movement, counters, no speed follow-up yet.
+- `packages/shared/src/features/tactical-combat/{engine,math,types}.ts`: party/enemy phases, or one unit at a time in a seeded initiative order when the game says so (combat C6c), class-based range and speed-derived movement, counters, no speed follow-up yet.
 - `packages/shared/src/features/combat-ai.ts` and mode adapters: priorities over available actions. Ordinary AI keeps its information boundary; GM bosses receive party sheets/resources for anticipation, but neither sees future rolls or player choices before their declaration.
 - `packages/server/src/routes/combat-director.routes.ts` and `services/game/combat-director.service.ts`: versioned authoritative encounter state, activation cursor, pending reactions, legendary budgets and duplicate/stale reply protection. Extend this accepted-action path for ruleset adapters instead of creating a second ledger. Current Counterspell chance, slot payment and cancellation cost are generic Engine policies, not 5e rules.
 - `packages/server/src/routes/game.routes.ts`: legacy round/start/action validation. `GameCombatUI`, `TacticalCombatUI` and `use-game.ts`: inputs, previews, accepted results and persistence.
@@ -112,7 +112,7 @@ Proposed starting balance:
 | Rule                | Proposed v1 behavior                                                                                                         |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Initiative          | Descending effective Speed, stable encounter tie order; no extra activation for ties or high speed                           |
-| Tactical scheduling | Party phase followed by enemy phase; player may choose unacted party units, automatic units use speed order                  |
+| Tactical scheduling | By side: party phase, then enemy phase, the player choosing among unacted party units. By initiative (combat C6c): one unit at a time in an order rolled once per fight |
 | Classic scheduling  | Unified descending effective-Speed order; UI queues manual commands then resolves current legal targets at each slot         |
 | Movement            | Explicit movement budget independent of Speed. Suggested default 4 tiles, with bounded class/ability adjustments             |
 | Attack Speed        | Effective Speed, with only explicitly modeled penalties/bonuses; no fictional weapon weight                                  |

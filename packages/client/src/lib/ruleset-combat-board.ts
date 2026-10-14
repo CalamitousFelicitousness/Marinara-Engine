@@ -31,6 +31,8 @@ export interface RulesetBoardCell {
   /** Nothing walks into it and nothing sees through it. From the Engine's own terrain table, which
    *  is the same table the server's own reachable cells were worked out from. */
   solid: boolean;
+  /** How high the cell stands (combat C6b), 0 on level ground. */
+  height: number;
   /** Who is standing here, defeated or not. */
   occupant?: DirectedRulesetCombatant;
   /** Set while a walk is being chosen: what ending here costs of the allowance, in cells, and the
@@ -102,6 +104,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         y,
         terrain,
         solid: TERRAIN_DATA[terrain]?.impassable === true,
+        height: grid.elevation?.[y]?.[x] ?? 0,
         ...(occupant ? { occupant } : {}),
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
@@ -175,7 +178,16 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
       label: t(`ui.game.tacticalcombatui.terrain.${cell.terrain}`, { defaultValue: cell.terrain }),
     }),
   ];
-  if (cell.solid) said.push(t("game.combat.ruleset.board.solid"));
+  if (cell.height > 0) said.push(t("game.combat.ruleset.board.height", { height: cell.height }));
+  // Water is walked round but seen across; a wall or a mountain is neither (combat C6).
+  if (cell.solid)
+    said.push(
+      t(
+        TERRAIN_DATA[cell.terrain]?.blocksSight
+          ? "game.combat.ruleset.board.solid"
+          : "game.combat.ruleset.board.seenAcross",
+      ),
+    );
   const who = cell.occupant;
   if (who) {
     said.push(t("game.combat.ruleset.board.who", { name: who.name, value: who.health.value, max: who.health.max }));

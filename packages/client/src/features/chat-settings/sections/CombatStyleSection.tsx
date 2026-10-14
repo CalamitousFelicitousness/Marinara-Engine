@@ -15,6 +15,9 @@ interface CombatStyleSectionProps {
    *  decides whether such a fight has positions; without it, it is kept and not used. */
   rulesetHasPositions?: boolean;
   onCombatStyleChange: (style: GameCombatStyle) => void;
+  /** Who acts when in a Tactical battle (combat C6c). */
+  turnOrder: "side" | "initiative";
+  onTurnOrderChange: (order: "side" | "initiative") => void;
 }
 
 export function CombatStyleSection({
@@ -23,6 +26,8 @@ export function CombatStyleSection({
   rulesetResolvesFights,
   rulesetHasPositions,
   onCombatStyleChange,
+  turnOrder,
+  onTurnOrderChange,
 }: CombatStyleSectionProps) {
   const { t: localizeUi } = useUiTranslation();
   return (
@@ -49,6 +54,22 @@ export function CombatStyleSection({
             <option value="tactical">{localizeUi("game.combat.preference.tacticalLabel")}</option>
           </select>
         </label>
+        {/* A ruleset's own fights roll initiative by its own rules, so the choice is for Tactical battles. */}
+        {combatStyle === "tactical" && !rulesetResolvesFights && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
+              {localizeUi("ui.chatSettings.combatstylesection.turnOrder")}
+            </span>
+            <select
+              value={turnOrder}
+              onChange={(event) => onTurnOrderChange(event.target.value as "side" | "initiative")}
+              className="mari-preset-native-select w-full truncate rounded-lg bg-[var(--secondary)] px-3 py-2 pr-8 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-[var(--primary)]/40"
+            >
+              <option value="initiative">{localizeUi("ui.chatSettings.combatstylesection.turnOrderInitiative")}</option>
+              <option value="side">{localizeUi("ui.chatSettings.combatstylesection.turnOrderSide")}</option>
+            </select>
+          </label>
+        )}
         {rulesetResolvesFights && (
           <p className="text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
             {localizeUi(

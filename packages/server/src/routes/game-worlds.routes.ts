@@ -16,6 +16,9 @@ import {
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
+  gameWorldFromSnapshot,
+  worldMadeByThisGenerator,
+  worldSnapshot,
   readWorldFile,
   worldEditIssues,
   worldTownEditIssues,
@@ -41,11 +44,12 @@ import { createGameWorldsStorage, type GameWorldRow } from "../services/storage/
 
 const nameSchema = z.string().trim().min(1).max(120);
 
-/** A library world as kept: its world (hand edits applied), story and name; null when its file no
- *  longer reads (made by another generator, or a kit this Engine refuses). */
+/** A library world as kept: its world (hand edits applied), story and name, read from its snapshot when
+ *  another generator made it (W11); null when its file no longer reads. */
 function readRow(row: GameWorldRow): { game: GameWorld; story: StoryScript | null } | null {
   const read = readWorldFile(row.file);
   if (!read.ok) return null;
+  if (read.snapshot) return { game: gameWorldFromSnapshot(read.snapshot), story: read.story ?? null };
   const inputs = {
     kit: read.kit,
     seed: read.world.seed,
@@ -56,23 +60,38 @@ function readRow(row: GameWorldRow): { game: GameWorld; story: StoryScript | nul
   return { game: { ...inputs, world: compileGameWorld(inputs) }, story: read.story ?? null };
 }
 
-/** A world as its share file's text. */
-function fileOf(name: string, game: Omit<GameWorld, "world">, story: StoryScript | null): string {
+/** A world as its share file's text, with its snapshot (W11). */
+function fileOf(name: string, game: GameWorld | Omit<GameWorld, "world">, story: StoryScript | null): string {
+  const full: GameWorld = "world" in game ? game : { ...game, world: compileGameWorld(game) };
   return JSON.stringify(
     worldFile(
       name,
-      game.kit,
+      full.kit,
       {
-        seed: game.seed,
-        generatorVersion: WORLD_GENERATOR_VERSION,
-        grounding: game.grounding,
-        brief: game.brief,
-        ...(game.edits && !worldEditsEmpty(game.edits) ? { edits: game.edits } : {}),
+        seed: full.seed,
+        generatorVersion: full.frozen?.generatorVersion ?? WORLD_GENERATOR_VERSION,
+        grounding: full.grounding,
+        brief: full.brief,
+        ...(full.edits && !worldEditsEmpty(full.edits) ? { edits: full.edits } : {}),
       },
       story,
+      worldSnapshot(full),
     ),
   );
 }
+
+/** A library world's new file, or why it cannot be kept: one larger than a share file can be would no
+ *  longer read, and the world would be lost. */
+function kept(name: string, game: GameWorld | Omit<GameWorld, "world">, story: StoryScript | null) {
+  const file = fileOf(name, game, story);
+  return Buffer.byteLength(file) > WORLD_SHARE_FILE_MAX_BYTES
+    ? { refused: "This world would be larger than a world file can be, so it was not saved." }
+    : { name, file };
+}
+
+/** Why a library world from an earlier generator cannot be edited (W11). */
+const OLD_GENERATOR_REFUSAL =
+  "This world was made by an earlier version of the world generator. It plays on as it was made, but it can no longer be edited.";
 
 export async function gameWorldsRoutes(app: FastifyInstance) {
   const store = createGameWorldsStorage(app.db);
@@ -157,10 +176,11 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
         return reply
           .status(400)
           .send({ error: `The world file does not read: ${read.issues[0]}`, issues: read.issues });
-      const row = await store.create(
-        read.name,
-        fileOf(read.name, { kit: read.kit, ...read.world }, read.story ?? null),
-      );
+      // Another generator's world is kept as its snapshot has it (W11), never made again from the recipe.
+      const game = read.snapshot ? gameWorldFromSnapshot(read.snapshot) : { kit: read.kit, ...read.world };
+      const file = kept(read.name, game, read.story ?? null);
+      if ("refused" in file) return reply.status(400).send({ error: file.refused });
+      const row = await store.create(read.name, file.file);
       logger.info("[game/worlds] %s: imported", row.id);
       return { world: summary(row), notes: read.notes };
     },
@@ -174,7 +194,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
     const updated = await store.update(req.params.id, (row) => {
       const read = readRow(row);
       if (!read) return { refused: "This world no longer reads." };
-      return { name: name.data, file: fileOf(name.data, read.game, read.story) };
+      return kept(name.data, read.game, read.story);
     });
     if (!updated) return reply.status(404).send({ error: "No such world." });
     if ("refused" in updated) return reply.status(409).send({ error: updated.refused });
@@ -211,6 +231,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const world = await worldOr404(req.params.id, reply);
       if (!world) return;
+      if (!worldMadeByThisGenerator(world.game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
       return { world: worldForEditor(world.game), edits: world.game.edits ?? null, links: world.game.world.links };
     },
   );
@@ -222,6 +243,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
       const { settlement } = z.object({ settlement: z.string().min(1).max(16) }).parse(req.query);
       const world = await worldOr404(req.params.id, reply);
       if (!world) return;
+      if (!worldMadeByThisGenerator(world.game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
       const found = worldTownForEditor(world.game, settlement);
       return found ?? reply.status(404).send({ error: "No such settlement in this world." });
     },
@@ -253,17 +275,19 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
       const updated = await store.update(req.params.id, (row) => {
         const read = readRow(row);
         if (!read) return { refused: "This world no longer reads." };
+        if (!worldMadeByThisGenerator(read.game)) return { refused: OLD_GENERATOR_REFUSAL };
         const worldIssues = edits ? worldEditIssues(read.game, edits) : [];
         const issues = worldIssues.length || !edits ? worldIssues : worldTownEditIssues(read.game, edits);
         if (issues.length) return { refused: issues.join(" "), issues };
         const storyRefusal = editsStoryRefusal(read.game, edits, read.story);
         if (storyRefusal) return { refused: storyRefusal.error, issues: storyRefusal.issues };
-        const { edits: _old, world: _compiled, ...inputs } = read.game;
-        return { name: row.name, file: fileOf(row.name, { ...inputs, ...(edits ? { edits } : {}) }, read.story) };
+        const { edits: _old, world: _compiled, frozen: _frozen, compiled: _preEdit, ...inputs } = read.game;
+        return kept(row.name, { ...inputs, ...(edits ? { edits } : {}) }, read.story);
       });
       if (!updated) return reply.status(404).send({ error: "No such world." });
       if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
-      const game = readRow(updated.row)!.game;
+      const game = readRow(updated.row)?.game;
+      if (!game) return reply.status(409).send({ error: "This world no longer reads." });
       return { edits: game.edits ?? null, links: game.world.links };
     },
   );
@@ -293,11 +317,11 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
         const checked = checkStoryScript(read.game, input);
         if (!checked.ok)
           return { refused: `The story does not fit this world: ${checked.issues[0]}`, issues: checked.issues };
-        return { name: row.name, file: fileOf(row.name, read.game, checked.story) };
+        return kept(row.name, read.game, checked.story);
       });
       if (!updated) return reply.status(404).send({ error: "No such world." });
       if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
-      return { story: readRow(updated.row)!.story };
+      return { story: readRow(updated.row)?.story ?? null };
     },
   );
 
@@ -309,7 +333,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
       const updated = await store.update(req.params.id, (row) => {
         const read = readRow(row);
         if (!read) return { refused: "This world no longer reads." };
-        return { name: row.name, file: fileOf(row.name, read.game, null) };
+        return kept(row.name, read.game, null);
       });
       if (!updated) return reply.status(404).send({ error: "No such world." });
       if ("refused" in updated) return reply.status(409).send({ error: updated.refused });

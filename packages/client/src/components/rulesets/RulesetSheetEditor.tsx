@@ -9,10 +9,12 @@ import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheetLive,
   isRulesetItemHidden,
+  migrateRulesetSheetBuild,
   recomputeScaledRows,
   rulesetCatalogEntriesByRef,
   rulesetCatalogIdsForBuild,
   rulesetSectionGroups,
+  rulesetSheetStamp,
   rulesetUntrainedRule,
   scaledRowColumns,
   RULESET_CATALOG_ROW_KEY,
@@ -45,10 +47,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/** The build an envelope carries, completed with the ruleset's defaults for anything it lacks. */
+/** The build an envelope carries, on this version's layout (migrated as the stored sheet, before
+ *  any default fills a gap a migration would have filled), completed with the ruleset's defaults for
+ *  anything it still lacks. */
 function readBuild(definition: RulesetDefinition, envelope: RulesetSheetEnvelope | undefined): RulesetSheetBuild {
   const defaults = defaultRulesetSheetBuild(definition);
-  const build = envelope?.build;
+  const build = envelope?.build ? migrateRulesetSheetBuild(definition, envelope.build, envelope.v) : undefined;
   if (!build) return defaults;
   return {
     ...build,
@@ -368,7 +372,11 @@ export function RulesetSheetEditor({
     // back the very build it was given when nothing scaled changes, which is what today's editor
     // stored, so an ordinary edit behaves exactly as it always has.
     const patched = { ...build, ...patch };
-    onChange({ ...envelope, v: sheet.version, build: recomputeScaledRows(definition, patched, loadedCatalogs) });
+    onChange({
+      ...envelope,
+      v: rulesetSheetStamp(definition, envelope),
+      build: recomputeScaledRows(definition, patched, loadedCatalogs),
+    });
   };
 
   // The catalogs can land after the user has already typed. Such a sheet is brought up to date once,
@@ -379,7 +387,7 @@ export function RulesetSheetEditor({
     if (!editedRef.current) return;
     const next = recomputeScaledRows(definition, build, loadedCatalogs);
     if (next === build) return;
-    onChange({ ...envelope, v: sheet.version, build: next });
+    onChange({ ...envelope, v: rulesetSheetStamp(definition, envelope), build: next });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedCatalogs]);
 

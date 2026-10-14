@@ -42,8 +42,8 @@
 //   - a chain of them. The fight keeps ONE window rather than a stack, so nothing opened inside a
 //     window opens another: a counter cannot itself be countered, and a reaction that hurts
 //     somebody opens no second moment.
-//   - three-quarter and total cover, elevation, flying over obstacles, squeezing, hiding and
-//     surprise, and movement forced on somebody by an attack.
+//   - elevation, flying over obstacles, squeezing, hiding and surprise, and movement forced on
+//     somebody by an attack. (Cover by degrees came with combat C6a-2.)
 //   - who an opponent chooses to attack. Everything an enemy could do is on the same menu a player
 //     picks from, which is what the enemy's own turn will read.
 
@@ -150,6 +150,7 @@ export {
   rulesetContestHolder,
   rulesetCostSteps,
   rulesetCriticalFromAdjacent,
+  rulesetCoverBonus,
   rulesetDefenseAgainst,
   rulesetForbiddenTargets,
   rulesetFreeStrike,
@@ -179,7 +180,7 @@ export {
 export {
   advanceRulesetTurn,
   applyRulesetCombatChoice,
-  liftRulesetCrashes,
+  liftRulesetFightEffects,
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
 } from "./resolve.js";

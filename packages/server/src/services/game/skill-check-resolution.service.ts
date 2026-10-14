@@ -40,7 +40,7 @@ import {
   rulesetPoolMaxSuccesses,
   rollDiceSumCheck,
   rulesetCheckModifier,
-  rulesetSheetEnvelopeSchema,
+  readRulesetSheetEnvelope,
   type EvaluatedRulesetSheet,
   type RPGAttributes,
   type RulesetCatalogEntriesById,
@@ -440,11 +440,11 @@ export function buildSkillCheckRulesetContext(
         continue;
       }
     }
-    const envelope = rulesetSheetEnvelopeSchema.safeParse(card.rulesetSheet);
-    if (card.rulesetSheet != null && !envelope.success) {
+    const envelope = readRulesetSheetEnvelope(definition, card.rulesetSheet);
+    if (card.rulesetSheet != null && !envelope) {
       logger.warn("[game/skill-check] The ruleset sheet for %s is unreadable; rolling on a blank sheet", key);
     }
-    const cardBuild = envelope.success ? envelope.data.build : blankBuild;
+    const cardBuild = envelope ? envelope.build : blankBuild;
     // Worked out against this character's live state as it stands, so a value that reads a track
     // or a pool rolls with the snapshot the turn began from.
     const held = itemsOf?.(readTrimmedString(card.name));

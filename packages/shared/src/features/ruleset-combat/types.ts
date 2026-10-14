@@ -112,6 +112,8 @@ export interface RulesetCombatSaveRider {
   save: string;
   difficulty: number;
   onSuccess: "none" | "half" | "negates";
+  /** Cover does not help the target with this save (combat C6a-2). */
+  ignoresCover?: true;
 }
 
 /** How often something can be done at all, and over what stretch. `day` outlives one fight, so the
@@ -368,6 +370,10 @@ export interface RulesetCombatAction {
    *  it spends of it: one off the stack, or some of its charges. */
   itemUse?: {
     item: number;
+    /** A fake used (Capability API 1.79): its true name, and what its true item does in place of what
+     *  the action says (`rulesetActionAsUsed`), or `dud` where it does nothing a fight can use, so the
+     *  use is spent for nothing. The fight says what it really was once it is spent. */
+    fake?: { name: string; dud?: true; does?: Partial<RulesetCombatAction> };
     consumes?: true;
     charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
@@ -393,6 +399,8 @@ export interface RulesetCombatMode {
 export interface RulesetCombatContest {
   /** The contest's own id in `combat.contests`. */
   id: string;
+  /** It takes the place of one strike of an attack, so a cap on attacks counts it as one. */
+  strike?: true;
   /** Each side rolls the best of the checks it may use here. */
   attacker: string[];
   defender: string[];
@@ -450,6 +458,9 @@ export interface RulesetCombatant {
   id: string;
   name: string;
   side: RulesetCombatSide;
+  /** The bestiary entry an opponent was made from, when it was made from one: what its art is found by
+   *  (design-game-creature-art.md). Never read by the fight's rules. */
+  creature?: { catalogId: string; entryId: string };
   initiative: number;
   initiativeRoll: number[];
   initiativeModifier: number;
@@ -484,6 +495,8 @@ export interface RulesetCombatant {
     /** The off-hand weapon (its place in `sheet.items`) this turn's attack was made with, which
      *  another off-hand weapon may follow on the off-hand budget. */
     offHand?: number;
+    /** Attacks made this turn, which a condition's cap on attacks a turn counts (combat C6d). */
+    attacks?: number;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -632,6 +645,8 @@ export interface RulesetActionResume {
   actorId: string;
   optionId: string;
   targetIds: string[];
+  /** The cell an area was aimed at, which a save against it takes cover from (combat C6a-2). */
+  at?: RulesetCombatCell;
   payWith?: string;
   /** The initiative style it was made in, so a held attack picks up in the same one. */
   style?: string;
@@ -689,6 +704,9 @@ export interface RulesetWalkResume {
 export interface RulesetCombatBoard {
   grid: TacticalGrid;
   battlefield?: TacticalBattlefieldProvenance;
+  /** Cells a shot carries further down from higher ground (combat C6b), as the ruleset said when the
+   *  fight began. */
+  rangeBonus?: number;
 }
 
 /** Why a choice changed nothing. */
@@ -867,6 +885,8 @@ export type RulesetCombatEvent =
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
   /** An item whose last charge was just spent, and whose die said it breaks. */
   | { type: "broke"; actorId: string; optionId: string; label: string; roll: number }
+  /** A fake just used, found out (1.79): what it truly was, and whether it did nothing. */
+  | { type: "fake"; actorId: string; optionId: string; label: string; truly: string; dud?: true }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */
   | {
@@ -964,6 +984,8 @@ export type RulesetCombatEvent =
     }
   /** Somebody pushed across the board by somebody else. Forced, so it spends nothing of their own
    *  allowance and draws no strike on the way. */
+  /** Somebody shoved off a step of two levels or more (combat C6b), before what the fall does. */
+  | { type: "fell"; targetId: string; levels: number }
   | {
       type: "pushed";
       actorId: string;
@@ -986,7 +1008,9 @@ export type RulesetCombatEvent =
       outcome: RulesetCombatAttackOutcome;
     }
   /** What the ground the target stands on added to the defense the next attack is rolled against. */
-  | { type: "cover"; targetId: string; bonus: number; defense: number }
+  /** Cover between the target and an attack (`defense` is what it is rolled against now), or between
+   *  them and where a save's action came from (`save` is the save it helps). */
+  | { type: "cover"; targetId: string; bonus: number; defense?: number; save?: string }
   /** A spending blow whose dice were below the target's hardness: it landed and did nothing. */
   | { type: "hardness"; targetId: string; sourceId: string; label: string; hardness: number; dice: number }
   /** A weapon was fired: what it has loaded now (`of` its clip), or, without a clip, how many of
@@ -1051,6 +1075,9 @@ export interface RulesetCombatOption {
   loaded?: { now: number; max: number };
   /** A second attack with a weapon in the off hand, on the ruleset's off-hand budget. */
   offHand?: true;
+  /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
+   *  action): the strikes the attack would otherwise put in hand are not given. */
+  oneStrike?: true;
   /** Whether the amount below is health GIVEN BACK rather than taken off. Without it a menu and an
    *  opponent's own choices cannot tell a heal from a blow, because both are an amount. */
   heals?: boolean;

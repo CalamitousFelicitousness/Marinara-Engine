@@ -1103,7 +1103,12 @@ hash-pinned asset.
 ```
 
 `worlds` (at most 32) and `tiles` are optional. A world file may carry its world's story script
-(worldgen W10), which ships with the map as part of it. With the Experience on, a new game is locked
+(worldgen W10), which ships with the map as part of it. A world file of version 2 also carries the
+world's `snapshot`, the world as it was made (W11): an Engine whose world generator has changed since
+reads the world from it, exactly as it was made, so a pack keeps working across Engine updates. Write
+the files from a game's or library world's **Download** (or `GET /api/game/:chatId/world/file`), which
+include it. A pack file is still at most 2 MB, so a world whose file is larger (a big world's snapshot)
+cannot ship in a pack. With the Experience on, a new game is locked
 to the pack's kit; if the pack ships worlds, the player picks one of them (story included) and makes
 no other. Turning the
 Experience off gives the player's own choices back. `POST /api/game/create` holds a game to the same

@@ -673,8 +673,31 @@ try {
     assert.equal(refusedPotion.statusCode, 400, refusedPotion.body);
     assert.deepEqual(JSON.parse((await chats.getById(noItemsChat.id))!.metadata).gameInventory, potions);
   }
+  // A game set to take turns by initiative (combat C6c) starts its tactical fight with an order; a per-chat
+  // choice outweighs the setup's, and a game that says nothing starts by side.
+  for (const [setupOrder, chatOrder, expected] of [
+    ["initiative", undefined, true],
+    ["initiative", "side", false],
+    [undefined, "initiative", true],
+    [undefined, undefined, false],
+  ] as const) {
+    const orderChat = await chats.create({ name: "Turn order proof", mode: "game", characterIds: [] });
+    const anchor = await chats.createMessage({ chatId: orderChat.id, role: "assistant", content: "[state: combat]" });
+    await chats.patchMetadata(orderChat.id, {
+      gameSetupConfig: {
+        combatDirector: true,
+        tacticalBattlefield: { seed: 9, size: "small" },
+        ...(setupOrder ? { tacticalTurnOrder: setupOrder } : {}),
+      },
+      ...(chatOrder ? { gameTacticalTurnOrder: chatOrder } : {}),
+    });
+    const started = await post("/combat/start", { ...input, chatId: orderChat.id, anchor: anchor.id });
+    assert.equal(started.statusCode, 200, started.body);
+    const view = started.json().session as DirectedCombatView;
+    assert.equal(!!view.tactical?.initiative, expected, `${setupOrder} / ${chatOrder}`);
+  }
   console.log(
-    "Combat director route: authority, idempotency, terrain, atomic item costs, late GM output, restore identity and branch isolation passed.",
+    "Combat director route: authority, idempotency, terrain, atomic item costs, late GM output, restore identity, branch isolation and turn order passed.",
   );
 } finally {
   await app.close();

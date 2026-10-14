@@ -11,6 +11,7 @@ import {
   rollRulesetItemGate,
   rulesetCombatRoller,
   rulesetItemUseLine,
+  revealGameInventoryFake,
   useRulesetItemOutsideFight,
   type RulesetItemRecharge,
   type GameInventoryItemUser,
@@ -37,6 +38,8 @@ export type GameItemUseResult =
       said: RulesetItemUseSaid;
       /** What happened, in one line for the Game Master. */
       line: string;
+      /** A fake used was shown for what it truly is first (1.79): its true name. */
+      revealed?: string;
       playerStats?: unknown;
     }
   | { ok: false; status: 404 | 409; error: string; reason?: RulesetItemUseRefusal | "no-ruleset" | "no-state" };
@@ -98,8 +101,9 @@ function useForCarrier(
   stackId: string,
   live: RulesetLiveStates,
   roll: (sides: number) => number,
-): { outcome: RulesetItemUseOutcome; live: RulesetLiveStates } {
-  const holder = stacks.find((each) => each.id === stackId)?.holder;
+): { outcome: RulesetItemUseOutcome; live: RulesetLiveStates; revealed?: string } {
+  const stack = stacks.find((each) => each.id === stackId);
+  const holder = stack?.holder;
   const named = (name: string) =>
     context.cards.find((each) => normalizeCharacterLookupName(each.name) === normalizeCharacterLookupName(name));
   // The player's own bag is the player's sheet: the card named for who the chat plays as, or the first
@@ -109,20 +113,44 @@ function useForCarrier(
     : ((context.playerName ? named(context.playerName) : undefined) ?? context.cards[0]);
   const name = holder ?? card?.name ?? context.playerName ?? "The player";
   const key = normalizeCharacterLookupName(name);
+  // A fake used is shown for what it truly is first (1.79), and what it truly does is what happens.
+  const revealed = stack?.truly ? (itemOf(stack.truly)?.name ?? stack.truly) : undefined;
+  const working = stack?.truly ? revealGameInventoryFake([...stacks], stackId, { itemOf }) : [...stacks];
   const outcome = useRulesetItemOutsideFight({
     definition: context.definition,
     itemOf,
-    stacks,
+    stacks: working,
     stackId,
     user: { name, build: card?.build ?? defaultRulesetSheetBuild(context.definition), live: live[key] },
     roll,
   });
+  if (!outcome.ok && revealed) {
+    // What it truly does is nothing the rules work out: it is still found out, and the Game Master
+    // tells what it did.
+    return {
+      outcome: {
+        ok: true,
+        stacks: working,
+        journal: [],
+        live: live[key] ?? {},
+        said: {
+          user: name,
+          item: revealed,
+          parts: [],
+          aimed: `it was really ${revealed}, not what it seemed; what it does is for the Game Master to tell`,
+          left: { count: stack!.quantity },
+        },
+      },
+      live,
+      revealed,
+    };
+  }
   if (!outcome.ok) return { outcome, live };
   const next: RulesetLiveStates = { ...live };
   // A character back at their defaults drops out of the store, as the in-game sheet leaves them.
   if (Object.keys(outcome.live).length > 0) next[key] = outcome.live;
   else delete next[key];
-  return { outcome, live: next };
+  return { outcome, live: next, ...(revealed ? { revealed } : {}) };
 }
 
 /**
@@ -150,6 +178,7 @@ export function gameInventoryItemUser(
         stacks: done.outcome.stacks,
         journal: done.outcome.journal,
         line: rulesetItemUseLine(done.outcome.said),
+        ...(done.revealed ? { revealed: done.revealed } : {}),
       };
     },
     live: () => live,
@@ -227,6 +256,7 @@ export async function useGameRulesetItem(
   if (!context || !book)
     return { ok: false, status: 409, error: "This game has no ruleset items", reason: "no-ruleset" };
   let outcome: Extract<ReturnType<typeof useRulesetItemOutsideFight>, { ok: true }> | null = null;
+  let revealed: string | undefined;
   let rulesetLive: RulesetLiveStates = {};
   let committed: Awaited<ReturnType<typeof applyGameInventoryChangeHeld<null>>> = null;
   try {
@@ -242,6 +272,7 @@ export async function useGameRulesetItem(
           const done = useForCarrier(context, book.itemOf, stacks, stackId, stored, roll);
           if (!done.outcome.ok) throw new ItemUseRefused(done.outcome.reason);
           outcome = done.outcome;
+          revealed = done.revealed;
           next = done.live;
           return { stacks: done.outcome.stacks, journal: done.outcome.journal, value: null };
         });
@@ -270,6 +301,7 @@ export async function useGameRulesetItem(
     rulesetLive,
     said: used.said,
     line: rulesetItemUseLine(used.said),
+    ...(revealed ? { revealed } : {}),
     ...(done.playerStats ? { playerStats: done.playerStats } : {}),
   };
 }

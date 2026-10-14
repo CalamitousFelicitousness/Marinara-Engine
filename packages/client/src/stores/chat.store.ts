@@ -211,6 +211,8 @@ interface ChatState {
    * - absent — no Mari work in progress for that chat.
    */
   mariPhaseByChatId: Map<string, "thinking" | "updating">;
+  /** Professor Mari's provisional words for the round she is writing; never saved, cleared when it ends. */
+  mariDraftByChatId: Map<string, string>;
   streamBuffer: string;
   /** Per-chat stream text for active generations, so switching chats does not lose in-flight UI state. */
   streamBuffers: Map<string, string>;
@@ -293,6 +295,7 @@ interface ChatState {
   setContinuationStream: (chatId: string, continuation: ContinuationStream) => void;
   setPendingVnReply: (chatId: string, reply: Pick<Message, "id" | "activeSwipeIndex" | "content"> | null) => void;
   setMariPhase: (chatId: string, phase: "thinking" | "updating" | "idle") => void;
+  setMariDraft: (chatId: string, draft: string | null) => void;
   setAbortController: (chatId: string, controller: AbortController | null) => void;
   setBackgroundIllustration: (chatId: string, pending: boolean) => void;
   setNarrationSaved: (chatId: string, saved: boolean) => void;
@@ -378,6 +381,7 @@ export const useChatStore = create<ChatState>()(
     isStreaming: false,
     streamingChatId: null,
     mariPhaseByChatId: new Map(),
+    mariDraftByChatId: new Map(),
     streamBuffer: "",
     streamBuffers: new Map(),
     continuationStreams: new Map(),
@@ -532,6 +536,14 @@ export const useChatStore = create<ChatState>()(
         const next = new Map(state.mariPhaseByChatId);
         next.set(chatId, phase);
         return { mariPhaseByChatId: next };
+      }),
+    setMariDraft: (chatId, draft) =>
+      set((state) => {
+        if ((state.mariDraftByChatId.get(chatId) ?? null) === (draft || null)) return state;
+        const next = new Map(state.mariDraftByChatId);
+        if (draft) next.set(chatId, draft);
+        else next.delete(chatId);
+        return { mariDraftByChatId: next };
       }),
     setPendingVnReply: (chatId, reply) =>
       set((state) => {
@@ -1056,6 +1068,7 @@ export const useChatStore = create<ChatState>()(
       currentInputSnapshot = "";
       clearCurrentInputPresenceTimer();
       set({
+        mariDraftByChatId: new Map(),
         activeChatId: null,
         activeChat: null,
         isStreaming: false,

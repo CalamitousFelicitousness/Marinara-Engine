@@ -1,5 +1,6 @@
 import {
   characterTrackerLockPrefix,
+  gameInventoryBagKey,
   normalizeCharacterLookupName,
   readGameInventoryTurn,
   type GameInventoryStack,
@@ -8,6 +9,7 @@ import {
 import type { DB } from "../../db/connection.js";
 import { parseGameStateRow } from "../../routes/generate/generate-route-utils.js";
 import { applyGameInventoryChangeHeld } from "../game/game-inventory.service.js";
+import { GAME_STARTING_GEAR_TAKEN_KEY, readGameStartingGearTaken } from "../game/game-starting-gear.service.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { record } from "./room-projection.js";
@@ -235,11 +237,21 @@ export async function applyRoomPersonaChanges(db: DB, chatId: string, changes: r
       }),
     );
   const turn = readGameInventoryTurn(metadata.gameInventoryTurn);
+  // The starting gear each bag has taken follows the bag to its new name, or the renamed member could
+  // take it again.
+  const gearTaken = readGameStartingGearTaken(metadata[GAME_STARTING_GEAR_TAKEN_KEY]);
+  const renamedGear = Object.fromEntries(
+    Object.entries(gearTaken).map(([key, ids]) => {
+      const change = key ? byName.get(key) : undefined;
+      return [change ? gameInventoryBagKey(change.name) : key, ids];
+    }),
+  );
   await applyGameInventoryChangeHeld(db, chatId, (stacks) => ({
     stacks: renameStacks(stacks),
     journal: [],
     metadata: {
       gameCharacterCards: nextCards,
+      ...(Object.keys(gearTaken).length > 0 ? { [GAME_STARTING_GEAR_TAKEN_KEY]: renamedGear } : {}),
       ...(Array.isArray(metadata.gamePartyArcs)
         ? {
             gamePartyArcs: metadata.gamePartyArcs.map((value) => {

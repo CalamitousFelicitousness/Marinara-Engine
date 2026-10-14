@@ -9,6 +9,7 @@
 // the fight is built, through `rulesetInCells`.
 
 import { TERRAIN_DATA, type TacticalGrid } from "../tactical-combat/types.js";
+import { blocksSight, climbCost, elevationAt, hasLineOfSight } from "../tactical-combat/math.js";
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetShotsAvailable } from "./ammo.js";
 import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
@@ -87,30 +88,17 @@ export function rulesetCellCover(grid: TacticalGrid, cell: RulesetCombatCell): n
   return (terrain === undefined ? undefined : TERRAIN_DATA[terrain]?.defenseBonus) ?? 0;
 }
 
-/**
- * Whether one cell can see another: the straight line of cells between them, with the two ends left
- * out. One solid cell on it blocks a shot and stops an area spreading past it.
- *
- * The line is walked by the same integer stepping a grid is drawn with, so it is symmetric and needs
- * no floating point beyond one division per step.
- */
+/** What one step on foot from a cell into its neighbour costs (combat C6b): entering it, and one more to
+ *  climb a level; null for a step of two levels or more either way, which nobody walks. */
+export function rulesetStepCost(grid: TacticalGrid, from: RulesetCombatCell, to: RulesetCombatCell): number | null {
+  const climb = climbCost(grid, from, to);
+  return climb === null ? null : rulesetCellEnterCost(grid, to.x, to.y) + climb;
+}
+
+/** Whether one cell can see another: the Engine's one sight test (combat C6), which a wall or a mountain
+ *  blocks and water does not. Symmetric, so the two always see each other or never do. */
 export function rulesetLineOfSight(grid: TacticalGrid, a: RulesetCombatCell, b: RulesetCombatCell): boolean {
-  // Walked from a fixed end, so the two of them always see each other or never do, whichever way
-  // round they are asked.
-  const forward = a.x < b.x || (a.x === b.x && a.y <= b.y);
-  const start = forward ? a : b;
-  const end = forward ? b : a;
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  if (steps <= 1) return true;
-  for (let step = 1; step < steps; step++) {
-    const x = start.x + Math.round((dx * step) / steps);
-    const y = start.y + Math.round((dy * step) / steps);
-    if ((x === start.x && y === start.y) || (x === end.x && y === end.y)) continue;
-    if (rulesetCellBlocked(grid, x, y)) return false;
-  }
-  return true;
+  return hasLineOfSight(grid, a, b);
 }
 
 /**
@@ -169,11 +157,13 @@ function lineCells(
   grid: TacticalGrid,
 ): RulesetCombatCell[] {
   const cells: RulesetCombatCell[] = [];
-  // `rulesetCellBlocked` reads off the board as solid, so the line ends at the edge whatever its size.
+  // `blocksSight` reads off the board as solid, so the line ends at the edge whatever its size.
   for (let step = 1; step <= reach; step++) {
     const cell = { x: origin.x + dx * step, y: origin.y + dy * step };
-    // Something solid ends the line where it stands, rather than letting it carry on behind.
-    if (rulesetCellBlocked(grid, cell.x, cell.y)) break;
+    // What blocks sight ends the line where it stands, rather than letting it carry on behind; it
+    // carries on across water, where nobody stands.
+    if (blocksSight(grid, cell.x, cell.y)) break;
+    if (rulesetCellBlocked(grid, cell.x, cell.y)) continue;
     cells.push(cell);
   }
   return cells;
@@ -360,7 +350,9 @@ export function rulesetReachableCells(
         rulesetCellBlocked(grid, at.x, at.y + dy)
       )
         continue;
-      const cost = cheapest + rulesetCellEnterCost(grid, x, y);
+      const step = rulesetStepCost(grid, at, { x, y });
+      if (step === null) continue;
+      const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);
       cameFrom.set(next, key);
@@ -414,8 +406,13 @@ export function rulesetPushPath(
     ) {
       break;
     }
+    // Height (combat C6b): nobody is shoved up a step of two levels or more, and somebody shoved off one
+    // falls, and lies where they land.
+    const rise = elevationAt(grid, x, y) - elevationAt(grid, at.x, at.y);
+    if (rise > 1) break;
     at = { x, y };
     path.push(at);
+    if (rise < -1) break;
   }
   return path;
 }
@@ -449,8 +446,8 @@ export function rulesetWalkingDistances(
   for (let cost = 0; cost < buckets.length; cost++) {
     for (const at of buckets[cost] ?? []) {
       if (best.get(`${at.x},${at.y}`) !== cost) continue;
-      // Walked the other way: stepping from the neighbour INTO `at` costs what entering `at` does.
-      const into = rulesetCellEnterCost(grid, at.x, at.y);
+      // Walked the other way: stepping from the neighbour INTO `at` costs what entering `at` does, and
+      // what climbing up to it does (combat C6b), which is not the same both ways.
       for (const [dx, dy] of STEPS) {
         const x = at.x + dx;
         const y = at.y + dy;
@@ -463,7 +460,8 @@ export function rulesetWalkingDistances(
         ) {
           continue;
         }
-        reach(x, y, cost + into);
+        const into = rulesetStepCost(grid, { x, y }, at);
+        if (into !== null) reach(x, y, cost + into);
       }
     }
   }

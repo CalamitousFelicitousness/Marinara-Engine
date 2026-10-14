@@ -104,6 +104,8 @@ export interface DirectedRulesetCombatant {
   id: string;
   name: string;
   side: RulesetCombatSide;
+  /** The bestiary entry an opponent was made from: what its art is found by (design-game-creature-art.md). */
+  creature?: { catalogId: string; entryId: string };
   initiative: number;
   health: { value: number; max: number; temp: number };
   /** What an attack is rolled against. Sent for both sides: every option's forecast already carries
@@ -157,6 +159,8 @@ export interface DirectedRulesetView {
     width: number;
     height: number;
     tiles: TacticalTerrain[][];
+    /** How high each cell stands (combat C6b), elevation[y][x]; absent on a flat board. */
+    elevation?: number[][];
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
     scene?: TacticalEnvironment;

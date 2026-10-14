@@ -1313,11 +1313,77 @@ try {
     [away.place, seen(away.day)],
     [{ name: "Barrowmere", size: "hamlet" }, [`${daily.id}|2|Barrowmere|hamlet`, [], [], []]],
   );
+  // Where the world has the party at the place a tag began the day at, the tag's day is the one in force.
+  const sameAsTag = await gameMarketDayFor(db, daily.id, undefined, undefined, book, {
+    name: "millbrook",
+    size: "town",
+  });
+  assert.deepEqual([sameAsTag.day.key, sameAsTag.worldPlace], [`${daily.id}|0|Millbrook|town`, undefined]);
   const quiet = await chats.create({ name: "No place yet", mode: "game", characterIds: [] });
   assert.deepEqual(await gameMarketDayFor(db, quiet.id, null, undefined, book), {
     place: null,
     day: { key: "", bought: new Map(), stockBought: new Map(), paidOut: new Map() },
   });
+  // A place the world set (no place tag began a day there): its day runs over the replies in a row
+  // whose turns were there, each stamped so on its extra, and counts what they bought; a turn anywhere
+  // else ends it, so coming back is a new day.
+  {
+    const mapped = await chats.create({ name: "World market", mode: "game", characterIds: [] });
+    const town = { name: "Ashford", size: "town" as const };
+    const at = `world|ashford|town`;
+    const reply = (content: string, stamp?: string | null) =>
+      chats.createMessage({
+        chatId: mapped.id,
+        role: "assistant",
+        content,
+        ...(stamp !== undefined ? { extra: { gameMarketPlace: stamp } } : {}),
+      } as never);
+    const pistol =
+      '[inventory: action="buy" item="Watch pistol" count="1" level="fair" seller="smith" result="ok" now="1" price="3 crowns" stock="true"]';
+    const worldDay = (replacing?: string) => gameMarketDayFor(db, mapped.id, replacing, undefined, book, town);
+    // Before any turn there: a day of nothing bought, named for the reply that begins it.
+    const fresh = await worldDay();
+    assert.deepEqual(
+      [fresh.place, fresh.worldPlace, seen(fresh.day)],
+      [town, at, [`${mapped.id}|${at}|start`, [], [], []]],
+    );
+    await reply(`We arrive. ${pistol}`, at);
+    const bought = await reply(`Still here. ${nail}`, at);
+    const held = await worldDay();
+    assert.deepEqual(
+      seen(held.day),
+      [`${mapped.id}|${at}|start`, [["silver coffin nail", 1]], [["smith|watch pistol", 1]], []],
+      "the day keeps its name and counts every turn's buys there",
+    );
+    assert.deepEqual(
+      seen((await worldDay(bought.id)).day).slice(1, 3),
+      [[], [["smith|watch pistol", 1]]],
+      "a regeneration",
+    );
+    // A turn somewhere else ends the day; back again, a new one begins with nothing bought.
+    const road = await reply("On the road.", null);
+    const back = await worldDay();
+    assert.deepEqual(seen(back.day), [`${mapped.id}|${at}|${road.id}`, [], [], []], "named by the reply before it");
+    // A place tag answered while the world keeps the party here begins a day of its own: the world's day
+    // runs on from after it.
+    const named = await reply('They call it Millbrook. [place: name="Millbrook" size="town" result="ok"]', at);
+    assert.deepEqual(seen((await worldDay()).day)[0], `${mapped.id}|${at}|${named.id}`);
+    await reply(`Back in town. ${pistol}`, at);
+    assert.deepEqual(seen((await worldDay()).day).slice(0, 3), [
+      `${mapped.id}|${at}|${named.id}`,
+      [],
+      [["smith|watch pistol", 1]],
+    ]);
+    // A reply deleted inside the day neither renames it nor loses the others' buys.
+    const idle = await reply("They wait.", at);
+    await reply(`Another. ${pistol}`, at);
+    await chats.removeMessage(idle.id);
+    assert.deepEqual(seen((await worldDay()).day).slice(0, 3), [
+      `${mapped.id}|${at}|${named.id}`,
+      [],
+      [["smith|watch pistol", 2]],
+    ]);
+  }
 } finally {
   await closeDB();
   rmSync(dataDir, { recursive: true, force: true });

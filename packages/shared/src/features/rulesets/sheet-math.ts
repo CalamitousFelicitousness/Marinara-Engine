@@ -15,6 +15,7 @@ import {
   type RulesetHideWhen,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
+  type RulesetSheetMigrationStep,
   type RulesetUntrained,
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
@@ -70,11 +71,95 @@ export function createRulesetSheetEnvelope(
 
 /** The copy a new game takes of a starting build: the stored sheet when it reads as one, else a
  *  blank default, so every party member has a sheet from the first turn. Always a deep copy — a
- *  game edits its own sheet and nothing in a game writes back to the library. */
+ *  game edits its own sheet and nothing in a game writes back to the library. Migrated to this
+ *  layout first, and never labelled older than it was: a sheet a newer version wrote, copied by an
+ *  older one, keeps its own number, so the newer version still knows what it holds. */
 export function copyRulesetSheetForGame(definition: RulesetDefinition, stored: unknown): RulesetSheetEnvelope {
+  const read = readRulesetSheetEnvelope(definition, stored);
+  if (!read) return createRulesetSheetEnvelope(definition);
+  return { v: read.v, build: structuredClone(read.build) };
+}
+
+// ── Migrations (Capability API 1.77) ──
+//
+// A ruleset that moves a sheet's values to new ids says how in `sheet.migrations`, and every read of a
+// stored sheet applies them here: a pure function, so nothing is written by reading and a rewind, a
+// branch, an import or a library sheet all read the same way. The next edit stores the new layout.
+// Every step COPIES, so what a step read from stays where it was and an older version of the ruleset
+// still reads the sheet as it always did. Live state's own step (`routeLive`) is applied where live
+// state is read (live-state.ts).
+
+/** The steps a sheet stored at version `v` still has to take, hop by hop in order. */
+export function rulesetSheetMigrationSteps(definition: RulesetDefinition, v = 1): RulesetSheetMigrationStep[] {
+  const version = definition.sheet.version;
+  return [...(definition.sheet.migrations ?? [])]
+    .filter((hop) => hop.from >= v && hop.from < version)
+    .sort((a, b) => a.from - b.from)
+    .flatMap((hop) => hop.steps);
+}
+
+/** Whether `phrase` is in `text` as whole words, ignoring case. Only letters join a word, so a level
+ *  written straight after a class ("Fighter3") still names it. */
+function namesPhrase(text: string, phrase: string): boolean {
+  const escaped = phrase
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  return new RegExp(`(^|[^\\p{L}])${escaped}($|[^\\p{L}])`, "iu").test(text);
+}
+
+/** A build stored at version `v`, as the current layout reads it. The same object when nothing moves. */
+export function migrateRulesetSheetBuild(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  v: number,
+): RulesetSheetBuild {
+  const steps = rulesetSheetMigrationSteps(definition, v).filter((step) => !("routeLive" in step));
+  if (steps.length === 0) return build;
+  const next = structuredClone(build);
+  const own = (record: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(record, key);
+  const copy = <T>(record: Record<string, T>, from: string, to: string) => {
+    if (own(record, from) && !own(record, to)) record[to] = record[from]!;
+  };
+  for (const step of steps) {
+    if ("rename" in step) {
+      if (step.rename === "field") copy(next.fields, step.from, step.to);
+      else if (step.rename === "ability") copy(next.abilities, step.from, step.to);
+      else {
+        copy(step.rename === "skill" ? next.skills : next.saves, step.from, step.to);
+        copy(next.bonuses, step.from, step.to);
+      }
+    } else if ("route" in step) {
+      const value = own(next.fields, step.route) ? next.fields[step.route] : step.default;
+      if (value === undefined) continue;
+      const by = next.fields[step.by];
+      const text = typeof by === "string" ? by : "";
+      const named = new Set(
+        step.cases.filter((entry) => entry.words.some((word) => namesPhrase(text, word))).map((entry) => entry.to),
+      );
+      // One class named is that class; none, or several ("Fighter 3 / Wizard 2"), is the fallback,
+      // since one number cannot be split between them without asking.
+      const target = named.size === 1 ? [...named][0]! : step.else;
+      if (!own(next.fields, target)) next.fields[target] = value;
+    }
+  }
+  return next;
+}
+
+/** A stored sheet as this version of its ruleset reads it, migrated to the current layout, or null
+ *  when it is not a sheet at all. A sheet stored by a NEWER version is read as it stands. */
+export function readRulesetSheetEnvelope(definition: RulesetDefinition, stored: unknown): RulesetSheetEnvelope | null {
   const parsed = rulesetSheetEnvelopeSchema.safeParse(stored);
-  if (!parsed.success) return createRulesetSheetEnvelope(definition);
-  return { v: definition.sheet.version, build: structuredClone(parsed.data.build) };
+  if (!parsed.success) return null;
+  const { v, build } = parsed.data;
+  if (v >= definition.sheet.version) return parsed.data;
+  return { ...parsed.data, v: definition.sheet.version, build: migrateRulesetSheetBuild(definition, build, v) };
+}
+
+/** The version a sheet written now is labelled with: this layout, never below what it already was. */
+export function rulesetSheetStamp(definition: RulesetDefinition, stored?: { v?: unknown } | null): number {
+  const before = typeof stored?.v === "number" && Number.isInteger(stored.v) ? stored.v : 0;
+  return Math.max(before, definition.sheet.version);
 }
 
 export interface EvaluatedRulesetSheet {
@@ -126,6 +211,9 @@ export interface RulesetSheetItem {
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */
   charges?: number;
+  /** A fake (Capability API 1.79): what it truly is, which `item` passes for. The sheet reads it as
+   *  what it seems; a fight's use of it does what this one does. */
+  truly?: { item: RulesetCatalogItem; name: string };
 }
 
 /** Whether the sheet can read the items a character holds, so a caller can skip reading the
@@ -133,6 +221,12 @@ export interface RulesetSheetItem {
  *  `itemStat`, an item's abilities or a level off a derived value may read them. */
 export function rulesetReadsItems(definition: RulesetDefinition): boolean {
   return definition.items !== undefined;
+}
+
+/** The item whose effects and stats a held item brings to the sheet: a fake's true item (1.79, the
+ *  user's ruling: a worn or carried fake does what it truly does), else the item itself. */
+export function rulesetHeldItemDoes(held: RulesetSheetItem): RulesetSheetItem["item"] {
+  return held.truly?.item ?? held.item;
 }
 
 /** What a character's items do to their abilities: each ability's highest `set` and the sum of its
@@ -143,7 +237,8 @@ function itemAbilityChanges(
   const changes = new Map<string, { set?: number; add: number }>();
   const seen = new Set<unknown>();
   for (const held of items ?? []) {
-    const effect = held.worn ? held.item.worn : held.item.carried;
+    const does = rulesetHeldItemDoes(held);
+    const effect = held.worn ? does.worn : does.carried;
     if (!effect?.abilities || seen.has(effect)) continue;
     seen.add(effect);
     for (const [id, change] of Object.entries(effect.abilities)) {
@@ -167,11 +262,12 @@ function readItemStat(
   const held = (items ?? []).filter(
     (each) =>
       (spec.from === "all" || (spec.from === "worn") === each.worn) &&
-      (spec.slot === undefined || (each.item.slots?.[spec.slot] ?? 0) > 0) &&
-      (spec.category === undefined || each.item.category === spec.category) &&
-      (spec.tag === undefined || (each.item.tags ?? []).includes(spec.tag)),
+      (spec.slot === undefined || (rulesetHeldItemDoes(each).slots?.[spec.slot] ?? 0) > 0) &&
+      (spec.category === undefined || rulesetHeldItemDoes(each).category === spec.category) &&
+      (spec.tag === undefined || (rulesetHeldItemDoes(each).tags ?? []).includes(spec.tag)),
   );
-  const given = (each: RulesetSheetItem) => (spec.stat === undefined ? undefined : each.item.stats?.[spec.stat]);
+  const given = (each: RulesetSheetItem) =>
+    spec.stat === undefined ? undefined : rulesetHeldItemDoes(each).stats?.[spec.stat];
   if (spec.pick === "count") {
     const counted =
       spec.stat === undefined
@@ -973,4 +1069,55 @@ export function rulesetLadderTargetFor(definition: RulesetDefinition, successes:
   if (resolution.kind !== "dice-pool") return undefined;
   const found = resolution.difficultyLadder.filter((step) => step.successes === successes);
   return found.length === 1 ? found[0]!.target : undefined;
+}
+
+/**
+ * Which of a character's held fakes the sheet shows for what they are (1.79): one whose true item,
+ * worn or carried as it is, makes any of the sheet's numbers other than the item it passes for would,
+ * or changes what a check or save adds. The item's place in `items` for each, so a caller can find it
+ * out. `sources` is how a check reads items (`rulesetItemSources`), passed in to keep this module free
+ * of the check code.
+ */
+export function rulesetFakesTheSheetShows(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  items: readonly RulesetSheetItem[],
+  sources: (items: readonly RulesetSheetItem[], sheet: () => EvaluatedRulesetSheet) => unknown,
+  /** The character's live state as the sheet reads it (`readRulesetLive`). */
+  live: RulesetSheetLiveValues,
+): number[] {
+  const read = (held: readonly RulesetSheetItem[]) => {
+    const sheet = evaluateRulesetSheet(definition, build, { ...live, items: held });
+    return stableJson([
+      sheet.abilityScores,
+      sheet.abilityMods,
+      sheet.skillMods,
+      sheet.saveMods,
+      sheet.derived,
+      sources(held, () => sheet),
+    ]);
+  };
+  const shown: number[] = [];
+  const truth = read(items);
+  items.forEach((held, index) => {
+    if (!held.truly) return;
+    const seeming = items.map((each, at) => {
+      if (at !== index) return each;
+      const { truly: _truly, ...rest } = each;
+      return rest;
+    });
+    if (read(seeming) !== truth) shown.push(index);
+  });
+  return shown;
+}
+
+/** A value as JSON with its keys in order, so two equal objects written in another order compare equal. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, each: unknown) =>
+    each && typeof each === "object" && !Array.isArray(each)
+      ? Object.fromEntries(
+          Object.entries(each as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        )
+      : each,
+  );
 }

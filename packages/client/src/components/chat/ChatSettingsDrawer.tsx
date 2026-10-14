@@ -2105,6 +2105,12 @@ export function ChatSettingsDrawer({
     (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
     (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined) ??
     "classic";
+  // A missing choice is by side: every game before turn order was a choice played that way (combat C6c).
+  const effectiveTurnOrder: "side" | "initiative" =
+    ((metadata.gameTacticalTurnOrder ?? metadata.gameSetupConfig?.tacticalTurnOrder) as string | undefined) ===
+    "initiative"
+      ? "initiative"
+      : "side";
   // Whether this game's battles are the ruleset's own. Read from the block the file declares and
   // from the director being on, never from the coverage flag the file claims.
   const gameRuleset = useGameRuleset(isGame ? metadata : null);
@@ -5553,6 +5559,8 @@ export function ChatSettingsDrawer({
               rulesetResolvesFights={rulesetResolvesFights}
               rulesetHasPositions={rulesetHasPositions}
               onCombatStyleChange={(gameCombatStyle) => updateMeta.mutate({ id: chat.id, gameCombatStyle })}
+              turnOrder={effectiveTurnOrder}
+              onTurnOrderChange={(gameTacticalTurnOrder) => updateMeta.mutate({ id: chat.id, gameTacticalTurnOrder })}
             />
           )}
 

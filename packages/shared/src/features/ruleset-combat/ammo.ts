@@ -207,6 +207,8 @@ export interface RulesetFightItemChange {
   charges?: number;
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
+  /** A fake's true name (1.79): what a use of it is written as. */
+  truly?: string;
 }
 
 /**
@@ -240,6 +242,7 @@ export function rulesetFightItemChanges(
         ...(reloaded ? { loaded } : {}),
         ...(spent ? { charges } : {}),
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
+        ...(held.truly ? { truly: held.truly.name } : {}),
       });
     });
   }
@@ -262,8 +265,11 @@ export function applyRulesetFightItemChanges(
   const journal: GameInventoryJournalEntry[] = [];
   for (const change of changes) {
     const at = next.findIndex((stack) => stack.id === change.stack.id);
+    // A fake used is found out (1.79): written by its true name. What is left of it stays as it is, since
+    // the fight still holds it by what it passes for.
     if (change.taken > 0) {
-      journal.push({ item: change.name, action: change.broke ? "lost" : "used", quantity: change.taken });
+      const name = change.truly && !change.broke ? change.truly : change.name;
+      journal.push({ item: name, action: change.broke ? "lost" : "used", quantity: change.taken });
     }
     if (change.taken < 0) journal.push({ item: change.name, action: "acquired", quantity: -change.taken });
     if (at < 0) {

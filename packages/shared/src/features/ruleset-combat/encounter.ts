@@ -87,6 +87,17 @@ export function currentRulesetActor(state: RulesetEncounterState): RulesetCombat
   return id === undefined ? undefined : rulesetCombatant(state, id);
 }
 
+/** Whether it is this combatant's own turn, which is where a cap on attacks a turn counts. */
+export function rulesetOnOwnTurn(state: RulesetEncounterState, combatant: RulesetCombatant): boolean {
+  return state.order[state.turn] === combatant.id;
+}
+
+/** Whether an action is an attack, as a cap on attacks counts them: it rolls to hit, it is a sequence
+ *  of them, or it is a contest that takes the place of a strike (a grapple, a shove). */
+export function rulesetIsAttack(action: RulesetCombatAction): boolean {
+  return action.toHit !== undefined || !!action.sequence || !!action.contest?.strike;
+}
+
 export interface RulesetCombatHealth {
   value: number;
   max: number;
@@ -732,29 +743,25 @@ function itemUseActions(
     const counted = item.charges ? whole(read(item.charges.max)) : undefined;
     const max = counted === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, counted);
     if (use.charges !== undefined && !(max !== undefined && max >= 1)) return;
-    const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
-    const difficulty = whole(read(use.saveDifficulty));
-    // A save's number read off a stat the item does not give is a save against nothing.
-    if (use.saveDifficulty !== undefined && difficulty === undefined) return;
     const label =
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    const action = mechanicsAction(definition, use, {
-      id: `use:${index}`,
-      kind: "item",
-      label,
-      budget: use.budget ?? "",
-      toHit: aim.toHit,
-      ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+    const action = itemUseMechanics(
+      definition,
+      item,
+      use,
+      { id: `use:${index}`, label },
       build,
       evaluated,
       perCell,
-    });
+      pooled,
+    );
     if (!action) return;
-    if (aim.target !== undefined) action.target = aim.target;
-    const restored = amountOf(use.restore?.amount);
-    if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+    // A fake (1.79) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
+    // the menu tells them apart; what it does is what it truly does. One whose true item does nothing a
+    // fight can use is spent for nothing.
+    const real = held.truly ? fakeUseAction(definition, held.truly.item, build, evaluated, perCell, pooled) : null;
     // A gate read off a stat the item does not give is a check against nothing, as a save's is.
     const gateDifficulty = use.gate ? rulesetItemGateDifficulty(item, use.gate) : undefined;
     if (use.gate && gateDifficulty === undefined) return;
@@ -764,6 +771,7 @@ function itemUseActions(
         : null;
     action.itemUse = {
       item: index,
+      ...(held.truly ? { fake: { name: held.truly.name, ...(real ? { does: real } : { dud: true as const }) } } : {}),
       ...(use.consumes ? { consumes: true as const } : {}),
       ...(use.charges !== undefined && max !== undefined
         ? {
@@ -788,6 +796,86 @@ function itemUseActions(
     actions.push(action);
   });
   return actions;
+}
+
+/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.79). */
+export const RULESET_FAKE_EFFECT_KEYS = [
+  "toHit",
+  "target",
+  "autoHit",
+  "damage",
+  "heal",
+  "temporary",
+  "restore",
+  "save",
+  "saveDifficulty",
+  "applies",
+  "concentration",
+] as const satisfies ReadonlyArray<keyof RulesetCombatAction>;
+
+/** The action a use resolves as: for a fake (1.79), the one offered with what it truly does in place
+ *  of what it seemed to, so the menu, the forecast and the aim stay what the real thing's are. */
+export function rulesetActionAsUsed(action: RulesetCombatAction): RulesetCombatAction {
+  const does = action.itemUse?.fake?.does;
+  if (!does) return action;
+  const used: RulesetCombatAction = { ...action };
+  for (const key of RULESET_FAKE_EFFECT_KEYS) delete used[key];
+  return { ...used, ...does };
+}
+
+/** What an item's use does, as an action: its own to-hit and save difficulty in place of a sheet row's,
+ *  and what it restores. Null for a use no menu holds, or one whose save reads a stat the item does
+ *  not give (a save against nothing). */
+function itemUseMechanics(
+  definition: RulesetDefinition,
+  item: RulesetCatalogItem,
+  use: NonNullable<RulesetCatalogItem["use"]>,
+  from: { id: string; label: string },
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  perCell: number | undefined,
+  pooled: boolean,
+): RulesetCombatAction | null {
+  const read = itemAttackValue(item, use.saveDifficulty);
+  const difficulty = typeof read === "number" && Number.isFinite(read) ? Math.trunc(read) : undefined;
+  if (use.saveDifficulty !== undefined && difficulty === undefined) return null;
+  const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
+  const action = mechanicsAction(definition, use, {
+    ...from,
+    kind: "item",
+    budget: use.budget ?? "",
+    toHit: aim.toHit,
+    ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+    build,
+    evaluated,
+    perCell,
+  });
+  if (!action) return null;
+  if (aim.target !== undefined) action.target = aim.target;
+  const restored = amountOf(use.restore?.amount);
+  if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+  return action;
+}
+
+/** What a fake's use truly does: its true item's use, read off that item, as the parts of an action
+ *  in `RULESET_FAKE_EFFECT_KEYS`; null where it does nothing a fight can use (no use, one no menu holds, or a
+ *  save whose number reads a stat the item does not give). */
+function fakeUseAction(
+  definition: RulesetDefinition,
+  item: RulesetCatalogItem,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  perCell: number | undefined,
+  pooled: boolean,
+): Partial<RulesetCombatAction> | null {
+  const action = item.use
+    ? itemUseMechanics(definition, item, item.use, { id: "fake", label: "" }, build, evaluated, perCell, pooled)
+    : null;
+  if (!action) return null;
+  const does: Partial<RulesetCombatAction> = {};
+  for (const key of RULESET_FAKE_EFFECT_KEYS)
+    if (action[key] !== undefined) Object.assign(does, { [key]: action[key] });
+  return does;
 }
 
 /**
@@ -1090,7 +1178,12 @@ function mechanicsAction(
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
   if (mechanics.save) {
-    action.save = { save: mechanics.save.save, onSuccess: mechanics.save.onSuccess, difficulty: sourceDifficulty };
+    action.save = {
+      save: mechanics.save.save,
+      onSuccess: mechanics.save.onSuccess,
+      difficulty: sourceDifficulty,
+      ...(mechanics.save.ignoresCover ? { ignoresCover: true as const } : {}),
+    };
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));
@@ -1545,6 +1638,7 @@ function contestActions(
       ...(strikes > 0 ? { strikes } : {}),
       contest: {
         id: contest.id,
+        ...(contest.strike ? { strike: true as const } : {}),
         attacker: [...contest.attacker.checks],
         defender: [...contest.defender.checks],
         ties: contest.ties,
@@ -1568,11 +1662,46 @@ function startingUses(actions: readonly RulesetCombatAction[]): Record<string, n
 
 type RulesetStatBlockLike = NonNullable<RulesetCombatant["block"]>;
 
-/** Full budgets, as a fresh turn and a fresh round hand them out. */
-export function refreshRulesetBudgets(combat: RulesetCombat, budgets: Record<string, number>, per: "turn" | "round") {
+/** Full budgets, as a fresh turn and a fresh round hand them out: the declared count, and what the
+ *  holder's conditions add or take away (combat C6d), never below none. */
+export function refreshRulesetBudgets(
+  combat: RulesetCombat,
+  budgets: Record<string, number>,
+  per: "turn" | "round",
+  changes?: ReadonlyMap<string, number>,
+) {
   for (const budget of combat.economy.budgets) {
-    if (budget.per === per) budgets[budget.id] = budget.count;
+    if (budget.per === per) budgets[budget.id] = Math.max(0, budget.count + (changes?.get(budget.id) ?? 0));
   }
+}
+
+/** What a combatant's conditions do to their action economy (combat C6d, as Haste and Slow do): turn
+ *  budgets added or taken away, what other budgets may be spent on, budgets of which a turn may spend
+ *  only one, and the fewest attacks a turn any of them allows. */
+export interface RulesetConditionEconomy {
+  budgets: Map<string, number>;
+  grants: NonNullable<RulesetCombatCondition["grants"]>[];
+  exclusive: Array<[string, string]>;
+  attacksPerTurn?: number;
+}
+export function rulesetConditionEconomy(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): RulesetConditionEconomy {
+  const economy: RulesetConditionEconomy = { budgets: new Map(), grants: [], exclusive: [] };
+  for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
+    for (const change of entry.budgets ?? []) {
+      economy.budgets.set(change.budget, (economy.budgets.get(change.budget) ?? 0) + change.flat);
+    }
+    if (entry.grants) economy.grants.push(entry.grants);
+    if (entry.exclusive) economy.exclusive.push(entry.exclusive);
+    if (entry.attacksPerTurn !== undefined) {
+      economy.attacksPerTurn = Math.min(economy.attacksPerTurn ?? entry.attacksPerTurn, entry.attacksPerTurn);
+    }
+  }
+  return economy;
 }
 
 function fullBudgets(combat: RulesetCombat): Record<string, number> {
@@ -1718,6 +1847,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           combatant.riders = [...(combatant.riders ?? []), ...block.riders.map((rider) => ({ ...rider }))];
         }
         combatant.block = block;
+        if ("creature" in entry) combatant.creature = { ...entry.creature };
         // A sheet that gives it no health at all is a creature that could never be hurt or ever
         // stand: left out, and the opening says why, rather than walked in as something unkillable.
         const health = rulesetCombatHealth(definition, combat, combatant);
@@ -1752,6 +1882,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         id: entry.id,
         name: entry.name,
         side: "enemy",
+        ...("creature" in entry ? { creature: { ...entry.creature } } : {}),
         initiativeRoll: initiative.roll,
         initiativeModifier: initiative.modifier,
         initiative: initiative.total,
@@ -1824,6 +1955,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   }
 
   placeRulesetCombatants(definition, combat, state, input.board);
+  // A turn's budgets as conditions held from before the fight change them (combat C6d): the first
+  // actor's turn begins now and never passes through the turn's own refill.
+  for (const combatant of state.combatants) {
+    const economy = rulesetConditionEconomy(definition, combat, combatant, state);
+    if (economy.budgets.size) refreshRulesetBudgets(combat, combatant.budgets, "turn", economy.budgets);
+  }
 
   state.order = rulesetInitiativeOrder(state.combatants);
   state.cursor = rolls;
@@ -1991,6 +2128,8 @@ function placeRulesetCombatants(
   state.board = {
     grid,
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
+    // What a shot gains from higher ground, as the ruleset said at the start (combat C6b).
+    ...(combat.elevation?.rangeBonus ? { rangeBonus: combat.elevation.rangeBonus } : {}),
   };
 }
 

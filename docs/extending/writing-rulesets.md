@@ -423,7 +423,7 @@ The result says what the sheet added (`adjust="-2"` on the record, and a line on
 
 ### Rests
 
-A rest is a list of restore steps and things to clear. Each step names one target (`pool`, `poolGroup`, `listPools`, `track`, or `state`) and either sets it (`"to": "max"`, `"to": "min"`, or a number) or changes it (`"by": { "const": 1 }`, or `"by": { "fractionOfMax": 0.5 }`). A step naming a wound track can only heal it, so its `by` is negative; see above. A step naming a live state only sets it, to `"default"` or one of its values.
+A rest is a list of restore steps and things to clear. Each step names one target (`pool`, `poolGroup`, `listPools`, `track`, or `state`) and either sets it (`"to": "max"`, `"to": "min"`, or a number) or changes it (`"by": { "const": 1 }`, or `"by": { "fractionOfMax": 0.5 }`). A step naming a wound track can only heal it, so its `by` is negative; see above. A step naming a live state only sets it, to `"default"` or one of its values. A `poolGroup` step with a `fractionOfMax` changes each pool of the group by its own fraction; add `"shared": true` (Capability API 1.77) to work the fraction out on the whole group's maximum instead and hand it to the group's pools in the order the sheet lists them, each up to what it is missing. 5e's long rest, "half of the character's total number of" hit dice kept in one pool per die, is `{ "poolGroup": "hit_dice", "by": { "fractionOfMax": 0.5, "round": "down", "min": 1 }, "shared": true }`.
 
 ### Game Master text
 
@@ -628,13 +628,13 @@ The path is always `catalogs/<the catalog's id>.json`. The file itself looks lik
 { "schemaVersion": 1, "catalog": "knacks", "entries": [] }
 ```
 
-Separate catalog files are for packages published through the official catalog: the package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27, and a catalog of items needs 1.49. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 256 KB limit on the whole ruleset file. That is room for a few hundred short entries.
+Separate catalog files come in a package: one published through the official catalog, or a ruleset package file you import yourself (see [Sharing your ruleset](#sharing-your-ruleset)). The package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27, and a catalog of items needs 1.49. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 256 KB limit on the whole ruleset file. That is room for a few hundred short entries.
 
 The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and 1 MB for one catalog file.
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.69, and a rider that fires on held weapons (`weapons`) needs 1.70.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.69, a rider that fires on held weapons (`weapons`) needs 1.70, starting gear (`startingGear`) needs 1.78, and a risky item, a fake or a dishonest seller needs 1.79.
 
 ### The items block
 
@@ -1058,6 +1058,44 @@ Your `currencies` are the party's money. A coin is an item in the bags, a stack 
 - The Game Master pays with `[inventory: action="pay" amount="3 shillings" who="Ada"]` and is paid with `action="earn"`. `amount` is a count and a coin, by its id or label, one of it or many, in any case (`1 penny`, `12 pennies`). A payment comes out of one bag (the player's without `who=`), in the coin's own family only: the largest coins that fit go first, then the smallest coin left that covers what is still owed is broken, and the change comes back in the family's smaller coins, largest first. The answer says what was paid and what came back: 3 shillings out of a purse holding one crown is `Paid with crowns ×1; shillings ×2 back.` A payment the bag cannot meet is refused (`cannot-afford`), and so is a coin you do not have (`unknown-coin`) and any payment in a ruleset without currencies (`no-currencies`). An earning is an add of that coin, into `who`'s bag or shared out by the carrying rule. The journal lists what was spent and earned, and a notification shows it. Its instructions list your coins, and only a ruleset with some has them.
 - Buying is a payment and then an add, or, in a ruleset with a market, a `buy` (below). There is no shop screen.
 
+### Starting gear
+
+`items.startingGear` (Capability API 1.78) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the player's bag or a party member's. Gear the character's sheet `fits` is listed first, then gear without `fits` (for any character, such as a background's); every gear is offered, because a character's concept is the player's and the Game Master's to agree.
+
+```json
+"startingGear": [
+  {
+    "id": "fighter", "label": "Fighter", "group": "class",
+    "fits": { "value": { "field": "level_fighter" }, "atLeast": 1 },
+    "lines": [{ "item": "equipment/shield", "equip": true }],
+    "choices": [
+      {
+        "label": "Armor",
+        "options": [
+          { "label": "Chain mail", "lines": [{ "item": "equipment/chain-mail", "equip": true }] },
+          { "label": "Leather armor and a longbow", "lines": [
+            { "item": "equipment/leather-armor", "equip": true },
+            { "item": "equipment/longbow" }, { "item": "equipment/arrow", "count": 20 }
+          ] }
+        ]
+      },
+      { "label": "A martial weapon", "options": [
+        { "label": "Pick one", "lines": [{ "oneOf": ["equipment/longsword", "equipment/battleaxe"] }] },
+        { "label": "A greataxe", "lines": [{ "item": "equipment/greataxe" }] }
+      ] }
+    ]
+  },
+  { "id": "acolyte", "label": "Acolyte", "group": "background", "lines": [{ "coins": "gp", "count": 15 }, { "name": "Vestments" }] }
+]
+```
+
+- A line is one of the ruleset's items (`item`), coins (`coins`, a unit id), one item the player picks from a fixed list (`oneOf`, 2 to 48 items), or a plain item by name (`name`, where `freeform` allows plain items; held to the rules of a label, so no brackets, `{{` or line breaks). `count` is 1 to 999; `equip: true` puts an item on as it is taken, where its slots are free, so armor counts from the start.
+- `choices` are 0 to 8, each with 2 to 6 options of their own lines.
+- `group`: the gear a character takes once of each group (a class's and a background's). Taking the same group again is a choice the player makes in the dialog, and adds to what is already in the bag. Gear with no group is its own group, never the same as a group of the same name.
+- `fits` reads the sheet without its live state, as carrying does. It only orders the list.
+- Taking is all or nothing: gear too heavy for its bearer is refused whole, and the dialog says what it weighs against what they can still carry. An item a layer takes out of the game is left out and named, and so is a list all of whose items it takes out; coins of a coin a layer takes out are paid in the largest coin left of the same worth, and the dialog shows them that way. Gear of which nothing is left is refused, so it is never marked as taken for nothing. A service is never offered from a list.
+- The import checks every item (in an inline catalog; a catalog in its own file is checked when the gear is taken), coin, plain item and `fits` reference, refuses a service, and refuses a count that would need more stacks than a bag takes at once.
+
 ### Markets
 
 A `market` in the `items` block (Capability API 1.65) says what a place sells and at what price, instead of every shop selling everything at its list price. Gravewatch's, a little shortened:
@@ -1128,6 +1166,29 @@ A market day (Capability API 1.69) makes a place's shelves change and run out, a
 - **`purse`** on a place size: the most its sellers pay out in a day, all together, in one of your coins. Sales paid in that coin's family count against it; without a purse, they buy without limit.
 - **Selling.** The Game Master sells with `[inventory: action="sell" item="Silver coffin nail" count="1" seller="smith" who="Ada"]`. The Engine prices it, takes it out of the seller's bag (the player's without `who=`; never a bound cursed item) and pays its coins in, largest first, or refuses and changes nothing: no place said, nobody here buys it (`not-bought`), no price (`not-for-sale`), today's purse spent (`purse-spent`), none held, or coins the bag cannot carry. The answer says what it fetched (`price="4 shillings"`), the journal lists it as sold, and a notification shows it.
 - The MARKET block adds what each seller has in stock today, how many are left of a limited item, and what the sellers here pay and how much of today's purse is left; its instructions teach `sell` and `day="new"`.
+
+#### Honest and dishonest sellers
+
+Capability API 1.79 lets an item be risky or a fake, and a seller be dishonest.
+
+```json
+"items": { "market": { "sellers": [
+  { "id": "fence", "label": "Fence", "sells": [{ "tag": "magical" }], "place": "town", "honest": false, "stock": { "table": "fences_odd_lot" } }
+] } }
+```
+
+```json
+{ "id": "bag-of-devouring", "label": "Bag of Devouring", "item": { "category": "wondrous", "passesFor": "magic_items/bag-of-holding", "cost": { "amount": 5, "unit": "gp" } } }
+{ "id": "wand-of-wonder", "label": "Wand of Wonder", "item": { "category": "wand", "risky": "every wave is a gamble; some effects turn on the one who waves it" } }
+```
+
+- **`risky`** on an item: what an honest seller warns of before selling it. The MARKET block lists it with "(warn the buyer first: ...)" beside an honest seller's ware; a dishonest seller says nothing.
+- **`passesFor`** on an item makes it a fake of another item (`<catalog>/<entry>`): a real, sellable item of the same category, worn in the same slots, that binds if the fake binds. It is checked at import where both are readable, at install for every catalog file, and again when a market offers it, so a fake whose target is missing or hidden by a layer is never sold. A cursed item (`binds.cursed`) or a fake is never among anybody's wares, and never in an honest seller's stock.
+- **`honest: false`** on a seller: a fake their `stock` table rolls is offered as the item it passes for, at that item's price, and the MARKET block shows the Game Master the truth beside it. A buy that names that seller and that item gets the fake; a buy that names no seller never does.
+- **A fake in the bag** shows as the item it passes for everywhere the player looks (the bag, the journal, notifications, fights), and keeps what it truly is. The Game Master's inventory block marks it `[FAKE: really ...]` and asks it to keep calling it by the name it is shown by.
+- **Found out**: `[inventory: action="reveal" item="Bag of Holding" who="Ada"]`, binding it (attuning shows a curse), using it (what it truly does happens; when that is nothing the rules work out, the Game Master tells it), or selling it to an honest buyer, who says what it truly is and pays what that is worth (its own `cost`), or refuses where it has none. A dishonest buyer takes a fake as what it seems. From then on it is its true item.
+- **Worn or carried**: a fake does what it truly does on the character's sheet (its `worn` or `carried` effects and its stats). The first inventory change after which the sheet shows a number, or what a check adds, that the item it passes for would not, finds it out, and the journal and the screen say what it was. A difference only a fight reads (a resistance) does not, and neither does a change to the sheet alone until the next inventory change. In a fight, a worn fake weapon still attacks as the weapon it passes for.
+- Under single-player trust, Peek Prompt shows the Game Master's view, truth included.
 
 ### Using items outside a fight
 
@@ -1406,6 +1467,34 @@ same keys for a d20 system:
     can see it needs. Naming an effect the condition does not have is refused. Without a board there
     is no line to break, so everything counts either way.
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
+  - The action economy (Capability API 1.76), as Haste and Slow change it:
+    - `budgets`: `[{ "budget": "haste", "flat": 1 }]` gives its holder that many more (or fewer) of a
+      turn budget each turn, never below none. Only a budget that refills `per` turn can be changed
+      this way. A budget may be declared with `"count": 0` for one only a condition fills, and the
+      screen shows it only while somebody has some. An invented opponent never spends one.
+    - `grants`: `{ "budget": "haste", "standard": ["dash", "disengage", "hide"], "attacks": true,
+      "items": true }` says what that budget may be spent on: the standard actions named (from the
+      ruleset's own `standard` list, never on the first budget, where every standard action already
+      is), one weapon attack of a single strike (whatever strikes an action would otherwise put in
+      hand; for a creature, an attack of its stat block at one target, never a multiattack), and an
+      item's use: `true` for any item, or `{ "tags": ["mundane"] }` for only an item with one of
+      those item tags (5e's Use an Object is a mundane item's, never a magic item's activation).
+      They are offered once the budget they would usually spend is gone, and only on the holder's
+      own turn: a grant never pays for a reaction.
+    - `exclusive`: `["action", "bonus"]`, two budgets of which a turn spends only one: spending
+      either empties the other.
+    - `attacksPerTurn`: how many attacks (actions that roll to hit, each attacking part of a
+      sequence, and a contest that takes the place of a strike, such as a grapple) its holder makes
+      on its own turn, whatever an action would give. A reaction on somebody else's turn is neither
+      capped nor counted.
+    - `onEnd`: `{ "applies": [{ "condition": "lethargic", "duration": { "rounds": 1 } }] }`, what it
+      leaves behind when it ends for good (it runs out, a save or damage ends it, concentration
+      breaks), never when it is put on again. It lasts some `rounds` (never `"until-save"` or
+      `"instant"`). Left behind in the middle of its holder's own turn, its rounds start with the
+      next turn, so one round is the whole next turn.
+  - When a fight ends, however it ends, every condition it put on with a clock, an `endsAfter` or a
+    concentration comes off the sheet without leaving anything behind, and concentration ends. A
+    condition with no clock (a fall's prone) stays.
 
   `own-saves-advantage` and its opposite roll the save twice and keep one, exactly as an attack is
   rolled, and they cancel each other out. `own-checks-advantage` and its opposite do the same to the
@@ -1534,7 +1623,7 @@ a count of successes.** So nothing is renamed:
   and botch on are your `resolution`'s. The wound track your `resolution.penaltyFrom` names takes its
   penalty off the pool, as it does off a check.
 - `defense` is how many successes an attack needs, and never fewer than one. A condition's modifier
-  to `defense`, and `cover.bonus`, add to it.
+  to `defense`, and cover (`cover.bonus`, or `cover.threeQuarters`), add to it.
 - Each success past the ones needed adds one damage die. A botch misses, whatever it counted. There
   are no criticals: a strong hit is worth its extra dice.
 - A save's number is its pool and its difficulty the successes it needs. A contest throws each side's
@@ -2010,7 +2099,7 @@ number you wrote; the Engine supplies the board and nothing else.
 ```json
 "distance": { "label": "ft", "perCell": 5 },
 "ranged": { "long": "disadvantage", "adjacentFoe": "disadvantage" },
-"cover": { "bonus": 2 },
+"cover": { "bonus": 2, "threeQuarters": 5, "saves": ["dex_save"], "creatures": true },
 "opportunity": { "budget": "reaction" }
 ```
 
@@ -2114,10 +2203,56 @@ A burst is every cell within its size of the cell it was aimed at. A cone runs f
 that cell, as wide at each step as it is far. A line runs the same way, one cell wide. All three
 stop at anything solid.
 
-**Line of sight and cover.** A straight line of cells between the two of them: anything solid on it
-blocks a shot and stops an area spreading past it, and the target simply is not on the menu. Ground
-that is worth something as cover adds `cover.bonus` to the defense the attack is rolled against, and
-the log says so. There is no three-quarter cover, no total cover and no elevation.
+**Line of sight and cover.** A straight line of cells between the two of them: a wall or a mountain
+on it blocks a shot and stops an area spreading past it, and the target simply is not on the menu.
+Water is seen across: a shot crosses a river, and a line area carries on over it. The Engine's own
+fights use the same sight test.
+
+Cover is read from where the attacker stands, by the corner lines of the DMG's optional grid rule:
+from the attacker's best corner, one line to each corner of the target's cell. Three or four lines
+through a wall or a mountain are three-quarters cover; any line through one, or through ground worth
+something as cover (woods, ruins), is half; low ground alone is never more than half. A target the
+attacker cannot see at all has total cover and is not on the menu. Against an attack, a target
+standing on ground worth something as cover has at least half, as it always had; a save is helped
+only by what lies between it and the effect.
+
+- `cover.bonus` is what half cover adds to the defense an attack is rolled against, and the log says
+  so.
+- `cover.threeQuarters` (Capability API 1.74) is what three-quarters adds; without it, `bonus`
+  serves for both.
+- `cover.saves` (1.74) names the saves cover helps too, against an action's own save (never a save
+  that ends a condition or keeps concentration): from where a burst lands, and from its maker for
+  anything else. The log says that too.
+- `cover.creatures` (1.74) makes anybody standing in the way half cover, friend or foe.
+- A save whose text says the target gains nothing from cover (5e's Sacred Flame) says
+  `"ignoresCover": true` (1.74), on an entry's `mechanics.save`, a creature action's `save` or an
+  item use's `save`.
+
+**Height.** A board can have height, up to three levels, and every positioned fight walks and sees by
+it whatever the ruleset says: climbing a level costs one more cell, coming down costs nothing, a step
+of two levels or more is a cliff nobody walks (and nobody is shoved up), and ground higher than both
+ends blocks sight. Shooting down from higher ground, low cover between hides nothing. A ruleset says
+what its system adds with `elevation` (Capability API 1.75, and it needs `distance`):
+
+```json
+"elevation": {
+  "levelHeight": 5,
+  "highGround": "advantage",
+  "rangeBonus": 1,
+  "falling": { "per": 10, "dice": { "count": 1, "sides": 6 }, "max": 20, "type": "bludgeoning", "prone": "prone" }
+}
+```
+
+- `levelHeight` is how high one level is in the ruleset's own distance.
+- `highGround` is what striking down from higher ground gives an attack roll: `"advantage"`, or
+  `{ "bonus": n }`, taken off the defense the attack is rolled against. Left out, it gives nothing.
+- `rangeBonus` is how many cells further a shot carries from higher ground.
+- `falling` is what a fall does: somebody shoved off a step of two levels or more lands below and takes
+  `dice` for every `per` of the drop (levels times `levelHeight`), at most `max` dice, of `type`, and
+  takes the `prone` condition after, when there is one. The dice are thrown as the system throws harm:
+  added up, or under `dice-pool` counted as successes with soak taken off. A fall is a blow like any
+  other, so it can put somebody down or break their concentration. The log says how far they fell.
+  Without `falling` the fall is noted and does nothing.
 
 **Strikes at somebody walking away.** Declare `opportunity.budget` and, when a combatant walks out
 of the reach of a standing enemy who can act, has that budget and has something melee to strike
@@ -2375,7 +2510,7 @@ needs 1.44. One that waits for `hit` needs 1.46.
 
 Said plainly, because a ruleset should not claim what the Engine does not do:
 
-- **Beyond the modest board**: no three-quarter or total cover, no elevation, no flying over
+- **Beyond the modest board**: no flying over
   obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
   walk and a contest's push. Nobody drags a creature they hold.
 - **A contest is plain.** It has no size limits and opens no window (nobody may answer one).
@@ -2492,7 +2627,7 @@ its own file) are a later addition. Today a layer ships inside the ruleset it be
 Community rulesets use the same switch as imported agents. Open **Settings** > **Advanced** > **Danger Zone** and make sure **Allow custom Agent imports** is on. Importing also needs localhost access or configured **Admin Access**.
 
 1. Open the **Agents** panel and choose the **Import agents** button (the download icon in the row of buttons at the top of the panel).
-2. Pick **Game Mode ruleset** and choose your JSON file.
+2. Pick **Game Mode ruleset** and choose your JSON file, or a ruleset package file ending in `.ruleset.json` (see [Sharing your ruleset](#sharing-your-ruleset)).
 3. Read the review. It shows the name, version, license, what the ruleset covers, and the Game Master text. Choose **Import**.
 
 Your ruleset appears in the panel's **Rules** section and in the setup wizard's **Rules** choice for new games. A ruleset imported from a file is filed as `local/<your id>`, so it can never be confused with an official ruleset or with somebody else's.
@@ -2505,9 +2640,64 @@ So the loop while you are drafting is: edit, raise `version`, import, start a ne
 
 If you change the shape of the sheet (add, remove, or rename things), raise `sheet.version` too. Existing sheets are read tolerantly: values the new sheet does not know are kept, and missing ones take their defaults.
 
+### Moving values to new ids: `sheet.migrations`
+
+Adding things needs nothing more. When a new layout moves a value somewhere else (a renamed field, one level that becomes a level per class, one pool of hit dice that becomes one per die), say how in `sheet.migrations` (Capability API 1.77), so every character made on the old layout keeps its numbers: in the library, in games, in old saves, branches and checkpoints, and in imported cards.
+
+```json
+"migrations": [
+  {
+    "from": 3,
+    "steps": [
+      { "rename": "field", "from": "xp", "to": "experience" },
+      {
+        "route": "level",
+        "by": "class",
+        "cases": [
+          { "words": ["fighter"], "to": "level_fighter" },
+          { "words": ["wizard"], "to": "level_wizard" }
+        ],
+        "else": "level_other",
+        "default": 1
+      },
+      {
+        "routeLive": "pool",
+        "from": "hit_dice",
+        "cases": ["hit_dice_d6", "hit_dice_d8", "hit_dice_d10", "hit_dice_d12"],
+        "else": "hit_dice_d8"
+      }
+    ]
+  }
+]
+```
+
+- Each entry moves a stored sheet from version `from` to `from + 1`, and runs for every sheet stored at that version or older, in order. Never remove one once it has shipped: a sheet stored long ago still needs it. A version that only adds needs none.
+- `rename` (an `ability`, `skill`, `save` or `field`): the value is copied to its new id. A skill or save takes its bonus along. A rename may continue one from an earlier entry, or feed a field a later `route` sends on; the import follows the chain to where it ends.
+- `route`: one field's value goes to the field that another field's text names. A case wins when its words appear in `by`'s text as whole words (only letters join a word, so "Fighter3" names a fighter), ignoring case, and exactly one case does. None, or several ("Fighter 3 / Wizard 2", which one number cannot be split between without asking), and it goes to `else`. `default` stands in for a sheet that never stored the value. `by` is a field the sheet has, or one an earlier layout renamed away. The targets are number or text fields with no default, or a default of 0 or empty: the value lands in one of them and every other keeps its default, so any other default would read as a level nobody gave. A target a later rename moves on is followed there.
+- `routeLive` (a `pool` or `track` of the live state): the stored value goes to the one of `cases` the migrated sheet shows (a pool with a maximum above 0, a track the sheet does not hide), else to `else`. The tracks a value goes to are all wound tracks (it carries the marks) or all plain ones (it carries the number).
+- Every build step copies: the old value stays where it was, so an older version of your ruleset still reads the sheet as it did. A step never overwrites a value already in its target.
+- The import refuses an entry at or above `sheet.version`, two entries from the same version, a step that writes to an id the sheet does not have, a case listed twice, and a `rename` or `routeLive` that reads from an id the sheet still has (an id moved away is never used again, which is what makes those steps safe to run again).
+- Sheets are migrated whenever they are read, and the new layout is stored at the next edit. Live state has no version of its own, so `routeLive` runs on every read: the old key is dropped and its value moves only while the new key is not there yet, so a value spent or rested since is never overwritten. Where it went is settled by the first write after the update: a sheet corrected later (a class level moved by hand) does not move it again. A fight already in progress when the new version arrives still ends, as before.
+
 ## Sharing your ruleset
 
 **As a file.** Send the JSON file to a friend. They import it the same way you did.
+
+**As a package file.** A ruleset too big for one file, with catalogs in their own files, travels as one plain JSON file named `<name>.ruleset.json`. It holds the package manifest and the ruleset's documents, each as its exact bytes in base64:
+
+```json
+{
+  "format": "marinara-ruleset",
+  "version": 1,
+  "manifest": { "kind": ["ruleset"], "…": "the package manifest" },
+  "files": {
+    "ruleset.json": "<base64>",
+    "catalogs/spells.json": "<base64>"
+  }
+}
+```
+
+The manifest lists `ruleset.json` and each `catalogs/<id>.json` in `contributions.assets.paths` and in `files`, with each one's size and sha256. A ruleset editor such as Pixelforge makes one. **Import agents** → **Game Mode ruleset** takes the file and shows the same review as for a ruleset file, with each catalog and its number of entries. Nothing in it is compressed, so it never holds more than its own size. It is read as data and never installed as a package: it is refused, with the reason, if it holds anything else (another key, any other file, a document that is not strict base64 or not UTF-8 text), if its manifest is more than a ruleset's (any code, permissions or other contributions), if a file is not the one the manifest lists, if a `$comment` is longer than 2,000 characters or `$schema` names anything but the Engine's own schema, or if the ruleset or a catalog does not read. It is filed as `local/<its id>` like a ruleset file, at most 24 MB, with at most 12 catalog files of 1 MB each. A version is its ruleset and its catalogs together, so a changed catalog needs a higher `version` too. Ruleset packages are not accepted as zips.
 
 **From a GitHub repository.** If you keep your work in a public GitHub repository, put each ruleset in a `rulesets` folder at the top of the repository, one file per ruleset:
 

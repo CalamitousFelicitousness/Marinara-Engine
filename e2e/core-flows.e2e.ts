@@ -8683,7 +8683,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
 
     const packageInput = page
       .getByRole("region", { name: "Agents" })
-      .locator('input[type="file"][accept*="application/json"]');
+      .locator('input[type="file"][accept*="application/json"][accept*="application/zip"]');
     await packageInput.setInputFiles({
       name: "permission-review-agent.json",
       mimeType: "application/json",

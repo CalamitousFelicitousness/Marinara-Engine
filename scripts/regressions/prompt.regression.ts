@@ -13345,19 +13345,25 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "staged",
       );
       // ── Loop wiring pins: the pure function is only half the contract ────
-      const agentSourceForPins = readFileSync(
-        new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
-        "utf8",
+      const agentSourceForPins = (
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
+          "utf8",
+        ) +
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-round-review.ts", import.meta.url),
+          "utf8",
+        )
       ).replace(/\s+/gu, " ");
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(action, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(action, args.commandResultsForContinuity, { auditFrom: state.claimAuditWatermark, hadPassedClaimAudit: state.hadPassedClaimAudit, })",
         ),
         "the loop audits against the live watermark, never from zero",
       );
       assert.ok(
         agentSourceForPins.includes(
-          "if (claimAudit.advanceWatermark) { claimAuditWatermark = commandResultsForContinuity.length; hadPassedClaimAudit = true; }",
+          "if (claimAudit.advanceWatermark) { state.claimAuditWatermark = args.commandResultsForContinuity.length; state.hadPassedClaimAudit = true; }",
         ),
         "a passing audit consumes its evidence and arms the summary allowance",
       );
@@ -13367,7 +13373,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: reviewState.claimAuditWatermark, hadPassedClaimAudit: reviewState.hadPassedClaimAudit, })",
         ),
         "the command-limit audit shares the run's scope state",
       );

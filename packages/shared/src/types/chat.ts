@@ -946,6 +946,8 @@ export interface MessageExtra {
   mariDeferredMutations?: boolean | null;
   /** Slice 71: what those held commands would change, for the "Needs you" card. */
   mariHeldChanges?: MariHeldChange[] | null;
+  /** The raw held commands, so Accept can apply exactly them server-side (server-validated on read). */
+  mariHeldCalls?: unknown;
   /** Slice 70: the quick-reply chips this Mari turn offered (raw; the client sanitizes), so a reload keeps them. */
   mariSuggestions?: unknown;
   /**

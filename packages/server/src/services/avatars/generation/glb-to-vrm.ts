@@ -517,23 +517,33 @@ export async function shrinkGlbTextures(
     return { ...unchanged, skipped: true };
   }
   const roles = imageRoles(json);
+  // Per view: images sharing one view (rare) are resized once, to the largest size any of them keeps.
+  const targets = new Map<number, { mimeType: string; limit: number; images: number[] }>();
+  json.images.forEach((image, index) => {
+    if (image.bufferView === undefined || !views[image.bufferView]) return;
+    if (image.mimeType !== "image/png" && image.mimeType !== "image/jpeg") return;
+    const limit = TEXTURE_MAX_SIDES[roles.get(index) ?? "other"];
+    const target = targets.get(image.bufferView);
+    if (target) {
+      target.limit = Math.max(target.limit, limit);
+      target.images.push(index);
+    } else targets.set(image.bufferView, { mimeType: image.mimeType, limit, images: [index] });
+  });
   const replaced = new Map<number, Buffer>();
   const resized: Array<{ image: number; from: number; to: number }> = [];
-  for (const [index, image] of json.images.entries()) {
-    const view = image.bufferView === undefined ? undefined : views[image.bufferView];
-    if (!view || (image.mimeType !== "image/png" && image.mimeType !== "image/jpeg")) continue;
+  for (const [viewIndex, { mimeType, limit, images }] of targets) {
+    const view = views[viewIndex]!;
     const start = view.byteOffset ?? 0;
     const bytes = bin.subarray(start, start + view.byteLength);
-    const limit = TEXTURE_MAX_SIDES[roles.get(index) ?? "other"];
     const { width = 0, height = 0 } = await sharp(bytes).metadata();
     const side = Math.max(width, height);
     if (side <= limit) continue;
     const pipeline = sharp(bytes).resize({ width: limit, height: limit, fit: "inside" });
     const smaller: Buffer = await (
-      image.mimeType === "image/png" ? pipeline.png({ compressionLevel: 9 }) : pipeline.jpeg({ quality: 90 })
+      mimeType === "image/png" ? pipeline.png({ compressionLevel: 9 }) : pipeline.jpeg({ quality: 90 })
     ).toBuffer();
-    replaced.set(image.bufferView!, smaller);
-    resized.push({ image: index, from: side, to: limit });
+    replaced.set(viewIndex, smaller);
+    for (const image of images) resized.push({ image, from: side, to: limit });
   }
   if (!replaced.size) return unchanged;
   // Every view is copied in order, each starting on a 4-byte boundary (accessors need their component size).

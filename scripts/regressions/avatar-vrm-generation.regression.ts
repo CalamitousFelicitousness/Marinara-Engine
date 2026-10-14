@@ -393,6 +393,16 @@ const shrunk = await shrinkGlbTextures(converted.vrm, getSharp);
   });
   assert.equal(noSharp.skipped, true, "without sharp (Lite, Termux) the textures stay as they are");
   assert.ok(noSharp.glb.equals(converted.vrm));
+  // Two images on one view (a colour map and a normal map sharing bytes) keep the larger size, resized once.
+  const { json: shared, bin: sharedBin } = parseGlb(converted.vrm);
+  shared.images![2]!.bufferView = shared.images![0]!.bufferView;
+  shared.images![2]!.mimeType = shared.images![0]!.mimeType;
+  const sharedResult = await shrinkGlbTextures(writeGlb(shared, sharedBin), getSharp);
+  assert.deepEqual(
+    sharedResult.resized.map(({ image, to }) => [image, to]),
+    [[1, 1024]],
+    "the shared view keeps the colour map's 2048 pixels",
+  );
   // A view that points past the binary chunk is never repacked into a shorter one.
   const { json: pastEnd, bin: pastEndBin } = parseGlb(converted.vrm);
   pastEnd.bufferViews![0]!.byteLength = pastEndBin.length + 64;

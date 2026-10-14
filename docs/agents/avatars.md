@@ -74,7 +74,7 @@ Mesh avatars need WebGL2, which current browsers have. Without it, or when the b
 1. Open **3D Avatars** in the Agent editor and pick the character or persona.
 2. Under **VRM model**, select **Import VRM** and choose a `.vrm` file.
 3. Read **The author's terms**. They come from the model file and say who may use the model as an avatar, whether commercial use is allowed, whether you may change the model, whether sexual or very violent content is allowed, and for VRM 1.0 models whether you must credit the author and may share the file. When the file links to a license or to the author's own terms, open them too. Marinara Engine shows the terms but does not enforce them, so please follow them yourself.
-4. Under **Faces and mouth shapes**, check which of the model's expressions shows each face (Neutral, Happy, Angry, Sad, Relaxed and Surprised), each mouth shape (A, I, U, E and O) and blinking. Most are filled in for you: **Set by the model** means the model has the standard VRM expression, and **Guessed from its name** means one of its own expressions has a matching name. An expression the model has but left empty changes nothing, so it is left unset and the import says so. Pick another expression, or **None**, whenever a guess looks wrong.
+4. Under **Faces and mouth shapes**, check which of the model's expressions shows each face (Neutral, Happy, Angry, Sad, Relaxed and Surprised), each mouth shape (A, I, U, E and O) and blinking. Most are filled in for you: **Set by the model** means the model has the standard VRM expression, and **Guessed from its name** means one of its own expressions has a matching name. An expression the model left empty changes nothing, so it is never filled in for any face but Neutral, which is the model at rest, and the import says when it skipped one. Pick another expression, or **None**, whenever a guess looks wrong.
 5. Optionally, under **Idle animation**, add a `.vrma` file for the model to play while it waits. Without one, the model breathes and sways gently.
 
 **Replace model** keeps the idle animation, because VRM animations fit any VRM model. **Remove model** deletes the model and its idle animation.
@@ -153,9 +153,9 @@ Your sprite is sent to the image connection for blink and talk pictures (and to 
 
 ## Make your own model
 
-You don't have to make anything to start. A character or persona with expression sprites already has a PNGTuber avatar, and [Making an avatar from a sprite](#making-an-avatar-from-a-sprite) adds blink and talk pictures or builds a mesh avatar for you. To make your own model instead, use one of these free tools. Every path ends the same way: you import the result on the agent's page in **Agents**.
+You don't have to make anything to start. A character or persona with expression sprites already has a PNGTuber avatar, and [Making an avatar from a sprite](#making-an-avatar-from-a-sprite) adds blink and talk pictures or builds a mesh avatar for you. To make your own model instead, use one of these tools. Sprites show as soon as you add them, and every file is imported on the agent's page in **Agents**.
 
-| What you want | Tool | What you import |
+| What you want | Tool | What you get |
 | --- | --- | --- |
 | PNGTuber sprites | Any drawing app, then the character's **Sprites** tab | The sprites |
 | PNGTuber sprites with layers and costumes | [PNGTuber Plus](https://github.com/kaiakairos/PNGTuber-Plus) | A `.save` file |
@@ -167,7 +167,7 @@ You don't have to make anything to start. A character or persona with expression
 1. Draw one picture for each feeling, all the same size and with the character in the same place. Name each after its feeling: `neutral`, `happy`, `angry`, `sad`, `relaxed` and `surprised`. Names that contain a feeling word work too, such as `smile`, `cry`, `calm` or `shock`.
 2. For a moving mouth, draw the same picture with only the mouth open and add `_talk` to its name, for example `happy_talk`. For blinking, close only the eyes and add `_blink`; with both, add `_blink_talk`. A feeling without these pictures still hops while it talks.
 3. Add the pictures on the **Sprites** tab of the character or persona, under **Facial Expressions**. **Upload Folder** adds a whole folder and names each sprite after its file. See [Character Sprites](../characters/sprites.md).
-4. Open **2D Avatars** in **Agents**, choose the character or persona, and select **Use my sprites**.
+4. Chats with 2D Avatars on show them right away. To change the face for a feeling or the movement, see [PNGTuber sprites](#pngtuber-sprites).
 
 ### PNGTuber Plus
 
@@ -193,11 +193,11 @@ You don't have to make anything to start. A character or persona with expression
 
 1. Install the VRM Add-on for Blender from **Get Extensions** in Blender's **Preferences**. Blender before 4.2 installs the add-on's ZIP file under **Add-ons** instead.
 2. Give the model a humanoid armature and assign its VRM bones. The add-on can assign them automatically.
-3. Set up the expressions in the add-on's VRM panel: **Expressions** for VRM 1.0, or **VRM 0.x Blend Shape Proxy** for VRM 0.x. Each one must move a shape key or a material; an empty expression changes nothing, so the import leaves it unset. Custom expressions with a clear name, such as `Smile` or `Shock`, are matched too.
+3. Set up the expressions in the add-on's VRM panel: **Expressions** for VRM 1.0, or **VRM 0.x Blend Shape Proxy** for VRM 0.x. Each one must move a shape key or a material: an empty expression changes nothing, so the import uses it only for Neutral. Custom expressions with a clear name, such as `Smile` or `Shock`, are matched too.
    - Faces: **Happy**, **Angry**, **Sad**, **Relaxed** and **Surprised**. VRM 0.x calls the first four **Joy**, **Angry**, **Sorrow** and **Fun**, and has no surprised preset, so add a custom one named `Surprised`.
    - Mouth shapes: **Aa**, **Ih**, **Ou**, **Ee** and **Oh** (**A**, **I**, **U**, **E** and **O** in VRM 0.x).
    - Blinking: **Blink**.
-4. Export with **File → Export → VRM (.vrm)**. For an idle animation, animate the armature and use **File → Export → VRM Animation (.vrma)**.
+4. Export with **File → Export → VRM (.vrm)**. For an idle animation, animate the armature and use **File → Export → VRM Animation (.vrma)**. The add-on exports an animation only from a model set to VRM 1.0, so choose VRM 1.0 in step 3 if you want one.
 5. Open **3D Avatars** in **Agents**, choose the character or persona, and select **Import VRM**. Add the animation with **Add animation** under **Idle animation**.
 
 ### What to avoid when exporting

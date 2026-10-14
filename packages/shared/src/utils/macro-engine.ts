@@ -2724,6 +2724,79 @@ export function markReaderVersions(
     .join("");
 }
 
+const SECTION_LINE_END_RE = /[ \t]*(?:\n|$)/y;
+const BLANK_LINES_RE = /(?:[ \t]*\n)*/y;
+const BLANK_LINE_RE = /[ \t]*\n/y;
+
+/**
+ * Let each `{{#if}}` section that fills whole lines of a summary carry its own line breaks, so a section that
+ * renders nothing leaves no empty line however the summary is read: evaluated now, deferred per character,
+ * split per reader by `scopeCharacterSummary`, or flattened for the narrator. A section that renders reads as
+ * before. Every branch with text ends with the section's line break; a section that starts the text or follows
+ * a blank line also takes the blank lines after it, so a hidden paragraph leaves one separator. Sections that
+ * share a line with other text stay as written. `{{noop}}` keeps a rewritten tag from reading as a tag on a
+ * line of its own, whose trim (#3435) would drop a line break a second time.
+ * ponytail: a paragraph made only of several sections keeps one extra blank line when all of them hide, and
+ * in Individual mode the XML wrapper indents lines before deferred sections are filled in, so a line after a
+ * shown section starts at the margin. Group such sections in one condition, or indent filled-in sections when
+ * decoding, if either matters.
+ */
+export function attachConditionalLineBreaks(input: string, depth = 0): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) return result + input.slice(cursor);
+    const { branches } = block;
+    // The tag before each branch, then {{/if}}.
+    const tags = [start.start, ...branches.map((branch) => branch.contentEnd)].map((from, index) =>
+      input.slice(from, branches[index]?.contentStart ?? block.endEnd),
+    );
+    const contents = branches.map((branch) => input.slice(branch.contentStart, branch.contentEnd));
+    const lineStart = input.lastIndexOf("\n", start.start - 1) + 1;
+    const indent = input.slice(lineStart, start.start);
+    SECTION_LINE_END_RE.lastIndex = block.endEnd;
+    if (/[^ \t]/u.test(indent) || !SECTION_LINE_END_RE.test(input)) {
+      result += input.slice(cursor, start.start);
+      contents.forEach((content, index) => (result += tags[index] + attachConditionalLineBreaks(content, depth + 1)));
+      result += tags.at(-1);
+      cursor = block.endEnd;
+      continue;
+    }
+    const lineBreak = input[SECTION_LINE_END_RE.lastIndex - 1] === "\n" ? "\n" : "";
+    // The end of the text keeps the spaces after {{/if}}, as the standalone-tag trim does.
+    let end = lineBreak ? SECTION_LINE_END_RE.lastIndex : block.endEnd;
+    const previousLine = input.slice(input.lastIndexOf("\n", lineStart - 2) + 1, Math.max(lineStart - 1, 0));
+    let blankLines = "";
+    if (lineBreak && /^[ \t]*$/u.test(previousLine)) {
+      BLANK_LINES_RE.lastIndex = end;
+      BLANK_LINES_RE.test(input);
+      blankLines = input.slice(end, BLANK_LINES_RE.lastIndex);
+      end = BLANK_LINES_RE.lastIndex;
+    }
+    const firstBreak = input.indexOf("\n", start.end);
+    const texts = contents.map((content, index) => {
+      // Text that starts on the {{#if}}'s line keeps that line's indentation.
+      const onTagLine =
+        (firstBreak === -1 || firstBreak >= branches[index]!.contentStart) && !/^[ \t]*\n/u.test(content);
+      let text = content.replace(/^[ \t]*\n/u, "");
+      if (lineBreak) text = text.replace(/\n[ \t]+$/u, "\n");
+      if (!text.trim()) return "";
+      if (onTagLine) text = indent + text;
+      if (!text.endsWith("\n")) text += lineBreak;
+      return attachConditionalLineBreaks(text + blankLines, depth + 1);
+    });
+    if (/^[ \t]*\n/u.test(texts[0]!)) texts[0] = `{{noop}}${texts[0]}`;
+    BLANK_LINE_RE.lastIndex = end;
+    result += input.slice(cursor, lineStart) + texts.map((text, index) => tags[index] + text).join("") + tags.at(-1);
+    if (BLANK_LINE_RE.test(input)) result += "{{noop}}";
+    cursor = end;
+  }
+  return result;
+}
+
 function splitTopLevelDoubleColon(input: string): string[] {
   const parts: string[] = [];
   let current = "";

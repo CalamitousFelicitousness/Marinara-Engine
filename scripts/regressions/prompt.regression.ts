@@ -63,6 +63,7 @@ import {
   hasDeferredRelocationConditionals,
   normalizeGameStoryboardKeyframeCount,
   parseDeferredConditionalPayload,
+  attachConditionalLineBreaks,
   resolveDeferredCharacterMacros,
   resolveCharacterScopedMacros,
   selectConditionalPayloadBranch,
@@ -861,7 +862,10 @@ import {
   extractDialogueUtterances,
   resolveTTSVoiceForSpeaker,
 } from "../../packages/client/src/lib/tts-dialogue.js";
-import { resolveCharacterAdvancedPromptIds } from "../../packages/server/src/services/prompt/macro-context.js";
+import {
+  resolveCharacterAdvancedPromptIds,
+  resolveChatSummaryMacros,
+} from "../../packages/server/src/services/prompt/macro-context.js";
 import {
   illustratorPromptRequestsRenderedText,
   illustratorPromptTemplateOwnsComposition,
@@ -10405,6 +10409,84 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(hasDeferredCharacterMacros(summaryText), true);
       assert.match(resolveDeferredCharacterMacros(summaryText, { name: "Powers That Be" }), /Powers-only memory\./);
       assert.doesNotMatch(resolveDeferredCharacterMacros(summaryText, { name: "Dottore" }), /Powers-only memory\./);
+    },
+  },
+  {
+    // Mari, 2026-10-14: a section for a character who is not replying is replaced with nothing, not an empty line.
+    name: "Chat Summary sections for someone who is not replying leave no empty line",
+    async run() {
+      const ctx = (char: string): MacroContext => ({ user: "Mari", char, characters: [char], variables: {} });
+      const section = (name: string, text: string) => `{{#if char == "${name}"}}\n${text}\n{{/if}}`;
+      const summary = `Shared opening.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\n${section("Tighnari", "Tighnari found the herb.")}\n\nShared closing.`;
+      const tighnari = "Shared opening.\n\nTighnari found the herb.\n\nShared closing.";
+      const nobody = "Shared opening.\n\nShared closing.";
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Tighnari")), tighnari, "one responder");
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Maukie")), nobody, "a responder with no section");
+      // Individual replies in a Roleplay group defer the sections until each responder is known.
+      const deferred = resolveChatSummaryMacros(summary, ctx("Narrator"), { deferCharacterMacros: "all" });
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Tighnari" }), tighnari, "deferred, a reader");
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Maukie" }), nobody, "deferred, not a reader");
+      // A merged reply reads the summary for everyone present and marks who knows what.
+      assert.equal(
+        resolveChatSummaryMacros(summary, ctx("Narrator"), undefined, [{ name: "Tighnari" }, { name: "Maukie" }]),
+        "Shared opening.\n\n[Known only to Tighnari: Tighnari found the herb.]\n\nShared closing.",
+        "merged readers",
+      );
+
+      // Every reading agrees: now, or deferred and filled in for the responder.
+      const read = (template: string, who: string) => {
+        const now = resolveChatSummaryMacros(template, ctx(who), { trimResult: false });
+        const later = resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(template, ctx("Narrator"), { deferCharacterMacros: "all", trimResult: false }),
+          { name: who },
+        );
+        assert.equal(later, now, `${who} reads ${JSON.stringify(template)} the same now and deferred`);
+        return now;
+      };
+      const elseChain = `A\n{{#if char == "Cyno"}}\nc\n{{else if char == "Tighnari"}}\nt\n{{else}}\no\n{{/if}}\nB`;
+      const nested = `A\n\n{{#if char == "Cyno" || char == "Tighnari"}}\nBoth know.\n${section("Tighnari", "Tighnari more.")}\n{{/if}}\n\nB`;
+      const list = `List:\n  {{#if char == "Cyno"}}- c{{/if}}\n  {{#if char == "Tighnari"}}- t{{/if}}\n  {{#if char == "Cyno"}}\n  - standalone\n  {{/if}}\nEnd`;
+      const cases: Array<[string, Record<string, string>]> = [
+        [summary, { Cyno: "Shared opening.\n\nCyno alone saw the ruins.\n\nShared closing.", Maukie: nobody }],
+        // Sections written inline on lines of their own.
+        [`A\n{{#if char == "Cyno"}}x{{/if}}\n{{#if char == "Tighnari"}}y{{/if}}\nB`, { Tighnari: "A\ny\nB", Maukie: "A\nB" }],
+        // Tags on lines of their own, in a paragraph that goes on after a blank line.
+        [`A\n${section("Cyno", "x")}\n\nB`, { Cyno: "A\nx\n\nB", Maukie: "A\n\nB" }],
+        // Hidden at the start and at the end of the text.
+        [
+          `${section("Cyno", "x")}\n\nMiddle.\n\n${section("Tighnari", "y")}`,
+          { Cyno: "x\n\nMiddle.\n\n", Tighnari: "Middle.\n\ny\n", Maukie: "Middle.\n\n" },
+        ],
+        [elseChain, { Cyno: "A\nc\nB", Tighnari: "A\nt\nB", Maukie: "A\no\nB" }],
+        [`A\n{{#if char == "Cyno"}}{{else}}Not Cyno.{{/if}}\nB`, { Cyno: "A\nB", Maukie: "A\nNot Cyno.\nB" }],
+        [nested, { Cyno: "A\n\nBoth know.\n\nB", Tighnari: "A\n\nBoth know.\nTighnari more.\n\nB", Maukie: "A\n\nB" }],
+        [list, { Cyno: "List:\n  - c\n  - standalone\nEnd", Tighnari: "List:\n  - t\nEnd" }],
+        // A section that starts with a blank line keeps it.
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, { Cyno: "P\n\n\nx\n\nQ", Maukie: "P\n\nQ" }],
+        // A section sharing its line with other text stays as written.
+        [`A {{#if char == "Cyno"}}x{{/if}} B\nC`, { Cyno: "A x B\nC", Maukie: "A  B\nC" }],
+      ];
+      for (const [template, expected] of cases) {
+        for (const [who, text] of Object.entries(expected)) assert.equal(read(template, who), text, `${who}: ${template}`);
+        const attached = attachConditionalLineBreaks(template);
+        assert.equal(attachConditionalLineBreaks(attached), attached, `rewriting is idempotent: ${template}`);
+      }
+      assert.equal(attachConditionalLineBreaks(cases.at(-1)![0]), cases.at(-1)![0], "a shared line is untouched");
+      // A section that renders reads exactly as before when nothing around it is hidden.
+      for (const [template, who] of [
+        [`A\n${section("Cyno", "x")}\n\nB`, "Cyno"],
+        [`Shared.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\nEnd.`, "Cyno"],
+        [`A\n  {{#if char == "Cyno"}}\n  x\n  {{/if}}\nB`, "Cyno"],
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, "Cyno"],
+        ...["Cyno", "Tighnari", "Maukie"].map((who) => [elseChain, who]),
+        [nested, "Tighnari"],
+      ])
+        assert.equal(read(template!, who!), resolveMacros(template!, ctx(who!), { trimResult: false }), template);
+      assert.equal(
+        resolveChatSummaryMacros(elseChain, ctx("Narrator"), undefined, [{ name: "Tighnari" }, { name: "Maukie" }]),
+        "A\n[Known only to Tighnari: t]\n[Known only to Maukie: o]\nB",
+        "each reader's version of a section keeps its own line",
+      );
     },
   },
   {

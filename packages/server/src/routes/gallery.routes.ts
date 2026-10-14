@@ -868,6 +868,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     const videoFallback = await resolveVideoConnectionFallback(connections, videoConnectionId);
 
     return {
+      chatMode: chat.mode,
       videoConnectionId,
       galleryImage,
       videoRuntime,
@@ -1124,8 +1125,16 @@ export async function galleryRoutes(app: FastifyInstance) {
       logDebugOverride(debugOverrideEnabled, message, ...args);
     };
     const sceneVideos = createGameSceneVideosStorage(app.db);
-    const { videoConnectionId, galleryImage, videoRuntime, durationSeconds, aspectRatio, prompt, videoFallback } =
-      prepared;
+    const {
+      chatMode,
+      videoConnectionId,
+      galleryImage,
+      videoRuntime,
+      durationSeconds,
+      aspectRatio,
+      prompt,
+      videoFallback,
+    } = prepared;
     const {
       source,
       serviceHint,
@@ -1207,8 +1216,9 @@ export async function galleryRoutes(app: FastifyInstance) {
       logger.info("[gallery/generate-scene-video] saved video %s for chat %s", row.id, input.chatId);
       const video = serializeSceneVideo(row);
       // Shown inline under the newest reply, chosen now rather than before generating: the user may have sent
-      // or swiped a message meanwhile. The video stays in the gallery either way.
-      const anchor = resolveChatVideoAnchor(await chats.listMessages(input.chatId));
+      // or swiped a message meanwhile. Game Mode keeps its clips in the gallery only. The video stays in the
+      // gallery either way.
+      const anchor = chatMode === "game" ? null : resolveChatVideoAnchor(await chats.listMessages(input.chatId));
       let messageId: string | null = null;
       if (anchor) {
         try {

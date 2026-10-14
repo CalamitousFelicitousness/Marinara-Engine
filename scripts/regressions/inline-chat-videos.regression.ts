@@ -203,6 +203,24 @@ try {
   assert.equal(third.messageId, (arrived as { id: string }).id);
   assert.equal((await videoAttachments((arrived as { id: string }).id)).message.length, 1);
 
+  // Game Mode is unchanged: its clip stays in the gallery and no message gets it.
+  const game = await chats.create({ name: "Game", mode: "game", characterIds: [], connectionId: text.id });
+  assert.ok(game);
+  await chats.patchMetadata(game.id, { sceneVideoConnectionId: video.id });
+  mkdirSync(join(fixtureDir, "gallery", game.id), { recursive: true });
+  writeFileSync(join(fixtureDir, "gallery", game.id, "map.png"), png);
+  const gameImage = await gallery.create({ chatId: game.id, filePath: `${game.id}/map.png`, prompt: "A map" });
+  const gameTurn = await chats.createMessage({
+    chatId: game.id,
+    role: "assistant",
+    characterId: null,
+    content: "The party unrolls the map.",
+  });
+  assert.ok(gameImage && gameTurn);
+  const gameClip = await generate({ chatId: game.id, galleryImageId: gameImage.id });
+  assert.equal(gameClip.messageId, null, "a Game clip is not attached to a message");
+  assert.equal((await videoAttachments(gameTurn.id)).message.length, 0);
+
   // The newest reply's shown swipe gets the clip.
   assert.deepEqual(
     resolveChatVideoAnchor([

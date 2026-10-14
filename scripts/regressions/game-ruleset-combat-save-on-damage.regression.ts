@@ -1,5 +1,5 @@
 /**
- * A save rolled only when its holder takes damage (Capability API 1.128): Dominate Person.
+ * A save rolled only when its holder takes damage (Capability API 1.129): Dominate Person.
  * Turns roll nothing; damage uses the applying DC once for each blow and holder.
  */
 import assert from "node:assert/strict";
@@ -295,7 +295,7 @@ try {
     assert.equal(has(both.state, "dominated", "friend"), false);
   }
 
-  // 1.124 still repeats a turn save for each positive amount, and still saves at turn end.
+  // 1.125 still repeats a turn save for each positive amount, and still saves at turn end.
   {
     const state = use(
       fight(definition, [{ ...bite, damage: { flat: 8, plus: [{ flat: 3 }] } }]),
@@ -358,7 +358,7 @@ try {
     assert.ok(saves >= 4, "all editor applies nodes carry the timing");
   }
 
-  // Header entries, catalog files, creature actions and condition onEnd applies require 1.128.
+  // Header entries, catalog files, creature actions and condition onEnd applies require 1.129.
   {
     const manifest = (minor: number, schemaVersion = 2) => ({
       schemaVersion,
@@ -377,7 +377,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose saves are rolled only on damage requires schemaVersion 2 and capabilityApi 1.128 or newer";
+      "A ruleset whose saves are rolled only on damage requires schemaVersion 2 and capabilityApi 1.129 or newer";
     const applies = { condition: "charmed", duration: "until-save", saveEnds: { save: "wis_save", at: "damaged" } };
     for (const kind of ["catalog", "creature", "onEnd", "item"] as const) {
       for (const file of kind === "catalog" || kind === "creature" || kind === "item" ? [false, true] : [false]) {
@@ -438,28 +438,28 @@ try {
           catalog.asset = "catalogs/saves.json";
         }
         assert.equal(
-          getCapabilityPackageInstallIssue(manifest(127) as any, doc, documents),
+          getCapabilityPackageInstallIssue(manifest(128) as any, doc, documents),
           gate,
           `${kind}, file=${file}`,
         );
         assert.equal(
-          getCapabilityPackageInstallIssue(manifest(128) as any, doc, documents),
+          getCapabilityPackageInstallIssue(manifest(129) as any, doc, documents),
           null,
           `${kind}, file=${file}`,
         );
         assert.match(
-          getCapabilityPackageInstallIssue(manifest(128, 1) as any, doc, documents) ?? "",
+          getCapabilityPackageInstallIssue(manifest(129, 1) as any, doc, documents) ?? "",
           /requires schemaVersion 2/,
         );
       }
     }
-    assert.equal(getCapabilityPackageInstallIssue(manifest(127) as any, JSON.parse(fiveEText)), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(128) as any, JSON.parse(fiveEText)), null);
     const turnSave = document((doc) => {
       doc.catalogs.at(-1).entries[0].mechanics.applies[0].saveEnds.at = "turn-end";
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(127) as any, turnSave), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(128) as any, turnSave), null);
   }
-  console.info("Damage-only saves: no turn save, stored DC, one roll per blow and holder, gated at 1.128.");
+  console.info("Damage-only saves: no turn save, stored DC, one roll per blow and holder, gated at 1.129.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

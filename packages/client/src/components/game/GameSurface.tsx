@@ -286,6 +286,7 @@ import {
 } from "./game-asset-generation-payload";
 import { PinnedImageOverlay } from "../chat/PinnedImageOverlay";
 import { CHAT_TOOLBAR_ICON_GAP_CLASS } from "../chat/ChatToolbarControls";
+import { HISTORY_PAGER_BUTTON_CLASS } from "../chat/TranscriptWindowControls";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_PANEL_SUBTITLE } from "../ui/neutral-surface-styles";
 import type { ReadableTag } from "../../lib/game-tag-parser";
 import type { DirectionCommand, GameNpc, GameStoryboardViewerDisplayMode } from "@marinara-engine/shared";
@@ -1549,6 +1550,12 @@ const SpriteOverlay = lazy(async () => {
   return { default: module.SpriteOverlay };
 });
 
+// 2D and 3D Avatars: loads only in games where an avatar agent is on.
+const AvatarStage = lazy(async () => {
+  const module = await import("../../features/avatars/stage/AvatarStage");
+  return { default: module.AvatarStage };
+});
+
 const GameSessionHistory = lazy(async () => {
   const module = await import("./GameSessionHistory");
   return { default: module.GameSessionHistory };
@@ -1614,6 +1621,8 @@ import type {
   CombatStyleNotes,
 } from "@marinara-engine/shared";
 import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
+import { chatAvatarParticipants } from "../../features/avatars/stage/avatar-stage-logic";
+import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-avatar-agents";
 
 /** Typewriter component for the intro screen — reveals text character-by-character. */
 function IntroTypewriter({ text, onComplete }: { text: string; onComplete?: () => void }) {
@@ -3454,7 +3463,7 @@ function GameSurfaceComponent({
   const announceInventoryUpdates = useCallback(
     (updates: InventoryTag[]) => {
       const describe = (update: InventoryTag, item: string) => {
-        // A fake found out (Capability API 1.78): by a reveal or a use, or by an honest buyer.
+        // A fake found out (Capability API 1.79): by a reveal or a use, or by an honest buyer.
         if (update.revealed) {
           const truly = update.revealed;
           if (update.action === "sell") {
@@ -3892,6 +3901,13 @@ function GameSurfaceComponent({
   useEffect(() => {
     if (spriteVisible) prevSpriteIdsRef.current = activeSpriteIds;
   }, [spriteVisible, activeSpriteIds]);
+
+  // Avatars of the game's characters and the player; the Game Master's lines drive their faces.
+  const avatarAgentIds = useChatAvatarAgentIds(chatMeta);
+  const avatarParticipants = useMemo(
+    () => chatAvatarParticipants(gameCharacterIds, characterMap, personaInfo),
+    [characterMap, gameCharacterIds, personaInfo],
+  );
 
   // New game mechanics hooks
   const _advanceTime = useAdvanceTime();
@@ -7757,7 +7773,7 @@ function GameSurfaceComponent({
           foundOut?: string[];
         }>("/game/inventory", { chatId, ops }),
       );
-      // A fake the sheet now shows for what it is was found out with this change (1.78).
+      // A fake the sheet now shows for what it is was found out with this change (1.79).
       for (const line of response?.foundOut ?? []) toast.info(line);
       return response?.results ?? [];
     },
@@ -7999,7 +8015,7 @@ function GameSurfaceComponent({
     [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
-  /** An item's switch turned on or off (1.169): the flame of a flame tongue, out of a fight. */
+  /** An item's switch turned on or off (1.170): the flame of a flame tongue, out of a fight. */
   const handleSwitchInventoryStack = useCallback(
     async (stackId: string, on: boolean) => {
       if (!activeChatId) return null;
@@ -8232,7 +8248,7 @@ function GameSurfaceComponent({
           );
           return;
         }
-        // One that came out of a fake is found out as it is used (1.78).
+        // One that came out of a fake is found out as it is used (1.79).
         const truly = result.revealed?.[0];
         showInventoryNotification(
           truly
@@ -8965,7 +8981,7 @@ function GameSurfaceComponent({
         return;
       }
       if (!used) return;
-      // A fake used shows itself for what it truly is (Capability API 1.78).
+      // A fake used shows itself for what it truly is (Capability API 1.79).
       if (used.revealed) {
         showInventoryNotification(
           localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item: label, truly: used.revealed }),
@@ -8991,7 +9007,7 @@ function GameSurfaceComponent({
     ],
   );
 
-  // Starting gear (Capability API 1.77): what each bag has taken, kept in the chat's metadata.
+  // Starting gear (Capability API 1.78): what each bag has taken, kept in the chat's metadata.
   const startingGearTaken = useMemo<StartingGearTaken>(() => {
     const raw = chatMeta.gameStartingGearTaken;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -10522,7 +10538,7 @@ function GameSurfaceComponent({
     const { cards, index } = findStoredGameCard(cardTitle);
     // A stored sheet this version cannot read is kept as it is. Showing the ruleset's defaults in
     // its place would invite a Save that overwrites it, so the block says so and offers nothing.
-    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.76).
+    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.77).
     const envelope = index >= 0 ? readRulesetSheetEnvelope(gameRuleset.definition, cards[index]?.rulesetSheet) : null;
     if (index >= 0 && !envelope && cards[index]?.rulesetSheet != null) return { status: "unreadable" };
     // What this card holds, as the server reads it for checks and fights: the player's card the
@@ -12749,6 +12765,18 @@ function GameSurfaceComponent({
               </Suspense>
             )}
           </div>
+          {avatarAgentIds.length > 0 && avatarParticipants.length > 0 && !overworldShown && (
+            <Suspense fallback={null}>
+              <AvatarStage
+                chatId={activeChatId}
+                mode="game"
+                participants={avatarParticipants}
+                enabledAgentIds={avatarAgentIds}
+                side="center"
+                scale={gameFullBodySpriteScale}
+              />
+            </Suspense>
+          )}
 
           <div className="relative flex min-w-0 h-full flex-col overflow-hidden">
             {/* Fade in all UI chrome after intro cinematic finishes */}
@@ -13483,7 +13511,7 @@ function GameSurfaceComponent({
                                       Math.min(combatLogEntries.length, current + combatLogPageSize),
                                     );
                                   }}
-                                  className="rounded-md border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
+                                  className={HISTORY_PAGER_BUTTON_CLASS}
                                 >
                                   {localizeUi("ui.game.gamesurfacecomponent.showMoreOlderLogs")}
                                   {hiddenCombatLogCount})

@@ -526,7 +526,7 @@ function conditionsOf(
 ): Array<{ id: string; label: string; rounds?: number }> {
   const declared = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
   const tracked = new Map(combatant.tracked.map((entry) => [entry.condition, entry.rounds]));
-  // And what a zone they stand in puts on them while they stay (1.178).
+  // And what a zone they stand in puts on them while they stay (1.179).
   const ids = new Set([
     ...rulesetCombatConditions(definition, combatant),
     ...(state ? rulesetZoneConditions(state, combatant) : []),
@@ -597,7 +597,7 @@ function projectCombatant(
     ...(deathTrack ? { deathTrack } : {}),
     ...(saveModifiers.length ? { saveModifiers } : {}),
     ...(() => {
-      // Its creature type and tags, by their labels (1.167).
+      // Its creature type and tags, by their labels (1.168).
       const kinds = combat.creatureTypes;
       const kind = rulesetCreatureKind(definition, combatant);
       if (!kinds || (kind.type === undefined && !kind.tags.length)) return {};
@@ -694,7 +694,7 @@ export function directedRulesetView(
     ...(actor && !over ? { actorId: actor.id } : {}),
     controller,
     combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
-    // The areas spells left standing (1.171), drawn on the board and listed beside it.
+    // The areas spells left standing (1.172), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
     // A window is answered by the one it asks, so while it is open the menu on screen is THEIRS.
     // The actor's own turn is standing still behind it and has nothing to offer until it closes.
@@ -905,7 +905,7 @@ export function priced(
   const out: PricedOption[] = [];
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base = (option.cost ?? []).reduce((total, entry) => total + entry.amount, 0) + (option.signature?.cost ?? 0);
-    // One that only a higher pool can pay for now (1.170) is never taken at its own price.
+    // One that only a higher pool can pay for now (1.171) is never taken at its own price.
     const ways: PricedOption[] = [
       ...(option.upcastOnly ? [] : [{ option, price: base }]),
       ...biggerWays(definition, actor, option),
@@ -924,7 +924,7 @@ function biggerWays(
   option: RulesetCombatOption,
 ): PricedOption[] {
   const action = actor.actions.find((entry) => entry.id === option.id);
-  // What grows paid bigger, or what can only be paid out of another pool now (1.170).
+  // What grows paid bigger, or what can only be paid out of another pool now (1.171).
   const grows = !!action?.use?.perCostStep || !!action?.use?.targetsPerStep;
   if (!action || (!grows && !option.upcastOnly)) return [];
   const ways: PricedOption[] = [];
@@ -945,7 +945,7 @@ function biggerWays(
         label: `${option.label} (${paid.cost[0]?.label ?? pool})`,
         cost: paid.cost.map((entry) => ({ pool: entry.pool, label: entry.label, amount: entry.amount })),
         ...(forecast ? { forecast } : {}),
-        // As many targets as this pool lets it take (1.170).
+        // As many targets as this pool lets it take (1.171).
         ...(option.targetsWith?.[pool] !== undefined
           ? { targets: { ...option.targets, count: option.targetsWith[pool]! } }
           : {}),
@@ -1081,7 +1081,7 @@ function rulesetCandidatesFrom(
   }
   for (const way of priced(definition, encounter, actor, menu)) {
     const { option, price } = way;
-    // Moving a lasting area (1.172) is weighed from where the actor stands, by whom it would catch.
+    // Moving a lasting area (1.173) is weighed from where the actor stands, by whom it would catch.
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
       const moved = standing ? null : zoneMoveCandidate(encounter, actor, option, price);
       if (moved) candidates.push(moved);
@@ -1345,7 +1345,7 @@ function areaCandidates(
 }
 
 /**
- * Where to move a lasting area its actor holds (1.172): the cell that would catch the most standing
+ * Where to move a lasting area its actor holds (1.173): the cell that would catch the most standing
  * opponents less friends, and only when that beats where it stands now. Ties keep the menu's own
  * order, so the picker stays deterministic.
  */

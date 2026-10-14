@@ -541,7 +541,7 @@ function declare(s: CombatDirectorState, action: Action, source: Source, reactio
       s.itemSpends[itemName] = (s.itemSpends[itemName] ?? 0) + 1;
     }
     // The route rolled its gate for its user and says here when they failed it (#6909), and what the use
-    // truly does when it comes out of a fake (1.78).
+    // truly does when it comes out of a fake (1.79).
     const failed = (action.classic ?? action.tactical) as { failed?: string; truly?: CombatItemEffect } | undefined;
     const does = failed?.truly ?? effect;
     if (action.classic?.type === "item")
@@ -813,7 +813,7 @@ function effect(s: CombatDirectorState, p: Pending) {
       const action = p.action.tactical;
       const effect =
         (action as { truly?: CombatItemEffect }).truly ?? s.itemEffects.find((i) => i.name === action.itemName);
-      // A gate failed, or a fake that does nothing a fight can use (1.78): spent, and the log says why.
+      // A gate failed, or a fake that does nothing a fight can use (1.79): spent, and the log says why.
       const failed = (action as { failed?: string }).failed ?? effect?.failed;
       const combatants = s.tactical.units.map((c) => ({
         ...c,

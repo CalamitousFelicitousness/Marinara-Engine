@@ -100,7 +100,7 @@ export function RulesetCatalogPicker({
   // Narrowed before anything else reads them, so a filter never offers a value only a hidden entry
   // carries and the match count is the count of entries that can really be picked. The query itself
   // is untouched, which is what keeps Refresh from ruleset and the scaled columns whole. An entry that
-  // only grants (1.85) is the guided builder's and writes no row, so the picker never offers it.
+  // only grants (1.86) is the guided builder's and writes no row, so the picker never offers it.
   const entries = useMemo(
     () =>
       visibleCatalogEntries(definition, layerOptions, catalog.id, query.data?.entries ?? []).filter(

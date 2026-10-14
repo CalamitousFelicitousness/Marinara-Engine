@@ -50,10 +50,10 @@ export interface GameInventoryStack {
   /** The charges an item holds, as a ruleset fight left them. Kept on a stack of one item only, as a
    *  loaded count is, and an item without one holds all it can. */
   charges?: number;
-  /** Its switch is on (Capability API 1.169): a flame tongue's flames. Kept on a stack of one item
+  /** Its switch is on (Capability API 1.170): a flame tongue's flames. Kept on a stack of one item
    *  only, as charges are; off without it. */
   on?: true;
-  /** A fake (Capability API 1.78): the ruleset item this truly is, while `item` and `name` are what it
+  /** A fake (Capability API 1.79): the ruleset item this truly is, while `item` and `name` are what it
    *  passes for. Set only by a dishonest seller's sale, never by an op a client sends. Only the Game
    *  Master's view, curses, use, sale and a reveal read it; everything the player sees reads `item`. */
   truly?: string;
@@ -94,7 +94,7 @@ export function gameInventoryCoinRef(unit: string): string {
 export interface GameInventoryCoin {
   item: string;
   name: string;
-  /** Its name for exactly one, where the ruleset gives one (1.88). */
+  /** Its name for exactly one, where the ruleset gives one (1.89). */
   one?: string;
   value: number;
 }
@@ -121,7 +121,7 @@ export interface GameInventoryRulesetItem {
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
    *  one spent rolls a d`die` that breaks it at `atMost` or under. */
   charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
-  /** It has a switch (Capability API 1.169): what turning it on does, in the ruleset's words. */
+  /** It has a switch (Capability API 1.170): what turning it on does, in the ruleset's words. */
   toggle?: { label: string };
 }
 
@@ -516,7 +516,7 @@ export function gameInventoryStackNamed(
   return (fake ? found.find((stack) => stack.truly) : undefined) ?? found[0];
 }
 
-/** A fake shown for what it truly is (Capability API 1.78): the stack becomes its true item, by that
+/** A fake shown for what it truly is (Capability API 1.79): the stack becomes its true item, by that
  *  item's own name, keeping its count, its bag, its nickname and whether it is worn or bound. A count
  *  of loads or charges was the item it passed for, so it goes. Unchanged for a stack that is no fake. */
 export function revealGameInventoryFake(
@@ -582,7 +582,7 @@ export function gameInventoryTotals(
   /** What a stack's item holds of its charges, for an item that holds any. */
   chargesOf?: (stack: GameInventoryStack) => { now: number; max: number } | undefined,
   /** As the party sees them, as a fight lists them: a fake on the line of what it passes for, with
-   *  no truth on any line (1.78). Without it, a fake is a line of its own that carries its truth. */
+   *  no truth on any line (1.79). Without it, a fake is a line of its own that carries its truth. */
   asSeen = false,
 ): GameInventoryTotal[] {
   const totals = new Map<string, GameInventoryTotal>();
@@ -879,12 +879,12 @@ export function takeFromGameInventory(
   /** Only from stacks the item may be used from, as a fight uses it (`gameInventoryUsableStack`). */
   worn = false,
   /** Only from stacks of this `gameInventoryStackKind`, so a sale never takes a fake with the real
-   *  thing it passes for, or the real thing with a fake (1.78). */
+   *  thing it passes for, or the real thing with a fake (1.79). */
   kind?: string,
 ): {
   stacks: GameInventoryStack[];
   taken: number;
-  /** How many of what was taken were fakes, by what each truly is (1.78). */
+  /** How many of what was taken were fakes, by what each truly is (1.79). */
   fakes?: Map<string, number>;
 } {
   // Not held to one stack's bound: the stacks of an item together may hold more than one stack can.
@@ -916,7 +916,7 @@ export function takeFromGameInventory(
  * The stack a fight's next use of an item comes out of, `nth` uses on (0 for the next): a fight spends
  * by the item's name, from the stacks it may be used from, in the order a take by that name takes them.
  * What a fake passes for and the real thing are one item to a fight, so whether the use is a fake's is
- * known only here (1.78). Undefined when there are not that many.
+ * known only here (1.79). Undefined when there are not that many.
  */
 export function gameInventoryFightSpendStack(
   stacks: readonly GameInventoryStack[],
@@ -1218,7 +1218,7 @@ export function wearGameInventoryStack(
 ): { stacks: GameInventoryStack[]; id: string } | { refused: GameInventoryWearRefusal } | null {
   const index = stacks.findIndex((stack) => stack.id === id);
   if (index < 0) return null;
-  // A fake bound is found out (1.78), however the bind is asked for: binding is attuning, and a curse
+  // A fake bound is found out (1.79), however the bind is asked for: binding is attuning, and a curse
   // shows itself. It is bound as what it truly is.
   if (wear === "bind" && stacks[index]!.truly) stacks = revealGameInventoryFake(stacks, id, rules);
   const stack = stacks[index]!;

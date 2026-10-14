@@ -1,5 +1,5 @@
 /**
- * Boxes and walls (Capability API 1.176).
+ * Boxes and walls (Capability API 1.177).
  *
  *   - `area.shape: "box"`: a square of its size a side, near corner on the aimed cell, reaching away
  *     from its maker, centred along an axis its maker is level with; against its maker with no range.
@@ -433,13 +433,13 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.176 or newer";
+      "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.177 or newer";
     for (const entry of [cube, thunder, stone, fire, ring]) {
       const withEntry = fiveE((doc) => {
         doc.catalogs.push({ id: "walls", label: "Walls", entries: [entry] });
       });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(175) as never, withEntry), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(176) as never, withEntry), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(176) as never, withEntry), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(177) as never, withEntry), gate, entry.id);
     }
     const wand = fiveE((doc) => {
       doc.items = { categories: [{ id: "gear", label: "Gear" }] };
@@ -463,7 +463,7 @@ try {
         ],
       });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(175) as never, wand), gate, "an item's cube");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(176) as never, wand), gate, "an item's cube");
     const burst = fiveE((doc) => {
       doc.catalogs.push({
         id: "walls",
@@ -471,11 +471,11 @@ try {
         entries: [spell("ball", { area: { shape: "burst", size: 20 }, range: 150, amount: { flat: 5 } })],
       });
     });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(175) as never, burst), gate, "a burst alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(176) as never, burst), gate, "a burst alone");
   }
 
   console.log(
-    "Walls: cubes reach away from their maker; walls run across or toward, close their corners and ring; stone, force and a curtain block as they say until they end; Wall of Fire catches its own cells and the side chosen; gated at 1.176.",
+    "Walls: cubes reach away from their maker; walls run across or toward, close their corners and ring; stone, force and a curtain block as they say until they end; Wall of Fire catches its own cells and the side chosen; gated at 1.177.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

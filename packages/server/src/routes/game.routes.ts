@@ -6228,8 +6228,18 @@ function readNewGameWorld(input: {
 }
 type GameWorldInputRead = z.infer<typeof gameWorldSchema>;
 
-/** The chats being given a world right now (W12): one at a time each. */
-const worldsBeingGiven = new Set<string>();
+/** Work on a game's world, one piece at a time for each key: a game's sessions (its group) while a world is
+ *  given or a session starts from the latest, and a chat while its world's edits are saved. */
+const worldLocks = new Map<string, Promise<unknown>>();
+function withWorldLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const run = (worldLocks.get(key) ?? Promise.resolve()).catch(() => undefined).then(work);
+  const tail = run.catch(() => undefined);
+  worldLocks.set(key, tail);
+  void tail.then(() => {
+    if (worldLocks.get(key) === tail) worldLocks.delete(key);
+  });
+  return run;
+}
 
 /** Why a world from an earlier generator cannot be edited or shared as a recipe (W11). */
 const OLD_GENERATOR_REFUSAL =
@@ -7702,7 +7712,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return existingStart;
     }
 
-    const startSessionRequest = (async () => {
+    // A world being given to the game's latest session (W12) is given before this session starts from it.
+    const startSessionRequest = withWorldLock(`game:${gameId}`, async () => {
       const chats = createChatsStorage(app.db);
       const connections = createConnectionsStorage(app.db);
 
@@ -8016,7 +8027,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (!updatedChat) throw new Error("Failed to reload new session chat");
 
       return { sessionChat: updatedChat, sessionNumber, recap: recapText };
-    })();
+    });
 
     pendingSessionStarts.set(gameId, startSessionRequest);
 
@@ -10580,7 +10591,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         ...Object.entries(partyActions ?? {}).map(([id, action]) => ({ action, user: id as string | undefined })),
         ...(playerAction && !twice ? [{ action: playerAction, user: leader }] : []),
       ].filter(({ action }) => action.type === "item");
-      // A use that comes out of a fake does what the fake truly does (1.78): the round's uses of a line
+      // A use that comes out of a fake does what the fake truly does (1.79): the round's uses of a line
       // come out of its stacks one after another, as the screen spends them.
       const uses = await loadGameFightUseEffects(app.db, meta);
       const spent = new Map<string, number>();
@@ -11337,28 +11348,33 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // the story stands when the edits are written (one saved meanwhile counts).
     let storyRefusal = null as { error: string; issues: string[] } | null;
     let previous: unknown;
-    const updated = await chats.patchMetadata(chatId, (fresh) => {
-      // The world is the same one the edits were checked against: a world is written once, at creation.
-      if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
-        throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
+    // One save of a chat's edits at a time, so taking back one that failed never undoes another's.
+    const updated = await withWorldLock(`edits:${chatId}`, async () => {
+      const saved = await chats.patchMetadata(chatId, (fresh) => {
+        // The world is the same one the edits were checked against: a world is written once, at creation.
+        if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
+          throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
+        }
+        const now = gameWorldFromMetadata(fresh);
+        storyRefusal = now ? editsStoryRefusal(now, edits, gameStoryFromMetadata(fresh, now)) : null;
+        if (storyRefusal) return {};
+        previous = fresh.gameWorld;
+        const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
+        return { gameWorld: edits ? { ...stored, edits } : stored };
+      });
+      if (!saved || storyRefusal) return saved;
+      // The world with its new edits is the snapshot from now on (W11). Edits it could not keep are taken
+      // back, so the recipe and the snapshot never disagree.
+      try {
+        await saveGameWorldSnapshot(app.db, chatId, parseMeta(saved.metadata));
+      } catch (err) {
+        await chats.patchMetadata(chatId, () => ({ gameWorld: previous }));
+        throw err;
       }
-      const now = gameWorldFromMetadata(fresh);
-      storyRefusal = now ? editsStoryRefusal(now, edits, gameStoryFromMetadata(fresh, now)) : null;
-      if (storyRefusal) return {};
-      previous = fresh.gameWorld;
-      const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
-      return { gameWorld: edits ? { ...stored, edits } : stored };
+      return saved;
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
     if (storyRefusal) return reply.status(400).send(storyRefusal);
-    // The world with its new edits is the snapshot from now on (W11). Edits it could not keep are taken
-    // back, so the recipe and the snapshot never disagree.
-    try {
-      await saveGameWorldSnapshot(app.db, chatId, parseMeta(updated.metadata));
-    } catch (err) {
-      await chats.patchMetadata(chatId, () => ({ gameWorld: previous }));
-      throw err;
-    }
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };
@@ -11561,40 +11577,42 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return reply.status(400).send({ error: `The world does not read: ${issue?.path.join(".")}: ${issue?.message}` });
     }
     const chats = createChatsStorage(app.db);
-    const chat = await chats.getById(req.params.chatId);
-    if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    if (chat.mode !== "game") return reply.status(400).send({ error: "Only a game has a world." });
-    assertRoomGameOperation(chat);
-    const meta = parseMeta(chat.metadata);
-    if (meta.gameWorld != null) return reply.status(409).send({ error: "This game has a world already." });
-    if (meta.gameExperienceId) {
-      return reply.status(409).send({ error: "This game's Experience decides its world." });
-    }
-    const read = readNewGameWorld(body.data);
-    if (!read.ok) return reply.status(400).send({ error: read.error, code: read.code });
-    const worldKit = read.worldKit ?? body.data.worldKit;
-    // A game made with a setting kit keeps it: its money, elements and art are that kit's.
-    const ownKit = gameWorldKitFromMetadata(meta);
-    if (ownKit && JSON.stringify(ownKit) !== JSON.stringify(worldKit)) {
-      return reply.status(409).send({ error: "This game keeps its own setting kit; make the world in it." });
-    }
-    // Only the game's latest session takes a world, and only while no session has one: the next session
-    // starts from the latest, so a world given to another would be lost, and a second one could follow.
-    // A game's sessions share the chat group its first session made.
-    const groupId = chat.groupId ?? readTrimmedString(meta.gameId);
-    const sessions = groupId ? await chats.listByGroup(groupId) : [];
-    if (sessions.some((session) => session.id === chat.id)) {
-      if (sessions.some((session) => parseMeta(session.metadata).gameWorld != null)) {
-        return reply.status(409).send({ error: "This game has a world already." });
+    const found = await chats.getById(req.params.chatId);
+    if (!found) return reply.status(404).send({ error: "Chat not found" });
+    // One at a time for a game, and never while a session starts from its latest (which would copy it
+    // without the world): everything below is read again inside the lock.
+    const lockKey = found.groupId ?? readTrimmedString(parseMeta(found.metadata).gameId) ?? found.id;
+    return withWorldLock(`game:${lockKey}`, async () => {
+      const chat = await chats.getById(req.params.chatId);
+      if (!chat) return reply.status(404).send({ error: "Chat not found" });
+      if (chat.mode !== "game") return reply.status(400).send({ error: "Only a game has a world." });
+      assertRoomGameOperation(chat);
+      const meta = parseMeta(chat.metadata);
+      if (meta.gameWorld != null) return reply.status(409).send({ error: "This game has a world already." });
+      if (meta.gameExperienceId) {
+        return reply.status(409).send({ error: "This game's Experience decides its world." });
       }
-      if (selectSessionForNextStart(sessions)?.id !== chat.id) {
-        return reply.status(409).send({ error: "Give the game its world in its latest session." });
+      const read = readNewGameWorld(body.data);
+      if (!read.ok) return reply.status(400).send({ error: read.error, code: read.code });
+      const worldKit = read.worldKit ?? body.data.worldKit;
+      // A game made with a setting kit keeps it: its money, elements and art are that kit's.
+      const ownKit = gameWorldKitFromMetadata(meta);
+      if (ownKit && JSON.stringify(ownKit) !== JSON.stringify(worldKit)) {
+        return reply.status(409).send({ error: "This game keeps its own setting kit; make the world in it." });
       }
-    }
-    // One at a time for a chat, so two saves never leave its snapshot and its metadata naming two worlds.
-    if (worldsBeingGiven.has(chat.id)) return reply.status(409).send({ error: "This game is being given a world." });
-    worldsBeingGiven.add(chat.id);
-    try {
+      // Only the game's latest session takes a world, and only while no session has one: the next session
+      // starts from the latest, so a world given to another would be lost, and a second one could follow.
+      // A game's sessions share the chat group its first session made.
+      const groupId = chat.groupId ?? readTrimmedString(meta.gameId);
+      const sessions = groupId ? await chats.listByGroup(groupId) : [];
+      if (sessions.some((session) => session.id === chat.id)) {
+        if (sessions.some((session) => parseMeta(session.metadata).gameWorld != null)) {
+          return reply.status(409).send({ error: "This game has a world already." });
+        }
+        if (selectSessionForNextStart(sessions)?.id !== chat.id) {
+          return reply.status(409).send({ error: "Give the game its world in its latest session." });
+        }
+      }
       // The world is kept before the metadata names it, as at a game's creation; a chat that keeps a world
       // already is never given another over it.
       const snapshots = createGameWorldSnapshotsStorage(app.db);
@@ -11632,9 +11650,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         return reply.status(404).send({ error: "Chat not found" });
       }
       return await shownWorld(chat.id, parseMeta(updated.metadata), reply);
-    } finally {
-      worldsBeingGiven.delete(chat.id);
-    }
+    });
   });
 
   /** The world as the screen reads it, after a world was given. */

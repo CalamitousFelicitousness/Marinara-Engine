@@ -971,7 +971,7 @@ try {
   }
 
   {
-    // A fake (Capability API 1.78) is offered as what it passes for, spent as that is, and does what it
+    // A fake (Capability API 1.79) is offered as what it passes for, spent as that is, and does what it
     // truly is: a balm that passes for a poultice heals by its own amount; a waystone that passes for one
     // does nothing. Either way the fight says what it really was, and the journal names it truly.
     const waystone = itemOf(ember, "outfitter/waystone");

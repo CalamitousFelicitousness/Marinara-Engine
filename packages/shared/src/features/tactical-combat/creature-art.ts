@@ -10,9 +10,15 @@ function plainly(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-/** A name without a trailing number: "Goblin 2" is a goblin. */
+/** A name without a trailing number: "Goblin 2" is a goblin. Trimmed by hand, not by a regular
+ *  expression, so a long run of digits costs one pass. */
 function plainName(name: string): string {
-  return plainly(name.replace(/\s*#?\d+\s*$/u, ""));
+  let end = name.trimEnd().length;
+  const digitsEnd = end;
+  while (end > 0 && name.charCodeAt(end - 1) >= 48 && name.charCodeAt(end - 1) <= 57) end--;
+  if (end === digitsEnd) return plainly(name);
+  if (end > 0 && name[end - 1] === "#") end--;
+  return plainly(name.slice(0, end));
 }
 
 /** Whether a fight's ruleset is the one a three-part ref names: its id, or its id under a community

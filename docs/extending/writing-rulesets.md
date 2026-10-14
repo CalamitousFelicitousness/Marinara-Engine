@@ -217,8 +217,8 @@ Some systems let a player pay for a roll they are about to make: a point of will
 - `sections` group things in the editor. Fields, derived values and lists name the one they sit in with `section`, and so may abilities, skills and saves: the editor, the game's sheet and the Game Master's sheet block then show them under that heading (a sheet that names no section on them shows them exactly as before). A section may also carry an `untrained` rule (below).
 - `abilities` are the core scores. `skills` and `saves` each may name the ability they roll with, a `cap`, and an `untrained` rule (below).
 - `fields` are single values. Types: `number`, `text`, `longtext`, `boolean`, `enum` (a fixed list of choices), and `dice` (text such as `1d8`).
-- `derived` values are worked out from other values and cannot be typed over. A sheet may have up to 400 of them (Capability API 1.110; 240 from 1.87, 120 from 1.83, 60 before it); a package with more than 240 declares 1.110. The operations are `sum`, `min`, `max`, `scale` (multiply by a fixed number and round), `multiply` (two to six values multiplied together, such as a Constitution modifier times the level; Capability API 1.81), `stepTable` (look a value up in thresholds, the way a level gives a proficiency bonus), and `enumTable` (a number for each value of an enum field or a live state; see Live states below).
-- `lists` are tables with your own columns, such as gear, spells, or features. A list has up to 24 columns; a package with a list of more than 12 declares Capability API 1.164. A list with `pools` turns every row into a resource with its own maximum, for class features with limited uses. A number column may be filled by a roll: `"roll": { "count": 1, "sides": 8 }`, where `sides` is a number, another column of the same row (`{ "column": "die" }`, a number column or an enum whose values read as dice such as `d8`), or a value off the sheet. The sheet editor shows a Roll button that throws the Engine's own dice and writes the total, held to the column's `min` and `max` (Capability API 1.84).
+- `derived` values are worked out from other values and cannot be typed over. A sheet may have up to 400 of them (Capability API 1.111; 240 from 1.88, 120 from 1.84, 60 before it); a package with more than 240 declares 1.111. The operations are `sum`, `min`, `max`, `scale` (multiply by a fixed number and round), `multiply` (two to six values multiplied together, such as a Constitution modifier times the level; Capability API 1.82), `stepTable` (look a value up in thresholds, the way a level gives a proficiency bonus), and `enumTable` (a number for each value of an enum field or a live state; see Live states below).
+- `lists` are tables with your own columns, such as gear, spells, or features. A list has up to 24 columns; a package with a list of more than 12 declares Capability API 1.165. A list with `pools` turns every row into a resource with its own maximum, for class features with limited uses. A number column may be filled by a roll: `"roll": { "count": 1, "sides": 8 }`, where `sides` is a number, another column of the same row (`{ "column": "die" }`, a number column or an enum whose values read as dice such as `d8`), or a value off the sheet. The sheet editor shows a Roll button that throws the Engine's own dice and writes the total, held to the column's `min` and `max` (Capability API 1.85).
 - `live` is what changes during play: `pools` (hit points, spell slots, Grit), `tracks` (a number on a scale, such as exhaustion, or a wound track of boxes you tick), `text` (short notes such as what a character is concentrating on), `conditions`, and `states` (one value out of a closed set, such as a form or a stance).
 
 Anything that reads a number names it with a value reference, which is an object with exactly one key: `const`, `field`, `derived`, `abilityScore`, `abilityMod`, `abilityModFromField`, `skillMod`, `saveMod`, `listSum`, `livePool`, `liveTrack`, or `itemStat`. For example, a pool whose maximum is a derived value: `"max": { "derived": "grit_max" }`.
@@ -423,7 +423,7 @@ The result says what the sheet added (`adjust="-2"` on the record, and a line on
 
 ### Rests
 
-A rest is a list of restore steps and things to clear. Each step names one target (`pool`, `poolGroup`, `listPools`, `track`, or `state`) and either sets it (`"to": "max"`, `"to": "min"`, or a number) or changes it (`"by": { "const": 1 }`, or `"by": { "fractionOfMax": 0.5 }`). A step naming a wound track can only heal it, so its `by` is negative; see above. A step naming a live state only sets it, to `"default"` or one of its values. A `poolGroup` step with a `fractionOfMax` changes each pool of the group by its own fraction; add `"shared": true` (Capability API 1.76) to work the fraction out on the whole group's maximum instead and hand it to the group's pools in the order the sheet lists them, each up to what it is missing. 5e's long rest, "half of the character's total number of" hit dice kept in one pool per die, is `{ "poolGroup": "hit_dice", "by": { "fractionOfMax": 0.5, "round": "down", "min": 1 }, "shared": true }`.
+A rest is a list of restore steps and things to clear. Each step names one target (`pool`, `poolGroup`, `listPools`, `track`, or `state`) and either sets it (`"to": "max"`, `"to": "min"`, or a number) or changes it (`"by": { "const": 1 }`, or `"by": { "fractionOfMax": 0.5 }`). A step naming a wound track can only heal it, so its `by` is negative; see above. A step naming a live state only sets it, to `"default"` or one of its values. A `poolGroup` step with a `fractionOfMax` changes each pool of the group by its own fraction; add `"shared": true` (Capability API 1.77) to work the fraction out on the whole group's maximum instead and hand it to the group's pools in the order the sheet lists them, each up to what it is missing. 5e's long rest, "half of the character's total number of" hit dice kept in one pool per die, is `{ "poolGroup": "hit_dice", "by": { "fractionOfMax": 0.5, "round": "down", "min": 1 }, "shared": true }`.
 
 ### Game Master text
 
@@ -533,7 +533,7 @@ keeps those cells right.
 - `values` must still hold a plain number for the column, and a row that leaves it out is refused.
   That is what the row is before any sheet is known, and what a sheet with no such reference keeps.
 - A row with `scaled` must be the entry's only row for that list, so a marked row on a sheet always
-  matches one spec, or (Capability API 1.91) every row the entry writes to that list must carry its own
+  matches one spec, or (Capability API 1.92) every row the entry writes to that list must carry its own
   name in the list's name column (its pools' `nameColumn`, else its first text column). The sheet's
   row is then matched to its spec by that name, so one trait can give two uses that each grow on
   their own; a row the player renames is left alone.
@@ -569,11 +569,11 @@ So rewording or renaming an entry can reach characters who already picked it, if
 
 ### `mechanics`: what an entry does in numbers
 
-An entry may carry an optional `mechanics` block that says what it does in numbers: `kind` (`attack`, `heal`, `buff`, `debuff`, `utility`, `rider`), `range`, `area`, `targets`, `targetCount`, `friendlyFire`, `amount` (dice such as `2d6`, or a flat number), `amountAdd` (a value read off the user's sheet and added to the amount, such as `{ "field": "level_fighter" }` for a Second Wind of 1d10 plus the fighter's level; it needs an `amount`, is read only in the ruleset's own fights (the Engine's Classic and Tactical fights use the amount as written), and is Capability API 1.82), `damageType`, `attackRoll`, `autoHit`, `save` (one of your sheet's saves, and what a success does), `applies` (conditions it puts on what it touches), `temporary` (temporary points on the health pool), `scales` (an amount that grows with the sheet), `cost` (which pool using it spends), `perCostStep`, `targetsPerCostStep`, `budget` (which part of the action economy it spends), `concentration`, `reaction`, `plus`, `free`, `gives`, `standard`, `rider` and `check`.
+An entry may carry an optional `mechanics` block that says what it does in numbers: `kind` (`attack`, `heal`, `buff`, `debuff`, `utility`, `rider`), `range`, `area`, `targets`, `targetCount`, `friendlyFire`, `amount` (dice such as `2d6`, or a flat number), `amountAdd` (a value read off the user's sheet and added to the amount, such as `{ "field": "level_fighter" }` for a Second Wind of 1d10 plus the fighter's level; it needs an `amount`, is read only in the ruleset's own fights (the Engine's Classic and Tactical fights use the amount as written), and is Capability API 1.83), `damageType`, `attackRoll`, `autoHit`, `save` (one of your sheet's saves, and what a success does), `applies` (conditions it puts on what it touches), `temporary` (temporary points on the health pool), `scales` (an amount that grows with the sheet), `cost` (which pool using it spends), `perCostStep`, `targetsPerCostStep`, `budget` (which part of the action economy it spends), `concentration`, `reaction`, `plus`, `free`, `gives`, `standard`, `rider` and `check`.
 
-An attack that targets enemies can leave something to strike on later turns with `summons` (Capability API 1.121). For Spiritual Weapon, put `"summons": { "budget": "bonus", "rounds": 10, "move": 20, "reach": 5 }` on its attack entry. The cast makes the first attack and leaves the weapon beside its first target once reactions finish; a cancelled cast leaves nothing. Later strikes spend only the declared economy budget, keep the cast's payment level for damage scaling, and open the same reaction windows. Distances use the catalog's unit; omitted movement is zero and omitted reach is one cell. On a board the weapon can strike an enemy within movement plus reach, ignoring walls, and moves beside it. Without a board any standing enemy is in reach. Rounds count down at the end of the holder's turns, excluding the casting turn. The summon ends at zero, on the holder's defeat, or when its entry's concentration ends. Casting the same entry again replaces its summon.
+An attack that targets enemies can leave something to strike on later turns with `summons` (Capability API 1.122). For Spiritual Weapon, put `"summons": { "budget": "bonus", "rounds": 10, "move": 20, "reach": 5 }` on its attack entry. The cast makes the first attack and leaves the weapon beside its first target once reactions finish; a cancelled cast leaves nothing. Later strikes spend only the declared economy budget, keep the cast's payment level for damage scaling, and open the same reaction windows. Distances use the catalog's unit; omitted movement is zero and omitted reach is one cell. On a board the weapon can strike an enemy within movement plus reach, ignoring walls, and moves beside it. Without a board any standing enemy is in reach. Rounds count down at the end of the holder's turns, excluding the casting turn. The summon ends at zero, on the holder's defeat, or when its entry's concentration ends. Casting the same entry again replaces its summon.
 
-An entry with an `area` can stay with `zone` (Capability API 1.171): `{ "rounds", "anchor", "triggers", "atCast" }`. It stands for `rounds` (1 to 1000) of its caster's turns, counted as a summon's are, and ends sooner when the concentration that holds it ends or its caster is defeated. `anchor: "point"` (the default) keeps the cells it was cast on; `anchor: "caster"` is a burst around its caster that goes where they go, so its range is 0. `triggers` names when it does the entry's own effect again (amount, plus, save, applies) to one creature: `enter` (they move into it, or a zone carried by its caster reaches them), `turn-start` or `turn-end` (they start or end their turn in it). A creature is caught once a turn whatever the trigger, and whoever the cast itself caught counts as caught that turn. Whom it catches follows the entry: `friendlyFire: false` leaves the caster's side out, a heal or an ally entry keeps to it, and a zone carried by its caster never catches them. `atCast: false` does nothing as it appears. Casting the entry again replaces its zone. The board tints its cells, the fight lists it with the turns it has left, and the log says each catch. Off a board it holds whom it was cast on, and `turn-start` and `turn-end` catch them.
+An entry with an `area` can stay with `zone` (Capability API 1.172): `{ "rounds", "anchor", "triggers", "atCast" }`. It stands for `rounds` (1 to 1000) of its caster's turns, counted as a summon's are, and ends sooner when the concentration that holds it ends or its caster is defeated. `anchor: "point"` (the default) keeps the cells it was cast on; `anchor: "caster"` is a burst around its caster that goes where they go, so its range is 0. `triggers` names when it does the entry's own effect again (amount, plus, save, applies) to one creature: `enter` (they move into it, or a zone carried by its caster reaches them), `turn-start` or `turn-end` (they start or end their turn in it). A creature is caught once a turn whatever the trigger, and whoever the cast itself caught counts as caught that turn. Whom it catches follows the entry: `friendlyFire: false` leaves the caster's side out, a heal or an ally entry keeps to it, and a zone carried by its caster never catches them. `atCast: false` does nothing as it appears. Casting the entry again replaces its zone. The board tints its cells, the fight lists it with the turns it has left, and the log says each catch. Off a board it holds whom it was cast on, and `turn-start` and `turn-end` catch them.
 
 ```json
 "mechanics": { "kind": "attack", "area": { "shape": "burst", "size": 20 }, "range": 120,
@@ -583,7 +583,7 @@ An entry with an `area` can stay with `zone` (Capability API 1.171): `{ "rounds"
 
 That is Cloudkill. Spirit Guardians is `"area": { "shape": "burst", "size": 15 }, "range": 0, "friendlyFire": false` with `"zone": { "rounds": 100, "anchor": "caster", "triggers": ["enter", "turn-start"], "atCast": false }`; Moonbeam is a 5-foot burst with `"triggers": ["enter", "turn-start"]`.
 
-A zone held at a point can move and change its ground (Capability API 1.172). `move: { "budget", "distance" }` lets its caster move it on their turn: the fight offers "Move <zone>" for that budget, picked on the board like a walk, to any cell within `distance` of its centre. `drift: { "distance" }` moves it that far straight away from its caster as each of their turns starts, stopping at the board's edge. Either way, whoever it now covers and did not before is caught as `enter` says. Only a burst held at a point moves or drifts. `terrain: { "difficult": true }` makes every cell of it cost double to move into for whoever it catches (ground that is already hard going is not doubled again), and `terrain: { "perDistance": { "every", "amount", "damageType" } }` deals `amount` (dice and flat, as an entry's own) to whoever it catches for every `every` they move inside it, with no save, counted across walks. The log says each move, drift and hurt.
+A zone held at a point can move and change its ground (Capability API 1.173). `move: { "budget", "distance" }` lets its caster move it on their turn: the fight offers "Move <zone>" for that budget, picked on the board like a walk, to any cell within `distance` of its centre. `drift: { "distance" }` moves it that far straight away from its caster as each of their turns starts, stopping at the board's edge. Either way, whoever it now covers and did not before is caught as `enter` says. Only a burst held at a point moves or drifts. `terrain: { "difficult": true }` makes every cell of it cost double to move into for whoever it catches (ground that is already hard going is not doubled again), and `terrain: { "perDistance": { "every", "amount", "damageType" } }` deals `amount` (dice and flat, as an entry's own) to whoever it catches for every `every` they move inside it, with no save, counted across walks. The log says each move, drift and hurt.
 
 ```json
 {
@@ -604,27 +604,27 @@ A zone held at a point can move and change its ground (Capability API 1.172). `m
 
 Cloudkill adds `"drift": { "distance": 10 }`. Spike Growth is a 20-foot burst with no amount of its own, `"triggers": []` (its ground is all it does), `"atCast": false` and `"terrain": { "difficult": true, "perDistance": { "every": 5, "amount": { "dice": "2d4" }, "damageType": "piercing" } }`.
 
-A zone can do more to whoever it catches (Capability API 1.173). `breaksConcentration: true` makes a creature it catches while concentrating roll the ruleset's concentration save against the entry's own save difficulty, before the entry's effect, and lose its concentration on a failure; the entry needs a `save`. `damageCap` ends the zone once it has dealt that much damage in all after it appears, counting its catches and its ground. Sleet Storm is a 40-foot burst with `"save": { "save": "dex" }`, `"applies": [{ "condition": "prone", "duration": "instant" }]` and `"zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "breaksConcentration": true, "terrain": { "difficult": true } }`. Guardian of Faith is a burst with `"friendlyFire": false`, `"amount": { "flat": 20 }` and `"zone": { "rounds": 1000, "triggers": ["enter", "turn-start"], "atCast": false, "damageCap": 60 }`.
+A zone can do more to whoever it catches (Capability API 1.174). `breaksConcentration: true` makes a creature it catches while concentrating roll the ruleset's concentration save against the entry's own save difficulty, before the entry's effect, and lose its concentration on a failure; the entry needs a `save`. `damageCap` ends the zone once it has dealt that much damage in all after it appears, counting its catches and its ground. Sleet Storm is a 40-foot burst with `"save": { "save": "dex" }`, `"applies": [{ "condition": "prone", "duration": "instant" }]` and `"zone": { "rounds": 10, "triggers": ["enter", "turn-start"], "breaksConcentration": true, "terrain": { "difficult": true } }`. Guardian of Faith is a burst with `"friendlyFire": false`, `"amount": { "flat": 20 }` and `"zone": { "rounds": 1000, "triggers": ["enter", "turn-start"], "atCast": false, "damageCap": 60 }`.
 
-What a condition applied by an entry is escaped against can be the entry's own save difficulty (1.173): `"escapeDc": "save"` on the `applies` entry, beside a contest whose `from.holding` is that condition. Web and Black Tentacles restrain with `{ "condition": "restrained", "duration": "until-save", "escapeDc": "save" }`, and the restrained creature's escape contest is rolled against the caster's spell save DC. Whatever applied it with no save difficulty leaves it escaped as the contest says, against its holder.
+What a condition applied by an entry is escaped against can be the entry's own save difficulty (1.174): `"escapeDc": "save"` on the `applies` entry, beside a contest whose `from.holding` is that condition. Web and Black Tentacles restrain with `{ "condition": "restrained", "duration": "until-save", "escapeDc": "save" }`, and the restrained creature's escape contest is rolled against the caster's spell save DC. Whatever applied it with no save difficulty leaves it escaped as the contest says, against its holder.
 
-An item's `use` may also carry `concentration` and `zone` (1.173), as a catalog entry does, so a spell scroll of Cloudkill or Moonbeam keeps its lasting area and is held by its reader's concentration.
+An item's `use` may also carry `concentration` and `zone` (1.174), as a catalog entry does, so a spell scroll of Cloudkill or Moonbeam keeps its lasting area and is held by its reader's concentration.
 
-A moved zone may ram, and its ground may cost more (Capability API 1.174). `move: { ..., "ram": true }` sends it a cell at a time straight for where it was moved to; on the first cell where it reaches somebody it did not cover before, it stops, catches them as if rammed (whatever its triggers say), and cannot be moved again that turn. Creatures who walk into it are caught only as its triggers say. Flaming Sphere is a 5-foot burst with `"triggers": ["turn-end"]` and `"move": { "budget": "bonus", "distance": 30, "ram": true }`. `terrain.costTimes` (2 to 10) makes every step into it cost that many plain steps, and ground already hard going costs no more than that: Plant Growth is `"terrain": { "costTimes": 4 }`. It replaces `difficult`, which is `costTimes: 2`. `terrain.halvesSpeed: true` makes every step inside cost double again, on top of any hard going: Spirit Guardians is `"terrain": { "halvesSpeed": true }`.
+A moved zone may ram, and its ground may cost more (Capability API 1.175). `move: { ..., "ram": true }` sends it a cell at a time straight for where it was moved to; on the first cell where it reaches somebody it did not cover before, it stops, catches them as if rammed (whatever its triggers say), and cannot be moved again that turn. Creatures who walk into it are caught only as its triggers say. Flaming Sphere is a 5-foot burst with `"triggers": ["turn-end"]` and `"move": { "budget": "bonus", "distance": 30, "ram": true }`. `terrain.costTimes` (2 to 10) makes every step into it cost that many plain steps, and ground already hard going costs no more than that: Plant Growth is `"terrain": { "costTimes": 4 }`. It replaces `difficult`, which is `costTimes: 2`. `terrain.halvesSpeed: true` makes every step inside cost double again, on top of any hard going: Spirit Guardians is `"terrain": { "halvesSpeed": true }`.
 
-Holds a spell puts on can be broken only as the spell says (also 1.174). A breaking-free contest with `"from": { "holding": "restrained", "escapable": true }` is offered only against a hold that names an `escapeDc`, so the same contest breaks a web and never petrification. `applies[].escapeChecks` names the contest checks that may break that hold, in place of the contest's own attacker checks: Black Tentacles restrains with `"escapeDc": "save", "escapeChecks": ["might", "agility"]`, and Web with `"escapeChecks": ["might"]`. `zone.whileHeld: { "condition", "amount", "damageType" }` deals its amount, with no save and in place of the zone's own effect, to whoever starts a turn in it already held by that condition from its caster: Black Tentacles' `"whileHeld": { "condition": "restrained", "amount": { "dice": "3d6" }, "damageType": "bludgeoning" }`.
+Holds a spell puts on can be broken only as the spell says (also 1.175). A breaking-free contest with `"from": { "holding": "restrained", "escapable": true }` is offered only against a hold that names an `escapeDc`, so the same contest breaks a web and never petrification. `applies[].escapeChecks` names the contest checks that may break that hold, in place of the contest's own attacker checks: Black Tentacles restrains with `"escapeDc": "save", "escapeChecks": ["might", "agility"]`, and Web with `"escapeChecks": ["might"]`. `zone.whileHeld: { "condition", "amount", "damageType" }` deals its amount, with no save and in place of the zone's own effect, to whoever starts a turn in it already held by that condition from its caster: Black Tentacles' `"whileHeld": { "condition": "restrained", "amount": { "dice": "3d6" }, "damageType": "bludgeoning" }`.
 
-An entry or an item's use may cure (Capability API 1.175). `ends: { "conditions": [...], "count"? }` takes those conditions off its target in the order named, at most `count` of them: Lesser Restoration is `"ends": { "conditions": ["blinded", "deafened", "paralyzed", "poisoned"], "count": 1 }`. `stabilizes: true` steadies a dying target, who rolls no more dying saves, and needs a combat block with a `dying` rule: Spare the Dying. `revives: { "withinRounds", "health" }` is aimed only at somebody who died no more than that many rounds ago and brings them back at that amount: Revivify is `"revives": { "withinRounds": 10, "health": { "flat": 1 } }`. An entry that only ends conditions or steadies is offered only against somebody it would help; one of the kind `utility` with nothing else to do is offered as long as it cures.
+An entry or an item's use may cure (Capability API 1.176). `ends: { "conditions": [...], "count"? }` takes those conditions off its target in the order named, at most `count` of them: Lesser Restoration is `"ends": { "conditions": ["blinded", "deafened", "paralyzed", "poisoned"], "count": 1 }`. `stabilizes: true` steadies a dying target, who rolls no more dying saves, and needs a combat block with a `dying` rule: Spare the Dying. `revives: { "withinRounds", "health" }` is aimed only at somebody who died no more than that many rounds ago and brings them back at that amount: Revivify is `"revives": { "withinRounds": 10, "health": { "flat": 1 } }`. An entry that only ends conditions or steadies is offered only against somebody it would help; one of the kind `utility` with nothing else to do is offered as long as it cures.
 
-Areas may be boxes, and lasting ones walls (Capability API 1.176). `area.shape: "box"` is a square of `size` a side whose near corner sits on the cell aimed at, reaching away from its maker; along an axis its maker is level with, it is centred on that cell instead. Without a `range` it sits against its maker. Web is `"area": { "shape": "box", "size": 20 }` with a range of 60. `area.shape: "wall"` only ever stays, so it needs a `zone`: it is `size` long and `width` thick (one cell without it), run through the aimed cell across the line from its maker, or toward the choice's `toward` cell from there; `"ring": <diameter>` lets its caster lay it instead as a ring that wide around the aimed cell, when the choice says `"ring": true`. A wall needs no trigger: Wind Wall only does its effect as it appears. A wall is never moved, drifts or follows its maker. `zone.blocks: ["move", "sight"]` closes its cells to walking, to seeing, or both while it stands, and whoever stands where it goes up is put on the nearest open cell (on its chosen side when one is as near): Wall of Stone blocks both, Wall of Force movement, Wall of Fire sight. `zone.side: { "distance", "triggers" }` makes the cells within `distance` of one side catch as its own `triggers` say, beside the wall's own cells; the choice's `side` says which, `near` its maker (inside a ring) or `far` (outside), far when left out. Wall of Fire is `"area": { "shape": "wall", "size": 60, "ring": 20 }`, `"zone": { "rounds": 10, "triggers": ["enter", "turn-end"], "blocks": ["sight"], "side": { "distance": 10, "triggers": ["turn-end"] } }`.
+Areas may be boxes, and lasting ones walls (Capability API 1.177). `area.shape: "box"` is a square of `size` a side whose near corner sits on the cell aimed at, reaching away from its maker; along an axis its maker is level with, it is centred on that cell instead. Without a `range` it sits against its maker. Web is `"area": { "shape": "box", "size": 20 }` with a range of 60. `area.shape: "wall"` only ever stays, so it needs a `zone`: it is `size` long and `width` thick (one cell without it), run through the aimed cell across the line from its maker, or toward the choice's `toward` cell from there; `"ring": <diameter>` lets its caster lay it instead as a ring that wide around the aimed cell, when the choice says `"ring": true`. A wall needs no trigger: Wind Wall only does its effect as it appears. A wall is never moved, drifts or follows its maker. `zone.blocks: ["move", "sight"]` closes its cells to walking, to seeing, or both while it stands, and whoever stands where it goes up is put on the nearest open cell (on its chosen side when one is as near): Wall of Stone blocks both, Wall of Force movement, Wall of Fire sight. `zone.side: { "distance", "triggers" }` makes the cells within `distance` of one side catch as its own `triggers` say, beside the wall's own cells; the choice's `side` says which, `near` its maker (inside a ring) or `far` (outside), far when left out. Wall of Fire is `"area": { "shape": "wall", "size": 60, "ring": 20 }`, `"zone": { "rounds": 10, "triggers": ["enter", "turn-end"], "blocks": ["sight"], "side": { "distance": 10, "triggers": ["turn-end"] } }`.
 
-Seeing matters (Capability API 1.177). `combat.senses` lists the senses that see where eyes cannot, each `{ "id", "label", "sheet"?, "blind"? }`: a character's range is read off its sheet by `sheet` (nothing at zero), a creature carries its own as `"senses": { "darkvision": 60 }` in the ruleset's distance, and a `blind` sense (blindsight, tremorsense) works without eyes. The block then needs `combat.distance`. A zone with `obscures` hides everything in it, and anything seen through it, from whoever has none of the senses its `pierced` lists within range: Fog Cloud is `"obscures": {}`, Darkness `"obscures": { "pierced": ["blindsight", "truesight"] }`. Such a zone needs no trigger, and a `utility` entry that does nothing but leave an area standing (Fog Cloud, Darkness, a wall) is on the menu, set down wherever its caster chooses. A `combat.conditions` entry with `unseen` hides its holder the same way: invisible is `"unseen": { "pierced": ["blindsight", "truesight"] }`. `combat.sight` says what this does: `unseenAttacks: true` gives an attack advantage when its target cannot see the attacker and disadvantage when the attacker cannot see its target, and `eyes` names the sense (as a condition's `lacks` names it) that is sight, so a blinded creature sees only by a `blind` sense. An entry or creature action with `seen: true` may only pick targets its maker can see, as "a creature you can see within range" says. A burst or box may be set down several times at once with `area.copies` (2 to 10), each copy touching another, and the player places each one: Fire Storm is `"area": { "shape": "box", "size": 10, "copies": 10 }`. A zone set down several times stays where it is cast.
+Seeing matters (Capability API 1.178). `combat.senses` lists the senses that see where eyes cannot, each `{ "id", "label", "sheet"?, "blind"? }`: a character's range is read off its sheet by `sheet` (nothing at zero), a creature carries its own as `"senses": { "darkvision": 60 }` in the ruleset's distance, and a `blind` sense (blindsight, tremorsense) works without eyes. The block then needs `combat.distance`. A zone with `obscures` hides everything in it, and anything seen through it, from whoever has none of the senses its `pierced` lists within range: Fog Cloud is `"obscures": {}`, Darkness `"obscures": { "pierced": ["blindsight", "truesight"] }`. Such a zone needs no trigger, and a `utility` entry that does nothing but leave an area standing (Fog Cloud, Darkness, a wall) is on the menu, set down wherever its caster chooses. A `combat.conditions` entry with `unseen` hides its holder the same way: invisible is `"unseen": { "pierced": ["blindsight", "truesight"] }`. `combat.sight` says what this does: `unseenAttacks: true` gives an attack advantage when its target cannot see the attacker and disadvantage when the attacker cannot see its target, and `eyes` names the sense (as a condition's `lacks` names it) that is sight, so a blinded creature sees only by a `blind` sense. An entry or creature action with `seen: true` may only pick targets its maker can see, as "a creature you can see within range" says. A burst or box may be set down several times at once with `area.copies` (2 to 10), each copy touching another, and the player places each one: Fire Storm is `"area": { "shape": "box", "size": 10, "copies": 10 }`. A zone set down several times stays where it is cast.
 
-Zones can work on whoever stands in them (Capability API 1.178). `combat.components` names what using something may need, each `{ "id", "label" }` (5e's verbal, somatic, material), and an entry or a creature's action lists its own in `components`. A zone's `inside` puts `conditions` on whoever is in it and keeps the damage types in `immune` off them while they stay; its `forbids: { "components": [...] }` stops anything needing those from being used inside, as a condition's `forbids` does for its holder (gagged). Silence is `"inside": { "conditions": ["deafened"], "immune": ["thunder"] }, "forbids": { "components": ["verbal"] }`. A zone's `wards: { "catalogs": [...], "maxLevel": N }` keeps off whoever is inside anything off those catalogs used from outside it at level N or lower, judged at the level it is paid at: Globe of Invulnerability is `"wards": { "catalogs": ["spells"], "maxLevel": 5 }`. A condition that takes budgets away (`budgets` with a negative `flat`), put on during its holder's own turn, takes them from that turn too, so Stinking Cloud's failed save as the turn begins costs that turn's action.
+Zones can work on whoever stands in them (Capability API 1.179). `combat.components` names what using something may need, each `{ "id", "label" }` (5e's verbal, somatic, material), and an entry or a creature's action lists its own in `components`. A zone's `inside` puts `conditions` on whoever is in it and keeps the damage types in `immune` off them while they stay; its `forbids: { "components": [...] }` stops anything needing those from being used inside, as a condition's `forbids` does for its holder (gagged). Silence is `"inside": { "conditions": ["deafened"], "immune": ["thunder"] }, "forbids": { "components": ["verbal"] }`. A zone's `wards: { "catalogs": [...], "maxLevel": N }` keeps off whoever is inside anything off those catalogs used from outside it at level N or lower, judged at the level it is paid at: Globe of Invulnerability is `"wards": { "catalogs": ["spells"], "maxLevel": 5 }`. A condition that takes budgets away (`budgets` with a negative `flat`), put on during its holder's own turn, takes them from that turn too, so Stinking Cloud's failed save as the turn begins costs that turn's action.
 
-Senses and seeing go further (Capability API 1.179). A condition an entry applies may end when its holder acts: `"endsWhenHolder": { "attacks": true, "casts": ["spells"] }` takes it off once they have made an attack, or used an entry of a catalog it names, and an item's use that says `"casts": "spells"` (a scroll, a wand) counts as casting from that catalog. The attack or spell that ended it still had it, so Invisibility gives its one attack advantage and is gone afterwards. What a standing zone does by itself is not its caster acting. A condition in `combat.conditions`, or an item's `worn` or `carried` effect, may give senses with a range in the ruleset's distance, `"senses": { "darkvision": 60 }`; the longer of that and the holder's own range counts while it holds, so the Darkvision spell, True Seeing (`{ "truesight": 120 }`) and goggles of night work. A condition with `"cancelsUnseen": true` lets everybody see its holder whatever condition hides them, as Faerie Fire outlines the invisible; obscuring zones and walls still hide them.
+Senses and seeing go further (Capability API 1.180). A condition an entry applies may end when its holder acts: `"endsWhenHolder": { "attacks": true, "casts": ["spells"] }` takes it off once they have made an attack, or used an entry of a catalog it names, and an item's use that says `"casts": "spells"` (a scroll, a wand) counts as casting from that catalog. The attack or spell that ended it still had it, so Invisibility gives its one attack advantage and is gone afterwards. What a standing zone does by itself is not its caster acting. A condition in `combat.conditions`, or an item's `worn` or `carried` effect, may give senses with a range in the ruleset's distance, `"senses": { "darkvision": 60 }`; the longer of that and the holder's own range counts while it holds, so the Darkvision spell, True Seeing (`{ "truesight": 120 }`) and goggles of night work. A condition with `"cancelsUnseen": true` lets everybody see its holder whatever condition hides them, as Faerie Fire outlines the invisible; obscuring zones and walls still hide them.
 
-Wards, saves, monster spellcasting and scrolls go further (Capability API 1.180). A zone's `wards` compares the level a spell was paid at unless it says `"by": "base"`, which compares the spell's own level however it was paid, as Globe of Invulnerability does. `"maxLevelPerCostStep": 1` keeps out one level more for each step the ward's own cast was paid above its base. An entry's or a creature action's `save` may say what else it counts as being against, `"against": { "damage": ["poison"] }`, so a save modifier `against` poison applies to it, and who succeeds without rolling: `"succeeds": { "immune": ["poison"], "conditionImmune": ["poisoned"], "is": { "tags": ["nonbreathing"] } }` (any one is enough), as Stinking Cloud needs. A creature's `spellcasting` may say what its spells need in place of each entry's own `components`, for the whole trait or per spell, with `[]` for innate spellcasting that needs none, so Silence does not stop it. An item's use may be `"kind": "utility"` when all it does is leave an area standing (a scroll of Fog Cloud, Darkness, Silence or Globe of Invulnerability); it needs an `area` and a `zone`.
+Wards, saves, monster spellcasting and scrolls go further (Capability API 1.181). A zone's `wards` compares the level a spell was paid at unless it says `"by": "base"`, which compares the spell's own level however it was paid, as Globe of Invulnerability does. `"maxLevelPerCostStep": 1` keeps out one level more for each step the ward's own cast was paid above its base. An entry's or a creature action's `save` may say what else it counts as being against, `"against": { "damage": ["poison"] }`, so a save modifier `against` poison applies to it, and who succeeds without rolling: `"succeeds": { "immune": ["poison"], "conditionImmune": ["poisoned"], "is": { "tags": ["nonbreathing"] } }` (any one is enough), as Stinking Cloud needs. A creature's `spellcasting` may say what its spells need in place of each entry's own `components`, for the whole trait or per spell, with `[]` for innate spellcasting that needs none, so Silence does not stop it. An item's use may be `"kind": "utility"` when all it does is leave an area standing (a scroll of Fog Cloud, Darkness, Silence or Globe of Invulnerability); it needs an `area` and a `zone`.
 
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
@@ -668,7 +668,7 @@ What it spends:
 accepted when the cost has exactly one term and the named pool shares that term's group, or pays
 for it. Anything else is refused rather than reinterpreted.
 
-**A pool that pays for another group** (Capability API 1.170). A live pool's `pays` names up to four
+**A pool that pays for another group** (Capability API 1.171). A live pool's `pays` names up to four
 other groups whose costs it may pay too, at its own level (its `level`, or its place in its own
 group), and never for a cost of a higher level than its own. 5e's pact slots pay for spells costed
 from the spell slots, as a multiclass warlock may:
@@ -688,7 +688,7 @@ A fight offers such a pool beside the higher pools of the spell's own group, and
 grows the spell by as many steps as its level is above the spell's: a 3rd-level pact slot pays for
 Magic Missile as a 3rd-level slot would. A use whose own pool is empty is still offered, paid only
 from a higher pool or one that pays for it, so a 1st-level spell is cast with a 2nd-level slot once
-the 1st-level slots are gone. `targetsPerCostStep` (1.170, 1 to 10) on an entry's `mechanics` adds
+the 1st-level slots are gone. `targetsPerCostStep` (1.171, 1 to 10) on an entry's `mechanics` adds
 that many targets for each step it is paid up, to 20 at most: Hold Person is `"targetCount": 1,
 "targetsPerCostStep": 1`.
 
@@ -716,7 +716,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ### The guided builder: making a character in steps
 
-A sheet may declare `sheet.builder` (Capability API 1.85). The sheet editor, in the character and persona editors and in a game's **Edit sheet**, then opens on a **Guided** view beside the full form (**All fields**): the steps across the top, each with a badge counting the choices it still waits on, **Back** and **Next** that never block (a player may leave choices for later), and the character as it stands beside them: what the steps wrote, the scores, the values `gm.sheetSummary` names (armor class, proficiency bonus) and the trained saves and skills.
+A sheet may declare `sheet.builder` (Capability API 1.86). The sheet editor, in the character and persona editors and in a game's **Edit sheet**, then opens on a **Guided** view beside the full form (**All fields**): the steps across the top, each with a badge counting the choices it still waits on, **Back** and **Next** that never block (a player may leave choices for later), and the character as it stands beside them: what the steps wrote, the scores, the values `gm.sheetSummary` names (armor class, proficiency bonus) and the trained saves and skills.
 
 ```json
 "builder": {
@@ -738,10 +738,10 @@ A sheet may declare `sheet.builder` (Capability API 1.85). The sheet editor, in 
 }
 ```
 
-Up to 24 steps, each `{ id, label, kind, ... }`; a package with more than 16 declares Capability API 1.111:
+Up to 24 steps, each `{ id, label, kind, ... }`; a package with more than 16 declares Capability API 1.112:
 
-- `catalog`: entries of a catalog of rows, shown as cards with their `summary` behind **Info**. `min` (default 1) is how many the step asks for and `max` (default 1) the most it takes; with `max` 1 a new pick replaces the old one. Both may go up to 40; a package with either above 20 declares Capability API 1.109. `field` names a text or enum field the picked labels are written to (an enum field takes the entry's id or label, whichever is one of its values). `filters` fixes values of the catalog's filters, and `within: { step, filter }` offers only entries whose `filter` names an entry picked at that earlier step, as a subrace names its race; unpick the race and its subrace counts for nothing. `upTo: { filter, value }` (Capability API 1.86) offers only entries whose number `filter` is at most `value`, a value read off the sheet as it stands, such as features up to the character's level (`{ "filter": "level", "value": { "derived": "level" } }`); an entry without the filter is always offered, and a pick the sheet has since fallen below counts for nothing but is kept. A pick that changes the value read (a class that sets the level) is settled in the same change, and so is a value changed in **All fields** (a level lowered there takes back at once what a feature above it gave). `countFrom` (Capability API 1.89) is a value read off the sheet the same way that stands for both `min` and `max`: how many entries the step asks for and the most it takes, rounded down and never above `max`, such as the spells a class knows at the character's level (`{ "derived": "spells_known" }`). Picks past it are kept but count for nothing until the count rises again.
-  A catalog step may also carry `stamp` (Capability API 1.107), 1 to 4 column values written onto every row it adds, such as `"stamp": { "class": "wizard" }` on the wizard's spells step and `"stamp": { "class": "cleric" }` on the cleric's. Each key must be a column in every list the catalog feeds; values are strings, numbers or booleans. The stamp replaces the catalog's initial value. Existing rows and later edits in **All fields** remain the player's. With Capability API 1.129, a stamp value may instead be an object whose `fromWithin` is `"id"`, `"label"` or a filter id declared by the parent catalog: it reads the first matching parent in pick order, writes a string or number once when the row is added, and leaves that column unstamped if no parent matches or its filter is missing or an array.
+- `catalog`: entries of a catalog of rows, shown as cards with their `summary` behind **Info**. `min` (default 1) is how many the step asks for and `max` (default 1) the most it takes; with `max` 1 a new pick replaces the old one. Both may go up to 40; a package with either above 20 declares Capability API 1.110. `field` names a text or enum field the picked labels are written to (an enum field takes the entry's id or label, whichever is one of its values). `filters` fixes values of the catalog's filters, and `within: { step, filter }` offers only entries whose `filter` names an entry picked at that earlier step, as a subrace names its race; unpick the race and its subrace counts for nothing. `upTo: { filter, value }` (Capability API 1.87) offers only entries whose number `filter` is at most `value`, a value read off the sheet as it stands, such as features up to the character's level (`{ "filter": "level", "value": { "derived": "level" } }`); an entry without the filter is always offered, and a pick the sheet has since fallen below counts for nothing but is kept. A pick that changes the value read (a class that sets the level) is settled in the same change, and so is a value changed in **All fields** (a level lowered there takes back at once what a feature above it gave). `countFrom` (Capability API 1.90) is a value read off the sheet the same way that stands for both `min` and `max`: how many entries the step asks for and the most it takes, rounded down and never above `max`, such as the spells a class knows at the character's level (`{ "derived": "spells_known" }`). Picks past it are kept but count for nothing until the count rises again.
+  A catalog step may also carry `stamp` (Capability API 1.108), 1 to 4 column values written onto every row it adds, such as `"stamp": { "class": "wizard" }` on the wizard's spells step and `"stamp": { "class": "cleric" }` on the cleric's. Each key must be a column in every list the catalog feeds; values are strings, numbers or booleans. The stamp replaces the catalog's initial value. Existing rows and later edits in **All fields** remain the player's. With Capability API 1.130, a stamp value may instead be an object whose `fromWithin` is `"id"`, `"label"` or a filter id declared by the parent catalog: it reads the first matching parent in pick order, writes a string or number once when the row is added, and leaves that column unstamped if no parent matches or its filter is missing or an array.
 
   ```json
   {
@@ -754,13 +754,13 @@ Up to 24 steps, each `{ id, label, kind, ... }`; a package with more than 16 dec
   }
   ```
 
-- `fields`: a short form of named fields. Its badge counts the ones still empty, except those listed in `optional` (a subclass chosen at a later level). `shownWhen: { "field_id": { "field": "level" } }` (Capability API 1.106) shows and counts a named field of the step only while its value reference reads above 0 on the sheet as it stands; hidden fields keep their values. `total: { "fields": ["level_bard", "level_other"], "max": 20 }` (1.106) holds at least two number fields of the step to a combined maximum (an integer from 1 to 1000), lowering each input's maximum by the others' current values without going below its own minimum, and adds one to the badge if the total is over the limit; **Next** still works.
-- `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` no more than buying every score to the top costs, and the cost of every score from the lowest, where every score starts, up one at a time; a score typed by hand starts from the nearest score on the table), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. `manual: true` keeps the existing score bounds; `manual: { min, max }` (Capability API 1.109) clamps typed base scores before grants to those integer bounds, with min at least -100, max at most 1000 and min at most max, while each ability's own bounds still hold the total. `default` (1.86) is the method a character the builder starts from a blank sheet begins on (and keeps, even if the ruleset's default later changes), so a beginner sees point buy, say, until they choose another; a described character never takes it, and its scores stay as they are until the player chooses a method after describing; **Manual entry** stays the typed edit within its bounds, and **All fields** is always there. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
+- `fields`: a short form of named fields. Its badge counts the ones still empty, except those listed in `optional` (a subclass chosen at a later level). `shownWhen: { "field_id": { "field": "level" } }` (Capability API 1.107) shows and counts a named field of the step only while its value reference reads above 0 on the sheet as it stands; hidden fields keep their values. `total: { "fields": ["level_bard", "level_other"], "max": 20 }` (1.107) holds at least two number fields of the step to a combined maximum (an integer from 1 to 1000), lowering each input's maximum by the others' current values without going below its own minimum, and adds one to the badge if the total is over the limit; **Next** still works.
+- `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` no more than buying every score to the top costs, and the cost of every score from the lowest, where every score starts, up one at a time; a score typed by hand starts from the nearest score on the table), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. `manual: true` keeps the existing score bounds; `manual: { min, max }` (Capability API 1.110) clamps typed base scores before grants to those integer bounds, with min at least -100, max at most 1000 and min at most max, while each ability's own bounds still hold the total. `default` (1.87) is the method a character the builder starts from a blank sheet begins on (and keeps, even if the ruleset's default later changes), so a beginner sees point buy, say, until they choose another; a described character never takes it, and its scores stay as they are until the player chooses a method after describing; **Manual entry** stays the typed edit within its bounds, and **All fields** is always there. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
 - `trained`: the skill and save choices the picks offer, and the step's own `choose: [{ "what": "skills", "count": 2, "from": [...] }]` (any of them when `from` is left out).
 - `startingGear`: lists the ruleset's starting gear. Gear is taken in a game, from the inventory, as always.
-- `choices` (Capability API 1.90): `catalog` names a catalog of rows, and the step is where the entries the picks grant from it are chosen (`grants.entries`, below), such as a language of your choice.
+- `choices` (Capability API 1.91): `catalog` names a catalog of rows, and the step is where the entries the picks grant from it are chosen (`grants.entries`, below), such as a language of your choice.
 
-A starting-gear step may carry `"strict": true` (Capability API 1.108). In legal-only mode, the default, it offers only gear whose `fits` reads true on the sheet as it stands, without live state, plus gear without `fits`; there is no Other gear list. For 5e, put `fits: { "value": { "field": "wizard_level" }, "atLeast": 1 }` on the Wizard kit and the corresponding class-level field on each other class kit; leave `fits` off the Acolyte kit so it fits everyone. Free edit offers every kit again. The inventory picker clears a selection that stops fitting after a class change or leaving free edit and says why; it also checks the fit before taking the gear. With no fitting gear the step shows its empty state, and Next stays open. Steps without `strict` keep offering every kit. The mode is local to each screen, not recorded with a saved build or sent to the server.
+A starting-gear step may carry `"strict": true` (Capability API 1.109). In legal-only mode, the default, it offers only gear whose `fits` reads true on the sheet as it stands, without live state, plus gear without `fits`; there is no Other gear list. For 5e, put `fits: { "value": { "field": "wizard_level" }, "atLeast": 1 }` on the Wizard kit and the corresponding class-level field on each other class kit; leave `fits` off the Acolyte kit so it fits everyone. Free edit offers every kit again. The inventory picker clears a selection that stops fitting after a class change or leaving free edit and says why; it also checks the fit before taking the gear. With no fitting gear the step shows its empty state, and Next stays open. Steps without `strict` keep offering every kit. The mode is local to each screen, not recorded with a saved build or sent to the server.
 
 What a pick gives is its entry's `grants`, read only by the builder:
 
@@ -776,12 +776,12 @@ What a pick gives is its entry's `grants`, read only by the builder:
 }
 ```
 
-- `abilities.add` adds to scores; `abilities.choose` lets the player pick `count` scores (never one twice, never one in `except`) that get `amount` each. With `"repeat": true` (Capability API 1.92) one score may be picked more than once, `amount` each time, so `{ "count": 2, "amount": 1, "repeat": true }` is an ability score improvement's +2 to one score or +1 to two; the step shows a minus beside a score to take one back. Either way no score goes past its `max`. `upTo` (Capability API 1.95) caps what the choice itself may raise a score to, after what every other grant adds: `{ "count": 2, "amount": 1, "repeat": true, "upTo": 20 }` is the SRD's improvement, which "can't increase an ability score above 20"; the step disables a score that stands at it. The choice is shown at the abilities step, or where the entry was picked when there is none.
-- `trained` trains skills and saves, and offers choices, shown at the first trained step or where the entry was picked. They are trained to the grant's `tier`, else the builder's `tier`, else the first tier above untrained the sheet offers for skills or saves. A choice never offers what the picks already train to its tier or higher, outright or through an earlier choice (Capability API 1.103): a background that trains Insight leaves a class's skill choice to the others, as the SRD asks. A choice stored before it was taken that way counts for nothing, so the step asks for another, and a choice with nothing left to offer is not shown. A choice may say `"held": "<tier>"` (Capability API 1.104): it offers only what the picks train to that tier or higher, or what a choice below its own tier holds there, as 5e's Expertise is two skills you are proficient in: `{ "tier": "expertise", "choose": [{ "what": "skills", "count": 2, "held": "proficient" }] }`. `held` ranks below the tier the choice trains to.
+- `abilities.add` adds to scores; `abilities.choose` lets the player pick `count` scores (never one twice, never one in `except`) that get `amount` each. With `"repeat": true` (Capability API 1.93) one score may be picked more than once, `amount` each time, so `{ "count": 2, "amount": 1, "repeat": true }` is an ability score improvement's +2 to one score or +1 to two; the step shows a minus beside a score to take one back. Either way no score goes past its `max`. `upTo` (Capability API 1.96) caps what the choice itself may raise a score to, after what every other grant adds: `{ "count": 2, "amount": 1, "repeat": true, "upTo": 20 }` is the SRD's improvement, which "can't increase an ability score above 20"; the step disables a score that stands at it. The choice is shown at the abilities step, or where the entry was picked when there is none.
+- `trained` trains skills and saves, and offers choices, shown at the first trained step or where the entry was picked. They are trained to the grant's `tier`, else the builder's `tier`, else the first tier above untrained the sheet offers for skills or saves. A choice never offers what the picks already train to its tier or higher, outright or through an earlier choice (Capability API 1.104): a background that trains Insight leaves a class's skill choice to the others, as the SRD asks. A choice stored before it was taken that way counts for nothing, so the step asks for another, and a choice with nothing left to offer is not shown. A choice may say `"held": "<tier>"` (Capability API 1.105): it offers only what the picks train to that tier or higher, or what a choice below its own tier holds there, as 5e's Expertise is two skills you are proficient in: `{ "tier": "expertise", "choose": [{ "what": "skills", "count": 2, "held": "proficient" }] }`. `held` ranks below the tier the choice trains to.
 - `sets` writes field values: a class's hit die, its spellcasting ability.
-- A catalog entry may say when a builder step offers it: `offeredWhen` (Capability API 1.98) is a value read off the sheet as it stands, and the entry is offered only while it reads above 0, as 5e offers a second class only when its multiclassing prerequisites are met (a derived value per class). A pick that later reads 0 counts for nothing and is kept, as `upTo`'s are. An entry whose own pick changes what its `offeredWhen` reads (a score it raises, a field it sets, a skill it trains, a list it writes, directly or through a derived value) is refused, since it would offer itself, take itself back and offer itself again. An entry with an `exclusive` group is read on the sheet without every pick the step has stored in that group (Capability API 1.99), since picking it drops them: a feat taken in place of an ability score improvement and gated on Strength 13 is not offered on the Strength that improvement gave. A choice an entry grants (`grants.entries.choose`) holds its options to their `offeredWhen` the same way (Capability API 1.105). The catalog picker in **All fields** offers every entry, as always.
-- A catalog entry may name an `exclusive` group (Capability API 1.93): a builder step keeps one pick of each group, so picking one drops the step's other pick of that group, and only the latest counts. A feat taken in place of an ability score improvement shares a group with it: `"exclusive": "fighter-asi-4"`.
-- `entries` (Capability API 1.90) offers entries of another catalog of rows to choose: `{ "choose": [{ "catalog": "languages", "count": 1 }] }`, at most six choices. `filters` fixes values of that catalog's filters and `ids` lists the only entries offered (`{ "catalog": "tools", "count": 1, "ids": ["smiths-tools", "brewers-supplies", "masons-tools"] }`). They are chosen at the builder's `choices` step for that catalog (a grant naming a catalog without one is refused), only entries that write rows are offered and their rows go on the sheet, and an entry chosen for one grant is not offered to another. Their own grants are not applied.
+- A catalog entry may say when a builder step offers it: `offeredWhen` (Capability API 1.99) is a value read off the sheet as it stands, and the entry is offered only while it reads above 0, as 5e offers a second class only when its multiclassing prerequisites are met (a derived value per class). A pick that later reads 0 counts for nothing and is kept, as `upTo`'s are. An entry whose own pick changes what its `offeredWhen` reads (a score it raises, a field it sets, a skill it trains, a list it writes, directly or through a derived value) is refused, since it would offer itself, take itself back and offer itself again. An entry with an `exclusive` group is read on the sheet without every pick the step has stored in that group (Capability API 1.100), since picking it drops them: a feat taken in place of an ability score improvement and gated on Strength 13 is not offered on the Strength that improvement gave. A choice an entry grants (`grants.entries.choose`) holds its options to their `offeredWhen` the same way (Capability API 1.106). The catalog picker in **All fields** offers every entry, as always.
+- A catalog entry may name an `exclusive` group (Capability API 1.94): a builder step keeps one pick of each group, so picking one drops the step's other pick of that group, and only the latest counts. A feat taken in place of an ability score improvement shares a group with it: `"exclusive": "fighter-asi-4"`.
+- `entries` (Capability API 1.91) offers entries of another catalog of rows to choose: `{ "choose": [{ "catalog": "languages", "count": 1 }] }`, at most six choices. `filters` fixes values of that catalog's filters and `ids` lists the only entries offered (`{ "catalog": "tools", "count": 1, "ids": ["smiths-tools", "brewers-supplies", "masons-tools"] }`). They are chosen at the builder's `choices` step for that catalog (a grant naming a catalog without one is refused), only entries that write rows are offered and their rows go on the sheet, and an entry chosen for one grant is not offered to another. Their own grants are not applied.
 - A pick also writes the entry's `rows`, once. An entry may carry `grants` and no `rows` at all (a class whose features come from another catalog), and a catalog whose entries all just grant needs no `feeds`; the catalog picker never offers such entries.
 
 Unpicking takes back what a pick gave, and only that: its increases (as far as a score's bounds let them go up), its training, its field values and its rows. What the sheet already had of the player's own (a skill trained by hand, a row added from the catalog picker) stays theirs, and an edit made in **All fields** stays until the builder's own answer for that value changes. An entry picked at two steps on one catalog grants once, and one a game's layers hide still counts for what it gave. A field a pick `sets` is written only while it is still blank, or while the builder already answers for it, so a level typed in by hand is never written over; a value the builder answers for and the player changes in its own fields step stays the builder's, and goes when a later pick no longer asks for it. The player's choices are kept beside the sheet, so a step can be reopened later.
@@ -792,7 +792,7 @@ Without `tier`, training goes to the first tier above untrained the sheet offers
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.69, a rider that fires on held weapons (`weapons`) needs 1.70, starting gear (`startingGear`) needs 1.77, and a risky item, a fake or a dishonest seller needs 1.78.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.69, a rider that fires on held weapons (`weapons`) needs 1.70, starting gear (`startingGear`) needs 1.78, and a risky item, a fake or a dishonest seller needs 1.79.
 
 ### The items block
 
@@ -866,7 +866,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   - Coins of one family change into each other by `value`, which counts the family's smallest coin. So the smallest coin is worth 1, and no two coins of a family are worth the same.
   - Two families never change into each other. A second nation's coin, or a setting's favours, is a family of its own.
   - A coin's id is unique across every family, because an item's cost names the coin alone.
-  - A coin's `label` is its name for any number of it (`pennies`); `one` (Capability API 1.88) is its name for exactly one (`penny`), said wherever a price, a purse or a market names one coin. Without it the `label` stands for one too.
+  - A coin's `label` is its name for any number of it (`pennies`); `one` (Capability API 1.89) is its name for exactly one (`penny`), said wherever a price, a purse or a market names one coin. Without it the `label` stands for one too.
   - `perWeight` (optional, and only beside `carry`) is how many of the family's coins weigh one unit of the carry stat.
   - Coins are the party's money, carried in the bags like any item (see Money, below).
 - `rarityCaps`: optional, one per rarity at most. The most an item the Game Master invents may give at that rarity: the largest value of each number stat named in `stats`, inside that stat's own range, and a whole number for a stat that takes whole numbers, and `bonus` (Capability API 1.53), the largest flat bonus one of its worn or carried modifiers may add. At a rarity with a `bonus`, a bonus in dice is left out, since dice cannot be held to a number; a penalty is never capped. An invented item is held to it; the items your catalogs list are yours and never capped.
@@ -913,7 +913,7 @@ Each entry carries an `item` instead of `rows` or a `creature`:
 - `worn` and `carried` (optional, Capability API 1.53): what the item does to its holder's checks and saves while it is worn, and while it is only carried, (1.54) the abilities it sets or raises, and (1.56) what it does in a fight. See [Checks outside a fight](#checks-outside-a-fight) and [Armor and worn effects in a fight](#armor-and-worn-effects-in-a-fight).
 - `requires` (optional, Capability API 1.54): what the item asks of whoever wears it, and what applies while they fall short. See [Checks outside a fight](#checks-outside-a-fight).
 - `attack` (optional, Capability API 1.55): what the item does as a weapon in a fight, while it is worn, (1.57) what it shoots and holds loaded, and (1.58) its other modes, an off-hand attack, a floor to its harm and the conditions it puts on a hit. See [Weapons in a fight](#weapons-in-a-fight), [Ammunition and reloading](#ammunition-and-reloading) and [Modes, a second weapon, a floor and conditions on a hit](#modes-a-second-weapon-a-floor-and-conditions-on-a-hit).
-- `toggle` (optional, Capability API 1.169): a switch the item carries, `{ "label", "budget" }`. A fight offers it as an option on that budget ("Turn on Flame Tongue: Flames"), the inventory as a button with the label, and whichever way it was left stays on the stack between fights; it starts off. An item with a switch is one to a stack while it is on. A weapon's `plus` clause with `when: "toggled"` is dealt only while it is on. 5e's flame tongue: `"toggle": { "label": "Flames", "budget": "bonus" }` and `"plus": [{ "dice": "2d6", "type": "fire", "when": "toggled" }]`.
+- `toggle` (optional, Capability API 1.170): a switch the item carries, `{ "label", "budget" }`. A fight offers it as an option on that budget ("Turn on Flame Tongue: Flames"), the inventory as a button with the label, and whichever way it was left stays on the stack between fights; it starts off. An item with a switch is one to a stack while it is on. A weapon's `plus` clause with `when: "toggled"` is dealt only while it is on. 5e's flame tongue: `"toggle": { "label": "Flames", "budget": "bonus" }` and `"plus": [{ "dice": "2d6", "type": "fire", "when": "toggled" }]`.
 - `use` and `charges` (optional, Capability API 1.59): what using the item does, in a fight and outside one, and the charges it holds for that use to spend, and (1.60) a pool it restores. See [Using items in a fight](#using-items-in-a-fight) and [Using items outside a fight](#using-items-outside-a-fight).
 
 An item carries no `mechanics`: what it does is written in its `item` block.
@@ -1017,7 +1017,7 @@ On a check:
 
 Gravewatch shows the same on a pool: the bound Dawn bell adds a die to Ward, and Rattled takes one off Soothe and Barter.
 
-### Typed defenses from conditions, levels, items and sheet rows (Capability API 1.131)
+### Typed defenses from conditions, levels, items and sheet rows (Capability API 1.132)
 
 `combat.conditions[]` and `combat.levels[]` can grant `resist`, `vulnerable`, `immune`
 (1–30 entries each) and `conditionImmunities` (1–40 condition ids). They apply while the
@@ -1079,15 +1079,15 @@ An item may be a weapon (Capability API 1.55). Its `attack` is the shape a comba
 ```
 
 - `budget`: the budget it spends, one of `combat.economy.budgets`.
-- `toHit`: what it adds to hit. `abilities` are one or more ability ids, and the best of them counts (a finesse weapon lists two). `skill` adds what a check of that skill adds, with the attack's ability in place of the skill's own, as an attack row's is. `proficiency` is a value off the holder's sheet: where it reads above 0, the ruleset's proficiency bonus is added (`{ "const": 1 }` for always). `bonus` is a number. `sheetBonus` is a number read off the holder's sheet and added as it stands, for what the holder brings to every weapon of a kind rather than what the weapon is: 5e's Archery fighting style gives `{ "derived": "archery" }` to each ranged weapon, a derived value that is 2 for an archer and 0 for anyone else (Capability API 1.94; the item's facts name it by its name on the sheet). `target` is a pool fight's own per-die target for this weapon's attack (Gravewatch's spade counts every die from 6 rather than the pool's 7), and only a `dice-pool` ruleset whose `target` can move may give one; in a summed fight its `bonus` says the same.
-- `damage`: `dice` it deals, the best of its damage `abilities` added, a `bonus`, and a `type`. A summed fight needs `dice`; in a pool fight a hit deals its successes and `dice` adds that many more of the pool's own die. `sheetBonus` (Capability API 1.96) is a number off the holder's sheet added to the damage as `toHit`'s is, and with `"oneHanded": true` it counts only while the weapon is held in one hand: not a `versatile` weapon wielded two-handed, and not one that takes two of a slot. 5e's Dueling gives `{ "derived": "dueling" }`, 2 for a duelist holding one weapon. `rerollUpTo` (Capability API 1.97) is a value off the holder's sheet: the weapon's own damage dice at or below it are thrown again once and the new face stands, a critical's extra dice too, only while the weapon is wielded two-handed (a `versatile` weapon with its hands free, or one that takes two of a slot) and only in a summed fight. 5e's Great Weapon Fighting gives `{ "derived": "great_weapon_fighting" }`, 2 with the style.
+- `toHit`: what it adds to hit. `abilities` are one or more ability ids, and the best of them counts (a finesse weapon lists two). `skill` adds what a check of that skill adds, with the attack's ability in place of the skill's own, as an attack row's is. `proficiency` is a value off the holder's sheet: where it reads above 0, the ruleset's proficiency bonus is added (`{ "const": 1 }` for always). `bonus` is a number. `sheetBonus` is a number read off the holder's sheet and added as it stands, for what the holder brings to every weapon of a kind rather than what the weapon is: 5e's Archery fighting style gives `{ "derived": "archery" }` to each ranged weapon, a derived value that is 2 for an archer and 0 for anyone else (Capability API 1.95; the item's facts name it by its name on the sheet). `target` is a pool fight's own per-die target for this weapon's attack (Gravewatch's spade counts every die from 6 rather than the pool's 7), and only a `dice-pool` ruleset whose `target` can move may give one; in a summed fight its `bonus` says the same.
+- `damage`: `dice` it deals, the best of its damage `abilities` added, a `bonus`, and a `type`. A summed fight needs `dice`; in a pool fight a hit deals its successes and `dice` adds that many more of the pool's own die. `sheetBonus` (Capability API 1.97) is a number off the holder's sheet added to the damage as `toHit`'s is, and with `"oneHanded": true` it counts only while the weapon is held in one hand: not a `versatile` weapon wielded two-handed, and not one that takes two of a slot. 5e's Dueling gives `{ "derived": "dueling" }`, 2 for a duelist holding one weapon. `rerollUpTo` (Capability API 1.98) is a value off the holder's sheet: the weapon's own damage dice at or below it are thrown again once and the new face stands, a critical's extra dice too, only while the weapon is wielded two-handed (a `versatile` weapon with its hands free, or one that takes two of a slot) and only in a summed fight. 5e's Great Weapon Fighting gives `{ "derived": "great_weapon_fighting" }`, 2 with the style.
 - `reach` and `range` (`normal`, and `long` for what it still carries beyond) are in your `combat.distance` unit, and need one. A weapon with both is thrown, as an attack row is: a swing close, a throw beyond. With neither it reaches one cell.
 - `versatile`: `dice` it deals instead while each slot it takes has room for as much again among what its holder wears: a spear in one hand with the other free.
 - `strikes`: how many strikes one spend buys, off the holder's sheet, as an attack row's `strikes` is. A weapon without it is one strike a spend, however many attacks its wielder has.
 
 Any of those numbers or words may read the item's own stat instead: `{ "stat": "damage" }` is the item's `damage`, and a stat the item gives nothing is as if the value were not written. `abilities` and `skill` read an enum stat whose words are ability or skill ids, and `type` a text or enum stat. So an item the Game Master invents `like=` a weapon is a weapon too, fighting with its own stats, held to `rarityCaps` like any stat (a value you write down is copied as it is). One invented with no slot and no binding is never worn, so it is made without the attack. A small model tends to describe a weapon and leave `like=` out, so one invented in a category of your weapons with nothing to start from fights as your weapon of that category it is most like by name (a word shared either way, so a crossbow is like a bow), or the first of them, taking any stat that attack reads which the proposal left out, and the answer says so ("It fights as Hand axe does."). The Game Master's proposal form also tells it that a weapon made like one fights like it.
 
-A weapon's tags are what its blows carry. A creature's `resist` or `immune` entry may say what gets through it: `{ "type": "tearing", "except": ["silver"] }` is taken in full from a weapon tagged `silver`, and resisted from anything else. Gravewatch's grave wight is written that way, and its silver coffin nail gets through. Harm that is not a weapon item's names what it carries with `qualities` (Capability API 1.100), in the same item tags: on a catalog entry's `mechanics` (a spell) and on a creature action's `damage` (a deva's mace). 5e's "resistance to bludgeoning, piercing and slashing from nonmagical attacks" is `{ "type": "slashing", "except": ["magical"] }` beside the same for the other two, with `magical` on its magic weapons' tags and `"qualities": ["magical"]` on its spells and on the creature attacks the SRD calls magical.
+A weapon's tags are what its blows carry. A creature's `resist` or `immune` entry may say what gets through it: `{ "type": "tearing", "except": ["silver"] }` is taken in full from a weapon tagged `silver`, and resisted from anything else. Gravewatch's grave wight is written that way, and its silver coffin nail gets through. Harm that is not a weapon item's names what it carries with `qualities` (Capability API 1.101), in the same item tags: on a catalog entry's `mechanics` (a spell) and on a creature action's `damage` (a deva's mace). 5e's "resistance to bludgeoning, piercing and slashing from nonmagical attacks" is `{ "type": "slashing", "except": ["magical"] }` beside the same for the other two, with `magical` on its magic weapons' tags and `"qualities": ["magical"]` on its spells and on the creature attacks the SRD calls magical.
 
 The weapon's details and the Game Master's line say what it does: `attack (Action): Brawn to hit, 1d6 + Brawn cut, reach 2 paces, range 10 to 20 paces`, with `1d8 with a hand free` for Ember Roads' boar spear and `at 6` beside Gravewatch's spade.
 
@@ -1129,12 +1129,12 @@ A weapon may have other ways to make its attack, a partner in the off hand, a le
   "offHand": { "budget": "quick", "ability": "full" }
   ```
 
-  Once its holder has attacked this turn with one weapon marked `offHand`, each other such weapon they wear offers a second attack on that budget, named "Silver coffin nail, off hand" on the menu. `ability` is `full` (the default) or `penalty-only`, which adds the damage ability only when it takes something away, as 5e's two-weapon fighting does. An off-hand attack is one blow, whatever strikes the main attack buys, and never a strike at somebody walking away. A weapon marked `offHand` needs the combat block's `offHand`. `fullWhen` (Capability API 1.96) is a value off the fighter's sheet: above 0, that fighter's off hand keeps the full ability whatever `ability` says, as 5e's Two-Weapon Fighting style does.
+  Once its holder has attacked this turn with one weapon marked `offHand`, each other such weapon they wear offers a second attack on that budget, named "Silver coffin nail, off hand" on the menu. `ability` is `full` (the default) or `penalty-only`, which adds the damage ability only when it takes something away, as 5e's two-weapon fighting does. An off-hand attack is one blow, whatever strikes the main attack buys, and never a strike at somebody walking away. A weapon marked `offHand` needs the combat block's `offHand`. `fullWhen` (Capability API 1.97) is a value off the fighter's sheet: above 0, that fighter's off hand keeps the full ability whatever `ability` says, as 5e's Two-Weapon Fighting style does.
 
 - `floor`: the least a hit deals, written down or read off a number stat of the item. A pool fight's harm after soak, or a summed fight's damage, is raised to it before a resistance halves it, and the log says so. A spending blow throws its maker's number and is never raised.
 - `onHit`: up to four of your conditions the target takes when the harm the blow dealt reached `atLeast`, for `rounds` of their own turns or, without it, until something takes it off. The harm is what reached them after soak and their resistances; a taking blow takes initiative rather than harm, so it puts none on.
-  An entry may also carry `save: { "save": <save id>, "difficulty": n }`, which the target rolls as the condition would go on, a success keeping it off, and `saveEnds: { "save", "difficulty", "at": "turn-start" | "turn-end" | "damaged" }`, which makes it last until its holder makes that save at the start or end of each of their turns or on damage above zero (it then has no `rounds`). Both count as saves against that condition, and against magic when the weapon is magical (Capability API 1.168). 5e's sword of wounding: `{ "condition": "wounded", "atLeast": 1, "saveEnds": { "save": "con_save", "difficulty": 15, "at": "turn-start" } }`.
-- `plus`: up to three more amounts on each hit, each `{ "dice", "flat", "type", "save", "targetIs", "when" }` and rolled, typed and resisted on its own (Capability API 1.168). `save` names its own `difficulty` and `onSuccess` (`half` or `none`). `targetIs` deals it only to a target of those creature types or tags (see Creature types and target tests). `when: "critical"` deals it only on a critical hit; any clause's dice are doubled on a critical hit as the weapon's are. A javelin of lightning is `{ "dice": "4d6", "type": "lightning" }`; a dragon slayer `{ "dice": "3d6", "type": "slashing", "targetIs": { "types": ["dragon"] } }`; a sword of sharpness `{ "flat": 14, "type": "slashing", "when": "critical" }`. A forecast counts a clause only against a target it reaches and never a critical-only one. `when: "toggled"` deals it only while the item's switch is on (Capability API 1.169, see `toggle` below).
+  An entry may also carry `save: { "save": <save id>, "difficulty": n }`, which the target rolls as the condition would go on, a success keeping it off, and `saveEnds: { "save", "difficulty", "at": "turn-start" | "turn-end" | "damaged" }`, which makes it last until its holder makes that save at the start or end of each of their turns or on damage above zero (it then has no `rounds`). Both count as saves against that condition, and against magic when the weapon is magical (Capability API 1.169). 5e's sword of wounding: `{ "condition": "wounded", "atLeast": 1, "saveEnds": { "save": "con_save", "difficulty": 15, "at": "turn-start" } }`.
+- `plus`: up to three more amounts on each hit, each `{ "dice", "flat", "type", "save", "targetIs", "when" }` and rolled, typed and resisted on its own (Capability API 1.169). `save` names its own `difficulty` and `onSuccess` (`half` or `none`). `targetIs` deals it only to a target of those creature types or tags (see Creature types and target tests). `when: "critical"` deals it only on a critical hit; any clause's dice are doubled on a critical hit as the weapon's are. A javelin of lightning is `{ "dice": "4d6", "type": "lightning" }`; a dragon slayer `{ "dice": "3d6", "type": "slashing", "targetIs": { "types": ["dragon"] } }`; a sword of sharpness `{ "flat": 14, "type": "slashing", "when": "critical" }`. A forecast counts a clause only against a target it reaches and never a critical-only one. `when: "toggled"` deals it only while the item's switch is on (Capability API 1.170, see `toggle` below).
 
 The weapon's details and the Game Master's line say all of it: `modes Volley (2 shots, -2 to hit, up to 2 targets)`, `off hand (Quick)`, `at least 1 on a hit before resistance`, `+3d6 slashing against Dragon` and `Marked for 2 rounds when a hit deals 2 or more`.
 
@@ -1166,7 +1166,7 @@ A fight reads each item once, named for the stack ("Widow's ring" beside a roll 
 
 ### Using items in a fight
 
-An item may be used in a fight (Capability API 1.59): a poultice pressed on a cut, a tonic swallowed, a bell rung. Its `use` says what using it does in the words a catalog entry's `mechanics` use (see [What a fight reads from `mechanics`](#what-a-fight-reads-from-mechanics)): `kind` (`heal`, `attack`, `buff` or `debuff`), `amount`, `damageType`, `plus`, `attackRoll`, `save`, `applies`, `temporary`, `range`, `area`, `targets`, `targetCount`, `friendlyFire`, and since Capability API 1.173 `concentration` and `zone`, with the `budget` it spends, or `free`. Ember Roads' poultice, and Gravewatch's warming tonic and dawn bell:
+An item may be used in a fight (Capability API 1.59): a poultice pressed on a cut, a tonic swallowed, a bell rung. Its `use` says what using it does in the words a catalog entry's `mechanics` use (see [What a fight reads from `mechanics`](#what-a-fight-reads-from-mechanics)): `kind` (`heal`, `attack`, `buff` or `debuff`), `amount`, `damageType`, `plus`, `attackRoll`, `save`, `applies`, `temporary`, `range`, `area`, `targets`, `targetCount`, `friendlyFire`, and since Capability API 1.174 `concentration` and `zone`, with the `budget` it spends, or `free`. Ember Roads' poultice, and Gravewatch's warming tonic and dawn bell:
 
 ```json
 "use": { "kind": "heal", "budget": "act", "range": 0, "targets": "ally", "amount": { "dice": "1d4", "flat": 1 }, "consumes": true }
@@ -1270,7 +1270,7 @@ Your `currencies` are the party's money. A coin is an item in the bags, a stack 
 
 ### Starting gear
 
-`items.startingGear` (Capability API 1.77) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the player's bag or a party member's. Gear the character's sheet `fits` is listed first, then gear without `fits` (for any character, such as a background's); every gear is offered, because a character's concept is the player's and the Game Master's to agree.
+`items.startingGear` (Capability API 1.78) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the player's bag or a party member's. Gear the character's sheet `fits` is listed first, then gear without `fits` (for any character, such as a background's); every gear is offered, because a character's concept is the player's and the Game Master's to agree.
 
 ```json
 "startingGear": [
@@ -1379,7 +1379,7 @@ A market day (Capability API 1.69) makes a place's shelves change and run out, a
 
 #### Honest and dishonest sellers
 
-Capability API 1.78 lets an item be risky or a fake, and a seller be dishonest.
+Capability API 1.79 lets an item be risky or a fake, and a seller be dishonest.
 
 ```json
 "items": { "market": { "sellers": [
@@ -1598,7 +1598,7 @@ same keys for a d20 system:
   dice. `criticalFrom` widens the critical face: a value read off the attacker's sheet that is the
   lowest natural face counting as a critical, such as `{ "field": "critical_from" }` for a 5e Champion
   whose sheet says 19. It is held to the die's highest face, a value under 2 means no range at all (the highest face only, as for a character whose field is left at 0), and it needs a single die
-  with `naturals.max` set to `critical`. Capability API 1.80.
+  with `naturals.max` set to `critical`. Capability API 1.81.
 - `economy`: required. `budgets` is what a turn may hold: an id, a label, `per` (`turn` refills at
   the start of the holder's own turn, `round` when a new round begins) and a `count`. The FIRST
   budget you declare is the main one, and is what a standard action spends. `movement` is an
@@ -1642,7 +1642,7 @@ same keys for a d20 system:
   to hit adds, and the `saveDifficulty` an entry's save is rolled against. An entry that asks for a
   save, its own or one that ends a condition it applies, is refused when the list it lands in has
   no `saveDifficulty`: a save against nothing would always succeed.
-  With Capability API 1.107, `byColumn: { "column": "class", "values": { "cleric": { "toHit": { "derived": "spell_attack_cleric" }, "saveDifficulty": { "derived": "spell_dc_cleric" } }, "wizard": { "toHit": { "derived": "spell_attack_wizard" }, "saveDifficulty": { "derived": "spell_dc_wizard" } } }` selects references by a row's class. A cleric 3 / wizard 2 can derive the cleric's attack from proficiency plus Wisdom and DC from 8 plus that attack, and the wizard's from Intelligence instead. The column must exist in the source's list, and `values` holds 1 to 20 entries. Each entry may replace either reference; an omitted reference, an absent column value or an unlisted value keeps the source's own reference. Combat, the sheet's row summary and the Game Master's summary read the same per-row numbers. Both `stamp` and `byColumn` require schemaVersion 2 and capabilityApi 1.107 or newer.
+  With Capability API 1.108, `byColumn: { "column": "class", "values": { "cleric": { "toHit": { "derived": "spell_attack_cleric" }, "saveDifficulty": { "derived": "spell_dc_cleric" } }, "wizard": { "toHit": { "derived": "spell_attack_wizard" }, "saveDifficulty": { "derived": "spell_dc_wizard" } } }` selects references by a row's class. A cleric 3 / wizard 2 can derive the cleric's attack from proficiency plus Wisdom and DC from 8 plus that attack, and the wizard's from Intelligence instead. The column must exist in the source's list, and `values` holds 1 to 20 entries. Each entry may replace either reference; an omitted reference, an absent column value or an unlisted value keeps the source's own reference. Combat, the sheet's row summary and the Game Master's summary read the same per-row numbers. Both `stamp` and `byColumn` require schemaVersion 2 and capabilityApi 1.108 or newer.
 - `standard`: optional, from the closed list `dash`, `disengage`, `dodge`, `help`, `hide`, `ready`.
   `dodge` (attacks against the dodger are rolled twice and the worse kept) and `help` (the helped
   ally's next attack is rolled twice and the better kept) are always resolved. `dash` (the same
@@ -1681,14 +1681,14 @@ same keys for a d20 system:
     can see it needs. Naming an effect the condition does not have is refused. Without a board there
     is no line to break, so everything counts either way.
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
-  - Senses (Capability API 1.126): a condition's `lacks` names senses its holder does not have,
+  - Senses (Capability API 1.127): a condition's `lacks` names senses its holder does not have,
     and a catalog entry's `mechanics.needs` or a creature action's `needs` names senses a target
     must have for it to work on them. For 5e Deafened, write `"lacks": ["hearing"]`; for Command,
     write `"needs": ["hearing"]` in its mechanics. A deafened target is left off Command's target
     menu. An area or multi-target effect needing hearing skips that target entirely: no save,
     damage or conditions. Once Deafened ends, the target is legal again. Each list has one to four
     unique sense ids, in the ruleset's own words; the Engine knows no sense names.
-  - Usable only while the sheet allows (Capability API 1.165): a catalog entry's
+  - Usable only while the sheet allows (Capability API 1.166): a catalog entry's
     `mechanics.usableWhen` is `{ "value": <value reference>, "atLeast": n, "atMost": n }` (one
     bound or both). In a fight the entry is offered, on its holder's turn or in a reaction window,
     only while the value read off its holder's sheet, live state and items stands within the
@@ -1696,7 +1696,7 @@ same keys for a d20 system:
     `"usableWhen": { "value": { "itemStat": { "from": "worn", "pick": "count", "category": "shield" } }, "atLeast": 1 }`.
     Rage's "no heavy armor" is the same with `"atMost": 0` on the heavy armor count. A creature written as a stat block has no sheet,
     so nothing holds it back.
-  - Conditions applied only while the applier's sheet allows (Capability API 1.166): an `applies`
+  - Conditions applied only while the applier's sheet allows (Capability API 1.167): an `applies`
     entry on a catalog entry's mechanics or an item's use may carry `"when"`, the same shape as
     `usableWhen`. It is read off the sheet, live state and items of whoever applies it, at the
     moment it would go on, and an entry outside its bounds is skipped; the others still apply. 5e's
@@ -1705,8 +1705,8 @@ same keys for a d20 system:
     then `raging_damage_3` with `"atLeast": 9, "atMost": 15` and `raging_damage_4` with
     `"atLeast": 16`. An applier without a sheet applies every entry. A creature's stat block and a
     condition's `onEnd` have no applier's sheet to read, so `when` is refused there. Requires
-    schemaVersion 2 and capabilityApi 1.166 or newer.
-  - Creature types and target tests (Capability API 1.167): `combat.creatureTypes` lists what a
+    schemaVersion 2 and capabilityApi 1.167 or newer.
+  - Creature types and target tests (Capability API 1.168): `combat.creatureTypes` lists what a
     combatant can be, `{ "types": [{ "id": "dragon", "label": "Dragon" }, ...], "tags": [{ "id":
 "devil", "label": "devil" }], "field": "race", "default": "humanoid" }`. A creature names its
     own `type` and `tags`; a character's type is the value of the text or choice field `field` when
@@ -1722,8 +1722,8 @@ same keys for a d20 system:
     An area passes over whoever `targetTypes` leaves out. A forecast counts a `targetIs` clause only
     against a target it would reach; the sheet's plain average leaves it out. The battle panel and
     the Game Master see each combatant's type and tags. Requires schemaVersion 2 and
-    capabilityApi 1.167 or newer.
-  - Condition endings (Capability API 1.124): Charm Person uses
+    capabilityApi 1.168 or newer.
+  - Condition endings (Capability API 1.125): Charm Person uses
     `"endsWhen": ["harmed-by-source-side"]`. Damage above zero from whoever applied it or anyone on
     their side, or their targeting its holder with an attack, save or harmful condition, ends it
     after the harmful action resolves in full, even if the attack misses or the save succeeds.
@@ -1736,10 +1736,10 @@ same keys for a d20 system:
     measured. The economy must declare its budget. `endsWhen` has one or two unique entries.
     These keys leave source-down and concentration endings unchanged.
     For a save only on damage above zero, never at turn start or end, use `saveEnds.at: "damaged"`
-    (Capability API 1.128): Dominate Person's applies is
+    (Capability API 1.129): Dominate Person's applies is
     `{"condition":"dominated","duration":"until-save","saveEnds":{"save":"wis_save","at":"damaged"}}`,
     which rolls once per blow at the applying action's stored DC without needing `saveWhenDamaged`.
-  - The action economy (Capability API 1.75), as Haste and Slow change it:
+  - The action economy (Capability API 1.76), as Haste and Slow change it:
     - `budgets`: `[{ "budget": "haste", "flat": 1 }]` gives its holder that many more (or fewer) of a
       turn budget each turn, never below none. Only a budget that refills `per` turn can be changed
       this way. A budget may be declared with `"count": 0` for one only a condition fills, and the
@@ -1782,7 +1782,7 @@ same keys for a d20 system:
   { "condition": "restrained", "effects": ["own-saves-disadvantage"], "saves": ["dex_save"] }
   ```
 
-  **Damage a condition changes (Capability API 1.132).** `damage` changes what its holder deals;
+  **Damage a condition changes (Capability API 1.133).** `damage` changes what its holder deals;
   `damage-taken` changes what its holder takes. Both accept `flat`, `dice` (and `minus`), or
   `times: 0.5 | 2`. Additions happen once per attack hit, even when the hit has several damage
   clauses; criticals double the added dice as the ruleset doubles its other dice. Saves and
@@ -1792,7 +1792,7 @@ same keys for a d20 system:
 
   `attacks` is `weapon`, `spell` or `any` (the default). Attack-list rows and equipped item attacks
   are weapons, as are single-target stat-block attack rolls; catalog abilities (including creature
-  spellcasting) and item uses are spell/other attacks. `blow: "melee" | "ranged"` follows 1.117,
+  spellcasting) and item uses are spell/other attacks. `blow: "melee" | "ranged"` follows 1.118,
   so a thrown weapon in reach is melee. `ability` names the ability actually chosen for the attack
   roll: a row's ability, or the first best ability offered by an item (including finesse). Plain
   stat-block actions have none and never match an ability restriction. These keys and `damageType`
@@ -1829,7 +1829,7 @@ same keys for a d20 system:
   The attack menu counts only the holder's own additions and multipliers; a target's mark is never
   promised there. Sheet and prompt summaries describe the holder's own damage modifiers, and the
   battle view also describes incoming ones. Packages using either target require schemaVersion 2
-  and capabilityApi 1.132 or newer, including when the item lives in a separate catalog file.
+  and capabilityApi 1.133 or newer, including when the item lives in a separate catalog file.
 
   **Numbers a condition changes.** Each entry in `modifiers` names what it changes, `to`, and by how
   much:
@@ -1840,7 +1840,7 @@ same keys for a d20 system:
   - `speed`: how far the holder walks, in your own distance unit (`flat`), or `times` 0.5 or 2 for
     half or double, applied after every flat change. Read only on a board, as `speed-zero` is.
   - `health-max`: `times` 0.5 and nothing else halves the holder's health maximum, rounded down and
-    never below 1 (Capability API 1.114). A health track of boxes has no maximum to halve. Health
+    never below 1 (Capability API 1.115). A health track of boxes has no maximum to halve. Health
     above the halved maximum is lost as the fight begins, and healing never goes past it.
 
   A modifier to `checks` may name its own `skills`, and one to `saves` its own `saves`, which narrow
@@ -1906,10 +1906,10 @@ same keys for a d20 system:
   ```
 
   `"defeats": true` takes the holder out of the fight for good as it begins, before anybody moves
-  (Capability API 1.114). It and a halved maximum's lost health are settled once, as the fight
+  (Capability API 1.115). It and a halved maximum's lost health are settled once, as the fight
   begins; every other level is read whenever the number it changes is.
 
-  Opponents carry tracks too (Capability API 1.114). One without a sheet starts at the `tracks` it is
+  Opponents carry tracks too (Capability API 1.115). One without a sheet starts at the `tracks` it is
   given, by your track ids: a creature the Game Master proposes may name them
   (`"tracks": { "exhaustion": 2 }`), and so may a bestiary opponent put into a fight. A creature's
   `conditionImmunities` may name a track a level reads, and then none of that track's levels touch
@@ -1955,7 +1955,7 @@ same keys for a d20 system:
   one the Game Master asked for, so nothing lands off your scale. The `damagePerRound` band is read
   as what a creature does to ONE target in a round, its whole sequence included.
 
-### Saves against conditions, damage or magic (Capability API 1.133)
+### Saves against conditions, damage or magic (Capability API 1.134)
 
 A modifier with `to: "saves"` may carry `against`. It needs at least one of
 `conditions` (sheet condition ids), `damage` (damage types), or `magic: true`.
@@ -1988,7 +1988,7 @@ Brave uses `conditions: ["frightened"]`. Magic Resistance uses `magic: true`
 without `saves`, on a creature's sheet-derived level or track level.
 An action's `applies` counts even if the save prevents the condition; its damage
 includes every `plus` clause. Damage names match without case. Magic means the
-1.100 `"magical"` quality: catalog `mechanics.qualities` (even without damage),
+1.101 `"magical"` quality: catalog `mechanics.qualities` (even without damage),
 a creature action's `damage.qualities`, or a weapon item's tags. A spell must
 carry that quality; its name or catalog alone does not make it magical.
 A save to end a condition, including `saveWhenDamaged` and `saveEnds.at: "damaged"`,
@@ -1996,7 +1996,7 @@ is against that condition only. Concentration and death saves are against nothin
 Outside combat, Game Master save requests carry no structured source or condition;
 `against` never matches those requests. The sheet, item details, battle details and
 Game Master sheet summary show these restrictions. Requires schemaVersion 2 and
-capabilityApi 1.133 or newer.
+capabilityApi 1.134 or newer.
 
 ### A fight thrown in pools: `dice-pool`
 
@@ -2137,12 +2137,12 @@ off), `until-save` (which needs `saveEnds` beside it) or `{ "rounds": n }`, and 
 `saveEnds` naming the save and whether it is repeated at `turn-end` or `turn-start`. Rounds count the
 holder's own turns down as each one ends; `{ "rounds": 1, "at": "turn-start" }` counts them as each
 begins, which is how "until the start of your next turn" is said. `"of": "source"` (Capability API
-1.118) counts the turns of whoever put it on instead, starting with their next one, which is how
+1.119) counts the turns of whoever put it on instead, starting with their next one, which is how
 "until the end of your next turn" is said of somebody else. Guiding Bolt's
 `{ "duration": { "rounds": 1, "of": "source" }, "endsAfter": "attacked" }` gives advantage to the
 next attack roll against its target before the end of the caster's next turn. If the source leaves
 the fight, the rounds count on the holder's own turns. A combat condition's `delays` (Capability API
-1.119) holds over what its holder uses: an action out of one of its `catalogs`, paid with its
+1.120) holds over what its holder uses: an action out of one of its `catalogs`, paid with its
 `budget`, rolls a die of `chance.sides`, and at `chance.atLeast` or more it does not happen yet. As
 the holder's next turn begins it is completed with that same budget and goes on as it would have,
 answers and all, and if they cannot act or have none of that budget it is lost. What it cost stays
@@ -2225,7 +2225,7 @@ naming neither means any hit its holder lands. A weapon held from the bag is no 
 Naming only `weapons` fires on no row, and naming only rows fires on no held weapon. `when` is ANY-of: `advantage` is how the attack roll
 finally leaned, and `ally-adjacent` is a standing ally of the attacker who can act, within one cell
 of the target on a board and anywhere at all without one. `ally-adjacent-no-disadvantage` (Capability
-API 1.125) also requires the final roll not to be at disadvantage after advantage and disadvantage
+API 1.126) also requires the final roll not to be at disadvantage after advantage and disadvantage
 cancel; the example above uses it for Sneak Attack. `oncePer` is `turn` (fresh at the start of every
 turn there is, so a strike made while somebody else acts can still carry one) or `round`.
 `amount` grows with the entry's own `scales`, and `type` is the kind of harm, defaulting to the
@@ -2308,20 +2308,20 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
 - `hardness`: where initiative is a number attacks move, a spending blow whose dice are below it does
   nothing. Capability API 1.56.
 - `speeds` and `hover`: how it moves besides walking (see Other ways of moving, under Positions).
-  Capability API 1.112.
+  Capability API 1.113.
 - `shield: true`: its hands are full, so an action's `twoHanded` alternative does not hold.
-  Capability API 1.101.
+  Capability API 1.102.
 - `size`: one of `combat.sizes`, by id, which a contest's `maxSizeAbove` reads (see Sizes and
-  escape DCs). Capability API 1.102.
+  escape DCs). Capability API 1.103.
 - `type` and `tags`: one of `combat.creatureTypes.types` and up to eight of its `tags`, by id, which
-  target tests read (see Creature types and target tests). Capability API 1.167.
+  target tests read (see Creature types and target tests). Capability API 1.168.
 - `resist`, `vulnerable`, `immune`: damage types, matched without case, and checked against
   `combat.damageTypes` when you declare any. A `resist` or `immune` entry may also say what gets
   through it, `{ "type": "tearing", "except": ["silver"] }`: a blow from a weapon item carrying one
   of those item tags is taken as it comes (Capability API 1.55, see
   [Weapons in a fight](#weapons-in-a-fight)), and so is an action whose `damage.qualities` or a catalog
-  entry whose `mechanics.qualities` names one (Capability API 1.100). `conditionImmunities` names your
-  own conditions, or a track your `combat.levels` read (Capability API 1.114).
+  entry whose `mechanics.qualities` names one (Capability API 1.101). `conditionImmunities` names your
+  own conditions, or a track your `combat.levels` read (Capability API 1.115).
 - `tier`: which rung of `combat.threat` it belongs to.
 - `loot` (Capability API 1.63): the id of the loot table a won fight rolls for it (see Loot, above).
 - `traits`: short name and text pairs the Game Master is shown. They are never resolved, so
@@ -2344,7 +2344,7 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   - `recharge`: `{ "dice": { "count": 1, "sides": 6 }, "from": 5 }`. It starts the fight available,
     is spent when used, and at the start of the creature's own turn it rolls: `from` or higher
     brings it back. The log carries the dice either way.
-  - `damage.alternatives` (Capability API 1.101): up to four amounts it deals in place of its first,
+  - `damage.alternatives` (Capability API 1.102): up to four amounts it deals in place of its first,
     each `{ "when": ..., "dice": "1d10", "flat": 3 }`, the first that holds winning. The type, the
     clauses and the qualities stay the action's own. `"when": "twoHanded"` holds unless the creature
     has `"shield": true`, which is 5e's "or 8 (1d10 + 3) slashing damage if used with two hands";
@@ -2385,7 +2385,7 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
 A creature action can give hit points back with `heal` (dice, a flat amount, or both), capped at
 its target's maximum. `targets: "ally"` reaches its own side, including itself; `targets: "any"`
 reaches either side. Without `targets`, it reaches the other side as before. These keys need
-Capability API 1.120. A heal carries no `damage`, `toHit`, `save` or `area`; `targets` takes no
+Capability API 1.121. A heal carries no `damage`, `toHit`, `save` or `area`; `targets` takes no
 `self` or `sequence`, and a sequence carries neither key. A deva's Healing Touch is:
 
 ```json
@@ -2399,7 +2399,7 @@ Capability API 1.120. A heal carries no `damage`, `toHit`, `save` or `area`; `ta
 }
 ```
 
-A creature's `spellcasting` (Capability API 1.122) casts catalog spells without spending slots or
+A creature's `spellcasting` (Capability API 1.123) casts catalog spells without spending slots or
 points. Its `saveDifficulty` and `toHit` supply the spell's numbers; a creature with a `sheet` may
 omit them to use its sheet's spellcasting numbers. A plain creature must supply any number its
 spells need. Each `entry` names an existing catalog entry with `mechanics`. Omitted `uses` means at
@@ -2610,7 +2610,7 @@ directions, all at the same cost, because that is how the tabletop grids this is
 friend may be walked past and nobody may be stopped on; an opponent is a wall; nothing solid may be
 entered and no corner may be cut between two solid cells.
 
-**Other ways of moving** (Capability API 1.112). A creature's `speeds` gives what it moves besides
+**Other ways of moving** (Capability API 1.113). A creature's `speeds` gives what it moves besides
 walking, `{ "fly": 60, "swim": 30, "climb": 30, "burrow": 20 }` in your unit, and `"hover": true`
 says a flier needs no motion to stay up (it needs a `fly` speed). A party member's come off the
 sheet through `economy.movementModes`, value references keyed the same way, as a race's swim speed
@@ -2628,7 +2628,7 @@ stay the walk. On a board:
 Each step is taken the cheapest way that has enough left. A fight without a board reads nothing of
 it, and somebody who only walks moves exactly as before.
 
-**Flying height** (Capability API 1.113). On a board whose ruleset gives `combat.elevation.levelHeight`
+**Flying height** (Capability API 1.114). On a board whose ruleset gives `combat.elevation.levelHeight`
 and `combat.distance.perCell`, a flier is offered Fly up and Fly down where it stands, each costing a
 level's worth of its flight (a 5 foot level on 5 foot cells is one cell). Up to 20 levels above the
 ground it is over. While it is up:
@@ -2643,8 +2643,8 @@ ground it is over. While it is up:
   `falling` says, unless it has `hover`.
 
 Flying onto ground as high as it is, or higher, lands it, as a flier on the ground flies onto a
-cliff. No new key: an Engine before 1.113 keeps
-fliers on the ground, so a package that relies on height declares 1.113.
+cliff. No new key: an Engine before 1.114 keeps
+fliers on the ground, so a package that relies on height declares 1.114.
 
 **Reach and range.** A weapon row gets them from `combat.attacks[].reach` and `.range`, each a
 column of that same list or the same number on every row:
@@ -2706,7 +2706,7 @@ A burst is every cell within its size of the cell it was aimed at. A cone runs f
 that cell, as wide at each step as it is far. A line runs the same way, one cell wide. All three
 stop at anything solid.
 
-A line on an entry's `mechanics.area` or a creature action's `area` may carry `width` in the same unit as `size`, rounded to cells with a minimum of one (Capability API 1.127), for example `{ "shape": "line", "size": 60, "width": 10 }` for a 60-foot line that is 10 feet wide; omit it for one cell, and an even cell width puts its extra column on the caster's left.
+A line on an entry's `mechanics.area` or a creature action's `area` may carry `width` in the same unit as `size`, rounded to cells with a minimum of one (Capability API 1.128), for example `{ "shape": "line", "size": 60, "width": 10 }` for a 60-foot line that is 10 feet wide; omit it for one cell, and an even cell width puts its extra column on the caster's left.
 
 **Line of sight and cover.** A straight line of cells between the two of them: a wall or a mountain
 on it blocks a shot and stops an area spreading past it, and the target simply is not on the menu.
@@ -2723,21 +2723,21 @@ only by what lies between it and the effect.
 
 - `cover.bonus` is what half cover adds to the defense an attack is rolled against, and the log says
   so.
-- `cover.threeQuarters` (Capability API 1.73) is what three-quarters adds; without it, `bonus`
+- `cover.threeQuarters` (Capability API 1.74) is what three-quarters adds; without it, `bonus`
   serves for both.
-- `cover.saves` (1.73) names the saves cover helps too, against an action's own save (never a save
+- `cover.saves` (1.74) names the saves cover helps too, against an action's own save (never a save
   that ends a condition or keeps concentration): from where a burst lands, and from its maker for
   anything else. The log says that too.
-- `cover.creatures` (1.73) makes anybody standing in the way half cover, friend or foe.
+- `cover.creatures` (1.74) makes anybody standing in the way half cover, friend or foe.
 - A save whose text says the target gains nothing from cover (5e's Sacred Flame) says
-  `"ignoresCover": true` (1.73), on an entry's `mechanics.save`, a creature action's `save` or an
+  `"ignoresCover": true` (1.74), on an entry's `mechanics.save`, a creature action's `save` or an
   item use's `save`.
 
 **Height.** A board can have height, up to three levels, and every positioned fight walks and sees by
 it whatever the ruleset says: climbing a level costs one more cell, coming down costs nothing, a step
 of two levels or more is a cliff nobody walks (and nobody is shoved up), and ground higher than both
 ends blocks sight. Shooting down from higher ground, low cover between hides nothing. A ruleset says
-what its system adds with `elevation` (Capability API 1.74, and it needs `distance`):
+what its system adds with `elevation` (Capability API 1.75, and it needs `distance`):
 
 ```json
 "elevation": {
@@ -2921,10 +2921,10 @@ Seven things open one, and two of them come out of what you already declared:
   waiting for THAT moment is asked, whoever did it. Being hurt is a fact about you; an entry pointed
   back at whoever caused it still cannot be pointed at a friend.
 - **Somebody falls.** Before the damage and prone, for whoever holds a reaction that reaches the
-  faller and permits its side (Capability API 1.123).
+  faller and permits its side (Capability API 1.124).
 
 - **Somebody starts their turn.** Before they act, for an entry that reaches them on its target side
-  (Capability API 1.130).
+  (Capability API 1.131).
 
 The last six are what a catalog entry, or a creature's own action, asks for by naming the moment it
 waits for. When one action opens both `used` and `aimed`, the use is asked about first; if nobody
@@ -2989,7 +2989,7 @@ A counter is written like this, and on a board it answers only somebody within i
 }
 ```
 
-**A counter that reaches only so high** (Capability API 1.115). `"upTo": "paid"` on a `used`
+**A counter that reaches only so high** (Capability API 1.116). `"upTo": "paid"` on a `used`
 reaction that cancels stops only what was paid for no higher than the answer itself was, and
 `"above": { "check": <value>, "dc": 10 }` is the check that stops something higher anyway, against
 `dc` plus its level. 5e's Counterspell, which stops a spell of its slot's level or lower and asks a
@@ -3044,7 +3044,7 @@ Opponents the Engine plays take a guard only when it turns the hit into a miss.
 A package that names a moment needs Capability API 1.33, and one that uses `used` or `against`
 needs 1.44. One that waits for `hit` needs 1.46.
 
-**Answering one spell by name** (Capability API 1.116). `against` may name `entries` as
+**Answering one spell by name** (Capability API 1.117). `against` may name `entries` as
 `<catalog>/<entry>` beside `catalogs`, and either one matching opens the moment. `also` takes the same
 answer at up to three more moments, each with its own `against`. A condition's `noDamageFrom` keeps
 those entries' harm off its holder entirely while it holds, whatever kind of harm it is. 5e's Shield
@@ -3070,7 +3070,7 @@ Only the first moment may cancel, so a reaction that cancels has no `also`. The 
 names has to be one the ruleset has. An entry that is not in it simply never opens the moment. A blow
 kept off this way shows in the log as one the target is immune to.
 
-**Answering only some blows** (Capability API 1.117). A `hit` moment may say `"blow": "melee"` or
+**Answering only some blows** (Capability API 1.118). A `hit` moment may say `"blow": "melee"` or
 `"blow": "ranged"`. A blow is melee while its target stands in the weapon's reach, so a dagger thrown
 from afar is ranged and the same dagger used next to its target is melee. A weapon with a reach and no
 range is always melee, and one with a range and no reach is always ranged. In a fight with no board,
@@ -3085,7 +3085,7 @@ until it wears off at the start of their next turn. 5e's Parry is both:
 
 Both keys may also be written on a moment in `also`, and `blow` only ever on a `hit` one.
 
-**Catching a fall** (Capability API 1.123). A reaction on `falls`, including in `also`, answers a
+**Catching a fall** (Capability API 1.124). A reaction on `falls`, including in `also`, answers a
 creature falling off a ledge or a flier forced to the ground, before the fall deals damage or leaves
 it prone. Its range and target side are checked against the faller, and its answer lands on that
 creature. For Feather Fall, give the entry these mechanics and declare `feather_falling` in the
@@ -3110,7 +3110,7 @@ caster's own fall. A fall has no source entry, so its reaction cannot carry `can
 `seesSource` or `against`. A single-target entry asks about each fall separately. This resolves the
 landing; it does not track a slowed descent.
 
-**Answering for another creature** (Capability API 1.130). `for` is `self` by default; `ally`
+**Answering for another creature** (Capability API 1.131). `for` is `self` by default; `ally`
 excludes the holder, while `any` includes them. Both ask holders on the target's side within the
 required `within`, in the catalog's distance unit, and only on `aimed` or `hit`. These keys work
 on each `also` moment too. `seesSource` still requires sight of the attacker. Protection puts
@@ -3331,7 +3331,7 @@ If you change the shape of the sheet (add, remove, or rename things), raise `she
 
 ### Moving values to new ids: `sheet.migrations`
 
-Adding things needs nothing more. When a new layout moves a value somewhere else (a renamed field, one level that becomes a level per class, one pool of hit dice that becomes one per die), say how in `sheet.migrations` (Capability API 1.76), so every character made on the old layout keeps its numbers: in the library, in games, in old saves, branches and checkpoints, and in imported cards.
+Adding things needs nothing more. When a new layout moves a value somewhere else (a renamed field, one level that becomes a level per class, one pool of hit dice that becomes one per die), say how in `sheet.migrations` (Capability API 1.77), so every character made on the old layout keeps its numbers: in the library, in games, in old saves, branches and checkpoints, and in imported cards.
 
 ```json
 "migrations": [

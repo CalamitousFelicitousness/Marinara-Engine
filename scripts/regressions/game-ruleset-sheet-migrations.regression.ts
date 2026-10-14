@@ -1,5 +1,5 @@
 /**
- * Ruleset sheet migrations (C6e-0, Capability API 1.76): how a sheet stored on an older layout reads
+ * Ruleset sheet migrations (C6e-0, Capability API 1.77): how a sheet stored on an older layout reads
  * on the current one.
  *
  *   - Builds are migrated on READ, gated by the stored `v`, and every step copies: what it read from
@@ -12,7 +12,7 @@
  *     migrated sheet shows. A spent die stays spent, and a rest that refills it does not bring the old
  *     value back.
  *   - Import checks: hops below the version and once each, targets on the sheet, sources gone from it,
- *     rename chains followed to where they end. The install gate is 1.76 (combat-cover pins the others).
+ *     rename chains followed to where they end. The install gate is 1.77 (combat-cover pins the others).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

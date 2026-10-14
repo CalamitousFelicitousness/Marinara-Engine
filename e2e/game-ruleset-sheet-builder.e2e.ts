@@ -5,7 +5,7 @@ import { seedUIState } from "./ui-state-fixture.js";
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 /**
- * The guided builder (Capability API 1.85): a ruleset's `sheet.builder` shows as a Guided view beside
+ * The guided builder (Capability API 1.86): a ruleset's `sheet.builder` shows as a Guided view beside
  * All fields in a game's Edit sheet. Picks apply what they grant and unpicking takes it back, the
  * scores are rolled with the Engine's dice or bought, each step counts what it still waits on, and
  * the sheet saved is the build every other part of the Engine reads.
@@ -15,12 +15,12 @@ function ruleset(id: string): string {
     readFileSync(new URL("../docs/development/ruleset-5e-2014.example.json", import.meta.url), "utf8"),
   );
   doc.id = id;
-  // A feature whose score choice repeats (1.92): +2 to one score or +1 to two.
+  // A feature whose score choice repeats (1.93): +2 to one score or +1 to two.
   const feats = doc.catalogs.find((catalog: { id: string }) => catalog.id === "feats");
   feats.entries.find((entry: { id: string }) => entry.id === "sly-strike").grants = {
     abilities: { choose: [{ count: 2, amount: 1, repeat: true, upTo: 9 }] },
   };
-  // Two features a step keeps one of (1.93): picking one drops the other.
+  // Two features a step keeps one of (1.94): picking one drops the other.
   const sly = feats.entries.find((entry: { id: string }) => entry.id === "sly-strike");
   sly.exclusive = "knack";
   feats.entries.push({
@@ -206,7 +206,10 @@ async function openSheetEditor(page: Page, chatId: string) {
   );
   await page.goto("/");
   const portrait = page.getByTitle("Bram - Click to open character sheet", { exact: true }).filter({ visible: true });
-  const members = page.getByRole("button", { name: "Open party members", exact: true }).filter({ visible: true });
+  // Both layouts open party portraits from the shared Character Profiles button.
+  const members = page
+    .locator('.mari-window-bubble[data-window="control:character-profiles"]')
+    .filter({ visible: true });
   await expect(portrait.or(members).first()).toBeVisible({ timeout: 30000 });
   if (await members.isVisible()) await members.click();
   await portrait.first().click();
@@ -260,7 +263,7 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     await steps.getByRole("button", { name: /^Ability Scores/ }).click();
     const twice = page.getByRole("group", { name: /Sly Strike: choose 2 scores/ });
     await twice.getByRole("button", { name: "Strength", exact: true }).click();
-    // The choice stops at 9 (1.95): Strength 8 + 1 takes no more, though the choice has one left.
+    // The choice stops at 9 (1.96): Strength 8 + 1 takes no more, though the choice has one left.
     await expect(twice.getByRole("button", { name: "Strength", exact: true })).toBeDisabled();
     await twice.getByRole("button", { name: "Dexterity", exact: true }).click();
     await expect(twice.getByRole("button", { name: "Constitution", exact: true })).toBeDisabled();

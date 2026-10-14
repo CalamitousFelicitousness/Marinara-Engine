@@ -1,5 +1,5 @@
 /**
- * Conditions end when their own sentence says (Capability API 1.124): Charm Person, Dominate
+ * Conditions end when their own sentence says (Capability API 1.125): Charm Person, Dominate
  * Person and Hypnotic Pattern. Harm still resolves in full; damage saves use the applying DC.
  */
 import assert from "node:assert/strict";
@@ -644,7 +644,7 @@ try {
     assert.equal(condition.shakeOff.properties.reach.maximum, 10000);
   }
 
-  // Each key requires 1.124, including an old manifest; unchanged files need no new API.
+  // Each key requires 1.125, including an old manifest; unchanged files need no new API.
   {
     const manifest = (minor: number, schemaVersion = 2) => ({
       schemaVersion,
@@ -663,19 +663,19 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose conditions end on harm, a new save or being shaken out requires schemaVersion 2 and capabilityApi 1.124 or newer";
+      "A ruleset whose conditions end on harm, a new save or being shaken out requires schemaVersion 2 and capabilityApi 1.125 or newer";
     for (const keys of [{ endsWhen: ["damaged"] }, { saveWhenDamaged: true }, { shakeOff: { budget: "action" } }]) {
       const doc = JSON.parse(fiveEText);
       Object.assign(doc.combat.conditions[0], keys);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(123) as any, doc), gate);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(124) as any, doc), null);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(124) as any, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(125) as any, doc), null);
     }
     const legacy = JSON.parse(fiveEText);
     Object.assign(legacy.combat.conditions[0], { endsWhen: ["damaged"] });
-    assert.match(getCapabilityPackageInstallIssue(manifest(124, 1) as any, legacy) ?? "", /requires schemaVersion 2/);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(123) as any, JSON.parse(fiveEText)), null);
+    assert.match(getCapabilityPackageInstallIssue(manifest(125, 1) as any, legacy) ?? "", /requires schemaVersion 2/);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(124) as any, JSON.parse(fiveEText)), null);
   }
-  console.log("Condition endings: harm, damage saves and an ally's shake-off, gated at 1.124.");
+  console.log("Condition endings: harm, damage saves and an ally's shake-off, gated at 1.125.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

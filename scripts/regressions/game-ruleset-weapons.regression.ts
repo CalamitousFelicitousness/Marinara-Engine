@@ -244,7 +244,7 @@ try {
         /Unknown derived value "martial"/,
       ],
       [
-        "a sheet bonus off an unknown value (1.94)",
+        "a sheet bonus off an unknown value (1.95)",
         emberText,
         attack("hand-axe", (a) => (a.toHit.sheetBonus = { derived: "aim" })),
         /Unknown derived value "aim"/,
@@ -886,7 +886,7 @@ try {
     assert.match(pocket.notes.join(" "), /never worn, and the attack it started from was left out/);
   }
 
-  // ── What the holder brings to a weapon off their own sheet (1.94: 5e's Archery) ──
+  // ── What the holder brings to a weapon off their own sheet (1.95: 5e's Archery) ──
   {
     const archer = (sheetBonus: Record<string, unknown>): RulesetCatalogItem => ({
       ...axe,
@@ -915,7 +915,7 @@ try {
     );
     // The item's facts name it by its name on the sheet.
     assert.equal(rulesetItemFacts(ember, archer({ abilityMod: "wits" })).attack!.toHit, "Brawn + Wits modifier");
-    // Checked at import like any of the weapon's values, and gated at 1.94 in the ruleset file and a catalog file.
+    // Checked at import like any of the weapon's values, and gated at 1.95 in the ruleset file and a catalog file.
     const withBonus = variant(emberText, (doc) => {
       itemEntry(doc, "hand-axe").item.attack.toHit.sheetBonus = { abilityMod: "wits" };
     });
@@ -936,15 +936,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /bonus to hit read off their holder's sheet.*capabilityApi 1\.94/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(93) as any, withBonus) ?? "", gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(94) as any, withBonus), null);
-    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(93) as any, variant(emberText)) ?? "", gate);
+    const gate = /bonus to hit read off their holder's sheet.*capabilityApi 1\.95/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(94) as any, withBonus) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(95) as any, withBonus), null);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(94) as any, variant(emberText)) ?? "", gate);
     // An item's use that rolls to hit reads it the same way, and asks the same.
     const onUse = variant(emberText, (doc) => {
       itemEntry(doc, "hand-axe").item.use = { toHit: { sheetBonus: { const: 2 } } };
     });
-    assert.match(getCapabilityPackageInstallIssue(manifest(93) as any, onUse) ?? "", gate, "an item's use");
+    assert.match(getCapabilityPackageInstallIssue(manifest(94) as any, onUse) ?? "", gate, "an item's use");
     const outfitter = itemCatalogOf(withBonus);
     const inFile = {
       ...withBonus,
@@ -957,14 +957,14 @@ try {
     const paths = ["ruleset.json", `catalogs/${outfitter.id}.json`];
     const files = new Map<string, unknown>([[`catalogs/${outfitter.id}.json`, { entries: outfitter.entries }]]);
     assert.match(
-      getCapabilityPackageInstallIssue(manifest(93, paths) as any, inFile, files) ?? "",
+      getCapabilityPackageInstallIssue(manifest(94, paths) as any, inFile, files) ?? "",
       gate,
       "a catalog file",
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(94, paths) as any, inFile, files), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(95, paths) as any, inFile, files), null);
   }
 
-  // ── Damage the holder brings off their own sheet, in one hand (1.96: 5e's Dueling) ──
+  // ── Damage the holder brings off their own sheet, in one hand (1.97: 5e's Dueling) ──
   {
     const attack = (id: string, edit: (attack: Record<string, any>) => void) => (doc: Record<string, any>) =>
       edit(itemEntry(doc, id).item.attack);
@@ -1020,7 +1020,7 @@ try {
       /oneHanded says when the damage's sheetBonus counts/,
       "oneHanded alone",
     );
-    // Gated at 1.96.
+    // Gated at 1.97.
     const withDamage = variant(emberText, (doc) => {
       itemEntry(doc, "hand-axe").item.attack.damage.sheetBonus = { const: 2 };
     });
@@ -1041,11 +1041,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /add damage off the sheet.*capabilityApi 1\.96/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(95) as any, withDamage) ?? "", gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(96) as any, withDamage), null);
+    const gate = /add damage off the sheet.*capabilityApi 1\.97/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(96) as any, withDamage) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(97) as any, withDamage), null);
 
-    // ── Low damage dice thrown again, two-handed (1.97: 5e's Great Weapon Fighting) ──
+    // ── Low damage dice thrown again, two-handed (1.98: 5e's Great Weapon Fighting) ──
     const greatSpear = dueling(spear, { rerollUpTo: { const: 2 } });
     const rerollOf = (items: RulesetSheetItem[], label: string) =>
       weaponsOf(emberFight(items)).find((action) => action.label === label)!.damage!.reroll;
@@ -1106,7 +1106,7 @@ try {
       (sides) => (sides === 8 ? (queue.shift() ?? 8) : sides),
     ).events.find((event) => event.type === "damage") as { rolls?: number[]; critical?: boolean } | undefined;
     assert.deepEqual([crit?.critical, crit?.rolls], [true, [5, 7]], "the critical's 2 is thrown again as well");
-    // Refused: an unknown value, and in a pool fight. Gated at 1.97.
+    // Refused: an unknown value, and in a pool fight. Gated at 1.98.
     refused(
       emberText,
       attack("boar-spear", (a) => (a.damage.rerollUpTo = { derived: "gwf" })),
@@ -1123,9 +1123,9 @@ try {
       itemEntry(doc, "boar-spear").item.attack.damage.rerollUpTo = { const: 2 };
     });
     parsedOrThrow(withReroll, "a weapon that rerolls");
-    const rerollGate = /reroll low damage dice.*capabilityApi 1\.97/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(96) as any, withReroll) ?? "", rerollGate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(97) as any, withReroll), null);
+    const rerollGate = /reroll low damage dice.*capabilityApi 1\.98/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(97) as any, withReroll) ?? "", rerollGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(98) as any, withReroll), null);
   }
 
   console.log(

@@ -210,7 +210,7 @@ const command = z.discriminatedUnion("type", [
      *  the menu by the resolver; this only bounds them to a board's own size. */
     to: coord.optional(),
     at: coord.optional(),
-    /** How a wall is laid (1.176) and where further copies go (1.177), checked by the resolver. */
+    /** How a wall is laid (1.177) and where further copies go (1.178), checked by the resolver. */
     toward: coord.optional(),
     side: z.enum(["near", "far"]).optional(),
     ring: z.boolean().optional(),
@@ -1001,7 +1001,7 @@ export async function combatDirectorRoutes(
           const gate = await rollGameFightItemGate(app.db, input.chatId, who, usedLine.item);
           if (gate && !gate.success) (used!.action as { failed?: string }).failed = gate.line;
         }
-        // A use that comes out of a fake does what the fake truly does (1.78); the fight lists it as what
+        // A use that comes out of a fake does what the fake truly does (1.79); the fight lists it as what
         // it passes for, so only the stack it is spent from says so.
         const usedEffect = usedLine && state.itemEffects.find((effect) => effect.name === usedLine.name);
         if (usedLine && usedEffect) {

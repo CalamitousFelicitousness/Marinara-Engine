@@ -580,7 +580,7 @@ function readStoredLiveState(
 }
 
 /**
- * A stored live state as the current layout reads it (`routeLive`, Capability API 1.76). Live state
+ * A stored live state as the current layout reads it (`routeLive`, Capability API 1.77). Live state
  * has no version of its own, so every step runs on every read, and each is safe to: the old key
  * always goes, and its value moves only while the new key is not there yet. A writer reads through
  * here too, so the first write stores the new layout; a value written since (a spent die, a rest
@@ -1142,7 +1142,7 @@ export function applyRulesetSheetOp(
       if (pool.listId !== step.listPools) return false;
       return !step.recharge || (pool.recharge !== undefined && step.recharge.includes(pool.recharge));
     });
-    // Shared (1.76): the fraction of the whole group's maximum, handed to its pools in the order the
+    // Shared (1.77): the fraction of the whole group's maximum, handed to its pools in the order the
     // sheet lists them, each up to what it is missing.
     let share =
       step.shared && step.by && "fractionOfMax" in step.by
@@ -1277,7 +1277,7 @@ export function planRulesetUse(
     return definition.sheet.live.pools.some((entry) => entry.group === target) ? target : undefined;
   };
 
-  /** The level of what a pool pays at: its own `level`, else its place in its group (1.115). */
+  /** The level of what a pool pays at: its own `level`, else its place in its group (1.116). */
   const poolLevel = (id: string): number => {
     const pool = definition.sheet.live.pools.find((one) => one.id === id);
     if (!pool) return 0;
@@ -1295,7 +1295,7 @@ export function planRulesetUse(
     const target = named
       ? declared.find((pool) => sameName(pool.key, named) || sameName(pool.label, named))
       : undefined;
-    // A pool of another group pays too where it says so (1.170): 5e's pact slots, for a spell
+    // A pool of another group pays too where it says so (1.171): 5e's pact slots, for a spell
     // costed from the spell slots, and at no lower a level than the cost's own.
     const pays = definition.sheet.live.pools.find((pool) => pool.id === target?.key)?.pays;
     if (!group || !target) return { ok: false, reason: "bad-pool" };

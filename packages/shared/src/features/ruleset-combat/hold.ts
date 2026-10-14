@@ -554,7 +554,7 @@ function stepsAffordable(
 ): number {
   if (!action.use?.perCostStep) return 0;
   let steps = 0;
-  // Its own family, and the pools of other groups that pay for it (1.170).
+  // Its own family, and the pools of other groups that pay for it (1.171).
   const payers = definition.sheet.live.pools
     .filter((pool) => pool.pays?.includes(action.use!.group ?? ""))
     .map((pool) => pool.id);

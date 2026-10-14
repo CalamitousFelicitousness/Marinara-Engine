@@ -54,14 +54,21 @@ for (const mode of ["manual", "plan", "accept-edits", "bypass"] as const) {
   assert.match(block, /may further RESTRICT but never loosen/u, `${mode}: memory precedence rule`);
 }
 assert.match(mariPermissionsModePrompt("plan") ?? "", /refused by the server/u);
-assert.match(mariPermissionsModePrompt("accept-edits") ?? "", /Every applied change shows the user a change card with Undo/u);
+assert.match(
+  mariPermissionsModePrompt("accept-edits") ?? "",
+  /Every applied change shows the user a change card with Undo/u,
+);
 assert.match(
   mariPermissionsModePrompt("bypass") ?? "",
   /Sensitive file changes and dependency installs still require/u,
 );
 
 // ── Enforcement seams (source pins) ─────────────────────────────────────────
-const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
+const workspaceAgent =
+  readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts") +
+  readSource("packages/server/src/services/professor-mari/workspace-commands.ts") +
+  readSource("packages/server/src/services/professor-mari/workspace-round-review.ts") +
+  readSource("packages/server/src/services/professor-mari/workspace-message-store.ts");
 // Mode read fresh per run and per status call - never latched at construction.
 assert.match(
   workspaceAgent,
@@ -76,7 +83,7 @@ assert.doesNotMatch(
 // Plan mode is a hard server-side floor in the executor, dry-runs allowed.
 assert.match(
   workspaceAgent,
-  /activeRunPermissionsMode === "plan" && isMutatingWorkspaceCommand\(command\)/u,
+  /this\.getRun\(\)\.permissionsMode === "plan" && isMutatingWorkspaceCommand\(command\)/u,
   "plan mode must refuse mutating commands in the executor, not just in the prompt",
 );
 // Manual forces the deferral; Bypass suppresses it. The run loop reads the
@@ -87,6 +94,19 @@ assert.match(workspaceAgent, /permissionsMode !== "bypass" &&/u);
 // run refuses the commands); the executor floor's refusal drives the plan.
 assert.match(workspaceAgent, /permissionsMode !== "plan" &&/u);
 assert.match(workspaceAgent, /permissionsMode === "manual" \|\|/u);
+// The checks live in workspace-round-review; pin the loop's call sites so it
+// keeps passing the run's LOCAL mode and ONE review state for the whole run.
+assert.ok(
+  workspaceAgent.includes("shouldDeferRoundMutations({ permissionsMode, parsedAction, runAskedForApproval })"),
+  "the run loop must pass its local permissionsMode to the deferral check",
+);
+assert.ok(workspaceAgent.includes("reviewRoundClaim(reviewState, {"));
+assert.ok(workspaceAgent.includes("reviewRepeatedFailures(reviewState, commandResults)"));
+assert.equal(
+  workspaceAgent.split("newRoundReviewState(").length - 1,
+  2,
+  "one review state per run: the definition plus a single call before the round loop",
+);
 // Manual is also a FLOOR: silent (empty-say) mutating frames execute only in
 // a run that began right after an approved deferral; otherwise the executor
 // refuses them with describe-and-ask guidance.
@@ -95,21 +115,21 @@ assert.match(workspaceAgent, /permissionsMode === "manual" \|\|/u);
 // (CodeRabbit round 1: the substring check never armed, deadlocking Manual).
 assert.match(
   workspaceAgent,
-  /const manualApprovalArmed = parseExtra\(lastAssistant\?\.extra\)\.mariDeferredMutations === true;/u,
+  /const manualApprovalArmed = lastExtra\.mariDeferredMutations === true;/u,
 );
-assert.match(workspaceAgent, /if \(runEndedWithDeferral\) extraUpdate\.mariDeferredMutations = true;/u);
+assert.match(workspaceAgent, /if \(run\.endedWithDeferral\) extraUpdate\.mariDeferredMutations = true;/u);
 // The deferral marker is retryable: the row is retained across a failed extra
 // write and the persisted flag flips only after the extras land.
 assert.match(workspaceAgent, /persistedAssistantMessage \?\?/u);
 const persistIdx = workspaceAgent.indexOf("persistedAssistantMessage ??");
 const persistedFlagIdx = workspaceAgent.indexOf("assistantMessagePersisted = true;", persistIdx);
-const extraWriteIdx = workspaceAgent.indexOf("updateMessageExtra(message.id, extraUpdate)", persistIdx);
+const extraWriteIdx = workspaceAgent.indexOf("saveAssistantMessageExtra(chatStorage, message.id,", persistIdx);
 assert.ok(
   extraWriteIdx > 0 && persistedFlagIdx > extraWriteIdx,
   "assistantMessagePersisted must flip only after the extra writes land",
 );
 assert.match(workspaceAgent, /runEndedWithDeferral = true;/u);
-assert.match(workspaceAgent, /activeRoundManualSilentMutationBlocked && isMutatingWorkspaceCommand\(command\)/u);
+assert.match(workspaceAgent, /this\.getRun\(\)\.manualSilentMutationBlocked && isMutatingWorkspaceCommand\(command\)/u);
 // Slice 87: every applied change keeps a restore copy in every mode, so no review-policy gate
 // remains (the old auto-keep carve-outs for deletes, extensions and chat.updateMessage are gone).
 assert.doesNotMatch(workspaceAgent, /autoKeep|reviewPolicy|auto-keep/u);

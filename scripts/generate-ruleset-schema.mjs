@@ -185,7 +185,7 @@ function restStepTo(node) {
   ];
 }
 
-// Senses an effect needs or a condition takes away cannot be named twice (1.126).
+// Senses an effect needs or a condition takes away cannot be named twice (1.127).
 function uniqueCombatSenses(node) {
   if (Array.isArray(node)) return node.forEach(uniqueCombatSenses);
   if (!node || typeof node !== "object") return;
@@ -195,7 +195,7 @@ function uniqueCombatSenses(node) {
   }
 }
 
-// A condition cannot name the same ending twice (1.124).
+// A condition cannot name the same ending twice (1.125).
 function uniqueConditionEndings(node) {
   if (Array.isArray(node)) return node.forEach(uniqueConditionEndings);
   if (!node || typeof node !== "object") return;
@@ -225,7 +225,7 @@ function cancelOnlyWhenAimed(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(cancelOnlyWhenAimed);
   const keys = Object.keys(node.properties ?? {}).filter((key) => key !== "$comment");
-  // Falls have no source entry, including when taken as an additional moment (1.123).
+  // Falls have no source entry, including when taken as an additional moment (1.124).
   if (node.type === "object" && ["on", "against", "blow", "seesSource"].every((key) => keys.includes(key))) {
     node.allOf = [
       ...(node.allOf ?? []),
@@ -236,13 +236,19 @@ function cancelOnlyWhenAimed(node) {
     ];
   }
   if (node.type === "object" && ["on", "for", "within"].every((key) => keys.includes(key))) {
-    node.allOf = [...(node.allOf ?? []),
-      { if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
-        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } } },
-      { if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
-        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } } },
+    node.allOf = [
+      ...(node.allOf ?? []),
+      {
+        if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
+        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } },
+      },
+      {
+        if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
+        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } },
+      },
     ];
-    if (keys.includes("cancelSave")) node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
+    if (keys.includes("cancelSave"))
+      node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
   }
   if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
     // Only a moment BEFORE something resolves may call it off.
@@ -396,7 +402,10 @@ function creatureActionShape(node) {
       if: { required: ["heal"] },
       then: { not: { anyOf: ["damage", "toHit", "save", "area"].map((key) => ({ required: [key] })) } },
     },
-    { if: { required: ["targets"] }, then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } } },
+    {
+      if: { required: ["targets"] },
+      then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } },
+    },
   ];
 }
 
@@ -414,17 +423,22 @@ function oneSourceForCreature(node) {
   if (node.type !== "object" || !properties?.sheet || !properties.actions || !properties.tier) return;
   const casting = properties.spellcasting;
   casting.properties.spells.uniqueItems = true;
-  casting.allOf = [{
-    if: { required: ["coven"] },
-    then: { properties: { spells: { contains: { required: ["coven"] } } } },
-    else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
-  }];
+  casting.allOf = [
+    {
+      if: { required: ["coven"] },
+      then: { properties: { spells: { contains: { required: ["coven"] } } } },
+      else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
+    },
+  ];
   node.allOf = [
     ...(node.allOf ?? []),
     {
       if: { required: ["sheet"] },
       then: { not: { anyOf: CREATURE_SHEET_REPLACES.map((key) => ({ required: [key] })) } },
-      else: { required: CREATURE_PLAIN_NEEDS, anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }] },
+      else: {
+        required: CREATURE_PLAIN_NEEDS,
+        anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }],
+      },
     },
   ];
 }
@@ -443,7 +457,7 @@ function requireDamageAmount(node) {
   // A rider's amount carries no type of its own, so its keys alone look like every other pair of
   // dice and flat in the file, a creature's health included. The schema marks it by name instead.
   const riderAmountShaped = node.description === "rider-amount";
-  // An amount a blow deals instead (1.101) is `when` beside dice and flat, and nothing else.
+  // An amount a blow deals instead (1.102) is `when` beside dice and flat, and nothing else.
   const alternativeShaped =
     ["when", "dice", "flat"].every((key) => keys.includes(key)) &&
     keys.every((key) => ["when", "dice", "flat"].includes(key));

@@ -1,5 +1,5 @@
 /**
- * Moving other ways than walking (Capability API 1.112).
+ * Moving other ways than walking (Capability API 1.113).
  *
  *   - A creature's `speeds` (fly, swim, climb, burrow) and `hover`, and a sheet's
  *     `combat.economy.movementModes`, are read as the fight begins. `speed` stays the walk.
@@ -10,7 +10,7 @@
  *     as 5e's "subtract the distance already moved from the new speed": walk 30 and fly 60 can walk
  *     10 and fly 40, and never walk past 30. A dash adds each way's own again.
  *   - The walk spends exactly what the menu said; the director's distances read the mover's ways.
- *   - Somebody who only walks moves exactly as before; import and the install gate (1.112).
+ *   - Somebody who only walks moves exactly as before; import and the install gate (1.113).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -285,7 +285,7 @@ try {
     assert.deepEqual(rulesetCombatant(dashed.state, "mover")!.modeLeft, { walk: 12, fly: 24 });
   }
 
-  // ── The install gate: 1.112, in the ruleset file and in a catalog file ──
+  // ── The install gate: 1.113, in the ruleset file and in a catalog file ──
   {
     const manifest = (minor: number, paths = ["ruleset.json"]) => ({
       schemaVersion: 2,
@@ -303,7 +303,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /fly, swim, climb or burrow.*capabilityApi 1\.112/;
+    const gate = /fly, swim, climb or burrow.*capabilityApi 1\.113/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
     const speedsOnly = (doc: Record<string, any>) => (creatureOf(doc, "cinder-hound").speeds = { fly: 60 });
@@ -312,10 +312,10 @@ try {
       ["speeds", speedsOnly],
       ["a sheet's ways", sheetOnly],
     ] as const) {
-      assert.match(issue(111, fiveE(edit)) ?? "", gate, what);
-      assert.doesNotMatch(issue(112, fiveE(edit)) ?? "", gate, what);
+      assert.match(issue(112, fiveE(edit)) ?? "", gate, what);
+      assert.doesNotMatch(issue(113, fiveE(edit)) ?? "", gate, what);
     }
-    assert.doesNotMatch(issue(111, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(112, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
     const document = fiveE(speedsOnly);
     const creatures = document.catalogs.find((one: { id: string }) => one.id === "creatures");
     const inFile = {
@@ -326,11 +326,11 @@ try {
     };
     const paths = ["ruleset.json", "catalogs/creatures.json"];
     const files = new Map<string, unknown>([["catalogs/creatures.json", { entries: creatures.entries }]]);
-    assert.match(issue(111, inFile, paths, files) ?? "", gate, "a catalog file");
-    assert.doesNotMatch(issue(112, inFile, paths, files) ?? "", gate);
+    assert.match(issue(112, inFile, paths, files) ?? "", gate, "a catalog file");
+    assert.doesNotMatch(issue(113, inFile, paths, files) ?? "", gate);
   }
 
-  console.log("Move modes: fliers, swimmers and climbers on the board, one allowance between them, gated at 1.112.");
+  console.log("Move modes: fliers, swimmers and climbers on the board, one allowance between them, gated at 1.113.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

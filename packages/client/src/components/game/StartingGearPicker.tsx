@@ -1,7 +1,7 @@
 // The inventory's "Starting gear": a ruleset's gear a character may take into their bag at the start
-// (Capability API 1.77). Never given on its own: the player picks a gear, an option for each of its
+// (Capability API 1.78). Never given on its own: the player picks a gear, an option for each of its
 // choices and an item from each list, and takes it. Gear the character's sheet fits is listed first;
-// a strict builder step (1.108) keeps other gear for free edit.
+// a strict builder step (1.109) keeps other gear for free edit.
 //
 // What the gear adds is worked out by the shared resolver the server also uses, so what is shown is
 // what is added; the server checks it all again.

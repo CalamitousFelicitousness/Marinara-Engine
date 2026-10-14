@@ -1,6 +1,6 @@
 /**
  * Escapes against the spell, zones that shake concentration or stop at a damage cap, and zones on
- * item uses (Capability API 1.173).
+ * item uses (Capability API 1.174).
  *
  *   - `escapeDc: "save"` puts the applier's save difficulty on the condition, and its escape contest
  *     is rolled against that (Web). With no save difficulty the holder contests as usual.
@@ -8,7 +8,7 @@
  *     trigger, makes the concentration save against the entry's save or loses it (Sleet Storm).
  *   - `zone.damageCap`: the zone ends once it has dealt that much in all (Guardian of Faith).
  *   - An item's use may concentrate and leave a zone (a scroll of the spell).
- *   - 1.174: a breaking-free contest marked `escapable` is offered only against a hold with an escape
+ *   - 1.175: a breaking-free contest marked `escapable` is offered only against a hold with an escape
  *     DC; `escapeChecks` names the checks that break a hold; `zone.whileHeld` hurts whoever starts a
  *     turn in it already held by it, with no save, in place of its effect (Black Tentacles).
  *   - Import refusals and the install gate.
@@ -376,7 +376,7 @@ try {
     );
   }
 
-  // ── Holds broken only as the spell says (1.174) ──
+  // ── Holds broken only as the spell says (1.175) ──
   {
     die = 10;
     const breaks = (state: RulesetEncounterState, id: string) =>
@@ -388,7 +388,7 @@ try {
     assert.ok(rulesetCombatant(stoned.state, "a")!.tracked.some((one) => one.condition === "restrained"));
     assert.equal(breaks(stoned.state, "a"), false, "no escape from stone");
     // The web is broken with the contest's own check; the tentacles only with Dexterity.
-    // A web spun by somebody on the held one's own side is broken the same way (1.175 fix).
+    // A web spun by somebody on the held one's own side is broken the same way (1.176 fix).
     {
       const friendly = structuredClone(webbed.state);
       rulesetCombatant(friendly, "mage")!.side = "enemy";
@@ -533,7 +533,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with save escapes, concentration-breaking or capped zones, or zones on item uses requires schemaVersion 2 and capabilityApi 1.173 or newer";
+      "A ruleset with save escapes, concentration-breaking or capped zones, or zones on item uses requires schemaVersion 2 and capabilityApi 1.174 or newer";
     const carriers: Array<[string, (doc: Record<string, any>) => void]> = [
       ["web", (doc) => doc.catalogs.push({ id: "zones", label: "Zones", entries: [web] })],
       ["storm", (doc) => doc.catalogs.push({ id: "zones", label: "Zones", entries: [storm] })],
@@ -565,18 +565,18 @@ try {
     ];
     for (const [name, edit] of carriers) {
       const doc = fiveE(edit);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(172) as never, doc), gate, name);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(173) as never, doc), gate, name);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(173) as never, doc), gate, name);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(174) as never, doc), gate, name);
     }
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(172) as never, fiveE()),
+      getCapabilityPackageInstallIssue(manifest(173) as never, fiveE()),
       gate,
       "nothing without the keys",
     );
   }
 
   console.log(
-    "Zone rules: Web is escaped against its DC, Sleet Storm shakes concentration at the cast and on the way in, Guardian of Faith ends at its cap, a scroll leaves its cloud; gated at 1.173.",
+    "Zone rules: Web is escaped against its DC, Sleet Storm shakes concentration at the cast and on the way in, Guardian of Faith ends at its cap, a scroll leaves its cloud; gated at 1.174.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Lasting areas (Capability API 1.171): what a zone covers now, and whom it may catch.
+ * Lasting areas (Capability API 1.172): what a zone covers now, and whom it may catch.
  *
  * A zone held at a point keeps the cells it was cast on. One held by its caster is a burst worked
  * out around them wherever they stand, so it goes where they go. Nothing here changes the fight;
@@ -16,7 +16,7 @@ import type {
   RulesetReachableCell,
 } from "./types.js";
 
-// Worked out beside the walking they slow (1.172), and said here too, where a zone is read.
+// Worked out beside the walking they slow (1.173), and said here too, where a zone is read.
 export { rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
 
 /** Every zone standing, with whose it is. */
@@ -49,7 +49,7 @@ export function rulesetZoneOccupants(
     .map((one) => one.id);
 }
 
-/** Who stands on a wall's chosen side now (1.176), among those it may catch. */
+/** Who stands on a wall's chosen side now (1.177), among those it may catch. */
 export function rulesetZoneSideOccupants(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
@@ -64,7 +64,7 @@ export function rulesetZoneSideOccupants(
 }
 
 /**
- * The cells standing walls close (1.176), written onto the board's grid where moving and seeing read
+ * The cells standing walls close (1.177), written onto the board's grid where moving and seeing read
  * them, and taken off again as each wall ends. Worked out afresh from every standing zone, so a wall
  * that ended however it ended closes nothing any more.
  */
@@ -102,7 +102,7 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   }));
 }
 
-/** Where a zone may be moved to (1.172): any cell of the board within its `move` distance of where
+/** Where a zone may be moved to (1.173): any cell of the board within its `move` distance of where
  *  it is centred, its own cell aside. Priced as the distance, so a board draws it as a walk. */
 export function rulesetZoneMoveCells(
   state: RulesetEncounterState,
@@ -121,7 +121,7 @@ export function rulesetZoneMoveCells(
   return cells;
 }
 
-/** Where a drifting zone goes next (1.172): `distance` cells straight away from its caster, stopping
+/** Where a drifting zone goes next (1.173): `distance` cells straight away from its caster, stopping
  *  at the board's edge. A zone centred on its caster's own cell has no "away" and stays. */
 export function rulesetZoneDriftCell(
   state: RulesetEncounterState,

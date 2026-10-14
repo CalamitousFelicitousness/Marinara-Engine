@@ -56,7 +56,7 @@ export interface RulesetMenuStep {
   mode?: string;
   payWith?: string;
   targets: string[];
-  /** How a shape is being laid while it is aimed (1.176, 1.177). */
+  /** How a shape is being laid while it is aimed (1.177, 1.178). */
   lay?: RulesetAimLay;
 }
 
@@ -109,7 +109,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // Which is which comes off the two exported ids, never off the spelling of one: the ids belong to
   // the resolver and have already changed once.
   if (option.kind === "move") {
-    // Moving a lasting area (1.172) is named by the area the ruleset named.
+    // Moving a lasting area (1.173) is named by the area the ruleset named.
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX))
       return t("game.combat.ruleset.menu.moveZone", { zone: option.label });
     const word = MOVE_OPTION_WORDS[option.id];

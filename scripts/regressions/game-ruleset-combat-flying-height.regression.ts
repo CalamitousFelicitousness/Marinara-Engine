@@ -1,5 +1,5 @@
 /**
- * Flying height (Capability API 1.113).
+ * Flying height (Capability API 1.114).
  *
  *   - On a board whose ruleset gives `combat.elevation.levelHeight`, a flier is offered Fly up and
  *     Fly down where it stands, each a level's worth of its flight. Nobody else is, and nobody is

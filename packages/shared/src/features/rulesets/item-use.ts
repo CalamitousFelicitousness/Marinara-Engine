@@ -202,7 +202,7 @@ export function useRulesetItemOutsideFight(input: {
       }
     }
     for (const applies of use.applies ?? []) {
-      // Read off the user as it applies (1.166), what came before it included.
+      // Read off the user as it applies (1.167), what came before it included.
       if (applies.when && !sheetWithin(applies.when)) continue;
       if (!write({ op: "condition", condition: applies.condition, active: true })) continue;
       const label =

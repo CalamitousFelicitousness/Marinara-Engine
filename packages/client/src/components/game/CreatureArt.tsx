@@ -1,7 +1,7 @@
 // A creature's art on a fight's board (design-game-creature-art.md): the creature pack chosen in the
 // library, which of its creatures a fighter is, the way it faces, and its frame drawn at its own size,
 // bottom centred on its cell. A fighter with no art keeps its token.
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   creatureArtBox,
@@ -49,17 +49,16 @@ export function useCreatureFacings(
   const last = useRef(new Map<string, { x: number; y: number; facing: CreatureFacing }>());
   const lastFight = useRef(fight);
   const key = units.map((unit) => `${unit.id}:${unit.x},${unit.y}`).join("|");
-  return useMemo(() => {
-    if (lastFight.current !== fight) {
-      last.current.clear();
-      lastFight.current = fight;
-    }
+  // Worked out from what the last committed render remembered, and remembered only once this one
+  // commits, so a render React throws away never turns anybody.
+  const seen = useMemo(() => {
+    const remembered =
+      lastFight.current === fight ? last.current : new Map<string, { x: number; y: number; facing: CreatureFacing }>();
     // Only the fighters still on the board are remembered.
-    const here = new Set(units.map((unit) => unit.id));
-    for (const id of [...last.current.keys()]) if (!here.has(id)) last.current.delete(id);
+    const next = new Map<string, { x: number; y: number; facing: CreatureFacing }>();
     const out = new Map<string, CreatureFacing>();
     for (const unit of units) {
-      const before = last.current.get(unit.id);
+      const before = remembered.get(unit.id);
       let facing: CreatureFacing;
       if (before) facing = creatureFacingToward(unit.x - before.x, unit.y - before.y, before.facing);
       else {
@@ -72,12 +71,17 @@ export function useCreatureFacings(
           : [unit.x, unit.y + 1];
         facing = creatureFacingToward(cx - unit.x, cy - unit.y, "down");
       }
-      last.current.set(unit.id, { x: unit.x, y: unit.y, facing });
+      next.set(unit.id, { x: unit.x, y: unit.y, facing });
       out.set(unit.id, facing);
     }
-    return out;
+    return { out, next };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, fight]);
+  useEffect(() => {
+    last.current = seen.next;
+    lastFight.current = fight;
+  }, [seen, fight]);
+  return seen.out;
 }
 
 /** A creature's frame, filling a box one cell wide and placed by its size: absolutely positioned inside

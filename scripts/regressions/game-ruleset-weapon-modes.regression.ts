@@ -578,12 +578,12 @@ try {
     assert.equal(offFull, main, "full keeps it");
     const [mainKept, offKept] = keeping("penalty-only", 3);
     assert.equal(offKept, mainKept - 3, "penalty-only drops a bonus");
-    // A fighter whose sheet says so keeps it (1.96: Two-Weapon Fighting); one whose sheet reads 0 does not.
+    // A fighter whose sheet says so keeps it (1.97: Two-Weapon Fighting); one whose sheet reads 0 does not.
     const [mainStyled, offStyled] = keeping("penalty-only", 3, { const: 1 });
     assert.equal(offStyled, mainStyled, "fullWhen above 0 keeps it");
     const [mainUnstyled, offUnstyled] = keeping("penalty-only", 3, { const: 0 });
     assert.equal(offUnstyled, mainUnstyled - 3, "fullWhen at 0 does not");
-    // Checked like any sheet value, and gated at 1.96.
+    // Checked like any sheet value, and gated at 1.97.
     const badWhen = parseRulesetDefinition(
       variant(gravewatchText, (doc) => (doc.combat.offHand.fullWhen = { derived: "nope" })),
     );
@@ -606,10 +606,10 @@ try {
       restartRequired: false,
     });
     assert.match(
-      getCapabilityPackageInstallIssue(styledManifest(95) as any, styled) ?? "",
-      /off hand reads the sheet.*capabilityApi 1\.96/,
+      getCapabilityPackageInstallIssue(styledManifest(96) as any, styled) ?? "",
+      /off hand reads the sheet.*capabilityApi 1\.97/,
     );
-    assert.equal(getCapabilityPackageInstallIssue(styledManifest(96) as any, styled), null);
+    assert.equal(getCapabilityPackageInstallIssue(styledManifest(97) as any, styled), null);
     // An off-hand attack is one blow, whatever strikes the main attack buys.
     const twice = parsedOrThrow(
       variant(gravewatchText, (doc) => (itemEntry(doc, "silver-nail").item.attack.strikes = { const: 2 })),

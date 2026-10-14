@@ -5342,12 +5342,12 @@ export function GameNarration({
                       {/* Right: Name + Dialogue text */}
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="mb-1.5 flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex min-w-0 items-center gap-1.5">
                             {/* Inert theming hook. The inner span lets a skewed name plate counter-skew its
                               text; unstyled it collapses to plain inline text. */}
                             <span
                               className={cn(
-                                "experience-dialogue-speaker text-sm font-bold",
+                                "experience-dialogue-speaker text-sm font-bold [overflow-wrap:anywhere]",
                                 nameColorClass(active.speaker),
                               )}
                               style={

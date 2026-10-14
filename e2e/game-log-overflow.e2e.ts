@@ -20,6 +20,9 @@ const LEAKED_REASONING = [
   "Let's plan the beat.",
 ].join("\n");
 const DIALOGUE = `[Princess Luna] [main] [neutral]: "Read the list back to me: ${EXPRESSIONS}."`;
+// The same run parsed as a speaker name, and inside a note that opens in its own reader.
+const LIST_SPEAKER = `[${EXPRESSIONS}]: "Who am I now?"`;
+const NOTE = `[Note: Scrawled in the margin: ${EXPRESSIONS}]`;
 
 async function seedLeakedReasoningTurn(request: APIRequestContext) {
   const created = await request.post("/api/chats", {
@@ -34,7 +37,7 @@ async function seedLeakedReasoningTurn(request: APIRequestContext) {
   const base = Date.now();
   for (const [step, content] of [
     "Lantern light pools at the gatehouse.",
-    `${LEAKED_REASONING}\n\nThe gate creaks open.\n${DIALOGUE}`,
+    `${LEAKED_REASONING}\n\nThe gate creaks open.\n${DIALOGUE}\n${LIST_SPEAKER}\n${NOTE}`,
   ].entries()) {
     const saved = await request.post(`/api/chats/${chat.id}/messages`, {
       data: { role: "assistant", content, createdAt: new Date(base + step * 1000).toISOString() },
@@ -64,6 +67,16 @@ async function openGameChat(page: Page, chatId: string, stacked: boolean) {
   await page.goto("/");
 }
 
+/** Every element inside `root` that reaches past its right edge, even where it would be clipped. */
+async function pastRightEdge(root: Locator) {
+  return root.evaluate((element) => {
+    const edge = element.getBoundingClientRect().right;
+    return [...element.querySelectorAll("*")]
+      .filter((node) => node.getBoundingClientRect().right > edge + 1)
+      .map((node) => `${node.tagName} ${(node.textContent ?? "").slice(0, 60)}`);
+  });
+}
+
 /** Every scrolling box inside `root` that is wider inside than out, by how far. */
 async function sidewaysOverflow(root: Locator) {
   return root.evaluate((element) =>
@@ -90,12 +103,22 @@ for (const stacked of [false, true]) {
       await expect(panel).toContainText("Let's review the required format carefully.");
       expect.soft(await sidewaysOverflow(panel), "narration box scrolls sideways").toEqual([]);
       const next = page.getByRole("button", { name: "Next", exact: true }).filter({ visible: true });
-      await expect(async () => {
-        if (!((await panel.textContent()) ?? "").includes("Read the list back to me")) await next.click();
-        await expect(panel).toContainText("Read the list back to me", { timeout: 1_000 });
-      }).toPass({ timeout: 20_000 });
+      const stepTo = (text: string) =>
+        expect(async () => {
+          if (!((await panel.textContent()) ?? "").includes(text)) await next.click();
+          await expect(panel).toContainText(text, { timeout: 1_000 });
+        }).toPass({ timeout: 20_000 });
+      await stepTo("Read the list back to me");
       await expect(panel).toContainText(EXPRESSIONS);
       expect.soft(await sidewaysOverflow(panel), "dialogue box scrolls sideways").toEqual([]);
+      await stepTo("Who am I now?");
+      expect.soft(await pastRightEdge(panel), "speaker name past the dialogue box's edge").toEqual([]);
+      await stepTo("You find a note...");
+      const reader = page.locator("div.fixed.inset-y-0").filter({ hasText: "Scrawled in the margin" });
+      await expect(reader).toContainText(EXPRESSIONS);
+      expect.soft(await sidewaysOverflow(reader), "note reader scrolls sideways").toEqual([]);
+      await reader.getByRole("button").click();
+      await expect(reader).toBeHidden();
 
       let log: Locator;
       if (stacked) {
@@ -112,13 +135,7 @@ for (const stacked of [false, true]) {
       await page.screenshot({ path: testInfo.outputPath(`game-log-overflow-${stacked ? "stacked" : "classic"}.png`) });
       expect.soft(await sidewaysOverflow(log), "session log scrolls sideways").toEqual([]);
       // Nothing may poke out past the log's right edge either, even where it would be clipped.
-      const escaped = await log.evaluate((element) => {
-        const edge = element.getBoundingClientRect().right;
-        return [...element.querySelectorAll("*")]
-          .filter((node) => node.getBoundingClientRect().right > edge + 1)
-          .map((node) => `${node.tagName} ${(node.textContent ?? "").slice(0, 60)}`);
-      });
-      expect(escaped, "log text past the log's right edge").toEqual([]);
+      expect(await pastRightEdge(log), "log text past the log's right edge").toEqual([]);
     } finally {
       await request.delete(`/api/chats/${chatId}?force=true`);
     }

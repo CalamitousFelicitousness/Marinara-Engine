@@ -2186,7 +2186,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     { ctx, work }: NonNullable<Awaited<ReturnType<typeof planRecollections>>>,
     options: AdvancedMemoryOperationOptions,
     newJob = false,
-  ): Promise<number> {
+  ): Promise<{ failed: number; reason?: string }> {
     await progress(
       ctx,
       {
@@ -2199,6 +2199,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       options,
     );
     let failed = 0;
+    let reason: string | undefined;
     for (const [index, { summary, characterIds }] of work.entries()) {
       abortIfNeeded(options.signal);
       const start = ctx.messages.findIndex((message) => message.id === summary.startMessageId);
@@ -2227,6 +2228,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       } catch (error) {
         abortIfNeeded(options.signal);
         failed++;
+        reason ??= error instanceof Error ? error.message : undefined;
         logger.warn(
           error,
           "[advanced-memory] Recollections for scene %s failed; the next run tries again",
@@ -2235,18 +2237,24 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       }
       await progress(ctx, { stage: "recollecting", completed: index + 1, total: work.length }, options);
     }
-    return failed;
+    return { failed, reason };
   }
 
-  /** The end of a recollection run: ready, or stopped with what failed so Resume tries those scenes again. */
-  async function finishRecollections(chatId: string, failed: number, options: AdvancedMemoryOperationOptions) {
+  /** The end of a recollection run: ready, or stopped with what failed and why, so Resume tries those scenes again. */
+  async function finishRecollections(
+    chatId: string,
+    { failed, reason }: { failed: number; reason?: string },
+    options: AdvancedMemoryOperationOptions,
+  ) {
     await progress(
       await context(chatId),
       failed
         ? {
             status: "error",
             stage: "recollecting",
-            error: `Character recollections could not be written for ${failed} ${failed === 1 ? "scene" : "scenes"}. Resume to try again.`,
+            error: `Character recollections could not be written for ${failed} ${failed === 1 ? "scene" : "scenes"}${
+              reason ? `: ${reason.replace(/\.?$/u, ".")}` : "."
+            }${/resume/iu.test(reason ?? "") ? "" : " Resume to try again."}`,
           }
         : { status: "ready", stage: "ready", error: null },
       options,
@@ -3174,9 +3182,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       { touchUpdatedAt: false },
     );
     if (recollections) {
-      const failed = await writeRecollections(recollections, options);
+      const result = await writeRecollections(recollections, options);
       // Upkeep after a scene ends tries a failed scene again next time, without stopping anything.
-      await finishRecollections(chatId, options.closedOnly ? 0 : failed, options);
+      await finishRecollections(chatId, options.closedOnly ? { failed: 0 } : result, options);
       return;
     }
     options.onProgress?.({
@@ -3284,7 +3292,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               await writeRecollections(recollections, operationOptions, options.recollectionsOnly),
               operationOptions,
             );
-          else if (!options.recollectionsOnly) await finishRecollections(chatId, 0, operationOptions);
+          else if (!options.recollectionsOnly) await finishRecollections(chatId, { failed: 0 }, operationOptions);
           return;
         }
         const resumeCompaction = !options.sceneId && state.stage === "compacting" && stopped;
@@ -4639,36 +4647,28 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       ]),
     );
     for (const [id, text] of renderedRecaps) if (!text.trim()) recalledSceneRecords.delete(id);
-    // Each recalled scene's recollections, one line per character: in Individual mode only the responder's own (none
-    // for the narrator), in a merged reply every present character who remembers the scene. A generated one counts
-    // while its summary is unchanged; a hand-edited one always does. They never help choose what is recalled.
-    const recollectionLines = new Map(
-      [...recalledSceneRecords].map(([sceneId, scene]) => {
-        const owners = !ctx.settings.characterRecollections
-          ? []
-          : readers.length
-            ? sceneReaders.get(sceneId)!
-            : audience.filter(
-                (id) => id !== ctx.settings.narratorCharacterId && scene.audienceCharacterIds.includes(id),
-              );
-        return [
-          sceneId,
-          owners.flatMap((owner) => {
-            const record = savedRecollection(available, sceneId, owner);
-            if (!record?.enabled || !(record.manualOverride || recollectionCurrent(record, scene))) return [];
-            const text = renderEntry(ctx, record.content, [owner]).replace(/\s+/gu, " ").trim();
-            return text
-              ? [
-                  {
-                    record,
-                    line: `${ctx.names.get(owner) ?? "Character"}'s personal recollections from this scene: *${text}*`,
-                  },
-                ]
-              : [];
-          }),
-        ] as const;
-      }),
-    );
+    // A recalled scene's recollection lines: in Individual mode only the responder's own (none for the narrator), in a
+    // merged reply every present character who remembers the scene. A generated one counts while its summary is
+    // unchanged; a hand-edited one always does. They never help choose what is recalled.
+    const recollectionLines = (scene: StoredRecord) =>
+      (!ctx.settings.characterRecollections
+        ? []
+        : readers.length
+          ? sceneReaders.get(scene.sceneId)!
+          : audience.filter((id) => id !== ctx.settings.narratorCharacterId && scene.audienceCharacterIds.includes(id))
+      ).flatMap((owner) => {
+        const record = savedRecollection(available, scene.sceneId, owner);
+        if (!record?.enabled || !(record.manualOverride || recollectionCurrent(record, scene))) return [];
+        const text = renderEntry(ctx, record.content, [owner]).replace(/\s+/gu, " ").trim();
+        return text
+          ? [
+              {
+                record,
+                line: `${ctx.names.get(owner) ?? "Character"}'s personal recollections from this scene: *${text}*`,
+              },
+            ]
+          : [];
+      });
     const keptRecollections = new Map<string, Array<{ record: StoredRecord; line: string }>>();
     const candidates = available.filter(
       (record) =>
@@ -4888,7 +4888,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     // Best scene first; a recollection that doesn't fit is left out whole, never cut.
     for (const sceneId of selectedScenes) {
       const kept: Array<{ record: StoredRecord; line: string }> = [];
-      for (const item of recollectionLines.get(sceneId) ?? []) {
+      for (const item of recollectionLines(recalledSceneRecords.get(sceneId)!)) {
         const cost = tokenSize(`\n${item.line}`);
         if (recalledTokens + cost > recallBudget) continue;
         recalledTokens += cost;

@@ -644,7 +644,10 @@ try {
   const stopped = await settle(later.id);
   assert.equal(stopped.status, "error", "a failed scene stops the run with an error to resume");
   assert.equal(stopped.stage, "recollecting");
-  assert.match(stopped.error ?? "", /could not be written for 1 scene\. Resume to try again\./u);
+  assert.match(
+    stopped.error ?? "",
+    /^Character recollections could not be written for 1 scene: The helper returned no recollections; resume to retry this scene\.$/u,
+  );
   assert.equal(since(mark, "recollect").length, 3, "one request per summarized scene, the failed one did not stop it");
   assert.equal(since(mark, "summary").length + since(mark, "classify").length, 0, "no summary is redone");
   const backfilled = await recollections(later.id);

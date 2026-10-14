@@ -208,7 +208,7 @@ try {
         sceneId,
         signal: controller.signal,
         onProgress: (job) => {
-          if (job.stage === "summarizing" && job.completed === 1)
+          if (job.stage === "summarizing" && job.part?.completed === 1)
             controller.abort(new Error("Recovery interrupted after saving paid work"));
         },
       }),

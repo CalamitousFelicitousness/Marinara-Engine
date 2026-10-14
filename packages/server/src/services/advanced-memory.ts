@@ -1964,7 +1964,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             .set({ summaryWork: JSON.stringify(completed) })
             .where(eq(advancedMemoryRecords.id, cacheOwner.id));
           // A recollection run counts scenes (writeRecollections), not the parts of one scene's request.
-          if (!recollectOnly) await progress(ctx, { completed: outputs.length + 1, total: batches.length }, options);
+          // A scene's summary, access check or recollections count scenes, so its parts go to `part`; a constant
+          // summary is a job of its own and counts its parts.
+          const parts = { completed: outputs.length + 1, total: batches.length };
+          await progress(ctx, cacheOwner.kind === "scene" ? { part: parts } : parts, options);
         }
         abortIfNeeded(options.signal);
         outputs.push(text);
@@ -2420,7 +2423,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             );
           });
       }
-      await progress(ctx, { stage: "recollecting", completed: index + 1, total: work.length }, options);
+      await progress(ctx, { stage: "recollecting", completed: index + 1, total: work.length, part: null }, options);
     }
     return { failed, reason };
   }
@@ -3095,7 +3098,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           ];
           const summarized = !record;
           if (!record) {
-            await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length }, options);
+            await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length, part: null }, options);
             candidate.dependencies = [
               ...entries.map((entry) => ({ id: `summary:${entry.id}`, revision: hash(entry) })),
               ...corrections
@@ -3118,7 +3121,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                   ctx.characterIds.filter(
                     (id) =>
                       id !== ctx.settings.narratorCharacterId &&
-                      allowed(ctx, ctx.messages, [id]).some((message) => sourceIds.has(message.id)),
+                      allowed(ctx, ctx.messages, [id]).some((message) => sourceIds.has(message.id)) &&
+                      // A hand-edited or deleted recollection is kept, so the Helper isn't asked for one.
+                      !savedRecollection(existing, scene.id, id)?.manualOverride,
                   ),
                   source,
                 )
@@ -3192,7 +3197,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           ) {
             const accessWork = buildRecord(ctx, scene, "scene", [], source, "pending");
             accessWork.id = `${record.id}-audience`;
-            await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length }, options);
+            await progress(ctx, { stage: "summarizing", completed: index, total: scenes.length, part: null }, options);
             try {
               const result = await summarize(ctx, [logMessages(ctx, source, true)], null, options, accessWork, true);
               // Fix never widens access on an unclear answer: the scene keeps only characters that both

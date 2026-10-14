@@ -53,18 +53,28 @@ export function SelectionLorebookButton() {
 
   useEffect(() => {
     let frame = 0;
+    // Scroll and resize only move an existing selection. Reading the selection forces a layout, and the
+    // capture listener hears every scroller in the app (package screens too), so skip it with none.
+    let hasSelection = false;
     const schedule = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
     };
-    document.addEventListener("selectionchange", schedule);
-    window.addEventListener("scroll", schedule, true);
-    window.addEventListener("resize", schedule);
+    const onSelectionChange = () => {
+      hasSelection = window.getSelection()?.isCollapsed === false;
+      schedule();
+    };
+    const onViewportChange = () => {
+      if (hasSelection) schedule();
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    window.addEventListener("resize", onViewportChange);
     return () => {
       cancelAnimationFrame(frame);
-      document.removeEventListener("selectionchange", schedule);
-      window.removeEventListener("scroll", schedule, true);
-      window.removeEventListener("resize", schedule);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+      window.removeEventListener("resize", onViewportChange);
     };
   }, [update]);
 

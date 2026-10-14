@@ -28,7 +28,7 @@ export const CHARACTER_COLOR_CLASS = "mari-character-color";
  *  follows the preset text there while the message's own colors are kept (#7296). */
 export const FALLBACK_DIALOGUE_CLASS = "mari-fallback-dialogue";
 /** A Game section the player sees (the logs, the Inventory, a combat panel…): a chat-style
- *  surface whose white, black and amber tints follow the chat style (chat-widget-surfaces.css).
+ *  surface whose white, black, amber and pale color tints follow the chat style (chat-widget-surfaces.css).
  *  Each also carries data-game-section="<name>" for custom themes. Never nest one directly
  *  inside another. Game content inside a window takes GAME_WINDOW_CONTENT_CLASS instead. */
 export const GAME_SECTION_CLASS = "mari-chat-style-surface mari-game-section";

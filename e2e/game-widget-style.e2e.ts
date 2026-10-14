@@ -49,6 +49,7 @@ async function createGame(request: APIRequestContext) {
             gameIntroPresented: true,
             gameActiveState: "exploration",
             gamePartyCharacterIds: [character.id],
+            gameInventory: [{ name: "Lantern", quantity: 3 }],
             gameCharacterCards: [
               {
                 name: CHARACTER,
@@ -161,6 +162,18 @@ async function pixels(page: Page, colors: string[]) {
   );
 }
 
+/** Resolves a CSS color, such as a color-mix() of a computed color, the way an element would. */
+async function resolveColor(page: Page, color: string) {
+  return page.evaluate((value) => {
+    const probe = document.createElement("span");
+    probe.style.color = value;
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  }, color);
+}
+
 async function application(page: Page, enabled: Axis[]) {
   await page.evaluate(async (axes) => {
     const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -271,6 +284,31 @@ for (const [preset, theme] of [
         ],
       ];
       const isSection = (name: string) => sections.some(([section]) => section === name);
+      const inventoryButton = narration.locator("button:has(> svg.lucide-package)").filter({ visible: true }).first();
+      // What the Inventory paints inside: the quantity badge's white text, the item letter's amber,
+      // and black tints, which follow the background inside the section but not on its own shadow.
+      const inventoryTints = async () => {
+        await inventoryButton.click();
+        await expect(inventory).toBeVisible();
+        await page.mouse.move(1, 1);
+        const tints = await inventory.evaluate((section) => {
+          const badge = Array.from(section.querySelectorAll<HTMLElement>('span[class~="text-white"]')).find((element) =>
+            element.textContent?.trim().endsWith("3"),
+          )!;
+          const letter = section.querySelector<HTMLElement>('div[class~="text-amber-400/80"]')!;
+          return {
+            badge: getComputedStyle(badge).color,
+            letter: getComputedStyle(letter).color,
+            ownBlack: getComputedStyle(section).getPropertyValue("--color-black"),
+            innerBlack: getComputedStyle(section.firstElementChild!).getPropertyValue("--color-black"),
+            rootBlack: getComputedStyle(document.documentElement).getPropertyValue("--color-black"),
+            background: getComputedStyle(section).getPropertyValue("--mari-game-bg"),
+          };
+        });
+        await inventory.getByRole("button", { name: "Close", exact: true }).click();
+        await expect(inventory).toBeHidden();
+        return tints;
+      };
       // Game content in a window follows the window's style: its white tint becomes the window text.
       const journalWhite = async () => {
         const session = await openChatTool(page, "control:session");
@@ -392,6 +430,17 @@ for (const [preset, theme] of [
         }
       }
       await closeSheet();
+      const control = await inventoryButton.evaluate((button) => getComputedStyle(button).color);
+      const tints = await inventoryTints();
+      expect(await pixels(page, [tints.badge]), "Inventory white text uses the widget text color").toEqual(
+        await pixels(page, [palette.textFill]),
+      );
+      expect(await pixels(page, [tints.letter]), "Inventory amber uses the control color").toEqual(
+        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${control} 80%, transparent)`)]),
+      );
+      expect(tints.ownBlack, "the Inventory's own shadow stays dark").toBe(tints.rootBlack);
+      expect(tints.innerBlack, "black tints inside follow the background").toBe(tints.background);
+      expect(tints.innerBlack).not.toBe(tints.rootBlack);
 
       await application(page, ["font", "shape", "colors"]);
       const styled = await measure();
@@ -447,6 +496,16 @@ for (const [preset, theme] of [
       }
       await closeSheet();
       await setStore(page, { setAppAccentColor: "" });
+
+      // Default supplies no palette: Game amber marks warnings, so it takes the app accent held steady.
+      await setStore(page, { setChatWidgetPreset: "default" });
+      await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
+      const steady = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--marinara-app-accent-static").trim(),
+      );
+      expect(await pixels(page, [(await inventoryTints()).letter]), "Default amber uses the steady accent").toEqual(
+        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${steady} 80%, transparent)`)]),
+      );
 
       await application(page, []);
       await setStore(page, { setChatWidgetPreset: "default" });
@@ -644,6 +703,64 @@ for (const mode of ["classic", "tactical"] as const) {
         setChatWidgetBorderColor: "",
         setChatWidgetTextColor: "",
       });
+
+      // Pale party, enemy and element colors made for the dark scene stay readable on a light style.
+      await setStore(page, { setTheme: "light", setChatWidgetPreset: "mari" });
+      await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", "mari");
+      await page.mouse.move(1, 1);
+      const measureContrast = () =>
+        page.evaluate((names) => {
+          const pale =
+            /(?:^|\s)text-(?:red|orange|yellow|green|emerald|cyan|sky|blue|violet|purple|fuchsia|rose)-(?:50|100|200|300|400)(?:\/\d+)?(?=\s|$)/u;
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext("2d", { willReadFrequently: true })!;
+          const paint = (color: string) => {
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return Array.from(context.getImageData(0, 0, 1, 1).data);
+          };
+          const luminance = ([r, g, b]: number[]) => {
+            const linear = (value: number) =>
+              (value /= 255) <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            return 0.2126 * linear(r!) + 0.7152 * linear(g!) + 0.0722 * linear(b!);
+          };
+          const results: [string, number][] = [];
+          for (const name of names) {
+            for (const section of document.querySelectorAll<HTMLElement>(`[data-game-section="${name}"]`)) {
+              if (!section.getClientRects().length) continue;
+              for (const element of section.querySelectorAll<HTMLElement>("*")) {
+                const text = element.textContent?.trim();
+                if (element instanceof SVGElement || !text || !element.getClientRects().length) continue;
+                if (!pale.test(element.getAttribute("class") ?? "")) continue;
+                // The scene, then every fill from the section down to the element, then its text.
+                const chain: HTMLElement[] = [];
+                for (
+                  let node: HTMLElement | null = element;
+                  node && node !== section.parentElement;
+                  node = node.parentElement
+                ) {
+                  chain.unshift(node);
+                }
+                let background = paint("#000");
+                for (const node of chain) background = paint(getComputedStyle(node).backgroundColor);
+                const foreground = paint(getComputedStyle(element).color);
+                const [light, dark] = [luminance(foreground), luminance(background)].sort((x, y) => y - x);
+                results.push([`${name} "${text.slice(0, 20)}"`, (light! + 0.05) / (dark! + 0.05)]);
+              }
+            }
+          }
+          return results;
+        }, expected);
+      // Phones show the active party member once the battle intro ends.
+      if (mode === "classic") {
+        await expect
+          .poll(async () => (await measureContrast()).length, { message: "the active party member's color is checked" })
+          .toBeGreaterThan(0);
+      }
+      const contrast = await measureContrast();
+      for (const [label, ratio] of contrast) expect(ratio, `${label} is readable`).toBeGreaterThanOrEqual(3);
+      await setStore(page, { setTheme: "dark" });
 
       await application(page, []);
       await setStore(page, { setChatWidgetPreset: "default" });

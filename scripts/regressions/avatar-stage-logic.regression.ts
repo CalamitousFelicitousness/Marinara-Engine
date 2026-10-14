@@ -1,7 +1,8 @@
 /**
  * The avatar stage and setup decisions (base lane, #7537):
  *   - a chat shows an owner's active kind when its agent is on, else falls back pngtuber → mesh-avatar → vrm;
- *   - phones show at most 2 avatars and desktops 4, with the budget's frame rates and pixel-ratio caps;
+ *   - phones show at most 2 avatars and desktops 4, with the budget's frame rates and pixel-ratio caps; in the
+ *     one shared loop only the speaking avatar draws at the talking rate, every other one at the idle rate;
  *   - the owner's lip sync, blink and idle-motion switches (and reduced motion) shape every frame;
  *   - PNGTuber pictures resolve to stored files or the owner's sprites, expression sprites first;
  *   - with 2D Avatars on, an owner's expression sprites are a PNGTuber avatar until one is saved (built by
@@ -21,6 +22,7 @@ import {
 import {
   applyAvatarFeatures,
   avatarDevicePixelRatio,
+  avatarDrawDue,
   avatarTargetFps,
   chatAvatarAgentIds,
   chatAvatarParticipants,
@@ -28,9 +30,12 @@ import {
   resolveAvatarImage,
   selectStageAvatars,
   withSpriteAvatar,
+  type AvatarDrawClock,
 } from "../../packages/client/src/features/avatars/stage/avatar-stage-logic.ts";
 import { avatarAgentKinds } from "../../packages/client/src/features/avatars/setup/avatar-setup-logic.ts";
 import { buildPngtuberLayersFromSprites } from "../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.ts";
+
+const client = (path: string) => readFileSync(new URL(`../../packages/client/src/${path}`, import.meta.url), "utf8");
 
 // ── Which kind shows ──
 assert.equal(pickAvatarKind({ activeKind: "vrm", kinds: ["pngtuber", "vrm"] }, ["2d-avatars", "3d-avatars"]), "vrm");
@@ -132,6 +137,32 @@ assert.equal(avatarTargetFps({ talking: true, phone: true, underLoad: true }), 3
 assert.equal(avatarTargetFps({ talking: false, phone: false, underLoad: false }), 30);
 assert.equal(avatarTargetFps({ talking: false, phone: true, underLoad: false }), 20);
 assert.equal(avatarTargetFps({ talking: false, phone: true, underLoad: true }), 15);
+// One shared 60 Hz loop, one clock per avatar: the speaking avatar draws at the talking rate while every other
+// avatar stays at the idle rate.
+const drawsPerSecond = (budget: { phone: boolean; underLoad: boolean }) => {
+  const clocks: AvatarDrawClock[] = [
+    { lastDrawMs: 0, talking: true },
+    { lastDrawMs: 0, talking: false },
+  ];
+  const draws = [0, 0];
+  for (let tick = 1; tick <= 180; tick += 1) {
+    const now = (tick * 1000) / 60;
+    clocks.forEach((clock, index) => {
+      if (!avatarDrawDue(clock, now, budget)) return;
+      clock.lastDrawMs = now;
+      draws[index]! += 1;
+    });
+  }
+  return draws.map((count) => count / 3);
+};
+assert.deepEqual(drawsPerSecond({ phone: true, underLoad: false }), [30, 20], "a phone's quiet avatar stays at 20");
+assert.deepEqual(drawsPerSecond({ phone: true, underLoad: true }), [30, 15], "and drops to 15 under load");
+assert.deepEqual(drawsPerSecond({ phone: false, underLoad: false }), [30, 30], "desktops idle at 30");
+assert.match(
+  client("features/avatars/stage/AvatarStage.tsx"),
+  /for \(const \[ownerId, slot\] of slots\) \{[\s\S]{0,240}if \(!avatarDrawDue\(clock, now, \{ phone, underLoad \}\)\) continue;/u,
+  "the stage's one loop asks each avatar's own clock",
+);
 assert.equal(avatarDevicePixelRatio(3, true), 1.5);
 assert.equal(avatarDevicePixelRatio(3, false), 2);
 assert.equal(avatarDevicePixelRatio(1, false), 1);
@@ -222,7 +253,6 @@ assert.deepEqual(chatAvatarAgentIds({ enableAgents: true, activeAgentIds: ["expr
 assert.deepEqual(chatAvatarAgentIds({ enableAgents: false, activeAgentIds: ["2d-avatars"] }), []);
 assert.deepEqual(chatAvatarAgentIds({ enableAgents: "true", activeAgentIds: ["2d-avatars"] }), ["2d-avatars"]);
 
-const client = (path: string) => readFileSync(new URL(`../../packages/client/src/${path}`, import.meta.url), "utf8");
 for (const surface of ["components/chat/ChatRoleplaySurface.tsx", "components/game/GameSurface.tsx"]) {
   const text = client(surface);
   assert.match(

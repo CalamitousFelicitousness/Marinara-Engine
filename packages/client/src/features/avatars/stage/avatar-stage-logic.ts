@@ -104,6 +104,24 @@ export function avatarTargetFps(options: { talking: boolean; phone: boolean; und
   return options.underLoad ? fps.idlePhoneUnderLoad : fps.idlePhone;
 }
 
+/** One avatar's clock in the stage's shared frame loop. */
+export interface AvatarDrawClock {
+  /** performance.now() of its last draw. */
+  lastDrawMs: number;
+  /** Its last frame was talking. */
+  talking: boolean;
+}
+
+/** Whether an avatar draws on this tick of the shared loop. Each avatar keeps its own rate: the speaking one
+ *  draws at the talking rate and every other one at the idle rate. */
+export function avatarDrawDue(
+  clock: AvatarDrawClock,
+  nowMs: number,
+  options: { phone: boolean; underLoad: boolean },
+): boolean {
+  return nowMs - clock.lastDrawMs >= 1000 / avatarTargetFps({ ...options, talking: clock.talking }) - 1;
+}
+
 /** The canvas device pixel ratio, capped by the budget. */
 export function avatarDevicePixelRatio(devicePixelRatio: number, phone: boolean): number {
   const cap = phone ? AVATAR_RENDER_BUDGET.maxDevicePixelRatio.phone : AVATAR_RENDER_BUDGET.maxDevicePixelRatio.desktop;

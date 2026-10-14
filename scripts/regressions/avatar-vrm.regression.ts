@@ -648,6 +648,11 @@ const motion = await import("../../packages/client/src/features/avatars/renderer
     if (motion.stepBlink(blink, 0.033, { enabled: true }) > 0.9 && closedAt < 0) closedAt = ms;
   }
   assert.ok(closedAt > 1000 && closedAt < 7000, `the eyes blink on their own (closed at ${closedAt} ms)`);
+  assert.deepEqual(
+    [0, 0.5, 1].map((random) => Math.round(motion.createBlinkTimer(() => random).wait * 1000) / 1000),
+    [3, 4.5, 6],
+    "a VRM blinks at the PNGTuber default rate: every 4.5 seconds on average, 3 to 6 seconds apart",
+  );
   const off = motion.createBlinkTimer(() => 0.5);
   let max = 0;
   for (let ms = 0; ms < 8000; ms += 33) max = Math.max(max, motion.stepBlink(off, 0.033, { enabled: false }));

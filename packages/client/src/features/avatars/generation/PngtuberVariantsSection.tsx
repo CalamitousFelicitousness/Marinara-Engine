@@ -8,6 +8,7 @@ import type { SpriteInfo } from "../../../hooks/use-characters";
 import { cn } from "../../../lib/utils";
 import { useUIStore } from "../../../stores/ui.store";
 import type { ImagePromptOverride, ImagePromptReviewItem } from "../../../components/ui/ImagePromptReviewModal";
+import { pngtuberSpriteFamily } from "../renderers/pngtuber/pngtuber-layers";
 import { SpritePicker } from "./SpritePicker";
 import {
   previewVariantPrompts,
@@ -21,7 +22,6 @@ const VARIANT_KEYS: Record<AvatarPngtuberVariant, string> = {
   "eyes-closed": "avatars.generation.eyesClosed",
   "mouth-open": "avatars.generation.mouthOpen",
 };
-const FULL_BODY = /^full[_\s-]+/iu;
 
 export function PngtuberVariantsSection({
   owner,
@@ -45,10 +45,7 @@ export function PngtuberVariantsSection({
   const job = usePngtuberVariantJob(owner);
   const save = useSavePngtuberVariants(owner);
   // Portrait sprites when there are any, like the PNGTuber avatar itself: full_happy would fill happy's slot.
-  const family = useMemo(() => {
-    const portraits = sprites.filter((sprite) => !FULL_BODY.test(sprite.expression.trim()));
-    return portraits.length ? portraits : sprites;
-  }, [sprites]);
+  const family = useMemo(() => pngtuberSpriteFamily(sprites), [sprites]);
   // Pictures already made stay; a run makes the missing ones (Try again redoes one).
   const made = new Set(job.items.filter((item) => item.draft).map((item) => item.id));
   const missing = labels

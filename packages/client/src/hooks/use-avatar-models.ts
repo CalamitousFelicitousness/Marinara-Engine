@@ -7,6 +7,8 @@ import {
   avatarModelPath,
   type AvatarConfig,
   type AvatarConfigUpdate,
+  type AvatarImportResult,
+  type AvatarKind,
   type AvatarOwnerRef,
   type AvatarOwnerSummary,
 } from "@marinara-engine/shared";
@@ -40,12 +42,36 @@ export function useAvatarModel(owner: AvatarOwnerRef | null) {
   });
 }
 
-/** Owner-wide settings (on/off, shown kind, movement switches). The kind setup panels import and remove. */
-export function useUpdateAvatarModel() {
+/** After any change to an owner's avatar (a save, import, removal or kept generation result): shows the
+ *  returned avatar.json at once, then refreshes every avatar query. */
+export function useAvatarModelChanged(owner: AvatarOwnerRef, onChanged?: () => void) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ owner, update }: { owner: AvatarOwnerRef; update: AvatarConfigUpdate }) =>
-      api.put<AvatarConfig>(avatarModelPath(owner), update),
-    onSuccess: () => qc.invalidateQueries({ queryKey: avatarModelKeys.all }),
+  return (config: AvatarConfig | null) => {
+    qc.setQueryData(avatarModelKeys.detail(owner), config);
+    onChanged?.();
+    return qc.invalidateQueries({ queryKey: avatarModelKeys.all });
+  };
+}
+
+/** Saving, importing and removing an owner's avatar, for the owner-wide settings and every kind's panel. */
+export function useAvatarModelActions(owner: AvatarOwnerRef, onChanged?: () => void) {
+  const changed = useAvatarModelChanged(owner, onChanged);
+  const save = useMutation({
+    mutationFn: (update: AvatarConfigUpdate) => api.put<AvatarConfig>(avatarModelPath(owner), update),
+    onSuccess: (config) => void changed(config),
   });
+  const importFile = useMutation({
+    mutationFn: ({ kind, file }: { kind: AvatarKind; file: File }) => {
+      const form = new FormData();
+      form.append("kind", kind);
+      form.append("file", file, file.name);
+      return api.upload<AvatarImportResult>(`${avatarModelPath(owner)}/import`, form);
+    },
+    onSuccess: (result) => void changed(result.config),
+  });
+  const remove = useMutation({
+    mutationFn: (kind: AvatarKind) => api.delete<AvatarConfig | null>(`${avatarModelPath(owner)}/kinds/${kind}`),
+    onSuccess: (config) => void changed(config),
+  });
+  return { save, importFile, remove };
 }

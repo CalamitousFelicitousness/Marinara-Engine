@@ -3,17 +3,20 @@
 // ──────────────────────────────────────────────
 // Swaps the layer set for the frame's label (or the emotion's bound label), shows the mouth-open and
 // eyes-closed variants for talking and blinking, and hops while talking. Plain canvas 2D; no WebGL.
-// Without a PNGTuber setup it builds one from the owner's expression sprites, so an owner with sprites
-// gets a talking avatar with no setup. The mesh avatar renderer falls back to this one.
-import type { AvatarFrameInput, AvatarImageRef, PngtuberAvatarData } from "@marinara-engine/shared";
-import { api } from "../../../../lib/api-client";
-import type { AvatarRenderer, AvatarRendererMountOptions } from "../../contract";
+// The stage and the setup preview hand it the owner's PNGTuber setup (built from the expression sprites
+// when none is saved) and resolve its pictures from the sprite list they already hold. The mesh avatar
+// renderer falls back to this one.
 import {
   PNGTUBER_DEFAULT_MOTION,
+  type AvatarFrameInput,
+  type AvatarImageRef,
+  type PngtuberAvatarData,
+} from "@marinara-engine/shared";
+import type { AvatarRenderer, AvatarRendererMountOptions } from "../../contract";
+import {
   PNGTUBER_FADE_MS,
   PNGTUBER_HOP_MS,
   advancePngtuberBlink,
-  buildPngtuberLayersFromSprites,
   fitPngtuberPicture,
   nextPngtuberMouthOpen,
   pickPngtuberLayerKey,
@@ -22,9 +25,7 @@ import {
   pngtuberBreath,
   pngtuberHop,
   pngtuberThinkingTilt,
-  resolvePngtuberImage,
   type PngtuberBlinkClock,
-  type SpriteLike,
 } from "./pngtuber-layers";
 
 /** Decoded pictures kept per avatar; older ones are released (a 2048 px face is 16 MB decoded). */
@@ -41,7 +42,6 @@ export function createAvatarRenderer(): AvatarRenderer {
   let options: AvatarRendererMountOptions | null = null;
   let context: CanvasRenderingContext2D | null = null;
   let data: PngtuberAvatarData | null = null;
-  let sprites: SpriteLike[] = [];
   const pictures = new Map<string, Picture>();
   let disposed = false;
   let paused = false;
@@ -60,8 +60,7 @@ export function createAvatarRenderer(): AvatarRenderer {
   let previousUrl: string | null = null;
 
   function urlFor(ref: AvatarImageRef): string | null {
-    if (!options) return null;
-    return options.resolveImage(ref) ?? resolvePngtuberImage(options.owner, ref, sprites);
+    return options?.resolveImage(ref) ?? null;
   }
 
   function picture(url: string): Picture {
@@ -172,25 +171,7 @@ export function createAvatarRenderer(): AvatarRenderer {
     async mount(mountOptions) {
       options = mountOptions;
       context = mountOptions.canvas.getContext("2d");
-      const stored = mountOptions.config.kinds.pngtuber;
-      const usesSprites = Object.values(stored?.layers ?? {}).some((set) =>
-        [set.base, set.mouthOpen, set.eyesClosed, set.eyesClosedMouthOpen].some((ref) => ref?.source === "sprite"),
-      );
-      // The sprite list builds a setup for owners without one, and resolves sprites the stage cannot.
-      if (!stored || usesSprites) {
-        try {
-          const owner = mountOptions.owner;
-          sprites = await api.get<SpriteLike[]>(`/sprites/${encodeURIComponent(owner.ownerId)}`, {
-            signal: mountOptions.signal,
-          });
-        } catch (error) {
-          if (mountOptions.signal.aborted || disposed) return;
-          console.warn("[avatars] Could not list sprites for a PNGTuber avatar", error);
-          sprites = [];
-        }
-      }
-      if (disposed || mountOptions.signal.aborted) return;
-      data = stored ?? buildPngtuberLayersFromSprites(sprites);
+      data = mountOptions.config.kinds.pngtuber ?? null;
       blink.waitMs = pngtuberBlinkWaitMs((data?.motion ?? PNGTUBER_DEFAULT_MOTION).blinkIntervalSeconds, Math.random);
       if (data) warm(pickPngtuberLayerKey(data, { emotion: "neutral" }));
       dirty = true;

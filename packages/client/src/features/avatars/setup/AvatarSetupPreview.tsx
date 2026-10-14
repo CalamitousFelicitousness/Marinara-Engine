@@ -52,7 +52,7 @@ export function AvatarSetupPreview({
   const demo = !ownAvatar && kind === "pngtuber";
   const previewOwner = ownAvatar && owner ? owner : DEMO_AVATAR_OWNER;
   const previewConfig = ownAvatar ? config : demo ? DEMO_AVATAR_CONFIG : null;
-  const needsSprites = ownAvatar && kind === "pngtuber";
+  const needsSprites = ownAvatar && kind !== "vrm";
   const resolveImage = useMemo(() => {
     if (demo) return resolveDemoAvatarImage;
     if (!previewConfig || (needsSprites && sprites === null)) return null;

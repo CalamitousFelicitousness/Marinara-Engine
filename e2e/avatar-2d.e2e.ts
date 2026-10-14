@@ -136,7 +136,8 @@ async function serveWithServerCsp(page: Page) {
 }
 
 /** Mounts renderers of one kind on fresh canvases (100 x 200 CSS px unless `sizes` says, ratio 1) and keeps
- *  them on window. */
+ *  them on window. Like the stage, it hands them the owner's sprites as the PNGTuber setup until one is saved,
+ *  and resolves pictures from the sprite list it fetched. */
 async function mountRenderers(
   page: Page,
   module: string,
@@ -147,20 +148,32 @@ async function mountRenderers(
   sizes: [number, number][] = [],
 ) {
   await page.evaluate(
-    async ({ module, ownerId, kinds, count, reducedMotion, features, sizes }) => {
+    async ({ module, stageModule, layersModule, ownerId, kinds, count, reducedMotion, features, sizes }) => {
       const { createAvatarRenderer } = (await import(module)) as {
         createAvatarRenderer: () => PageAvatar["renderers"][number] & { mount(options: unknown): Promise<void> };
       };
-      const owner = { ownerType: "character", ownerId };
-      const config = {
-        version: 1,
-        owner,
-        enabled: true,
-        activeKind: null,
-        features,
-        kinds,
-        updatedAt: "2026-10-13T12:00:00.000Z",
+      const { resolveAvatarImage, withSpriteAvatar } = (await import(stageModule)) as {
+        resolveAvatarImage(owner: unknown, config: unknown, sprites: unknown, ref: unknown): string | null;
+        withSpriteAvatar(owner: unknown, config: unknown, fromSprites: unknown): unknown;
       };
+      const { buildPngtuberLayersFromSprites } = (await import(layersModule)) as {
+        buildPngtuberLayersFromSprites(sprites: unknown): unknown;
+      };
+      const owner = { ownerType: "character", ownerId };
+      const sprites = (await (await fetch(`/api/sprites/${ownerId}`)).json()) as unknown[];
+      const config = withSpriteAvatar(
+        owner,
+        {
+          version: 1,
+          owner,
+          enabled: true,
+          activeKind: null,
+          features,
+          kinds,
+          updatedAt: "2026-10-13T12:00:00.000Z",
+        },
+        buildPngtuberLayersFromSprites(sprites),
+      );
       const sizeOf = (index: number) => sizes[index] ?? [100, 200];
       const canvases = Array.from({ length: count }, (_, index) => {
         const canvas = document.createElement("canvas");
@@ -176,7 +189,7 @@ async function mountRenderers(
             owner,
             config,
             canvas: canvases[index],
-            resolveImage: () => null,
+            resolveImage: (ref: unknown) => resolveAvatarImage(owner, config, sprites, ref),
             reducedMotion,
             signal: new AbortController().signal,
           }),
@@ -185,7 +198,17 @@ async function mountRenderers(
       renderers.forEach((renderer, index) => renderer.resize(...sizeOf(index), 1));
       window.__avatar2d = { renderers, canvases };
     },
-    { module, ownerId, kinds, count, reducedMotion, features: FEATURES, sizes },
+    {
+      module,
+      stageModule: STAGE_LOGIC,
+      layersModule: PNGTUBER_LAYERS,
+      ownerId,
+      kinds,
+      count,
+      reducedMotion,
+      features: FEATURES,
+      sizes,
+    },
   );
 }
 
@@ -217,6 +240,8 @@ async function step(page: Page, frame: unknown, dtMs: number) {
 }
 
 const PNGTUBER_RENDERER = "/src/features/avatars/renderers/pngtuber/pngtuber-renderer.ts";
+const PNGTUBER_LAYERS = "/src/features/avatars/renderers/pngtuber/pngtuber-layers.ts";
+const STAGE_LOGIC = "/src/features/avatars/stage/avatar-stage-logic.ts";
 const MESH_RENDERER = "/src/features/avatars/renderers/mesh-avatar/mesh-avatar-renderer.ts";
 
 /** Until avatars are mounted in the app, Vite first meets mesh-avatar when a test imports the renderer:

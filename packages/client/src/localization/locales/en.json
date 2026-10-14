@@ -138,7 +138,7 @@
   "avatars.generation.saveKept": "Save kept pictures ({{count}})",
   "avatars.generation.saveMesh": "Save as mesh avatar",
   "avatars.generation.sourceSprite": "Sprite to use",
-  "avatars.generation.sourceSpriteHelp": "A front-facing bust sprite works best.",
+  "avatars.generation.sourceSpriteHelp": "A front-facing full-body or bust sprite works best.",
   "avatars.generation.sprites": "Sprites",
   "avatars.generation.title": "Make an avatar from a sprite",
   "avatars.generation.unavailable": "Image processing isn't available on this device, so avatars can't be made here.",

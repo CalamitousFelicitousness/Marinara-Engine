@@ -3,8 +3,9 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2, Sparkles, X } from "lucide-react";
-import type { AvatarOwnerRef } from "@marinara-engine/shared";
+import { normalizeSpriteExpressionKey, type AvatarOwnerRef } from "@marinara-engine/shared";
 import type { SpriteInfo } from "../../../hooks/use-characters";
+import { isFullBodySprite } from "../renderers/pngtuber/pngtuber-layers";
 import { SpritePicker } from "./SpritePicker";
 import { useMeshRigJob, useOneAtATime, useSaveMeshRig } from "./use-avatar-generation";
 
@@ -12,6 +13,12 @@ export interface ConnectionOption {
   id: string;
   name: string;
   provider: string;
+}
+
+/** The sprite picked for the user until they choose one: the full-body neutral sprite, else the neutral portrait. */
+function preferredMeshSource(sprites: readonly SpriteInfo[]): string | null {
+  const neutral = sprites.filter((sprite) => normalizeSpriteExpressionKey(sprite.expression) === "neutral");
+  return (neutral.find((sprite) => isFullBodySprite(sprite.expression)) ?? neutral[0])?.expression ?? null;
 }
 
 export function MeshAvatarSection({
@@ -26,7 +33,13 @@ export function MeshAvatarSection({
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const [label, setLabel] = useState<string | null>(null);
+  // Undefined until the user picks or clears a sprite. Without a pick, or once the picked sprite is gone, the
+  // preferred one follows the sprite list.
+  const [picked, setPicked] = useState<string | null>();
+  const label =
+    picked === null || (picked !== undefined && sprites.some((sprite) => sprite.expression === picked))
+      ? picked
+      : preferredMeshSource(sprites);
   const [visionConnectionId, setVisionConnectionId] = useState("");
   const saving = useOneAtATime();
   const job = useMeshRigJob(owner);
@@ -66,7 +79,7 @@ export function MeshAvatarSection({
         selected={label ? [label] : []}
         disabled={busy}
         label={t("avatars.generation.sourceSprite")}
-        onToggle={(expression) => setLabel((current) => (current === expression ? null : expression))}
+        onToggle={(expression) => setPicked(label === expression ? null : expression)}
       />
       <div className="md:max-w-sm">
         <label className="flex flex-col gap-1 text-[0.6875rem] font-medium text-[var(--muted-foreground)]">

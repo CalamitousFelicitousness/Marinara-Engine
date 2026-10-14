@@ -27,7 +27,9 @@ import { join } from "node:path";
 import {
   parseRulesetCatalogFile,
   parseRulesetDefinition,
+  RULESET_CATALOG_EARLIER_MAX_BYTES,
   RULESET_CATALOG_MAX_BYTES,
+  RULESET_EARLIER_MAX_BYTES,
   RULESET_MAX_BYTES,
 } from "../../packages/shared/src/index.js";
 
@@ -194,12 +196,15 @@ try {
     // Every file is capped by its kind before a byte of it is decoded.
     assert.match(
       refusal(withDocument(`catalogs/${firstCatalog.id}.json`, Buffer.alloc(RULESET_CATALOG_MAX_BYTES + 1, 0x20))),
-      new RegExp(`over its ${RULESET_CATALOG_MAX_BYTES}-byte limit`),
+      /over its 2097152-byte limit/,
     );
     assert.match(
       refusal(withDocument("ruleset.json", Buffer.alloc(RULESET_MAX_BYTES + 1, 0x20))),
-      new RegExp(`over its ${RULESET_MAX_BYTES}-byte limit`),
+      /over its 524288-byte limit/,
     );
+    // The earlier limits (256 KiB and 1 MiB) still hold below 1.340; game-ruleset-caps checks that gate.
+    assert.equal(RULESET_EARLIER_MAX_BYTES, 256 * 1024);
+    assert.equal(RULESET_CATALOG_EARLIER_MAX_BYTES, 1024 * 1024);
     assert.match(refusal(withDocument("ruleset.json", Buffer.from([0xff, 0xfe, 0x00]))), /not UTF-8/);
     // The manifest is its own key, held to its size and its shape before anything reads it.
     assert.match(

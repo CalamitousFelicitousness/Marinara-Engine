@@ -154,12 +154,16 @@ try {
 
   // ── Who sheds light ──
   {
+    // At night: nobody lights a torch in daylight (1.319 fix).
     const state = give(
-      fight([
-        { id: "hero", at: [2, 5] },
-        { id: "dwarf", at: [4, 5] },
-        { id: "orc", at: [9, 5] },
-      ]),
+      fight(
+        [
+          { id: "hero", at: [2, 5] },
+          { id: "dwarf", at: [4, 5] },
+          { id: "orc", at: [9, 5] },
+        ],
+        "dark",
+      ),
       "dwarf",
       "darksighted",
     );

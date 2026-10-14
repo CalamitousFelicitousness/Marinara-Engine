@@ -6,6 +6,7 @@
 // able to see that the spell was never cast.
 
 import type { RulesetCatalogEntriesById, RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
+import type { RulesetSheetItem } from "./sheet-math.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
   createSheetCommandTagRegex,
@@ -17,6 +18,8 @@ import {
 } from "../../utils/sheet-command-tag.js";
 import {
   applyRulesetSheetOp,
+  rulesetRestDiceEntries,
+  rulesetRestExtraDie,
   planRulesetUse,
   type RulesetLiveState,
   type RulesetLiveStates,
@@ -27,6 +30,8 @@ import {
 export interface SheetCommandCard {
   name: string;
   build: RulesetSheetBuild;
+  /** What they carry, which a rest's dice read for an `itemStat` (1.337): Pell's Teapot. */
+  items?: ReadonlyArray<RulesetSheetItem>;
 }
 
 export interface SheetCommandContext {
@@ -142,11 +147,32 @@ export function applySheetCommandTags(
     return { ok: true, live: state, now: paid.join(", ") } as const;
   };
 
+  const partyExtra = (restId: string): { extra?: { sides: number; add: number } } => {
+    const rest = ctx.definition.rests.find(
+      (entry) => entry.id === restId || entry.label.trim().toLowerCase() === restId.trim().toLowerCase(),
+    );
+    let best: { sides: number; add: number } | null = null;
+    for (const member of rulesetRestDiceEntries(rest?.dice).some((entry) => entry.extra) ? ctx.cards : []) {
+      const extra = rulesetRestExtraDie(
+        ctx.definition,
+        member.build,
+        rest!.id,
+        member.items,
+        live[normalizeCharacterLookupName(member.name)],
+      );
+      if (extra && (!best || extra.sides > best.sides || (extra.sides === best.sides && extra.add > best.add)))
+        best = extra;
+    }
+    return best ? { extra: best } : {};
+  };
+
   const applyTo = (card: SheetCommandCard, op: RulesetSheetOp): RulesetSheetOpResult => {
     const key = normalizeCharacterLookupName(card.name);
     try {
       if (op.op === "use") return useOn(card, key, op);
-      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], op, ctx.roll);
+      // Dice spent on a rest (1.335) take the party's best extra die (Song of Rest), whoever has it.
+      const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
+      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
       if (result.ok) store(key, result.live);
       if (result.ok && op.op === "rest") rests.push({ who: card.name, rest: op.rest });
       return result;

@@ -824,6 +824,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     [
+      "prop",
+      say({ type: "prop", actorId: "brenna", label: "Mace", prop: "Oil Jar", outcome: "hit", dealt: 3, health: 2 }),
+    ],
+    [
       "track",
       say({
         type: "track",
@@ -845,6 +849,30 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["sphere", say({ type: "sphere", actorId: "lurker", how: "rolled", cells: 3 })],
     ["sphere", say({ type: "sphere", actorId: "brenna", how: "lifted", targetId: "lurker" })],
     ["sphere", say({ type: "sphere", actorId: "brenna", how: "put-down", targetId: "lurker" })],
+    ["lair", say({ type: "lair", actorId: "lurker", optionId: "quake", label: "Tremor" })],
+    ["legendaryResistance", say({ type: "legendaryResistance", actorId: "lurker", save: "dex_save", left: 2 })],
+    ["boardEvent", say({ type: "boardEvent", id: "e1", label: "The tide", cells: 2 })],
+    ["lightRule", say({ type: "lightRule", actorId: "lurker", light: "sunlight", rounds: 2 })],
+    ["hangsOn", say({ type: "hangsOn", actorId: "lurker", label: "Hourglass", left: 0 })],
+    ["auraGrows", say({ type: "auraGrows", actorId: "lurker", condition: "poisoned", distance: 30 })],
+    ["felled", say({ type: "felled", actorId: "lurker", label: "Held Ground" })],
+    ["reaped", say({ type: "reaped", actorId: "lurker", sourceId: "brenna" })],
+    ["called", say({ type: "called", actorId: "lurker", label: "Jars Burst", ids: ["brenna"] })],
+    [
+      "drawn",
+      say({
+        type: "drawn",
+        actorId: "lurker",
+        targetId: "brenna",
+        from: { x: 1, y: 1 },
+        to: { x: 3, y: 1 },
+        path: [
+          { x: 2, y: 1 },
+          { x: 3, y: 1 },
+        ],
+      }),
+    ],
+    ["growth", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
@@ -911,8 +939,30 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["revealed", say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "attack" })],
     // Ready (1.288).
     ["ready", say({ type: "ready", actorId: "brenna", label: "Sword", on: "comes", outcome: "readied" })],
+    // Held Ground let go mid-fight, and a debt coming due (1.330).
+    ["heldGroundReleased", say({ type: "heldGroundReleased", label: "The Wheel", died: ["lurker"], down: ["brenna"] })],
+    [
+      "owing",
+      say({
+        type: "owing",
+        actorId: "brenna",
+        rolls: [4, 12],
+        bonus: 1,
+        successes: 1,
+        failures: 1,
+        result: "safe",
+      }),
+    ],
+    // A prop lit again (1.332).
+    ["relit", say({ type: "relit", actorId: "brenna", propId: "p1", label: "Bonfire", cells: 9 })],
   ];
   const printed = new Map(table);
+  assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
+  assert.equal(
+    printed.get("heldGroundReleased"),
+    "The Wheel lets go: death is held here no longer. Thorn Lurker died. Down and dying now: Brenna.",
+  );
+  assert.equal(printed.get("owing"), "Brenna's debt comes due, 2 saves (5, 13), and they live.");
   assert.equal(printed.get("search"), "Thorn Lurker uses Detect (12 + 3 = 15) and finds Brenna.");
   assert.equal(
     say({
@@ -1224,6 +1274,77 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     struck("critical", 30, 0, true),
     "Brenna's Mace strikes the Wall of Ice for 30 and breaks that section.",
   );
+  assert.equal(
+    printed.get("legendaryResistance"),
+    "Thorn Lurker chooses to succeed on the Dexterity save instead: legendary resistance, 2 left.",
+  );
+  assert.equal(printed.get("prop"), "Brenna's Mace strikes Oil Jar for 3; it has 2 left.");
+  assert.equal(printed.get("boardEvent"), "The board changes: The tide (2 squares).");
+  assert.equal(say({ type: "boardEvent", id: "e2", tell: "The shelves lean.", cells: 1 }), "The shelves lean.");
+  assert.equal(
+    say({ type: "revealed", actorId: "lurker", byIds: ["brenna"], reason: "alerted", alertedBy: "brenna" }),
+    "Thorn Lurker moves near Brenna, and is given away.",
+  );
+  assert.equal(printed.get("hangsOn"), "Hourglass: Thorn Lurker hangs on at 1 instead of falling (0 left).");
+  assert.equal(
+    say({ type: "hangsOn", actorId: "lurker", left: 1 }),
+    "Thorn Lurker hangs on at 1 instead of falling (1 left).",
+  );
+  assert.equal(printed.get("auraGrows"), "Thorn Lurker's Poisoned spreads further, reaching 30 now.");
+  assert.equal(printed.get("felled"), "Held Ground: Thorn Lurker is felled, down but held back from dying.");
+  assert.equal(say({ type: "felled", actorId: "lurker" }), "Thorn Lurker is felled: down, but held back from dying.");
+  assert.equal(printed.get("reaped"), "Thorn Lurker is reaped by Brenna, and stays down.");
+  assert.equal(printed.get("called"), "Jars Burst: Thorn Lurker calls Brenna into the fight.");
+  assert.equal(printed.get("drawn"), "Brenna is drawn toward Thorn Lurker, spending their reaction to go.");
+  assert.equal(
+    say({ type: "called", actorId: "lurker", label: "Jars Burst", ids: [] }),
+    "Jars Burst: Thorn Lurker calls, and nobody comes.",
+  );
+  assert.equal(
+    say({ type: "condition", targetId: "lurker", condition: "grappled", active: false, reason: "full" }),
+    "Grappled does not go on Thorn Lurker: whoever puts it on holds as many as they can.",
+  );
+  assert.equal(printed.get("lightRule"), "Thorn Lurker has stood in that light too long.");
+  assert.equal(
+    say({
+      type: "lightRule",
+      actorId: "lurker",
+      label: "Noonfield",
+      light: "sunlight",
+      rounds: 2,
+      save: { total: 14, saved: true },
+    }),
+    "Noonfield: Thorn Lurker has stood in that light too long, but holds out (save 14).",
+  );
+  assert.equal(
+    say({ type: "lightRule", actorId: "lurker", light: "sunlight", rounds: 2, save: { total: 7, saved: false } }),
+    "Thorn Lurker has stood in that light too long, and it tells (save 7, failed).",
+  );
+  assert.equal(
+    say({ type: "lightRule", actorId: "lurker", label: "Noonfield", light: "sunlight", rounds: 2 }),
+    "Noonfield: Thorn Lurker has stood in that light too long.",
+  );
+  assert.equal(printed.get("growth"), "Brenna's Shears cuts the growth back.");
+  assert.equal(say({ type: "growth", cells: 3, by: "burnt" }), "The growth burns away from 3 squares.");
+  assert.equal(
+    say({ type: "growth", actorId: "brenna", label: "Prune", cells: 9, by: "cleared" }),
+    "Brenna's Prune clears the growth from 9 squares.",
+  );
+  const broke = (outcome: "hit" | "miss" | "critical" | "area", dealt: number, health: number, broken?: true) =>
+    say({
+      type: "prop",
+      actorId: "brenna",
+      label: "Mace",
+      prop: "Oil Jar",
+      outcome,
+      dealt,
+      health,
+      ...(broken ? { broken } : {}),
+    });
+  assert.equal(broke("miss", 0, 5), "Brenna's Mace misses Oil Jar.");
+  assert.equal(broke("critical", 9, 0, true), "Brenna's Mace strikes Oil Jar for 9 and breaks it.");
+  assert.equal(broke("area", 2, 3), "Brenna's Mace catches Oil Jar for 2; it has 3 left.");
+  assert.equal(broke("area", 8, 0, true), "Brenna's Mace catches Oil Jar for 8 and breaks it.");
   assert.equal(printed.get("track"), "Brenna takes Thorn Lurker's Exhaustion down from 2 to 1.");
   assert.equal(
     say({ type: "condition", targetId: "lurker", condition: "incapacitated", active: false, reason: "linked" }),

@@ -711,6 +711,12 @@ export function rulesetCombatEventLine(
         label: event.label,
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
+    // Health regained as a turn starts (1.346): Regeneration, Survivor.
+    case "regenerates":
+      return key(event.stopped ? "regenerationStopped" : "regenerates", {
+        actor: names.combatant(event.actorId),
+        amount: event.amount,
+      });
     // Called creatures sent away (1.344): Conjure Animals' minute up, or its concentration broken.
     case "sentAway":
       return key("sentAway", {

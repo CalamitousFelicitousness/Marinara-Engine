@@ -15,6 +15,7 @@ import type {
   RulesetSheetBuild,
   RulesetShapeForms,
   RulesetCatalogCalls,
+  RulesetRegeneration,
   RulesetTargetIs,
   RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
@@ -569,6 +570,8 @@ export interface RulesetStatBlock {
   /** Dropping to 0, it is left at 1 instead this many times (1.320), with a turn straight after where
    *  it says: the Miller's Hourglass. */
   hangsOn?: { uses: number; extraTurn?: true; label?: string };
+  /** What it regains as each of its turns starts (1.346). */
+  regenerates?: RulesetRegeneration;
   /** It does not move while any of its cells is in one of these lights (1.319): Lantern-Shy. */
   stillIn?: RulesetBoardLight[];
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
@@ -1553,6 +1556,10 @@ export interface RulesetCombatant {
   speeds?: RulesetMoveSpeeds;
   /** A flier that hovers (1.113). */
   hover?: true;
+  /** Harm its regeneration is stopped by was taken since its last turn started (1.346). */
+  regenHeld?: true;
+  /** Down at 0 but not out while it may regenerate (1.346): a troll, until its turn. */
+  regrowing?: true;
   /** Their own ways of moving while a condition gives them more (1.345); `speeds` and `hover` are
    *  what they have now. Absent while nothing gives them any. */
   baseSpeeds?: { speeds?: RulesetMoveSpeeds; hover?: true };
@@ -2454,6 +2461,8 @@ export type RulesetCombatEvent =
   /** Creatures called into the fight (1.325), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[] }
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */
+  /** Health regained as a turn starts (1.346), or none because harm it is stopped by was taken. */
+  | { type: "regenerates"; actorId: string; amount: number; stopped?: true }
   | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }

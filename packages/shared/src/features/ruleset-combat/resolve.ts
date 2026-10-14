@@ -14,7 +14,8 @@ import {
   type RulesetCreatureHideEntry,
   type RulesetDefinition,
 } from "../../schemas/ruleset.schema.js";
-import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
+import { evaluateRulesetSheetLive, readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
+import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
@@ -96,6 +97,7 @@ import {
   rulesetSyncAuras,
   rulesetSyncSizes,
   rulesetSyncSpeeds,
+  rulesetRegenerations,
   rulesetMovesOnly,
   rulesetLightMatches,
 } from "./encounter.js";
@@ -764,6 +766,15 @@ function applyDamage(
     ...(input.floor !== undefined ? { floor: input.floor } : {}),
   });
   ctx.harmEndings.push(endConditionsOnHarm(ctx, target, input.sourceId, dealt, false, damageSaves));
+  // Harm its regeneration is stopped by (1.346): fire or acid on a troll, until its next turn starts.
+  if (
+    type &&
+    dealt > 0 &&
+    rulesetRegenerations(ctx.definition, ctx.combat, target, ctx.state).some((one) =>
+      one.stoppedBy?.some((kind) => kind.trim().toLowerCase() === type),
+    )
+  )
+    target.regenHeld = true;
   return dealt;
 }
 
@@ -1179,6 +1190,19 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   }
   // Down, they are themselves again (1.342): a shapechanger dies in its true form.
   if (target.shape) endShape(ctx, target, "damage");
+  // Down but not out while it may regenerate (1.346): a troll lies there until its turn starts.
+  if (
+    !slain &&
+    !ctx.state.heldGround &&
+    rulesetDiesAtZero(target) &&
+    rulesetRegenerations(ctx.definition, ctx.combat, target, ctx.state).some((one) => one.keepsUp)
+  ) {
+    target.down = true;
+    target.regrowing = true;
+    endConcentration(ctx, target, "down");
+    ctx.events.push({ type: "down", actorId: target.id, dying: false });
+    return;
+  }
   // A prop is nobody (1.316): nothing feeds on it falling.
   if (!target.object) feedAuras(ctx, target);
   target.down = true;
@@ -6165,6 +6189,59 @@ function callCreatures(
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
 }
 
+/** Health regained as a turn starts (1.346): Regeneration, Survivor. Stopped since its last turn by
+ *  the harm it names, it regains nothing this once; down at 0 and regaining nothing, it is out. */
+function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const regenerations = rulesetRegenerations(ctx.definition, ctx.combat, actor, ctx.state);
+  const stopped = !!actor.regenHeld;
+  delete actor.regenHeld;
+  let gained = 0;
+  if (!actor.defeated && regenerations.length && !("track" in ctx.combat.health)) {
+    if (stopped) ctx.events.push({ type: "regenerates", actorId: actor.id, amount: 0, stopped: true });
+    else {
+      for (const one of regenerations) {
+        const health = healthOf(ctx, actor);
+        if (one.notAtZero && health.value <= 0) continue;
+        if (one.atMostHalf && health.value > Math.floor(health.max / 2)) continue;
+        if (health.value >= health.max) continue;
+        const dice = one.dice ? parseRulesetCombatDice(one.dice) : null;
+        const rolled = rollAmount(ctx, {
+          count: dice?.count ?? 0,
+          sides: dice?.sides ?? 0,
+          flat: (dice?.flat ?? 0) + (one.flat ?? 0),
+        });
+        const added =
+          one.add && actor.sheet
+            ? resolveRulesetValueRef(
+                ctx.definition,
+                actor.sheet.build,
+                one.add,
+                evaluateRulesetSheetLive(ctx.definition, actor.sheet.build, actor.sheet.live, actor.sheet.items),
+              )
+            : 0;
+        const amount = Math.max(0, rolled.total + (Number.isFinite(added) ? added : 0));
+        if (amount <= 0) continue;
+        const before = healthOf(ctx, actor).value;
+        dealHeal(ctx, actor, { sourceId: actor.id, rolls: rolled.rolls, flat: rolled.flat + added, amount });
+        gained += healthOf(ctx, actor).value - before;
+      }
+      if (gained > 0) ctx.events.push({ type: "regenerates", actorId: actor.id, amount: gained });
+    }
+  }
+  if (!actor.regrowing) return;
+  delete actor.regrowing;
+  if (actor.down && !actor.defeated) {
+    // Nothing regained at 0: out for good.
+    actor.defeated = true;
+    actor.diedRound = ctx.state.round;
+    endSummons(ctx, actor);
+    endZones(ctx, actor);
+    unconjureAll(ctx, actor);
+    endConditionsFromSource(ctx, actor);
+    ctx.events.push({ type: "defeated", actorId: actor.id });
+  }
+}
+
 /** Sends away those `caller` called that `which` picks (1.344): off the board and out of the fight. */
 function dismissCalled(
   ctx: RulesetCombatContext,
@@ -9736,7 +9813,7 @@ function rollRulesetRecharges(ctx: RulesetCombatContext, actor: RulesetCombatant
 function canTakeTurn(combatant: RulesetCombatant): boolean {
   // Away and still taking turns (1.313), to find the way out of a maze.
   if (combatant.defeated) return !!(combatant.away?.turns && combatant.away.while);
-  return !combatant.down || (combatant.dying && !combatant.stable);
+  return !combatant.down || (combatant.dying && !combatant.stable) || !!combatant.regrowing;
 }
 
 /**
@@ -9921,6 +9998,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     if (!ctx.state.acted?.includes(actor.id)) (ctx.state.acted ??= []).push(actor.id);
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
+    // What it regains as its turn starts (1.346), and a troll down at 0 that cannot is out.
+    regenerate(ctx, actor);
     // Whoever it called for a while (1.344) leaves as its time comes round.
     dismissCalled(ctx, actor, (one) => one.calledUntil !== undefined && round >= one.calledUntil, "rounds");
     recoverFromCrash(ctx, actor);
@@ -10207,8 +10286,10 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   if (state.window?.resume?.kind === "fall" || state.pendingFalls?.length) return "ongoing";
   const enemies = state.combatants.filter((combatant) => combatant.side === "enemy");
   const party = state.combatants.filter((combatant) => combatant.side === "party");
-  if (enemies.length > 0 && enemies.every((combatant) => !rulesetCombatStanding(combatant))) return "victory";
-  if (party.length > 0 && party.every((combatant) => !rulesetCombatStanding(combatant))) {
+  // Down at 0 while it may regenerate (1.346), a troll is not out of it yet.
+  const out = (combatant: RulesetCombatant) => !rulesetCombatStanding(combatant) && !combatant.regrowing;
+  if (enemies.length > 0 && enemies.every(out)) return "victory";
+  if (party.length > 0 && party.every(out)) {
     // Out of it with somebody gone alive (1.279): the party got away, it did not fall.
     return party.some((combatant) => combatant.away?.left) ? "fled" : "defeat";
   }

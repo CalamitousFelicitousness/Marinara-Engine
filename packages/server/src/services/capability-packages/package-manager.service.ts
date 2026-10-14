@@ -2114,6 +2114,16 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
+/** Regeneration on a condition, a level or a creature (1.346). */
+function carriesRegeneration(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRegeneration(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.regenerates)) return true;
+  return featureValues(record).some((one) => carriesRegeneration(one, depth + 1));
+}
+
 /** A combat condition that gives ways of moving, hovering or levitation (1.345). */
 function carriesGivenSpeeds(ruleset: unknown): boolean {
   const combat = plainRecord(plainRecord(ruleset)?.combat);
@@ -5186,6 +5196,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Regeneration, 1.346.
+  if (
+    !declaresApi(346) &&
+    (carriesRegeneration(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRegeneration(document)))
+  ) {
+    return "A ruleset with regeneration on a condition, a level or a creature requires schemaVersion 2 and capabilityApi 1.346 or newer";
   }
   // Ways of moving given by conditions, 1.345.
   if (!declaresApi(345) && carriesGivenSpeeds(ruleset)) {

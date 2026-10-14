@@ -2463,6 +2463,39 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
     message: "What it harms with names dice, a flat amount, or both",
   });
 
+/** Health its holder regains as each of their own turns starts (Capability API 1.346): a troll's
+ *  Regeneration, 5e's Survivor. `flat` and `dice`, plus `add` read off the holder's own sheet (Survivor's
+ *  Constitution modifier; never on a creature). Harm of a kind in `stoppedBy` keeps it off at the
+ *  start of their next turn (fire and acid on a troll). `atMostHalf` works only at half health or
+ *  less, `notAtZero` never at 0. `keepsUp`: at 0 its holder is down rather than out, and is out only
+ *  if it starts its turn at 0 and does not regenerate (a troll, a vampire). */
+export interface RulesetRegeneration {
+  flat?: number;
+  dice?: string;
+  add?: RulesetValueRef;
+  stoppedBy?: string[];
+  atMostHalf?: true;
+  notAtZero?: true;
+  keepsUp?: true;
+}
+export const regenerationSchema: z.ZodType<RulesetRegeneration, z.ZodTypeDef, unknown> = z
+  .object({
+    flat: z.number().int().min(0).max(1000).optional(),
+    dice: catalogDice.optional(),
+    add: rulesetValueRefSchema.optional(),
+    stoppedBy: z.array(promptSafeText(40)).min(1).max(8).optional(),
+    atMostHalf: z.literal(true).optional(),
+    notAtZero: z.literal(true).optional(),
+    keepsUp: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((given) => given.dice !== undefined || given.flat !== undefined || given.add !== undefined, {
+    message: "What it regains names dice, a flat amount, a value to add, or some of them",
+  })
+  .refine((given) => !(given.keepsUp && given.notAtZero), {
+    message: '"keepsUp" regenerates at 0, so it goes without "notAtZero"',
+  });
+
 /** Temporary points a combat condition gives its holder each turn (Capability API 1.274). Typed by
  *  hand, as its harm is. */
 export interface RulesetConditionTemporary {
@@ -6218,6 +6251,9 @@ const creatureFields = {
   /** Dropping to 0 hit points, it is left at 1 instead, `uses` times a fight, and with `extraTurn`
    *  takes a turn of its own straight after the one it happened in (Capability API 1.320): the
    *  showcase's Miller of Hours and its Hourglass. Not against what slays outright. */
+  /** What it regains as each of its turns starts (Capability API 1.346): Regeneration. See
+   *  `regenerationSchema`; `add` reads nothing here. */
+  regenerates: regenerationSchema.optional(),
   hangsOn: z
     .object({
       uses: z.number().int().min(1).max(10),
@@ -8401,6 +8437,9 @@ const combatLevelSchema = z
     /** Saves among these, against something that deals half on a success, take nothing on a
      *  success and half on a failure (Capability API 1.250): 5e's Evasion, on Dexterity saves. */
     evasion: z.array(sheetId).min(1).max(12).optional(),
+    /** What its holder regains as each of their own turns starts (Capability API 1.346): 5e's
+     *  Survivor on a champion's level. */
+    regenerates: regenerationSchema.optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9101,6 +9140,8 @@ const combatConditionSchema = z
     /** Damage its holder takes as each of their turns starts or ends (Capability API 1.189), from
      *  whoever put it on: a sword of wounding's 1d4 necrotic, before the save that ends it. */
     harms: conditionHarmsSchema.optional(),
+    /** What its holder regains as each of their own turns starts (Capability API 1.346). */
+    regenerates: regenerationSchema.optional(),
     /** Temporary points its holder gains as each of their turns starts or ends (Capability API
      *  1.274), lost as it ends where it says so: 5e's Heroism. */
     temporary: conditionTemporarySchema.optional(),
@@ -13081,6 +13122,19 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "onEnd", "harm", "type"], `Unknown damage type "${endType}"`);
       }
       targetIsIssues(def, entry.onEnd?.harm?.unless, [...path, "onEnd", "harm", "unless"], issue);
+      // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
+      if (entry.regenerates) {
+        if ("track" in combat.health)
+          issue(
+            [...path, "regenerates"],
+            `Health is the wound track "${combat.health.track}", which regains no points`,
+          );
+        entry.regenerates.stoppedBy?.forEach((kind, index) => {
+          if (damageTypes && !damageTypes.includes(kind.trim().toLowerCase()))
+            issue([...path, "regenerates", "stoppedBy", index], `Unknown damage type "${kind}"`);
+        });
+        if (entry.regenerates.add) checkRef(entry.regenerates.add, [...path, "regenerates", "add"], derivedIds);
+      }
       // Temporary points each turn (1.274) need health with a buffer to hold them.
       if (entry.temporary && "track" in combat.health) {
         issue(
@@ -14405,6 +14459,8 @@ function creatureIssues(
   if (creature.passive !== undefined && !combat.hiding) {
     add([...at, "passive"], "A printed passive Perception is read by hiding, so it needs combat.hiding");
   }
+  // Its Regeneration (1.346) has no sheet to add anything off.
+  if (creature.regenerates?.add) add([...at, "regenerates", "add"], 'A creature has no sheet to read "add" off');
   // What it may take as a standard action with another budget (1.291) is one the fight has.
   creature.actions.forEach((action, index) => {
     action.standard?.actions.forEach((name, nameIndex) => {

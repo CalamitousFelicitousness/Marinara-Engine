@@ -16,6 +16,7 @@ import {
   type RulesetCatalogItem,
   type RulesetCatalogMechanics,
   type RulesetCatalogCalls,
+  type RulesetRegeneration,
   type RulesetCatalogZone,
   type RulesetItemUse,
   type RulesetCombat,
@@ -858,6 +859,7 @@ function activeLevels(
         ...(level.saves ? { saves: level.saves } : {}),
         ...(level.skills ? { skills: level.skills } : {}),
         ...(level.evasion ? { evasion: level.evasion } : {}),
+        ...(level.regenerates ? { regenerates: level.regenerates } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
@@ -5235,6 +5237,22 @@ export function rulesetSyncAuras(
  * faster way adds, and a new way starts with what is left of the walk. The ids of those whose ways
  * changed.
  */
+/** Everything that has this combatant regain health as its turns start (1.346): its conditions' and
+ *  levels', and its own block's. */
+export function rulesetRegenerations(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): RulesetRegeneration[] {
+  return [
+    ...rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) =>
+      entry.regenerates ? [entry.regenerates] : [],
+    ),
+    ...(combatant.block?.regenerates ? [combatant.block.regenerates] : []),
+  ];
+}
+
 export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetEncounterState): string[] {
   const combat = definition.combat;
   if (!combat) return [];

@@ -2148,6 +2148,8 @@
   "game.combat.ruleset.event.recheckMiss": "Against {{defense}}, {{actor}}'s {{label}} now misses {{target}}.",
   "game.combat.ruleset.event.recovered": "{{actor}} picks up {{count}} of their {{label}} after the fight.",
   "game.combat.ruleset.event.refused": "{{actor}} could not do that: {{reason}}",
+  "game.combat.ruleset.event.regenerates": "{{actor}} regenerates {{amount}}.",
+  "game.combat.ruleset.event.regenerationStopped": "{{actor}} does not regenerate this turn.",
   "game.combat.ruleset.event.relit": "{{actor}} lights {{label}} again.",
   "game.combat.ruleset.event.reload": "{{actor}} reloads {{label}}: {{loaded}} of {{of}} loaded.",
   "game.combat.ruleset.event.reloadDrew": "{{actor}} loads {{drew}} into {{label}}: {{loaded}} of {{of}} loaded.",

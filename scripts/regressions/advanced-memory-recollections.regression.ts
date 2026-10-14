@@ -598,6 +598,7 @@ try {
   assert.equal(combine.length, 1, "and the parts are combined once");
   assert(/ADA_PART_\d/u.test(combine[0]!.user) && /BRAM_PART_\d/u.test(combine[0]!.user));
   assert.match(combine[0]!.system, /Never move anything from one character's recollection into another's/u);
+  assert(!combine[0]!.system.includes("Character cards"), "merging recollections already in each voice needs no cards");
   assert.equal(since(mark, "recollect").length, 0, "no extra request was needed");
   assert.deepEqual(
     (await recollections(long.id)).map((record) => [record.audienceCharacterIds[0], record.content]).sort(),
@@ -650,7 +651,9 @@ try {
   );
   assert.equal(since(mark, "recollect").length, 3, "one request per summarized scene, the failed one did not stop it");
   assert.equal(since(mark, "summary").length + since(mark, "classify").length, 0, "no summary is redone");
-  const backfilled = await recollections(later.id);
+  // The failed scene's characters get empty ones, so upkeep after a reply moves on; Resume tries them again.
+  const backfilled = (await recollections(later.id)).filter((record) => record.content);
+  assert.equal((await recollections(later.id)).filter((record) => !record.content).length, 2);
   const scenesWith = new Set(backfilled.map((record) => record.sceneId));
   assert.equal(scenesWith.size, 2, "the scenes before and after the failed one got theirs");
   assert(backfilled.every((record) => !record.content.includes("BACKFILL_B")));

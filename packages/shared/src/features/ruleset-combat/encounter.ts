@@ -372,7 +372,7 @@ export function rulesetActiveConditions(
   return [...conditions, ...levels, ...items, ...zoned];
 }
 
-/** The standing zones whose cells this combatant is in now, or that hold them off a board (1.178). */
+/** The standing zones whose cells this combatant is in now, or that hold them off a board (1.179). */
 function zonesStoodIn(
   state: RulesetEncounterState,
   combatant: RulesetCombatant,
@@ -1793,7 +1793,7 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   // Moving a track or giving back sealed health is one too (1.201).
   const cures =
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
-  // One that leaves an area standing (1.177: Fog Cloud, Darkness) is set down wherever its caster
+  // One that leaves an area standing (1.178: Fog Cloud, Darkness) is set down wherever its caster
   // likes, and off a board held on whoever it is cast on.
   if (mechanics.kind === "utility" && mechanics.zone && mechanics.area) {
     return { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
@@ -1882,7 +1882,7 @@ function mechanicsAction(
   // Moving a track or giving back sealed health is one too (1.201).
   const cures =
     !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
-  // And so is leaving an area standing that only hides or blocks (1.177).
+  // And so is leaving an area standing that only hides or blocks (1.178).
   const places = !!mechanics.zone && !!mechanics.area;
   // Spent when its holder's roll fails is something to resolve too (1.249): Indomitable.
   if (

@@ -1362,11 +1362,11 @@ export function rulesetOptionTargets(
         if (cure && !rulesetCureReaches(definition, cure, combatant, state)) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs, actionOf(actor, option.id)?.needsAny))
           return false;
-        // "A creature you can see" (1.177).
+        // "A creature you can see" (1.178).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
         // Only on somebody holding what it names (1.235): grappled by its maker, or restrained.
         if (cure?.targetHolds && !rulesetHoldsFor(definition, combatant, actor.id, cure.targetHolds)) return false;
-        // Behind a ward it cannot reach (1.178). One that may be paid higher is offered, and its
+        // Behind a ward it cannot reach (1.179). One that may be paid higher is offered, and its
         // payment decides when it is used.
         if (cure && !cure.use?.group && rulesetWarded(definition, state, actor, cure, combatant)) return false;
         if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
@@ -1525,7 +1525,7 @@ export function rulesetActionAvailable(
       : actor.tracked.map((entry) => entry.condition);
     if (!held.includes(action.whileHolds)) return false;
   }
-  // A component something stops (1.178): Silence around its holder, a gag on them.
+  // A component something stops (1.179): Silence around its holder, a gag on them.
   if (action.components?.length && definition?.combat) {
     const stopped = rulesetActiveConditions(definition, definition.combat, actor, state).flatMap(
       (entry) => entry.forbids?.components ?? [],
@@ -1825,8 +1825,8 @@ function averageHarm(
   target?: RulesetCombatant,
   actor?: RulesetCombatant,
 ): number {
-  // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.167).
-  // One of an item's switch counts only while the item is on (1.169).
+  // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.168).
+  // One of an item's switch counts only while the item is on (1.170).
   // One kept off some targets (1.187) counts against one it would still reach.
   const reaches = (clause: {
     targetIs?: RulesetTargetIs;
@@ -2010,7 +2010,7 @@ function optionFrom(
   // than a player discovering it.
   if (payments.length > 0) {
     option.payWith = payments;
-    // A use that takes more targets the more it is paid says how many each way takes (1.170).
+    // A use that takes more targets the more it is paid says how many each way takes (1.171).
     if ((action.use?.targetsPerStep || action.itemUse?.charges?.step?.targets) && action.targets.count > 0) {
       option.targetsWith = Object.fromEntries(
         payments.map((pool) => [pool, rulesetPaidTargetCount(definition, actor, action, pool)]),
@@ -2294,7 +2294,7 @@ export function rulesetAttackMode(
   const distance = where
     ? distanceModes(combat, where.state, where.optionId, actor, target, theirs, farIsFine, blow?.range)
     : null;
-  // Not seeing (1.177): striking at somebody you cannot see is harder, at somebody who cannot see
+  // Not seeing (1.178): striking at somebody you cannot see is harder, at somebody who cannot see
   // you easier.
   const unseen = combat.sight?.unseenAttacks && where;
   const blindStrike = !!unseen && !rulesetCanSee(definition, where.state, actor, target);
@@ -2671,7 +2671,7 @@ export function rulesetUncompelledOptions(
   }
   options.push(...pickUpOptions(actor));
   options.push(...avertOptions(definition, state, actor));
-  // Moving a lasting area its caster holds at a point (1.172): picked on the board as a walk is.
+  // Moving a lasting area its caster holds at a point (1.173): picked on the board as a walk is.
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;
     if (!move || (actor.budgets[move.budget] ?? 0) < 1) continue;

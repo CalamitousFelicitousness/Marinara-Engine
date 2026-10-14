@@ -855,7 +855,7 @@ export function rulesetReachableCells(
       // The cheapest way they move that takes this step on what that way has left (1.113).
       const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
       if (plain === undefined) continue;
-      // Ground a lasting area makes hard going (1.172).
+      // Ground a lasting area makes hard going (1.173).
       const step = rulesetSlowedStep(grid, { x, y }, plain, slowed, at);
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
@@ -1154,7 +1154,7 @@ export function rulesetSlowedCells(
 }
 
 /** A step into a cell a zone slows costs its times the ground's plain price, without charging again
- *  for ground that was already hard going: difficult terrain does not stack (1.172). Halved speed is
+ *  for ground that was already hard going: difficult terrain does not stack (1.173). Halved speed is
  *  on top of that, as the step costs double again (1.175). Ground hard going only toward a caster
  *  counts when the step, from `from`, brings the mover nearer them (1.182). */
 export function rulesetSlowedStep(

@@ -666,7 +666,7 @@ export function clampRulesetStatBlock(
     if (kept.length) block.held = kept;
     else delete block.held;
   }
-  // Senses are the fight's own (1.177); one it does not have is nothing to see by.
+  // Senses are the fight's own (1.178); one it does not have is nothing to see by.
   if (block.senses) {
     const known = new Set((combat.senses ?? []).map((sense) => sense.id));
     const kept = Object.fromEntries(

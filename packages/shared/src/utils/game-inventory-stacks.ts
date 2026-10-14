@@ -121,7 +121,7 @@ export interface GameInventoryRulesetItem {
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
    *  one spent rolls a d`die` that breaks it at `atMost` or under. */
   charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
-  /** It has a switch (Capability API 1.169): what turning it on does, in the ruleset's words. */
+  /** It has a switch (Capability API 1.170): what turning it on does, in the ruleset's words. */
   toggle?: { label: string };
 }
 

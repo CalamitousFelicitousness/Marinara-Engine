@@ -702,7 +702,7 @@ export function RulesetCombatMenu({
         <p className="text-xs text-amber-200">
           {t(prompt, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
         </p>
-        {/* How a wall is laid (1.176) and how many copies are down (1.177): the board takes the cells. */}
+        {/* How a wall is laid (1.177) and how many copies are down (1.178): the board takes the cells. */}
         {(wall || copies > 1) && (
           <div className="flex flex-wrap gap-2">
             {wall && area?.ring !== undefined && !turning && (

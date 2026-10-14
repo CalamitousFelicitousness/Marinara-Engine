@@ -7,7 +7,7 @@ import {
   type Persona,
   type ScopedRegexMode,
 } from "@marinara-engine/shared";
-import { api } from "./api-client";
+import { api, requestTimeoutSignal } from "./api-client";
 import { parseChatMetadata } from "./chat-display";
 
 export interface MacroCharacterData {
@@ -279,15 +279,25 @@ export function createInputMacroResolverForChat(
   });
 }
 
+/** How long a send waits for the server to put lorebook entries in before sending the include as written. */
+const EXPAND_INCLUDES_TIMEOUT_MS = 10_000;
+
 /**
  * `{{include::...}}` reads lorebooks, which only the server has, so the server puts the
- * entries in and the final macro pass then fills in their macros with the rest (#7607).
- * If that fails, the include stays as written and the prompt fills it in, as before.
+ * entries in and the caller's macro pass then fills in their macros with the rest (#7607).
+ * Without a chat, or if the server fails or does not answer in time, the include stays as
+ * written and the prompt fills it in, as before. Exported for turns that skip
+ * prepareUserInputMessage but fill in macros the same way (Game).
  */
-async function expandMessageIncludes(text: string, chatId: string | undefined): Promise<string> {
-  if (!usesLorebookIncludes(text)) return text;
+export async function expandMessageIncludes(text: string, chatId: string | null | undefined): Promise<string> {
+  // A short-form name is looked up in the chat's lorebooks, so without a chat it would read as empty.
+  if (!chatId || !usesLorebookIncludes(text)) return text;
   try {
-    const result = await api.post<{ text?: unknown }>("/lorebooks/expand-includes", { text, chatId });
+    const result = await api.post<{ text?: unknown }>(
+      "/lorebooks/expand-includes",
+      { text, chatId },
+      { signal: requestTimeoutSignal(EXPAND_INCLUDES_TIMEOUT_MS) },
+    );
     return typeof result?.text === "string" ? result.text : text;
   } catch (error) {
     console.warn("[chat-macros] Could not fill in lorebook includes; sending them as written", error);

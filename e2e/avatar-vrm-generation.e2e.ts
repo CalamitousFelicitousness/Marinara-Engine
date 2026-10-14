@@ -421,9 +421,14 @@ test("A failed key check says so, and a key can still be saved", async ({ page, 
   expect((await request.delete(TRIPO_KEY_ROUTE)).ok(), "start without a saved key").toBeTruthy();
   try {
     await preparePage(page, character.id);
-    await page.route(`**${TRIPO_KEY_ROUTE}`, (route) =>
-      route.request().method() === "GET" ? route.fulfill({ status: 503, json: { error: "down" } }) : route.fallback(),
-    );
+    let releaseRemove!: () => void;
+    const removeHeld = new Promise<void>((resolve) => (releaseRemove = resolve));
+    await page.route(`**${TRIPO_KEY_ROUTE}`, async (route) => {
+      const method = route.request().method();
+      if (method === "GET") return route.fulfill({ status: 503, json: { error: "down" } });
+      if (method === "DELETE") await removeHeld;
+      return route.fallback();
+    });
     await page.goto("/");
     const setup = page.locator('[data-avatar-setup="3d-avatars"]');
     await expect(setup).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
@@ -434,10 +439,22 @@ test("A failed key check says so, and a key can still be saved", async ({ page, 
     });
     await expect(keyField.getByText("Paste your Tripo API key to make 3D models.")).toHaveCount(0);
     await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toHaveCount(0);
-    await keyField.getByLabel("Tripo API key", { exact: true }).fill(TEST_KEY);
+    const keyInput = keyField.getByLabel("Tripo API key", { exact: true });
+    await keyInput.fill(TEST_KEY);
     await keyField.getByRole("button", { name: "Save", exact: true }).click();
     await expect(keyField.getByText("Your key is saved. Paste a new one to replace it.")).toBeVisible();
     expect(await (await request.get(TRIPO_KEY_ROUTE)).json()).toEqual({ saved: true });
+
+    // Remove from the keyboard, then move on while it is still removing: focus stays where the user put it.
+    await keyInput.focus();
+    await page.keyboard.press("Tab");
+    await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    const elsewhere = setup.getByLabel("Character or persona");
+    await elsewhere.focus();
+    releaseRemove();
+    await expect(page.getByText("Tripo API key removed.")).toBeVisible();
+    await expect(elsewhere).toBeFocused();
   } finally {
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
     await request.delete(TRIPO_KEY_ROUTE).catch(() => undefined);

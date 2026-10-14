@@ -274,17 +274,20 @@ function TripoKeyField({ saved, checkFailed, disabled }: { saved: boolean; check
   const { t } = useTranslation();
   const inputId = useId();
   const helpId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const { save, remove } = useTripoKeyActions();
   const pending = save.isPending || remove.isPending;
   // Save and Remove are disabled while saving, and Remove goes once the key is gone, so keyboard focus would
   // drop to the page: it goes back to the key field. Not after a tap or a click, where it would open a phone's
-  // keyboard.
+  // keyboard, and not when the user has moved on to something else meanwhile.
   const refocusAfter = () => {
     const fromKeyboard = document.activeElement?.matches(":focus-visible") === true;
     return () => {
-      if (fromKeyboard) inputRef.current?.focus();
+      const active = document.activeElement;
+      const lost = !active || active === document.body || formRef.current?.contains(active) === true;
+      if (fromKeyboard && lost) inputRef.current?.focus();
     };
   };
   const submit = (event: FormEvent) => {
@@ -307,7 +310,7 @@ function TripoKeyField({ saved, checkFailed, disabled }: { saved: boolean; check
       onSettled: refocusAfter(),
     });
   return (
-    <form onSubmit={submit} className="space-y-1" data-tripo-key>
+    <form ref={formRef} onSubmit={submit} className="space-y-1" data-tripo-key>
       <label htmlFor={inputId} className="block text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
         {t("avatars.vrm.make.key.label")}
       </label>

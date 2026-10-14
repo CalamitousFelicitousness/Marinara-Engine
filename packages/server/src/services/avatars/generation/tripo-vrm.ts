@@ -12,6 +12,7 @@
 // makeTripoRiggedModel is the only Tripo-specific step; another service would add its own beside it.
 import { readFile } from "node:fs/promises";
 import {
+  AvatarImportError,
   TRIPO_VRM_MODEL_CREDITS,
   type AvatarVrmModelDraft,
   type AvatarVrmModelProgress,
@@ -105,7 +106,9 @@ function tripoStatus(error: TripoError): number {
 function asGenerationError(error: unknown): unknown {
   if (error instanceof TripoError)
     return new AvatarGenerationError(tripoStatus(error), error.message, { cause: error });
-  if (error instanceof VrmConversionError) return new AvatarGenerationError(422, error.message, { cause: error });
+  if (error instanceof VrmConversionError || error instanceof AvatarImportError) {
+    return new AvatarGenerationError(422, error.message, { cause: error });
+  }
   return error;
 }
 

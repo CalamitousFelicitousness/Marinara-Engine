@@ -403,6 +403,17 @@ const shrunk = await shrinkGlbTextures(converted.vrm, getSharp);
     [[1, 1024]],
     "the shared view keeps the colour map's 2048 pixels",
   );
+  // A texture sharp can't read stays as it is; the others still shrink.
+  const { json: garbled, bin: garbledBin } = parseGlb(converted.vrm);
+  const metalView = garbled.bufferViews![garbled.images![1]!.bufferView!]!;
+  const garbledCopy = Buffer.from(garbledBin);
+  garbledCopy.fill(0x42, metalView.byteOffset ?? 0, (metalView.byteOffset ?? 0) + metalView.byteLength);
+  const garbledResult = await shrinkGlbTextures(writeGlb(garbled, garbledCopy), getSharp);
+  assert.deepEqual(
+    garbledResult.resized.map(({ image, to }) => [image, to]),
+    [[2, 1024]],
+    "an unreadable texture is skipped, not fatal",
+  );
   // A view that points past the binary chunk is never repacked into a shorter one.
   const { json: pastEnd, bin: pastEndBin } = parseGlb(converted.vrm);
   pastEnd.bufferViews![0]!.byteLength = pastEndBin.length + 64;

@@ -494,7 +494,8 @@ function imageRoles(json: GltfJson): Map<number, TextureRole> {
 }
 
 /** Makes textures larger than TEXTURE_MAX_SIDES smaller (same format, same shape) and repacks the binary
- *  chunk. Without image processing (sharp on Lite or Termux) the file stays as it is. */
+ *  chunk. Without image processing (sharp on Lite or Termux) the file stays as it is, and so does a texture
+ *  sharp can't read. */
 export async function shrinkGlbTextures(
   glb: Uint8Array,
   loadSharp: () => Promise<Sharp>,
@@ -535,13 +536,20 @@ export async function shrinkGlbTextures(
     const view = views[viewIndex]!;
     const start = view.byteOffset ?? 0;
     const bytes = bin.subarray(start, start + view.byteLength);
-    const { width = 0, height = 0 } = await sharp(bytes).metadata();
-    const side = Math.max(width, height);
-    if (side <= limit) continue;
-    const pipeline = sharp(bytes).resize({ width: limit, height: limit, fit: "inside" });
-    const smaller: Buffer = await (
-      mimeType === "image/png" ? pipeline.png({ compressionLevel: 9 }) : pipeline.jpeg({ quality: 90 })
-    ).toBuffer();
+    let side: number;
+    let smaller: Buffer;
+    try {
+      const { width = 0, height = 0 } = await sharp(bytes).metadata();
+      side = Math.max(width, height);
+      if (side <= limit) continue;
+      const pipeline = sharp(bytes).resize({ width: limit, height: limit, fit: "inside" });
+      smaller = await (
+        mimeType === "image/png" ? pipeline.png({ compressionLevel: 9 }) : pipeline.jpeg({ quality: 90 })
+      ).toBuffer();
+    } catch {
+      // Smaller textures are a saving, not a need: a picture sharp can't read stays as it is.
+      continue;
+    }
     replaced.set(viewIndex, smaller);
     for (const image of images) resized.push({ image, from: side, to: limit });
   }

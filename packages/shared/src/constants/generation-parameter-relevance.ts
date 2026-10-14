@@ -1,5 +1,7 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isGeminiStrictRequestModel,
+  isGeminiThinkingLevelModel,
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
   isOpenAIGpt56Model,
@@ -252,8 +254,14 @@ export function relevantGenerationParameters(context: GenerationParameterContext
     if (provider === "openai_chatgpt" && !isOpenAIReasoningModel(model)) hide("reasoningEffort");
 
     if (provider === "google" || provider === "google_vertex") {
-      if (!/gemini-3/.test(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) hide("reasoningEffort");
+      if (!isGeminiThinkingLevelModel(model) && !/gemini-2\.5|gemini-2\.0-flash-thinking/.test(model)) {
+        hide("reasoningEffort");
+      }
     }
+
+    // Argon and the newer Gemini Flash models ignore temperature, top-p and top-k and reject penalties, so every
+    // request but a custom endpoint's leaves them out, including OpenRouter's and NanoGPT's.
+    if (isGeminiStrictRequestModel(model) && provider !== "custom") hide(...SAMPLING);
 
     if (provider === "custom") {
       // Custom endpoints keep sampling unless the model is GPT-5.5 or 5.6, which reject it.
@@ -383,7 +391,9 @@ export function reasoningEffortChoices(
     group.push(level);
     groups.set(sent, group);
   }
-  const choices: Array<GenerationParameterChoice<StoredEffortLevel | null>> = [off];
+  // A model that cannot turn thinking off (Gemini 4 Argon) sends a level for Off too, so Off is not offered.
+  const offSendsLevel = !!resolveProviderReasoningEffort({ provider, model, reasoningEffort: null });
+  const choices: Array<GenerationParameterChoice<StoredEffortLevel | null>> = offSendsLevel ? [] : [off];
   for (const [sent, levels] of groups) {
     const keep = context.selected && levels.includes(context.selected) ? context.selected : levels[0]!;
     choices.push({ value: keep, label: sent });

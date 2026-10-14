@@ -1,6 +1,8 @@
 // ──────────────────────────────────────────────
 // Game: Movable character profiles window
 // ──────────────────────────────────────────────
+import { artPortraitFor } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { useEffect, useMemo, useState } from "react";
 import { Users, X } from "lucide-react";
 import { useGameModeStore } from "../../stores/game-mode.store";
@@ -74,16 +76,28 @@ function PartyAvatar({ visual, className }: { visual: PartyMemberVisual; classNa
     );
   }
 
+  // No picture of their own: their pixel bust from the portraits pack (1.338), else their initial.
   return (
-    <span
+    <ArtIcon
+      kind="portraits"
+      ids={[artPortraitFor(member.name)]}
+      label={member.name}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-xs font-bold text-[var(--marinara-chat-chrome-button-text-hover)] shadow-lg shadow-black/25 transition-colors group-hover:border-[var(--marinara-chat-chrome-button-border-hover)]",
+        "block h-8 w-8 overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] shadow-lg shadow-black/25",
         className,
       )}
-      style={member.nameColor ? { color: member.nameColor } : undefined}
-    >
-      {member.name[0]}
-    </span>
+      fallback={
+        <span
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-xs font-bold text-[var(--marinara-chat-chrome-button-text-hover)] shadow-lg shadow-black/25 transition-colors group-hover:border-[var(--marinara-chat-chrome-button-border-hover)]",
+            className,
+          )}
+          style={member.nameColor ? { color: member.nameColor } : undefined}
+        >
+          {member.name[0]}
+        </span>
+      }
+    />
   );
 }
 

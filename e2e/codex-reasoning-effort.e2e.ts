@@ -53,11 +53,11 @@ test("Codex connections set their thinking level in connection settings", async 
     const reasoning = page.getByText("Reasoning Effort", { exact: true }).locator("../../..");
     await expect(reasoning.locator("button[aria-pressed]")).toHaveText([
       "Default",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
+      "Low",
+      "Medium",
+      "High",
+      "Extra high",
+      "Max",
     ]);
     await expect(reasoning.getByRole("button", { name: "Off", exact: true })).toHaveCount(0);
     // Turning on custom defaults starts at Default, so it does not pick a level by itself.
@@ -73,7 +73,7 @@ test("Codex connections set their thinking level in connection settings", async 
     ).toBeVisible();
     await page.keyboard.press("Escape");
 
-    const medium = reasoning.getByRole("button", { name: "medium", exact: true });
+    const medium = reasoning.getByRole("button", { name: "Medium", exact: true });
     await medium.click();
     await expect(medium).toHaveAttribute("aria-pressed", "true");
     await reasoning.scrollIntoViewIfNeeded();

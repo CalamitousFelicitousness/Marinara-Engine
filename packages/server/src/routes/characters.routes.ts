@@ -107,6 +107,7 @@ import { extname } from "path";
 import { pipeline } from "stream/promises";
 import { newId } from "../utils/id-generator.js";
 import { createReplyFallbackNotifier } from "./generate/fallback-notification.js";
+import { removeAvatarOwner } from "../services/avatars/storage.js";
 import {
   findGalleryRowByFilename,
   galleryFileHasReferences,
@@ -1610,6 +1611,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       collectAvatarPaths: () => collectCharacterAvatarPaths(app.db, [id]),
       mutateReferences: () => storage.remove(id),
     });
+    await removeAvatarOwner({ ownerType: "character", ownerId: id }).catch((err) =>
+      logger.warn(err, "Failed to remove the avatar model of deleted character %s", id),
+    );
     // Cascade the character's Noodle presence, otherwise its account and posts stay
     // in the timeline forever as a ghost (issue #4295).
     try {
@@ -2780,6 +2784,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       collectAvatarPaths: () => collectPersonaAvatarPaths(app.db, [id]),
       mutateReferences: () => storage.removePersona(id),
     });
+    await removeAvatarOwner({ ownerType: "persona", ownerId: id }).catch((err) =>
+      logger.warn(err, "Failed to remove the avatar model of deleted persona %s", id),
+    );
     for (const image of galleryImages) {
       await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     }

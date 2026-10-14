@@ -28,6 +28,7 @@ import {
 import { useGameStateStore } from "../../stores/game-state.store";
 import { OVERWORLD_TILE, cellNoise, overworldDarkness, paintParty } from "../../lib/overworld-paint";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 
 interface TownViewProps {
   chatId: string;
@@ -389,7 +390,9 @@ export function TownView({
       <div className="pointer-events-none absolute inset-0 z-[25] overflow-clip" data-component="TownView.Chrome">
         {selected && cardAt && (
           <div
+            data-game-section="town-card"
             className={cn(
+              GAME_SECTION_CLASS,
               "pointer-events-auto absolute z-10 w-60 -translate-x-1/2 rounded-xl border border-white/15 bg-black/80 p-3 text-xs text-white/85 shadow-xl backdrop-blur-md",
               !cardAt.below && "-translate-y-full",
             )}

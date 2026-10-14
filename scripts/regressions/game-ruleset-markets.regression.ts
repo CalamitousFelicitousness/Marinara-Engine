@@ -36,6 +36,8 @@ import {
   rulesetMarketLevel,
   rulesetMarketPlace,
   rulesetMarketPrice,
+  rulesetCoinAmount,
+  rulesetPurseText,
   rulesetMarketPromptText,
   rulesetMarketQuoter,
   rulesetMarketSellersAt,
@@ -622,6 +624,42 @@ const manifest = (minor: number) => ({
   permissions: [],
   restartRequired: false,
 });
+
+// ── 1.89: a coin's name for one ──
+{
+  const named = (doc: Record<string, any>) => {
+    const units = doc.items.currencies[0].units;
+    units.find((unit: { id: string }) => unit.id === "penny").one = "penny";
+    units.find((unit: { id: string }) => unit.id === "shilling").one = "shilling";
+  };
+  const singular = parsedOrThrow(variant(gravewatchText, named), "Gravewatch with singular coins");
+  const singularBook = rulesetItemBook(singular, entriesOf(singular));
+  const lines = rulesetMarketPromptText(singular, singularBook, { name: "Millbrook", size: "town" })!.split("\n");
+  assert.equal(
+    lines[1],
+    "- chandler: Shot and powder 1 penny, Warming tonic 4 pennies, A bed at the watch-house 6 pennies (a service), Lantern-keeper's coat 8 shillings",
+    "one penny, four pennies",
+  );
+  assert.equal(
+    lines[3],
+    "- chapel of the Vigil (to wardens of Nerve 3 or more only): Page of the vigil litany 1 shilling",
+  );
+  assert.equal(rulesetCoinAmount({ label: "crowns" }, 1), "1 crowns", "a coin with no name for one keeps its label");
+  assert.equal(rulesetCoinAmount({ label: "pennies", one: "penny" }, 0), "0 pennies");
+  const shot = singularBook.itemNamed("Shot and powder");
+  assert.deepEqual(shot?.facts.cost, { amount: 1, unit: "penny" }, "the item's own price");
+  assert.equal(
+    rulesetPurseText(singularBook, coins([["pennies", "penny", 1]]), undefined),
+    "Coin worth 1 penny",
+    "a purse of one",
+  );
+  refused((doc) => (doc.items.currencies[0].units[0].one = "x".repeat(41)), /one/, "a name for one is a short word");
+  const gate = (minor: number, doc: Record<string, any>) =>
+    getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
+  assert.match(gate(88, variant(gravewatchDayText, named)) ?? "", /coins name one of themselves.*1\.89/);
+  assert.equal(gate(89, variant(gravewatchDayText, named)), null);
+  assert.equal(gate(88, variant(gravewatchDayText)), null, "without it, nothing new");
+}
 
 // ── Install gate: 1.65 ──
 {
@@ -1313,11 +1351,77 @@ try {
     [away.place, seen(away.day)],
     [{ name: "Barrowmere", size: "hamlet" }, [`${daily.id}|2|Barrowmere|hamlet`, [], [], []]],
   );
+  // Where the world has the party at the place a tag began the day at, the tag's day is the one in force.
+  const sameAsTag = await gameMarketDayFor(db, daily.id, undefined, undefined, book, {
+    name: "millbrook",
+    size: "town",
+  });
+  assert.deepEqual([sameAsTag.day.key, sameAsTag.worldPlace], [`${daily.id}|0|Millbrook|town`, undefined]);
   const quiet = await chats.create({ name: "No place yet", mode: "game", characterIds: [] });
   assert.deepEqual(await gameMarketDayFor(db, quiet.id, null, undefined, book), {
     place: null,
     day: { key: "", bought: new Map(), stockBought: new Map(), paidOut: new Map() },
   });
+  // A place the world set (no place tag began a day there): its day runs over the replies in a row
+  // whose turns were there, each stamped so on its extra, and counts what they bought; a turn anywhere
+  // else ends it, so coming back is a new day.
+  {
+    const mapped = await chats.create({ name: "World market", mode: "game", characterIds: [] });
+    const town = { name: "Ashford", size: "town" as const };
+    const at = `world|ashford|town`;
+    const reply = (content: string, stamp?: string | null) =>
+      chats.createMessage({
+        chatId: mapped.id,
+        role: "assistant",
+        content,
+        ...(stamp !== undefined ? { extra: { gameMarketPlace: stamp } } : {}),
+      } as never);
+    const pistol =
+      '[inventory: action="buy" item="Watch pistol" count="1" level="fair" seller="smith" result="ok" now="1" price="3 crowns" stock="true"]';
+    const worldDay = (replacing?: string) => gameMarketDayFor(db, mapped.id, replacing, undefined, book, town);
+    // Before any turn there: a day of nothing bought, named for the reply that begins it.
+    const fresh = await worldDay();
+    assert.deepEqual(
+      [fresh.place, fresh.worldPlace, seen(fresh.day)],
+      [town, at, [`${mapped.id}|${at}|start`, [], [], []]],
+    );
+    await reply(`We arrive. ${pistol}`, at);
+    const bought = await reply(`Still here. ${nail}`, at);
+    const held = await worldDay();
+    assert.deepEqual(
+      seen(held.day),
+      [`${mapped.id}|${at}|start`, [["silver coffin nail", 1]], [["smith|watch pistol", 1]], []],
+      "the day keeps its name and counts every turn's buys there",
+    );
+    assert.deepEqual(
+      seen((await worldDay(bought.id)).day).slice(1, 3),
+      [[], [["smith|watch pistol", 1]]],
+      "a regeneration",
+    );
+    // A turn somewhere else ends the day; back again, a new one begins with nothing bought.
+    const road = await reply("On the road.", null);
+    const back = await worldDay();
+    assert.deepEqual(seen(back.day), [`${mapped.id}|${at}|${road.id}`, [], [], []], "named by the reply before it");
+    // A place tag answered while the world keeps the party here begins a day of its own: the world's day
+    // runs on from after it.
+    const named = await reply('They call it Millbrook. [place: name="Millbrook" size="town" result="ok"]', at);
+    assert.deepEqual(seen((await worldDay()).day)[0], `${mapped.id}|${at}|${named.id}`);
+    await reply(`Back in town. ${pistol}`, at);
+    assert.deepEqual(seen((await worldDay()).day).slice(0, 3), [
+      `${mapped.id}|${at}|${named.id}`,
+      [],
+      [["smith|watch pistol", 1]],
+    ]);
+    // A reply deleted inside the day neither renames it nor loses the others' buys.
+    const idle = await reply("They wait.", at);
+    await reply(`Another. ${pistol}`, at);
+    await chats.removeMessage(idle.id);
+    assert.deepEqual(seen((await worldDay()).day).slice(0, 3), [
+      `${mapped.id}|${at}|${named.id}`,
+      [],
+      [["smith|watch pistol", 2]],
+    ]);
+  }
 } finally {
   await closeDB();
   rmSync(dataDir, { recursive: true, force: true });

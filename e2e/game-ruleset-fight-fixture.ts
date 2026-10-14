@@ -140,6 +140,7 @@ export async function savedInventory(request: APIRequestContext, chatId: string)
     quantity: number;
     loaded?: number;
     charges?: number;
+    truly?: string;
   }>;
 }
 

@@ -14,12 +14,16 @@ import { Minus, Pencil, Plus } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  rulesetConditionIcons,
+  rulesetItemEffectFacts,
   applyRulesetSheetOp,
   readResolvedSheetCommandTags,
-  createRulesetSheetEnvelope,
+  rulesetSheetStamp,
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
+  rulesetCheckSources,
+  rulesetHideLines,
   rulesetSectionGroups,
   type EvaluatedRulesetSheet,
   type ResolvedRulesetLive,
@@ -32,8 +36,11 @@ import {
   type RulesetSheetOp,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
+import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
+import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { DraftTextarea } from "../ui/DraftTextarea";
 
@@ -67,6 +74,7 @@ const SHEET_REFUSAL_KEYS: Readonly<Record<string, string>> = Object.freeze({
   "unknown-entry": "game.ruleset.sheet.refusal.unknownEntry",
   "ambiguous-entry": "game.ruleset.sheet.refusal.ambiguousEntry",
   "bad-pool": "game.ruleset.sheet.refusal.badPool",
+  "cannot-heal": "game.ruleset.sheet.refusal.cannotHeal",
   malformed: "game.ruleset.sheet.refusal.malformed",
   "unknown-character": "game.ruleset.sheet.refusal.unknownCharacter",
   "ambiguous-character": "game.ruleset.sheet.refusal.ambiguousCharacter",
@@ -331,6 +339,21 @@ export function GameRulesetSheet({
     [definition, build, items, resolved],
   );
 
+  const checkSources = useMemo(
+    () => rulesetCheckSources(definition, build, live, items),
+    [definition, build, live, items],
+  );
+  const hideLines = useMemo(
+    () => rulesetHideLines(definition, checkSources, localizeUi),
+    [definition, checkSources, localizeUi],
+  );
+  const saveModifiers = checkSources.flatMap((source) =>
+    rulesetItemEffectFacts(definition, {
+      modifiers: source.modifiers?.filter((one) => one.against),
+      saves: source.saves ? [...source.saves] : undefined,
+    }),
+  );
+
   /** Every change a player makes takes the same route a Game Master command does. */
   const apply = (op: RulesetSheetOp) => {
     if (readOnly) return;
@@ -360,9 +383,7 @@ export function GameRulesetSheet({
     return groups;
   }, [resolved.pools]);
 
-  const summary = definition.gm.sheetSummary;
-  const summaryFields = definition.sheet.fields.filter((field) => summary.fields.includes(field.id));
-  const summaryDerived = definition.sheet.derived.filter((entry) => summary.derived.includes(entry.id));
+  const { fields: summaryFields, derived: summaryDerived } = rulesetSheetSummaryShown(definition, build);
   const untrainedTier = definition.resolution.proficiencyTiers[0]?.id;
   const trained = [
     ...definition.sheet.skills.map((skill) => ({
@@ -382,7 +403,9 @@ export function GameRulesetSheet({
   ].filter((entry) => entry.tier !== undefined && entry.tier !== untrainedTier);
 
   const startEditing = () => {
-    setDraft(createRulesetSheetEnvelope(definition, build));
+    // Labelled with this layout, and never older than the sheet already was. Everything else the
+    // envelope carries (the guided builder's choices) goes along, or re-picking would grant twice.
+    setDraft({ ...envelope, v: rulesetSheetStamp(definition, envelope), build });
     setRestNotice(null);
   };
 
@@ -459,7 +482,7 @@ export function GameRulesetSheet({
         <>
           {poolGroups.map((group) => (
             <div key={group.id || "ungrouped"} className="space-y-1.5">
-              {group.id && <p className={labelClass}>{group.id}</p>}
+              {group.id && <p className={labelClass}>{rulesetPoolGroupLabel(group.id)}</p>}
               {group.pools.map((pool) => (
                 <div key={pool.key} className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${cardClass}`}>
                   <span
@@ -624,6 +647,18 @@ export function GameRulesetSheet({
             </div>
           )}
 
+          {hideLines.map((line) => (
+            <p key={line} className="break-words text-xs text-[var(--muted-foreground)]">
+              {line}
+            </p>
+          ))}
+          {saveModifiers.length > 0 && (
+            <div className="space-y-1 text-xs text-[var(--muted-foreground)]">
+              {saveModifiers.map((fact, index) => (
+                <p key={index}>{rulesetEffectPhrase(fact, localizeUi)}</p>
+              ))}
+            </div>
+          )}
           {resolved.conditions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {resolved.conditions.map((condition) => (
@@ -639,12 +674,29 @@ export function GameRulesetSheet({
                       : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                   }`}
                 >
+                  <ArtIcon
+                    ids={rulesetConditionIcons(definition, condition.id)}
+                    className="mr-1 h-4 w-4 align-[-0.2em]"
+                  />
                   {condition.label}
                 </button>
               ))}
             </div>
           )}
 
+          {checkSources.flatMap((source, index) => {
+            const modifiers = source.modifiers?.filter((one) => one.to === "damage");
+            return modifiers?.length ? (
+              <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">
+                {source.name}:{" "}
+                {rulesetItemEffectFacts(definition, { modifiers })
+                  .map((fact) => rulesetEffectPhrase(fact, localizeUi))
+                  .join("; ")}
+              </p>
+            ) : (
+              []
+            );
+          })}
           {definition.rests.length > 0 && (
             <div className="space-y-1.5">
               <div className="flex flex-wrap gap-1.5">

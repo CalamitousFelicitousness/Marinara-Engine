@@ -312,7 +312,10 @@ try {
 
   // ── Wiring: Mari's commands name their chat, status filters, deletion keeps ──
   {
-    const agent = source("services/professor-mari/workspace-agent.service.ts");
+    const agent =
+      source("services/professor-mari/workspace-agent.service.ts") +
+      source("services/professor-mari/workspace-commands.ts") +
+      source("services/professor-mari/workspace-message-store.ts");
     assert.equal(
       (agent.match(/sessionId: this\.runSessionId\(\)/gu) ?? []).length,
       6,
@@ -322,12 +325,12 @@ try {
     assert.match(agent, /env\.MARI_WORKSPACE_SESSION_ID = this\.runSessionId\(\);/u, "so does Mari's shell");
     assert.match(
       agent,
-      /\.\.\.this\.workspaceChangeReviews\.getPendingApprovals\(\),\s*\]\.filter\(\(approval\) => isMariReviewVisibleInChat\(approval\.sessionId, chatId\)\)/u,
+      /\.\.\.this\.commands\.workspaceChangeReviews\.getPendingApprovals\(\),\s*\]\.filter\(\(approval\) => isMariReviewVisibleInChat\(approval\.sessionId, chatId\)\)/u,
       "the status filters file and install reviews by chat too",
     );
     assert.match(
       agent,
-      /if \(runEndedWithDeferral && runHeldChanges\.length > 0\) extraUpdate\.mariHeldChanges = runHeldChanges;/u,
+      /if \(run\.endedWithDeferral && run\.heldChanges\.length > 0\) extraUpdate\.mariHeldChanges = run\.heldChanges;/u,
       "a held change is saved on her turn for the card",
     );
     const chats = source("routes/chats.routes.ts");

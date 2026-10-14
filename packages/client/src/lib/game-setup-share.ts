@@ -1,7 +1,9 @@
 import {
+  WORLD_GENERATOR_VERSION,
   gameWorldSchema,
   normalizeGameDifficulty,
   parseWorldKit,
+  readWorldSnapshot,
   rulesetRefSchema,
   storyScriptSchema,
 } from "@marinara-engine/shared";
@@ -23,6 +25,7 @@ import {
 
 import { isExperienceSeed } from "./game-experience-setup";
 import { translate } from "../localization/i18n";
+import { generationLevelLabel } from "./generation-level-label";
 
 export const GAME_SETUP_SHARE_FORMAT = "marinara-game-setup";
 export const GAME_SETUP_SHARE_VERSION = 1;
@@ -350,6 +353,20 @@ function parseShareConfig(value: unknown): GameSetupConfig {
   // And its world: one without a kit, or one that is not one, refuses the file.
   const world = value.world == null ? undefined : gameWorldSchema.safeParse(value.world);
   if (world && (!world.success || !worldKit?.ok)) throw new Error(translate("game.world.setup.invalidImport"));
+  // A world another generator made comes with its snapshot (W11), checked whole; one without it would be
+  // made again by this generator as another world, so the file is refused instead.
+  const worldSnapshot = value.worldSnapshot == null ? undefined : readWorldSnapshot(value.worldSnapshot);
+  if (worldSnapshot && !worldSnapshot.ok) throw new Error(translate("game.world.setup.invalidImport"));
+  // The snapshot is the world of the file's own kit, or the file does not hold together.
+  if (
+    worldSnapshot?.ok &&
+    (!worldKit?.ok || JSON.stringify(worldSnapshot.snapshot.kit) !== JSON.stringify(worldKit.kit))
+  ) {
+    throw new Error(translate("game.world.setup.invalidImport"));
+  }
+  if (world?.success && world.data.generatorVersion !== WORLD_GENERATOR_VERSION && !worldSnapshot?.ok) {
+    throw new Error(translate("game.world.setup.otherGeneratorImport"));
+  }
   // And its story (worldgen W10), only ever with its world; whether it fits that world is the wizard's check.
   const story = value.story == null ? undefined : storyScriptSchema.safeParse(value.story);
   if (story && (!story.success || !world?.success)) throw new Error(translate("game.world.setup.invalidImport"));
@@ -372,6 +389,10 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     ...(ruleset ? { ruleset: ruleset.data } : {}),
     worldKit: worldKit?.ok ? worldKit.kit : undefined,
     world: world?.success ? world.data : undefined,
+    worldSnapshot:
+      world?.success && world.data.generatorVersion !== WORLD_GENERATOR_VERSION && worldSnapshot?.ok
+        ? worldSnapshot.snapshot
+        : undefined,
     story: story?.success ? story.data : undefined,
     generationParameters,
     ...(spatialMapDraftOptions
@@ -608,6 +629,7 @@ export function resolveGameSetupImport(
     worldKit: _worldKit,
     world: _world,
     story: _story,
+    worldSnapshot: _worldSnapshot,
     ...ordinaryConfig
   } = sourceConfig;
 
@@ -687,7 +709,11 @@ export function resolveGameSetupImport(
       // Like a ruleset, a setting kit is chosen once, for a new game.
       ...(context.isNewGame !== false && sourceConfig.worldKit ? { worldKit: sourceConfig.worldKit } : {}),
       ...(context.isNewGame !== false && sourceConfig.worldKit && sourceConfig.world
-        ? { world: sourceConfig.world, ...(sourceConfig.story ? { story: sourceConfig.story } : {}) }
+        ? {
+            world: sourceConfig.world,
+            ...(sourceConfig.story ? { story: sourceConfig.story } : {}),
+            ...(sourceConfig.worldSnapshot ? { worldSnapshot: sourceConfig.worldSnapshot } : {}),
+          }
         : {}),
       gmMode,
       gmCharacterId,
@@ -827,7 +853,13 @@ function tacticalBattlefieldRows(config: GameSetupConfig): GameSetupSummaryRow[]
 function generationParameterRows(parameters: Partial<GenerationParameters> | null | undefined): GameSetupSummaryRow[] {
   const entries = Object.entries(parameters ?? {}).filter(([, value]) => value !== undefined);
   if (entries.length === 0) return [{ label: "Generation parameters", value: "Connection defaults (not captured)" }];
-  return entries.map(([key, value]) => ({ label: titleCaseToken(key), value: formatValue(value) }));
+  return entries.map(([key, value]) => ({
+    label: titleCaseToken(key),
+    value:
+      (key === "reasoningEffort" || key === "verbosity") && typeof value === "string"
+        ? generationLevelLabel(value, translate)
+        : formatValue(value),
+  }));
 }
 
 export function buildGameSetupSummarySections(source: GameSetupShareSource): GameSetupSummarySection[] {

@@ -63,6 +63,8 @@ export interface SlashCommandContext {
     characterId?: string | null;
     extra?: Record<string, unknown>;
   }) => void | Promise<void>;
+  /** Prepare typed text as a normal send would store it: user-input regex, input translation and macros. */
+  prepareUserMessage: (text: string) => Promise<string>;
   /** Invalidate chat queries to refresh the UI */
   invalidate: () => void;
   /** Invalidate the character detail cache after character-owned changes. */
@@ -715,7 +717,7 @@ const COMMANDS: SlashCommand[] = [
     async execute(args, ctx) {
       const content = stripSingleWrappingQuotePair(args);
       if (!content) return { handled: true, feedback: "Usage: /send <message>" };
-      await ctx.createMessage({ role: "user", content, characterId: null });
+      await ctx.createMessage({ role: "user", content: await ctx.prepareUserMessage(content), characterId: null });
       return { handled: true };
     },
   },

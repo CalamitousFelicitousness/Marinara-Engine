@@ -1,5 +1,6 @@
 import {
   compileGameWorld,
+  gameWorldFromSnapshot,
   normalizeGameDifficulty,
   parseWorldKit,
   worldSpatialDraft,
@@ -50,6 +51,7 @@ import {
   type GameInitialSetupLabels,
   type GameSetupConfig,
   type GameGmMode,
+  type GameIntroChoice,
   type GameSpotifySourceType,
   normalizeSpotifySourceType,
   resolveGameSpatialMapDraftOptions,
@@ -94,6 +96,7 @@ import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChoose
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
 import { GameSetupWorldChooser, worldDraftConfig, worldDraftFromWorld, type WorldDraft } from "./GameSetupWorldChooser";
+import { GameSetupGmIntro, gameIntroForSetup, gameIntroProblem } from "./GameSetupGmIntro";
 import {
   GAME_SETUP_FIELD_LABEL,
   GAME_SETUP_GHOST_BUTTON_CLASS,
@@ -583,7 +586,7 @@ export function GameSetupWizard({
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
   const mapPackDraft = useMemo(
-    () => (mapPackWorld ? worldDraftFromWorld(mapPackWorld.world, mapPackWorld.story) : null),
+    () => (mapPackWorld ? worldDraftFromWorld(mapPackWorld.world, mapPackWorld.story, mapPackWorld.snapshot) : null),
     [mapPackWorld],
   );
   const effectiveWorldDraft = mapPackDraft ?? worldDraft;
@@ -607,6 +610,8 @@ export function GameSetupWizard({
   const [gmBossControl, setGmBossControl] = useState(true);
   const [tacticalBattlefieldSize, setTacticalBattlefieldSize] = useState<"auto" | TacticalBattlefieldSize>("auto");
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
+  // The GM intro message (1.339): null follows the Experience's own.
+  const [gameIntro, setGameIntro] = useState<GameIntroChoice | null>(null);
   const [gmCharacterId, setGmCharacterId] = useState<string | null>(null);
   const [partyCharacterIds, setPartyCharacterIds] = useState<string[]>(() =>
     Array.from(new Set(initialPartyCharacterIds.filter((id) => characters.some((character) => character.id === id)))),
@@ -1140,11 +1145,14 @@ export function GameSetupWizard({
   const spatialMapTargetLocationCountValid =
     normalizeSpatialMapTargetLocationCount(spatialMapTargetLocationCountInput) !== null;
   // A kit or a world that does not hold together is never quietly left out of a downloaded setup.
+  // An intro the server would refuse (1.339): fixed before the game starts or its setup is saved.
+  const introProblem = gameIntroProblem(gameIntro);
   const setupDownloadBlocked =
-    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok);
+    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok) || !!introProblem;
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
+    !introProblem &&
     !mapPackUnreadable &&
     !mapPackPending &&
     !(checkedWorldKit && !checkedWorldKit.ok) &&
@@ -1156,25 +1164,30 @@ export function GameSetupWizard({
     ? localizeUi("multiplayer.game.missingPersona")
     : experienceSeedInvalid
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
-      : mapPackUnreadable
-        ? localizeUi("game.mapPack.fixBeforeStart")
-        : mapPackPending
-          ? localizeUi("game.mapPack.loading")
-          : checkedWorldKit && !checkedWorldKit.ok
-            ? localizeUi("game.worldKit.setup.fixBeforeStart")
-            : checkedWorld && !checkedWorld.ok
-              ? localizeUi("game.world.setup.fixBeforeStart")
-              : activeLorebookEntryIds.length && !eligibleEntries
-                ? localizeUi(
-                    entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
-                  )
-                : !gmConnectionId
-                  ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-                  : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-                    ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                        value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-                      })
-                    : null;
+      : introProblem
+        ? localizeUi(`game.intro.${introProblem}`)
+        : mapPackUnreadable
+          ? localizeUi("game.mapPack.fixBeforeStart")
+          : mapPackPending
+            ? localizeUi("game.mapPack.loading")
+            : checkedWorldKit && !checkedWorldKit.ok
+              ? localizeUi("game.worldKit.setup.fixBeforeStart")
+              : checkedWorld && !checkedWorld.ok
+                ? localizeUi("game.world.setup.fixBeforeStart")
+                : activeLorebookEntryIds.length && !eligibleEntries
+                  ? localizeUi(
+                      entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+                    )
+                  : !gmConnectionId
+                    ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+                    : !spatialMapTargetLocationCountValid &&
+                        enableAgents &&
+                        hierarchicalMapsInstalled &&
+                        draftSpatialMap
+                      ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                          value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                        })
+                      : null;
   const normalizedLanguage = normalizeGameLanguage(language);
   // What the model writes a setting kit or a world's brief for: the World step's own choices.
   const worldWriteRequest = gmConnectionId
@@ -1232,7 +1245,7 @@ export function GameSetupWizard({
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
       setWorldKit(config.worldKit ?? null);
-      setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story) : null);
+      setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story, config.worldSnapshot) : null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);
@@ -1322,6 +1335,7 @@ export function GameSetupWizard({
       setAutoTranslate(config.autoTranslate === true);
       setTranslationLanguage(config.translationOutputTargetLang?.trim() || "en");
       setGmMode(config.gmMode);
+      setGameIntro(config.gameIntro ?? null);
       setGmCharacterId(config.gmCharacterId ?? null);
       setPartyCharacterIds(config.partyCharacterIds);
       setPersonaId(config.personaId ?? null);
@@ -1471,7 +1485,11 @@ export function GameSetupWizard({
       ...(checkedWorldKit?.ok ? { worldKit: checkedWorldKit.kit } : {}),
       ...(checkedWorld?.ok ? { world: checkedWorld.world } : {}),
       ...(checkedWorld?.ok && checkedWorld.story ? { story: checkedWorld.story } : {}),
+      // A world another generator made goes with its snapshot (W11), played as it was made.
+      ...(checkedWorld?.ok && checkedWorld.snapshot ? { worldSnapshot: checkedWorld.snapshot } : {}),
       combatDirector: true,
+      // New games take tactical turns one unit at a time in a rolled order (combat C6c).
+      tacticalTurnOrder: "initiative",
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
       spatialMapInstructions:
@@ -1493,6 +1511,7 @@ export function GameSetupWizard({
       rating,
       gmMode,
       gmCharacterId: gmMode === "character" && gmCharacterId ? gmCharacterId : undefined,
+      ...(gameIntroForSetup(gameIntro) ? { gameIntro: gameIntroForSetup(gameIntro) } : {}),
       partyCharacterIds,
       playerGoals: playerGoals || "Have an adventure",
       personaId: multiplayerPlayers ? undefined : (personaId ?? undefined),
@@ -1642,7 +1661,9 @@ export function GameSetupWizard({
             draft: worldSpatialDraft({
               kit: checkedWorldKit.kit,
               ...checkedWorld.world,
-              world: compileGameWorld({ kit: checkedWorldKit.kit, ...checkedWorld.world }),
+              world: checkedWorld.snapshot
+                ? gameWorldFromSnapshot(checkedWorld.snapshot).world
+                : compileGameWorld({ kit: checkedWorldKit.kit, ...checkedWorld.world }),
             }),
           }
         : enableAgents && hierarchicalMapsInstalled && draftSpatialMap
@@ -2268,9 +2289,9 @@ export function GameSetupWizard({
                         <GameSetupWorldKitChooser
                           kit={worldKit}
                           onChange={chooseWorldKit}
-                          onImportWorld={(kit, world, story) => {
+                          onImportWorld={(kit, world, story, snapshot) => {
                             chooseWorldKit(kit);
-                            setWorldDraft(worldDraftFromWorld(world, story));
+                            setWorldDraft(worldDraftFromWorld(world, story, snapshot));
                           }}
                           writeRequest={worldWriteRequest}
                         />
@@ -2429,6 +2450,13 @@ export function GameSetupWizard({
                         </button>
                       </div>
                     </div>
+
+                    {/* The GM intro message (1.339) */}
+                    <GameSetupGmIntro
+                      value={gameIntro}
+                      onChange={setGameIntro}
+                      {...(effectiveWorldDraft?.story?.intro ? { experience: effectiveWorldDraft.story.intro } : {})}
+                    />
 
                     {/* GM Character selector */}
                     {gmMode === "character" && (

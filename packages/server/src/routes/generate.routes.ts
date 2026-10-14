@@ -12,6 +12,7 @@ import {
 } from "../services/multiplayer/generation-policy.js";
 import { appendLorebookImageMessages, type LorebookImageNotice } from "../services/generation/lorebook-image-prompt.js";
 import { withLorebookImageCompatibility } from "../services/llm/lorebook-image-provider.js";
+import { fixedTextProvider } from "../services/llm/fixed-text-provider.js";
 import { DECISION_SETTINGS_KEYS, resolveDecisionBackend } from "../services/decision/decision-default.js";
 import {
   DECISION_TIMERS_METADATA_KEY,
@@ -49,6 +50,7 @@ import {
   type DecisionMessage,
 } from "../services/generation/agent-activation-questions.js";
 import { registerSequentialGameTasks } from "../services/game/sequential-tasks.js";
+import { loadGameWorld } from "../services/game/game-world.service.js";
 import {
   createAdvancedMemoryService,
   sceneCheckTranscript,
@@ -126,6 +128,7 @@ import {
   formatSkillCheckResultSummary,
   unwrapConversationInstructions,
   findKnownModel,
+  isGeminiModel,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -193,7 +196,6 @@ import {
   getRoleplayCommandActivity,
   applyGameInventoryTags,
   applyGamePlaceTags,
-  gameWorldFromMetadata,
   worldKitSize,
   worldPlaceByName,
   worldPlaceInForce,
@@ -209,10 +211,15 @@ import {
   readToldLedger,
   refuseStoryTags,
   readStoryLedger,
+  storyFightBroken,
   storyFightOutcome,
   storyState,
   storyTurn,
   storyTurnPromptText,
+  gameIntroFor,
+  gameIntroGuidanceText,
+  readGameIntroChoice,
+  type GameIntro,
   type StoryScript,
   type StoryTurn,
   readWorldLedger,
@@ -299,7 +306,9 @@ import {
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
 import {
+  GAME_MARKET_PLACE_EXTRA,
   gameMarketDayFor,
+  gameMarketWorldPlace,
   gameRepliesBefore,
   loadGameKitMarket,
   loadGameMarket,
@@ -2012,18 +2021,39 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
       // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
       // tell the same turn. A continuation trips nothing, as it tells no walk.
+      // The Game Master's intro message (1.339), on the reply that opens the game: the Experience's when its
+      // creator locked it, else what the setup chose, else the Experience's own. A new session of a game
+      // already under way opens with none.
+      let gameIntroRead: Promise<GameIntro | null> | undefined;
+      const gameIntroNow = () =>
+        (gameIntroRead ??=
+          chatMode === "game" && !input.impersonate && !input.continueMessageId
+            ? (async () => {
+                const game = await loadGameWorld(app.db, input.chatId, chatMeta);
+                const intro = gameIntroFor(
+                  game ? gameStoryFromMetadata(chatMeta, game)?.intro : undefined,
+                  readGameIntroChoice(chatMeta.gameIntro),
+                );
+                if (!intro) return null;
+                const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+                return replies.carried || replies.all.some((reply) => reply.trim()) ? null : intro;
+              })().catch((error) => {
+                logger.warn(error, "[game/intro] Intro for chat %s could not be read", input.chatId);
+                return null;
+              })
+            : Promise.resolve(null));
       let turnStoryRead: Promise<{ story: StoryScript; game: GameWorld; turn: StoryTurn } | null> | undefined;
       const turnStory = () =>
         (turnStoryRead ??=
           chatMode === "game" && !input.impersonate && !input.continueMessageId
             ? (async () => {
-                const game = gameWorldFromMetadata(chatMeta);
+                const game = await loadGameWorld(app.db, input.chatId, chatMeta);
                 const story = gameStoryFromMetadata(chatMeta, game);
                 if (!game || !story) return null;
                 const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
-                const before = readWorldLedger(replies.all);
+                const before = replies.ledger;
                 const town = visit ? worldTown(game, visit.settlementId, worldPresent(game, before)) : null;
                 // The walk and the visit this turn tells, as their tags will stand before the reply.
                 const walkTags = walk ? worldWalkTags(game, walk) : "";
@@ -2045,6 +2075,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     added: present.places,
                     day: present.day,
                     fight: storyFightOutcome(replies.player),
+                    broke: storyFightBroken(replies.player),
                     playerName: personaName,
                   }),
                 };
@@ -4366,8 +4397,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           providerTopK,
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           primaryProvider: agentChatProvider,
-          provider,
+          provider: runtimeProvider,
         } = providerRuntime;
+        // A defined Game Master intro (1.339) is the game's first message exactly as set: streamed as written.
+        const definedIntro = await gameIntroNow();
+        const provider =
+          definedIntro?.mode === "defined" ? fixedTextProvider(definedIntro.text, runtimeProvider) : runtimeProvider;
         ({
           temperature,
           maxTokens,
@@ -4387,6 +4422,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           stopSequences,
           effectiveMaxContext,
         } = providerRuntime);
+        // A defined intro is the whole reply as set: no prefill goes before it.
+        if (definedIntro?.mode === "defined") assistantPrefill = "";
 
         const chatConnectionMaxParallelJobs = Number(conn.maxParallelJobs) || 1;
         const chatConnectionKnownModel = findKnownModel(conn.provider as APIProvider, conn.model.trim());
@@ -4693,6 +4730,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               chatId: input.chatId,
               chat,
               chatMetadata: gamePromptMetadata,
+              world: await loadGameWorld(app.db, input.chatId, gamePromptMetadata),
               characterIds,
               chars,
               chats,
@@ -4941,7 +4979,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? worldTown(
                     promptWorld!,
                     visit.settlementId,
-                    worldPresent(promptWorld!, readWorldLedger((await promptRepliesAll()).all)),
+                    worldPresent(promptWorld!, (await promptRepliesAll()).ledger),
                   )?.buildings.find((building) => building.id === visit.to)
                 : undefined;
             if (visited?.placeId && visited.name) {
@@ -4958,7 +4996,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           };
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
-          const promptWorld = gameWorldFromMetadata(chatMeta);
+          const promptWorld = await loadGameWorld(app.db, input.chatId, chatMeta);
           // The people the party has already met (worldgen W2), so the block offers only new ones.
           const promptMet = new Set(
             (Array.isArray(chatMeta.gameNpcs) ? (chatMeta.gameNpcs as GameNpc[]) : []).flatMap((npc) =>
@@ -4968,13 +5006,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // What the story says to the Game Master this turn (worldgen W10): its values, the directions in
           // force, the scene just shown, and what it asks now.
           const promptTurnStory = await turnStory();
-          const promptStoryNow = promptTurnStory
-            ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn)
-            : "";
+          const promptStoryNow = [
+            // A guided intro (1.339), on the reply that opens the game.
+            gameIntroGuidanceText(await gameIntroNow()),
+            promptTurnStory ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn) : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
-                const present = worldPresent(promptWorld, readWorldLedger((await promptRepliesAll()).all));
+                const present = worldPresent(promptWorld, (await promptRepliesAll()).ledger);
                 const before = await promptPlace();
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
@@ -5024,6 +5066,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   input.regenerateMessageId ?? null,
                   undefined,
                   promptMarketBook,
+                  await promptPlace(),
                 )
               : undefined;
           const promptMarket =
@@ -5072,11 +5115,22 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ]),
               )
             : undefined;
+          // A fake's facts are what it truly is, which only the Game Master reads (1.79).
           const promptItemFacts = promptItemBook
             ? Object.fromEntries(
+                promptInventoryStacks.flatMap((stack) =>
+                  [stack.item, stack.truly].flatMap((ref) => {
+                    const known = ref ? promptItemBook.itemOf(ref) : undefined;
+                    return known ? [[known.item, rulesetItemPromptFacts(known.facts)]] : [];
+                  }),
+                ),
+              )
+            : undefined;
+          const promptFakeNames = promptItemBook
+            ? Object.fromEntries(
                 promptInventoryStacks.flatMap((stack) => {
-                  const known = stack.item ? promptItemBook.itemOf(stack.item) : undefined;
-                  return known ? [[known.item, rulesetItemPromptFacts(known.facts)]] : [];
+                  const known = stack.truly ? promptItemBook.itemOf(stack.truly) : undefined;
+                  return known ? [[known.item, known.name]] : [];
                 }),
               )
             : undefined;
@@ -5161,6 +5215,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               })(),
               partyInventory: gameInventoryBags(promptInventoryStacks, promptCharges),
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
+              ...(promptFakeNames && Object.keys(promptFakeNames).length > 0
+                ? { inventoryFakeNames: promptFakeNames }
+                : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
               ...(promptPurses ? { inventoryPurses: promptPurses } : {}),
               ...(promptWhereYouAre
@@ -6464,13 +6521,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         // Create the pipeline (exclude text rewrite agents — they run last,
         // after all other post-processing agents have produced their context).
-        const textRewriteAgents = resolvedAgents.filter(
+        const allTextRewriteAgents = resolvedAgents.filter(
           (a) => a.phase === "post_processing" && resolveAgentResultType(a) === "text_rewrite",
         );
+        // A defined intro (1.339) stays exactly as set: no agent rewrites it; its Game tags still run.
+        const textRewriteAgents = definedIntro?.mode === "defined" ? [] : allTextRewriteAgents;
         const textRewriteRunAgents = mergePairedBuiltInRewriteAgents(textRewriteAgents);
         const textRewritePendingState = getTextRewritePendingState(textRewriteAgents);
         const holdForTextRewrite = shouldHoldForTextRewrite(textRewriteAgents);
-        const textRewriteAgentIds = new Set(textRewriteAgents.map((a) => a.id));
+        const textRewriteAgentIds = new Set(allTextRewriteAgents.map((a) => a.id));
         const lorebookKeeperAgent = resolvedAgents.find((a) => a.type === "lorebook-keeper") ?? null;
         let pipelineAgents = resolvedAgents.filter(
           (a) =>
@@ -7269,7 +7328,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           followUpIteration,
           impersonate: input.impersonate,
-          isGoogleProvider,
+          // Gemini on OpenRouter, NanoGPT or custom also ends on the rewrite instruction. Ending on the AI's reply would
+          // continue that reply into the user's swipe (#7558).
+          isGoogleProvider: isGoogleProvider || isGeminiModel(conn.model),
           regenerateUserMessage,
         });
         if (tailMessages.assistantPrefillInjected) {
@@ -8144,7 +8205,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             providerMacroContext,
             historyMacroProfilesById,
           );
-          if (chatMode === "conversation" && conversationIsGroup && !input.impersonate) {
+          // The group reply format is for the characters' replies. Impersonation and a user-message rewrite write the
+          // user's message, and the rewrite instruction stays last.
+          if (
+            chatMode === "conversation" &&
+            conversationIsGroup &&
+            !input.impersonate &&
+            !tailMessages.googleUserRegenerationInjected
+          ) {
             const turnCharacterName =
               usesIndividualGroupGeneration && groupTurnPromptEnabled && speaksOnlyTargetCharacter && targetCharId
                 ? (charInfo.find((character) => character.id === targetCharId)?.name ?? null)
@@ -8766,17 +8834,32 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (rollRequestAbort?.signal.aborted)
                 result = { ...result, content: fullResponse.slice(roundResponseStart), toolCalls: [] };
 
+              // A tool call the model wrote as text was streamed before the provider recognised
+              // it, and the provider leaves that text out of the result (only the prose around it
+              // stays), as without streaming. Whenever this round's streamed text differs from what the
+              // provider returned (call first or last), take it back out of the reply and the client's
+              // view (#6951); the prose, if any, is written again just below.
+              if (
+                result.toolCalls.length &&
+                fullResponse.length > roundResponseStart &&
+                fullResponse.slice(roundResponseStart) !== (result.content ?? "")
+              ) {
+                fullResponse = fullResponse.slice(0, roundResponseStart);
+                // The earlier rounds can hold roleplay commands the stream filter hid, and the filter
+                // has already consumed this round's text: show the clean text and start it afresh.
+                const roleplayFiltered = chatMode === "roleplay" && !input.impersonate;
+                if (roleplayFiltered)
+                  roleplayCommandStreamFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
+                if (!holdForTextRewrite)
+                  sendSseEvent(reply, {
+                    type: "content_replace",
+                    data: roleplayFiltered ? parseRoleplayCommands(fullResponse).content : fullResponse,
+                  });
+              }
               // If provider doesn't support onToken (fell back to non-streaming),
               // write the content conventionally
               if (result.content && !fullResponse.endsWith(result.content)) {
                 await writeContentChunked(result.content);
-              }
-              // A tool call the model wrote as text was streamed before the provider recognised
-              // it, and the provider leaves that text out of the result, as without streaming.
-              // Take it back out of the reply and the client's view (#6951).
-              if (result.toolCalls.length && !result.content && fullResponse.length > roundResponseStart) {
-                fullResponse = fullResponse.slice(0, roundResponseStart);
-                if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: fullResponse });
               }
 
               // Gemini thought signatures reach this branch as providerMetadata rather than
@@ -9654,7 +9737,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           }
 
-          if (input.trimIncompleteModelOutput && !input.impersonate) {
+          // A defined intro was written, not cut off: it is kept whole.
+          if (input.trimIncompleteModelOutput && !input.impersonate && definedIntro?.mode !== "defined") {
             const beforeTrim = fullResponse;
             fullResponse = trimIncompleteModelEnding(fullResponse);
             if (fullResponse !== beforeTrim) {
@@ -9832,7 +9916,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 },
               });
             }
+            // A defined intro stays as set: its rolls are recorded, its text is not rewritten around them.
             if (
+              definedIntro?.mode !== "defined" &&
               shouldNarrateGameDiceOutcome(
                 chatMeta,
                 Boolean(rolled.resolved || rolled.untrained || generalRolls.rolled),
@@ -10019,10 +10105,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
               : turnKitItems?.definition.items?.market;
-          const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
+          const turnWorld =
+            chatMode === "game" && !input.impersonate ? await loadGameWorld(app.db, input.chatId, chatMeta) : null;
           let turnPresent: WorldPresent | undefined;
+          // The Game Master's replies before this one (a regeneration's before the telling it replaces).
+          let turnReplies: Awaited<ReturnType<typeof gameRepliesBefore>> | undefined;
           if (turnMarket || turnWorld) {
             const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            turnReplies = replies;
             turnPlace = worldPlaceInForce(
               turnWorld,
               lastGamePlace(replies.scoped),
@@ -10041,7 +10131,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const walk = await turnWalkPromise;
               const visit = await turnVisitPromise;
               const visitTown = visit
-                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, readWorldLedger(replies.all)))
+                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, replies.ledger))
                 : null;
               let walkTags = "";
               let visitTags = "";
@@ -10083,7 +10173,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 contentReplaced = true;
               }
               if (storyPrefix) turnShownScenes = storyTurnTold!.turn.shown;
-              const ledger = readWorldLedger(replies.all);
+              const ledger = replies.ledger;
               if (/\[world:/i.test(fullResponse)) {
                 const answered = applyWorldTags(fullResponse, turnWorld, ledger);
                 if (answered !== fullResponse) {
@@ -10211,7 +10301,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // A seller's `only` reads the turn's own live state, as the items this reply uses do.
               const marketDay =
                 rules && turnMarket && !turnKitItems
-                  ? await gameMarketDayFor(app.db, input.chatId, input.regenerateMessageId ?? null, requested, rules)
+                  ? await gameMarketDayFor(
+                      app.db,
+                      input.chatId,
+                      input.regenerateMessageId ?? null,
+                      requested,
+                      rules,
+                      turnPlace,
+                    )
                   : undefined;
               // A fresh market for each reading, as the ruleset's is: a market counts what the reply buys.
               const kitMarket =
@@ -11000,8 +11097,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               data: savedMsg,
             });
           } else if (savedMsg?.id) {
+            // The world-set market place this turn was at (a ruleset's market where the world put the party
+            // and no place tag began a day), saved on the reply so the market day there runs across turns.
+            const marketWorldPlace =
+              chatMode === "game" && turnMarket && !turnKitItems && turnReplies && typeof savedMsg.content === "string"
+                ? gameMarketWorldPlace(turnReplies.scoped, savedMsg.content, turnPlace)
+                : undefined;
             const extraUpdate: Record<string, unknown> = {
               ...(chatMode === "game" ? { gameOutcomeNarrationFailed } : {}),
+              // Set, or cleared on a regeneration at a place a tag named.
+              ...(chatMode === "game" ? { [GAME_MARKET_PLACE_EXTRA]: marketWorldPlace ?? null } : {}),
               ...(gameToolPlan && gameToolConnection
                 ? {
                     gameToolPlanning: {
@@ -11714,6 +11819,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ? input.forCharacterId
               : ((chatMode === "conversation" ? availableGroupCharacters[0]?.id : characterIds[0]) ?? null);
           const sentMessages = [...finalMessages];
+          // A user-message rewrite instruction stays last. A guide ("do not include a reply from {{user}}") after it
+          // can turn the user's swipe into a character's reply.
+          const userRewrite = tailMessages.googleUserRegenerationInjected ? sentMessages.pop() : undefined;
 
           if (generationGuideInstruction) {
             sentMessages.push({ role: "system", content: generationGuideInstruction });
@@ -11755,6 +11863,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               sentMessages.push({ role: "system", content: charInstruction });
             }
           }
+          if (userRewrite) sentMessages.push(userRewrite);
 
           // A merged group generation may voice several characters unless a regen
           // target or a single explicit @mention pins it to exactly one speaker.

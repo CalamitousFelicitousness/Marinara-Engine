@@ -89,6 +89,8 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 2;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 commandCombatDirector(s, {
   type: "tactical",
   action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "boss" },
@@ -163,6 +165,8 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 2;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 s.tactical!.units[1]!.tactics!.adjective = "patient";
 s.tactical!.units[0]!.attack = 1;
 commandCombatDirector(s, {
@@ -201,6 +205,8 @@ s = createCombatDirector({
   seed: 11,
 });
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 for (const [i, u] of s.tactical!.units.entries()) {
   u.x = i + 1;
   u.y = 1;
@@ -235,6 +241,8 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 2;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 s.tactical!.units[1]!.skills.find((k) => k.id === "counter")!.slotLevel = 3;
 s.tactical!.units[1]!.spellSlots = { "3": 1 };
 s.tactical!.units[1]!.mp = 0;
@@ -248,7 +256,8 @@ assert.equal(s.tactical!.units[1]!.spellSlots!["3"], 0);
 assert.equal(s.tactical!.units[1]!.mp, 0);
 commandCombatDirector(s, { type: "choose", candidateId: "pass" });
 assert.equal(s.tactical!.units[1]!.spellSlots!["3"], 0);
-// A wall blocks Counterspell even when ordinary ranged attacks keep their legacy reach.
+// A wall blocks sight (combat C6): the Fireball cannot be cast through it, so no Counterspell answers
+// it and nothing is spent.
 s = make();
 commandCombatDirector(s, { type: "begin", unitId: "hero" });
 commandCombatDirector(s, { type: "choose", candidateId: "pass" }, "gm");
@@ -257,12 +266,100 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 3;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles[1]![2] = "wall";
-commandCombatDirector(s, {
-  type: "tactical",
-  action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "boss" },
-});
-assert.equal(s.window?.kind, "legendary");
-assert.equal(s.enemies[0]!.mp, 30, "blocked reaction never spends MP");
+assert.throws(
+  () =>
+    commandCombatDirector(s, {
+      type: "tactical",
+      action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "boss" },
+    }),
+  /out of sight/,
+);
+assert.notEqual(s.window?.kind, "reaction");
+assert.equal(s.enemies[0]!.mp, 30, "a blocked reaction never spends MP");
+// A reaction needs sight of its target too: a caster caught in a Fireball's blast, but behind a wall from
+// the one who cast it, cannot answer it; in the open it can.
+const witnessed = (walled: boolean) => {
+  const fight = createCombatDirector({
+    id: "enc-sight",
+    anchor: "anchor",
+    party: [{ ...hero, skills: [{ ...fire, areaRadius: 2 }, counter] }],
+    // A plain foe, and a witch who can only react. A boss's reaction waits for the GM, so its window stays
+    // open to be read; with no legendary points it opens no other window.
+    enemies: [
+      unit("foe", "enemy"),
+      { ...unit("witch", "enemy"), skills: [counter], boss: { points: 0, anticipation: false } },
+    ],
+    style: "tactical",
+    gm: true,
+    difficulty: "normal",
+    seed: 42,
+  });
+  commandCombatDirector(fight, { type: "begin", unitId: "hero" });
+  if (fight.window) commandCombatDirector(fight, { type: "choose", candidateId: "pass" }, "gm");
+  const at = (id: string, x: number, y: number) =>
+    Object.assign(
+      fight.tactical!.units.find((u) => u.id === id)!,
+      { x, y },
+    );
+  fight.tactical!.grid.tiles = fight.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+  // A bare board is level ground too: clear the generated foothills (combat C6b).
+  delete fight.tactical!.grid.elevation;
+  at("hero", 1, 1);
+  at("foe", 5, 1);
+  at("witch", 5, 3);
+  if (walled) fight.tactical!.grid.tiles[2]![3] = "wall";
+  commandCombatDirector(fight, {
+    type: "tactical",
+    action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "foe" },
+  });
+  return fight.window?.kind === "reaction" && fight.window.options.some((option) => option.actorId === "witch");
+};
+assert.equal(witnessed(false), true, "the witch in the blast answers a Fireball it sees");
+assert.equal(witnessed(true), false, "and not one cast from behind a wall");
+// A guard is offered only for an ally the blast reaches: one behind a wall from where it lands is safe.
+const guarded = (walled: boolean) => {
+  const fight = createCombatDirector({
+    id: "enc-guard",
+    anchor: "anchor",
+    party: [
+      {
+        ...unit("hero", "player"),
+        skills: [{ ...counter, id: "guard", name: "Interpose", reaction: "guard", spell: false }],
+      },
+      unit("tank", "player"),
+      unit("ally", "player"),
+    ],
+    enemies: [
+      { ...unit("caster", "enemy"), skills: [{ ...fire, areaRadius: 2 }], boss: { points: 0, anticipation: false } },
+    ],
+    style: "tactical",
+    gm: true,
+    difficulty: "normal",
+    seed: 11,
+  });
+  fight.tactical!.grid.tiles = fight.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+  // A bare board is level ground too: clear the generated foothills (combat C6b).
+  delete fight.tactical!.grid.elevation;
+  const at = (id: string, x: number, y: number) =>
+    Object.assign(
+      fight.tactical!.units.find((u) => u.id === id)!,
+      { x, y },
+    );
+  at("hero", 0, 3);
+  at("tank", 1, 1);
+  at("ally", 1, 3);
+  at("caster", 5, 1);
+  if (walled) fight.tactical!.grid.tiles[2]![1] = "wall";
+  commandCombatDirector(fight, { type: "tactical", action: { type: "endTurn" } });
+  const cast = fight.window!.options.find((option) => option.skillName === "Fireball" && option.targetId === "tank")!;
+  commandCombatDirector(fight, { type: "choose", candidateId: cast.id }, "gm");
+  return fight.window?.kind === "reaction" && fight.window.options.some((option) => option.targetId === "ally");
+};
+assert.deepEqual(
+  [guarded(false), guarded(true)],
+  [true, false],
+  "a guard for an ally in the blast, none behind a wall",
+);
 // Depleted MP + no slot gives no reaction, even when the spell would be lethal.
 s = make();
 commandCombatDirector(s, { type: "begin", unitId: "hero" });

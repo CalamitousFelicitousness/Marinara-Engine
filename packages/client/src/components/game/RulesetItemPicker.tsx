@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
+  artIconFor,
   defaultRulesetSheetBuild,
   type RulesetDefinition,
   type RulesetItemBook,
@@ -16,6 +17,7 @@ import {
   type RulesetItemEffectFact,
   type RulesetItemFacts,
 } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { useRulesetCatalog } from "../../hooks/use-capability-packages";
 import {
   CATALOG_FILTER_ANY,
@@ -24,6 +26,7 @@ import {
   filterCatalogEntries,
 } from "../../lib/ruleset-catalog";
 import { Modal } from "../ui/Modal";
+import { GAME_DIALOG_CLASS } from "../../lib/chat-widget-colors";
 
 const inputClass =
   "w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs text-[var(--foreground)]";
@@ -104,14 +107,50 @@ function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction): string[]
   const fourth = [
     attack.offHand ? t("ui.game.gameinventory.attackOffHand", { budget: attack.offHand.budget }) : "",
     attack.floor !== undefined ? t("ui.game.gameinventory.attackFloor", { floor: attack.floor }) : "",
+    ...(attack.plus ?? []).map((clause) =>
+      [
+        t("ui.game.gameinventory.attackPlus", { amount: clause.amount }),
+        clause.type ?? "",
+        clause.against ? t("ui.game.gameinventory.attackPlusAgainst", { what: clause.against.join(", ") }) : "",
+        clause.critical ? t("ui.game.gameinventory.attackPlusCritical") : "",
+        clause.toggled ? t("ui.game.gameinventory.attackPlusToggled", { label: clause.toggled }) : "",
+        clause.save
+          ? t(
+              clause.save.onSuccess === "half"
+                ? "ui.game.gameinventory.attackPlusSaveHalf"
+                : "ui.game.gameinventory.attackPlusSaveNone",
+              { save: clause.save.save, difficulty: clause.save.difficulty },
+            )
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
     ...(attack.onHit ?? []).map((entry) =>
-      entry.rounds !== undefined
-        ? t("ui.game.gameinventory.attackOnHitRounds", {
-            condition: entry.condition,
-            atLeast: entry.atLeast,
-            rounds: entry.rounds,
-          })
-        : t("ui.game.gameinventory.attackOnHit", { condition: entry.condition, atLeast: entry.atLeast }),
+      [
+        entry.rounds !== undefined
+          ? t("ui.game.gameinventory.attackOnHitRounds", {
+              condition: entry.condition,
+              atLeast: entry.atLeast,
+              rounds: entry.rounds,
+            })
+          : t("ui.game.gameinventory.attackOnHit", { condition: entry.condition, atLeast: entry.atLeast }),
+        entry.save
+          ? t("ui.game.gameinventory.attackOnHitSave", { save: entry.save.save, difficulty: entry.save.difficulty })
+          : "",
+        entry.saveEnds
+          ? t(
+              entry.saveEnds.at === "turn-start"
+                ? "ui.game.gameinventory.attackOnHitSaveEndsStart"
+                : entry.saveEnds.at === "damaged"
+                  ? "ui.game.gameinventory.attackOnHitSaveEndsDamaged"
+                  : "ui.game.gameinventory.attackOnHitSaveEndsEnd",
+              { save: entry.saveEnds.save, difficulty: entry.saveEnds.difficulty },
+            )
+          : "",
+      ]
+        .filter(Boolean)
+        .join(", "),
     ),
   ].filter(Boolean);
   return [
@@ -165,6 +204,23 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
         })
       : "",
     use.consumes ? t("ui.game.gameinventory.useConsumes") : "",
+    use.concentration ? t("game.ruleset.catalog.mechanics.concentration") : "",
+    use.zone ? t("ui.game.gameinventory.useZone", { count: use.zone.rounds }) : "",
+    use.ends
+      ? use.ends.count !== undefined && use.ends.count < use.ends.conditions.length
+        ? t("game.ruleset.catalog.mechanics.endsSome", {
+            count: use.ends.count,
+            conditions: use.ends.conditions.join(", "),
+          })
+        : t("game.ruleset.catalog.mechanics.ends", { conditions: use.ends.conditions.join(", ") })
+      : "",
+    use.stabilizes ? t("game.ruleset.catalog.mechanics.stabilizes") : "",
+    use.revives
+      ? t("game.ruleset.catalog.mechanics.revives", {
+          count: use.revives.withinRounds,
+          amount: use.revives.health,
+        })
+      : "",
     use.charges ? t("ui.game.gameinventory.useCharges", { cost: use.charges.cost, max: use.charges.max }) : "",
     use.charges?.recharge
       ? use.charges.recharge.amount === "max"
@@ -207,66 +263,111 @@ function rulesetSheetValueWords(value: { what: string; of?: "modifier" | "items"
     : t("ui.game.gameinventory.requiresItems");
 }
 
-/** What an item does while worn, and while only carried, one line each: "While worn: -1 on Sneak
- *  checks". Empty when it does nothing either way. */
-export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {
-  const phrase = (fact: RulesetItemEffectFact) => {
-    const names = fact.names.join(", ");
-    if ("effect" in fact.change)
-      return t(FIGHT_EFFECT_KEYS[fact.change.effect] ?? "ui.game.gameinventory.effectFight", {
-        effect: fact.change.effect,
-      });
-    if ("hide" in fact.change) {
-      const key =
-        fact.change.hide === "resist"
-          ? "ui.game.gameinventory.effectResist"
-          : fact.change.hide === "vulnerable"
-            ? "ui.game.gameinventory.effectVulnerable"
-            : "ui.game.gameinventory.effectImmune";
-      return t(key, { names });
-    }
-    if ("times" in fact.change) {
-      return t(
-        fact.change.times === 0.5 ? "ui.game.gameinventory.effectSpeedHalf" : "ui.game.gameinventory.effectSpeedDouble",
-      );
-    }
-    if (fact.to === "speed" && "value" in fact.change) {
-      return t("ui.game.gameinventory.effectSpeed", { change: fact.change.value });
-    }
-    if (fact.to === "defense" && "value" in fact.change) {
-      return names
-        ? t("ui.game.gameinventory.effectDefenseNamed", { change: fact.change.value, names })
-        : t("ui.game.gameinventory.effectDefense", { change: fact.change.value });
-    }
-    if ("atLeast" in fact.change) {
-      return t("ui.game.gameinventory.effectAbilitySet", { names, value: fact.change.atLeast });
-    }
-    if (fact.to === "ability" && "value" in fact.change) {
-      return t("ui.game.gameinventory.effectAbilityAdd", { names, change: fact.change.value });
-    }
-    if ("fails" in fact.change) return t("ui.game.gameinventory.effectFailsSaves", { names });
+/** One effect in the player's language, shared by items, sheets and battle details. */
+export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): string {
+  const names = fact.names
+    .map((name, index) =>
+      fact.except?.[index]?.length
+        ? t("game.ruleset.hides.except", { type: name, tags: fact.except[index]!.join(" ") })
+        : name,
+    )
+    .join(", ");
+  if ("effect" in fact.change)
+    return t(FIGHT_EFFECT_KEYS[fact.change.effect] ?? "ui.game.gameinventory.effectFight", {
+      effect: fact.change.effect,
+    });
+  if ("hide" in fact.change) {
+    const key =
+      fact.change.hide === "resist"
+        ? "ui.game.gameinventory.effectResist"
+        : fact.change.hide === "vulnerable"
+          ? "ui.game.gameinventory.effectVulnerable"
+          : "ui.game.gameinventory.effectImmune";
+    return t(key, { names });
+  }
+  if (fact.damage) {
+    const scope = [
+      fact.damage.attacks && fact.damage.attacks !== "any"
+        ? t(`ui.game.gameinventory.damageAttack.${fact.damage.attacks}`)
+        : "",
+      fact.damage.blow ? t(`ui.game.gameinventory.damageBlow.${fact.damage.blow}`) : "",
+      fact.damage.ability ? t("ui.game.gameinventory.damageAbility", { name: fact.damage.ability }) : "",
+      fact.damage.type,
+      fact.damage.fromSource ? t("ui.game.gameinventory.damageSource") : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
     const change =
-      "mode" in fact.change
-        ? t(
-            fact.change.mode === "advantage"
-              ? "ui.game.gameinventory.effectAdvantage"
-              : "ui.game.gameinventory.effectDisadvantage",
-          )
-        : fact.change.value;
-    if (fact.to === "checks") {
-      return names
-        ? t("ui.game.gameinventory.effectOnNamedChecks", { change, names })
-        : t("ui.game.gameinventory.effectOnChecks", { change });
-    }
-    if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
+      "times" in fact.change
+        ? t(fact.change.times === 0.5 ? "ui.game.gameinventory.damageHalf" : "ui.game.gameinventory.damageDouble")
+        : "value" in fact.change
+          ? fact.change.value
+          : "";
+    return (
+      t(fact.to === "damage-taken" ? "ui.game.gameinventory.damageTaken" : "ui.game.gameinventory.damageDealt", {
+        change,
+      }) + (scope ? ` (${scope})` : "")
+    );
+  }
+  if (fact.to === "health-max") return t("ui.game.gameinventory.effectHealthMaxHalf");
+  if ("times" in fact.change) {
+    return t(
+      fact.change.times === 0.5 ? "ui.game.gameinventory.effectSpeedHalf" : "ui.game.gameinventory.effectSpeedDouble",
+    );
+  }
+  if (fact.to === "speed" && "value" in fact.change) {
+    return t("ui.game.gameinventory.effectSpeed", { change: fact.change.value });
+  }
+  if (fact.to === "defense" && "value" in fact.change) {
     return names
-      ? t("ui.game.gameinventory.effectOnNamedSaves", { change, names })
-      : t("ui.game.gameinventory.effectOnSaves", { change });
-  };
+      ? t("ui.game.gameinventory.effectDefenseNamed", { change: fact.change.value, names })
+      : t("ui.game.gameinventory.effectDefense", { change: fact.change.value });
+  }
+  if ("atLeast" in fact.change) {
+    return t("ui.game.gameinventory.effectAbilitySet", { names, value: fact.change.atLeast });
+  }
+  if (fact.to === "ability" && "value" in fact.change) {
+    return t("ui.game.gameinventory.effectAbilityAdd", { names, change: fact.change.value });
+  }
+  if ("fails" in fact.change) return t("ui.game.gameinventory.effectFailsSaves", { names });
+  const change =
+    "mode" in fact.change
+      ? t(
+          fact.change.mode === "advantage"
+            ? "ui.game.gameinventory.effectAdvantage"
+            : "ui.game.gameinventory.effectDisadvantage",
+        )
+      : fact.change.value;
+  if (fact.to === "checks") {
+    return names
+      ? t("ui.game.gameinventory.effectOnNamedChecks", { change, names })
+      : t("ui.game.gameinventory.effectOnChecks", { change });
+  }
+  if (fact.to === "attacks") return t("ui.game.gameinventory.effectOnAttacks", { change });
+  if (fact.to === "attacks-taken") return t("ui.game.gameinventory.effectOnAttacksTaken", { change });
+  if (fact.to === "save-difficulty") return t("ui.game.gameinventory.effectSaveDifficulty", { change });
+  if (fact.to === "checks-taken") {
+    return names
+      ? t("ui.game.gameinventory.effectOnNamedChecksTaken", { change, names })
+      : t("ui.game.gameinventory.effectOnChecksTaken", { change });
+  }
+  const save = names
+    ? t("ui.game.gameinventory.effectOnNamedSaves", { change, names })
+    : t("ui.game.gameinventory.effectOnSaves", { change });
+  if (!fact.against) return save;
+  const against = [...fact.against.names, ...(fact.against.magic ? [t("ui.game.gameinventory.effectMagic")] : [])].join(
+    t("ui.game.gameinventory.effectAgainstOr"),
+  );
+  return t("ui.game.gameinventory.effectAgainst", { effect: save, against });
+}
+
+export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {
+  const phrase = (fact: RulesetItemEffectFact) => rulesetEffectPhrase(fact, t);
   const useLine = rulesetItemUseLine(facts, t);
   return [
     ...rulesetItemAttackLines(facts, t),
     ...(useLine ? [useLine] : []),
+    ...(facts.toggle ? [t("ui.game.gameinventory.toggleLine", { ...facts.toggle })] : []),
     ...(["worn", "carried"] as const).flatMap((when) =>
       facts[when]?.length
         ? [
@@ -360,6 +461,7 @@ export function RulesetItemPicker({
       title={t("game.ruleset.items.pickerTitle")}
       width="max-w-2xl"
       mobileFullscreen
+      panelClassName={GAME_DIALOG_CLASS}
       initialFocusRef={searchRef}
       contentClassName="flex flex-col"
     >
@@ -453,6 +555,14 @@ export function RulesetItemPicker({
                   />
                   <span className="min-w-0 flex-1 space-y-1">
                     <span className="flex flex-wrap items-center gap-1.5">
+                      <ArtIcon
+                        ids={[
+                          each.entry.icon,
+                          artIconFor({ catalog: each.catalogId, entry: each.entry.id, item: true }),
+                          artIconFor({ item: each.name }),
+                        ]}
+                        className="h-5 w-5"
+                      />
                       <span className="text-xs font-medium text-[var(--foreground)]">{each.name}</span>
                       {kind.map((word) => (
                         <span key={word} className={chipClass}>

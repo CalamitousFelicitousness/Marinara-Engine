@@ -16,10 +16,13 @@ import {
   type RulesetListColumn,
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
+import { rulesetCheckSources, rulesetHideLines } from "./check-effects.js";
+import { rulesetItemEffectFacts, rulesetItemEffectText } from "./item-book.js";
 import { readRulesetLive } from "./live-state.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import {
   evaluateRulesetSheet,
+  resolveRulesetAbilityValues,
   formatRulesetCheckValue,
   isRulesetItemHidden,
   rulesetSectionGroups,
@@ -34,7 +37,7 @@ const MAX_LIST_NAMES = 40;
 /** Sheet values are written by players and, through the note command, by the model itself, and
  *  the block they land in is wrapped in a tag in the prompt. Brackets and braces could forge a
  *  command or a macro; angle brackets could close that tag and speak as the Engine. */
-function safeValue(value: string): string {
+function safeValue(value: string, maxLength = MAX_VALUE_LENGTH): string {
   return (
     value
       // Control characters AND the Unicode line and paragraph separators: either kind would start a
@@ -43,7 +46,7 @@ function safeValue(value: string): string {
       .replace(/[{}[\]<>]/g, "")
       .replace(/\s{2,}/g, " ")
       .trim()
-      .slice(0, MAX_VALUE_LENGTH)
+      .slice(0, maxLength)
   );
 }
 
@@ -192,8 +195,25 @@ export function renderRulesetSheetBlock(
   // fact the narration needs every turn, where a track at its default is the absence of one.
   push(live.states.map((state) => `${state.label} ${safeValue(state.valueLabel)}`).join(", "));
 
+  for (const source of rulesetCheckSources(definition, build, stored, items)) {
+    const facts = rulesetItemEffectFacts(definition, {
+      modifiers: source.modifiers?.filter((one) => one.against),
+      saves: source.saves ? [...source.saves] : undefined,
+    });
+    if (facts.length) push(`${safeValue(source.name)}: ${facts.map(rulesetItemEffectText).join("; ")}`);
+  }
+
   const conditions = live.conditions.flatMap((condition) => (condition.active ? [condition.label] : []));
   if (conditions.length > 0) push(`Conditions: ${conditions.join(", ")}`);
+  for (const source of rulesetCheckSources(definition, build, stored, items)) {
+    const modifiers = source.modifiers?.filter((one) => one.to === "damage");
+    if (modifiers?.length)
+      push(
+        `${safeValue(source.name)}: ${rulesetItemEffectFacts(definition, { modifiers })
+          .map((fact) => safeValue(rulesetItemEffectText(fact)))
+          .join("; ")}`,
+      );
+  }
 
   for (const entry of gm.sheetSummary.lists) {
     const list = sheet.lists.find((candidate) => candidate.id === entry.list);
@@ -233,7 +253,17 @@ export function renderRulesetSheetBlock(
       const check = mechanics?.check
         ? ` (check: ${JSON.stringify(mechanics.check)}${cost ? `; pool cost: ${cost}` : ""}${scale})`
         : "";
-      const describedName = (beside ? `${name} ${beside}` : name) + check;
+      const spellcasting = (definition.combat?.abilities ?? [])
+        .filter((source) => source.list === list.id && source.byColumn)
+        .flatMap((source) => {
+          const values = resolveRulesetAbilityValues(definition, build, source, row, evaluated);
+          return [
+            ...(values.toHitRef ? [`attack ${values.toHit >= 0 ? "+" : ""}${values.toHit}`] : []),
+            ...(values.saveDifficulty !== undefined ? [`save DC ${values.saveDifficulty}`] : []),
+          ];
+        })
+        .join(", ");
+      const describedName = (beside ? `${name} ${beside}` : name) + check + (spellcasting ? ` (${spellcasting})` : "");
       const group = entry.groupBy === undefined ? "" : cellText(own(row as Record<string, unknown>, entry.groupBy));
       const bucket = groups.get(group);
       if (bucket) bucket.push(describedName);
@@ -248,5 +278,7 @@ export function renderRulesetSheetBlock(
     );
   }
 
+  for (const line of rulesetHideLines(definition, rulesetCheckSources(definition, build, stored, items)))
+    push(safeValue(line, 4000));
   return lines.join("\n");
 }

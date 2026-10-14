@@ -118,6 +118,18 @@ function requireOneHideComparison(node) {
   }
 }
 
+// A condition's size change is at least one step, up or down (1.195), another refinement. Found by
+// its shape: an object of `steps` alone, from -5 to 5.
+function refuseNoSizeStep(node) {
+  if (Array.isArray(node)) return node.forEach(refuseNoSizeStep);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(refuseNoSizeStep);
+  const steps = node.properties?.steps;
+  if (node.type === "object" && steps?.type === "integer" && steps.minimum === -5 && steps.maximum === 5) {
+    steps.not = { const: 0 };
+  }
+}
+
 // A sheet item's `hideWhen` compares its field exactly one way too: equals, notEquals or in. Found
 // by its shape: `field` beside all three.
 function requireOneHideWhenComparison(node) {
@@ -155,15 +167,19 @@ function enumTableShape(node) {
   properties.table.maxProperties = 40;
 }
 
-// What winning a contest does is at least one thing: it applies, ends or pushes. A refinement, so the
-// editor is told here. Found by its shape: the three side by side.
+// What winning a contest does is at least one thing: it applies, ends, pushes or stabilizes (1.193). A
+// refinement, so the editor is told here. Found by its shape: the first three side by side. A contest
+// is rolled against a defender or a fixed difficulty (1.193), exactly one: found by the two side by side.
 function contestDoesSomething(node) {
   if (Array.isArray(node)) return node.forEach(contestDoesSomething);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(contestDoesSomething);
   const properties = node.properties;
+  if (node.type === "object" && properties?.defender && properties.difficulty && properties.attacker) {
+    node.allOf = [...(node.allOf ?? []), { oneOf: [{ required: ["defender"] }, { required: ["difficulty"] }] }];
+  }
   if (node.type !== "object" || !properties?.applies || !properties.ends || !properties.push) return;
-  requireAnyOf(node, ["applies", "ends", "push"]);
+  requireAnyOf(node, ["applies", "ends", "push", ...(properties.stabilizes ? ["stabilizes"] : [])]);
 }
 
 // A rest step's `to` is a word only on a state, where it is "default" or one of the state's values;
@@ -183,6 +199,26 @@ function restStepTo(node) {
       else: { properties: { to: { anyOf: [{ enum: ["max", "min"] }, { type: "integer" }] } } },
     },
   ];
+}
+
+// Senses an effect needs or a condition takes away cannot be named twice (1.127).
+function uniqueCombatSenses(node) {
+  if (Array.isArray(node)) return node.forEach(uniqueCombatSenses);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(uniqueCombatSenses);
+  for (const key of ["needs", "lacks"]) {
+    if (node.properties?.[key]?.type === "array") node.properties[key].uniqueItems = true;
+  }
+}
+
+// A condition cannot name the same ending twice (1.125).
+function uniqueConditionEndings(node) {
+  if (Array.isArray(node)) return node.forEach(uniqueConditionEndings);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(uniqueConditionEndings);
+  if (node.type === "object" && node.properties?.condition && node.properties.endsWhen) {
+    node.properties.endsWhen.uniqueItems = true;
+  }
 }
 
 // A condition that lasts until a save needs the save that ends it, or nothing would ever take it
@@ -205,6 +241,31 @@ function cancelOnlyWhenAimed(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(cancelOnlyWhenAimed);
   const keys = Object.keys(node.properties ?? {}).filter((key) => key !== "$comment");
+  // Falls have no source entry, including when taken as an additional moment (1.124).
+  if (node.type === "object" && ["on", "against", "blow", "seesSource"].every((key) => keys.includes(key))) {
+    node.allOf = [
+      ...(node.allOf ?? []),
+      {
+        if: { properties: { on: { const: "falls" } }, required: ["on"] },
+        then: { not: { anyOf: ["cancels", "blow", "seesSource", "against"].map((key) => ({ required: [key] })) } },
+      },
+    ];
+  }
+  if (node.type === "object" && ["on", "for", "within"].every((key) => keys.includes(key))) {
+    node.allOf = [
+      ...(node.allOf ?? []),
+      {
+        if: { properties: { for: { enum: ["ally", "any"] } }, required: ["for"] },
+        then: { required: ["within"], properties: { on: { enum: ["aimed", "hit"] } } },
+      },
+      {
+        if: { properties: { on: { const: "turn-start" } }, required: ["on"] },
+        then: { not: { anyOf: ["cancels", "blow", "against", "upTo"].map((key) => ({ required: [key] })) } },
+      },
+    ];
+    if (keys.includes("cancelSave"))
+      node.allOf.push({ if: { required: ["cancelSave"] }, then: { required: ["cancels"] } });
+  }
   if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
     // Only a moment BEFORE something resolves may call it off.
     node.if = { required: ["cancels"] };
@@ -223,16 +284,25 @@ function modifierSaysSomething(node) {
   Object.values(node).forEach(modifierSaysSomething);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
-  requireAnyOf(node, ["flat", "dice", "times", "mode"]);
+  requireAnyOf(node, ["flat", "dice", "times", "diceTimes", "mode"]);
+  if (properties.against) requireAnyOf(properties.against, ["conditions", "damage", "magic"]);
   properties.flat = { ...properties.flat, not: { const: 0 } };
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { required: ["dice"] }, then: { properties: { to: { enum: [...RULESET_ROLLED_MODIFIER_TARGETS] } } } },
-    { if: { required: ["times"] }, then: { properties: { to: { const: "speed" } } } },
+    {
+      if: { required: ["times"] },
+      then: { properties: { to: { enum: ["speed", "health-max", "damage", "damage-taken"] } } },
+    },
+    ...["attacks", "blow", "ability", "damageType", "fromSource"].map((key) => ({
+      if: { required: [key] },
+      then: { properties: { to: { enum: key === "fromSource" ? ["damage-taken"] : ["damage", "damage-taken"] } } },
+    })),
     { if: { required: ["minus"] }, then: { required: ["dice"] } },
     { if: { required: ["mode"] }, then: { properties: { to: { enum: ["checks", "saves"] } } } },
     { if: { required: ["skills"] }, then: { properties: { to: { const: "checks" } } } },
     { if: { required: ["saves"] }, then: { properties: { to: { const: "saves" } } } },
+    { if: { required: ["against"] }, then: { properties: { to: { const: "saves" } } } },
   ];
 }
 
@@ -312,6 +382,8 @@ const SEQUENCE_CARRIES_NOTHING = [
   "toHit",
   "autoHit",
   "damage",
+  "heal",
+  "targets",
   "save",
   "saveDifficulty",
   "applies",
@@ -333,6 +405,7 @@ function creatureActionShape(node) {
     !properties.self
   )
     return;
+  properties.heal.anyOf = [{ required: ["dice"] }, { required: ["flat"] }];
   node.allOf = [
     ...(node.allOf ?? []),
     {
@@ -341,6 +414,14 @@ function creatureActionShape(node) {
     },
     { if: { required: ["self"] }, then: { not: { anyOf: [{ required: ["targetCount"] }, { required: ["area"] }] } } },
     { if: { required: ["reaction"] }, then: { not: { required: ["signature"] } } },
+    {
+      if: { required: ["heal"] },
+      then: { not: { anyOf: ["damage", "toHit", "save", "area"].map((key) => ({ required: [key] })) } },
+    },
+    {
+      if: { required: ["targets"] },
+      then: { not: { anyOf: ["self", "sequence"].map((key) => ({ required: [key] })) } },
+    },
   ];
 }
 
@@ -356,12 +437,24 @@ function oneSourceForCreature(node) {
   Object.values(node).forEach(oneSourceForCreature);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.sheet || !properties.actions || !properties.tier) return;
+  const casting = properties.spellcasting;
+  casting.properties.spells.uniqueItems = true;
+  casting.allOf = [
+    {
+      if: { required: ["coven"] },
+      then: { properties: { spells: { contains: { required: ["coven"] } } } },
+      else: { properties: { spells: { items: { not: { required: ["coven"] } } } } },
+    },
+  ];
   node.allOf = [
     ...(node.allOf ?? []),
     {
       if: { required: ["sheet"] },
       then: { not: { anyOf: CREATURE_SHEET_REPLACES.map((key) => ({ required: [key] })) } },
-      else: { required: [...CREATURE_PLAIN_NEEDS, "actions"], properties: { actions: { minItems: 1 } } },
+      else: {
+        required: CREATURE_PLAIN_NEEDS,
+        anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }],
+      },
     },
   ];
 }
@@ -369,7 +462,7 @@ function oneSourceForCreature(node) {
 // A creature action's damage, and every clause beside it, names dice, a flat amount, or both: an
 // empty one is refused by the Engine, and that too is a refinement. The node is found by its shape:
 // `dice`, `flat` and `type`, and nothing but the keys a blow or a clause carries.
-const DAMAGE_KEYS = ["dice", "flat", "type", "plus", "save"];
+const DAMAGE_KEYS = ["dice", "flat", "type", "plus", "save", "qualities", "alternatives", "targetIs", "when"];
 function requireDamageAmount(node) {
   if (Array.isArray(node)) return node.forEach(requireDamageAmount);
   if (!node || typeof node !== "object") return;
@@ -380,7 +473,11 @@ function requireDamageAmount(node) {
   // A rider's amount carries no type of its own, so its keys alone look like every other pair of
   // dice and flat in the file, a creature's health included. The schema marks it by name instead.
   const riderAmountShaped = node.description === "rider-amount";
-  if (node.type === "object" && (damageShaped || riderAmountShaped)) {
+  // An amount a blow deals instead (1.102) is `when` beside dice and flat, and nothing else.
+  const alternativeShaped =
+    ["when", "dice", "flat"].every((key) => keys.includes(key)) &&
+    keys.every((key) => ["when", "dice", "flat"].includes(key));
+  if (node.type === "object" && (damageShaped || riderAmountShaped || alternativeShaped)) {
     requireAnyOf(node, ["dice", "flat"]);
   }
 }
@@ -398,6 +495,7 @@ function requireDistanceForMeasured(node) {
     ...(node.dependencies ?? {}),
     ranged: ["distance"],
     cover: ["distance"],
+    elevation: ["distance"],
     opportunity: ["distance"],
   };
   // A weapon list that gives its rows a reach or a range is measured in cells too.
@@ -480,10 +578,22 @@ function soakSaysSomething(node) {
   requireAnyOf(node, ["all", "byKind"]);
 }
 
+// What a wall's broken section deals (1.200) names dice or a flat number, and its `onSave` its save.
+// Found by its shape: `triggers`, `amount` and `onSave` together, wherever a zone sits.
+function brokenSectionRules(node) {
+  if (Array.isArray(node)) return node.forEach(brokenSectionRules);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(brokenSectionRules);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.triggers || !properties.amount || !properties.onSave) return;
+  requireAnyOf(properties.amount, ["dice", "flat"]);
+  node.allOf = [...(node.allOf ?? []), { if: { required: ["onSave"] }, then: { required: ["save"] } }];
+}
+
 /**
- * Two rules a catalog entry's mechanics keep that the shape alone does not say: an entry of the
- * kind `rider` has to carry the `rider` that describes it, and something `free` spends no budget so
- * it names none. Zod refuses both at import; an author's editor should refuse them while typing.
+ * Rules a catalog entry's mechanics keep that the shape alone does not say: riders carry their
+ * rider, free actions name no budget, and summons belong to attacks against enemies. Zod refuses
+ * anything else at import; an author's editor should refuse it while typing.
  */
 function requireMechanicsPairs(node) {
   if (Array.isArray(node)) return node.forEach(requireMechanicsPairs);
@@ -491,10 +601,20 @@ function requireMechanicsPairs(node) {
   Object.values(node).forEach(requireMechanicsPairs);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.kind || !properties.rider || !properties.free) return;
+  // A health pool (1.196) names dice or a flat number.
+  if (properties.healthPool) requireAnyOf(properties.healthPool, ["dice", "flat"]);
+  if (properties.healthPoolSkips) requireAnyOf(properties.healthPoolSkips, ["conditions", "unseeing"]);
+  // A track is moved by at least one level (1.201).
+  const by = properties.tracks?.items?.properties?.by;
+  if (by) by.not = { const: 0 };
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { properties: { kind: { const: "rider" } }, required: ["kind"] }, then: { required: ["rider"] } },
     { not: { required: ["free", "budget"] } },
+    {
+      if: { required: ["summons"] },
+      then: { properties: { kind: { const: "attack" }, targets: { const: "enemy" } } },
+    },
   ];
 }
 
@@ -593,17 +713,46 @@ function spendOnlyOnAPool(node) {
   if (kind !== undefined && kind !== "dice-pool") delete properties.spend;
 }
 
+// Only a line may carry a width. The refinement cannot be generated, so the editor is told here.
+function widthOnlyOnALine(node) {
+  if (Array.isArray(node)) return node.forEach(widthOnlyOnALine);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(widthOnlyOnALine);
+  if (node.type !== "object" || !node.properties?.shape || !node.properties.width) return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    { if: { required: ["width"] }, then: { properties: { shape: { const: "line" } } } },
+  ];
+}
+
+// Step stamps and per-column spellcasting tables have bounded keys, which Zod refines at import.
+function boundSpellcastingRecords(node) {
+  if (Array.isArray(node)) return node.forEach(boundSpellcastingRecords);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(boundSpellcastingRecords);
+  const properties = node.properties;
+  if (properties?.stamp && properties.catalog) Object.assign(properties.stamp, { minProperties: 1, maxProperties: 4 });
+  if (properties?.column && properties.values?.additionalProperties?.properties?.toHit) {
+    Object.assign(properties.values, { minProperties: 1, maxProperties: 20 });
+  }
+}
+
 const schema = zodToJsonSchema(rulesetDefinitionSchema, { $refStrategy: "none", target: "jsonSchema7" });
+boundSpellcastingRecords(schema);
 requireLevelsWithKinds(schema);
 requireSpendBuysSomething(schema);
 requireCheckEffectDoesSomething(schema);
 requireFaceRuleSaysSomething(schema);
 spendOnlyOnAPool(schema);
 requireMechanicsPairs(schema);
+brokenSectionRules(schema);
 requireOneCatalogSource(schema);
 requireOneEntryContent(schema);
 requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
+uniqueConditionEndings(schema);
+uniqueCombatSenses(schema);
+widthOnlyOnALine(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);
 creatureActionShape(schema);
@@ -619,6 +768,7 @@ soakSaysSomething(schema);
 boundScaledColumns(schema);
 requireOneHideComparison(schema);
 requireOneHideWhenComparison(schema);
+refuseNoSizeStep(schema);
 readOnlyWithLiveTrack(schema);
 enumTableShape(schema);
 restStepTo(schema);

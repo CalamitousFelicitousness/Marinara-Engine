@@ -15,10 +15,12 @@ import {
   WORLD_DEFAULT_BATTLEFIELDS,
   gameWorldBattlefields,
   worldSceneLike,
+  type CombatItemEffect,
 } from "@marinara-engine/shared";
 import {
   applyGameInventoryChangeHeld,
   loadGameFightItems,
+  loadGameFightUseEffects,
   loadGameInventoryItemBook,
 } from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
@@ -102,6 +104,10 @@ const directedCombatantFields = z.object({
   id: key,
   name: z.string().min(1).max(200),
   side: z.enum(["player", "enemy"]),
+  /** Caught unaware as the fight begins (1.237): read by a ruleset fight only. */
+  surprised: z.boolean().optional(),
+  /** Fights in its own lair (1.315): read by a ruleset fight only. */
+  inLair: z.boolean().optional(),
   hp: num,
   maxHp: num.min(1),
   mp: num.optional(),
@@ -208,6 +214,23 @@ const command = z.discriminatedUnion("type", [
      *  the menu by the resolver; this only bounds them to a board's own size. */
     to: coord.optional(),
     at: coord.optional(),
+    /** How a wall is laid (1.177) and where further copies go (1.178), checked by the resolver. */
+    toward: coord.optional(),
+    side: z.enum(["near", "far"]).optional(),
+    ring: z.boolean().optional(),
+    also: z.array(coord).max(9).optional(),
+    /** A wall's section struck at instead of a creature (1.200), checked by the resolver. */
+    wall: coord.optional(),
+    /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */
+    carries: z.array(key).max(8).optional(),
+    /** How many uses it spends (1.251), checked against the menu by the resolver. */
+    amount: z.number().int().min(1).max(1000).optional(),
+    /** The alterations it is used with (1.253), checked against the action by the resolver. */
+    alters: z.array(z.string().min(1).max(200)).max(8).optional(),
+    /** Who of its user's side it spares (1.254), checked against the alterations by the resolver. */
+    spares: z.array(z.string().min(1).max(200)).max(20).optional(),
+    /** Who it heightens (1.255), checked against the alterations by the resolver. */
+    heightens: z.string().min(1).max(200).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
   z.object({ type: z.literal("continue") }),
@@ -689,6 +712,8 @@ export async function combatDirectorRoutes(
         environment: z.string().max(80).optional(),
         formation: z.string().max(80).optional(),
         battlefield: z.unknown().optional(),
+        /** The board pack a ruleset fight is drawn with (1.333), by library id. */
+        boardPack: z.string().max(80).optional(),
         /** Whether a ruleset fight is fought on a board, which is what the game's Tactical combat
          *  preference asks for. The ruleset still has to say what a cell is worth. */
         positioned: z.boolean().optional(),
@@ -823,6 +848,10 @@ export async function combatDirectorRoutes(
           seed: battlefield.seed,
           battlefield: here ? undefined : battlefield.battlefield,
           ...(here ? { made: here } : {}),
+          // One unit at a time in a rolled order, when the game says so (combat C6c).
+          ...((meta.gameTacticalTurnOrder ?? setup.tacticalTurnOrder) === "initiative"
+            ? { turnOrder: "initiative" as const }
+            : {}),
         });
         let session: RulesetSession | null = null;
         if (input.style === "ruleset" && resolved) {
@@ -835,7 +864,7 @@ export async function combatDirectorRoutes(
           const personaId = chat.personaId || setupPersonaId;
           const persona = personaId ? await createCharactersStorage(app.db).getPersona(personaId) : null;
           const cards = meta.gameCharacterCards;
-          const builds = rulesetSheetBuildsByName(cards, persona?.name ?? null);
+          const builds = rulesetSheetBuildsByName(definition, cards, persona?.name ?? null);
           const itemBook = rulesetReadsItems(definition)
             ? await loadGameInventoryItemBook(app.db, { metadata: meta, resolved }, "player")
             : undefined;
@@ -855,12 +884,15 @@ export async function combatDirectorRoutes(
               return build ? rulesetCatalogIdsForBuild(definition, build) : [];
             }),
           );
+          // One read of the visible game state, for both its live sheets and its time of day.
+          const liveRow = (await visibleLiveRow(input.chatId)).row;
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
             positioned: input.positioned === true,
             environment: environment ?? null,
             formation: input.formation ?? null,
+            ...(input.boardPack ? { pack: input.boardPack } : {}),
             ...(here ? { made: here } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),
             enemies: input.enemies.map((enemy) => ({
@@ -874,11 +906,17 @@ export async function combatDirectorRoutes(
             })),
             cards,
             playerName: persona?.name ?? null,
-            live: parseStoredRulesetLive((await visibleLiveRow(input.chatId)).row?.rulesetLive),
+            live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
+            // Who the scene caught unaware (1.237).
+            surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
+            // Who fights in its own lair (1.315).
+            inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
+            // The scene's time of day, for the light it is fought in (1.291).
+            time: liveRow?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
           state.rulesetFight = built.fight;
@@ -989,6 +1027,15 @@ export async function combatDirectorRoutes(
           const who = state.party.find((unit) => unit.id === used!.unitId)?.name ?? "";
           const gate = await rollGameFightItemGate(app.db, input.chatId, who, usedLine.item);
           if (gate && !gate.success) (used!.action as { failed?: string }).failed = gate.line;
+        }
+        // A use that comes out of a fake does what the fake truly does (1.79); the fight lists it as what
+        // it passes for, so only the stack it is spent from says so.
+        const usedEffect = usedLine && state.itemEffects.find((effect) => effect.name === usedLine.name);
+        if (usedLine && usedEffect) {
+          const chat = await chats.getById(input.chatId);
+          const uses = chat ? await loadGameFightUseEffects(app.db, JSON.parse(chat.metadata || "{}")) : null;
+          const truly = uses?.effectOf(usedLine.ownName ?? usedLine.name, usedEffect);
+          if (truly && truly !== usedEffect) (used!.action as { truly?: CombatItemEffect }).truly = truly;
         }
         const refused = step(input.command as DirectedCommand);
         // A refusal changed nothing, so nothing is saved and no request id is spent on it.

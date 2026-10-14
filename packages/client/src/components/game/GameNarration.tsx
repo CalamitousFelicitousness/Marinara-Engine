@@ -1,6 +1,8 @@
 // ──────────────────────────────────────────────
 // Game: Narration Area (VN-style segmented box)
 // ──────────────────────────────────────────────
+import { artPortraitFor } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import {
   useEffect,
   useLayoutEffect,
@@ -65,7 +67,7 @@ import { useGameModeStore } from "../../stores/game-mode.store";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { parseChatMetadata } from "../../lib/chat-display";
-import { CHARACTER_COLOR_CLASS } from "../../lib/chat-widget-colors";
+import { CHARACTER_COLOR_CLASS, GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
 import { isVisibleGameMessage } from "../../lib/chat-message-visibility";
 import { readDiceRollResults } from "../../lib/dice-roll-result";
@@ -93,8 +95,10 @@ import {
 import { applyGameDiceMarkers, formatGameDiceModifier, formatGameDiceRolls } from "../../lib/game-dice-markers";
 import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
 import { MESSAGE_SELECTION_SURFACE_CLASS } from "../chat/message-selection-styles";
+import { HISTORY_PAGER_BUTTON_CLASS } from "../chat/TranscriptWindowControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { formatNarration } from "./game-narration-format";
+import { publishAvatarGameLine } from "../../features/avatars/director/game-line-feed";
 import {
   CroppedAvatar,
   ExpressionReaction,
@@ -3184,6 +3188,11 @@ export function GameNarration({
     onActiveSpeakerChange(next);
   }, [active, speakerAvatarInfos, spriteMap, onActiveSpeakerChange]);
 
+  // Avatars show the line on screen with the Game Master's expression for it (not while reviewing past turns).
+  useEffect(() => {
+    if (messageOffset === 0) publishAvatarGameLine(latestAssistant?.chatId ?? null, active);
+  }, [active, latestAssistant?.chatId, messageOffset]);
+
   // How many segments are prepended before the actual GM narration segments
   const playerSegmentOffset = latestUserMessage?.content && latestAssistant ? 1 : 0;
 
@@ -3913,7 +3922,7 @@ export function GameNarration({
   const NARRATION_META_BTN =
     "mari-chat-style-control mari-game-meta flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10";
   const NARRATION_COUNT_BADGE =
-    "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 dark:bg-white/90 dark:text-black dark:ring-black/20";
+    "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 [-webkit-text-fill-color:currentColor] dark:bg-white/90 dark:text-black dark:ring-black/20";
   const ACTIVE_SEGMENT_ACTION_BTN =
     "mari-chat-style-control mari-game-active-action inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
   const LOG_SEGMENT_ACTION_BTN =
@@ -5259,13 +5268,21 @@ export function GameNarration({
                                   }
                                 />
                               ) : (
-                                <img
-                                  src="/npc-silhouette.svg"
-                                  alt={active.speaker || "?"}
-                                  className={cn(
-                                    GAME_DIALOGUE_AVATAR_CLASS,
-                                    "object-cover transition-colors hover:border-white/30",
-                                  )}
+                                <ArtIcon
+                                  kind="portraits"
+                                  ids={[artPortraitFor(active.speaker ?? "", active.sprite)]}
+                                  label={active.speaker || undefined}
+                                  className={GAME_DIALOGUE_AVATAR_CLASS}
+                                  fallback={
+                                    <img
+                                      src="/npc-silhouette.svg"
+                                      alt={active.speaker || "?"}
+                                      className={cn(
+                                        GAME_DIALOGUE_AVATAR_CLASS,
+                                        "object-cover transition-colors hover:border-white/30",
+                                      )}
+                                    />
+                                  }
                                 />
                               )}
                             </button>
@@ -5305,10 +5322,18 @@ export function GameNarration({
                             }
                           />
                         ) : (
-                          <img
-                            src="/npc-silhouette.svg"
-                            alt={active.speaker || "?"}
-                            className={cn(GAME_DIALOGUE_AVATAR_CLASS, "object-cover")}
+                          <ArtIcon
+                            kind="portraits"
+                            ids={[artPortraitFor(active.speaker ?? "", active.sprite)]}
+                            label={active.speaker || undefined}
+                            className={GAME_DIALOGUE_AVATAR_CLASS}
+                            fallback={
+                              <img
+                                src="/npc-silhouette.svg"
+                                alt={active.speaker || "?"}
+                                className={cn(GAME_DIALOGUE_AVATAR_CLASS, "object-cover")}
+                              />
+                            }
                           />
                         )}
                         <ExpressionReaction expression={active.sprite} />
@@ -5646,7 +5671,11 @@ export function GameNarration({
           {...logsBackdropDismiss}
         >
           <div
-            className="relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-white/15 bg-[var(--card)] shadow-2xl"
+            data-game-section="logs"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-white/15 bg-[var(--card)] shadow-2xl",
+            )}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
@@ -5673,7 +5702,7 @@ export function GameNarration({
                     <button
                       type="button"
                       onClick={loadOlderLogs}
-                      className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                      className={HISTORY_PAGER_BUTTON_CLASS}
                       title={localizeUi("ui.game.gamenarration.loadOlderLogs")}
                     >
                       {localizeUi("ui.game.gamenarration.older")}
@@ -5682,7 +5711,7 @@ export function GameNarration({
                     <button
                       type="button"
                       onClick={showAllLogs}
-                      className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                      className={HISTORY_PAGER_BUTTON_CLASS}
                       title={localizeUi("ui.game.gamenarration.loadTheEntireSessionLog")}
                     >
                       {localizeUi("ui.noodle.stageprofilesourcepicker.all")}
@@ -5732,7 +5761,7 @@ export function GameNarration({
                       logScrolledRef.current = true;
                       loadOlderLogs();
                     }}
-                    className="rounded-md border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
+                    className={HISTORY_PAGER_BUTTON_CLASS}
                   >
                     {localizeUi("ui.game.gamesurfacecomponent.showMoreOlderLogs")}
                     {hiddenLogCount})

@@ -4,12 +4,16 @@
 // another format, a kit or brief that does not read, or a world from another generator is refused with
 // the reason; what of the brief the kit no longer fits is left out with a note, as are hand edits that
 // do not fit the world, so one stray part never costs the player the rest.
+//
+// A world file of version 2 (W11) also carries the world's snapshot: a world made by another generator
+// is read from it, as it was made, so a file stays readable after the generator changes.
 // ──────────────────────────────────────────────
 import { parseWorldKit, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { checkWorldBrief, type WorldBrief } from "../../schemas/world-brief.schema.js";
 import { WORLD_GENERATOR_VERSION } from "./compile.js";
 import type { WorldEdits } from "./edits.js";
 import { compileGameWorld, gameWorldSchema, worldEditIssues, type WORLD_GROUNDINGS } from "./game-world.js";
+import { gameWorldFromSnapshot, readWorldSnapshot, type WorldSnapshot } from "./snapshot.js";
 import { checkStoryScript, type StoryScript } from "./story.js";
 import { worldEditsFightable } from "./battlefield-maps.js";
 import { worldTownEditIssues } from "./town.js";
@@ -17,8 +21,11 @@ import { worldTownEditIssues } from "./town.js";
 export const WORLD_KIT_FILE_FORMAT = "marinara-world-kit";
 export const WORLD_FILE_FORMAT = "marinara-world";
 export const WORLD_SHARE_FILE_VERSION = 1;
-/** The largest share file read. */
-export const WORLD_SHARE_FILE_MAX_BYTES = 2_000_000;
+/** A world file's format: 2 carries the world's snapshot (W11); 1 is still read. */
+export const WORLD_FILE_VERSION = 2;
+/** The largest share file read: room for a large world with its snapshot (W11) and many towns laid out
+ *  by hand. */
+export const WORLD_SHARE_FILE_MAX_BYTES = 8_000_000;
 
 export interface WorldKitFile {
   format: typeof WORLD_KIT_FILE_FORMAT;
@@ -38,7 +45,7 @@ export interface WorldFileWorld {
 
 export interface WorldFile {
   format: typeof WORLD_FILE_FORMAT;
-  version: typeof WORLD_SHARE_FILE_VERSION;
+  version: typeof WORLD_FILE_VERSION;
   exportedAt: string;
   name: string;
   kit: WorldKit;
@@ -46,6 +53,8 @@ export interface WorldFile {
   /** The world's story script (worldgen W10). Beside the world, not in it, so an Engine without stories
    *  still reads the world. */
   story?: StoryScript;
+  /** The world as it was made (W11), read when another generator made it. */
+  snapshot?: WorldSnapshot;
 }
 
 export const worldKitFile = (kit: WorldKit, exportedAt = new Date().toISOString()): WorldKitFile => ({
@@ -60,14 +69,16 @@ export const worldFile = (
   kit: WorldKit,
   world: WorldFileWorld,
   story?: StoryScript | null,
+  snapshot?: WorldSnapshot | null,
 ): WorldFile => ({
   format: WORLD_FILE_FORMAT,
-  version: WORLD_SHARE_FILE_VERSION,
+  version: WORLD_FILE_VERSION,
   exportedAt: new Date().toISOString(),
   name: name.trim().slice(0, 120) || kit.label,
   kit,
   world,
   ...(story ? { story } : {}),
+  ...(snapshot ? { snapshot } : {}),
 });
 
 /** An installed Experience's map pack (worldgen W9e) as the Engine read and checked it: its setting kit,
@@ -77,7 +88,7 @@ export interface ExperienceMapPack {
   /** The Experience's name. */
   name: string;
   kit: WorldKit;
-  worlds: Array<{ path: string; name: string; world: WorldFileWorld; story?: StoryScript }>;
+  worlds: Array<{ path: string; name: string; world: WorldFileWorld; story?: StoryScript; snapshot?: WorldSnapshot }>;
   tiles: import("./tile-pack.js").TilePack | null;
 }
 
@@ -87,6 +98,7 @@ type Read<T> = ({ ok: true; notes: string[] } & T) | { ok: false; issues: string
 function readShareFile(
   text: string,
   format: string,
+  versions: readonly number[],
 ): { ok: true; value: Record<string, unknown> } | { ok: false; issues: string[] } {
   if (new TextEncoder().encode(text).length > WORLD_SHARE_FILE_MAX_BYTES) {
     return { ok: false, issues: ["The file is larger than a share file can be."] };
@@ -110,7 +122,7 @@ function readShareFile(
       ],
     };
   }
-  if (file.version !== WORLD_SHARE_FILE_VERSION) {
+  if (!versions.includes(file.version as number)) {
     return { ok: false, issues: ["The file was made by a newer version of Marinara Engine."] };
   }
   return { ok: true, value: file };
@@ -118,7 +130,7 @@ function readShareFile(
 
 /** A setting kit file, read. */
 export function readWorldKitFile(text: string): Read<{ kit: WorldKit }> {
-  const file = readShareFile(text, WORLD_KIT_FILE_FORMAT);
+  const file = readShareFile(text, WORLD_KIT_FILE_FORMAT, [WORLD_SHARE_FILE_VERSION]);
   if (!file.ok) return file;
   const kit = parseWorldKit(file.value.kit);
   if (!kit.ok) return { ok: false, issues: kit.issues.slice(0, 5) };
@@ -128,9 +140,21 @@ export function readWorldKitFile(text: string): Read<{ kit: WorldKit }> {
 /** A world file, read: its kit, its world as this Engine would make it, and its story when it fits. */
 export function readWorldFile(
   text: string,
-): Read<{ name: string; kit: WorldKit; world: WorldFileWorld; story?: StoryScript }> {
-  const file = readShareFile(text, WORLD_FILE_FORMAT);
+): Read<{ name: string; kit: WorldKit; world: WorldFileWorld; story?: StoryScript; snapshot?: WorldSnapshot }> {
+  const file = readShareFile(text, WORLD_FILE_FORMAT, [1, WORLD_FILE_VERSION]);
   if (!file.ok) return file;
+  const name =
+    typeof file.value.name === "string" && file.value.name.trim() ? file.value.name.trim().slice(0, 120) : undefined;
+  // Another generator's world is read from its snapshot (W11), as it was made, when the file's recipe and
+  // snapshot name the same generator; one that says otherwise does not hold together.
+  const recipe = file.value.world as { generatorVersion?: unknown } | undefined;
+  const madeBy = (file.value.snapshot as { generatorVersion?: unknown } | null | undefined)?.generatorVersion;
+  if (recipe?.generatorVersion !== WORLD_GENERATOR_VERSION && file.value.snapshot != null) {
+    if (madeBy !== recipe?.generatorVersion) {
+      return { ok: false, issues: ["The world file's snapshot and recipe name different generators."] };
+    }
+    return readSnapshotWorld(file.value.snapshot, name, file.value.story);
+  }
   const kit = parseWorldKit(file.value.kit);
   if (!kit.ok) return { ok: false, issues: kit.issues.slice(0, 5) };
   const stored = gameWorldSchema.safeParse(file.value.world);
@@ -174,10 +198,6 @@ export function readWorldFile(
       edits = undefined;
     }
   }
-  const name =
-    typeof file.value.name === "string" && file.value.name.trim()
-      ? file.value.name.trim().slice(0, 120)
-      : kit.kit.label;
   // The story names the world's places and people, so it is checked against this world as read.
   let story: StoryScript | undefined;
   if (file.value.story != null) {
@@ -188,7 +208,7 @@ export function readWorldFile(
   }
   return {
     ok: true,
-    name,
+    name: name ?? kit.kit.label,
     kit: kit.kit,
     world: {
       seed: inputs.seed,
@@ -198,6 +218,40 @@ export function readWorldFile(
       ...(edits ? { edits } : {}),
     },
     ...(story ? { story } : {}),
+    notes,
+  };
+}
+
+/** A world file's world as its snapshot keeps it (W11): its kit, recipe and edits the snapshot's, and its
+ *  story when it fits that world. */
+function readSnapshotWorld(
+  value: unknown,
+  name: string | undefined,
+  storyValue: unknown,
+): Read<{ name: string; kit: WorldKit; world: WorldFileWorld; story?: StoryScript; snapshot?: WorldSnapshot }> {
+  const read = readWorldSnapshot(value);
+  if (!read.ok) return { ok: false, issues: read.issues.slice(0, 5) };
+  const snapshot = read.snapshot;
+  const notes: string[] = [];
+  let story: StoryScript | undefined;
+  if (storyValue != null) {
+    const checked = checkStoryScript(gameWorldFromSnapshot(snapshot), storyValue);
+    if (checked.ok) story = checked.story;
+    else notes.push(`The world's story does not fit it, so it was left out: ${checked.issues[0]}`);
+  }
+  return {
+    ok: true,
+    name: name ?? snapshot.kit.label,
+    kit: snapshot.kit,
+    world: {
+      seed: snapshot.seed,
+      generatorVersion: snapshot.generatorVersion,
+      grounding: snapshot.grounding,
+      brief: snapshot.brief,
+      ...(snapshot.edits ? { edits: snapshot.edits } : {}),
+    },
+    ...(story ? { story } : {}),
+    snapshot,
     notes,
   };
 }

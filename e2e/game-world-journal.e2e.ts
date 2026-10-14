@@ -85,7 +85,10 @@ test("a world game's journal has a World tab with where the party is, its standi
   }
 });
 
-test("a game without a world has no World tab", async ({ page, request }) => {
+test("a game without a world can be given one from its World tab, only when the player asks", async ({
+  page,
+  request,
+}, testInfo) => {
   test.setTimeout(120_000);
   const created = await request.post("/api/chats", { data: { name: "No world", mode: "game", characterIds: [] } });
   expect(created.ok()).toBeTruthy();
@@ -104,8 +107,25 @@ test("a game without a world has no World tab", async ({ page, request }) => {
     await request.post(`/api/chats/${chatId}/messages`, { data: { role: "assistant", content: "Rain on the road." } });
     await openGame(page, chatId);
     await openJournal(page);
-    await expect(page.getByRole("button", { name: "Notes", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "World", exact: true })).toHaveCount(0);
+    // The World tab offers a world; nothing changes until the player takes it (worldgen W12).
+    await page.getByRole("button", { name: "World", exact: true }).click();
+    const open = page.getByRole("button", { name: "Make a world for this game", exact: true });
+    await expect(open).toBeVisible();
+    const metaOf = async () => {
+      const metadata = ((await (await request.get(`/api/chats/${chatId}`)).json()) as { metadata: unknown }).metadata;
+      return (typeof metadata === "string" ? JSON.parse(metadata) : metadata) as Record<string, any>;
+    };
+    expect((await metaOf()).gameWorld).toBeUndefined();
+    await open.click();
+    await page.getByRole("button", { name: new RegExp(`^${kit.label}`) }).click();
+    await page.getByRole("checkbox", { name: /Make a world/ }).check();
+    await page.screenshot({ path: testInfo.outputPath("make-world.png") });
+    await page.getByRole("button", { name: "Give the game this world", exact: true }).click();
+    await expect(page.getByText("The game has a world now.")).toBeVisible();
+    const meta = await metaOf();
+    expect([meta.gameWorldKit.id, meta.gameWorld.generatorVersion]).toEqual([kit.id, WORLD_GENERATOR_VERSION]);
+    // The World tab is the world's now.
+    await expect(page.getByRole("heading", { name: "Where you are" })).toBeVisible({ timeout: 20_000 });
   } finally {
     await request.delete(`/api/chats/${chatId}`);
   }

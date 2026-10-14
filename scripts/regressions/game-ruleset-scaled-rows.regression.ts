@@ -57,7 +57,10 @@ const build = (input: Record<string, unknown>): RulesetSheetBuild => rulesetShee
 const ember = parsed(emberText);
 const emberCatalogs: RulesetCatalogEntriesById = { knacks: ember.catalogs![0]!.entries! };
 /** The trick row the example scales, plus the knack row that comes with the same pick. */
-const emberRows = rowsFromCatalogEntry("knacks", ember.catalogs![0]!.entries!.find((e) => e.id === "last-ember")!);
+const emberRows = rowsFromCatalogEntry(
+  "knacks",
+  ember.catalogs![0]!.entries!.find((e) => e.id === "last-ember")!,
+);
 const emberBuild = (heart: number, uses = 1) =>
   build({
     abilities: { brawn: 0, wits: 0, heart },
@@ -113,12 +116,22 @@ const emberBuild = (heart: number, uses = 1) =>
   }).join("; ");
   assert.match(noStart, /Scaled column "uses" needs a starting value in values/);
 
-  // Two rows for one list, so a marked row on a sheet could not be matched to its spec.
+  // Two rows for one list under ONE name, so a marked row on a sheet could not be matched to its spec.
   const twoRows = issuesOf(emberText, (doc) => {
     const entry = doc.catalogs[0].entries.find((candidate: any) => candidate.id === "last-ember");
-    entry.rows.push({ list: "tricks", values: { name: "Second Ember", uses: 1, recharge: "camp" } });
+    entry.rows.push({ list: "tricks", values: { name: "Last Ember", uses: 1, recharge: "camp" } });
   }).join("; ");
-  assert.match(twoRows, /A scaled row must be this entry's only row for the list "tricks"/);
+  assert.match(
+    twoRows,
+    /A scaled row must be this entry's only row for the list "tricks", or every row there must have its own name/,
+  );
+  // Under two names they are told apart (1.92).
+  assert.ok(
+    parsed(emberText, (doc) => {
+      const entry = doc.catalogs[0].entries.find((candidate: any) => candidate.id === "last-ember");
+      entry.rows.push({ list: "tricks", values: { name: "Second Ember", uses: 1, recharge: "camp" } });
+    }),
+  );
   // The same entry with both rows and NO scaled map is fine: the rule is about the spec, not rows.
   assert.ok(
     parsed(emberText, (doc) => {
@@ -126,6 +139,75 @@ const emberBuild = (heart: number, uses = 1) =>
       delete entry.rows.find((row: any) => row.list === "tricks").scaled;
       entry.rows.push({ list: "tricks", values: { name: "Second Ember", uses: 1, recharge: "camp" } });
     }),
+  );
+}
+
+// ── Two scaled rows of one list, told apart by name (1.92) ──
+{
+  const twin = parsed(emberText, (doc) => {
+    const entry = doc.catalogs[0].entries.find((candidate: any) => candidate.id === "last-ember");
+    entry.rows.push({
+      list: "tricks",
+      values: { name: "Second Ember", uses: 0, recharge: "camp" },
+      scaled: {
+        uses: {
+          from: { abilityScore: "heart" },
+          table: [
+            [0, 0],
+            [3, 1],
+          ],
+        },
+      },
+    });
+  });
+  const twinCatalogs: RulesetCatalogEntriesById = { knacks: twin.catalogs![0]!.entries! };
+  const twinRows = rowsFromCatalogEntry(
+    "knacks",
+    twin.catalogs![0]!.entries!.find((e) => e.id === "last-ember")!,
+  );
+  const tricks = twinRows.filter((row) => row.list === "tricks").map((row) => row.row);
+  assert.deepEqual(
+    tricks.map((row) => row.name),
+    ["Last Ember", "Second Ember"],
+  );
+  const at = (heart: number) =>
+    recomputeScaledRows(
+      twin,
+      build({ abilities: { brawn: 0, wits: 0, heart }, lists: { tricks } }),
+      twinCatalogs,
+    ).lists.tricks!.map((row) => [row.name, row.uses]);
+  assert.deepEqual(
+    at(2),
+    [
+      ["Last Ember", 2],
+      ["Second Ember", 0],
+    ],
+    "each row follows its own spec",
+  );
+  assert.deepEqual(
+    at(4),
+    [
+      ["Last Ember", 4],
+      ["Second Ember", 1],
+    ],
+    "and the second opens at Heart 3",
+  );
+  // A row the player renamed matches no spec, and is left as it is.
+  const renamed = build({
+    abilities: { brawn: 0, wits: 0, heart: 4 },
+    lists: { tricks: [tricks[0]!, { ...tricks[1]!, name: "My Ember", uses: 7 }] },
+  });
+  assert.equal(recomputeScaledRows(twin, renamed, twinCatalogs).lists.tricks![1]!.uses, 7);
+  // An entry's only scaled row is matched as it always was, renamed or not.
+  const ownName = build({
+    abilities: { brawn: 0, wits: 0, heart: 2 },
+    lists: { tricks: [{ ...emberRows.find((row) => row.list === "tricks")!.row, name: "Hearth Ember", uses: 7 }] },
+  });
+  assert.equal(recomputeScaledRows(ember, ownName, emberCatalogs).lists.tricks![0]!.uses, 2);
+  assert.deepEqual(
+    scaledRowColumns(twin, "tricks", tricks[1]!, twinCatalogs),
+    ["uses"],
+    "the second row's cell is locked",
   );
 }
 

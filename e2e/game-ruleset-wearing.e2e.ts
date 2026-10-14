@@ -442,3 +442,157 @@ test("an item that sets an ability changes the sheet, and an item's details say 
     expect(restored.ok(), await restored.text()).toBeTruthy();
   }
 });
+
+test("a rolled list column is filled by the Engine's dice from the sheet editor", async ({ page, request }) => {
+  test.setTimeout(120000);
+  const policyBefore = await request.get("/api/agents/import-policy");
+  expect(policyBefore.ok(), await policyBefore.text()).toBeTruthy();
+  const importsWereEnabled = (await policyBefore.json()).enabled === true;
+  let chatId: string | undefined;
+  let rulesetId: string | undefined;
+  let characterId: string | undefined;
+  try {
+    const policy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    expect(policy.ok(), await policy.text()).toBeTruthy();
+    const imported = await request.post("/api/game-rulesets/import", {
+      data: {
+        definition: example("gravewatch", "gravewatch-rolled-e2e", (doc) => {
+          doc.sheet.lists.push({
+            id: "hp_rolls",
+            label: "Hit point rolls",
+            maxItems: 20,
+            columns: [
+              { id: "die", label: "Die", type: "enum", values: ["d6", "d8"] },
+              { id: "roll", label: "Roll", type: "number", min: 1, max: 8, roll: { sides: { column: "die" } } },
+            ],
+          });
+        }),
+      },
+    });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    rulesetId = (await imported.json()).rulesetId as string;
+    const character = await request.post("/api/characters", { data: { data: { name: "Bram" } } });
+    expect(character.ok(), await character.text()).toBeTruthy();
+    characterId = ((await character.json()) as { id: string }).id;
+    const sheet = { v: 1, build: { abilities: { sinew: 2, nerve: 2, warmth: 2 }, fields: {}, lists: {} } };
+    chatId = await seedGame(
+      request,
+      rulesetId,
+      [
+        { name: "Ada", rulesetSheet: sheet },
+        { name: "Bram", rulesetSheet: sheet },
+      ],
+      [characterId],
+    );
+    await openGame(page, chatId);
+    const portrait = page.getByTitle("Bram - Click to open character sheet", { exact: true }).filter({ visible: true });
+    // Both layouts open party portraits from the shared Character Profiles button.
+    const members = page
+      .locator('.mari-window-bubble[data-window="control:character-profiles"]')
+      .filter({ visible: true });
+    await expect(portrait.or(members).first()).toBeVisible({ timeout: 30000 });
+    if (await members.isVisible()) await members.click();
+    await portrait.first().click();
+    await page.getByRole("button", { name: "Edit sheet", exact: true }).last().click();
+    await page.getByRole("button", { name: "Add", exact: true }).last().click();
+    const roll = page.getByRole("button", { name: /^Roll 1d6 for Hit point rolls 1: Roll$/ });
+    await expect(roll).toBeEnabled();
+    await page.getByRole("combobox", { name: "Hit point rolls 1: Die" }).selectOption("d8");
+    const roll8 = page.getByRole("button", { name: /^Roll 1d8 for Hit point rolls 1: Roll$/ });
+    const thrown = page.waitForResponse((response) => response.url().includes("/api/game/dice/roll"));
+    await roll8.click();
+    const answer = await (await thrown).json();
+    const total = answer.result.total as number;
+    expect(total).toBeGreaterThanOrEqual(1);
+    expect(total).toBeLessThanOrEqual(8);
+    await expect(page.locator('input[aria-label="Hit point rolls 1: Roll"]')).toHaveValue(String(total));
+    await page.getByRole("button", { name: "Save sheet", exact: true }).click();
+    await expect
+      .poll(async () => {
+        const row = await (await request.get(`/api/chats/${chatId}`)).json();
+        const meta = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+        const bram = (meta.gameCharacterCards as Array<{ name: string; rulesetSheet?: any }>).find(
+          (card) => card.name === "Bram",
+        );
+        return bram?.rulesetSheet?.build?.lists?.hp_rolls?.[0];
+      })
+      .toEqual({ die: "d8", roll: total });
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`);
+    if (rulesetId) await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(rulesetId)}&force=true`);
+    if (characterId) await request.delete(`/api/characters/${characterId}`);
+    const restored = await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+    expect(restored.ok(), await restored.text()).toBeTruthy();
+  }
+});
+
+test("the in-game sheet hides what the build hides, names pool groups in words, and shows the sheet's level", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120000);
+  const policyBefore = await request.get("/api/agents/import-policy");
+  expect(policyBefore.ok(), await policyBefore.text()).toBeTruthy();
+  const importsWereEnabled = (await policyBefore.json()).enabled === true;
+  let chatId: string | undefined;
+  let rulesetId: string | undefined;
+  let characterId: string | undefined;
+  try {
+    const policy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    expect(policy.ok(), await policy.text()).toBeTruthy();
+    // Gravewatch with a level read off the years on watch, Resolve in a group of its own, and the lantern
+    // oil (hidden off the night watch) in the summary.
+    const imported = await request.post("/api/game-rulesets/import", {
+      data: {
+        definition: example("gravewatch", "gravewatch-sheet-view-e2e", (doc) => {
+          doc.sheet.fields.push({ id: "years", label: "Years on watch", type: "number", min: 1, max: 20, default: 4 });
+          doc.sheet.derived.push({ id: "level", label: "Level", op: "sum", of: [{ field: "years" }, { const: 1 }] });
+          doc.sheet.live.pools[0].group = "night_reserves";
+          doc.gm.sheetSummary.fields = ["watch", "lantern"];
+          doc.gm.sheetSummary.derived = ["level", ...doc.gm.sheetSummary.derived];
+        }),
+      },
+    });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    rulesetId = (await imported.json()).rulesetId as string;
+    const character = await request.post("/api/characters", { data: { data: { name: "Bram" } } });
+    expect(character.ok(), await character.text()).toBeTruthy();
+    characterId = ((await character.json()) as { id: string }).id;
+    const dawn = {
+      v: 1,
+      build: { abilities: { sinew: 2, nerve: 2, warmth: 2 }, fields: { watch: "dawn" }, lists: {} },
+    };
+    // The game card still says level 1 from before the ruleset.
+    chatId = await seedGame(
+      request,
+      rulesetId,
+      [
+        { name: "Ada", rulesetSheet: dawn },
+        { name: "Bram", rulesetSheet: dawn, rpgStats: { attributes: [], hp: { value: 10, max: 10 } }, level: 1 },
+      ],
+      [characterId],
+    );
+    await openGame(page, chatId);
+    const portrait = page.getByTitle("Bram - Click to open character sheet", { exact: true }).filter({ visible: true });
+    // Both layouts open party portraits from the shared Character Profiles button.
+    const members = page
+      .locator('.mari-window-bubble[data-window="control:character-profiles"]')
+      .filter({ visible: true });
+    await expect(portrait.or(members).first()).toBeVisible({ timeout: 30000 });
+    if (await members.isVisible()) await members.click();
+    await portrait.first().click();
+    const watch = page.getByText("Watch", { exact: true }).locator("xpath=following-sibling::span[1]");
+    await expect(watch).toHaveText("dawn");
+    await expect(page.getByText("Lantern oil", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Night reserves", { exact: true })).toBeVisible();
+    await expect(page.getByText("night_reserves", { exact: true })).toHaveCount(0);
+    const level = page.getByText("LVL", { exact: true }).locator("xpath=following-sibling::span[1]");
+    await expect(level).toHaveText("5");
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`);
+    if (rulesetId) await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(rulesetId)}&force=true`);
+    if (characterId) await request.delete(`/api/characters/${characterId}`);
+    const restored = await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+    expect(restored.ok(), await restored.text()).toBeTruthy();
+  }
+});

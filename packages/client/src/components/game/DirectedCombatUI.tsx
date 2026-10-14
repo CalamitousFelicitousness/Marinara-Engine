@@ -13,8 +13,10 @@ import { GameCombatUI } from "./GameCombatUI";
 import { RulesetCombatBoard } from "./RulesetCombatBoard";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
+import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 
 type Props = ComponentProps<typeof GameCombatUI> & {
   anchor: string;
@@ -107,9 +109,13 @@ export function DirectedCombatUI(props: Props) {
     optionId: string,
     targetIds: string[],
     payWith?: string,
-    cell?: { to?: { x: number; y: number }; at?: { x: number; y: number } },
+    cell?: RulesetCellChoice,
     style?: string,
     mode?: string,
+    amount?: number,
+    alters?: string[],
+    spares?: string[],
+    heightens?: string,
   ) =>
     send({
       type: "ruleset",
@@ -120,6 +126,16 @@ export function DirectedCombatUI(props: Props) {
       ...(mode ? { mode } : {}),
       ...(cell?.to ? { to: cell.to } : {}),
       ...(cell?.at ? { at: cell.at } : {}),
+      ...(cell?.toward ? { toward: cell.toward } : {}),
+      ...(cell?.side ? { side: cell.side } : {}),
+      ...(cell?.ring ? { ring: true } : {}),
+      ...(cell?.also?.length ? { also: cell.also } : {}),
+      ...(cell?.wall ? { wall: cell.wall } : {}),
+      ...(cell?.carries?.length ? { carries: cell.carries } : {}),
+      ...(amount !== undefined ? { amount } : {}),
+      ...(alters?.length ? { alters } : {}),
+      ...(alters?.length && spares ? { spares } : {}),
+      ...(alters?.length && heightens ? { heightens } : {}),
     });
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -168,6 +184,7 @@ export function DirectedCombatUI(props: Props) {
                 defaultController="ai"
                 locked={busy}
                 onChange={(unitId, controller) => send({ type: "control", unitId, controller })}
+                className={GAME_SECTION_CLASS}
               />
             }
           />
@@ -204,7 +221,9 @@ export function DirectedCombatUI(props: Props) {
       <CombatWeatherSummary weather={s.weather} tactical={s.style === "tactical"} />
       <section
         aria-label={t("game.combat.director.title")}
+        data-game-section="combat-director"
         className={cn(
+          GAME_SECTION_CLASS,
           "shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)]",
           // A ruleset fight's log scrolls inside its own box, so this strip stays short and the
           // stage keeps the room its two rows need.

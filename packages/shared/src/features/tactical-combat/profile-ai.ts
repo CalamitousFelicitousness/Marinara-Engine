@@ -1,7 +1,7 @@
 import { combatWeatherEffects, normalizeGameDifficulty } from "../combat-conditions.js";
 import { chooseCombatCandidate, type CombatAiCandidate } from "../combat-ai.js";
 import { aliveUnits, canTraverseTile, forecastFrom, getMovementRange, occupantAt, skillReady } from "./engine.js";
-import { computeHeal, manhattan, terrainInfoAt } from "./math.js";
+import { climbCost, computeHeal, hasLineOfSight, inReach, manhattan, reachFrom, terrainInfoAt } from "./math.js";
 import type { TacticalAction, TacticalCombatState, TacticalCoord, TacticalUnit } from "./types.js";
 
 /** Mindless pursuit ranks spatial steps; other profiles also consider movement costs. */
@@ -23,9 +23,7 @@ export function pursueOpponent(
     frontier.sort((a, b) => distances.get(key(a))! - distances.get(key(b))!);
     const tile = frontier.shift()!;
     if (!occupantAt(state, tile.x, tile.y, unit.id)) {
-      const target = targets.find(
-        (t) => manhattan(tile, t) >= unit.attackRange.min && manhattan(tile, t) <= unit.attackRange.max,
-      );
+      const target = targets.find((t) => inReach(state.grid, tile, t, unit.attackRange.min, unit.attackRange.max));
       if (target) {
         goal = { target, tile };
         break;
@@ -38,10 +36,16 @@ export function pursueOpponent(
         if (length === 0 || length > radius) continue;
         const next = { x: tile.x + dx, y: tile.y + dy };
         if (!canTraverseTile(state, unit, next)) continue;
+        // A walker never takes a cliff (combat C6b), mindless or not; only the cost it plans by differs.
+        const climb =
+          unit.movementMode === "fly" || unit.movementMode === "teleport" ? 0 : climbCost(state.grid, tile, next);
+        if (climb === null) continue;
         const stepCost =
           unit.tactics?.adjective === "mindless" || unit.movementMode === "fly" || unit.movementMode === "teleport"
             ? length
-            : terrainInfoAt(state.grid, next.x, next.y).moveCost + combatWeatherEffects(state.weather).walkingCost;
+            : terrainInfoAt(state.grid, next.x, next.y).moveCost +
+              combatWeatherEffects(state.weather).walkingCost +
+              climb;
         const distance = distances.get(key(tile))! + stepCost;
         if (distance >= (distances.get(key(next)) ?? Infinity)) continue;
         const seen = distances.has(key(next));
@@ -64,7 +68,9 @@ export function pursueOpponent(
     budget -=
       unit.movementMode === "fly" || unit.movementMode === "teleport"
         ? manhattan(previous, tile)
-        : terrainInfoAt(state.grid, tile.x, tile.y).moveCost + combatWeatherEffects(state.weather).walkingCost;
+        : terrainInfoAt(state.grid, tile.x, tile.y).moveCost +
+          combatWeatherEffects(state.weather).walkingCost +
+          (climbCost(state.grid, previous, tile) ?? 0);
     if (budget < 0) break;
     previous = tile;
     if (!occupantAt(state, tile.x, tile.y, unit.id)) to = tile;
@@ -81,8 +87,7 @@ export function decideProfileAction(
   const pursuit = pursueOpponent(state, unit);
   if (unit.tactics.adjective === "mindless") {
     if (!pursuit) return { type: "wait", unitId: unit.id };
-    const distance = manhattan(pursuit.to, pursuit.target);
-    return distance >= unit.attackRange.min && distance <= unit.attackRange.max
+    return inReach(state.grid, pursuit.to, pursuit.target, unit.attackRange.min, unit.attackRange.max)
       ? { type: "attack", unitId: unit.id, targetId: pursuit.target.id, to: pursuit.to }
       : { type: "wait", unitId: unit.id, to: pursuit.to };
   }
@@ -97,7 +102,7 @@ export function decideProfileAction(
     if (dangerAt.has(key)) return dangerAt.get(key)!;
     const value = opponents.reduce((sum, enemy) => {
       // Observable one-activation reach estimate. No future rolls or player command.
-      if (manhattan(enemy, tile) > enemy.movement + enemy.attackRange.max) return sum;
+      if (manhattan(enemy, tile) > enemy.movement + enemy.attackRange.max + 1) return sum;
       const forecast = forecastFrom(state, enemy, { ...unit, ...tile }, enemy);
       return sum + (forecast.damage * forecast.hitChance) / 100 / Math.max(1, unit.hp);
     }, 0);
@@ -115,23 +120,31 @@ export function decideProfileAction(
       ]) {
         if (
           distance < (skill ? 1 : unit.attackRange.min) ||
-          distance > (skill ? (skill.range ?? Math.max(2, unit.attackRange.max)) : unit.attackRange.max)
+          distance >
+            (skill
+              ? (skill.range ?? Math.max(2, unit.attackRange.max))
+              : reachFrom(state.grid, tile, target, unit.attackRange.max)) ||
+          !hasLineOfSight(state.grid, tile, target)
         )
           continue;
+        // An area's cover is read from where it lands, the target it is aimed at, as its roll reads it.
+        const coverFrom = skill?.areaRadius ? { x: target.x, y: target.y } : undefined;
         const fc = forecastFrom(state, unit, target, tile, {
           power: skill ? Math.max(1, skill.power) : undefined,
           element: skill?.element,
           traits: skill ?? unit,
+          ...(coverFrom ? { coverFrom } : {}),
         });
         const counter = forecastFrom(state, target, { ...unit, ...tile }, target, { hitPenalty: 10 });
         const counterRisk =
-          target.hp > fc.damage && distance >= target.attackRange.min && distance <= target.attackRange.max
+          target.hp > fc.damage && inReach(state.grid, target, tile, target.attackRange.min, target.attackRange.max)
             ? ((((fc.hitChance / 100) * counter.hitChance) / 100) * counter.damage) / Math.max(1, unit.hp)
             : 0;
         const area = skill?.areaRadius
           ? aliveUnits(state).filter(
               (t) =>
                 manhattan(target, t.id === unit.id ? { ...t, ...tile } : t) <= skill.areaRadius! &&
+                hasLineOfSight(state.grid, target, t.id === unit.id ? tile : t) &&
                 (skill.friendlyFire || t.side !== unit.side),
             )
           : [target];
@@ -140,6 +153,7 @@ export function decideProfileAction(
             power: skill ? Math.max(1, skill.power) : undefined,
             element: skill?.element,
             traits: skill ?? unit,
+            ...(coverFrom ? { coverFrom } : {}),
           });
           return sum + ((t.side === unit.side ? -2 : 1) * hit.damage * hit.hitChance) / 100 / Math.max(1, t.maxHp);
         }, 0);
@@ -161,7 +175,8 @@ export function decideProfileAction(
     }
     for (const skill of unit.skills.filter((s) => !s.reaction && s.type !== "attack" && skillReady(unit, s))) {
       for (const target of skill.type === "debuff" ? opponents : allies) {
-        if (manhattan(tile, target) > (skill.range ?? 2)) continue;
+        const at = target.id === unit.id ? tile : target;
+        if (manhattan(tile, at) > (skill.range ?? 2) || !hasLineOfSight(state.grid, tile, at)) continue;
         const status = skill.statusEffect || skill.name;
         const active = target.statusEffects.some((s) => s.name === status && s.turnsLeft > 1);
         const healing =

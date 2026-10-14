@@ -95,6 +95,29 @@ try {
     globalThis.fetch = originalFetch;
   }
 
+  // A call the model wrote as text leaves the words beside it in the result (streaming and not).
+  const callText = 'Now the last two entries:\n<tool_call>{"name":"read","arguments":{"path":"a.txt"}}</tool_call>';
+  const readTools = [{ type: "function" as const, function: { name: "read", description: "", parameters: {} } }];
+  for (const stream of [false, true]) {
+    globalThis.fetch = async () =>
+      stream
+        ? new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: callText } }] })}\n\ndata: [DONE]\n\n`, {
+            headers: { "content-type": "text/event-stream" },
+          })
+        : Response.json({ choices: [{ message: { content: callText }, finish_reason: "stop" }] });
+    try {
+      const textual = await provider.chatComplete([{ role: "user", content: "Go." }], {
+        model: "fixture",
+        stream,
+        tools: readTools,
+      });
+      assert.equal(textual.toolCalls[0]?.function.name, "read", `stream=${stream}: call read from text`);
+      assert.equal(textual.content, "Now the last two entries:", `stream=${stream}: prose kept`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
   sendDone = false;
   const abort = new AbortController();
   const stalled = provider.chatComplete([{ role: "user", content: "Continue." }], {

@@ -173,9 +173,9 @@ try {
     );
     refused(
       fiveEText,
-      (doc) => doc.combat.conditions.push({ condition: "deafened", modifiers: [{ to: "attacks", mode: "advantage" }] }),
-      /"mode" rolls checks or saves twice/,
-      "a mode on attacks",
+      (doc) => doc.combat.conditions.push({ condition: "deafened", modifiers: [{ to: "damage", mode: "advantage" }] }),
+      /"mode" rolls checks, saves or attacks twice/,
+      "a mode on damage",
     );
     refused(
       emberText,

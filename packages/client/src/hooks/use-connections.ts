@@ -93,6 +93,7 @@ export type CreateConnectionPayload = {
   imageGenerationQuality?: ImageGenerationQuality;
   videoGenerationSource?: string | null;
   videoService?: string | null;
+  videoPromptInstructions?: string | null;
   audioSource?: string | null;
   decisionSource?: DecisionSource | null;
   credentialsFromConnectionId?: string | null;

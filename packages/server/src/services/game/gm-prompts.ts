@@ -114,6 +114,7 @@ export interface GmPromptContext {
     quantity: number;
     ownName?: string;
     item?: string;
+    truly?: string;
     equipped?: number;
     bound?: number;
     charges?: Array<{ now: number; max: number }>;
@@ -127,13 +128,17 @@ export interface GmPromptContext {
       quantity: number;
       ownName?: string;
       item?: string;
+      truly?: string;
       equipped?: number;
       bound?: number;
       charges?: Array<{ now: number; max: number }>;
     }>;
   }>;
-  /** What each ruleset item held is, by item id, as one line (`rulesetItemPromptFacts`). */
+  /** What each ruleset item held is, by item id, as one line (`rulesetItemPromptFacts`); for a fake,
+   *  what it truly is. */
   inventoryItemFacts?: Record<string, string>;
+  /** The true name of each fake held, by its true item id (Capability API 1.79). */
+  inventoryFakeNames?: Record<string, string>;
   /** What each character carries, binds and wears against what they can, by bag key
    *  (`gameInventoryBagKey`, the player's is ""), in a game whose ruleset says so. */
   inventoryBearers?: Record<string, GameInventoryBearerStatus>;
@@ -1128,6 +1133,18 @@ function renderRulesetSheetSection(
     ...(ruleset.rests.length > 0
       ? [`- [sheet: who="Name" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}.`]
       : []),
+    // Dice a rest may spend to heal (1.335): 5e's Hit Dice, as many as the player chooses.
+    ...(ruleset.rests.some((rest) => rest.dice)
+      ? [
+          `- [sheet: who="Name" op="rest" rest="Rest" dice="N"] - on ${names(ruleset.rests.filter((rest) => rest.dice))}, spends N of their dice to heal first, as many as the player chooses; the Engine rolls them.`,
+        ]
+      : []),
+    // From several pools (1.337): a multiclass character's hit dice, each pool its own die.
+    ...(ruleset.rests.some((rest) => Array.isArray(rest.dice))
+      ? [
+          `- Add pool="Pool" to that to spend from one pool only (${[...new Set(ruleset.rests.flatMap((rest) => (Array.isArray(rest.dice) ? rest.dice.map((entry) => entry.pool) : [])))].join(", ")}); without it they come from the first pool that has any.`,
+        ]
+      : []),
     // Only a ruleset with catalogs of ROWS has entries to use: a bestiary or an item catalog writes
     // nothing onto a sheet, so without one of those nothing on a sheet carries a price the Engine
     // could pay, and the line would describe a command that always refuses.
@@ -1206,6 +1223,7 @@ export function buildGmFormatReminder(
     | "playerInventory"
     | "partyInventory"
     | "inventoryItemFacts"
+    | "inventoryFakeNames"
     | "inventoryBearers"
     | "inventoryPurses"
     | "market"
@@ -1293,14 +1311,20 @@ export function buildGmFormatReminder(
   // would only produce commands nothing consumes.
   const experienceOwnsInventory = ctx.experienceProvidedSystems?.inventory === true;
   // A nicknamed item is shown with its own name too, which is how the Game Master can also name it.
-  const inventoryName = (item: { name?: unknown; ownName?: unknown } | undefined) => {
+  // A fake is named as the party sees it, with the truth beside it for the Game Master alone.
+  const inventoryName = (item: { name?: unknown; ownName?: unknown; truly?: unknown } | undefined) => {
     const name = normalizePromptText(item?.name);
     const own = normalizePromptText(item?.ownName);
-    return name && own && own.toLowerCase() !== name.toLowerCase() ? `${name} (${own})` : name;
+    const shown = name && own && own.toLowerCase() !== name.toLowerCase() ? `${name} (${own})` : name;
+    if (!shown || typeof item?.truly !== "string") return shown;
+    const truly = normalizePromptText(ctx.inventoryFakeNames?.[item.truly]) || item.truly;
+    return `${shown} (FAKE: really ${truly})`;
   };
-  // A ruleset item also says what it is, from its ruleset: category, rarity, tags and visible stats.
-  const itemFacts = (item: { item?: unknown } | undefined) => {
-    const facts = typeof item?.item === "string" ? ctx.inventoryItemFacts?.[item.item] : undefined;
+  // A ruleset item also says what it is, from its ruleset: category, rarity, tags and visible stats;
+  // a fake says what it truly is.
+  const itemFacts = (item: { item?: unknown; truly?: unknown } | undefined) => {
+    const ref = typeof item?.truly === "string" ? item.truly : item?.item;
+    const facts = typeof ref === "string" ? ctx.inventoryItemFacts?.[ref] : undefined;
     const text = normalizePromptText(facts);
     return text ? { facts: text } : {};
   };
@@ -1715,6 +1739,15 @@ export function buildGmFormatReminder(
     );
   }
 
+  // A fake held: the Game Master keeps the party's belief until the truth shows itself.
+  const holdsFake = (Array.isArray(ctx.playerInventory) ? ctx.playerInventory : [])
+    .concat((Array.isArray(ctx.partyInventory) ? ctx.partyInventory : []).flatMap((bag) => bag.items ?? []))
+    .some((item) => typeof item?.truly === "string");
+  if (!experienceOwnsInventory && holdsFake) {
+    lines.push(
+      `A line marked FAKE is not what the party thinks it is: call it only by the name it is shown by, in narration and in tags, and let the truth show only through what it does. When it is identified, attuned or used, write [inventory: action="reveal" item="<the name it is shown by>" who="<who carries it>"].`,
+    );
+  }
   if (ctx.whereYouAre) lines.push(``, ctx.whereYouAre);
   if (ctx.storyNow) lines.push(``, `STORY:`, ctx.storyNow);
   if (ctx.market) lines.push(``, ctx.market);

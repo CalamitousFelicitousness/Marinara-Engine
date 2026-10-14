@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { CombatController, CombatTactics } from "@marinara-engine/shared";
+import { cn } from "../../lib/utils";
 
 interface Member {
   id: string;
@@ -16,12 +17,15 @@ export function CombatAiControls({
   defaultController,
   locked,
   onChange,
+  className,
 }: {
   party: Member[];
   enemies: Member[];
   defaultController: CombatController;
   locked: boolean;
   onChange: (id: string, controller: CombatController) => void;
+  /** GAME_SECTION_CLASS where the controls stand alone, outside another Game section. */
+  className?: string;
 }) {
   const { t } = useTranslation();
   const leader = party.find((u) => u.hp > 0)?.id;
@@ -34,7 +38,13 @@ export function CombatAiControls({
         })
       : member.name;
   return (
-    <details className="relative z-10 shrink-0 border-b border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs text-[var(--foreground)]">
+    <details
+      data-game-section="combat-ai"
+      className={cn(
+        "relative z-10 shrink-0 border-b border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs text-[var(--foreground)]",
+        className,
+      )}
+    >
       <summary className="cursor-pointer font-medium focus-visible:outline focus-visible:outline-[var(--primary)]">
         {t("game.combat.ai.controls")}
       </summary>

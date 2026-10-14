@@ -55,10 +55,23 @@ function manualChunks(id: string) {
   // So is the world a game is set in (its kit, places, people, history and story), which grows with
   // every part of worldgen, rather than weight on the game tag parser's chunk.
   if (/\/shared\/(?:dist|src)\/features\/world\//u.test(id)) return "game-world";
+  // The ruleset sheet grows with every part of a sheet a ruleset can describe, and the art the game draws
+  // from board, icon and portrait packs is shared by several screens: each is its own chunk rather than
+  // weight on GameSurface's budget.
+  if (id.endsWith("/components/game/GameRulesetSheet.tsx")) return "game-ruleset-sheet";
+  if (/\/lib\/(?:board-art|board-art-cells|art-pack)\.ts$/u.test(id) || id.endsWith("/components/game/ArtIcon.tsx"))
+    return "game-art";
   if (!id.includes("/node_modules/")) return undefined;
   // Ignore checkout names, but keep pnpm peer suffixes so React and its consumers stay together.
   // Removing those suffixes splits eager React imports across chunks and creates startup cycles.
   id = id.slice(id.search(/\/(?:\.pnpm|node_modules)\//u));
+
+  // Avatar renderer libraries load only with an avatar renderer's lazy chunk (features/avatars), never in
+  // vendor-misc, which the entry imports. three's core build is its own chunk to stay under the budget.
+  if (/\/node_modules\/three\/build\/three\.core\./u.test(id)) return "vendor-three-core";
+  if (/\/node_modules\/three\//u.test(id)) return "vendor-three";
+  if (/\/node_modules\/@pixiv\//u.test(id)) return "vendor-three-vrm";
+  if (/\/node_modules\/(?:mesh-avatar|fflate)\//u.test(id)) return "vendor-mesh-avatar";
 
   // Keep dynamically selected Lucide glyphs in small alphabetical chunks
   // instead of pulling the complete icon catalog into one eager vendor file.
@@ -164,8 +177,16 @@ export default defineConfig({
             // Intentionally exclude html so index.html is not precached and does not interfere with the PWA stale-version/update flow.
             globPatterns: ["**/*.{js,css,json,png,svg,ico,woff2}"],
             navigateFallback: null,
-            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand.
-            globIgnores: ["**/sprites/**", "logo.png", "logo-splash.gif"],
+            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand, and
+            // avatar renderers and their libraries load only where an avatar agent is used (features/avatars).
+            globIgnores: [
+              "**/sprites/**",
+              "logo.png",
+              "logo-splash.gif",
+              "**/{pngtuber,mesh-avatar,vrm}-renderer-*.js",
+              "**/vendor-three*.js",
+              "**/vendor-mesh-avatar*.js",
+            ],
             navigateFallbackAllowlist: [],
             runtimeCaching: [
               {

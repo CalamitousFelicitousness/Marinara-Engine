@@ -81,10 +81,11 @@
   border-color: var(--mari-chat-resolved-border-solid);
 }
 
-/* Action windows use the same chat palette inside their neutral dialog shell.
+/* Action windows and Game sections use the same chat palette inside their own shell.
    Resolve these aliases on the shell before remapping descendant chrome tokens:
-   Default has no widget palette, so remapping on the shell would create cycles. */
-:root[data-chat-widget-apply-colors="true"] .mari-chat-action-panel {
+   Default has no widget palette, so remapping on the shell would create cycles.
+   For the same reason a Game section is never the direct child of another. */
+:root[data-chat-widget-apply-colors="true"] :is(.mari-chat-action-panel, .mari-game-section.mari-chat-style-surface) {
   --mari-action-text: var(--mari-chat-resolved-text);
   --mari-action-control: var(--mari-chat-resolved-control);
   --mari-action-border: var(--mari-chat-resolved-border-solid);
@@ -107,7 +108,9 @@
   --ring: var(--mari-action-control);
 }
 
-:root[data-chat-widget-apply-colors="true"] .mari-chat-action-panel > * {
+:root[data-chat-widget-apply-colors="true"]
+  :is(.mari-chat-action-panel, .mari-game-section.mari-chat-style-surface)
+  > * {
   --marinara-chat-chrome-panel-bg: var(--mari-action-bg);
   --marinara-chat-chrome-panel-text: var(--mari-action-text);
   --marinara-chat-chrome-panel-title: var(--mari-action-text);
@@ -133,6 +136,77 @@
   --marinara-chat-chrome-input-border: var(--mari-action-border);
   --marinara-chat-chrome-input-border-focus: var(--mari-action-control);
   --marinara-chat-chrome-focus-ring: var(--mari-action-control);
+}
+
+/* Game sections (the logs, the Inventory, the combat panels, the Journal…) draw white
+   and black tints and an amber accent over an always-dark scene. Where the chat style
+   supplies a palette, those tints take its text and background and the accent its
+   control color: a section under Apply preset colors, and Game content in a window,
+   which follows its style without the switches. Party, enemy and element colors stay. */
+:root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface {
+  --mari-game-text: var(--mari-action-text);
+  --mari-game-bg: var(--mari-action-bg);
+  --mari-game-accent: var(--mari-action-control);
+}
+
+:root:is([data-chat-widget-preset], [data-chat-widget-colors])
+  .mari-window
+  .mari-game-section:not(.mari-chat-style-surface) {
+  --mari-game-text: var(
+    --mari-window-text,
+    var(--mari-widget-custom-text-solid, var(--mari-widget-text, var(--marinara-chat-chrome-panel-text)))
+  );
+  --mari-game-bg: var(
+    --mari-widget-custom-background-solid,
+    var(--mari-widget-bg, var(--marinara-chat-chrome-panel-bg))
+  );
+  --mari-game-accent: var(
+    --mari-window-control-color,
+    var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-accent)))
+  );
+}
+
+:root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface,
+:root:is([data-chat-widget-preset], [data-chat-widget-colors])
+  .mari-window
+  .mari-game-section:not(.mari-chat-style-surface) {
+  --color-white: var(--mari-game-text);
+  --color-black: var(--mari-game-bg);
+  --color-amber-50: var(--mari-game-accent);
+  --color-amber-100: var(--mari-game-accent);
+  --color-amber-200: var(--mari-game-accent);
+  --color-amber-300: var(--mari-game-accent);
+  --color-amber-400: var(--mari-game-accent);
+  --color-amber-500: var(--mari-game-accent);
+  --color-amber-600: var(--mari-game-accent);
+  --color-amber-700: var(--mari-game-accent);
+  --color-amber-800: var(--mari-game-accent);
+  --color-amber-900: var(--mari-game-accent);
+  --color-amber-950: var(--mari-game-accent);
+  /* Game dialogs draw their quiet buttons and fields in zinc. */
+  --color-zinc-700: color-mix(in oklab, var(--mari-game-text) 25%, var(--mari-game-bg));
+  --color-zinc-800: color-mix(in oklab, var(--mari-game-text) 12%, var(--mari-game-bg));
+  --color-zinc-900: var(--mari-game-bg);
+  --color-zinc-950: var(--mari-game-bg);
+}
+
+/* Inside a section each element paints its own color, now that the tints follow the style:
+   muted labels stay muted, buttons keep their contrast and party, enemy and element colors
+   show. In the logs a fallback name or dialogue color set inline still follows the preset
+   text, as on the other chat surfaces; a character's own color keeps its paint (#7296). */
+:root[data-chat-widget-apply-colors="true"] .mari-game-section.mari-chat-style-surface * {
+  -webkit-text-fill-color: currentColor;
+}
+:root[data-chat-widget-apply-colors="true"]
+  .mari-game-section.mari-chat-style-surface[data-game-section="logs"]
+  :is([style^="color"], [style*=" color:"]):not(.mari-character-color) {
+  -webkit-text-fill-color: var(--mari-chat-resolved-text);
+}
+/* White text on the accent fill, such as a chosen choice's number, takes the fill's own text color. */
+:root[data-chat-widget-apply-colors="true"]
+  .mari-game-section.mari-chat-style-surface
+  [class~="bg-[var(--primary)]"][class~="text-white"] {
+  color: var(--primary-foreground);
 }
 
 /* A gradient outline lives in its own paint layer. It does not clip message
@@ -357,6 +431,54 @@
   --mari-chat-existing-bg: color-mix(in oklab, var(--color-black) 75%, transparent);
   --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
 }
+/* Game sections keep their own fills under cut corners (below); the frame outline keeps
+   each section's own outline color under Shape alone. */
+.mari-game-section {
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 10%, transparent);
+}
+.mari-game-section:is(
+  [data-game-section="logs"],
+  [data-game-section="combat-logs"],
+  [data-game-section="choices"],
+  [data-game-section="storyboard"],
+  [data-game-section^="replay-"],
+  [data-game-section="town-card"],
+  [data-game-section="world-card"]
+) {
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
+}
+.mari-game-section[data-game-section="qte"] {
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 20%, transparent);
+}
+.mari-game-section:is(
+  [data-game-section^="tactical-"],
+  [data-game-section="ruleset-status"],
+  [data-game-section="combat-ai"],
+  [data-game-section="combat-director"]
+) {
+  --mari-chat-existing-border: var(--border);
+}
+.mari-game-section[data-game-section="element-reaction"] {
+  --mari-chat-existing-border: transparent;
+}
+.mari-game-section.mari-chat-action-panel {
+  --mari-chat-existing-border: var(--marinara-chat-chrome-panel-border);
+}
+/* Buttons over the Game scene, such as the combat Logs button. */
+.mari-game-scene-control {
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-black) 65%, transparent);
+  --mari-chat-control-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
+}
+.mari-game-scene-control:hover {
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-black) 80%, transparent);
+}
+.mari-game-scene-control--amber {
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-amber-500) 20%, transparent);
+  --mari-chat-control-existing-border: color-mix(in oklab, var(--color-amber-300) 25%, transparent);
+}
+.mari-game-scene-control--amber:hover {
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
+}
 
 /* Preserve the owners' normal, active and hover fills when only Shape is on. */
 .mari-chat-style-control,
@@ -576,6 +698,29 @@
   );
 }
 
+/* Game sections keep their own fill, gradients included, clipped to the cut frame;
+   the frame's paint layer would scroll away with the content of a section that scrolls. */
+:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
+  .mari-game-section.mari-chat-style-surface {
+  background: revert-layer;
+  clip-path: var(--mari-chat-frame-clip, var(--mari-widget-frame-clip));
+}
+:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"][data-chat-widget-apply-colors="true"]
+  .mari-game-section.mari-chat-style-surface {
+  background: var(--mari-chat-resolved-bg);
+}
+:root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
+  .mari-game-section.mari-chat-style-surface::after {
+  content: none;
+}
+/* ponytail: a section that scrolls itself (the phone combat drawer, the directed combat strip)
+   draws no outline layer, which would scroll with its content: Apply colors recolors its own
+   border, and cut corners leave it unframed. Upgrade: move the scrolling into an inner element. */
+:root:is([data-chat-widget-apply-colors="true"], [data-chat-widget-apply-shape="true"])
+  .mari-game-section.mari-chat-style-surface:is(.overflow-y-auto, .overflow-auto)::before {
+  content: none;
+}
+
 /* A control needs only one decorative layer: its other pseudo-element may be
    the enlarged phone hit target. Keep that element and the actual button intact. */
 :root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
@@ -625,16 +770,17 @@
   pointer-events: none;
 }
 
-/* Shape-only action buttons keep their existing fills. */
-.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control {
+/* Shape-only action buttons and history pagers (Load More, Show older) keep their existing fills. */
+.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control,
+.mari-chat-history-pager.mari-chrome-control {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg);
 }
-.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control:hover {
+.mari-chat-action-panel .mari-chat-style-control.mari-chrome-control:hover,
+.mari-chat-history-pager.mari-chrome-control:hover {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-button-bg-hover);
 }
 [data-marinara-chat-chrome-accent-mode="gradient"]
-  .mari-chat-action-panel
-  .mari-chat-style-control.mari-chrome-control:hover {
+  :is(.mari-chat-action-panel .mari-chat-style-control, .mari-chat-history-pager).mari-chrome-control:hover {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-surface-bg-hover);
 }
 .mari-chat-action-panel .mari-chat-style-control[class~="bg-[var(--secondary)]"] {
@@ -660,16 +806,36 @@
   .mari-chat-style-control[class~="hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)]"]:hover {
   --mari-chat-control-existing-bg: var(--marinara-chat-chrome-highlight-bg-hover);
 }
-/* Outrank gradient app chrome without painting over a cut-corner frame. */
+/* Outrank gradient app chrome without painting over a cut-corner frame. :is() keeps the
+   action panel's weight for history pagers too, which sit outside any panel. */
 :root[data-chat-widget-apply-colors="true"]
-  .mari-chat-action-panel.mari-chat-style-surface
-  .mari-chat-style-control.mari-chrome-control:not(.mari-chrome-control--danger) {
+  :is(
+    .mari-chat-action-panel.mari-chat-style-surface .mari-chat-style-control,
+    .mari-chat-history-pager
+  ).mari-chrome-control:not(.mari-chrome-control--danger) {
   background: var(--mari-chat-control-paint);
   border-color: var(--mari-chat-resolved-border-solid);
 }
 :root[data-chat-widget-apply-shape="true"][data-chat-widget-shape="cut-corner"]
-  .mari-chat-action-panel.mari-chat-style-surface
-  .mari-chat-style-control.mari-chrome-control:not(.mari-chrome-control--danger) {
+  :is(
+    .mari-chat-action-panel.mari-chat-style-surface .mari-chat-style-control,
+    .mari-chat-history-pager
+  ).mari-chrome-control:not(.mari-chrome-control--danger) {
   background: transparent;
   border-color: transparent;
+}
+
+/* History pagers sit on the open chat, where the faint chrome focus ring is hard to see. Ring
+   them in the full accent, or in the style's control colour while Apply preset colors is on. */
+.mari-chat-history-pager {
+  --marinara-chat-chrome-focus-ring: var(--marinara-chat-chrome-accent);
+}
+:root[data-chat-widget-apply-colors="true"] .mari-chat-history-pager {
+  --marinara-chat-chrome-focus-ring: var(
+    --mari-chat-control-color,
+    var(
+      --mari-window-control-color,
+      var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-accent)))
+    )
+  );
 }

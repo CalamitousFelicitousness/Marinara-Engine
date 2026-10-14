@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import { createHash, createSign } from "crypto";
 import {
+  ASSISTANT_CONTINUATION_PROMPT,
   BaseLLMProvider,
   llmFetch,
   llmHttpErrorFromResponse,
@@ -14,7 +15,13 @@ import {
   type LLMToolDefinition,
   type LLMUsage,
 } from "../base-provider.js";
-import { shouldSuppressUnknownModelParameters } from "@marinara-engine/shared";
+import {
+  isGeminiArgonModel,
+  isGeminiStrictRequestModel,
+  isGeminiThinkingLevelModel,
+  shouldSuppressUnknownModelParameters,
+  type GenerationParameterSendKey,
+} from "@marinara-engine/shared";
 import { getEmbeddingRequestTimeoutMs, isDebugAgentsEnabled } from "../../../config/runtime-config.js";
 import { logDebugOverride } from "../../../lib/logger.js";
 import { decodePossiblyCompressedBody } from "../../../utils/security.js";
@@ -73,6 +80,38 @@ interface GeminiEmbeddingPayload {
 
 type GoogleProviderKind = "google" | "google_vertex";
 
+const GEMINI_STRICT_UNSENT = new Set<GenerationParameterSendKey>([
+  "temperature",
+  "topP",
+  "topK",
+  "frequencyPenalty",
+  "presencePenalty",
+]);
+
+// Gemini's adjustable safety filters are always off (#7542). Google documents Off as the default only for
+// Gemini 2.5 and 3, so newer models need it said out loud. Core protections still apply and still block.
+// CIVIC_INTEGRITY is deprecated and JAILBREAK is not in the adjustable list, so neither is sent.
+// https://ai.google.dev/gemini-api/docs/safety-settings
+const GEMINI_SAFETY_SETTINGS_OFF = [
+  "HARM_CATEGORY_HARASSMENT",
+  "HARM_CATEGORY_HATE_SPEECH",
+  "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+  "HARM_CATEGORY_DANGEROUS_CONTENT",
+].map((category) => ({ category, threshold: "OFF" }));
+
+/**
+ * Runs after custom parameters. A user's own safety settings (in either spelling) win for the categories they
+ * name; every other category is still sent as Off, under the user's spelling so the field is never doubled.
+ * A body where the user wrote both spellings is left exactly as written, so nothing contradicts either list.
+ */
+function applyGeminiSafetySettingsOff(body: Record<string, unknown>): void {
+  if ("safetySettings" in body && "safety_settings" in body) return;
+  const key = "safety_settings" in body ? "safety_settings" : "safetySettings";
+  const own = Array.isArray(body[key]) ? (body[key] as Array<{ category?: unknown } | null>) : [];
+  const named = new Set(own.map((setting) => setting?.category));
+  body[key] = [...own, ...GEMINI_SAFETY_SETTINGS_OFF.filter(({ category }) => !named.has(category))];
+}
+
 export function resolveGoogleFunctionCallingMode(toolChoice: ChatOptions["toolChoice"]): "AUTO" | "ANY" {
   return toolChoice === "required" ? "ANY" : "AUTO";
 }
@@ -102,9 +141,13 @@ const GOOGLE_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platf
 const serviceAccountTokenCache = new Map<string, { accessToken: string; expiresAtMs: number }>();
 const LINKAPI_CONSOLE_HOSTS = new Set(["linkapi.ai", "www.linkapi.ai", "home.linkapi.ai"]);
 
-function supportsGoogleThinkingStreaming(baseUrl: string): boolean {
+function supportsGoogleThinkingStreaming(baseUrl: string, model: string): boolean {
   try {
-    return new URL(baseUrl).hostname === "generativelanguage.googleapis.com";
+    const host = new URL(baseUrl).hostname;
+    if (host === "generativelanguage.googleapis.com") return true;
+    // Argon stops a non-streamed reply at 32,768 tokens, half its streamed limit, so it streams on Vertex too.
+    // ponytail: other models still buffer thinking on Vertex; drop the model check once Vertex is verified for them.
+    return isGeminiArgonModel(model) && host.endsWith(".googleapis.com");
   } catch {
     return false;
   }
@@ -269,7 +312,7 @@ export function resolveGeminiThinkingConfig(
   }
   if (!options.enableThinking && !options.reasoningEffort) return undefined;
 
-  if (/gemini-3/i.test(model)) {
+  if (isGeminiThinkingLevelModel(model)) {
     const levelMap = { low: "low", medium: "medium", high: "high", xhigh: "high", max: "high" } as const;
     return {
       thinkingLevel: options.reasoningEffort ? levelMap[options.reasoningEffort] : "high",
@@ -552,6 +595,22 @@ function formatGoogleContents(
   return contents;
 }
 
+/**
+ * Argon and the newer Flash models reject a prefilled final model turn: keep it as history and ask for only the rest of
+ * the reply. https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
+ */
+function withGeminiContinuation(model: string, contents: Array<{ role: string; parts: object[] }>) {
+  const last = contents.at(-1);
+  if (
+    !isGeminiStrictRequestModel(model) ||
+    last?.role !== "model" ||
+    last.parts.some((part) => "functionCall" in part)
+  ) {
+    return contents;
+  }
+  return [...contents, { role: "user", parts: [{ text: ASSISTANT_CONTINUATION_PROMPT }] }];
+}
+
 function geminiToolCallFromPart(part: GeminiPart, index: number): LLMToolCall | null {
   const call = part.functionCall;
   if (!call || typeof call.name !== "string") return null;
@@ -575,7 +634,8 @@ function geminiUsage(usage?: GeminiUsageMetadata): LLMUsage | undefined {
 
 function normalizeGeminiFinishReason(reason: string | null | undefined): string {
   const normalized = typeof reason === "string" ? reason.trim().toUpperCase() : "";
-  if (normalized === "MAX_TOKENS") return "length";
+  // Argon ends a reply cut at its per-request output limit with CONTINUATION (a long-decode token Marinara does not use).
+  if (normalized === "MAX_TOKENS" || normalized === "CONTINUATION") return "length";
   if (normalized === "STOP") return "stop";
   return reason ?? "stop";
 }
@@ -601,6 +661,12 @@ export class GoogleProvider extends BaseLLMProvider {
     );
   }
 
+  // Argon and the newer Flash models ignore temperature, top-p and top-k and reject both penalties with HTTP 400.
+  protected override shouldSendParameter(options: ChatOptions, key: GenerationParameterSendKey): boolean {
+    if (isGeminiStrictRequestModel(options.model) && GEMINI_STRICT_UNSENT.has(key)) return false;
+    return super.shouldSendParameter(options, key);
+  }
+
   async chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
     if (this.shouldSuppressModelParameters(options) || !options.tools?.length)
       return super.chatComplete(messages, options);
@@ -612,8 +678,7 @@ export class GoogleProvider extends BaseLLMProvider {
     const maxTokens = this.applyMaxTokensCap(contextFit.maxTokens ?? configuredMaxTokens);
     const model = options.model || "gemini-2.0-flash";
 
-    const isGemini3 = /gemini-3/i.test(model);
-    const supportsThinking = isGemini3 || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model);
+    const supportsThinking = isGeminiThinkingLevelModel(model) || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model);
     const thinkingConfig =
       this.shouldSendParameter(options, "reasoningEffort") && supportsThinking
         ? resolveGeminiThinkingConfig(model, options, maxTokens ?? 4096)
@@ -630,7 +695,9 @@ export class GoogleProvider extends BaseLLMProvider {
     // the buffered path it uses today. Only the official endpoint streams thinking;
     // unrecognized proxies retain the workaround for stripped thought parts.
     const useStream =
-      !!options.onToken && options.stream !== false && (!thinkingConfig || supportsGoogleThinkingStreaming(base));
+      !!options.onToken &&
+      options.stream !== false &&
+      (!thinkingConfig || supportsGoogleThinkingStreaming(base, model));
     const endpoint = useStream ? "streamGenerateContent" : "generateContent";
     const url =
       this.providerKind === "google_vertex"
@@ -639,7 +706,7 @@ export class GoogleProvider extends BaseLLMProvider {
 
     const systemMessages = messages.filter((m) => m.role === "system" && m.content?.trim());
     const body: Record<string, unknown> = {
-      contents: formatGoogleContents(messages),
+      contents: withGeminiContinuation(model, formatGoogleContents(messages)),
       generationConfig: {
         ...(this.shouldSendParameter(options, "temperature") ? { temperature: options.temperature ?? 1 } : {}),
         ...(this.shouldSendParameter(options, "maxTokens") ? { maxOutputTokens: maxTokens } : {}),
@@ -667,6 +734,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    applyGeminiSafetySettingsOff(body);
     applyGoogleFunctionCallingMode(body, options.toolChoice);
     logDebugOverride(
       options.debugMode === true || isDebugAgentsEnabled(),
@@ -874,13 +942,11 @@ export class GoogleProvider extends BaseLLMProvider {
 
     const model = options.model || "gemini-2.0-flash";
 
-    // Gemini 3.x models use thinkingLevel; Gemini 2.5 uses thinkingBudget
-    const isGemini3 = /gemini-3/i.test(model);
-
     // Only models that actually support thinking should get thinkingConfig:
-    // Gemini 3.x, 2.5-flash/pro, and 2.0-flash-thinking.
+    // Gemini 3 and later (thinkingLevel), 2.5-flash/pro and 2.0-flash-thinking (thinkingBudget).
     const supportsThinking =
-      !suppressModelParameters && (isGemini3 || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model));
+      !suppressModelParameters &&
+      (isGeminiThinkingLevelModel(model) || /gemini-2\.5|gemini-2\.0-flash-thinking/i.test(model));
 
     const thinkingConfig =
       this.shouldSendParameter(options, "reasoningEffort") && supportsThinking
@@ -896,7 +962,7 @@ export class GoogleProvider extends BaseLLMProvider {
 
     // Proxies can strip thought parts from SSE; keep their buffered workaround.
     // Google's official endpoint carries those parts in its stream.
-    const useStreaming = options.stream && (!thinkingConfig || supportsGoogleThinkingStreaming(base));
+    const useStreaming = options.stream && (!thinkingConfig || supportsGoogleThinkingStreaming(base, model));
     const endpoint = useStreaming ? "streamGenerateContent" : "generateContent";
     const url =
       this.providerKind === "google_vertex"
@@ -905,8 +971,15 @@ export class GoogleProvider extends BaseLLMProvider {
 
     // Convert to Gemini format — filter out empty-content messages
     const systemMessages = messages.filter((m) => m.role === "system" && m.content?.trim());
+    // Saved Gemini parts keep a turn with no text, as formatGoogleContents does.
     const chatMessages = messages.filter(
-      (m) => m.role !== "system" && (m.content?.trim() || m.images?.length || m.files?.length || m.media?.length),
+      (m) =>
+        m.role !== "system" &&
+        (m.content?.trim() ||
+          m.images?.length ||
+          m.files?.length ||
+          m.media?.length ||
+          (m.role === "assistant" && m.providerMetadata?.geminiParts)),
     );
 
     const contents = chatMessages.map((m) => {
@@ -936,7 +1009,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     const body: Record<string, unknown> = {
-      contents,
+      contents: withGeminiContinuation(model, contents),
     };
 
     const outputMaxTokens = maxTokens ?? 4096;
@@ -972,6 +1045,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    applyGeminiSafetySettingsOff(body);
 
     const authHeaders =
       this.providerKind === "google_vertex"

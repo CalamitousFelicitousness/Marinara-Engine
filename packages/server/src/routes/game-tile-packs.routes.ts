@@ -151,7 +151,7 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
     const removed = await store.removeAll(removalId(id));
     if (!removed) return reply.status(404).send({ error: "No such tile pack." });
     const selection = await readSelection();
-    const kept = Object.fromEntries(Object.entries(selection).filter(([, packId]) => packId !== id));
+    const kept = Object.fromEntries(Object.entries(selection).filter(([, packId]) => packId !== removalId(id)));
     if (Object.keys(kept).length !== Object.keys(selection).length)
       await settings.set(SELECTION_KEY, JSON.stringify(kept));
     return { removed };

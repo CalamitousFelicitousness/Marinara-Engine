@@ -4422,6 +4422,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           stopSequences,
           effectiveMaxContext,
         } = providerRuntime);
+        // A defined intro is the whole reply as set: no prefill goes before it.
+        if (definedIntro?.mode === "defined") assistantPrefill = "";
 
         const chatConnectionMaxParallelJobs = Number(conn.maxParallelJobs) || 1;
         const chatConnectionKnownModel = findKnownModel(conn.provider as APIProvider, conn.model.trim());
@@ -9735,7 +9737,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           }
 
-          if (input.trimIncompleteModelOutput && !input.impersonate) {
+          // A defined intro was written, not cut off: it is kept whole.
+          if (input.trimIncompleteModelOutput && !input.impersonate && definedIntro?.mode !== "defined") {
             const beforeTrim = fullResponse;
             fullResponse = trimIncompleteModelEnding(fullResponse);
             if (fullResponse !== beforeTrim) {

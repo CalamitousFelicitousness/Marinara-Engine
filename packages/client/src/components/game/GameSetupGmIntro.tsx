@@ -93,7 +93,10 @@ export function GameSetupGmIntro({
         />
       )}
       <p
-        className={cn("mt-1 text-[0.575rem]", problem ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]")}
+        className={cn(
+          "mt-1 text-[0.575rem]",
+          problem ? "text-[var(--marinara-app-accent-static)]" : "text-[var(--muted-foreground)]",
+        )}
       >
         {problem ? t(`game.intro.${problem}`) : t(`game.intro.help.${shown.mode}`)}
       </p>

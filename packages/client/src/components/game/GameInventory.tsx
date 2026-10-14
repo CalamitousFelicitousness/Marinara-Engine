@@ -44,6 +44,7 @@ import {
   type RulesetStartingGearSelection,
 } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { RulesetItemPicker, rulesetItemEffectLines, rulesetItemStatsLine } from "./RulesetItemPicker";
@@ -569,7 +570,13 @@ export function GameInventory({
         right: "var(--mari-chat-ui-inset-right, 0px)",
       }}
     >
-      <div className="relative flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-white/10 bg-black shadow-[0_0_40px_rgba(0,0,0,0.8)] supports-[height:100dvh]:max-h-[85dvh]">
+      <div
+        data-game-section="inventory"
+        className={cn(
+          GAME_SECTION_CLASS,
+          "relative flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-white/10 bg-black shadow-[0_0_40px_rgba(0,0,0,0.8)] supports-[height:100dvh]:max-h-[85dvh]",
+        )}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/8 bg-white/[0.02] px-4 py-3">
           <div className="flex items-center gap-2">

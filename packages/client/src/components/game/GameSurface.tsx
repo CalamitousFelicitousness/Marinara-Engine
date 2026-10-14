@@ -134,6 +134,7 @@ import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showChoiceDialog, showConfirmDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT } from "../../lib/chat-floating-ui-events";
 import { cn, generateClientId } from "../../lib/utils";
+import { GAME_DIALOG_CLASS, GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { gameInventoryRefusalKeys } from "../../lib/game-inventory-refusal";
 import {
   filterAudioGenerationConnections,
@@ -13147,7 +13148,7 @@ function GameSurfaceComponent({
                         <button
                           type="button"
                           onClick={() => setCombatLogsOpen(true)}
-                          className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/80 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
+                          className="mari-chat-style-control mari-game-scene-control flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/80 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
                           title={localizeUi("ui.game.gamesurfacecomponent.openCombatLogs")}
                         >
                           <ScrollText size={13} />
@@ -13157,7 +13158,7 @@ function GameSurfaceComponent({
                           type="button"
                           onClick={handleReturnToPreCombatTurn}
                           disabled={!latestAssistantMsg?.id}
-                          className="flex items-center gap-1.5 rounded-lg border border-amber-300/25 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 shadow-lg backdrop-blur-md transition-colors hover:bg-amber-500/30 disabled:opacity-50"
+                          className="mari-chat-style-control mari-game-scene-control mari-game-scene-control--amber flex items-center gap-1.5 rounded-lg border border-amber-300/25 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 shadow-lg backdrop-blur-md transition-colors hover:bg-amber-500/30 disabled:opacity-50"
                           title={localizeUi("ui.game.gamesurfacecomponent.exitCombatAndRemoveTheTurnThatStartedIt")}
                         >
                           <RotateCcw size={13} />
@@ -13470,7 +13471,11 @@ function GameSurfaceComponent({
                     {...combatLogsBackdropDismiss}
                   >
                     <div
-                      className="flex max-h-[82vh] w-full max-w-2xl flex-col rounded-xl border border-white/15 bg-[var(--card)] shadow-2xl"
+                      data-game-section="combat-logs"
+                      className={cn(
+                        GAME_SECTION_CLASS,
+                        "flex max-h-[82vh] w-full max-w-2xl flex-col rounded-xl border border-white/15 bg-[var(--card)] shadow-2xl",
+                      )}
                       onClick={(event) => event.stopPropagation()}
                     >
                       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
@@ -13691,6 +13696,7 @@ function GameSurfaceComponent({
         onClose={closeInterruptModal}
         title={localizeUi("ui.game.gamesurfacecomponent.attemptToInterrupt")}
         width="max-w-md"
+        panelClassName={GAME_DIALOG_CLASS}
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-start gap-3">
@@ -13742,6 +13748,7 @@ function GameSurfaceComponent({
             : localizeUi("ui.game.gamesurfacecomponent.endSession")
         }
         width="max-w-md"
+        panelClassName={GAME_DIALOG_CLASS}
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-start gap-3">

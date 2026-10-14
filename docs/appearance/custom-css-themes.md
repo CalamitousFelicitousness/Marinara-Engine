@@ -20,8 +20,8 @@ Use **Reset color** beside a control to follow the preset's light or dark colors
 
 To carry the look into the rest of the chat, use the three switches below the color pickers:
 
-- **Apply preset font** uses the selected widget font for messages, input boxes and chat controls, including Game Mode's HUD widgets, map panel, side remarks and character sheets.
-- **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, side remarks, HUD widgets, map panel and character sheets, input boxes and controls. Conversation messages keep their own shape.
+- **Apply preset font** uses the selected widget font for messages, input boxes and chat controls, including Game Mode's HUD widgets, map panel, side remarks, character sheets, logs, Inventory, combat panels and dialogs.
+- **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, side remarks, HUD widgets, map panel, character sheets, logs, Inventory, combat panels and dialogs, input boxes and controls. Conversation messages keep their own shape.
 - **Apply preset colors** uses the widget's border, background and text colors for those areas, including Conversation messages. Your custom colors and gradients apply too. Quoted dialogue keeps each Character's or Persona's own Dialogue Highlight Color.
 
 Each switch starts off and works independently. For example, you can use Professor Mari's lettering while keeping the chat's usual colors. Turning a switch off restores that part of the usual chat styling. Choosing another preset keeps your switch choices. Professor Mari can create custom themes for these areas too.
@@ -220,6 +220,8 @@ The three **Apply preset** switches also let a custom theme use the widget desig
 | Part | Class |
 | --- | --- |
 | Roleplay and Game message boxes, Game side remarks, HUD widgets, map panel and character sheets, and chat input boxes | `.mari-chat-style-surface` |
+| Game logs, Inventory, combat panels, choices and dialogs; the panels also have `data-game-section` with their name, such as `logs`, `inventory` or `combat-actions` | `.mari-game-section.mari-chat-style-surface` |
+| Game content in a window, such as the Journal, which follows the window's colors | `.mari-game-section` |
 | Conversation messages (font and colors only) | `.mari-chat-style-conversation` |
 | Unboxed Conversation message text | `.mari-chat-style-text` |
 | Chat controls, including Calls and Conversation group controls | `.mari-chat-style-control` |

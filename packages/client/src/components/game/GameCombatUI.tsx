@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { audioManager } from "../../lib/game-audio";
 import { getOrCreateCachedTTSAudioBlob } from "../../lib/tts-audio-cache";
@@ -1906,12 +1907,24 @@ export function GameCombatUI({
         {/* Middle: touch battle stage */}
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {phase === "animating" && roundResult && animatingActionIndex >= 0 && (
-            <div className="pointer-events-none absolute inset-x-2 top-2 z-10 rounded-lg border border-white/10 bg-black/75 px-3 py-2 backdrop-blur-md">
+            <div
+              data-game-section="combat-banner"
+              className={cn(
+                GAME_SECTION_CLASS,
+                "pointer-events-none absolute inset-x-2 top-2 z-10 rounded-lg border border-white/10 bg-black/75 px-3 py-2 backdrop-blur-md",
+              )}
+            >
               <ActionNarration action={roundResult.actions[animatingActionIndex]!} allCombatants={allCombatants} />
             </div>
           )}
           {phase === "resolving" && (
-            <div className="absolute inset-x-2 top-2 z-10 flex items-center gap-2 rounded-lg border border-white/10 bg-black/75 px-3 py-2 text-xs text-white/70 backdrop-blur-md">
+            <div
+              data-game-section="combat-banner"
+              className={cn(
+                GAME_SECTION_CLASS,
+                "absolute inset-x-2 top-2 z-10 flex items-center gap-2 rounded-lg border border-white/10 bg-black/75 px-3 py-2 text-xs text-white/70 backdrop-blur-md",
+              )}
+            >
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               {selectedAction === "custom"
                 ? localizeUi("ui.game.gamecombatui.theGameMasterIsAdjudicatingYourManeuver")
@@ -2033,7 +2046,13 @@ export function GameCombatUI({
         )}
 
         {/* Bottom action sheet — sticky, always shows current player + active phase content */}
-        <div className="relative z-30 shrink-0 border-t border-white/10 bg-gradient-to-t from-black/95 to-black/85 backdrop-blur-md">
+        <div
+          data-game-section="combat-sheet"
+          className={cn(
+            GAME_SECTION_CLASS,
+            "relative z-30 shrink-0 border-t border-white/10 bg-gradient-to-t from-black/95 to-black/85 backdrop-blur-md",
+          )}
+        >
           {/* Drawer toggle bar */}
           <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-white/5 px-1.5 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {combatControlsSlot && <div className="flex shrink-0 items-center gap-1">{combatControlsSlot}</div>}
@@ -2440,7 +2459,11 @@ export function GameCombatUI({
           >
             <div className="mt-auto" />
             <div
-              className="relative max-h-[60svh] min-h-[20svh] overflow-y-auto rounded-t-xl border-t border-white/10 bg-gradient-to-t from-black/95 to-black/90 px-3 py-3 animate-in slide-in-from-bottom-4 duration-200"
+              data-game-section="combat-drawer"
+              className={cn(
+                GAME_SECTION_CLASS,
+                "relative max-h-[60svh] min-h-[20svh] overflow-y-auto rounded-t-xl border-t border-white/10 bg-gradient-to-t from-black/95 to-black/90 px-3 py-3 animate-in slide-in-from-bottom-4 duration-200",
+              )}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-2 flex items-center justify-between">
@@ -2628,7 +2651,13 @@ export function GameCombatUI({
         <div className="relative z-30 flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 sm:px-4 sm:pb-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">{combatControlsSlot}</div>
           {phase !== "intro" && (
-            <div className="shrink-0 rounded-lg border border-white/10 bg-black/65 px-2.5 py-1 text-center shadow-lg backdrop-blur-md">
+            <div
+              data-game-section="combat-round"
+              className={cn(
+                GAME_SECTION_CLASS,
+                "shrink-0 rounded-lg border border-white/10 bg-black/65 px-2.5 py-1 text-center shadow-lg backdrop-blur-md",
+              )}
+            >
               <div className="text-[0.55rem] font-semibold uppercase tracking-widest text-white/40">
                 {localizeUi("ui.game.gamecombatui.round")}
               </div>
@@ -2639,7 +2668,13 @@ export function GameCombatUI({
       )}
 
       {turnOrder.length > 0 && phase !== "intro" && (
-        <div className="relative z-30 shrink-0 border-y border-white/10 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:px-4">
+        <div
+          data-game-section="combat-turn-order"
+          className={cn(
+            GAME_SECTION_CLASS,
+            "relative z-30 shrink-0 border-y border-white/10 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:px-4",
+          )}
+        >
           <div className="flex items-center gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <span className="mr-1 shrink-0 text-[0.6rem] font-semibold uppercase tracking-widest text-white/50">
               {localizeUi("ui.game.gamesurfacecomponent.turn")}
@@ -2668,7 +2703,13 @@ export function GameCombatUI({
       )}
 
       {/* ── Bottom panel: Action menu / Narration ── */}
-      <div className="relative z-20 max-h-[52svh] shrink-0 overflow-y-auto border-t border-white/10 bg-gradient-to-t from-black/90 to-black/70 backdrop-blur-md sm:max-h-none">
+      <div
+        data-game-section="combat-actions"
+        className={cn(
+          GAME_SECTION_CLASS,
+          "relative z-20 max-h-[52svh] shrink-0 overflow-y-auto border-t border-white/10 bg-gradient-to-t from-black/90 to-black/70 backdrop-blur-md sm:max-h-none",
+        )}
+      >
         {/* Resolving / animating state */}
         {(phase === "resolving" || phase === "animating") && (
           <div className="flex flex-col gap-2 px-4 py-3">

@@ -24,6 +24,7 @@ import {
   filterCatalogEntries,
 } from "../../lib/ruleset-catalog";
 import { Modal } from "../ui/Modal";
+import { GAME_DIALOG_CLASS } from "../../lib/chat-widget-colors";
 
 const inputClass =
   "w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs text-[var(--foreground)]";
@@ -457,6 +458,7 @@ export function RulesetItemPicker({
       title={t("game.ruleset.items.pickerTitle")}
       width="max-w-2xl"
       mobileFullscreen
+      panelClassName={GAME_DIALOG_CLASS}
       initialFocusRef={searchRef}
       contentClassName="flex flex-col"
     >

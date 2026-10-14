@@ -54,6 +54,7 @@ import {
 import { RulesetCombatMenu } from "./RulesetCombatMenu";
 import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 
 export interface RulesetCombatBoardProps {
   /** A view that carries a grid. Without one the caller keeps the Classic stage. */
@@ -291,7 +292,13 @@ export function RulesetCombatBoard({
         }}
       />
 
-      <div className="z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-black/40 px-3 py-1.5 text-xs backdrop-blur">
+      <div
+        data-game-section="ruleset-status"
+        className={cn(
+          GAME_SECTION_CLASS,
+          "z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-black/40 px-3 py-1.5 text-xs backdrop-blur",
+        )}
+      >
         <span className="font-semibold text-white/80">
           {actor
             ? t("game.combat.ruleset.board.turnOf", { name: actor.name })
@@ -575,12 +582,19 @@ export function RulesetCombatBoard({
           because the square's own name has just said the same words to a screen reader. */}
       <p
         aria-live="polite"
-        className="z-10 min-h-[1.5rem] shrink-0 border-t border-white/10 bg-black/35 px-3 py-1 text-[0.65rem] leading-snug text-white/70 backdrop-blur"
+        data-game-section="ruleset-hint"
+        className={cn(
+          GAME_SECTION_CLASS,
+          "z-10 min-h-[1.5rem] shrink-0 border-t border-white/10 bg-black/35 px-3 py-1 text-[0.65rem] leading-snug text-white/70 backdrop-blur",
+        )}
       >
         {readingHint === undefined ? hint : <span aria-hidden="true">{hint}</span>}
       </p>
 
-      <div className="z-10 shrink-0 border-t border-white/10 bg-black/40 backdrop-blur">
+      <div
+        data-game-section="ruleset-actions"
+        className={cn(GAME_SECTION_CLASS, "z-10 shrink-0 border-t border-white/10 bg-black/40 backdrop-blur")}
+      >
         <RulesetCombatMenu
           view={view}
           budgetLabel={budgetLabel}

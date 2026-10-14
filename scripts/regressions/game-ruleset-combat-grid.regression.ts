@@ -41,6 +41,7 @@ import {
   rulesetAttackMode,
   rulesetCellDistance,
   rulesetCombatant,
+  rulesetDefenseAgainst,
   rulesetCombatConditions,
   rulesetCombatFailsSave,
   rulesetCombatOptions,
@@ -52,6 +53,7 @@ import {
   rulesetOptionReach,
   rulesetOptionTargets,
   rulesetReachableCells,
+  rulesetWalkingDistances,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
@@ -778,6 +780,274 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   assert.equal(firstOf(swing.events, "attack").defense, who(rough, "ash").defense);
 }
 
+// ── Cover by degrees (combat C6a-2): read from the attacker, on a save too, and somebody in the way ──
+{
+  const graded = parsedOrThrow(
+    variant(fiveEText, (doc) => {
+      doc.combat.cover = { bonus: 2, threeQuarters: 5, saves: ["dex_save"], creatures: true };
+    }),
+    "the 5e example with cover by degrees",
+  );
+  // Brenna in one corner of a room, Mote four across and two down, and the room drawn round them.
+  const room = (definition: RulesetDefinition, ...rows: string[]) =>
+    fight(definition, [fighter(), mote(), snag()], [12, 9, 8], {
+      grid: drawn(...rows),
+      placements: { brenna: { x: 0, y: 0 }, mote: { x: 4, y: 2 }, snag: { x: 6, y: 0 } },
+    });
+  const coverOf = (definition: RulesetDefinition, state: RulesetEncounterState) =>
+    rulesetDefenseAgainst(definition, definition.combat!, state, who(state, "mote"), who(state, "brenna")).cover;
+  assert.equal(coverOf(graded, room(graded, ".......", ".......", ".......")), 0, "nothing between them");
+  assert.equal(coverOf(graded, room(graded, ".......", "....#..", ".......")), 2, "a wall beside him: half");
+  assert.equal(coverOf(graded, room(graded, ".......", "...#...", "..#....")), 5, "two walls: three-quarters");
+  assert.equal(coverOf(fiveE, room(fiveE, ".......", "...#...", "..#....")), 2, "one number serves for both");
+  assert.equal(coverOf(graded, room(graded, ".......", ".......", "....r..")), 2, "his own ground, as before");
+  // From right beside him nothing is between them, whatever stands beside him.
+  const close = room(graded, ".......", "....#..", ".......");
+  Object.assign(who(close, "brenna"), { x: 3, y: 2 });
+  assert.equal(coverOf(graded, close), 0, "cover is read from where the attacker stands");
+  // Somebody standing in the way is half cover where the ruleset says so, and nothing where it does not.
+  const crowd = (definition: RulesetDefinition) => {
+    const state = room(definition, ".......", ".......", ".......");
+    Object.assign(who(state, "snag"), { x: 2, y: 1 });
+    return coverOf(definition, state);
+  };
+  assert.deepEqual([crowd(graded), crowd(fiveE)], [2, 0], "a Snag between them");
+  // The roll is made against it and the log says so.
+  const walled = room(graded, ".......", "...#...", "..#....");
+  const javelin = optionNamed(graded, walled, "brenna", "Javelin");
+  const thrown = act(graded, walled, { actorId: "brenna", optionId: javelin.id, targetIds: ["mote"] }, 10, 3);
+  assert.deepEqual(firstOf(thrown.events, "cover"), { type: "cover", targetId: "mote", bonus: 5, defense: 10 });
+  assert.equal(firstOf(thrown.events, "attack").defense, 10);
+
+  // A Dexterity save takes cover from where a burst lands, not from who threw it.
+  const blast = (...rows: string[]) => {
+    const state = fight(graded, [wizard(), mote()], [12, 9], {
+      grid: drawn(...rows),
+      placements: { corwin: { x: 6, y: 0 }, mote: { x: 4, y: 2 } },
+    });
+    const ball = optionNamed(graded, state, "corwin", "Fireball");
+    const step = act(
+      graded,
+      state,
+      { actorId: "corwin", optionId: ball.id, targetIds: [], at: { x: 0, y: 0 } },
+      ...[4, 4, 4, 4, 4, 4, 4, 4],
+      10,
+    );
+    const refused = eventsOf(step.events, "refused")[0];
+    assert.equal(refused, undefined, JSON.stringify(refused));
+    return { cover: eventsOf(step.events, "cover"), save: firstOf(step.events, "save") };
+  };
+  const behind = blast(".......", "....#..", ".......", ".......", ".......");
+  assert.deepEqual(behind.cover, [{ type: "cover", targetId: "mote", bonus: 2, save: "dex_save" }]);
+  assert.equal(behind.save.modifier, 2, "his save is two better");
+  const open = blast(".......", ".......", ".......", ".......", ".......");
+  assert.deepEqual(open.cover, [], "in the open it adds nothing");
+  assert.equal(open.save.modifier, 0);
+  // A wall between him and the caster, with nothing between him and where the ball lands, is no cover.
+  const fromCaster = blast(".......", ".....#.", ".......", ".......", ".......");
+  assert.deepEqual(fromCaster.cover, [], "cover is read from where the burst lands");
+  // Held by somebody answering its use, the burst still takes cover from where it was aimed when it
+  // resolves: a watcher beside the caster lets it go, and the wall between Mote and the caster is
+  // still no cover from where the ball lands.
+  const watcher: RulesetCombatantInput = {
+    ...mote("watcher", "Watcher"),
+    block: {
+      health: 4,
+      defense: 5,
+      initiativeModifier: -2,
+      speed: 30,
+      actions: [
+        {
+          id: "jeer",
+          name: "Jeer",
+          budget: "reaction",
+          toHit: 0,
+          damage: { count: 1, sides: 1, flat: 0 },
+          reach: 5,
+          reaction: { on: "used" },
+        },
+      ],
+    },
+  };
+  const watched = fight(graded, [wizard(), mote(), watcher], [12, 9, 8], {
+    grid: drawn(".......", ".....#.", ".......", ".......", "......."),
+    placements: { corwin: { x: 6, y: 0 }, mote: { x: 4, y: 2 }, watcher: { x: 5, y: 0 } },
+  });
+  const held = act(graded, watched, {
+    actorId: "corwin",
+    optionId: optionNamed(graded, watched, "corwin", "Fireball").id,
+    targetIds: [],
+    at: { x: 0, y: 0 },
+  });
+  assert.equal(held.state.window?.trigger.kind, "used", "the watcher is asked first");
+  const letGo = act(
+    graded,
+    held.state,
+    { actorId: "watcher", optionId: RULESET_PASS_OPTION, targetIds: [], window: held.state.window!.id },
+    ...[4, 4, 4, 4, 4, 4, 4, 4],
+    10,
+  );
+  assert.deepEqual(eventsOf(letGo.events, "cover"), [], "the resumed ball keeps its aim");
+  assert.equal(firstOf(letGo.events, "save").modifier, 0);
+  // A spell aimed at somebody takes cover from its caster; one whose text says the target gains no
+  // benefit from cover (5e's Sacred Flame) takes none; and the ground under the target, which is cover
+  // against an attack, is no help on a save: nothing lies between him and the spell.
+  const ray = (id: string, label: string, ignoresCover: boolean) => ({
+    id,
+    label,
+    rows: [{ list: "spells", values: { name: label, level: 0, prepared: false } }],
+    mechanics: {
+      kind: "attack",
+      amount: { dice: "1d8" },
+      damageType: "radiant",
+      save: { save: "dex_save", onSuccess: "negates", ...(ignoresCover ? { ignoresCover: true } : {}) },
+      range: 60,
+    },
+  });
+  const rays = [ray("glare", "Glare", false), ray("holy-glow", "Holy Glow", true)] as unknown as RulesetCatalogEntry[];
+  const priest = (): RulesetCombatantInput => {
+    const sheet = wizardBuild();
+    const rows = rays.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row));
+    return {
+      ...wizard(),
+      build: { ...sheet, lists: { ...sheet.lists, spells: [...(sheet.lists?.spells ?? []), ...rows] } },
+      catalogs: { spells: [...spellEntries, ...rays] },
+    };
+  };
+  const aimed = (label: string, ...rows: string[]) => {
+    const state = fight(graded, [priest(), mote()], [12, 9], {
+      grid: drawn(...rows),
+      placements: { corwin: { x: 0, y: 0 }, mote: { x: 4, y: 2 } },
+    });
+    const option = optionNamed(graded, state, "corwin", label);
+    const step = act(graded, state, { actorId: "corwin", optionId: option.id, targetIds: ["mote"] }, 4, 10);
+    return { cover: eventsOf(step.events, "cover"), modifier: firstOf(step.events, "save").modifier };
+  };
+  const halfHidden = [".......", "....#..", "......."];
+  assert.deepEqual(aimed("Glare", ...halfHidden), {
+    cover: [{ type: "cover", targetId: "mote", bonus: 2, save: "dex_save" }],
+    modifier: 2,
+  });
+  assert.deepEqual(aimed("Holy Glow", ...halfHidden), { cover: [], modifier: 0 }, "a save that ignores cover");
+  assert.deepEqual(aimed("Glare", ".......", ".......", "....r.."), { cover: [], modifier: 0 }, "his ground");
+  // And a save the ruleset does not name is not helped: cover names saves, never all of them.
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        doc.combat.cover = { bonus: 2, saves: ["luck_save"] };
+      }),
+    ),
+    /Unknown save "luck_save"/,
+  );
+}
+
+// ── Height (combat C6b): walked by every fight, and what a ruleset adds ──
+{
+  const raised = (rows: string[], heights: string[]) => {
+    const grid = drawn(...rows);
+    grid.elevation = heights.map((row) => [...row].map(Number));
+    return grid;
+  };
+  // Climbing a level costs one more cell; a step of two levels or more is a cliff nobody walks.
+  const hill = raised([".....", ".....", "....."], ["01100", "00300", "00000"]);
+  const state = fight(fiveE, [fighter(), snag()], [12, 9, 9], {
+    grid: hill,
+    placements: { brenna: { x: 0, y: 0 }, snag: { x: 4, y: 2 } },
+  });
+  const cells = new Map(rulesetReachableCells(fiveE, state, "brenna").map((cell) => [`${cell.x},${cell.y}`, cell]));
+  assert.equal(cells.get("1,0")!.cost, 2, "up a level: a step and a climb");
+  assert.equal(cells.get("2,0")!.cost, 3, "and along the top for a step");
+  assert.ok(!cells.has("2,1"), "a cliff, from every side");
+  assert.equal(cells.get("1,1")!.cost, 1, "level ground beside it is an ordinary step");
+  // The walk spends what the menu said.
+  const move = optionNamed(fiveE, state, "brenna", "Move");
+  const walked = act(fiveE, state, { actorId: "brenna", optionId: move.id, targetIds: [], to: { x: 2, y: 0 } });
+  assert.equal(firstOf(walked.events, "move").cost, 3);
+  // Distance walked toward somebody is not the same both ways on a slope.
+  const slope = raised(["....."], ["01230"]);
+  const toTop = rulesetWalkingDistances(slope, [{ x: 4, y: 0 }]).get("0,0");
+  const toFoot = rulesetWalkingDistances(slope, [{ x: 0, y: 0 }]).get("4,0");
+  // A walk ends beside its goal: up the ramp to stand next to the far end is fine, while from the far
+  // end the only way on is the cliff (0 up to 3).
+  assert.equal(toTop, 3 + 3, "three steps and three climbs to stand beside it");
+  assert.equal(toFoot, undefined, "the far end is cut off by the cliff");
+  const ramp = raised(["....."], ["01232"]);
+  const up = rulesetWalkingDistances(ramp, [{ x: 4, y: 0 }]).get("0,0")!;
+  const down = rulesetWalkingDistances(ramp, [{ x: 0, y: 0 }]).get("4,0")!;
+  assert.ok(up > down, `up the ramp costs more than down it: ${up} against ${down}`);
+
+  // What the ruleset adds: advantage from higher ground, or a number off the defense; a shot further.
+  const withElevation = (elevation: Record<string, unknown>) =>
+    parsedOrThrow(
+      variant(fiveEText, (doc) => {
+        doc.combat.elevation = { levelHeight: 5, ...elevation };
+      }),
+      "the 5e example with height",
+    );
+  const advantage = withElevation({ highGround: "advantage", rangeBonus: 2 });
+  const above = (definition: RulesetDefinition, brennaHeight: number) =>
+    fight(definition, [fighter(), mote()], [12, 9], {
+      grid: raised([".........."], [`${brennaHeight}000000000`]),
+      placements: { brenna: { x: 0, y: 0 }, mote: { x: 3, y: 0 } },
+    });
+  const javelinMode = (state: RulesetEncounterState, definition: RulesetDefinition) =>
+    rulesetAttackMode(definition, definition.combat!, who(state, "brenna"), who(state, "mote"), {
+      state,
+      optionId: optionNamed(definition, state, "brenna", "Javelin").id,
+    });
+  assert.equal(javelinMode(above(advantage, 1), advantage), "advantage", "from above");
+  assert.equal(javelinMode(above(advantage, 0), advantage), "normal", "level");
+  assert.equal(javelinMode(above(fiveE, 1), fiveE), "normal", "a ruleset that gives nothing");
+  const bonus = withElevation({ highGround: { bonus: 2 } });
+  const defenseOf = (state: RulesetEncounterState) =>
+    rulesetDefenseAgainst(bonus, bonus.combat!, state, who(state, "mote"), who(state, "brenna")).defense;
+  assert.equal(defenseOf(above(bonus, 1)), defenseOf(above(bonus, 0)) - 2, "two off the defense from above");
+  // A javelin carries 24 cells at the most (120 ft); a mote 26 cells away is out of reach, unless from
+  // above with 2 more.
+  const far = (definition: RulesetDefinition, height: number) =>
+    fight(definition, [fighter(), mote()], [12, 9], {
+      grid: raised([".".repeat(30)], [`${height}${"0".repeat(29)}`]),
+      placements: { brenna: { x: 0, y: 0 }, mote: { x: 26, y: 0 } },
+    });
+  const reaches = (state: RulesetEncounterState, definition: RulesetDefinition) =>
+    rulesetOptionTargets(definition, state, "brenna", optionNamed(definition, state, "brenna", "Javelin"));
+  assert.deepEqual(reaches(far(advantage, 0), advantage), [], "level: too far");
+  assert.deepEqual(reaches(far(advantage, 1), advantage), ["mote"], "from above, two cells more");
+  // The block needs a cell to measure in, and a fall's condition must be one the ruleset has.
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        for (const key of ["distance", "ranged", "cover", "opportunity"]) delete doc.combat[key];
+        for (const source of doc.combat.attacks ?? []) (delete source.reach, delete source.range);
+        doc.combat.elevation = { levelHeight: 5 };
+      }),
+    ),
+    /"elevation" is measured in cells/,
+  );
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        doc.combat.elevation = {
+          levelHeight: 5,
+          falling: { per: 10, dice: { count: 1, sides: 6 }, max: 20, prone: "flat" },
+        };
+      }),
+    ),
+    /Unknown condition "flat"/,
+  );
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        doc.combat.elevation = {
+          levelHeight: 5,
+          falling: { per: 10, dice: { count: 1, sides: 6 }, max: 20, type: "bludgeonig" },
+        };
+      }),
+    ),
+    /Unknown damage type "bludgeonig"/,
+  );
+}
+
 // ── A wall between them stops a shot and says which rule it broke ──
 {
   const grid = drawn(".#.");
@@ -1359,17 +1629,17 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   }
 
   // Letting it go by costs nothing and finishes the same walk.
-  const let_go = act(fiveE, held.state, {
+  const letGo = act(fiveE, held.state, {
     actorId: "snag",
     optionId: RULESET_PASS_OPTION,
     targetIds: [],
     window: window.id,
   });
-  assert.deepEqual(firstOf(let_go.events, "pass"), { type: "pass", actorId: "snag", window: window.id });
-  assert.equal(eventsOf(let_go.events, "opportunity").length, 0);
-  assert.equal(who(let_go.state, "snag").budgets.reaction, 1, "nothing was spent");
-  assert.deepEqual(firstOf(let_go.events, "move").to, { x: 5, y: 1 }, "and the walk still finished");
-  assert.equal(let_go.state.window, undefined);
+  assert.deepEqual(firstOf(letGo.events, "pass"), { type: "pass", actorId: "snag", window: window.id });
+  assert.equal(eventsOf(letGo.events, "opportunity").length, 0);
+  assert.equal(who(letGo.state, "snag").budgets.reaction, 1, "nothing was spent");
+  assert.deepEqual(firstOf(letGo.events, "move").to, { x: 5, y: 1 }, "and the walk still finished");
+  assert.equal(letGo.state.window, undefined);
 
   // One chance each for the WHOLE walk. A wall down the middle leaves one gap, so the only way past
   // Snag leaves its reach, comes back into it and leaves again: three steps that each provoke, and

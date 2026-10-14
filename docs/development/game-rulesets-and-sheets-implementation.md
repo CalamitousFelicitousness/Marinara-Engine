@@ -726,8 +726,8 @@ C4a is the board, on the shared and server sides. C4b is the screen that draws i
 - **Proven** in `scripts/regressions/game-ruleset-combat-grid.regression.ts` (hand-drawn boards,
   scripted dice, both example rulesets, and the byte-for-byte comparison), plus positioned cases in
   `ruleset-combat-director.regression.ts` and `ruleset-combat-director-route.regression.ts`.
-- **Left for later**: three-quarter and total cover, elevation, flying over obstacles, squeezing,
-  hiding and forced movement. The reaction window itself is C5b.
+- **Left for later**: flying over obstacles, squeezing, hiding and forced movement (cover by degrees
+  came with combat C6a-2, height with C6b). The reaction window itself is C5b.
 
 ### What C4b settled
 
@@ -966,8 +966,9 @@ Capability API 1.48, for #6740. The second Storyteller slice: initiative as a nu
   condition on (from the source, when there is one) and starts `crashedTurns`; rising above it takes
   it off. `recoverAfter` counts the crashed one's own turn starts and resets them to `base`. An
   opening at the line crashes before the first turn, and every crash is lifted when the fight ends
-  (`liftRulesetCrashes`, from `pushOutcome`, which every outcome goes through, and from fleeing), so a
-  sheet never keeps it.
+  (`liftRulesetFightEffects`, from `pushOutcome`, which every outcome goes through, and from fleeing),
+  so a sheet never keeps it. The same function lifts every condition the fight put on with a clock,
+  an `endsAfter` or a concentration (combat C6d), without its `onEnd`, and ends the concentration.
 - **Order and windows.** As each round begins the order is re-sorted by the numbers, with no dice,
   and the pause at the end of a round names nobody next, as a round that throws again does.
 - **Menu and picker.** `option.styles` carries each style's forecast: a taking style what it would
@@ -2140,7 +2141,7 @@ Not yet verified: that the Compatible JSON and PNG exporters leave unknown exten
 | B. Engine tracks the number      | Enforced bookkeeping, no fiction adjudicated | HP and temp HP, hit dice, spell slots 1st–9th, Pact Magic slots, named class counters with short or long recharge, death saves, exhaustion, the fourteen SRD conditions, concentration, short and long rests          |
 | C. Engine stores it, GM reads it | Structured lists                             | Spells (level, prepared, ritual, concentration, notes), attacks, features and traits, other proficiencies and languages, class, subclass, race, background, alignment, XP                                             |
 
-Deliberately out of v1: class and subclass tables (slot maxima and HP are entered, not derived), multiclass slot calculation, a structured spell compendium, armour-derived AC, automated level-up, enemy and NPC sheets, attack rolls and critical hits (combat adapter), tool checks.
+Deliberately out of v1: class and subclass tables (slot maxima and HP are entered, not derived), multiclass slot calculation, a structured spell compendium, armour-derived AC, automated level-up, enemy and NPC sheets, attack rolls and critical hits (combat adapter), tool checks. Most of these came later: the 5e package works its slot maxima out from a level per class with the Multiclass Spellcaster table (0.18.0, on `sheet.migrations` and the shared rest of Capability API 1.77), derives Armor Class from what is worn, ships spell and creature catalogs, and fights by its own combat block; HP and level-up stay entered by hand.
 
 Spells are tier C on purpose. Out of combat the GM adjudicates the effect; the Engine guarantees the spell is on the sheet and the slot is really spent. The combat adapter later gives a small supported spell list mechanical definitions, and at that point battle slots come from the sheet instead of from encounter generation.
 
@@ -2172,7 +2173,7 @@ All community lanes sit behind **Allow custom Agent imports**. Nothing executes,
 
 - Official ids are bare (`5e-2014`). Community ids are namespaced by source (`<owner>/<id>` for a repository, `local/<id>` for a file), so two authors' `v20` never collide and nothing can shadow an official ruleset.
 - Definitions are stored by id and version. An update adds a version and never rewrites one. A game keeps resolving the version it pinned; the same version arriving with different bytes is refused with a message telling the author to bump it.
-- A sheet is read tolerantly against its ruleset's current schema: unknown fields are kept, missing fields take defaults, out-of-range values are clamped on edit, never on read. There are no migration scripts.
+- A sheet is read tolerantly against its ruleset's current schema: unknown fields are kept, missing fields take defaults, out-of-range values are clamped on edit, never on read. A layout that moves values to new ids declares `sheet.migrations` (Capability API 1.77, C6e-0), applied on read: builds by `readRulesetSheetEnvelope` (gated by the stored `v`, every step copying, a stamp never below the stored `v` via `rulesetSheetStamp`), live state inside the one stored-live reader (`readStoredLiveState`), which readers and writers share.
 - A community `RulesetRef` carries its source URL. A shared setup file or a dormant sheet can therefore tell the recipient where the missing ruleset came from, instead of only that it is missing.
 
 Characters travel on their own. A card exported with a community sheet keeps it, a recipient without that ruleset keeps it dormant, and it becomes live the moment they add the author's repository.

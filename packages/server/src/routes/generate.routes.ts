@@ -5028,6 +5028,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   input.regenerateMessageId ?? null,
                   undefined,
                   promptMarketBook,
+                  await promptPlace(),
                 )
               : undefined;
           const promptMarket =
@@ -5076,11 +5077,22 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ]),
               )
             : undefined;
+          // A fake's facts are what it truly is, which only the Game Master reads (1.79).
           const promptItemFacts = promptItemBook
             ? Object.fromEntries(
+                promptInventoryStacks.flatMap((stack) =>
+                  [stack.item, stack.truly].flatMap((ref) => {
+                    const known = ref ? promptItemBook.itemOf(ref) : undefined;
+                    return known ? [[known.item, rulesetItemPromptFacts(known.facts)]] : [];
+                  }),
+                ),
+              )
+            : undefined;
+          const promptFakeNames = promptItemBook
+            ? Object.fromEntries(
                 promptInventoryStacks.flatMap((stack) => {
-                  const known = stack.item ? promptItemBook.itemOf(stack.item) : undefined;
-                  return known ? [[known.item, rulesetItemPromptFacts(known.facts)]] : [];
+                  const known = stack.truly ? promptItemBook.itemOf(stack.truly) : undefined;
+                  return known ? [[known.item, known.name]] : [];
                 }),
               )
             : undefined;
@@ -5165,6 +5177,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               })(),
               partyInventory: gameInventoryBags(promptInventoryStacks, promptCharges),
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
+              ...(promptFakeNames && Object.keys(promptFakeNames).length > 0
+                ? { inventoryFakeNames: promptFakeNames }
+                : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
               ...(promptPurses ? { inventoryPurses: promptPurses } : {}),
               ...(promptWhereYouAre
@@ -10243,7 +10258,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // A seller's `only` reads the turn's own live state, as the items this reply uses do.
               const marketDay =
                 rules && turnMarket && !turnKitItems
-                  ? await gameMarketDayFor(app.db, input.chatId, input.regenerateMessageId ?? null, requested, rules)
+                  ? await gameMarketDayFor(
+                      app.db,
+                      input.chatId,
+                      input.regenerateMessageId ?? null,
+                      requested,
+                      rules,
+                      turnPlace,
+                    )
                   : undefined;
               // A fresh market for each reading, as the ruleset's is: a market counts what the reply buys.
               const kitMarket =

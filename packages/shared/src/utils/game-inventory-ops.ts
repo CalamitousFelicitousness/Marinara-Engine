@@ -36,6 +36,7 @@ import {
   swapGameInventoryStacks,
   takeFromGameInventory,
   wearGameInventoryStack,
+  type GameInventoryBagRef,
   type GameInventoryItemRules,
   type GameInventoryStack,
   type GameInventoryWearRefusal,
@@ -108,6 +109,14 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
 
 export type GameInventoryOp = z.infer<typeof gameInventoryOpSchema>;
 
+/** An op the Engine applies itself: an add may also say what a fake truly is (a dishonest seller's
+ *  sale, Capability API 1.79), and a take which kind of stack it takes from (a sale, which never takes
+ *  a fake with the real thing), which no op a client sends can, since the schema above is strict. */
+export type GameInventoryEngineOp =
+  | GameInventoryOp
+  | (Extract<GameInventoryOp, { op: "add" }> & { truly?: string })
+  | (Extract<GameInventoryOp, { op: "take" }> & { kind?: string });
+
 export const gameInventoryOpsRequestSchema = z
   .object({
     chatId: z.string().trim().min(1).max(200),
@@ -138,6 +147,8 @@ export type GameInventoryOpResult =
       count?: number;
       /** How many of the item that bag holds afterwards (the party's total for a take from anyone). */
       now?: number;
+      /** A take of something used that took fakes: what each truly was, by name (1.79). */
+      revealed?: string[];
       /** An add into the shared view: how many went into whose bag, and how many that bag now holds. */
       placed?: Array<{ holder?: string; count: number; now: number }>;
       /** How many of an add nobody could carry, which were left behind. */
@@ -160,13 +171,33 @@ export interface GameInventoryOpsOutcome {
 }
 
 /**
+ * The stack a charge op spends its next use from: of these items, one its holder may use it from (worn
+ * where it takes slots, bound where it binds) with charges enough for a use, the player's own bag
+ * first, then the party's in the order the stacks are kept. Undefined when none has a use left.
+ */
+export function gameInventoryChargeStack(
+  stacks: readonly GameInventoryStack[],
+  items: ReadonlySet<string>,
+  rules: GameInventoryItemRules | undefined,
+  from?: GameInventoryBagRef,
+): GameInventoryStack | undefined {
+  const usable = stacks.filter((stack) => {
+    if (!items.has(gameInventoryItemId(stack))) return false;
+    if (from && gameInventoryBagKey(stack.holder) !== gameInventoryBagKey(from.holder)) return false;
+    const held = gameInventoryUsableStack(stack, rules) && stack.item ? rules?.itemOf(stack.item)?.charges : undefined;
+    return !!held && Math.min(held.max, stack.charges ?? held.max) >= held.cost;
+  });
+  return usable.find((each) => !each.holder) ?? usable[0];
+}
+
+/**
  * Every operation in order, each on the stacks the one before it left. One that cannot happen is
  * refused and changes nothing, and the rest still apply, the way the Game Master's sheet commands do.
  * `rules` are what the game's ruleset says about its items; without them every item is plain.
  */
 export function applyGameInventoryOps(
   stacks: GameInventoryStack[],
-  ops: readonly GameInventoryOp[],
+  ops: readonly GameInventoryEngineOp[],
   newId?: () => string,
   rules?: GameInventoryItemRules,
   /** Throws a die of that many sides, for an item that may break as its last charge is spent. Without
@@ -187,8 +218,11 @@ export function applyGameInventoryOps(
         // The item first: a ruleset item by its id only while the game offers it, or whatever the name
         // finds.
         const known = op.item ? (rules?.offers(op.item) ? rules.itemOf(op.item) : undefined) : undefined;
+        // A fake is shown as the item it passes for and keeps what it truly is, a ruleset item too.
+        const truly =
+          "truly" in op && op.truly && op.truly !== op.item && rules?.itemOf(op.truly) ? op.truly : undefined;
         const like = op.item
-          ? known && { name: known.name, item: known.item }
+          ? known && { name: known.name, item: known.item, ...(truly ? { truly } : {}) }
           : gameInventoryAddedItem(current, op.name, bag.holder, rules);
         if (!like) {
           refuse("not-ruleset-item");
@@ -239,7 +273,8 @@ export function applyGameInventoryOps(
         // Which items the name means is settled before the take: once the last stack of an item is
         // gone, the name alone could find another item by its nickname.
         const items = gameInventoryItemsNamed(current, op.name, from);
-        const taken = takeFromGameInventory(current, op.name, op.count, from, rules, op.worn === true);
+        const kind = "kind" in op ? op.kind : undefined;
+        const taken = takeFromGameInventory(current, op.name, op.count, from, rules, op.worn === true, kind);
         if (taken.taken === 0) {
           // Held, but only as a bound cursed item the player cannot part with.
           const cursed = current.some(
@@ -252,14 +287,28 @@ export function applyGameInventoryOps(
           break;
         }
         current = taken.stacks;
-        results.push({ ok: true, count: taken.taken, now: gameInventoryCountItems(current, items, from) });
-        if (op.as) journal.push({ item: op.name.trim(), action: op.as, quantity: taken.taken });
+        // A fake used is found out as it goes (1.79): the journal writes it by its true name, and the
+        // answer says what it truly was. Lost, sold or removed, it goes as what it seemed.
+        const used = op.as === "used" && taken.fakes ? taken.fakes : undefined;
+        const revealed = used ? [...used.keys()].map((truly) => rules?.itemOf(truly)?.name ?? truly) : undefined;
+        results.push({
+          ok: true,
+          count: taken.taken,
+          now: gameInventoryCountItems(current, items, from),
+          ...(revealed ? { revealed } : {}),
+        });
+        if (op.as) {
+          const fakeCount = used ? [...used.values()].reduce((total, each) => total + each, 0) : 0;
+          if (taken.taken > fakeCount)
+            journal.push({ item: op.name.trim(), action: op.as, quantity: taken.taken - fakeCount });
+          for (const [truly, quantity] of used ?? [])
+            journal.push({ item: rules?.itemOf(truly)?.name ?? truly, action: op.as, quantity });
+        }
         break;
       }
       case "charge": {
         const from = op.from ? { holder: cleanGameInventoryHolder(op.from.holder) } : undefined;
         const items = gameInventoryItemsNamed(current, op.name, from);
-        // Only from a stack the item may be used from: worn where it takes slots, bound where it binds.
         const chargesOf = (stack: GameInventoryStack) =>
           gameInventoryUsableStack(stack, rules) && stack.item ? rules?.itemOf(stack.item)?.charges : undefined;
         const left = (stack: GameInventoryStack) => {
@@ -268,17 +317,12 @@ export function applyGameInventoryOps(
         };
         let spent = 0;
         let broke = 0;
+        // A fake's charges spent are found out (1.79): written by its true name.
+        const fakes = new Map<string, number>();
         for (; spent < op.count; spent++) {
-          // The player's own bag first, then the party in the order the stacks are kept.
-          const usable = current.filter(
-            (stack) =>
-              items.has(gameInventoryItemId(stack)) &&
-              (!from || gameInventoryBagKey(stack.holder) === gameInventoryBagKey(from.holder)) &&
-              chargesOf(stack) !== undefined &&
-              left(stack) >= chargesOf(stack)!.cost,
-          );
-          const stack = usable.find((each) => !each.holder) ?? usable[0];
+          const stack = gameInventoryChargeStack(current, items, rules, from);
           if (!stack) break;
+          if (stack.truly) fakes.set(stack.truly, (fakes.get(stack.truly) ?? 0) + 1);
           const held = chargesOf(stack)!;
           const now = left(stack) - held.cost;
           const breaks = now === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) <= held.breaksOn.atMost : false;
@@ -291,8 +335,12 @@ export function applyGameInventoryOps(
           refuse("none-held");
           break;
         }
-        results.push({ ok: true, count: spent, ...(broke > 0 ? { broke } : {}) });
-        journal.push({ item: op.name.trim(), action: "used", quantity: spent });
+        const revealed = fakes.size ? [...fakes.keys()].map((truly) => rules?.itemOf(truly)?.name ?? truly) : undefined;
+        results.push({ ok: true, count: spent, ...(broke > 0 ? { broke } : {}), ...(revealed ? { revealed } : {}) });
+        const fakeUses = [...fakes.values()].reduce((total, each) => total + each, 0);
+        if (spent > fakeUses) journal.push({ item: op.name.trim(), action: "used", quantity: spent - fakeUses });
+        for (const [truly, quantity] of fakes)
+          journal.push({ item: rules?.itemOf(truly)?.name ?? truly, action: "used", quantity });
         if (broke > 0) journal.push({ item: op.name.trim(), action: "lost", quantity: broke });
         break;
       }

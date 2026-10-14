@@ -916,7 +916,12 @@ export function useTacticalCombatStart() {
       environment?: string;
       /** Blueprint battlefield.formation — drives spawn placement. */
       formation?: string;
-    }) => api.post<{ state: TacticalCombatState }>("/game/combat/tactical/start", data),
+    }) =>
+      api.post<{
+        state: TacticalCombatState;
+        /** By initiative, the turns taken before the first one the player commands (combat C6c). */
+        opening?: { before: TacticalCombatState; events: TacticalEvent[] };
+      }>("/game/combat/tactical/start", data),
   });
 }
 

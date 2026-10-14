@@ -1475,6 +1475,8 @@ export function GameSetupWizard({
       // A world another generator made goes with its snapshot (W11), played as it was made.
       ...(checkedWorld?.ok && checkedWorld.snapshot ? { worldSnapshot: checkedWorld.snapshot } : {}),
       combatDirector: true,
+      // New games take tactical turns one unit at a time in a rolled order (combat C6c).
+      tacticalTurnOrder: "initiative",
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
       spatialMapInstructions:

@@ -58,6 +58,7 @@ import { gameInventoryRoutes } from "./game-inventory.routes.js";
 import { gameAssetsRoutes } from "./game-assets.routes.js";
 import { gameRulesetsRoutes } from "./game-rulesets.routes.js";
 import { gameTilePacksRoutes } from "./game-tile-packs.routes.js";
+import { gameCreaturePacksRoutes } from "./game-creature-packs.routes.js";
 import { gameWorldsRoutes } from "./game-worlds.routes.js";
 import { turnGamesRoutes } from "./turn-games.routes.js";
 import { sidecarRoutes } from "./sidecar.routes.js";
@@ -162,6 +163,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(gameAssetsRoutes, { prefix: "/api/game-assets" });
   await app.register(gameRulesetsRoutes, { prefix: "/api/game-rulesets" });
   await app.register(gameTilePacksRoutes, { prefix: "/api/game-tile-packs" });
+  await app.register(gameCreaturePacksRoutes, { prefix: "/api/game-tile-packs/creatures" });
   await app.register(gameWorldsRoutes, { prefix: "/api/game-worlds" });
   await app.register(turnGamesRoutes, { prefix: "/api/turn-games" });
   await app.register(ttsRoutes, { prefix: "/api/tts" });

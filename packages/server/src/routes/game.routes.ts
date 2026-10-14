@@ -304,6 +304,7 @@ import {
   STORYBOARD_AGENT_ID,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
   createTacticalCombat,
+  runInitiativeTurns,
   applyTacticalTurn,
   TERRAIN_DATA,
   extractLeadingThinkingBlocks,
@@ -359,6 +360,7 @@ import type {
   HudWidget,
   Combatant,
   TacticalCombatState,
+  TacticalEvent,
   TacticalAction,
   StoryboardAnimationSuitability,
 } from "@marinara-engine/shared";
@@ -466,7 +468,11 @@ import {
   getGameSpotifyErrorStatus,
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
-import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
+import {
+  loadGameFightItems,
+  loadGameFightUseEffects,
+  loadGameInventoryItemBook,
+} from "../services/game/game-inventory.service.js";
 import { gameRepliesBefore, isGameMasterReply } from "../services/game/game-market.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
@@ -1972,6 +1978,7 @@ const gameSetupConfigSchema = z.object({
   combatDirector: z.boolean().optional(),
   gmBossControl: z.boolean().optional(),
   tacticalBattlefield: tacticalBattlefieldSetupSchema.optional(),
+  tacticalTurnOrder: z.enum(["side", "initiative"]).optional(),
   spatialMapInstructions: z.string().max(4000).optional(),
   gameWorldMapMode: z.enum(["standard", "hierarchical"]).optional(),
   spatialMapDraftSize: z.enum(["small", "medium", "large"]).optional(),
@@ -10574,11 +10581,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // Who uses each item, for the check a gated one asks first: the leader for the player's own
       // command, as the round gives it to them, and each party member for theirs.
       const leader = controlledId ?? combatants.find((c) => c.hp > 0 && c.side === "player")?.id;
-      const users = new Map<object, string | undefined>([
-        ...(playerAction?.type === "item" ? [[playerAction, leader] as const] : []),
-        ...Object.entries(partyActions ?? {}).map(([id, action]) => [action, id] as const),
-      ]);
-      for (const action of itemActions) {
+      // Each member's order once, in the order the screen spends them: the party's orders as sent, then
+      // the leader's own command, unless it is the same use as the leader's order among them (the screen
+      // sends both).
+      const own = partyActions?.[leader ?? ""];
+      const twice = own?.type === "item" && playerAction?.type === "item" && own.itemId === playerAction.itemId;
+      const orders = [
+        ...Object.entries(partyActions ?? {}).map(([id, action]) => ({ action, user: id as string | undefined })),
+        ...(playerAction && !twice ? [{ action: playerAction, user: leader }] : []),
+      ].filter(({ action }) => action.type === "item");
+      // A use that comes out of a fake does what the fake truly does (1.79): the round's uses of a line
+      // come out of its stacks one after another, as the screen spends them.
+      const uses = await loadGameFightUseEffects(app.db, meta);
+      const spent = new Map<string, number>();
+      for (const { action, user } of orders) {
         const line = fight.lines.find(
           (entry) => gameInventoryNameKey(entry.name) === gameInventoryNameKey(action.itemId ?? ""),
         );
@@ -10587,9 +10603,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           (effect) => effect.ruleset && gameInventoryNameKey(effect.name) === gameInventoryNameKey(line.name),
         );
         if (!worked) continue;
-        const who = combatants.find((c) => c.id === users.get(action))?.name ?? "";
+        // ponytail: an order whose member falls before acting is not spent by the screen, so later uses of its
+        // line in that round read one stack on. Upgrade: work the effect out as each use resolves. One that
+        // holds charges reads the stack its charge comes from once the round's earlier uses spent theirs.
+        const nth = spent.get(line.name) ?? 0;
+        if (worked.consumes !== false || worked.charges) spent.set(line.name, nth + 1);
+        const does = uses ? uses.effectOf(line.ownName ?? line.name, worked, nth) : worked;
+        const who = combatants.find((c) => c.id === user)?.name ?? "";
         const gate = line.item ? await rollGameFightItemGate(app.db, chatId, who, line.item) : null;
-        action.itemEffect = gate && !gate.success ? { ...worked, failed: gate.line } : worked;
+        action.itemEffect = gate && !gate.success ? { ...does, failed: gate.line } : does;
+        if (twice && action === own && playerAction) playerAction.itemEffect = action.itemEffect;
       }
     }
     const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);
@@ -10728,6 +10751,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       log: z.array(z.record(z.unknown())).max(2000),
       difficulty: z.string(),
       outcome: z.enum(["victory", "defeat", "fled"]).optional(),
+      // The order a fight by initiative takes turns in (combat C6c): ids, at most one a unit.
+      initiative: z
+        .object({ order: z.array(z.string().min(1).max(200)).max(40) })
+        .strict()
+        .optional(),
     })
     .passthrough();
 
@@ -10791,6 +10819,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       parsed.data.environment;
 
     let state: TacticalCombatState;
+    let opening: { before: TacticalCombatState; events: TacticalEvent[] } | undefined;
     try {
       state = createTacticalCombat(party as unknown as Combatant[], enemies as unknown as Combatant[], {
         seed: preferences.seed,
@@ -10808,7 +10837,19 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         environment,
         formation,
         ...(here ? { made: here } : { battlefield: preferences.battlefield }),
+        // One unit at a time in a rolled order, when the game says so (combat C6c).
+        ...((meta.gameTacticalTurnOrder ?? setupConfig?.tacticalTurnOrder) === "initiative"
+          ? { turnOrder: "initiative" as const }
+          : {}),
       });
+      // By initiative everybody before the first unit the player commands takes their turn at once, and
+      // the screen is sent those turns to play out from the board as it was laid out.
+      if (state.initiative) {
+        const before = state;
+        const turns = runInitiativeTurns(state);
+        state = turns.state;
+        if (turns.events.length > 0) opening = { before, events: turns.events };
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate the requested battlefield.";
       logger.warn(err, "Tactical battlefield generation failed for chat %s", chatId);
@@ -10824,7 +10865,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       preferences.seed,
     );
 
-    return { state };
+    return { state, ...(opening ? { opening } : {}) };
   });
 
   // ── POST /game/combat/tactical/action ──

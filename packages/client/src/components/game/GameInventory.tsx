@@ -11,6 +11,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import {
+  Backpack,
   BookOpen,
   Check,
   ChevronLeft,
@@ -27,6 +28,8 @@ import {
 } from "lucide-react";
 import {
   gameInventoryBagKey,
+  rulesetStartingGearKind,
+  rulesetStartingGearTakenBy,
   gameInventoryBearerStatus,
   gameInventoryItemId,
   gameInventoryStackLabel,
@@ -35,11 +38,15 @@ import {
   type RulesetDefinition,
   type RulesetItemBook,
   type RulesetItemBookEntry,
+  type RulesetItemBookSheets,
+  type RulesetLayerOptions,
+  type RulesetStartingGearSelection,
 } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { RulesetItemPicker, rulesetItemEffectLines, rulesetItemStatsLine } from "./RulesetItemPicker";
+import { StartingGearPicker, type StartingGearTaken } from "./StartingGearPicker";
 
 /** One stack. Two stacks may hold the same item, so a stack is told apart by its id, never its name. */
 export interface InventoryItem {
@@ -118,6 +125,16 @@ interface GameInventoryProps {
   onSwapItems?: (firstId: string, secondId: string) => void | Promise<void>;
   /** Whether the player can interact (input phase) */
   canInteract?: boolean;
+  /** The ruleset's starting gear (Capability API 1.78): what each bag has taken, each character's
+   *  sheet, the game's layers, whose bags it may go into (by bag key: the party members with a card),
+   *  and how to take some. With it, a row offers the gear while a bag has some kind left. */
+  startingGear?: {
+    taken: StartingGearTaken;
+    sheets?: RulesetItemBookSheets;
+    layerOptions?: RulesetLayerOptions | null;
+    holders: ReadonlySet<string>;
+    onTake: (holder: string | undefined, selection: RulesetStartingGearSelection, again: boolean) => Promise<boolean>;
+  };
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -147,6 +164,7 @@ export function GameInventory({
   onGiveItem,
   onSwapItems,
   canInteract,
+  startingGear,
 }: GameInventoryProps) {
   const { t: localizeUi } = useUiTranslation();
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
@@ -163,6 +181,7 @@ export function GameInventory({
   const [giveDraft, setGiveDraft] = useState<{ to: string; count: string } | null>(null);
   const [givePending, setGivePending] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [gearOpen, setGearOpen] = useState(false);
   const [view, setView] = useState<InventoryView>({ kind: "all" });
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -272,6 +291,37 @@ export function GameInventory({
   );
 
   const activeHolder = activeBag?.holder;
+  // Starting gear: offered wherever the ruleset has some, and named as taken once every kind of it is
+  // in the bag in view (any bag, in the shared view), when it can still be taken again.
+  const gearKinds = useMemo(
+    () =>
+      rulesetDefinition
+        ? new Set(
+            (rulesetDefinition.items?.startingGear ?? []).map((each) =>
+              rulesetStartingGearKind(rulesetDefinition, each.id),
+            ),
+          )
+        : new Set<string>(),
+    [rulesetDefinition],
+  );
+  const gearOffered = Boolean(startingGear && itemBook && gearKinds.size > 0);
+  // Gear goes into the player's bag or a party member's with a card, which the server checks too.
+  const gearBags = useMemo(() => {
+    const allowed = bags.filter((bag) => !bag.holder || startingGear?.holders.has(gameInventoryBagKey(bag.holder)));
+    return allowed.length > 0 ? allowed : [{ name: "" }];
+  }, [bags, startingGear?.holders]);
+  const kindsTaken = (holder: string | undefined) =>
+    new Set(
+      rulesetStartingGearTakenBy(startingGear?.taken ?? {}, gameInventoryBagKey(holder)).map((id) =>
+        rulesetDefinition ? rulesetStartingGearKind(rulesetDefinition, id) : id,
+      ),
+    );
+  const gearBagInView =
+    activeBag && gearBags.find((bag) => gameInventoryBagKey(bag.holder) === gameInventoryBagKey(activeBag.holder));
+  const gearLeft = (activeBag ? (gearBagInView ? [gearBagInView] : []) : gearBags).some((bag) => {
+    const taken = kindsTaken(bag.holder);
+    return [...gearKinds].some((kind) => !taken.has(kind));
+  });
   // From the shared view, an addition is put wherever it can be carried; from a tab, into that bag.
   const addAmong = activeView.kind === "all" && itemBook?.bearer ? placeAmong : undefined;
   const handleAdd = useCallback(async () => {
@@ -1057,9 +1107,38 @@ export function GameInventory({
                 )}
               </div>
             )}
+            {gearOffered && (
+              <button
+                type="button"
+                onClick={() => setGearOpen(true)}
+                disabled={addPending}
+                className="mt-1.5 flex w-full items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                title={localizeUi("game.ruleset.startingGear.buttonHint")}
+              >
+                <Backpack size={12} />
+                {gearLeft
+                  ? localizeUi("game.ruleset.startingGear.button")
+                  : localizeUi("game.ruleset.startingGear.buttonTaken")}
+              </button>
+            )}
           </div>
         )}
       </div>
+      {gearOpen && startingGear && rulesetDefinition && itemBook && (
+        <StartingGearPicker
+          open
+          onClose={() => setGearOpen(false)}
+          definition={rulesetDefinition}
+          layerOptions={startingGear.layerOptions}
+          book={itemBook}
+          bags={gearBags}
+          holder={gearBagInView ? activeHolder : undefined}
+          stacks={items}
+          sheets={startingGear.sheets}
+          taken={startingGear.taken}
+          onTake={startingGear.onTake}
+        />
+      )}
       {picksItems && pickerOpen && (
         <RulesetItemPicker
           open

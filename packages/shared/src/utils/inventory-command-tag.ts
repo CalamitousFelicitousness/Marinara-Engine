@@ -22,7 +22,20 @@ const MAX_TAG_NOTE_LENGTH = 600;
 const MAX_PROPOSAL_PARTS = 24;
 
 export type InventoryTagAction =
-  "add" | "remove" | "give" | "equip" | "unequip" | "bind" | "unbind" | "use" | "pay" | "earn" | "buy" | "sell";
+  | "add"
+  | "remove"
+  | "give"
+  | "equip"
+  | "unequip"
+  | "bind"
+  | "unbind"
+  | "use"
+  | "pay"
+  | "earn"
+  | "buy"
+  | "sell"
+  /** A fake shown for what it truly is (Capability API 1.79). */
+  | "reveal";
 
 const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "add",
@@ -37,6 +50,7 @@ const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "earn",
   "buy",
   "sell",
+  "reveal",
 ];
 
 function readAction(value: string | undefined): InventoryTagAction | undefined {
@@ -154,7 +168,7 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   let action: InventoryTagAction = readAction(actionValue) ?? "add";
   if (actionValue === undefined) {
     // A bare word, read only before the first attribute so an item's own name never counts.
-    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use|pay|earn|buy|sell)\b/i.exec(
+    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use|pay|earn|buy|sell|reveal)\b/i.exec(
       body.slice(0, Math.min(attributes[0]?.start ?? body.length, 40)),
     );
     if (bare) action = bare[1]!.toLowerCase() as InventoryTagAction;
@@ -255,6 +269,9 @@ export function serializeInventoryTag(
         seller?: string;
         price?: string;
         stock?: true;
+        /** A fake shown for what it truly is: its true name (a reveal, or a sale an honest buyer saw
+         *  through). */
+        revealed?: string;
       }
     | { raw: string },
   outcome: InventoryTagOutcome,
@@ -273,6 +290,7 @@ export function serializeInventoryTag(
     if (input.to) attribute("to", input.to);
     if (input.level) attribute("level", input.level);
     if (input.seller) attribute("seller", input.seller);
+    if (input.revealed) attribute("revealed", input.revealed);
   }
   if (outcome.ok) {
     attribute("result", "ok");
@@ -301,6 +319,8 @@ export interface ResolvedInventoryTag {
   /** A buy's seller, and whether it came out of their stock today (#6934). */
   seller?: string;
   stock?: boolean;
+  /** A fake's true name, once it is shown for what it is (1.79). */
+  revealed?: string;
 }
 
 /** Read one resolved tag body, or null for one the Engine has not answered. */
@@ -334,6 +354,7 @@ export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag
     ...(price && result === "ok" && (action === "buy" || action === "sell") ? { price } : {}),
     ...(values.get("seller")?.trim() && result === "ok" ? { seller: values.get("seller")!.trim() } : {}),
     ...(values.get("stock")?.trim() === "true" && result === "ok" ? { stock: true } : {}),
+    ...(cleanName(values.get("revealed")) ? { revealed: cleanName(values.get("revealed"))! } : {}),
   };
 }
 

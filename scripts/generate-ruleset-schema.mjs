@@ -398,6 +398,7 @@ function requireDistanceForMeasured(node) {
     ...(node.dependencies ?? {}),
     ranged: ["distance"],
     cover: ["distance"],
+    elevation: ["distance"],
     opportunity: ["distance"],
   };
   // A weapon list that gives its rows a reach or a range is measured in cells too.

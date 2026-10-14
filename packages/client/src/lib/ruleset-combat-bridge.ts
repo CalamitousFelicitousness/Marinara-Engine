@@ -174,7 +174,7 @@ export function seedRulesetBattleParty(
 ): RulesetBattleParty {
   const seeds: RulesetCombatSeeds = {};
   if (!definition.battle) return { party, seeds };
-  const builds = rulesetSheetBuildsByName(cards, playerName);
+  const builds = rulesetSheetBuildsByName(definition, cards, playerName);
   if (builds.size === 0) return { party, seeds };
 
   let seeded = false;
@@ -213,7 +213,7 @@ export function applyRulesetBattleResult(
 ): RulesetBattleWriteBack {
   const result: RulesetBattleWriteBack = { live: null, updated: [], refused: [] };
   if (!definition.battle) return result;
-  const builds = rulesetSheetBuildsByName(cards, playerName);
+  const builds = rulesetSheetBuildsByName(definition, cards, playerName);
 
   let merged: RulesetLiveStates | null = null;
   for (const member of party) {

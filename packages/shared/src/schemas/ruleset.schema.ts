@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
+import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
 
 // Game Mode rulesets. A ruleset is validated DATA: it parameterises one of a closed set of
 // Engine-owned resolution kinds and declares a character sheet from a closed set of primitives.
@@ -800,10 +800,58 @@ const liveSchema = z
   })
   .strict();
 
+/**
+ * One step of a sheet migration (Capability API 1.77): how a sheet stored on an older layout reads on
+ * this one. Every step COPIES: what it read from stays where it was, so a sheet read by an older
+ * version of the ruleset still reads as it did.
+ * - `rename`: an ability, skill, save (with its bonus) or field that has a new id.
+ * - `route`: one field's value to the field the text of another names, as a single class level
+ *   goes to that class's own level: the first case whose words are in `by`'s text, as whole words
+ *   ignoring case, when exactly one case matches; `else` when none or several do. `default` stands in
+ *   for a value the sheet never stored.
+ * - `routeLive`: one live pool's or track's value to the one of `cases` the migrated sheet shows (a
+ *   maximum above 0), else to `else`. Live state has no version, so this runs on every read: the old
+ *   key always goes, and the value moves only while the new key is not there yet.
+ */
+const sheetMigrationWordsSchema = z.array(z.string().trim().min(1).max(40)).min(1).max(8);
+const sheetMigrationStepSchema = z.union([
+  z.object({ rename: z.enum(["ability", "skill", "save", "field"]), from: sheetId, to: sheetId }).strict(),
+  z
+    .object({
+      route: sheetId,
+      by: sheetId,
+      cases: z
+        .array(z.object({ words: sheetMigrationWordsSchema, to: sheetId }).strict())
+        .min(1)
+        .max(32),
+      else: sheetId,
+      default: z.union([z.number().finite(), z.string().max(200)]).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      routeLive: z.enum(["pool", "track"]),
+      from: sheetId,
+      cases: z.array(sheetId).min(1).max(32),
+      else: sheetId,
+    })
+    .strict(),
+]);
+const sheetMigrationSchema = z
+  .object({
+    /** The stored layout this moves on from, to `from + 1`. */
+    from: z.number().int().min(1),
+    steps: z.array(sheetMigrationStepSchema).min(1).max(64),
+  })
+  .strict();
+
 export const rulesetSheetSchema = z
   .object({
     /** Bumped by the author when the sheet's shape changes. Stored sheets record it as `v`. */
     version: z.number().int().min(1),
+    /** How a sheet stored on an older layout reads on this one (Capability API 1.77). A version that
+     *  only adds needs none. Never removed once shipped: a sheet stored long ago still needs them. */
+    migrations: z.array(sheetMigrationSchema).min(1).max(32).optional(),
     sections: z
       .array(
         z
@@ -867,6 +915,10 @@ const restRestoreSchema = z
     kind: sheetId.optional(),
     /** A live state, put back with `to`: `"default"` or one of its values. */
     state: sheetId.optional(),
+    /** A pool group's fraction worked out on the group's whole maximum and shared out over its pools
+     *  in the order the sheet lists them, rather than on each pool alone (Capability API 1.77): 5e's
+     *  "half of the character's total number of" hit dice, kept in one pool per die. */
+    shared: z.literal(true).optional(),
     ...restAmountShape,
     /** The maximum, the minimum or a number; on a state step, `"default"` or one of its values. */
     to: z.union([z.literal("max"), z.literal("min"), z.number().int(), z.string().min(1).max(80)]).optional(),
@@ -900,6 +952,13 @@ const restRestoreSchema = z
     }
     if (op.recharge && op.listPools === undefined) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["recharge"], message: '"recharge" only filters listPools' });
+    }
+    if (op.shared && (op.poolGroup === undefined || !op.by || !("fractionOfMax" in op.by))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["shared"],
+        message: '"shared" shares a fraction of a pool group\'s maximum: it needs poolGroup and by.fractionOfMax',
+      });
     }
   });
 
@@ -1223,8 +1282,14 @@ const catalogMechanicsObject = z
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
     attackRoll: z.boolean().optional(),
+    /** `ignoresCover` (Capability API 1.74): the target gains nothing from cover on this save, as a
+     *  spell whose text says so (5e's Sacred Flame). */
     save: z
-      .object({ save: sheetId, onSuccess: z.enum(["none", "half", "negates"]) })
+      .object({
+        save: sheetId,
+        onSuccess: z.enum(["none", "half", "negates"]),
+        ignoresCover: z.literal(true).optional(),
+      })
       .strict()
       .optional(),
     /** What using the entry spends, named by a live pool or by a pool group. */
@@ -1480,6 +1545,8 @@ const creatureSaveSchema = z
     save: sheetId,
     difficulty: z.number().int().min(0).max(1000),
     onSuccess: z.enum(["none", "half", "negates"]),
+    /** The target gains nothing from cover on this save (Capability API 1.74). */
+    ignoresCover: z.literal(true).optional(),
   })
   .strict();
 
@@ -1943,6 +2010,76 @@ const lootEntrySchema = z
     }
   });
 
+/** One of the ruleset's items, named as `<catalog>/<entry>`. */
+const rulesetItemRefSchema = z
+  .string()
+  .max(81)
+  .regex(/^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/, "An item is named as <catalog>/<entry>");
+
+/** One line of starting gear (Capability API 1.78): one of the ruleset's items, coins, one item the
+ *  player picks from a fixed list, or a plain item the ruleset's catalogs do not have. */
+const startingGearLineSchema = z
+  .object({
+    item: rulesetItemRefSchema.optional(),
+    coins: sheetId.optional(),
+    oneOf: z.array(rulesetItemRefSchema).min(2).max(48).optional(),
+    /** A plain item by name, where the ruleset lets items be plain (`freeform`). It becomes a stack's
+     *  name the Game Master reads, so it is held to the ruleset's label rules. */
+    name: promptSafeText(80).optional(),
+    count: z.number().int().min(1).max(999).default(1),
+    /** Put on as it is taken, where its slots are free: armor and a shield are worn from the start. */
+    equip: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((line, ctx) => {
+    if (line.equip && line.item === undefined && line.oneOf === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["equip"],
+        message: "Only one of the ruleset's items is put on",
+      });
+    }
+    if ([line.item, line.coins, line.oneOf, line.name].filter((kind) => kind !== undefined).length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A starting gear line names an item, coins, a list to pick one from or a plain item, one of them",
+      });
+    }
+  });
+
+/** Gear a character may take into their bag at the start (Capability API 1.78), never on their own:
+ *  the player asks for it, once for each `group` (a class's gear beside a background's). `fits` says
+ *  which characters it is for, read off the sheet; it orders the list and refuses nobody. */
+const startingGearSchema = z
+  .object({
+    id: sheetId,
+    label,
+    summary: z.string().trim().max(300).optional(),
+    group: sheetId.optional(),
+    fits: z.object({ value: rulesetValueRefSchema, atLeast: z.number().finite() }).strict().optional(),
+    lines: z.array(startingGearLineSchema).max(40).default([]),
+    choices: z
+      .array(
+        z
+          .object({
+            label,
+            options: z
+              .array(z.object({ label, lines: z.array(startingGearLineSchema).min(1).max(40) }).strict())
+              .min(2)
+              .max(6),
+          })
+          .strict(),
+      )
+      .max(8)
+      .default([]),
+  })
+  .strict()
+  .superRefine((gear, ctx) => {
+    if (gear.lines.length === 0 && gear.choices.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Starting gear gives something: lines or choices" });
+    }
+  });
+
 /** What a treasure hoard or a creature's pockets hold: `rolls` picks (a number or dice, none at all
  *  allowed), each a line drawn by weight. */
 const lootTableSchema = z
@@ -2034,6 +2171,9 @@ const marketSchema = z
             /** One of the ruleset's loot tables, rolled once a market day for what this seller has in
              *  stock on top of what they sell (#6934). */
             stock: z.object({ table: sheetId }).strict().optional(),
+            /** A dishonest seller (Capability API 1.79) passes fakes off as what they pass for, from
+             *  their stock, and buys a fake as what it seems. Sellers are honest unless they say so. */
+            honest: z.literal(false).optional(),
             only: z
               .object({ value: rulesetValueRefSchema, atLeast: z.number().finite(), label: promptSafeText(80) })
               .strict()
@@ -2091,6 +2231,8 @@ const itemsSchema = z
     /** What an item the player types in becomes: a plain item, or nothing at all. */
     freeform: z.enum(["plain", "refuse"]).default("plain"),
     market: marketSchema.optional(),
+    /** Gear a character may take at the start, never given on its own (Capability API 1.78). */
+    startingGear: z.array(startingGearSchema).min(1).max(40).optional(),
   })
   .strict();
 
@@ -2302,6 +2444,12 @@ const catalogItemSchema = z
       .optional(),
     /** Lodging, passage, a blessing: bought like an item, never carried. Buying it only pays. */
     service: z.literal(true).optional(),
+    /** What an honest seller warns of before selling it, for an item whose chance can turn on the
+     *  buyer (Capability API 1.79). */
+    risky: promptSafeText(160).optional(),
+    /** A fake (Capability API 1.79): the ruleset item it passes for, "<catalog>/<entry>". A dishonest
+     *  seller sells it as that item, at that item's price; an honest one never sells it. */
+    passesFor: rulesetItemRefSchema.optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
     binds: z
       .object({ restriction: catalogText(200).optional(), cursed: z.boolean().optional() })
@@ -2532,7 +2680,9 @@ const combatBudgetSchema = z
     label,
     /** `turn` refills at the start of the holder's own turn; `round` when a new round begins. */
     per: z.enum(["turn", "round"]),
-    count: z.number().int().min(1).max(10).default(1),
+    /** How many a turn (or round) hands out. 0 (Capability API 1.76) is a budget only a condition's
+     *  `budgets` fills, as Haste's extra action is. */
+    count: z.number().int().min(0).max(10).default(1),
   })
   .strict();
 
@@ -2826,11 +2976,66 @@ const combatConditionSchema = z
     whileSourceInSight: z.union([z.literal(true), z.array(combatConditionEffectSchema).min(1).max(12)]).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /**
+     * The action economy while it holds (Capability API 1.76, combat C6d), as Haste and Slow change it:
+     * - `budgets`: how many of a turn budget its holder gets, more or fewer, never below none;
+     * - `grants`: what a budget (often one declared with a count of 0, which only this fills) may be
+     *   spent on: the standard actions it names, an attack of one strike (`attacks`), an item's use
+     *   (`items`);
+     * - `exclusive`: two budgets of which a turn may spend only one: spending either empties the other;
+     * - `attacksPerTurn`: how many attacks its holder makes in a turn, whatever an action would give;
+     * - `onEnd`: what it leaves behind when it ends for good (not when it is put on again), as Haste's
+     *   lethargy is.
+     */
+    budgets: z
+      .array(z.object({ budget: sheetId, flat: z.number().int().min(-10).max(10) }).strict())
+      .min(1)
+      .max(4)
+      .optional(),
+    grants: z
+      .object({
+        budget: sheetId,
+        standard: z.array(combatStandardActionSchema).min(1).max(6).optional(),
+        attacks: z.literal(true).optional(),
+        /** Any item's use, or only the use of an item with one of these tags (5e's Use an Object is a
+         *  mundane item's, never a magic item's activation). */
+        items: z.union([z.literal(true), z.object({ tags: z.array(sheetId).min(1).max(8) }).strict()]).optional(),
+      })
+      .strict()
+      .optional(),
+    exclusive: z.tuple([sheetId, sheetId]).optional(),
+    attacksPerTurn: z.number().int().min(0).max(10).optional(),
+    /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
+     *  has no difficulty) and an instant one would never come off. */
+    onEnd: z
+      .object({
+        applies: z
+          .array(
+            catalogAppliesSchema.refine((applied) => typeof applied.duration === "object", {
+              message: "What a condition leaves behind lasts some rounds",
+              path: ["duration"],
+            }),
+          )
+          .min(1)
+          .max(4),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
     savesNeedSomethingToNarrow(entry, ctx);
     skillsNeedSomethingToNarrow(entry, ctx);
+    if (entry.grants && !entry.grants.standard && !entry.grants.attacks && !entry.grants.items) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["grants"],
+        message: "A grant says what its budget may be spent on: standard actions, attacks or items",
+      });
+    }
+    if (entry.exclusive && entry.exclusive[0] === entry.exclusive[1]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["exclusive"], message: "Two different budgets" });
+    }
   });
 
 /** The effects an item may have while worn or carried: every effect a condition may have but the ones
@@ -3177,9 +3382,51 @@ const combatSchema = z
       })
       .strict()
       .optional(),
-    /** What standing behind something adds to the defense an attack is rolled against. */
+    /**
+     * What standing behind something adds to the defense an attack is rolled against (Capability API
+     * 1.74 for everything past `bonus`). Cover is graded by corner lines from the attacker (combat
+     * C6a-2): `bonus` is half cover's, and `threeQuarters` the bigger one when the ruleset has it. A
+     * target out of sight is total cover and cannot be aimed at, so it needs no number. `saves` names
+     * the saves cover helps too, against an action's own save, from where the action comes; `creatures`
+     * makes anybody standing in the way half cover, friend or foe.
+     */
     cover: z
-      .object({ bonus: z.number().int().min(0).max(100) })
+      .object({
+        bonus: z.number().int().min(0).max(100),
+        threeQuarters: z.number().int().min(0).max(100).optional(),
+        saves: z.array(sheetId).min(1).max(12).optional(),
+        creatures: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * What this system makes of a board's height (Capability API 1.75, combat C6b). Height is always
+     * walked and seen by, whatever this says: climbing a level costs one more cell, nobody walks a step
+     * of two levels or more, and ground higher than both ends blocks sight. This says what the system
+     * adds: how high one level is in its own distance (`levelHeight`), what striking down from higher
+     * ground gives (`highGround`: advantage, or a bonus taken off the defense the attack is rolled
+     * against), how many cells further a shot carries from it (`rangeBonus`), and what a fall does
+     * (`falling`): `dice` for every `per` of the drop, at most `max` of them, of `type`, and `prone`
+     * after it when the system says so.
+     */
+    elevation: z
+      .object({
+        levelHeight: z.number().finite().gt(0),
+        highGround: z
+          .union([z.literal("advantage"), z.object({ bonus: z.number().int().min(1).max(100) }).strict()])
+          .optional(),
+        rangeBonus: z.number().int().min(1).max(10).optional(),
+        falling: z
+          .object({
+            per: z.number().finite().gt(0),
+            dice: combatDiceSchema,
+            max: z.number().int().min(1).max(100),
+            type: promptSafeText(40).optional(),
+            prone: sheetId.optional(),
+          })
+          .strict()
+          .optional(),
+      })
       .strict()
       .optional(),
     /** The budget a strike at somebody leaving one's reach is paid out of. A ruleset that declares
@@ -3683,6 +3930,99 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   const tiers = unique(resolution.proficiencyTiers, ["resolution", "proficiencyTiers"], "proficiency tier");
   unique(def.rests, ["rests"], "rest");
   const poolGroups = new Set(sheet.live.pools.map((pool) => pool.group).filter((group): group is string => !!group));
+
+  // Sheet migrations (1.77). Each hop once and below this version. What a step writes to is on this
+  // sheet, and what it reads from is not: an id moved away is never used again, which is what makes
+  // every step safe to run again. A rename is followed through the renames after it to where it ends.
+  if (sheet.migrations) {
+    const hopPath = (index: number) => ["sheet", "migrations", index];
+    const seenHops = new Set<number>();
+    sheet.migrations.forEach((hop, index) => {
+      if (hop.from >= sheet.version)
+        issue([...hopPath(index), "from"], `A migration moves on from a version below ${sheet.version}`);
+      if (seenHops.has(hop.from)) issue([...hopPath(index), "from"], `Duplicate migration from version ${hop.from}`);
+      seenHops.add(hop.from);
+    });
+    const current = { ability: abilities, skill: skills, save: saves, field: fields, pool: pools, track: tracks };
+    const ordered = sheet.migrations
+      .map((hop, index) => ({ hop, index }))
+      .sort((a, b) => a.hop.from - b.hop.from)
+      .flatMap(({ hop, index }) =>
+        hop.steps.map((step, stepIndex) => ({ step, path: [...hopPath(index), "steps", stepIndex] })),
+      );
+    // Where a field id ends up through the field renames after a step: a value routed to one, or
+    // renamed into one, that a later hop renames again is still on the sheet.
+    const fieldEnd = (id: string, position: number) => {
+      let end = id;
+      for (const later of ordered.slice(position + 1)) {
+        if ("rename" in later.step && later.step.rename === "field" && later.step.from === end) end = later.step.to;
+      }
+      return end;
+    };
+    const fieldById = new Map(sheet.fields.map((field) => [field.id, field]));
+    const renamedFields = new Set(
+      ordered.flatMap(({ step }) => ("rename" in step && step.rename === "field" ? [step.from] : [])),
+    );
+    const isWound = (id: string) => {
+      const track = sheet.live.tracks.find((entry) => entry.id === id);
+      return !!track && (!!track.levels || !!track.boxes) && !!track.kinds;
+    };
+    ordered.forEach(({ step, path }, position) => {
+      if ("rename" in step) {
+        if (current[step.rename].has(step.from))
+          issue([...path, "from"], `"${step.from}" is still a ${step.rename} of this sheet`);
+        let end = step.to;
+        for (const later of ordered.slice(position + 1)) {
+          if ("rename" in later.step && later.step.rename === step.rename && later.step.from === end)
+            end = later.step.to;
+        }
+        // A field renamed and then routed on by a later step has gone where the route sends it.
+        const routedOn =
+          step.rename === "field" &&
+          ordered.slice(position + 1).some((later) => "route" in later.step && later.step.route === end);
+        if (!current[step.rename].has(end) && !routedOn)
+          issue([...path, "to"], `"${end}" is not a ${step.rename} of this sheet`);
+      } else if ("route" in step) {
+        // Read off the stored build, so `by` is a field the sheet has or one an earlier layout had.
+        if (!fields.has(step.by) && !renamedFields.has(step.by)) issue([...path, "by"], `Unknown field "${step.by}"`);
+        const targets: Array<[string, (string | number)[]]> = [
+          ...step.cases.map((entry, caseIndex): [string, (string | number)[]] => [
+            entry.to,
+            [...path, "cases", caseIndex, "to"],
+          ]),
+          [step.else, [...path, "else"]],
+        ];
+        for (const [id, where] of targets) {
+          const end = fieldEnd(id, position);
+          const field = fieldById.get(end);
+          if (!field) {
+            issue(where, `Unknown field "${end}"`);
+            continue;
+          }
+          // The routed value lands in one target and every other keeps its default, so a target
+          // that is not empty by default would read as a level, a class or a name nobody gave it.
+          const empty = field.default === undefined || field.default === 0 || field.default === "";
+          if (!["number", "text", "longtext"].includes(field.type) || !empty) {
+            issue(where, `"${end}" is a number or text field with no default, or a default of 0 or empty`);
+          }
+        }
+      } else {
+        const kind = step.routeLive;
+        if (current[kind].has(step.from)) issue([...path, "from"], `"${step.from}" is still a ${kind} of this sheet`);
+        const seen = new Set<string>();
+        step.cases.forEach((id, caseIndex) => {
+          if (seen.has(id)) issue([...path, "cases", caseIndex], `Duplicate case "${id}"`);
+          seen.add(id);
+          if (!current[kind].has(id)) issue([...path, "cases", caseIndex], `Unknown ${kind} "${id}"`);
+        });
+        if (!current[kind].has(step.else)) issue([...path, "else"], `Unknown ${kind} "${step.else}"`);
+        // A wound track keeps marks and a plain one a number: the targets are all of one shape.
+        if (kind === "track" && new Set([...step.cases, step.else].map(isWound)).size > 1) {
+          issue([...path, "cases"], "The tracks a value goes to are all wound tracks or all plain tracks");
+        }
+      }
+    });
+  }
 
   // A skill and a save may not share an id: a check request names either, and the sheet command
   // addresses both, so one name must mean one thing.
@@ -4361,6 +4701,45 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       });
     });
+    // Starting gear (1.78): every item one of the ruleset's (a catalog kept in its own file is checked
+    // when the gear is taken), never a service, and few enough stacks to fit a bag; coins it declares;
+    // a plain item only where items may be plain; `fits` read off the sheet without the live state,
+    // as carrying is.
+    unique(items.startingGear ?? [], at("startingGear"), "starting gear");
+    const checkGearItem = (ref: string, count: number, path: (string | number)[]) => {
+      const [catalogId, entryId] = ref.split("/") as [string, string];
+      const catalog = def.catalogs?.find((each) => each.id === catalogId);
+      if (!catalog || catalog.holds !== "items") return issue(path, `No item catalog "${catalogId}"`);
+      if (layersApplied || !catalog.entries) return;
+      const entry = catalog.entries.find((each) => each.id === entryId && each.item);
+      if (!entry?.item) return issue(path, `No item "${entryId}" in catalog "${catalogId}"`);
+      if (entry.item.service) issue(path, `"${entryId}" is a service, which is never carried`);
+      if (entry.item.stack && Math.ceil(count / entry.item.stack) > GAME_INVENTORY_MAX_NEW_STACKS) {
+        issue(path, `${count} of "${entryId}" is more stacks than one bag takes at once`);
+      }
+    };
+    const checkGearLine = (line: z.infer<typeof startingGearLineSchema>, path: (string | number)[]) => {
+      if (line.item) checkGearItem(line.item, line.count, [...path, "item"]);
+      line.oneOf?.forEach((ref, refIndex) => checkGearItem(ref, line.count, [...path, "oneOf", refIndex]));
+      if (line.coins && !items.currencies?.some((family) => family.units.some((unit) => unit.id === line.coins))) {
+        issue([...path, "coins"], `Unknown currency unit "${line.coins}"`);
+      }
+      if (line.name !== undefined && items.freeform === "refuse") {
+        issue([...path, "name"], "This ruleset refuses plain items, so starting gear names its own");
+      }
+    };
+    items.startingGear?.forEach((gear, gearIndex) => {
+      const path = at("startingGear", gearIndex);
+      if (gear.fits) checkRef(gear.fits.value, [...path, "fits", "value"], derivedIds, false);
+      gear.lines.forEach((line, lineIndex) => checkGearLine(line, [...path, "lines", lineIndex]));
+      gear.choices.forEach((choice, choiceIndex) =>
+        choice.options.forEach((option, optionIndex) =>
+          option.lines.forEach((line, lineIndex) =>
+            checkGearLine(line, [...path, "choices", choiceIndex, "options", optionIndex, "lines", lineIndex]),
+          ),
+        ),
+      );
+    });
     const market = items.market;
     if (market) {
       // A filter picks by the items block's own words, and says at least one of them.
@@ -4696,7 +5075,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     // Everything below means nothing without a cell to measure in, so a ruleset that declares one
     // of them and no `distance` is told here rather than carrying a rule no fight could ever read.
     if (!combat.distance) {
-      const needsDistance = (["ranged", "cover", "opportunity"] as const).find((key) => combat[key] !== undefined);
+      const needsDistance = (["ranged", "cover", "elevation", "opportunity"] as const).find(
+        (key) => combat[key] !== undefined,
+      );
       if (needsDistance) {
         issue(at(needsDistance), `"${needsDistance}" is measured in cells, so the block declares "distance" too`);
       }
@@ -4846,6 +5227,31 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (!saves.has(save)) issue(at("standardEffects", "dodge", "saves", index), `Unknown save "${save}"`);
       });
     }
+    combat.cover?.saves?.forEach((save, index) => {
+      if (!saves.has(save)) issue(at("cover", "saves", index), `Unknown save "${save}"`);
+    });
+    const prone = combat.elevation?.falling?.prone;
+    if (prone !== undefined && !conditions.has(prone)) {
+      issue(at("elevation", "falling", "prone"), `Unknown condition "${prone}"`);
+    }
+    // A fall's harm is one of the ruleset's kinds, as every other harm is, or it misses what resists it.
+    const fallType = combat.elevation?.falling?.type;
+    if (
+      fallType !== undefined &&
+      combat.damageTypes &&
+      !combat.damageTypes.some((type) => type.trim().toLowerCase() === fallType.trim().toLowerCase())
+    ) {
+      issue(at("elevation", "falling", "type"), `Unknown damage type "${fallType}"`);
+    }
+    // And thrown as any harm is: a pool fight counts successes on its own die, so a fall's die is that one.
+    const fallDie = combat.elevation?.falling?.dice.sides;
+    const poolDie = def.resolution.kind === "dice-pool" ? def.resolution.die.sides : undefined;
+    if (fallDie !== undefined && poolDie !== undefined && fallDie !== poolDie) {
+      issue(
+        at("elevation", "falling", "dice", "sides"),
+        `A "dice-pool" fight throws d${poolDie}s, so a fall's dice are d${poolDie}s`,
+      );
+    }
 
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {
@@ -4854,6 +5260,47 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, path, issue);
+      // The action economy it changes (1.76) is the ruleset's own: budgets it declares, conditions it has.
+      entry.budgets?.forEach((change, changeIndex) => {
+        const where = [...path, "budgets", changeIndex, "budget"];
+        checkBudget(change.budget, where);
+        // A turn's count is what a condition changes, as each turn begins; a budget that refills by the
+        // round has no turn to change it at.
+        const declared = combat.economy.budgets.find((budget) => budget.id === change.budget);
+        if (declared && declared.per !== "turn") issue(where, `"${change.budget}" refills per round, not per turn`);
+      });
+      if (entry.grants) {
+        const grants = entry.grants;
+        checkBudget(grants.budget, [...path, "grants", "budget"]);
+        // The checks a catalog's standard-action permission gets: actions this ruleset has, and not on
+        // the budget every standard action is already taken with.
+        if (grants.standard && grants.budget === combat.economy.budgets[0]?.id) {
+          issue(
+            [...path, "grants", "budget"],
+            `Every standard action is already taken for "${grants.budget}", so this grant gives nothing`,
+          );
+        }
+        grants.standard?.forEach((action, actionIndex) => {
+          if (!(combat.standard ?? []).includes(action)) {
+            issue(
+              [...path, "grants", "standard", actionIndex],
+              `This ruleset does not have the standard action "${action}"`,
+            );
+          }
+        });
+        if (typeof grants.items === "object") {
+          const itemTags = new Set((def.items?.tags ?? []).map((tag) => tag.id));
+          grants.items.tags.forEach((tag, tagIndex) => {
+            if (!itemTags.has(tag)) issue([...path, "grants", "items", "tags", tagIndex], `Unknown item tag "${tag}"`);
+          });
+        }
+      }
+      entry.exclusive?.forEach((budget, budgetIndex) => checkBudget(budget, [...path, "exclusive", budgetIndex]));
+      entry.onEnd?.applies.forEach((applied, appliedIndex) => {
+        if (!conditions.has(applied.condition)) {
+          issue([...path, "onEnd", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
+        }
+      });
       // Gating an effect this condition does not have says nothing, and is nearly always a typo for
       // one it does.
       if (Array.isArray(entry.whileSourceInSight)) {
@@ -5253,9 +5700,42 @@ export function stripRulesetComments(input: unknown, isRoot = true): unknown {
 
 export type RulesetParseResult = { ok: true; definition: RulesetDefinition } | { ok: false; issues: string[] };
 
+/** The deepest a ruleset document nests: far past any real file (a creature's riders sit a dozen deep). */
+const RULESET_MAX_DEPTH = 64;
+
+/**
+ * Why a document cannot be a ruleset or a catalog by its shape alone, or null: nested deeper than one
+ * ever is, or a list (or an object) longer than any one has. Walked without recursion and before the
+ * schema, so a hostile document neither overflows the stack nor makes the schema check every item of a
+ * list longer than any it allows (it reads each one even after the length has failed).
+ */
+export function rulesetShapeIssue(input: unknown): string | null {
+  const stack: Array<[unknown, number, string]> = [[input, 0, ""]];
+  while (stack.length) {
+    const [value, depth, path] = stack.pop()!;
+    if (!value || typeof value !== "object") continue;
+    const where = path || "(root)";
+    if (depth > RULESET_MAX_DEPTH) return `${where}: nested deeper than a ruleset ever is`;
+    // Counted before any of it is copied out.
+    const count = Array.isArray(value) ? value.length : Object.keys(value).length;
+    if (count > RULESET_CATALOG_MAX_ENTRIES) {
+      return `${where}: ${count} ${Array.isArray(value) ? "items" : "keys"}, more than any part of a ruleset has`;
+    }
+    const items = Array.isArray(value)
+      ? value.map((item, index) => [String(index), item] as const)
+      : Object.entries(value);
+    for (const [key, item] of items) {
+      if (item && typeof item === "object") stack.push([item, depth + 1, path ? `${path}.${key}` : key]);
+    }
+  }
+  return null;
+}
+
 /** Parse a ruleset document. Never throws: a file the Engine cannot use comes back as a list of
  *  plain `path: message` lines an author can act on. */
 export function parseRulesetDefinition(input: unknown): RulesetParseResult {
+  const shape = rulesetShapeIssue(input);
+  if (shape) return { ok: false, issues: [shape] };
   const parsed = rulesetDefinitionSchema.safeParse(stripRulesetComments(input));
   if (parsed.success) return { ok: true, definition: parsed.data };
   return {
@@ -5272,6 +5752,8 @@ export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
 /** One item as a catalog entry writes it, for reading an invented item back off a game. */
 export const rulesetCatalogItemSchema = catalogItemSchema;
 export type RulesetItems = z.infer<typeof itemsSchema>;
+export type RulesetStartingGear = z.infer<typeof startingGearSchema>;
+export type RulesetStartingGearLine = z.infer<typeof startingGearLineSchema>;
 export type RulesetItemStat = z.infer<typeof rulesetItemStatSchema>;
 export type RulesetCurrencyFamily = z.infer<typeof currencyFamilySchema>;
 export type RulesetCatalogEntryRow = z.infer<typeof catalogEntryRowSchema>;
@@ -5667,6 +6149,30 @@ function effectNameIssues(
   });
 }
 
+/** Why a fake cannot pass for its target (Capability API 1.79), or null when it can: the target is
+ *  another real, sellable item of the same kind, worn the same way. `target` undefined is an item the
+ *  ruleset does not have. Read at import (inline and same-file targets), at install (every catalog
+ *  file) and when a market offers the fake (a target a layer hides is never offered). */
+export function rulesetFakeIssue(
+  fakeRef: string,
+  fake: RulesetCatalogItem,
+  target: RulesetCatalogItem | undefined,
+): string | null {
+  const to = fake.passesFor!;
+  if (to === fakeRef) return "A fake does not pass for itself";
+  if (!target) return `No item "${to}" for it to pass for`;
+  if (target.passesFor !== undefined || target.binds?.cursed) return `"${to}" is itself a fake or cursed`;
+  if (target.service) return `"${to}" is a service, which is never carried`;
+  if (!target.cost) return `"${to}" has no cost, so it is never sold`;
+  if (target.category !== fake.category) return `"${to}" is a different kind of item`;
+  const slots = (item: RulesetCatalogItem) =>
+    JSON.stringify(Object.entries(item.slots ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  if (slots(target) !== slots(fake)) return `"${to}" is worn in other slots`;
+  if (Boolean(target.binds) !== Boolean(fake.binds))
+    return `"${to}" ${target.binds ? "binds" : "does not bind"} and the fake ${fake.binds ? "does" : "does not"}`;
+  return null;
+}
+
 /** Everything an entry must satisfy against the ruleset that declares it. */
 /** An item against the ruleset's `items` block: every name it uses is one the block declares, and
  *  every stat value is one that stat could hold. */
@@ -5719,6 +6225,7 @@ function itemIssues(
       add([...at, "sold", "place"], `Unknown place "${item.sold.place}"`);
     }
   }
+  if (item.passesFor !== undefined && item.service) add([...at, "passesFor"], "A service is never a fake");
   if (item.service) {
     // Bought and never carried: it costs something, and nothing about carrying or using it applies.
     if (!item.cost) add([...at, "service"], "A service is bought, so it has a cost");
@@ -6148,9 +6655,28 @@ export function rulesetCatalogEntryIssues(
   // A header read straight from a file, rather than through the schema, has no default filled in.
   const holds = catalog.holds ?? "rows";
 
+  // What a fake may pass for, where it can be read now: this catalog's items and every inline one's.
+  // A target in another catalog file is checked at install and when a market offers the fake.
+  const itemsByRef = new Map<string, RulesetCatalogItem>();
+  for (const other of definition.catalogs ?? []) {
+    if (other.id === catalog.id) continue;
+    for (const each of other.entries ?? []) if (each.item) itemsByRef.set(`${other.id}/${each.id}`, each.item);
+  }
+  for (const each of entries) if (each.item) itemsByRef.set(`${catalog.id}/${each.id}`, each.item);
+  const readable = (ref: string) => {
+    const catalogId = ref.slice(0, ref.indexOf("/"));
+    return (
+      catalogId === catalog.id || (definition.catalogs ?? []).some((each) => each.id === catalogId && each.entries)
+    );
+  };
+
   const seen = new Set<string>();
   entries.forEach((entry, index) => {
     if (seen.has(entry.id)) add([index, "id"], `Duplicate entry id "${entry.id}"`);
+    if (entry.item?.passesFor !== undefined && readable(entry.item.passesFor)) {
+      const issue = rulesetFakeIssue(`${catalog.id}/${entry.id}`, entry.item, itemsByRef.get(entry.item.passesFor));
+      if (issue) add([index, "item", "passesFor"], issue);
+    }
     seen.add(entry.id);
 
     // One catalog, one kind of entry: the picker reads a catalog of rows, a fight a catalog of
@@ -6485,6 +7011,8 @@ export function parseRulesetCatalogFile(
 ): RulesetCatalogParseResult {
   const catalog = definition.catalogs?.find((entry) => entry.id === catalogId);
   if (!catalog) return { ok: false, issues: [`(root): "${catalogId}" is not a catalog of this ruleset`] };
+  const shape = rulesetShapeIssue(input);
+  if (shape) return { ok: false, issues: [shape] };
   const parsed = rulesetCatalogFileSchema.safeParse(stripRulesetComments(input));
   if (!parsed.success) {
     return {
@@ -6509,7 +7037,8 @@ export function parseRulesetCatalogFile(
 
 /** A sheet as it is stored on a card, a persona or a game. Deliberately loose: it is read
  *  tolerantly against the ruleset's CURRENT schema (unknown keys kept, missing keys defaulted,
- *  out-of-range values clamped on edit and never on read), so there are no migration scripts. */
+ *  out-of-range values clamped on edit and never on read). A layout that moves values to new ids
+ *  says how in `sheet.migrations`, which every read applies (`readRulesetSheetEnvelope`). */
 export const rulesetSheetBuildSchema = z
   .object({
     abilities: z.record(z.number().finite()).default({}),
@@ -6528,6 +7057,8 @@ export const rulesetSheetEnvelopeSchema = z
 
 export type RulesetSheetBuild = z.infer<typeof rulesetSheetBuildSchema>;
 export type RulesetSheetEnvelope = z.infer<typeof rulesetSheetEnvelopeSchema>;
+export type RulesetSheetMigration = z.infer<typeof sheetMigrationSchema>;
+export type RulesetSheetMigrationStep = z.infer<typeof sheetMigrationStepSchema>;
 
 // ── Sheets as they travel on a character card or a persona ──
 

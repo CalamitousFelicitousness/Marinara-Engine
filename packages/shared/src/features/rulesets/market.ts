@@ -7,7 +7,7 @@
  * cost times a level, worked out in the smallest coin of the cost's family and rounded there, and said
  * in the largest coin the game's layers leave that pays it exactly.
  */
-import type { RulesetCatalogItem, RulesetDefinition } from "../../schemas/ruleset.schema.js";
+import { rulesetFakeIssue, type RulesetCatalogItem, type RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import {
   gameInventoryCoinRef,
   gameInventoryNameKey,
@@ -89,6 +89,19 @@ export function rulesetMarketSellersAt(market: RulesetMarket, rank: number): Rul
   );
 }
 
+/** A fake or a cursed item (Capability API 1.79): never among anybody's wares, never in an honest
+ *  seller's stock; a dishonest seller passes a fake off from their stock as what it passes for. */
+export function rulesetItemDeceptive(item: RulesetCatalogItem): boolean {
+  return item.passesFor !== undefined || item.binds?.cursed === true;
+}
+
+/** One thing a seller has in stock today. A fake a dishonest seller passes off is shown as what it
+ *  passes for (`item`, `name`) and keeps what it truly is. */
+export interface RulesetMarketStockDrop extends RulesetLootDrop {
+  truly?: string;
+  trulyName?: string;
+}
+
 /** Whether a seller sells an item: one of its filters matches it. */
 export function rulesetSellerSells(seller: RulesetMarketSeller, item: RulesetCatalogItem): boolean {
   return seller.sells.some((filter) => rulesetItemMatchesFilter(item, filter));
@@ -167,12 +180,13 @@ export function rulesetMarketShelf(
   place: RulesetMarketPlace,
   day: string,
 ): {
-  stock: ReadonlyMap<string, RulesetLootDrop[]>;
+  stock: ReadonlyMap<string, RulesetMarketStockDrop[]>;
   limit: (ref: string, item: RulesetCatalogItem) => number | undefined;
 } {
   const market = definition.items?.market;
-  const stock = new Map<string, RulesetLootDrop[]>();
+  const stock = new Map<string, RulesetMarketStockDrop[]>();
   const coins = new Set(book.coins.map((coin) => coin.item));
+  const byRef = new Map(book.entries.map((entry) => [entry.item, entry]));
   for (const seller of market ? rulesetMarketSellersAt(market, place.rank) : []) {
     if (!seller.stock) continue;
     const rolled = rollRulesetLootTable(
@@ -181,9 +195,22 @@ export function rulesetMarketShelf(
       seller.stock.table,
       rulesetCombatRoller(dayHash(`${day}|stock|${seller.id}`), 0),
     );
+    // Coins never, and no fake or cursed item from an honest seller: dropped after the roll, so the
+    // day still rolls the same shelf. A dishonest seller passes a fake off as what it passes for, while
+    // that is an item the game offers and one it may pass for.
+    const drops = (rolled ?? []).flatMap((drop): RulesetMarketStockDrop[] => {
+      if (coins.has(drop.item)) return [];
+      const item = byRef.get(drop.item)?.entry.item;
+      if (!item || !rulesetItemDeceptive(item)) return [drop];
+      if (seller.honest !== false || !item.passesFor) return [];
+      const target = byRef.get(item.passesFor);
+      if (!target?.entry.item || rulesetFakeIssue(drop.item, item, target.entry.item)) return [];
+      return [{ item: target.item, name: target.name, count: drop.count, truly: drop.item, trulyName: drop.name }];
+    });
+    // One line per item shown: where a fake and the real thing both came up, the seller passes the fake.
     stock.set(
       seller.id,
-      (rolled ?? []).filter((drop) => !coins.has(drop.item)),
+      drops.filter((drop) => drop.truly || !drops.some((other) => other.truly && other.item === drop.item)),
     );
   }
   return {
@@ -242,10 +269,27 @@ export function rulesetMarketQuoter(
       if (!price) return { ok: false, reason: "not-for-sale" };
       const sold = { ok: true as const, item: found.item, name: found.name, service: item.service === true };
       const answer = { family: price.family, owed: price.owed, price: price.said, level: level.label };
+      // A dishonest seller the buy names passes a fake off first, while their stock today has one.
+      if (request.seller !== undefined) {
+        const dishonest = rulesetMarketSellersAt(market, place.rank).filter(
+          (each) => each.honest === false && named(each, request.seller),
+        );
+        for (const seller of dishonest) {
+          if (seller.only && !meets(seller.only, request.who, request.stacks)) continue;
+          const drop = shelf()
+            .stock.get(seller.id)
+            ?.find((each) => each.truly && each.item === found.item);
+          if (!drop) continue;
+          const left = drop.count - (stockBought.get(rulesetMarketStockKey(seller.label, found.name)) ?? 0);
+          if (request.count <= left) {
+            return { ...sold, ...answer, seller: seller.label, stock: true, truly: drop.truly! };
+          }
+        }
+      }
       // The place's own wares first: sold here, by a seller here who sells it (anybody, without
       // sellers), as many as the place keeps today.
       let refused: "not-here" | "no-seller" | "not-to-you" | "sold-out" = "not-here";
-      if (rulesetItemSoldRank(market, item) <= place.rank) {
+      if (!rulesetItemDeceptive(item) && rulesetItemSoldRank(market, item) <= place.rank) {
         let seller: RulesetMarketSeller | undefined;
         if (market.sellers?.length) {
           const asked = rulesetMarketSellersAt(market, place.rank).filter(
@@ -262,26 +306,31 @@ export function rulesetMarketQuoter(
         }
       }
       // Else a seller's stock today: that seller only, as many as they rolled less what was bought.
+      // A fake is passed off only by the seller the buy names: a buy without a seller never gets one.
+      const offered = (drop: RulesetMarketStockDrop) =>
+        drop.item === found.item && (!drop.truly || request.seller !== undefined);
       const stocked = rulesetMarketSellersAt(market, place.rank).filter(
-        (seller) =>
-          named(seller, request.seller) &&
-          shelf()
-            .stock.get(seller.id)
-            ?.some((drop) => drop.item === found.item),
+        (seller) => named(seller, request.seller) && shelf().stock.get(seller.id)?.some(offered),
       );
       for (const seller of stocked) {
         if (seller.only && !meets(seller.only, request.who, request.stacks)) {
           if (refused !== "sold-out") refused = "not-to-you";
           continue;
         }
-        const rolled = shelf()
-          .stock.get(seller.id)!
-          .find((drop) => drop.item === found.item)!.count;
-        const left = rolled - (stockBought.get(rulesetMarketStockKey(seller.label, found.name)) ?? 0);
-        if (request.count <= left) return { ...sold, ...answer, seller: seller.label, stock: true };
+        const drop = shelf().stock.get(seller.id)!.find(offered)!;
+        const left = drop.count - (stockBought.get(rulesetMarketStockKey(seller.label, found.name)) ?? 0);
+        if (request.count <= left) {
+          return {
+            ...sold,
+            ...answer,
+            seller: seller.label,
+            stock: true,
+            ...(drop.truly ? { truly: drop.truly } : {}),
+          };
+        }
         refused = "sold-out";
       }
-      return { ok: false, reason: refused };
+      return { ok: false, reason: rulesetItemDeceptive(item) && refused === "not-here" ? "not-for-sale" : refused };
     },
     sale(request) {
       const market = definition.items?.market;
@@ -301,8 +350,18 @@ export function rulesetMarketQuoter(
         if (!seller) return { ok: false, reason: "not-bought" };
       }
       const fair = rulesetMarketLevel(market)!;
-      const price = rulesetMarketPrice(definition, item.cost, fair.times * market.buyBack, request.count, layerOptions);
-      if (!price) return { ok: false, reason: "not-for-sale" };
+      // A fake sold to an honest buyer (anybody, without sellers) is spotted: they say what it truly is
+      // and pay what that is worth to them, or nothing where it has no price. A dishonest buyer takes it
+      // as what it seems.
+      const spotted = request.truly !== undefined && seller?.honest !== false;
+      const trueEntry = spotted ? book.entries.find((entry) => entry.item === request.truly) : undefined;
+      const revealed = spotted ? { item: request.truly!, name: trueEntry?.name ?? request.truly! } : undefined;
+      const worthOf = spotted ? trueEntry?.entry.item : item;
+      const price =
+        worthOf?.cost && !worthOf.service
+          ? rulesetMarketPrice(definition, worthOf.cost, fair.times * market.buyBack, request.count, layerOptions)
+          : undefined;
+      if (!price) return { ok: false, reason: "not-for-sale", ...(revealed ? { revealed } : {}) };
       // What the place's sellers pay out in a day, counted in the purse's own family.
       const purse = market.places[place.rank]?.purse;
       if (purse) {
@@ -310,17 +369,18 @@ export function rulesetMarketQuoter(
         const value = family?.units.find((unit) => unit.id === purse.unit)?.value ?? 1;
         if (family?.id === price.familyId) {
           const left = purse.amount * value - (paidOut.get(family.id) ?? 0);
-          if (price.owed > left) return { ok: false, reason: "purse-spent" };
+          if (price.owed > left) return { ok: false, reason: "purse-spent", ...(revealed ? { revealed } : {}) };
         }
       }
       return {
         ok: true,
-        item: found.item,
-        name: found.name,
+        item: revealed?.item ?? found.item,
+        name: revealed?.name ?? found.name,
         family: price.family,
         familyId: price.familyId,
         worth: price.owed,
         price: price.said,
+        ...(revealed ? { revealed } : {}),
         ...(seller ? { seller: seller.label } : {}),
       };
     },
@@ -364,7 +424,7 @@ export function rulesetMarketPromptText(
   const levels = market.prices.map((level) => `${level.label} ×${level.times}`).join(", ");
   const sold = book.entries.flatMap((entry) => {
     const item = entry.entry.item;
-    if (!item?.cost || rulesetItemSoldRank(market, item) > at.rank) return [];
+    if (!item?.cost || rulesetItemDeceptive(item) || rulesetItemSoldRank(market, item) > at.rank) return [];
     const price = rulesetMarketPrice(definition, item.cost, fair.times, 1, layerOptions);
     if (!price) return [];
     const limit = shelf.limit(entry.item, item);
@@ -372,20 +432,34 @@ export function rulesetMarketPromptText(
       limit === undefined ? undefined : Math.max(0, limit - (day?.bought.get(gameInventoryNameKey(entry.name)) ?? 0));
     return [{ name: entry.name, item, price, left }];
   });
-  const line = (label: string, wares: typeof sold, stock: RulesetLootDrop[] = [], seller = "") => {
+  // An honest seller warns before selling what can turn on its buyer; a dishonest one says nothing.
+  const warning = (item: RulesetCatalogItem, honest: boolean) =>
+    honest && item.risky ? ` (warn the buyer first: ${item.risky})` : "";
+  const line = (
+    label: string,
+    wares: typeof sold,
+    stock: RulesetMarketStockDrop[] = [],
+    seller = "",
+    honest = true,
+  ) => {
     const listed = [...wares]
       .sort((a, b) => a.price.owed - b.price.owed)
       .slice(0, MARKET_PROMPT_ITEMS)
       .map(
         (ware) =>
-          `${ware.name} ${ware.price.said}${ware.item.service ? " (a service)" : ""}${ware.left !== undefined ? ` (${ware.left} left)` : ""}`,
+          `${ware.name} ${ware.price.said}${ware.item.service ? " (a service)" : ""}${ware.left !== undefined ? ` (${ware.left} left)` : ""}${warning(ware.item, honest)}`,
       );
     const more = wares.length - listed.length;
     const inStock = stock.flatMap((drop) => {
       const item = book.entries.find((entry) => entry.item === drop.item)?.entry.item;
       const price = item?.cost ? rulesetMarketPrice(definition, item.cost, fair.times, 1, layerOptions) : undefined;
       const left = drop.count - (day?.stockBought.get(rulesetMarketStockKey(seller, drop.name)) ?? 0);
-      return price && left > 0 ? [`${drop.name} ×${left} ${price.said}`] : [];
+      const told = drop.truly
+        ? ` (FAKE: really ${drop.trulyName}; this seller passes it off as the real thing)`
+        : item
+          ? warning(item, honest)
+          : "";
+      return price && left > 0 ? [`${drop.name} ×${left} ${price.said}${told}`] : [];
     });
     return `- ${label}: ${listed.length ? listed.join(", ") : "nothing"}${more > 0 ? `, and ${more} more` : ""}${inStock.length ? `; in stock today: ${inStock.join(", ")}` : ""}`;
   };
@@ -393,10 +467,11 @@ export function rulesetMarketPromptText(
   const sellers = here
     ? here.map((seller) =>
         line(
-          `${seller.label}${seller.only ? ` (to ${seller.only.label} only)` : ""}`,
+          `${seller.label}${seller.only ? ` (to ${seller.only.label} only)` : ""}${seller.honest === false ? " (dishonest)" : ""}`,
           sold.filter((ware) => rulesetSellerSells(seller, ware.item)),
           shelf.stock.get(seller.id),
           seller.label,
+          seller.honest !== false,
         ),
       )
     : [line("Sold here", sold)];
@@ -422,6 +497,11 @@ export function rulesetMarketPromptText(
             return `, up to ${purse!.amount} ${unit!.label} a day (${Math.max(0, left) / shown.value} ${shown.label} left today)`;
           })();
     lines.push(`Selling: sellers here buy what they sell at ×${market.buyBack} of the ${fair.label} price${said}.`);
+    if (here?.some((seller) => seller.honest === false)) {
+      lines.push(
+        "A dishonest seller buys a fake as what it seems; an honest one sees through it, says what it truly is and pays what that is worth.",
+      );
+    }
   }
   return lines.join("\n");
 }

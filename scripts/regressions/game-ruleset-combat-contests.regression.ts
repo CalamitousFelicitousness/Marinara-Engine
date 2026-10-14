@@ -28,6 +28,7 @@ import {
   holdRulesetCombatant,
   parseRulesetDefinition,
   rulesetCombatant,
+  rulesetEncounterOutcome,
   rulesetCombatOptions,
   rulesetContestChance,
   rulesetOptionTargets,
@@ -484,6 +485,55 @@ try {
       },
     });
     assert.deepEqual(eventsOf(shove(crowded, 6, 6, 1, 1).events, "pushed")[0]!.to, { x: 3, y: 2 });
+
+    // Height (combat C6b): a shove up a step of two levels or more stops short of it; a shove off one is a
+    // fall where it lands, by the ruleset's own falling rule (here two paces a level, a d6 for every two
+    // paces of the drop, shaken after).
+    const falling = parsedOrThrow(
+      (() => {
+        const doc = JSON.parse(emberText);
+        doc.combat.elevation = {
+          levelHeight: 2,
+          falling: { per: 2, dice: { count: 1, sides: 6 }, max: 5, type: "fall", prone: "shaken" },
+        };
+        return doc;
+      })(),
+      "the 2d6 example with falls",
+    );
+    const ledge = (heights: number[]) => {
+      const grid = drawn(".......", ".......", ".......", ".......", ".......", ".......");
+      grid.elevation = grid.tiles.map((row, y) => row.map((_, x) => (y === 2 ? heights[x]! : 0)));
+      return fight(falling, [hound({ brawn: 2 })], { grid, placements: { juno: { x: 1, y: 2 }, ash: { x: 2, y: 2 } } });
+    };
+    const shoved = (state: RulesetEncounterState, ...faces: number[]) =>
+      act(falling, state, { actorId: "juno", optionId: "contest:shove", targetIds: ["ash"] }, ...faces);
+    const off = shoved(ledge([2, 2, 2, 0, 0, 0, 0]), 6, 6, 1, 1, 1, 2);
+    assert.deepEqual(eventsOf(off.events, "pushed")[0]!.to, { x: 3, y: 2 }, "it stops where it lands");
+    assert.deepEqual(eventsOf(off.events, "fell"), [{ type: "fell", targetId: "ash", levels: 2 }]);
+    const hurt = eventsOf(off.events, "damage").find((event) => event.targetId === "ash")!;
+    assert.deepEqual([hurt.rolls, hurt.amount], [[1, 2], 3], "two levels of two paces: two dice");
+    assert.ok(rulesetCombatant(off.state, "ash")!.tracked.some((entry) => entry.condition === "shaken"));
+    // A fall is a blow like any other: one that takes the last of the hound's health puts it down.
+    const lethal = shoved(ledge([2, 2, 2, 0, 0, 0, 0]), 6, 6, 1, 1, 6, 6);
+    assert.ok(
+      eventsOf(lethal.events, "defeated").some((event) => event.actorId === "ash"),
+      "the fall put it down",
+    );
+    assert.equal(rulesetEncounterOutcome(lethal.state), "victory");
+    const up = shoved(ledge([0, 0, 0, 2, 2, 2, 2]), 6, 6, 1, 1);
+    assert.deepEqual(eventsOf(up.events, "pushed"), [], "nobody is shoved up a cliff");
+    const gentle = shoved(ledge([0, 0, 0, 1, 2, 0, 0]), 6, 6, 1, 1);
+    assert.deepEqual(eventsOf(gentle.events, "pushed")[0]!.to, { x: 4, y: 2 }, "up gentle steps, the whole way");
+    // A ruleset that says nothing about falling notes the fall and nothing more.
+    const plainLedge = drawn(".......", ".......", ".......", ".......", ".......", ".......");
+    plainLedge.elevation = plainLedge.tiles.map((row, y) => row.map((_, x) => (y === 2 && x < 3 ? 2 : 0)));
+    const noRule = shove(at({ x: 1, y: 2 }, { x: 2, y: 2 }, plainLedge), 6, 6, 1, 1);
+    assert.deepEqual(eventsOf(noRule.events, "fell"), [{ type: "fell", targetId: "ash", levels: 2 }]);
+    assert.deepEqual(
+      eventsOf(noRule.events, "damage").filter((event) => event.targetId === "ash"),
+      [],
+      "no rule, no harm",
+    );
     // Reach: the next cell unless the contest says further.
     const apart = at({ x: 1, y: 2 }, { x: 3, y: 2 });
     assert.deepEqual(
@@ -658,6 +708,79 @@ try {
     }
     assert.equal(getCapabilityPackageInstallIssue(manifest(43) as never, documents[0]!), null);
     assert.equal(getCapabilityPackageInstallIssue(manifest(43) as never, documents[1]!), null);
+  }
+
+  // A fall in a dice-pool system is thrown as its harm is: successes against the target, never the faces
+  // added up (combat C6b). Gravewatch with a shove and falls of a d10 for every 3 yards of drop.
+  {
+    const doc = JSON.parse(read("../../docs/examples/rulesets/gravewatch.json"));
+    delete doc.combat.initiative.each;
+    doc.combat.checks = [{ id: "might", label: "Might", value: { abilityMod: "sinew" } }];
+    doc.combat.distance = { label: "yards", perCell: 1 };
+    doc.combat.contests = [
+      {
+        id: "shove",
+        label: "Shove",
+        budget: "act",
+        attacker: { checks: ["might"] },
+        defender: { checks: ["might"] },
+        onWin: { push: 1 },
+      },
+    ];
+    doc.combat.elevation = { levelHeight: 3, falling: { per: 3, dice: { count: 1, sides: 10 }, max: 10 } };
+    doc.catalogs[1].entries[0].creature.checks = { might: 2 };
+    const gravewatch = parsedOrThrow(doc, "Gravewatch with falls");
+    const catalogs = Object.fromEntries(
+      (gravewatch.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+    );
+    const grid: TacticalGrid = {
+      width: 6,
+      height: 3,
+      tiles: Array.from({ length: 3 }, () => Array.from({ length: 6 }, () => "plains" as const)),
+    };
+    grid.elevation = grid.tiles.map((row, y) => row.map((_, x) => (y === 1 && x < 3 ? 2 : 0)));
+    const state = createRulesetEncounter({
+      definition: gravewatch,
+      seed: 3,
+      combatants: [
+        {
+          id: "ada",
+          name: "Ada",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { sinew: 3, nerve: 2, warmth: 2 },
+            skills: { dig: "rating_1", wrestle: "rating_2", ward: "rating_2" },
+            lists: { arms: [{ name: "Spade", rating: "sinew", trade: "dig", dice: "2d10", harm: "tearing" }] },
+          }),
+          live: {},
+          catalogs,
+        } as RulesetCombatantInput,
+        { id: "rats", name: "Rats", side: "enemy", creature: { catalogId: "night", entryId: "grave-rats" } },
+      ],
+      bestiary: catalogs,
+      roller: dice(10, 1),
+      board: { grid, placements: { ada: { x: 1, y: 1 }, rats: { x: 2, y: 1 } } },
+    });
+    const shove = rulesetCombatOptions(gravewatch, state, "ada").find((option) => option.label === "Shove")!;
+    // The contest as a pool throws it, then the fall's two d10s: 3 and 4, short of the target 6.
+    const step = act(
+      gravewatch,
+      state,
+      { actorId: "ada", optionId: shove.id, targetIds: ["rats"] },
+      7,
+      8,
+      2,
+      7,
+      3,
+      3,
+      4,
+    );
+    const fell = eventsOf(step.events, "damage").find((event) => event.targetId === "rats")!;
+    assert.deepEqual([fell.rolls, fell.amount, fell.pool?.successes], [[3, 4], 0, 0], "no successes, no harm");
+    // And its dice are the pool's own die, or the file is refused.
+    doc.combat.elevation.falling.dice.sides = 6;
+    const refused = parseRulesetDefinition(doc);
+    assert.ok(!refused.ok && refused.issues.some((issue) => /so a fall's dice are d10s/.test(issue)));
   }
 
   console.info("game ruleset combat contest regressions passed.");

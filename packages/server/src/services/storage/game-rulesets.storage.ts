@@ -9,19 +9,25 @@
 // bytes under a version that already exists is refused: a game pinned to `v1` would otherwise wake
 // up on other arithmetic, which is the one outcome the pin exists to prevent. The author raises the
 // version number instead.
+//
+// A ruleset imported from a package file (RM) may keep its catalogs as files: their texts are stored
+// once each in `game_ruleset_catalogs`, by content, and the row names them `{ <id>: <sha256> }`. The
+// map is part of the version: the same ruleset text with other catalogs is another version.
 // ──────────────────────────────────────────────
 
 import { createHash } from "node:crypto";
 import {
   communityRulesetId,
   isCommunityRulesetId,
+  parseRulesetCatalogFile,
   parseRulesetDefinition,
+  RULESET_CATALOG_MAX_BYTES,
   RULESET_MAX_BYTES,
   rulesetSourceUrlSchema,
 } from "@marinara-engine/shared";
-import { and, eq } from "../../db/file-query.js";
+import { and, eq, inArray } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
-import { gameRulesets } from "../../db/schema/index.js";
+import { gameRulesetCatalogs, gameRulesets } from "../../db/schema/index.js";
 import { now } from "../../utils/id-generator.js";
 
 export type GameRulesetSourceKind = "repository" | "local";
@@ -35,6 +41,8 @@ export interface GameRulesetRow {
   repositoryId: string | null;
   sha256: string;
   definition: string;
+  /** `{ <catalog id>: <sha256> }` as JSON, for a package file's catalog files; null otherwise. */
+  catalogs: string | null;
   createdAt: string;
 }
 
@@ -47,6 +55,9 @@ export interface PutGameRulesetInput {
   repositoryId?: string | null;
   /** The imported `ruleset.json` text, exactly as it arrived. */
   definition: string;
+  /** A package file's catalog files, by catalog id, exactly as they arrived (RM). Only the package import
+   *  sends them; every other import keeps its catalogs inline. */
+  catalogs?: Record<string, string>;
 }
 
 export type PutGameRulesetResult = { status: "added" | "unchanged"; row: GameRulesetRow };
@@ -135,14 +146,68 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
       `The ruleset file declares version ${parsed.definition.version}, not ${input.version}`,
     );
   }
-  // A catalog file beside `ruleset.json` is something only a package can ship. An imported ruleset
-  // is this one file, so its catalogs have to be inline or the picker would have nothing to read.
-  const assetCatalog = parsed.definition.catalogs?.find((catalog) => catalog.asset);
-  if (assetCatalog) {
-    throw new RulesetRefusedError(
-      `The catalog "${assetCatalog.id}" names a separate file (${assetCatalog.asset}). An imported ruleset carries its catalogs inline, as "entries"`,
-    );
+  // A catalog file beside `ruleset.json` comes only with a package file (RM), which sends the files. Any
+  // other import is this one file, so its catalogs have to be inline or the picker would have nothing
+  // to read.
+  const files = input.catalogs ?? {};
+  for (const catalog of parsed.definition.catalogs ?? []) {
+    if (!catalog.asset) continue;
+    if (files[catalog.id] === undefined) {
+      throw new RulesetRefusedError(
+        input.catalogs
+          ? `The catalog "${catalog.id}" names its file (${catalog.asset}), and the package does not have it`
+          : `The catalog "${catalog.id}" names a separate file (${catalog.asset}). An imported ruleset carries its catalogs inline, as "entries", or comes as a package file (.ruleset.json) with its catalog files`,
+      );
+    }
   }
+  for (const [id, text] of Object.entries(files)) {
+    if (!parsed.definition.catalogs?.some((catalog) => catalog.id === id && catalog.asset)) {
+      throw new RulesetRefusedError(`The package has a file for "${id}", which is not a catalog file of this ruleset`);
+    }
+    const bytes = Buffer.byteLength(text, "utf8");
+    if (bytes > RULESET_CATALOG_MAX_BYTES) {
+      throw new RulesetRefusedError(
+        `The catalog "${id}" is ${bytes} bytes, over the ${RULESET_CATALOG_MAX_BYTES}-byte limit`,
+      );
+    }
+    let document: unknown;
+    try {
+      document = JSON.parse(text);
+    } catch {
+      throw new RulesetRefusedError(`The catalog "${id}" is not valid JSON`);
+    }
+    const catalog = parseRulesetCatalogFile(parsed.definition, id, document);
+    if (!catalog.ok) {
+      throw new RulesetRefusedError(`The catalog "${id}" is not usable: ${catalog.issues.slice(0, 5).join("; ")}`);
+    }
+  }
+}
+
+const sha256Of = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+/** A version's catalog files as its row names them: `{ <id>: <sha256> }` in id order, as JSON, or null. */
+function catalogMap(catalogs: Record<string, string> | undefined): string | null {
+  const ids = Object.keys(catalogs ?? {}).sort();
+  return ids.length ? JSON.stringify(Object.fromEntries(ids.map((id) => [id, sha256Of(catalogs![id]!)]))) : null;
+}
+
+/** The sha256 values a row's catalogs name. */
+function namedCatalogs(row: Pick<GameRulesetRow, "catalogs">): string[] {
+  if (!row.catalogs) return [];
+  try {
+    const map = JSON.parse(row.catalogs) as unknown;
+    return map && typeof map === "object" ? Object.values(map).filter((value) => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Remove the catalog files no stored version names any more. Inside the removal's own transaction. */
+async function pruneCatalogs(tx: Pick<DB, "select" | "delete">): Promise<void> {
+  const named = new Set(((await tx.select().from(gameRulesets)) as GameRulesetRow[]).flatMap(namedCatalogs));
+  const kept = (await tx.select().from(gameRulesetCatalogs)) as Array<{ id: string }>;
+  const unnamed = kept.map((file) => file.id).filter((id) => !named.has(id));
+  if (unnamed.length) await tx.delete(gameRulesetCatalogs).where(inArray(gameRulesetCatalogs.id, unnamed));
 }
 
 export function createGameRulesetsStorage(db: DB) {
@@ -170,7 +235,8 @@ export function createGameRulesetsStorage(db: DB) {
      *  refuses it because that version already means something else. */
     async put(input: PutGameRulesetInput): Promise<PutGameRulesetResult> {
       assertStorableRuleset(input);
-      const sha256 = createHash("sha256").update(input.definition, "utf8").digest("hex");
+      const sha256 = sha256Of(input.definition);
+      const catalogs = catalogMap(input.catalogs);
       // One transaction, so two imports of the same version cannot both see "not stored yet": the
       // second one has to come back as unchanged or as a conflict, never as a key collision.
       return db.transaction(async (tx) => {
@@ -182,7 +248,9 @@ export function createGameRulesetsStorage(db: DB) {
           )) as GameRulesetRow[];
         const existing = rows[0];
         if (existing) {
-          if (existing.sha256 !== sha256) throw new RulesetVersionConflictError(input.rulesetId, input.version);
+          if (existing.sha256 !== sha256 || (existing.catalogs ?? null) !== catalogs) {
+            throw new RulesetVersionConflictError(input.rulesetId, input.version);
+          }
           return { status: "unchanged" as const, row: existing };
         }
         const row: GameRulesetRow = {
@@ -194,9 +262,16 @@ export function createGameRulesetsStorage(db: DB) {
           repositoryId: input.repositoryId ?? null,
           sha256,
           definition: input.definition,
+          catalogs,
           createdAt: now(),
         };
         await tx.insert(gameRulesets).values(row);
+        // Each catalog file once, by its content: a new version that keeps a catalog adds nothing.
+        for (const text of Object.values(input.catalogs ?? {})) {
+          const id = sha256Of(text);
+          const kept = await tx.select().from(gameRulesetCatalogs).where(eq(gameRulesetCatalogs.id, id));
+          if (!kept.length) await tx.insert(gameRulesetCatalogs).values({ id, text, createdAt: now() });
+        }
         return { status: "added" as const, row };
       });
     },
@@ -208,9 +283,39 @@ export function createGameRulesetsStorage(db: DB) {
     },
 
     async remove(rulesetId: string, version: number): Promise<void> {
-      await db
-        .delete(gameRulesets)
-        .where(and(eq(gameRulesets.rulesetId, rulesetId), eq(gameRulesets.version, version)));
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(gameRulesets)
+          .where(and(eq(gameRulesets.rulesetId, rulesetId), eq(gameRulesets.version, version)));
+        await pruneCatalogs(tx);
+      });
+    },
+
+    /** A stored version's catalog file, checked against the sha256 its row names; null when the
+     *  version, the catalog or the file is not there, or the file is not what the row names. */
+    async catalogText(
+      rulesetId: string,
+      version: number,
+      catalogId: string,
+    ): Promise<{ sha256: string; text: string } | null> {
+      const rows = (await db
+        .select()
+        .from(gameRulesets)
+        .where(and(eq(gameRulesets.rulesetId, rulesetId), eq(gameRulesets.version, version)))) as GameRulesetRow[];
+      let map: Record<string, unknown> = {};
+      try {
+        map = rows[0]?.catalogs ? (JSON.parse(rows[0].catalogs) as Record<string, unknown>) : {};
+      } catch {
+        return null;
+      }
+      const sha256 = map[catalogId];
+      if (typeof sha256 !== "string") return null;
+      const files = (await db.select().from(gameRulesetCatalogs).where(eq(gameRulesetCatalogs.id, sha256))) as Array<{
+        id: string;
+        text: string;
+      }>;
+      const text = files[0]?.text;
+      return text !== undefined && sha256Of(text) === sha256 ? { sha256, text } : null;
     },
 
     /** Forget every stored version of one ruleset, and say how many went. Whether a game still
@@ -220,6 +325,7 @@ export function createGameRulesetsStorage(db: DB) {
       return db.transaction(async (tx) => {
         const removed = tx.count(gameRulesets, eq(gameRulesets.rulesetId, rulesetId));
         await tx.delete(gameRulesets).where(eq(gameRulesets.rulesetId, rulesetId));
+        await pruneCatalogs(tx);
         return removed;
       });
     },

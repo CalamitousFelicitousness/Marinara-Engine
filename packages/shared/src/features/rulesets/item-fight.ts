@@ -106,7 +106,8 @@ export function gameFightOffers(
       (each) => each.ruleset && gameInventoryNameKey(each.name) === gameInventoryNameKey(line.name),
     );
     if (!effect) return [];
-    // Only the stacks it may be used from: worn and bound where the item asks it.
+    // Only the stacks it may be used from: worn and bound where the item asks it. A fake counts as
+    // what it passes for (1.79).
     const usable = stacks.filter((stack) => stack.item === line.item && gameInventoryWearMet(stack, effect.wear));
     // A stack without a count of its own is full, and no stack holds more than its item's most.
     const charges = effect.charges;
@@ -136,6 +137,7 @@ export function gameFightItems(
   const all = gameInventoryFightLines(stacks);
   const worked = book
     ? all.flatMap((line) => {
+        // A fake is offered as what it passes for; what one use of it does is `gameFightUseEffect`'s.
         const effect = line.item ? rulesetItemFightEffect(line.name, book.itemOf(line.item)) : null;
         return effect ? [effect] : [];
       })
@@ -154,5 +156,32 @@ export function gameFightItems(
       ...worked,
       ...(book ? matched.filter((effect) => plainNames.has(gameInventoryNameKey(effect.name))) : matched),
     ],
+  };
+}
+
+/**
+ * What one use of a fight's line does, when the stack it comes out of (`gameInventoryFightSpendStack`)
+ * is a fake (1.79): what its true item does, aimed as the line was; and where its true item does
+ * nothing a fight can use, the use is spent for nothing, and the log says what it really was. Unchanged
+ * for any other stack. The use is spent as the line's is, and the inventory's journal names it truly.
+ */
+export function gameFightUseEffect(
+  effect: CombatItemEffect,
+  stack: Pick<GameInventoryStack, "truly"> | undefined,
+  book: Pick<RulesetItemBook, "itemOf">,
+): CombatItemEffect {
+  if (!stack?.truly) return effect;
+  const read = book.itemOf(stack.truly);
+  const name = read?.name ?? stack.truly;
+  const truly = rulesetItemFightEffect(effect.name, read);
+  if (!truly) return { ...effect, failed: `It was really ${name}, and it did nothing.` };
+  const { charges: _charges, wear: _wear, consumes: _consumes, ...does } = truly;
+  return {
+    ...does,
+    target: effect.target,
+    description: effect.description,
+    ...(effect.consumes !== undefined ? { consumes: effect.consumes } : {}),
+    ...(effect.charges ? { charges: effect.charges } : {}),
+    ...(effect.wear ? { wear: effect.wear } : {}),
   };
 }

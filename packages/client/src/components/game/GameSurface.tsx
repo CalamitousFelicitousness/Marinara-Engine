@@ -21,6 +21,7 @@ import {
   type GameInventoryOpResult,
   type GameInventoryWear,
   type RulesetItemBookSheets,
+  type RulesetStartingGearSelection,
   type GameInventoryStack,
   type PlayerStats,
   type RulesetLiveStates,
@@ -133,6 +134,7 @@ import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showChoiceDialog, showConfirmDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT } from "../../lib/chat-floating-ui-events";
 import { cn, generateClientId } from "../../lib/utils";
+import { gameInventoryRefusalKeys } from "../../lib/game-inventory-refusal";
 import {
   filterAudioGenerationConnections,
   filterLanguageGenerationConnections,
@@ -221,7 +223,7 @@ import {
   type MusicEnemyTier,
   scoreAmbient,
   normalizeCharacterLookupName,
-  rulesetSheetEnvelopeSchema,
+  readRulesetSheetEnvelope,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
   type RulesetLiveState,
@@ -275,6 +277,7 @@ import { DirectionEngine } from "./DirectionEngine";
 import { GameWidgetPanel, GameWidgetSessionPrepModal, MobileWidgetPanel } from "./GameWidgetPanel";
 import { WeatherEffects } from "../chat/WeatherEffects";
 import { GameInventory } from "./GameInventory";
+import type { StartingGearTaken } from "./StartingGearPicker";
 import { GameReadableDisplay } from "./GameReadableDisplay";
 import {
   buildMissingSceneAssetGenerationPayload,
@@ -3454,11 +3457,30 @@ function GameSurfaceComponent({
   /**
    * What the Game Master's inventory tags did, announced as the player reaches them. The server
    * already applied every tag when it saved the reply, so nothing here changes the inventory: the
-   * screen picks up the new stacks with the chat, and a tag the server refused is not announced.
+   * screen picks up the new stacks with the chat. A refused buy or sale is told, since the narration
+   * may already have said it happened; any other refused tag is not announced.
    */
   const announceInventoryUpdates = useCallback(
     (updates: InventoryTag[]) => {
       const describe = (update: InventoryTag, item: string) => {
+        // A fake found out (Capability API 1.79): by a reveal or a use, or by an honest buyer.
+        if (update.revealed) {
+          const truly = update.revealed;
+          if (update.action === "sell") {
+            if (!update.ok) return localizeUi("ui.game.gamesurfacecomponent.inventorySaleSawThrough", { truly });
+            const price = update.price ?? "";
+            return update.who
+              ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoSoldSeenThrough", {
+                  who: update.who,
+                  truly,
+                  price,
+                })
+              : localizeUi("ui.game.gamesurfacecomponent.inventoryYouSoldSeenThrough", { truly, price });
+          }
+          return update.who
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoRevealed", { who: update.who, item, truly })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item, truly });
+        }
         if (update.action === "give") {
           return update.who
             ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGave", {
@@ -3511,8 +3533,20 @@ function GameSurfaceComponent({
           : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item });
       };
       // Putting something on or binding it is shown like a gain; nothing is lost by either.
-      const notifications = updates.flatMap((update) =>
-        update.ok && update.count > 0
+      const notifications = updates.flatMap((update) => {
+        const refused = gameInventoryRefusalKeys(update);
+        if (refused) {
+          return [
+            {
+              gain: false,
+              text: localizeUi(refused.message, {
+                item: inventoryLabel(update.item, update.count),
+                why: localizeUi(refused.reason),
+              }),
+            },
+          ];
+        }
+        return (update.ok && update.count > 0) || (update.revealed && update.action === "sell")
           ? [
               {
                 gain:
@@ -3525,8 +3559,8 @@ function GameSurfaceComponent({
                 text: describe(update, inventoryLabel(update.item, update.count)),
               },
             ]
-          : [],
-      );
+          : [];
+      });
       if (notifications.length > 0) {
         setInventoryNotifications(notifications);
         if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
@@ -7730,15 +7764,19 @@ function GameSurfaceComponent({
     [activeChatId, queryClient, syncInventoryToChatCache],
   );
   const commitInventory = useCallback(
-    async (ops: GameInventoryOp[]): Promise<GameInventoryOpResult[]> =>
-      (
-        await sendInventory((chatId) =>
-          api.post<{ inventory: GameInventoryStack[]; results: GameInventoryOpResult[]; playerStats?: PlayerStats }>(
-            "/game/inventory",
-            { chatId, ops },
-          ),
-        )
-      )?.results ?? [],
+    async (ops: GameInventoryOp[]): Promise<GameInventoryOpResult[]> => {
+      const response = await sendInventory((chatId) =>
+        api.post<{
+          inventory: GameInventoryStack[];
+          results: GameInventoryOpResult[];
+          playerStats?: PlayerStats;
+          foundOut?: string[];
+        }>("/game/inventory", { chatId, ops }),
+      );
+      // A fake the sheet now shows for what it is was found out with this change (1.79).
+      for (const line of response?.foundOut ?? []) toast.info(line);
+      return response?.results ?? [];
+    },
     [sendInventory],
   );
 
@@ -8174,8 +8212,12 @@ function GameSurfaceComponent({
           );
           return;
         }
+        // One that came out of a fake is found out as it is used (1.79).
+        const truly = result.revealed?.[0];
         showInventoryNotification(
-          localizeUi("ui.game.gamesurfacecomponent.inventoryYouUsed", { item: normalizedItemName }),
+          truly
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item: normalizedItemName, truly })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouUsed", { item: normalizedItemName }),
           false,
         );
         toast.success(localizeUi("ui.game.gamesurfacecomponent.usedValue1", { value1: normalizedItemName }));
@@ -8834,10 +8876,8 @@ function GameSurfaceComponent({
     const playerKey = inventoryPlayerName ? gameInventoryBagKey(inventoryPlayerName) : "";
     const player =
       (playerKey ? named.find((entry) => gameInventoryBagKey(entry.name) === playerKey) : undefined) ?? named[0];
-    const buildOf = (card: Record<string, unknown>) => {
-      const parsed = rulesetSheetEnvelopeSchema.safeParse(card.rulesetSheet);
-      return parsed.success ? parsed.data.build : undefined;
-    };
+    const buildOf = (card: Record<string, unknown>) =>
+      readRulesetSheetEnvelope(gameRuleset.definition, card.rulesetSheet)?.build;
     const playerBuild = player ? buildOf(player.card) : undefined;
     return {
       ...(playerBuild ? { player: playerBuild } : {}),
@@ -8868,7 +8908,7 @@ function GameSurfaceComponent({
         return;
       }
       const usedIn = activeChatId;
-      let used: { rulesetLive: RulesetLiveStates; line: string } | null;
+      let used: { rulesetLive: RulesetLiveStates; line: string; revealed?: string } | null;
       try {
         // A sheet edit still waiting to be saved lands first, so the use starts from it and is not
         // written over by it afterwards.
@@ -8878,6 +8918,7 @@ function GameSurfaceComponent({
             inventory: GameInventoryStack[];
             rulesetLive: RulesetLiveStates;
             line: string;
+            revealed?: string;
             playerStats?: PlayerStats;
           }>("/game/inventory/use", { chatId, stackId }),
         );
@@ -8904,6 +8945,13 @@ function GameSurfaceComponent({
         return;
       }
       if (!used) return;
+      // A fake used shows itself for what it truly is (Capability API 1.79).
+      if (used.revealed) {
+        showInventoryNotification(
+          localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item: label, truly: used.revealed }),
+          false,
+        );
+      }
       // The item is used either way. When the Game Master cannot be told (the player moved to another
       // chat meanwhile, or the message did not go), the player is, so it is never spent in silence.
       const sent =
@@ -8912,7 +8960,120 @@ function GameSurfaceComponent({
           false;
       if (!sent) toast.error(localizeUi("ui.game.gamesurfacecomponent.itemUsedNotSent", { item: label }));
     },
-    [activeChatId, gameRuleset.status, inventoryItemBook, localizeUi, sendInventory, sendMessage],
+    [
+      activeChatId,
+      gameRuleset.status,
+      inventoryItemBook,
+      localizeUi,
+      sendInventory,
+      sendMessage,
+      showInventoryNotification,
+    ],
+  );
+
+  // Starting gear (Capability API 1.78): what each bag has taken, kept in the chat's metadata.
+  const startingGearTaken = useMemo<StartingGearTaken>(() => {
+    const raw = chatMeta.gameStartingGearTaken;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.fromEntries(
+      Object.entries(raw as Record<string, unknown>).flatMap(([key, ids]) =>
+        Array.isArray(ids) ? [[key, ids.filter((id): id is string => typeof id === "string")]] : [],
+      ),
+    );
+  }, [chatMeta.gameStartingGearTaken]);
+  const handleTakeStartingGear = useCallback(
+    async (holder: string | undefined, selection: RulesetStartingGearSelection, again: boolean) => {
+      const gearLabel =
+        gameRuleset.status === "ok"
+          ? (gameRuleset.definition.items?.startingGear?.find((each) => each.id === selection.gear)?.label ??
+            selection.gear)
+          : selection.gear;
+      if (activeChatId) claimChatMetadataFields(activeChatId, ["gameStartingGearTaken"]);
+      let answer: { taken: StartingGearTaken; added: Array<{ name: string; count: number }>; dropped: string[] } | null;
+      try {
+        answer = await sendInventory((chatId) =>
+          api.post<{
+            inventory: GameInventoryStack[];
+            added: Array<{ name: string; count: number }>;
+            dropped: string[];
+            taken: StartingGearTaken;
+            playerStats?: PlayerStats;
+          }>("/game/inventory/starting-gear", {
+            chatId,
+            ...(holder ? { holder } : {}),
+            selection,
+            ...(again ? { again: true } : {}),
+          }),
+        );
+      } catch (error) {
+        const payload =
+          error instanceof ApiError && error.payload && typeof error.payload === "object"
+            ? (error.payload as { reason?: unknown; error?: unknown })
+            : undefined;
+        const reason = typeof payload?.reason === "string" ? payload.reason : undefined;
+        toast.error(
+          localizeUi(
+            reason === "taken"
+              ? "game.ruleset.startingGear.refusedTaken"
+              : reason === "pick" || reason === "choice"
+                ? "game.ruleset.startingGear.refusedChoice"
+                : reason === "too-heavy"
+                  ? "game.ruleset.startingGear.refusedHeavy"
+                  : reason === "empty"
+                    ? "game.ruleset.startingGear.refusedEmpty"
+                    : "game.ruleset.startingGear.refused",
+            { gear: gearLabel },
+          ),
+        );
+        return false;
+      }
+      if (!answer) return false;
+      // The marker follows the saved inventory into the chat's cached metadata, so the row and the
+      // modal read what was just taken without waiting for the chat to be read again.
+      if (activeChatId) {
+        const detailKey = chatKeys.detail(activeChatId);
+        const patchedChat = patchChatMetadata(queryClient.getQueryData<Chat>(detailKey), {
+          gameStartingGearTaken: answer.taken,
+        });
+        if (patchedChat) queryClient.setQueryData(detailKey, patchedChat);
+        const chatStore = useChatStore.getState();
+        if (chatStore.activeChatId === activeChatId) {
+          const patchedActiveChat = patchChatMetadata(chatStore.activeChat, { gameStartingGearTaken: answer.taken });
+          if (patchedActiveChat) chatStore.setActiveChat(patchedActiveChat);
+        }
+      }
+      const count = answer.added.reduce((total, add) => total + add.count, 0);
+      showInventoryNotification(localizeUi("game.ruleset.startingGear.takenNotice", { gear: gearLabel, count }), true);
+      if (answer.dropped.length > 0) {
+        toast.info(localizeUi("game.ruleset.startingGear.dropped", { items: answer.dropped.join(", ") }));
+      }
+      return true;
+    },
+    [activeChatId, gameRuleset, localizeUi, queryClient, sendInventory, showInventoryNotification],
+  );
+  // Gear goes into the bag of a party member with a card, as the server checks.
+  const startingGearHolders = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : []).flatMap((card) => {
+          const name = card && typeof card === "object" ? (card as { name?: unknown }).name : undefined;
+          return typeof name === "string" && name.trim() ? [gameInventoryBagKey(name.trim())] : [];
+        }),
+      ),
+    [chatMeta.gameCharacterCards],
+  );
+  const inventoryStartingGear = useMemo(
+    () =>
+      gameRuleset.status === "ok" && gameRuleset.definition.items?.startingGear?.length
+        ? {
+            taken: startingGearTaken,
+            sheets: inventorySheets,
+            layerOptions: gameRuleset.layerOptions,
+            holders: startingGearHolders,
+            onTake: handleTakeStartingGear,
+          }
+        : undefined,
+    [gameRuleset, handleTakeStartingGear, inventorySheets, startingGearHolders, startingGearTaken],
   );
 
   // Who an item added in the shared view may go to, in order: the player, then the party.
@@ -10341,8 +10502,9 @@ function GameSurfaceComponent({
     const { cards, index } = findStoredGameCard(cardTitle);
     // A stored sheet this version cannot read is kept as it is. Showing the ruleset's defaults in
     // its place would invite a Save that overwrites it, so the block says so and offers nothing.
-    const parsed = index >= 0 ? rulesetSheetEnvelopeSchema.safeParse(cards[index]?.rulesetSheet) : null;
-    if (parsed && !parsed.success && cards[index]?.rulesetSheet != null) return { status: "unreadable" };
+    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.77).
+    const envelope = index >= 0 ? readRulesetSheetEnvelope(gameRuleset.definition, cards[index]?.rulesetSheet) : null;
+    if (index >= 0 && !envelope && cards[index]?.rulesetSheet != null) return { status: "unreadable" };
     // What this card holds, as the server reads it for checks and fights: the player's card the
     // player's bag, every other card its own.
     const items =
@@ -10361,7 +10523,7 @@ function GameSurfaceComponent({
       // picker leaves hidden entries out by.
       layers: gameRuleset.layers,
       layerOptions: gameRuleset.layerOptions,
-      envelope: parsed?.success ? parsed.data : undefined,
+      envelope: envelope ?? undefined,
       live: gameSnapshot?.rulesetLive?.[normalizeCharacterLookupName(cardTitle)],
       onLiveChange: (next) => handleRulesetLiveChange(cardTitle, next),
       // Where the ruleset has items, a rest may bring charges back to what is carried.
@@ -12590,10 +12752,13 @@ function GameSurfaceComponent({
               {/* Top-right action controls */}
               <div
                 data-tour="game-controls"
+                data-game-float="controls"
                 data-tracker-panel-anchor="roleplay-hud"
                 className={cn(
                   "pointer-events-none absolute right-3 z-50",
-                  tacticalCombatActive ? "top-14" : topOverlayOffsetClass,
+                  tacticalCombatActive
+                    ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
+                    : topOverlayOffsetClass,
                   replayActive && "hidden",
                 )}
               >
@@ -12657,10 +12822,13 @@ function GameSurfaceComponent({
 
                 {/* Top-left: Map + Party portraits side by side, clear of a phone's row of control bubbles */}
                 <div
+                  data-game-float="map-and-party"
                   className={cn(
                     // On a phone it stops short of the control-button rows in the right half of the chat.
                     "pointer-events-auto absolute left-3 right-[calc(50%+1.625rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
-                    tacticalCombatActive ? "top-14" : topOverlayOffsetClass,
+                    tacticalCombatActive
+                      ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
+                      : topOverlayOffsetClass,
                     replayActive && "hidden",
                     // The package draws its own header and party bar, so the built-in ones would collide.
                     // Gated on ownership rather than the mount, so they do not flash while the package
@@ -13379,6 +13547,7 @@ function GameSurfaceComponent({
                 onSwapItems={handleSwapInventoryStacks}
                 canInteract={sessionInteractive && narrationDone && !isStreaming}
                 onUseItem={handleUseInventoryStack}
+                startingGear={inventoryStartingGear}
               />
 
               {/* Readable document display (Notes / Books) */}
@@ -13469,6 +13638,7 @@ function GameSurfaceComponent({
             handlePartyPortraitUpload(characterSheetCharId, partyCards[characterSheetCharId].title, file)
           }
           ruleset={characterSheetRuleset}
+          rulesetPinned={gameRuleset.status !== "none"}
         />
       )}
 

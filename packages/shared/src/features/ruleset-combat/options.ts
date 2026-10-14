@@ -37,6 +37,9 @@ import {
   rulesetCheckMode,
   rulesetConditionModifiers,
   type RulesetConditionModifier,
+  rulesetConditionEconomy,
+  rulesetIsAttack,
+  rulesetOnOwnTurn,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -47,6 +50,7 @@ import {
   rulesetPositionOf,
   rulesetReachableCells,
 } from "./grid.js";
+import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import type {
   RulesetConditionBonus,
   RulesetCombatAction,
@@ -103,10 +107,29 @@ function grantedStandardOptions(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   actor: RulesetCombatant,
+  state?: RulesetEncounterState,
 ): RulesetCombatOption[] {
   const declared = new Set<string>(combat.standard ?? []);
   const options: RulesetCombatOption[] = [];
   const seen = new Set<string>();
+  // What a condition lets a budget it grants be spent on (combat C6d, Haste's extra action): the
+  // standard actions it names, at no price of its own.
+  for (const grant of rulesetConditionEconomy(definition, combat, actor, state).grants) {
+    if (!grant.standard || (actor.budgets[grant.budget] ?? 0) < 1) continue;
+    for (const name of grant.standard) {
+      if (!declared.has(name)) continue;
+      const id = `standard:${name}@${grant.budget}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      options.push({
+        id,
+        kind: "standard",
+        label: name,
+        budget: grant.budget,
+        targets: name === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
+      });
+    }
+  }
   for (const action of actor.actions) {
     const granted = action.standard;
     if (!granted || (actor.budgets[granted.budget] ?? 0) < 1) continue;
@@ -250,7 +273,13 @@ export function rulesetTargetRefusal(
   if (!from || !to || !grid) return null;
   if (actorId === targetId) return null;
   const away = rulesetCellDistance(from, to);
-  if (away > reach.max) return "out-of-reach";
+  // A shot carries further down from higher ground when the ruleset says so (combat C6b).
+  const target = rulesetCombatant(state, targetId);
+  const further =
+    reach.shot && target && rulesetAbove(state, rulesetCombatant(state, actorId), target)
+      ? (state.board?.rangeBonus ?? 0)
+      : 0;
+  if (away > reach.max + further) return "out-of-reach";
   if (away > 1 && !rulesetLineOfSight(grid, from, to)) return "no-line-of-sight";
   return null;
 }
@@ -375,8 +404,55 @@ export function rulesetAreaTargets(
 }
 
 /**
- * What an attack against this combatant is rolled against: their own defense, plus what the ground
- * they stand on is worth when the ruleset says cover adds anything.
+ * What cover adds for this combatant against something coming from `from` (combat C6a-2): half
+ * cover's bonus, or three-quarters' when the ruleset has one, graded by corner lines from `from`.
+ * Against an attack, ground worth something as cover under the target is at least half, as it was
+ * before cover had degrees; a save is helped only by what lies between it and the effect, since cover
+ * counts against an effect from its other side. Nothing without a board, a position or a cover rule.
+ */
+export function rulesetCoverBonus(
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  target: RulesetCombatant,
+  from: RulesetCombatCell | null,
+  against: "attack" | "save" = "attack",
+): number {
+  const cover = combat.cover;
+  const grid = state.board?.grid;
+  const at = rulesetPositionOf(target);
+  if (!cover || !grid || !at) return 0;
+  // Somebody standing in the way is half cover, friend or foe, when the ruleset says so.
+  const screens = cover.creatures
+    ? new Set(
+        state.combatants
+          .filter((one) => one.id !== target.id && rulesetCombatStanding(one))
+          .flatMap((one) => {
+            const cell = rulesetPositionOf(one);
+            return cell ? [`${cell.x},${cell.y}`] : [];
+          }),
+      )
+    : undefined;
+  const tier = from ? coverTier(grid, from, at, screens) : "none";
+  if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
+  return tier === "half" || (against === "attack" && rulesetCellCover(grid, at) > 0) ? cover.bonus : 0;
+}
+
+/** Whether one combatant stands on higher ground than another (combat C6b). Never without a board. */
+export function rulesetAbove(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant | undefined,
+  target: RulesetCombatant,
+): boolean {
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(actor);
+  const at = rulesetPositionOf(target);
+  return !!grid && !!from && !!at && elevationAt(grid, from.x, from.y) > elevationAt(grid, at.x, at.y);
+}
+
+/**
+ * What an attack against this combatant is rolled against: their own defense, plus the cover between
+ * them and the one attacking, when the ruleset says cover adds anything, less what striking down from
+ * higher ground is worth when the ruleset gives it a number (combat C6b).
  *
  * One answer, so a forecast and the roll that follows it can never disagree about the number.
  */
@@ -385,6 +461,7 @@ export function rulesetDefenseAgainst(
   combat: RulesetCombat,
   state: RulesetEncounterState,
   target: RulesetCombatant,
+  attacker: RulesetCombatant | undefined,
 ): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
   const guards = rulesetConditionModifiers(definition, combat, target, "defense", state).map(
@@ -397,11 +474,10 @@ export function rulesetDefenseAgainst(
     }),
   );
   const defense = target.defense + guards.reduce((total, guard) => total + guard.value, 0);
-  const grid = state.board?.grid;
-  const at = rulesetPositionOf(target);
-  const bonus = combat.cover?.bonus ?? 0;
-  if (!grid || !at || bonus <= 0 || rulesetCellCover(grid, at) <= 0) return { defense, cover: 0, guards };
-  return { defense: defense + bonus, cover: bonus, guards };
+  const cover = rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker));
+  const highGround = combat.elevation?.highGround;
+  const above = typeof highGround === "object" && rulesetAbove(state, attacker, target) ? highGround.bonus : 0;
+  return { defense: defense + cover - above, cover, guards };
 }
 
 /** What conditions add to one roll, as a forecast reads it: the flat part, and every die with the
@@ -878,7 +954,7 @@ function forecastFor(
   if (action.toHit !== undefined && target) {
     // The same number the roll will be made against: the target's own defense plus whatever the
     // ground they stand on is worth, and the same roll mode the distance between them asks for.
-    const defense = rulesetDefenseAgainst(definition, combat, state, target).defense;
+    const defense = rulesetDefenseAgainst(definition, combat, state, target, actor).defense;
     const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id });
     const bonus = rulesetBonusDice(rulesetConditionModifiers(definition, combat, actor, "attacks", state));
     const chance = rulesetCombatIsPool(combat)
@@ -937,6 +1013,8 @@ function optionFrom(
   action: RulesetCombatAction,
   /** The window is asking, so a reaction whose moment this is belongs on the list after all. */
   atItsMoment = false,
+  /** What the actor's conditions do to the economy, worked out once for a whole menu. */
+  economy = rulesetConditionEconomy(definition, combat, actor, state),
 ): RulesetCombatOption | null {
   // A signature action is bought with points at the end of somebody else's turn, so it is never on
   // the actor's own menu. `rulesetSignatureOptions` is where it is offered.
@@ -949,10 +1027,45 @@ function optionFrom(
   // Breaking free is only there while something holds on.
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
   if (!actionDoesSomething(action)) return null;
+  // A cap on attacks a turn (combat C6d, as Slow's): one that has made them all makes no more, however
+  // many strikes an action would give. It is a cap on the holder's own turn, as Slow's is.
+  if (
+    rulesetIsAttack(action) &&
+    economy.attacksPerTurn !== undefined &&
+    rulesetOnOwnTurn(state, actor) &&
+    (actor.flags.attacks ?? 0) >= economy.attacksPerTurn
+  ) {
+    return null;
+  }
   // Free of the economy, or paid for out of strikes a spend already bought. Either way no budget is
   // asked for, and the option says so by carrying none.
   const free = action.free === true || rulesetFreeStrike(actor, action);
-  if (!free && (actor.budgets[action.budget] ?? 0) < 1) return null;
+  // Its own budget spent, a condition's grant may pay instead (combat C6d): one weapon attack of a
+  // single strike, or an item's use, as Haste's extra action allows. A creature's weapon is an
+  // attack roll of its stat block at one target: its bite as much as a fighter's sword. Only on the
+  // holder's own turn: the extra action is one of its turn, never a reaction's.
+  let budget = action.budget;
+  let oneStrike = false;
+  if (!free && (actor.budgets[budget] ?? 0) < 1) {
+    if (atItsMoment) return null;
+    const weapon =
+      (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&
+      action.toHit !== undefined &&
+      !action.catalog &&
+      !action.itemUse;
+    const tags = action.itemUse ? (actor.sheet?.items?.[action.itemUse.item]?.item.tags ?? []) : [];
+    const grant = economy.grants.find(
+      (entry) =>
+        (actor.budgets[entry.budget] ?? 0) >= 1 &&
+        !action.sequence &&
+        ((entry.attacks === true && weapon) ||
+          (!!action.itemUse &&
+            (entry.items === true || (!!entry.items && entry.items.tags.some((tag) => tags.includes(tag)))))),
+    );
+    if (!grant) return null;
+    budget = grant.budget;
+    oneStrike = grant.attacks === true && weapon;
+  }
   if (!rulesetActionAvailable(actor, action)) return null;
   const paid = planRulesetCombatCost(definition, actor, action);
   if (!paid) return null;
@@ -960,7 +1073,8 @@ function optionFrom(
     id: action.id,
     kind: action.kind,
     label: action.label,
-    ...(free ? {} : { budget: action.budget }),
+    ...(free ? {} : { budget }),
+    ...(oneStrike ? { oneStrike: true as const } : {}),
     targets: action.targets,
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
@@ -1074,7 +1188,8 @@ export function rulesetAttackMode(
     own.has("own-attacks-advantage") ||
     theirs.has("attacks-against-advantage") ||
     !!actor.flags.helped ||
-    !!distance?.advantage;
+    !!distance?.advantage ||
+    (combat.elevation?.highGround === "advantage" && !!where && rulesetAbove(where.state, actor, target));
   const disadvantage =
     own.has("own-attacks-disadvantage") ||
     theirs.has("attacks-against-disadvantage") ||
@@ -1215,8 +1330,9 @@ export function rulesetCombatOptions(
 
   const options: RulesetCombatOption[] = [];
   options.push(...movementOptions(definition, combat, state, actor));
+  const economy = rulesetConditionEconomy(definition, combat, actor, state);
   for (const action of actor.actions) {
-    const option = optionFrom(definition, combat, state, actor, action);
+    const option = optionFrom(definition, combat, state, actor, action, false, economy);
     if (option) options.push(option);
   }
   const budget = rulesetStandardBudget(combat);
@@ -1231,7 +1347,7 @@ export function rulesetCombatOptions(
       targets: action === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
     });
   }
-  options.push(...grantedStandardOptions(definition, combat, actor));
+  options.push(...grantedStandardOptions(definition, combat, actor, state));
   options.push(endTurn);
   return options;
 }
@@ -1370,7 +1486,8 @@ export function rulesetAnswerDeflects(
     .reduce((total, modifier) => total + (modifier.to === "defense" ? (modifier.flat ?? 0) : 0), 0);
   if (gain === 0) return null;
   if (held.roll.natural) return false;
-  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, actor).defense + gain;
+  const attacker = window.resume?.kind === "action" ? rulesetCombatant(state, window.resume.actorId) : undefined;
+  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, actor, attacker).defense + gain;
 }
 
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two

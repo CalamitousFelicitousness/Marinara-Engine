@@ -497,6 +497,68 @@ try {
       maxHealth: 6,
     });
     assert.deepEqual(ada(first.state).itemsUsed, { 0: 1 });
+    // A condition's grant pays for an item's use once the Action is spent (combat C6d, as Haste's extra
+    // action uses an object): a spare budget of no count, which the condition fills.
+    {
+      const rushedEmber = parsedOrThrow(
+        variant(emberText, (doc) => {
+          doc.combat.economy.budgets.push({ id: "spare", label: "Spare action", per: "turn", count: 0 });
+          doc.sheet.live.conditions.push({ id: "rushed", label: "Rushed" });
+          doc.combat.conditions = [
+            ...(doc.combat.conditions ?? []),
+            { condition: "rushed", budgets: [{ budget: "spare", flat: 1 }], grants: { budget: "spare", items: true } },
+          ];
+        }),
+        "Ember Roads with a spare action",
+      );
+      const rushed = fight(
+        rushedEmber,
+        [held(poultice, "Poultice", false, 2)],
+        { ...hurt, conditions: ["rushed"] },
+        { friend: hurt },
+      );
+      const once = take(rushedEmber, rushed, "use:0", ["ada"], 3);
+      assert.equal(optionOf(rushedEmber, once.state, "use:0")?.budget, "spare", "the spare action pays now");
+      const twice = take(rushedEmber, once.state, "use:0", ["bo"], 3);
+      assert.deepEqual(
+        twice.events.filter((event) => event.type === "budget").map((event) => event.budget),
+        ["spare"],
+      );
+      assert.equal(optionOf(rushedEmber, twice.state, "use:0"), undefined, "and nothing pays for a third");
+      assert.equal(optionOf(ember, take(ember, start, "use:0", ["ada"], 3).state, "use:0"), undefined, "without it");
+      // A grant may name the items it pays for by tag (5e's Use an Object is a mundane item's, never a
+      // magic item's activation): a poultice tagged "salve" is paid for, and not by a grant for arrows.
+      for (const [tag, pays] of [
+        ["salve", true],
+        ["arrow", false],
+      ] as const) {
+        const tagged = parsedOrThrow(
+          variant(emberText, (doc) => {
+            doc.items.tags.push({ id: "salve", label: "Salve" });
+            doc.combat.economy.budgets.push({ id: "spare", label: "Spare action", per: "turn", count: 0 });
+            doc.sheet.live.conditions.push({ id: "rushed", label: "Rushed" });
+            doc.combat.conditions = [
+              ...(doc.combat.conditions ?? []),
+              {
+                condition: "rushed",
+                budgets: [{ budget: "spare", flat: 1 }],
+                grants: { budget: "spare", items: { tags: [tag] } },
+              },
+            ];
+          }),
+          `Ember Roads with a spare action for ${tag}`,
+        );
+        const salve = { ...poultice, tags: ["salve"] };
+        const one = take(
+          tagged,
+          fight(tagged, [held(salve, "Poultice", false, 2)], { ...hurt, conditions: ["rushed"] }, { friend: hurt }),
+          "use:0",
+          ["ada"],
+          3,
+        );
+        assert.equal(optionOf(tagged, one.state, "use:0")?.budget, pays ? "spare" : undefined, tag);
+      }
+    }
     const names = rulesetCombatNames(ember, { combatants: first.state.combatants } as never, t);
     assert.equal(
       rulesetCombatEventLine(firstOf(first.events, "uses"), names, t),
@@ -908,6 +970,104 @@ try {
     assert.equal(kitGm.itemOf(tonicGm.item)!.entry.item!.use?.consumes, true);
   }
 
+  {
+    // A fake (Capability API 1.79) is offered as what it passes for, spent as that is, and does what it
+    // truly is: a balm that passes for a poultice heals by its own amount; a waystone that passes for one
+    // does nothing. Either way the fight says what it really was, and the journal names it truly.
+    const waystone = itemOf(ember, "outfitter/waystone");
+    const balm: RulesetCatalogItem = { ...poultice, use: { ...poultice.use!, amount: { flat: 3 } } };
+    const fakeOf = (truly: RulesetCatalogItem, name: string): RulesetSheetItem => ({
+      ...held(poultice, "Poultice", false, 2),
+      stack: { id: "fake", ref: "outfitter/poultice" },
+      truly: { item: truly, name },
+    });
+    const strong = fight(ember, [fakeOf(balm, "Balm")], hurt);
+    const offered = optionOf(ember, strong, "use:0");
+    assert.deepEqual([offered?.label, offered?.targets, offered?.left], ["Poultice", { side: "ally", count: 1 }, 2]);
+    const used = take(ember, strong, "use:0", ["ada"], 3);
+    assert.deepEqual(
+      [firstOf(used.events, "heal").rolls, firstOf(used.events, "heal").flat],
+      [[], 3],
+      JSON.stringify(used.events),
+    );
+    assert.deepEqual(firstOf(used.events, "fake"), {
+      type: "fake",
+      actorId: "ada",
+      optionId: "use:0",
+      label: "Poultice",
+      truly: "Balm",
+    });
+    assert.deepEqual(ada(used.state).itemsUsed, { 0: 1 });
+    // Offered exactly as a real poultice is, even when what it truly is harms: aimed at an ally, and
+    // the harm lands on whoever it was pressed on.
+    const acid: RulesetCatalogItem = {
+      ...poultice,
+      use: { kind: "attack", budget: "act", range: 0, amount: { flat: 2 }, damageType: "acid", consumes: true },
+    };
+    const real = optionOf(ember, fight(ember, [held(poultice, "Poultice", false, 2)], hurt), "use:0");
+    const harmful = fight(ember, [fakeOf(acid, "Acid")], hurt);
+    const seen = optionOf(ember, harmful, "use:0");
+    assert.deepEqual(
+      [seen?.label, seen?.targets, seen?.budget, seen?.heals],
+      [real?.label, real?.targets, real?.budget, real?.heals],
+    );
+    const burned = take(ember, harmful, "use:0", ["ada"], 3);
+    assert.equal(
+      burned.events.some((event) => event.type === "heal"),
+      false,
+    );
+    assert.ok(
+      burned.events.some((event) => event.type === "damage" && event.targetId === "ada"),
+      JSON.stringify(burned.events),
+    );
+    // A true use whose save reads a stat its item does not give is a save against nothing: spent for nothing.
+    const blank: RulesetCatalogItem = { ...acid, use: { ...acid.use!, saveDifficulty: { stat: "missing" } } };
+    const unread = take(ember, fight(ember, [fakeOf(blank, "Blank acid")], hurt), "use:0", ["ada"], 3);
+    assert.equal(firstOf(unread.events, "fake").dud, true);
+    const dud = take(ember, fight(ember, [fakeOf(waystone, "Waystone")], hurt), "use:0", ["ada"], 3);
+    assert.deepEqual(firstOf(dud.events, "fake"), {
+      type: "fake",
+      actorId: "ada",
+      optionId: "use:0",
+      label: "Poultice",
+      truly: "Waystone",
+      dud: true,
+    });
+    assert.equal(
+      dud.events.some((event) => event.type === "heal"),
+      false,
+    );
+    assert.deepEqual(ada(dud.state).itemsUsed, { 0: 1 });
+    const names = rulesetCombatNames(ember, { combatants: dud.state.combatants } as never, t);
+    assert.equal(
+      rulesetCombatEventLine(firstOf(dud.events, "fake"), names, t),
+      "game.combat.ruleset.event.fakeDud|Poultice|Waystone",
+    );
+    assert.equal(
+      rulesetCombatEventLine(firstOf(used.events, "fake"), names, t),
+      "game.combat.ruleset.event.fake|Poultice|Balm",
+    );
+    const written = applyRulesetFightItemChanges(
+      [{ id: "fake", name: "Poultice", item: "outfitter/poultice", quantity: 2, truly: "outfitter/waystone" }],
+      rulesetFightItemChanges(undefined, dud.state),
+    );
+    assert.deepEqual(written?.journal, [{ item: "Waystone", action: "used", quantity: 1 }]);
+    assert.deepEqual(
+      written?.stacks.map((stack) => [stack.quantity, stack.truly]),
+      [[1, "outfitter/waystone"]],
+      "what is left stays as the fight holds it",
+    );
+    // The sheet reads a fake stack as what it passes for, with its truth beside it.
+    const sheet = rulesetSheetItems(
+      rulesetItemBook(ember, entriesOf(ember)),
+      [{ id: "fake", name: "Poultice", item: "outfitter/poultice", quantity: 2, truly: "outfitter/waystone" }],
+      undefined,
+    );
+    assert.deepEqual(
+      sheet.map((each) => [each.item.use?.kind, each.truly?.name, each.truly?.item.use]),
+      [["heal", "Waystone", undefined]],
+    );
+  }
   console.log(
     "Ruleset item use: import checks, the 1.59 gate, using an item up or spending its charges in a fight, the inventory write-back, the Engine's own party member, and item facts passed.",
   );

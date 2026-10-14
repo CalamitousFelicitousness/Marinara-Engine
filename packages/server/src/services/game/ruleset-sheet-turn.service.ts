@@ -15,7 +15,7 @@ import {
   parseSheetCommandTagBody,
   renderRulesetSheetBlock,
   rulesetCatalogIdsForBuild,
-  rulesetSheetEnvelopeSchema,
+  readRulesetSheetEnvelope,
   type RulesetCatalogEntriesById,
   type RulesetDefinition,
   type RulesetLiveStates,
@@ -69,12 +69,12 @@ export function sheetCommandCards(
     const name = typeof card.name === "string" ? card.name.trim() : "";
     if (!name) return [];
     if (card.rulesetSheet == null) return [{ name, build: blank }];
-    const envelope = rulesetSheetEnvelopeSchema.safeParse(card.rulesetSheet);
-    if (!envelope.success) {
+    const envelope = readRulesetSheetEnvelope(definition, card.rulesetSheet);
+    if (!envelope) {
       logger.warn("[game/sheet] The ruleset sheet for %s is unreadable; its live state is left alone", name);
       return [];
     }
-    return [{ name, build: envelope.data.build }];
+    return [{ name, build: envelope.build }];
   });
 }
 

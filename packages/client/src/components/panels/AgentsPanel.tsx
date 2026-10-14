@@ -43,6 +43,8 @@ import {
   useCapabilityAgentRegistry,
   useCapabilityCatalog,
   useImportRuleset,
+  useImportRulesetPackage,
+  readRulesetPackage,
   useInstalledCapabilityPackages,
   useInstalledRulesets,
   useRemoveRuleset,
@@ -57,10 +59,12 @@ import {
   getFolderImportEntries,
   isAgentConfigDeleted,
   isRetiredBuiltInAgentId,
+  isRulesetPackageFile,
   normalizeAgentPhaseForType,
   parseRulesetDefinition,
   RULESET_LOCAL_NAMESPACE,
   RULESET_MAX_BYTES,
+  RULESET_PACKAGE_FILE_MAX_BYTES,
   type CustomAgentCapability,
   type AgentCategory,
   type RulesetDefinition,
@@ -125,7 +129,14 @@ type PendingAgentImport = {
 };
 /** A ruleset file waiting for the user to confirm it. The text is kept verbatim, because the server
  *  stores the bytes the user actually chose, not a re-serialization of the parsed document. */
-type PendingRulesetImport = { definition: RulesetDefinition; rulesetId: string; text: string };
+type PendingRulesetImport = {
+  definition: RulesetDefinition;
+  rulesetId: string;
+  text: string;
+  /** A ruleset package file (a parsed `.ruleset.json`), imported whole; with each catalog file's entry count. */
+  packageFile?: Record<string, unknown>;
+  catalogs?: Record<string, number>;
+};
 const AGENT_GRADIENT_SURFACE =
   "mari-panel-gradient-surface mari-panel-gradient--agents text-[var(--mari-panel-gradient-text)]";
 const AGENT_GRADIENT_BUTTON = "mari-panel-gradient-button mari-panel-gradient--agents";
@@ -258,6 +269,7 @@ export function AgentsPanel() {
   const createAgent = useCreateAgent();
   const importAgent = useImportAgent();
   const importRuleset = useImportRuleset();
+  const importRulesetPackage = useImportRulesetPackage();
   const removeRuleset = useRemoveRuleset();
   const { data: agentImportPolicy, isLoading: agentImportPolicyLoading } = useAgentImportPolicy();
   const deleteAgent = useDeleteAgent();
@@ -984,9 +996,11 @@ export function AgentsPanel() {
         setAgentImportError(agentImportsDisabledHelp);
         return;
       }
-      if (file.size > RULESET_MAX_BYTES) {
+      if (file.size > RULESET_PACKAGE_FILE_MAX_BYTES) {
         setAgentImportError(
-          localizeUi("game.ruleset.import.tooLarge", { limit: Math.round(RULESET_MAX_BYTES / 1024) }),
+          localizeUi("game.ruleset.import.packageTooLarge", {
+            limit: RULESET_PACKAGE_FILE_MAX_BYTES / 1024 / 1024,
+          }),
         );
         return;
       }
@@ -997,13 +1011,45 @@ export function AgentsPanel() {
         setAgentImportError(localizeUi("game.ruleset.import.unreadable"));
         return;
       }
-      let parsed: ReturnType<typeof parseRulesetDefinition>;
+      let document: unknown;
       try {
-        parsed = parseRulesetDefinition(JSON.parse(text));
+        document = JSON.parse(text);
       } catch {
         setAgentImportError(localizeUi("game.ruleset.import.notJson"));
         return;
       }
+      // A package file (`.ruleset.json`, with its catalog files) is read by the Engine, keeping nothing,
+      // and reviewed like a ruleset file.
+      if (isRulesetPackageFile(document)) {
+        const packageFile = document as Record<string, unknown>;
+        try {
+          const read = await readRulesetPackage(packageFile);
+          const parsed = parseRulesetDefinition(JSON.parse(read.ruleset ?? ""));
+          if (!parsed.ok) throw new Error(parsed.issues.slice(0, 3).join("; "));
+          setRulesetImportFailure(null);
+          setPendingRulesetImport({
+            definition: parsed.definition,
+            rulesetId: read.rulesetId,
+            text: read.ruleset ?? "",
+            packageFile,
+            catalogs: read.catalogs,
+          });
+        } catch (error) {
+          setAgentImportError(
+            localizeUi("game.ruleset.import.invalid", {
+              issues: error instanceof Error ? error.message : localizeUi("game.ruleset.import.failed"),
+            }),
+          );
+        }
+        return;
+      }
+      if (file.size > RULESET_MAX_BYTES) {
+        setAgentImportError(
+          localizeUi("game.ruleset.import.tooLarge", { limit: Math.round(RULESET_MAX_BYTES / 1024) }),
+        );
+        return;
+      }
+      const parsed = parseRulesetDefinition(document);
       if (!parsed.ok) {
         setAgentImportError(
           localizeUi("game.ruleset.import.invalid", { issues: parsed.issues.slice(0, 3).join("; ") }),
@@ -1031,7 +1077,9 @@ export function AgentsPanel() {
     setAgentImportSuccess(null);
     setRulesetImportFailure(null);
     try {
-      const result = await importRuleset.mutateAsync(pending.text);
+      const result = pending.packageFile
+        ? await importRulesetPackage.mutateAsync(pending.packageFile)
+        : await importRuleset.mutateAsync(pending.text);
       setPendingRulesetImport(null);
       setAgentImportSuccess(
         localizeUi(result.status === "added" ? "game.ruleset.import.added" : "game.ruleset.import.unchanged", {
@@ -1045,7 +1093,7 @@ export function AgentsPanel() {
       // without picking the file again.
       setRulesetImportFailure(error instanceof Error ? error.message : localizeUi("game.ruleset.import.failed"));
     }
-  }, [importRuleset, localizeUi, pendingRulesetImport]);
+  }, [importRuleset, importRulesetPackage, localizeUi, pendingRulesetImport]);
 
   const confirmAndRemoveRuleset = useCallback(
     async (rulesetId: string, name: string) => {
@@ -1252,7 +1300,8 @@ export function AgentsPanel() {
         ref={rulesetImportInputRef}
         type="file"
         // By extension only: the Agent import input beside this one is the panel's JSON-typed input.
-        accept=".json"
+        // A ruleset comes as its file, or as a package file (`.ruleset.json`) with its catalog files.
+        accept=".ruleset.json,.json"
         className="hidden"
         onChange={(event) => void handleRulesetFileSelected(event)}
       />
@@ -1921,8 +1970,12 @@ export function AgentsPanel() {
         installedVersions={
           installedRulesets.find((entry) => entry.definition.id === pendingRulesetImport?.rulesetId)?.versions ?? []
         }
-        importing={importRuleset.isPending}
+        importing={importRuleset.isPending || importRulesetPackage.isPending}
         failure={rulesetImportFailure}
+        catalogs={(pendingRulesetImport?.definition.catalogs ?? []).map((catalog) => ({
+          label: catalog.label,
+          count: catalog.entries?.length ?? pendingRulesetImport?.catalogs?.[catalog.id] ?? 0,
+        }))}
         onCancel={() => setPendingRulesetImport(null)}
         onConfirm={() => void handleConfirmRulesetImport()}
       />

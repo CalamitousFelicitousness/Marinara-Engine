@@ -31,6 +31,8 @@ import {
   type CapabilityPackageVersionNote,
   type CapabilityReleaseNotes,
   type InstalledCapabilityPackage,
+  rulesetFakeIssue,
+  type RulesetCatalogItem,
 } from "@marinara-engine/shared";
 import { WORLD_SHARE_FILE_MAX_BYTES } from "@marinara-engine/shared";
 import { DATA_DIR } from "../../utils/data-dir.js";
@@ -1055,6 +1057,27 @@ function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } |
   );
 }
 
+const COVER_ISSUE =
+  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.74 or newer";
+
+/** A save that ignores cover, on an entry's mechanics, a creature's action or an item's use, which is
+ *  1.74: a new key on the strict save. */
+function entriesCarryCoverlessSaves(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const actions = plainRecord(record?.creature)?.actions;
+      const saves = [
+        plainRecord(record?.mechanics)?.save,
+        plainRecord(plainRecord(record?.item)?.use)?.save,
+        ...(Array.isArray(actions) ? actions.map((action) => plainRecord(action)?.save) : []),
+      ];
+      return saves.some((save) => plainRecord(save)?.ignoresCover !== undefined);
+    })
+  );
+}
+
 const MARKET_ISSUE =
   "A ruleset with a market, or whose items name where they are sold or are services, requires schemaVersion 2 and capabilityApi 1.65 or newer";
 
@@ -1097,6 +1120,20 @@ function rulesetCarriesMarketDay169(ruleset: { items?: unknown } | undefined): b
     list(market.places).some((place) => plainRecord(place)?.purse !== undefined) ||
     list(market.sellers).some((seller) => plainRecord(seller)?.stock !== undefined) ||
     list(market.sold).some(soldOfMarketDay)
+  );
+}
+
+const HONESTY_ISSUE =
+  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.79 or newer";
+
+/** Seller honesty's item keys (1.79): `risky` and `passesFor`, new keys on the strict item. */
+function entriesCarryHonesty(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const item = plainRecord(plainRecord(entry)?.item);
+      return item?.risky !== undefined || item?.passesFor !== undefined;
+    })
   );
 }
 
@@ -1282,6 +1319,7 @@ export function getCapabilityPackageInstallIssue(
           layers?: unknown;
           gm?: unknown;
           sheet?: unknown;
+          rests?: unknown;
         })
       : undefined;
   const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
@@ -1289,7 +1327,24 @@ export function getCapabilityPackageInstallIssue(
   /** Whether a catalog, inline or in its own file, gives a creature its loot: 1.63, asked last. */
   let carriesLoot = false;
   let carriesMarket = false;
+  let carriesCoverlessSaves = false;
   let carriesMarketDay = false;
+  let carriesHonesty = false;
+  // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
+  // target is in another catalog file is checked here, where every file can be read.
+  const itemsByRef = new Map<string, RulesetCatalogItem>();
+  const fakes: Array<{ ref: string; item: RulesetCatalogItem }> = [];
+  const collectItems = (catalogId: unknown, entries: unknown) => {
+    if (typeof catalogId !== "string" || !Array.isArray(entries)) return;
+    for (const entry of entries) {
+      const record = plainRecord(entry);
+      const item = plainRecord(record?.item);
+      if (typeof record?.id !== "string" || !item) continue;
+      const ref = `${catalogId}/${record.id}`;
+      itemsByRef.set(ref, item as RulesetCatalogItem);
+      if (typeof item.passesFor === "string") fakes.push({ ref, item: item as RulesetCatalogItem });
+    }
+  };
   const catalogs = ruleset?.catalogs;
   if (Array.isArray(catalogs) && catalogs.length > 0) {
     if (!declaresApi(21)) {
@@ -1331,7 +1386,7 @@ export function getCapabilityPackageInstallIssue(
     for (const catalog of catalogs) {
       const header =
         catalog && typeof catalog === "object"
-          ? (catalog as { asset?: unknown; entries?: unknown; holds?: unknown })
+          ? (catalog as { id?: unknown; asset?: unknown; entries?: unknown; holds?: unknown })
           : {};
       if (header.holds === "creatures" && !declaresApi(27)) return creatureIssue;
       if (header.holds === "items" && !declaresApi(49)) return ITEMS_ISSUE;
@@ -1364,7 +1419,10 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryHeldRider(header.entries) && !declaresApi(70)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
       if (entriesCarryMarket(header.entries)) carriesMarket = true;
+      if (entriesCarryCoverlessSaves(header.entries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
+      if (entriesCarryHonesty(header.entries)) carriesHonesty = true;
+      collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1403,8 +1461,15 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryHeldRider(fileEntries) && !declaresApi(70)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
       if (entriesCarryMarket(fileEntries)) carriesMarket = true;
+      if (entriesCarryCoverlessSaves(fileEntries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;
+      if (entriesCarryHonesty(fileEntries)) carriesHonesty = true;
+      collectItems(header.id, fileEntries);
     }
+  }
+  for (const fake of fakes) {
+    const issue = rulesetFakeIssue(fake.ref, fake.item, itemsByRef.get(fake.item.passesFor!));
+    if (issue) return `The fake "${fake.ref}" cannot pass for "${fake.item.passesFor}": ${issue}`;
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
   // reason: an Engine that does not know the key refuses the whole file, and the package would be
@@ -1609,6 +1674,51 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
   if (!declaresApi(69) && (carriesMarketDay || rulesetCarriesMarketDay169(ruleset))) return MARKET_DAY_ISSUE;
+  // Cover by degrees, 1.74: new keys on the strict cover object and the strict save.
+  const cover = plainRecord(plainRecord(ruleset?.combat)?.cover);
+  const graded = ["threeQuarters", "saves", "creatures"].some((key) => cover?.[key] !== undefined);
+  if (!declaresApi(74) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
+  // Height, 1.75 (combat C6b): a new key on the strict combat block.
+  if (!declaresApi(75) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
+    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.75 or newer";
+  }
+  // The action economy conditions change, 1.76 (combat C6d): new keys on the strict condition, and a
+  // budget of no count, which an older Engine refuses.
+  const combatBlock = plainRecord(ruleset?.combat);
+  const economy = Array.isArray(combatBlock?.conditions)
+    ? combatBlock.conditions.some((entry) =>
+        ["budgets", "grants", "exclusive", "attacksPerTurn", "onEnd"].some(
+          (key) => plainRecord(entry)?.[key] !== undefined,
+        ),
+      )
+    : false;
+  const budgets = plainRecord(combatBlock?.economy)?.budgets;
+  const emptyBudget = Array.isArray(budgets) && budgets.some((budget) => plainRecord(budget)?.count === 0);
+  if (!declaresApi(76) && (economy || emptyBudget)) {
+    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.76 or newer";
+  }
+  // Sheet migrations, 1.77 (C6e-0): a new key on the strict sheet.
+  if (!declaresApi(77) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
+    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.77 or newer";
+  }
+  // A rest that shares a pool group's fraction, 1.77 (C6e): a new key on the strict restore step.
+  const sharedRest = Array.isArray(ruleset?.rests)
+    ? ruleset.rests.some((rest) => {
+        const restore = plainRecord(rest)?.restore;
+        return Array.isArray(restore) && restore.some((step) => plainRecord(step)?.shared !== undefined);
+      })
+    : false;
+  if (!declaresApi(77) && sharedRest) {
+    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.77 or newer";
+  }
+  // Starting gear, 1.78 (P1-6): a new key on the strict items block.
+  if (!declaresApi(78) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
+    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.78 or newer";
+  }
+  // Seller honesty, 1.79 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
+  const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
+  const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
+  if (!declaresApi(79) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
   return null;
 }
 

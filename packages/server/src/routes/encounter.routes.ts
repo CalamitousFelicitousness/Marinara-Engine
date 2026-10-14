@@ -502,7 +502,8 @@ export async function encounterRulesetBrief(
   return {
     tiers: (combat.threat?.tiers ?? []).map((tier) => ({ id: tier.id, label: tier.label })),
     bestiary,
-    budgets: combat.economy.budgets.map((budget) => budget.id),
+    // A budget of no count is one only a condition fills, so it is not one an invented creature spends.
+    budgets: combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id),
     saves: definition.sheet.saves.map((save) => save.id),
     damageTypes: [...(combat.damageTypes ?? [])],
     sheet: await encounterSheetBrief(definition, packageId),

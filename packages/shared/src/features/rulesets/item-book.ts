@@ -6,6 +6,7 @@
 // screen and the Game Master are shown about it. The server builds the book from the catalogs it
 // loads and the browser from the ones it fetches, so both read an item the same way.
 // ──────────────────────────────────────────────
+import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import {
   rulesetCoinAmount,
   RULESET_ITEM_CHARGES_MAX,
@@ -72,6 +73,7 @@ export interface RulesetItemEffectFact {
     | "ability"
     | "attacks"
     | "attacks-taken"
+    | "checks-taken"
     | "defense"
     | "speed"
     | "health-max"
@@ -180,7 +182,8 @@ export interface RulesetItemUseFact {
     cost: number;
     max: number;
     recharge?: { rests: string[]; amount: "max" | string };
-    breaksOn?: { die: number; atMost: number };
+    /** `regains` (1.271): the faces at or over `atLeast` give back `amount` charges. */
+    breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string }; becomes?: string };
   };
   /** A pool it gives back some of, by the pool's label. */
   restore?: { pool: string; amount: string };
@@ -230,6 +233,16 @@ export interface RulesetItemAttackFact {
     rounds?: number;
     save?: { save: string; difficulty: number };
     saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
+  }>;
+  /** Charges its holder may spend once it hits (1.273): what each adds, a charge more's, and the
+   *  conditions it puts on the one hit, by their labels. */
+  spends?: Array<{
+    label: string;
+    charges: number;
+    amount: string;
+    type?: string;
+    more?: { max: number; amount: string };
+    onHit?: Array<{ condition: string; rounds?: number; save?: { save: string; difficulty: number } }>;
   }>;
   /** More damage on each hit (1.169): its amount, type, whom it reaches by the labels of the types
    *  and tags it names, whether only a critical hit carries it, and its own save. */
@@ -373,7 +386,26 @@ function rulesetItemUseFacts(
                   },
                 }
               : {}),
-            ...(item.charges?.breaksOn ? { breaksOn: { ...item.charges.breaksOn } } : {}),
+            ...(item.charges?.breaksOn
+              ? {
+                  breaksOn: {
+                    die: item.charges.breaksOn.die,
+                    ...(item.charges.breaksOn.atMost !== undefined ? { atMost: item.charges.breaksOn.atMost } : {}),
+                    // What it becomes, by its name where the ruleset's own catalogs hold it (1.272).
+                    ...(item.charges.breaksOn.becomes !== undefined
+                      ? { becomes: itemLabelOf(definition, item.charges.breaksOn.becomes) }
+                      : {}),
+                    ...(item.charges.breaksOn.regains
+                      ? {
+                          regains: {
+                            atLeast: item.charges.breaksOn.regains.atLeast,
+                            amount: amount(item.charges.breaksOn.regains.amount),
+                          },
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
           },
         }
       : {}),
@@ -542,7 +574,42 @@ function rulesetItemAttackFacts(
           }),
         }
       : {}),
+    ...(attack.spends?.length
+      ? {
+          spends: attack.spends.map((spend) => ({
+            label: spend.label,
+            charges: spend.charges,
+            amount: amountWords(spend.amount),
+            ...(spend.type ? { type: spend.type } : {}),
+            ...(spend.chargeStep
+              ? { more: { max: spend.chargeStep.max, amount: amountWords(spend.chargeStep.amount) } }
+              : {}),
+            ...(spend.onHit?.length
+              ? {
+                  onHit: spend.onHit.map((entry) => ({
+                    condition: labelOf(definition.sheet.live.conditions, entry.condition),
+                    ...(entry.rounds !== undefined ? { rounds: entry.rounds } : {}),
+                    ...(entry.save
+                      ? {
+                          save: {
+                            save: labelOf(definition.sheet.saves, entry.save.save),
+                            difficulty: entry.save.difficulty,
+                          },
+                        }
+                      : {}),
+                  })),
+                }
+              : {}),
+          })),
+        }
+      : {}),
   };
+}
+
+/** Dice and a flat part as words: "1d6", "2d10+2", "3". */
+function amountWords(amount: { dice?: string; flat?: number }): string {
+  const flat = amount.flat ?? 0;
+  return amount.dice ? `${amount.dice}${flat > 0 ? `+${flat}` : flat < 0 ? String(flat) : ""}` : String(flat);
 }
 
 /** A gate's difficulty as a fight and the Use button read it: written, or the item's own stat, a
@@ -689,8 +756,11 @@ export function rulesetItemEffectFacts(
           }
         : {};
     const narrowed =
-      to === "checks" || to === "saves"
-        ? names(to, to === "checks" ? (modifier.skills ?? effect.skills) : (modifier.saves ?? effect.saves))
+      to === "checks" || to === "saves" || to === "checks-taken"
+        ? names(
+            to === "saves" ? "saves" : "checks",
+            to === "saves" ? (modifier.saves ?? effect.saves) : (modifier.skills ?? effect.skills),
+          )
         : to === "defense" && defense
           ? [defense]
           : [];
@@ -792,7 +862,8 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
   const against = fact.against
     ? ` against ${[...fact.against.names, ...(fact.against.magic ? ["magic"] : [])].join(" or ")}`
     : "";
-  const to = fact.to === "attacks-taken" ? "attacks against them" : fact.to;
+  const to =
+    fact.to === "attacks-taken" ? "attacks against them" : fact.to === "checks-taken" ? "checks to find them" : fact.to;
   const which = `${to}${fact.names.length ? ` (${fact.names.join(", ")})` : ""}${against}`;
   if ("fails" in change) return `fails ${which}`;
   return `${"mode" in change ? change.mode : "value" in change ? change.value : ""} on ${which}`;
@@ -910,6 +981,35 @@ export function rulesetItemFacts(
   };
 }
 
+/** An item's name by "<catalog>/<entry>", where the ruleset's own catalogs hold it; else the ref. */
+function itemLabelOf(definition: RulesetDefinition, ref: string): string {
+  const at = ref.indexOf("/");
+  const catalog = definition.catalogs?.find((one) => one.id === ref.slice(0, at));
+  return catalog?.entries?.find((entry) => entry.id === ref.slice(at + 1))?.label ?? ref;
+}
+
+/** An item's last-charge die as an inventory spends it (1.271): its `regains` dice read once. */
+function bookBreaksOn(
+  breaks: NonNullable<NonNullable<RulesetCatalogItem["charges"]>["breaksOn"]>,
+): NonNullable<NonNullable<RulesetItemBookEntry["charges"]>["breaksOn"]> {
+  const dice = breaks.regains?.amount.dice ? parseRulesetCombatDice(breaks.regains.amount.dice) : null;
+  return {
+    die: breaks.die,
+    ...(breaks.atMost !== undefined ? { atMost: breaks.atMost } : {}),
+    ...(breaks.becomes !== undefined ? { becomes: breaks.becomes } : {}),
+    ...(breaks.regains
+      ? {
+          regains: {
+            atLeast: breaks.regains.atLeast,
+            count: dice?.count ?? 0,
+            sides: dice?.sides ?? 0,
+            flat: (dice?.flat ?? 0) + (breaks.regains.amount.flat ?? 0),
+          },
+        }
+      : {}),
+  };
+}
+
 /**
  * The book for a game: its ruleset's item catalogs, with the entries each has (`entries` by catalog
  * id; a catalog that could not be read is simply absent). `layerOptions` are the game's pinned layer
@@ -944,7 +1044,14 @@ export function rulesetItemBook(
       ...(entry.item.stack !== undefined ? { stack: entry.item.stack } : {}),
       ...(typeof weight === "number" && weight > 0 ? { weight } : {}),
       ...(entry.item.slots && Object.keys(entry.item.slots).length > 0 ? { slots: entry.item.slots } : {}),
-      ...(entry.item.binds ? { binds: { ...(entry.item.binds.cursed ? { cursed: true } : {}) } } : {}),
+      ...(entry.item.binds
+        ? {
+            binds: {
+              ...(entry.item.binds.cursed ? { cursed: true } : {}),
+              ...(entry.item.binds.needsWorn ? { needsWorn: entry.item.binds.needsWorn } : {}),
+            },
+          }
+        : {}),
       ...(entry.item.service ? { service: true as const } : {}),
       ...(entry.item.toggle ? { toggle: { label: entry.item.toggle.label } } : {}),
       ...(charges
@@ -952,7 +1059,7 @@ export function rulesetItemBook(
             charges: {
               cost: charges.cost,
               max: charges.max,
-              ...(charges.breaksOn ? { breaksOn: charges.breaksOn } : {}),
+              ...(charges.breaksOn ? { breaksOn: bookBreaksOn(entry.item.charges!.breaksOn!) } : {}),
             },
           }
         : {}),
@@ -1206,7 +1313,7 @@ export function rulesetSheetItems(
   holder: string | undefined,
 ): RulesetSheetItem[] {
   const bag = gameInventoryBagKey(holder);
-  return stacks.flatMap((stack) => {
+  const held = stacks.flatMap((stack) => {
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return [];
     const item = book.itemOf(stack.item)?.entry.item;
     if (!item) return [];
@@ -1229,6 +1336,19 @@ export function rulesetSheetItems(
       },
     ];
   });
+  // A binding that needs other items worn holds only while they are (1.313): a stack left bound
+  // after its belt came off by some other road is still not worn.
+  for (;;) {
+    const unmet = held.find(
+      (one) =>
+        one.worn &&
+        one.item.binds?.needsWorn?.some(
+          (group) => !held.some((other) => other !== one && other.worn && group.anyOf.includes(other.stack!.ref)),
+        ),
+    );
+    if (!unmet) return held;
+    unmet.worn = false;
+  }
 }
 
 /** Each party card's items, as its sheet reads them: the card read for the player (the one named
@@ -1312,8 +1432,11 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
     use.charges?.recharge
       ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount} on ${use.charges.recharge.rests.join(" or ")}`
       : "",
-    use.charges?.breaksOn
-      ? `breaks on ${rulesetBreakFaces(use.charges.breaksOn)} on a d${use.charges.breaksOn.die} when emptied`
+    use.charges?.breaksOn?.atMost !== undefined
+      ? `${use.charges.breaksOn.becomes ? `becomes ${use.charges.breaksOn.becomes}` : "breaks"} on ${rulesetBreakFaces({ atMost: use.charges.breaksOn.atMost })} on a d${use.charges.breaksOn.die} when emptied`
+      : "",
+    use.charges?.breaksOn?.regains
+      ? `regains ${use.charges.breaksOn.regains.amount} on ${rulesetRegainFaces(use.charges.breaksOn.die, use.charges.breaksOn.regains.atLeast)} on a d${use.charges.breaksOn.die} when emptied`
       : "",
     use.gate ? rulesetItemGateText(use.gate) : "",
   ]
@@ -1390,6 +1513,19 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
             : ""
         }`,
     ),
+    ...(attack.spends ?? []).map(
+      (spend) =>
+        `${spend.label}: on a hit, ${spend.charges} ${spend.charges === 1 ? "charge" : "charges"} for +${spend.amount}${
+          spend.type ? ` ${spend.type}` : ""
+        }${spend.more ? `, up to ${spend.more.max} more for +${spend.more.amount} each` : ""}${(spend.onHit ?? [])
+          .map(
+            (entry) =>
+              `, ${entry.condition}${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""}${
+                entry.save ? ` (${entry.save.save} ${entry.save.difficulty} resists)` : ""
+              }`,
+          )
+          .join("")}`,
+    ),
     ...(attack.onHit ?? []).map(
       (entry) =>
         `${entry.condition}${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""} when a hit deals ${entry.atLeast} or more${
@@ -1412,4 +1548,9 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
 /** The faces an item breaks on when its last charge is spent: "a 1", or "1 to 3". */
 export function rulesetBreakFaces(breaks: { atMost: number }): string {
   return breaks.atMost === 1 ? "a 1" : `1 to ${breaks.atMost}`;
+}
+
+/** The faces a last charge's die gives charges back on (1.271): "a 20", "19 to 20". */
+export function rulesetRegainFaces(die: number, atLeast: number): string {
+  return atLeast === die ? `a ${die}` : `${atLeast} to ${die}`;
 }

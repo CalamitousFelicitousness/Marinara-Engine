@@ -116,6 +116,12 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       name: option.shakeOff.name,
       condition: option.shakeOff.label,
     });
+  // A sphere rolled, picked up or put down (1.314).
+  if (option.rollsSealed) return t("game.combat.ruleset.menu.rollSphere", { condition: option.rollsSealed.label });
+  if (option.lifts)
+    return t(option.lifts.down ? "game.combat.ruleset.menu.putDownSphere" : "game.combat.ruleset.menu.liftSphere", {
+      name: option.lifts.name,
+    });
   if (option.kind === "end-turn") return t("game.combat.ruleset.menu.endTurn", { defaultValue: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.
@@ -134,6 +140,10 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // blow with a weapon in the off hand.
   if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
   if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
+  // Putting away a weapon put in hand (1.308).
+  if (option.dismiss) return t("game.combat.ruleset.menu.dismiss", { item: option.label });
+  // A concentration entry made again (1.310): Vampiric Touch's later touches.
+  if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
   // A switch says which way it turns the item, which is the Engine's own word too.
   if (option.kind === "switch")
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {
@@ -146,8 +156,22 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
     return t(option.avert.back ? "game.combat.ruleset.menu.lookBack" : "game.combat.ruleset.menu.avert", {
       target: option.label,
     });
+  // Readying one of the others (1.288), and taking what was readied.
+  if (option.ready)
+    return t(
+      option.ready.on === "comes" ? "game.combat.ruleset.menu.readyComes" : "game.combat.ruleset.menu.readyActs",
+      {
+        option: rulesetMenuReadyName(option.ready.label, option.ready.optionId, t),
+      },
+    );
+  if (option.readied) return t("game.combat.ruleset.menu.readied", { option: option.label });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
+}
+
+/** The name a readied option goes by (1.288): a walk is the Engine's own word. */
+function rulesetMenuReadyName(label: string, optionId: string, t: TFunction): string {
+  return optionId === RULESET_MOVE_OPTION ? t("game.combat.ruleset.board.walk", { defaultValue: label }) : label;
 }
 
 /** What one option spends, in the ruleset's own words: its budget, the pools it draws on, and how
@@ -165,6 +189,8 @@ export function rulesetOptionCostText(
   else if (typeof option.strikes === "number") {
     parts.push(t("game.combat.ruleset.option.freeStrike", { count: option.strikes }));
   }
+  // The other half of an action already made this turn (1.280): a blink dog's bite after its teleport.
+  else if (option.followUp) parts.push(t("game.combat.ruleset.option.followUp"));
   // A walk is priced in the ruleset's own distance rather than in a budget, so it is said beside
   // whichever of the two above applied.
   if (typeof option.movementCost === "number") {
@@ -265,6 +291,13 @@ export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolea
  *  be picked, clicking a picked one takes it off again, and the option's own count is the ceiling. */
 export function rulesetPickTarget(option: DirectedRulesetOption, picked: string[], id: string): string[] {
   if (!option.targetIds.includes(id)) return picked;
+  // One that may be pointed at the same one again (1.305) adds another while there is room, and
+  // once full a click on one already picked takes one of theirs off.
+  if (option.targets.repeat) {
+    if (picked.length < option.targets.count) return [...picked, id];
+    const at = picked.lastIndexOf(id);
+    return at < 0 ? picked : [...picked.slice(0, at), ...picked.slice(at + 1)];
+  }
   if (picked.includes(id)) return picked.filter((entry) => entry !== id);
   if (picked.length >= option.targets.count) return picked;
   return [...picked, id];

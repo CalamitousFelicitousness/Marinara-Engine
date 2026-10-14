@@ -23,7 +23,7 @@ import type {
 } from "./types.js";
 
 // Worked out beside the walking they slow (1.173), and said here too, where a zone is read.
-export { rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
+export { rulesetZoneCatches, rulesetZoneCells, rulesetZoneMiddles } from "./grid.js";
 
 /** Every zone standing, with whose it is. */
 export function rulesetStandingZones(

@@ -463,7 +463,7 @@ try {
       withSpell({
         kind: "attack",
         area: { shape: "burst", size: 5, copies: 2 },
-        zone: { rounds: 1, triggers: ["enter"], move: { budget: "action", distance: 30 } },
+        zone: { rounds: 1, triggers: ["enter"], drift: { distance: 10 } },
       }),
       /set down several times stays/,
     );

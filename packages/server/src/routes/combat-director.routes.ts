@@ -219,6 +219,8 @@ const command = z.discriminatedUnion("type", [
     also: z.array(coord).max(9).optional(),
     /** A wall's section struck at instead of a creature (1.200), checked by the resolver. */
     wall: coord.optional(),
+    /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */
+    carries: z.array(key).max(8).optional(),
     /** How many uses it spends (1.251), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
     /** The alterations it is used with (1.253), checked against the action by the resolver. */
@@ -878,6 +880,8 @@ export async function combatDirectorRoutes(
               return build ? rulesetCatalogIdsForBuild(definition, build) : [];
             }),
           );
+          // One read of the visible game state, for both its live sheets and its time of day.
+          const liveRow = (await visibleLiveRow(input.chatId)).row;
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
@@ -897,13 +901,15 @@ export async function combatDirectorRoutes(
             })),
             cards,
             playerName: persona?.name ?? null,
-            live: parseStoredRulesetLive((await visibleLiveRow(input.chatId)).row?.rulesetLive),
+            live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
             // Who the scene caught unaware (1.237).
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
+            // The scene's time of day, for the light it is fought in (1.291).
+            time: liveRow?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
           state.rulesetFight = built.fight;

@@ -12,7 +12,13 @@ import { TERRAIN_DATA, type TacticalGrid } from "../tactical-combat/types.js";
 import { blocksSight, climbCost, elevationAt, hasLineOfSight } from "../tactical-combat/math.js";
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetActionDropped, rulesetShotsAvailable } from "./ammo.js";
-import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
+import {
+  rulesetActiveConditions,
+  rulesetCombatant,
+  rulesetCombatEffects,
+  rulesetCombatStanding,
+  rulesetSealedApart,
+} from "./encounter.js";
 import type {
   RulesetBlowKind,
   RulesetMoveMode,
@@ -219,6 +225,8 @@ export function rulesetSees(
   other: RulesetCombatant | undefined,
 ): boolean {
   if (other?.flags.hidden) return false;
+  // Hidden from this one for real (1.287).
+  if (other && other.id !== holder.id && other.hiding?.from.includes(holder.id)) return false;
   const grid = state.board?.grid;
   if (!grid || !rulesetPositionOf(holder) || !rulesetPositionOf(other)) return true;
   return rulesetFootprintsSee(grid, holder, other);
@@ -659,6 +667,9 @@ export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCo
     // Nor is an answer to a moment, or what is added to another blow (1.243): Divine Smite is no
     // strike of its own.
     if (action.reaction || action.addsToBlow) continue;
+    // Nor a strike a condition gives (1.236) while that condition is not on its holder: Flame
+    // Blade's, with the blade not called up.
+    if (action.whileHolds && !combatant.tracked.some((entry) => entry.condition === action.whileHolds)) continue;
     const average = action.damage.count * ((action.damage.sides + 1) / 2) + action.damage.flat;
     if (average > most) {
       most = average;
@@ -696,6 +707,8 @@ export function rulesetThreateningEnemies(
   for (const combatant of state.combatants) {
     if (combatant.side === mover.side || !rulesetCombatStanding(combatant)) continue;
     if ((combatant.budgets[opportunity.budget] ?? 0) < 1) continue;
+    // Nobody strikes through a sphere (1.314).
+    if (rulesetSealedApart(definition, state, combatant, mover)) continue;
     const effects = rulesetCombatEffects(definition, combat, combatant, state);
     if (effects.has("cannot-act") || effects.has("cannot-react")) continue;
     const at = rulesetPositionOf(combatant);
@@ -796,6 +809,31 @@ export function rulesetReachableCells(
     }
   }
 
+  // Kept within a ring around whoever put a condition on, once inside it (1.274): Sympathy's.
+  const within: Array<{ source: RulesetCombatant; ring: number }> = [];
+  for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
+    const keepsIn = entry.behavior?.keepsIn;
+    if (keepsIn === undefined || !combat.distance) continue;
+    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
+    const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
+    const ring = Math.floor(keepsIn / combat.distance.perCell);
+    if (
+      source &&
+      source.id !== actor.id &&
+      rulesetPositionOf(source) &&
+      rulesetCombatStanding(source) &&
+      rulesetGap(actor, source) <= ring
+    ) {
+      within.push({ source, ring });
+    }
+  }
+  // Drawn toward somebody and already inside the ring that keeps it near them (1.274): the ring is
+  // the leash then, so it may move about within it rather than only ever closer (Sympathy).
+  for (let index = driven.length - 1; index >= 0; index--) {
+    const one = driven[index]!;
+    if (one.moves === "toward" && within.some((ring) => ring.source.id === one.source.id)) driven.splice(index, 1);
+  }
+
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
   const slowed = rulesetSlowedCells(state, actor);
   const best = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
@@ -844,6 +882,7 @@ export function rulesetReachableCells(
         })
       )
         continue;
+      if (within.some((one) => rulesetGapFrom({ x, y }, span, one.source) > one.ring)) continue;
       // No squeezing between two solid corners: a step corner-wise needs one of its two sides open.
       if (
         dx !== 0 &&
@@ -1074,9 +1113,11 @@ export function rulesetZoneCells(
 ): RulesetCombatCell[] {
   const grid = state.board?.grid;
   if (!grid) return [];
-  if (zone.anchor === "point") return zone.cells ?? [];
+  // Carried by somebody (1.301): around them, wherever they are now.
+  const holder = zone.on ? rulesetCombatant(state, zone.on) : undefined;
+  if (zone.anchor === "point" && !(holder && rulesetPositionOf(holder))) return zone.cells ?? [];
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
-  const at = rulesetPositionOf(caster);
+  const at = rulesetPositionOf(holder ?? caster);
   if (!action?.area || !at) return [];
   // A line or cone held by its caster points the way it was cast, or last turned (1.182).
   if (action.area.shape === "line" || action.area.shape === "cone") {
@@ -1084,13 +1125,26 @@ export function rulesetZoneCells(
     const toward = { x: at.x + zone.facing.dx, y: at.y + zone.facing.dy };
     return rulesetAreaCells(action.area.shape, action.area.size, at, toward, grid, action.area.width);
   }
-  // Around every cell its caster fills (1.194), each cell once.
+  // Around every cell its caster (or holder) fills (1.194), each cell once.
   const cells = new Map<string, RulesetCombatCell>();
-  for (const from of rulesetFootprint(caster)) {
+  for (const from of rulesetFootprint(holder ?? caster)) {
     for (const cell of rulesetAreaCells("burst", action.area.size, from, from, grid))
       cells.set(`${cell.x},${cell.y}`, cell);
   }
   return [...cells.values()];
+}
+
+/** Where a zone's light and reach are measured from (1.297): the point it was put at and its copies'
+ *  (1.301), whoever carries it (1.301), or its caster. */
+export function rulesetZoneMiddles(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+): RulesetCombatCell[] {
+  const holder = zone.on ? rulesetCombatant(state, zone.on) : undefined;
+  if (holder && rulesetPositionOf(holder)) return rulesetFootprint(holder);
+  if (zone.anchor === "point") return zone.at ? [zone.at, ...(zone.also ?? [])] : [];
+  return rulesetFootprint(caster);
 }
 
 /** Whether a zone's area may catch this combatant at all, as the cast's own area would have: its

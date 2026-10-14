@@ -68,12 +68,18 @@ export async function advancedMemoryRoutes(app: FastifyInstance) {
     withMemoryDomainErrors(reply, () => service.reset(req.params.id)),
   );
   app.patch<{ Params: { id: string } }>(`${prefix}/settings`, async (req, reply) =>
-    withMemoryDomainErrors(reply, () => service.updateSettings(req.params.id, req.body)),
+    withMemoryDomainErrors(reply, () =>
+      service.updateSettings(req.params.id, req.body, {
+        debugMode: (req.body as { debugMode?: unknown } | null)?.debugMode === true,
+      }),
+    ),
   );
   app.post<{ Params: { id: string } }>(`${prefix}/initialize`, async (req, reply) =>
     withMemoryDomainErrors(reply, async () => {
       const options = operationSchema.parse(req.body ?? {});
-      if (options.settings) await service.updateSettings(req.params.id, options.settings);
+      // Preparation writes any recollections the settings turn on.
+      if (options.settings)
+        await service.updateSettings(req.params.id, options.settings, { startRecollections: false });
       const status = await service.status(req.params.id);
       if (!status.settings.enabled)
         return reply.status(400).send({ error: "Enable Advanced Memory before initialization" });

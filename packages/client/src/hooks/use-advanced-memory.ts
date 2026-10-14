@@ -175,6 +175,8 @@ type AdvancedMemoryAction =
       action: "settings";
       settings:
         Partial<AdvancedMemorySettings> | ((current: AdvancedMemorySettings) => Partial<AdvancedMemorySettings>);
+      /** Shows the prompts of any work the change starts, such as writing character recollections. */
+      debugMode?: boolean;
     }
   | {
       action: "initialize";
@@ -214,7 +216,10 @@ export function useAdvancedMemoryAction(chatId: string) {
                   ).settings,
                 )
               : request.settings;
-          return api.patch<AdvancedMemoryStatus>(`${base}/settings`, settings);
+          return api.patch<AdvancedMemoryStatus>(
+            `${base}/settings`,
+            request.debugMode ? { ...settings, debugMode: true } : settings,
+          );
         }
         case "record":
           return api.patch<AdvancedMemoryStatus>(`${base}/records/${request.recordId}`, request.patch);

@@ -44,7 +44,7 @@ const { TripoError, createTripoClient } =
   await import("../../packages/server/src/services/avatars/generation/tripo-client.js");
 const { generateVrmModel, tripoSourceImage, TRIPO_REQUESTS } =
   await import("../../packages/server/src/services/avatars/generation/tripo-vrm.js");
-const { AvatarGenerationError } =
+const { AvatarGenerationError, cancelAvatarGenerationJob } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
 
@@ -552,12 +552,15 @@ const tripoError = (kind: string, pattern: RegExp) => (error: unknown) =>
   const stalled = createTripoClient({ apiKey: KEY, fetch: silent, requestTimeoutMs: 30, transferTimeoutMs: 30 });
   // AbortSignal.timeout's timer doesn't keep Node running (the server's sockets do); this test holds it open.
   const awake = setInterval(() => undefined, 1000);
-  await assert.rejects(stalled.balance(), tripoError("unavailable", /Couldn't reach Tripo/u));
-  await assert.rejects(
-    stalled.download("https://tripo-data.example.com/a.glb", 1024),
-    tripoError("unavailable", /download/u),
-  );
-  clearInterval(awake);
+  try {
+    await assert.rejects(stalled.balance(), tripoError("unavailable", /Couldn't reach Tripo/u));
+    await assert.rejects(
+      stalled.download("https://tripo-data.example.com/a.glb", 1024),
+      tripoError("unavailable", /download/u),
+    );
+  } finally {
+    clearInterval(awake);
+  }
 }
 {
   // Busy: wait as long as Tripo asks, then go on; still busy after the retries: a plain message.
@@ -923,6 +926,37 @@ try {
   const corner = await sharp(thin.bytes).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer();
   assert.equal(corner[3], 0, "the padding is see-through");
 
+  // Cancel (POST /cancel, kind "vrm") stops a run while it waits for Tripo, and frees the avatar at once.
+  for (const key of Object.keys(tasks)) delete tasks[key];
+  let polls = 0;
+  const waiting = script(riggedGlb());
+  const stopped = generateVrmModel(
+    db,
+    { owner: runOwner, sourceLabel: "full_neutral", connectionId: tripo.id },
+    {
+      fetch: async (url, init) => {
+        if (url.includes("/tasks/")) polls += 1;
+        return waiting.fetch(url, init);
+      },
+      wait: (ms, signal) =>
+        new Promise((_, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    },
+  );
+  const awake = setInterval(() => undefined, 1000);
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(cancelAvatarGenerationJob(runOwner, "vrm"), true, "the running job is found");
+    await assert.rejects(stopped, (error: unknown) => (error as Error).name === "AbortError");
+  } finally {
+    clearInterval(awake);
+  }
+  const pollsWhenStopped = polls;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(polls, pollsWhenStopped, "no more polling after Cancel");
+  assert.equal(cancelAvatarGenerationJob(runOwner, "vrm"), false, "the avatar is free again");
+
   // Only a Tripo connection with a key will do.
   await assert.rejects(
     generateVrmModel(db, { owner: runOwner, sourceLabel: "full_neutral", connectionId: chat.id }),
@@ -952,6 +986,8 @@ try {
         data: { message: "Choose a Tripo connection. Add one in Connections with your Tripo API key." },
       },
     ]);
+    const cancelled = await app.inject({ method: "POST", url: "/cancel", payload: { owner: runOwner, kind: "vrm" } });
+    assert.deepEqual(cancelled.json(), { cancelled: false }, "the shared Cancel route takes VRM jobs");
     const balance = await app.inject({ method: "GET", url: "/vrm-model/balance" });
     assert.equal(balance.statusCode, 400, "the balance needs a connection");
   } finally {

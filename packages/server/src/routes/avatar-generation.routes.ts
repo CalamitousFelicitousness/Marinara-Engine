@@ -8,9 +8,10 @@
 //   POST /pngtuber-variants/save      { owner, images } → AvatarGenerationResponse
 //   POST /mesh-rig                    AvatarMeshRigRequest → draft
 //   POST /mesh-rig/save               { owner, archive } → AvatarGenerationResponse
+//   POST /cancel                      { owner, kind: "pngtuber" | "mesh-avatar" } → { cancelled }
 // Backed by services/avatars/generation/. Requests accept `debugMode`, and every prompt is logged with
-// logDebugOverride, honouring DEBUG_AGENTS. A closed connection cancels the provider requests. Hosted 3D
-// generation is out of scope.
+// logDebugOverride, honouring DEBUG_AGENTS. Cancel and a closed connection both abort the provider
+// requests and free the avatar for a new job. Hosted 3D generation is out of scope.
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import {
@@ -21,7 +22,11 @@ import {
 } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { failureLevel } from "../lib/log-context.js";
-import { AvatarGenerationError, plainErrorText } from "../services/avatars/generation/generation-context.js";
+import {
+  AvatarGenerationError,
+  cancelAvatarGenerationJob,
+  plainErrorText,
+} from "../services/avatars/generation/generation-context.js";
 import { generateMeshRig, saveMeshRig } from "../services/avatars/generation/mesh-rig.js";
 import {
   generatePngtuberVariants,
@@ -66,6 +71,8 @@ const pngtuberSaveBodySchema = z
   .strict();
 
 const meshSaveBodySchema = z.object({ owner: avatarOwnerRefSchema, archive: z.string().min(1) }).strict();
+
+const cancelBodySchema = z.object({ owner: avatarOwnerRefSchema, kind: z.enum(["pngtuber", "mesh-avatar"]) }).strict();
 
 /** Aborted when the browser goes away (Cancel, a closed tab) before the reply is sent. The reason is an
  *  AbortError, so the failure is logged as a cancellation, not an error. */
@@ -131,6 +138,15 @@ export async function avatarGenerationRoutes(app: FastifyInstance) {
       return await saveMeshRig(meshSaveBodySchema.parse(req.body));
     } catch (error) {
       return sendFailure(reply, error, "Saving the mesh avatar");
+    }
+  });
+
+  app.post("/cancel", async (req, reply) => {
+    try {
+      const body = cancelBodySchema.parse(req.body);
+      return { cancelled: cancelAvatarGenerationJob(body.owner, body.kind) };
+    } catch (error) {
+      return sendFailure(reply, error, "Cancelling avatar generation");
     }
   });
 }

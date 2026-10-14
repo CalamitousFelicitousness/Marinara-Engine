@@ -39,6 +39,11 @@ async function routeSprites(page: Page, ownerId: string, sprites: Record<string,
     const picture = pictures.get(name);
     return picture ? route.fulfill({ contentType: "image/png", body: picture }) : route.fulfill({ status: 404 });
   });
+  // Avatars show a sprite face as the server's cut-out of it (by label); these flat test pictures stand in.
+  await page.route(`**/api/avatar-models/*/${ownerId}/sprite-cutouts/*`, (route) => {
+    const picture = pictures.get(decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop() ?? ""));
+    return picture ? route.fulfill({ contentType: "image/png", body: picture }) : route.fulfill({ status: 404 });
+  });
 }
 
 async function openApp(page: Page) {

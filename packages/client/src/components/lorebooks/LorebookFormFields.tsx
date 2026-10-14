@@ -4,7 +4,7 @@
 // and LorebookEntryRow (the per-entry inline drawer).
 // Extracted from LorebookEditor.tsx so styling stays consistent.
 // ──────────────────────────────────────────────
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown, FileText } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { HelpTooltip } from "../ui/HelpTooltip";
@@ -43,7 +43,6 @@ export function KeysEditor({ keys, onChange }: { keys: string[]; onChange: (keys
   const [input, setInput] = useState("");
   const [expanded, setExpanded] = useState(false);
   const keywordListId = useId();
-  const toggleRef = useRef<HTMLButtonElement>(null);
   const hiddenCount = keys.length - 10;
   const visibleKeys = expanded ? keys : keys.slice(0, 10);
 
@@ -74,12 +73,11 @@ export function KeysEditor({ keys, onChange }: { keys: string[]; onChange: (keys
       </div>
       {hiddenCount > 0 && (
         <button
-          ref={toggleRef}
           type="button"
           aria-expanded={expanded}
           aria-controls={keywordListId}
-          // Pointer activation keeps the draft focused, including in browsers that do not focus buttons.
-          onPointerDown={(event) => event.preventDefault()}
+          // Keep mouse focus in the input without cancelling WebKit touch clicks.
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => setExpanded((value) => !value)}
           className="mari-editor-action mari-editor-action--compact mt-1.5 inline-flex items-center gap-1 px-2 py-1 text-[0.6875rem]"
         >
@@ -93,11 +91,7 @@ export function KeysEditor({ keys, onChange }: { keys: string[]; onChange: (keys
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onBlur={(event) => {
-            // Keyboard navigation to the disclosure must preserve uncommitted input too.
-            if (toggleRef.current && event.relatedTarget === toggleRef.current) return;
-            addKey();
-          }}
+          onBlur={addKey}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKey())}
           className="mari-editor-field flex-1 px-2 py-1.5 text-xs"
           placeholder={localizeUi("ui.lorebooks.keyseditor.typeKeywordsSeparatedByCommasThenPressEnter")}

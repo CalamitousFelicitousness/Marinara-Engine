@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
@@ -18,8 +18,16 @@ for (const surface of ["library", "chat settings"] as const) {
     });
     expect(bookResponse.ok()).toBeTruthy();
     const book = await bookResponse.json();
+    const mobile = info.project.name !== "desktop-chromium";
+    const previousFocus = info.project.name === "mobile-webkit" ? "Alt+Shift+Tab" : "Shift+Tab";
+    const nextFocus = info.project.name === "mobile-webkit" ? "Alt+Tab" : "Tab";
+    const activate = (control: Locator) => (mobile ? control.tap() : control.click());
     const entries: Array<{ id: string; count: number }> = [];
     try {
+      const metadataResponse = await request.patch("/api/chats/" + chat.id + "/metadata", {
+        data: { activeLorebookIds: [book.id] },
+      });
+      expect(metadataResponse.ok()).toBeTruthy();
       for (const count of [0, 10, 11]) {
         const response = await request.post("/api/lorebooks/" + book.id + "/entries", {
           data: {
@@ -31,9 +39,10 @@ for (const surface of ["library", "chat settings"] as const) {
         expect(response.ok()).toBeTruthy();
         entries.push({ id: (await response.json()).id, count });
       }
-      await request.post("/api/chats/" + chat.id + "/messages", {
+      const messageResponse = await request.post("/api/chats/" + chat.id + "/messages", {
         data: { role: "assistant", content: "Keyword editing fixture." },
       });
+      expect(messageResponse.ok()).toBeTruthy();
       await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
       await seedUIState(page, {
         hasCompletedOnboarding: true,
@@ -88,7 +97,7 @@ for (const surface of ["library", "chat settings"] as const) {
             await expect(toggle).toHaveCount(0);
           }
         }
-        await expect(row.getByText("Logic", { exact: true })).toBeVisible();
+        await expect(row.getByText("Logic:", { exact: true })).toBeVisible();
         if (entry.count === 10) {
           const primary = row.getByText("Primary Keys", { exact: true }).locator("..");
           await primary.locator("input").fill("eleventh-key");
@@ -119,7 +128,7 @@ for (const surface of ["library", "chat settings"] as const) {
         );
       await row.getByRole("button", { name: "Expand entry", exact: true }).click();
       await input.fill("new-primary");
-      await primary.getByRole("button", { name: "Show 1 more", exact: true }).click();
+      await activate(primary.getByRole("button", { name: "Show 1 more", exact: true }));
       await expect(input).toBeFocused();
       await expect(input).toHaveValue("new-primary");
       await expect(primary.locator(".mari-editor-chip")).toHaveCount(11);
@@ -128,24 +137,34 @@ for (const surface of ["library", "chat settings"] as const) {
         "aria-expanded",
         "true",
       );
-      // Shift+Tab really blurs the input toward the disclosure. Space must not commit the draft either.
-      await input.press("Shift+Tab");
-      const collapse = primary.getByRole("button", { name: "Collapse", exact: true });
-      await expect(collapse).toBeFocused();
-      await collapse.press("Space");
+      await activate(primary.getByRole("button", { name: "Collapse", exact: true }));
+      await expect(input).toBeFocused();
       await expect(input).toHaveValue("new-primary");
       await expect(primary.locator(".mari-editor-chip")).toHaveCount(10);
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(1200);
       expect(patches).toBe(0);
       expect((await readEntry()).keys).toEqual(keywords("primary", 11));
+      await activate(primary.getByRole("button", { name: "Show 1 more", exact: true }));
 
-      await input.press("Enter");
-      await expect(primary.locator(".mari-editor-chip")).toHaveCount(12);
+      // Keyboard blur commits the draft, even when navigation continues beyond the disclosure.
+      await input.press(previousFocus);
+      const collapse = primary.getByRole("button", { name: "Collapse", exact: true });
+      await expect(collapse).toBeFocused();
       await expect(input).toHaveValue("");
+      await collapse.press(previousFocus);
+      await row.getByRole("button", { name: "Collapse entry", exact: true }).click();
       await expect.poll(async () => (await readEntry()).keys).toEqual([...keywords("primary", 11), "new-primary"]);
+      await row.getByRole("button", { name: "Expand entry", exact: true }).click();
+      await activate(primary.getByRole("button", { name: "Show 2 more", exact: true }));
+      await expect(primary.locator(".mari-editor-chip")).toHaveCount(12);
+      await collapse.focus();
+      await collapse.press("Space");
+      await expect(primary.locator(".mari-editor-chip")).toHaveCount(10);
+      await primary.getByRole("button", { name: "Show 2 more", exact: true }).press("Enter");
+      await expect(primary.locator(".mari-editor-chip")).toHaveCount(12);
       await secondary.locator("input").fill("new-secondary");
       // Ordinary blur toward Add retains the existing auto-add behavior.
-      await secondary.locator("input").press("Tab");
+      await secondary.locator("input").press(nextFocus);
       await expect(secondary.locator(".mari-editor-chip")).toHaveCount(12);
       await expect
         .poll(async () => (await readEntry()).secondaryKeys)
@@ -159,7 +178,7 @@ for (const surface of ["library", "chat settings"] as const) {
       await primary.locator(".mari-editor-chip").first().getByRole("button").click();
       const remaining = [...keywords("primary", 11).slice(1), "new-primary"];
       await expect.poll(async () => (await readEntry()).keys).toEqual(remaining);
-      await primary.getByRole("button", { name: "Show 1 more", exact: true }).click();
+      await activate(primary.getByRole("button", { name: "Show 1 more", exact: true }));
       await primary.locator(".mari-editor-chip").filter({ hasText: "new-primary" }).getByRole("button").click();
       await expect(primary.locator(".mari-editor-chip")).toHaveCount(10);
       await expect(primary.getByRole("button", { name: "Collapse", exact: true })).toHaveCount(0);

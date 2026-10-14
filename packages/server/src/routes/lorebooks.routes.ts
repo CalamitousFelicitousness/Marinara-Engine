@@ -1434,7 +1434,8 @@ export async function lorebooksRoutes(app: FastifyInstance) {
     const remoteSource = conn ? await resolveMemoryRecallEmbeddingSource(app.db, { activeConnection: conn }) : null;
     if (!useLocalSidecar && !remoteSource?.spaceId) {
       return reply.status(400).send({
-        error: "This connection has no embedding model. Set one on the connection or on its Embedding Connection.",
+        error:
+          "No usable embedding source for this connection. Set an embedding model, or check its Embedding Connection.",
       });
     }
 

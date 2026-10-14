@@ -870,7 +870,8 @@ export async function galleryRoutes(app: FastifyInstance) {
     return {
       videoConnectionId,
       galleryImage,
-      anchor: resolveChatVideoAnchor(messages, swipes, galleryImage.id),
+      // The clip joins the newest reply, where the user is, whichever reply the picture came from.
+      anchor: resolveChatVideoAnchor(messages),
       videoRuntime,
       durationSeconds,
       aspectRatio,

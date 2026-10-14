@@ -118,7 +118,7 @@ try {
   });
   assert.ok(image);
 
-  // The source message shows the image; a later assistant message must not get the video.
+  // The source message shows the image; the clip still joins the newest reply, where the user is.
   const source = await chats.createMessage({
     chatId: roleplay.id,
     role: "assistant",
@@ -154,10 +154,11 @@ try {
     return { message: pick(extra), swipe: pick(parsedSwipe) };
   };
 
-  // Animating the image attaches the video to the message that shows it, on the message and its swipe.
+  // Animating the image attaches the video to the newest reply, on the message and its swipe.
   const first = await generate({ galleryImageId: image.id });
-  assert.equal(first.messageId, source.id);
-  const onSource = await videoAttachments(source.id);
+  assert.equal(first.messageId, later.id);
+  assert.equal((await videoAttachments(source.id)).message.length, 0, "not under the older picture's message");
+  const onSource = await videoAttachments(later.id);
   assert.equal(onSource.message.length, 1);
   assert.equal(onSource.swipe.length, 1);
   assert.deepEqual(
@@ -173,27 +174,26 @@ try {
     },
   );
   assert.equal((onSource.message[0] as { url?: string }).url, first.video.url);
-  assert.equal((await videoAttachments(later.id)).message.length, 0);
   assert.match(comfyPrompts[0] ?? "", /Aster lifts the lantern/u);
 
-  // An image no message shows falls back to the latest assistant message.
+  // An image no message shows also goes to the newest reply.
   writeFileSync(join(fixtureDir, "gallery", roleplay.id, "loose.png"), png);
   const loose = await gallery.create({ chatId: roleplay.id, filePath: `${roleplay.id}/loose.png`, prompt: "Loose" });
   assert.ok(loose);
   const second = await generate({ galleryImageId: loose.id });
   assert.equal(second.messageId, later.id);
-  assert.equal((await videoAttachments(later.id)).message.length, 1);
+  assert.equal((await videoAttachments(later.id)).message.length, 2);
 
-  // When two swipes of a message show the same picture, the clip goes on the one on screen.
-  const shows = JSON.stringify({ attachments: [{ type: "image", galleryId: "pic" }] });
-  const reply = { id: "reply", role: "assistant", activeSwipeIndex: 1 };
-  const bothSwipes = [
-    { messageId: "reply", index: 0, extra: shows },
-    { messageId: "reply", index: 1, extra: shows },
-  ];
-  assert.deepEqual(resolveChatVideoAnchor([reply], bothSwipes, "pic"), { messageId: "reply", swipeIndex: 1 });
-  // Only a hidden swipe shows it: the clip still goes there rather than nowhere.
-  assert.deepEqual(resolveChatVideoAnchor([reply], [bothSwipes[0]!], "pic"), { messageId: "reply", swipeIndex: 0 });
+  // The newest reply's shown swipe gets the clip.
+  assert.deepEqual(
+    resolveChatVideoAnchor([
+      { id: "old", role: "assistant", activeSwipeIndex: 0 },
+      { id: "reply", role: "assistant", activeSwipeIndex: 1 },
+      { id: "you", role: "user" },
+    ]),
+    { messageId: "reply", swipeIndex: 1 },
+  );
+  assert.equal(resolveChatVideoAnchor([{ id: "you", role: "user" }]), null, "no reply yet: Gallery only");
 
   // A video attachment is never an image, a provider file, or readable text for a model prompt.
   const attachment = { type: "video", url: first.video.url, filename: "clip.mp4", prompt: "Aster lifts the lantern" };

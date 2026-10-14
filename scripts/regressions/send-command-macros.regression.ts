@@ -29,21 +29,23 @@ const prepareUserMessage = (text: string) =>
     },
   });
 
+const created: Array<{ role: string; content: string; characterId?: string | null }> = [];
+const context: SlashCommandContext = {
+  chatId: "send-chat",
+  mode: "roleplay",
+  characterNames: ["Mira"],
+  invalidate: () => {},
+  generate: async () => assert.fail("a posting command must not start a generation"),
+  createMessage: async (data) => {
+    created.push(data);
+  },
+  prepareUserMessage,
+};
+
 async function runSend(commandLine: string): Promise<string> {
   const match = matchSlashCommand(commandLine, { mode: "roleplay" });
   assert.equal(match?.command.name, "send");
-  const created: Array<{ role: string; content: string; characterId?: string | null }> = [];
-  const context: SlashCommandContext = {
-    chatId: "send-chat",
-    mode: "roleplay",
-    characterNames: ["Mira"],
-    invalidate: () => {},
-    generate: async () => assert.fail("/send must not start a generation"),
-    createMessage: async (data) => {
-      created.push(data);
-    },
-    prepareUserMessage,
-  };
+  created.length = 0;
   assert.deepEqual(await match.command.execute(match.args, context), { handled: true });
   assert.equal(created.length, 1);
   assert.equal(created[0]!.role, "user");
@@ -53,6 +55,7 @@ async function runSend(commandLine: string): Promise<string> {
 
 const originalRandom = Math.random;
 const originalPost = api.post;
+const originalSetTimeout = globalThis.setTimeout;
 try {
   for (const roll of [0, 0.2, 0.99]) {
     Math.random = () => roll;
@@ -82,9 +85,43 @@ try {
   }) as typeof api.post;
   assert.equal(await runSend(`/send ${typed}`), "Reply with the next word: red, Pat");
   assert.equal(translationErrors, 1, "a failed translation reports once and posts the original");
+
+  // /remind posts the user's own typed text later, inside a narrator message. Left raw, its
+  // {{random}} showed one word in the chat and gave the model another, and the toast showed
+  // {{user}}. It is stored as a normal send stores it, so every place shows the same text.
+  chat.metadata = {};
+  const match = matchSlashCommand(`/remind 30m ${typed}`, { mode: "roleplay" });
+  assert.equal(match?.command.name, "remind");
+  const timers: Array<{ callback: () => Promise<void>; ms: number }> = [];
+  const posted: Array<{ path: string; body: { role: string; content: string } }> = [];
+  api.post = (async (path: string, body: { role: string; content: string }) => {
+    posted.push({ path, body });
+    return {};
+  }) as typeof api.post;
+  globalThis.setTimeout = ((callback: () => Promise<void>, ms: number) => {
+    timers.push({ callback, ms });
+    return 0;
+  }) as unknown as typeof setTimeout;
+  let feedback: string | undefined;
+  created.length = 0;
+  try {
+    feedback = (await match.command.execute(match.args, context)).feedback;
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0]!.ms, 30 * 60_000);
+  await timers[0]!.callback();
+  const reminded = "Reply with the next word: red, Pat";
+  assert.deepEqual(posted, [
+    { path: "/chats/send-chat/messages", body: { role: "narrator", content: `⏰ **Reminder:** ${reminded}` } },
+  ]);
+  assert.match(feedback ?? "", new RegExp(`: "${reminded}"`, "u"), "the confirmation shows the stored text");
+  assert.equal(created.length, 0, "the reminder is the only message /remind posts");
 } finally {
   Math.random = originalRandom;
   api.post = originalPost;
+  globalThis.setTimeout = originalSetTimeout;
 }
 
-console.info("/send macro regressions passed.");
+console.info("/send and /remind macro regressions passed.");

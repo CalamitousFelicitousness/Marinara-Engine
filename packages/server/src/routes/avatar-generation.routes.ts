@@ -12,8 +12,10 @@
 //   POST /vrm-model                   AvatarVrmModelRequest → server-sent events: { type: "progress", data:
 //                                     AvatarVrmModelProgress } while Tripo works, then { type: "done", data:
 //                                     AvatarVrmModelDraft } or { type: "error", data: { message } }
+//   POST /cancel                      { owner, kind: "pngtuber" | "mesh-avatar" } → { cancelled }
 // Backed by services/avatars/generation/. Requests accept `debugMode`, and every prompt and Tripo request is
-// logged with logDebugOverride, honouring DEBUG_AGENTS. A closed connection cancels the provider requests.
+// logged with logDebugOverride, honouring DEBUG_AGENTS. Cancel and a closed connection both abort the provider
+// requests and free the avatar for a new job.
 // A VRM model is made only through the user's own Tripo connection; the draft is kept by importing it.
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
@@ -27,7 +29,11 @@ import {
 import { logger } from "../lib/logger.js";
 import { failureLevel } from "../lib/log-context.js";
 import { sendSseEvent, startSseKeepalive, startSseReply } from "./generate/sse.js";
-import { AvatarGenerationError, plainErrorText } from "../services/avatars/generation/generation-context.js";
+import {
+  AvatarGenerationError,
+  cancelAvatarGenerationJob,
+  plainErrorText,
+} from "../services/avatars/generation/generation-context.js";
 import { generateMeshRig, saveMeshRig } from "../services/avatars/generation/mesh-rig.js";
 import { generateVrmModel, tripoBalance } from "../services/avatars/generation/tripo-vrm.js";
 import {
@@ -75,6 +81,7 @@ const pngtuberSaveBodySchema = z
 const meshSaveBodySchema = z.object({ owner: avatarOwnerRefSchema, archive: z.string().min(1) }).strict();
 
 const balanceQuerySchema = z.object({ connectionId: z.string().min(1).max(128), debugMode: z.string().optional() });
+const cancelBodySchema = z.object({ owner: avatarOwnerRefSchema, kind: z.enum(["pngtuber", "mesh-avatar"]) }).strict();
 
 /** Aborted when the browser goes away (Cancel, a closed tab) before the reply is sent. The reason is an
  *  AbortError, so the failure is logged as a cancellation, not an error. */
@@ -182,6 +189,15 @@ export async function avatarGenerationRoutes(app: FastifyInstance) {
     } finally {
       stopKeepalive();
       if (!reply.raw.writableEnded) reply.raw.end();
+    }
+  });
+
+  app.post("/cancel", async (req, reply) => {
+    try {
+      const body = cancelBodySchema.parse(req.body);
+      return { cancelled: cancelAvatarGenerationJob(body.owner, body.kind) };
+    } catch (error) {
+      return sendFailure(reply, error, "Cancelling avatar generation");
     }
   });
 }

@@ -1943,8 +1943,14 @@ test("Character recollections switch saves for its chat and recollections are ed
       );
 
     const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
-    const openSettings = async () => {
-      await openChat(page, fixture.chat.id);
+    const openSettings = async (notice?: string) => {
+      await openChat(page, fixture.chat.id, !notice);
+      if (notice) {
+        // On a phone this notice covers the Chat Settings button.
+        const toast = page.locator("[data-sonner-toast]").filter({ hasText: notice });
+        await toast.getByRole("button", { name: "Close toast", exact: true }).click();
+        await openChatSettings(page);
+      }
       await expect(section).toBeVisible();
       if (!(await section.locator('[data-component="AdvancedMemorySettings"]').isVisible()))
         await drawerToggle(section).click();
@@ -2013,7 +2019,8 @@ test("Character recollections switch saves for its chat and recollections are ed
       ).ok(),
     ).toBeTruthy();
     await expect.poll(async () => (await dottore())?.embeddingStatus).toBe("stale");
-    await openSettings();
+    // The hidden message also asks for a check of the scene's summary.
+    await openSettings("Advanced Memory found a problem in 1 scene.");
     const review = await openScene();
     await expect(
       review.getByText(

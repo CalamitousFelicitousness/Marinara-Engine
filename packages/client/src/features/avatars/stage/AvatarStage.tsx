@@ -41,9 +41,12 @@ import {
 import { createAvatarDirector } from "../director/avatar-director";
 import { buildPngtuberLayersFromSprites } from "../renderers/pngtuber/pngtuber-layers";
 import {
+  AVATAR_PHONE_QUERY,
   applyAvatarFeatures,
   avatarDrawDue,
+  avatarsUnderLoad,
   ownerKey,
+  recordAvatarDrawCost,
   resolveAvatarImage,
   selectStageAvatars,
   withSpriteAvatar,
@@ -67,11 +70,6 @@ export interface AvatarStageLayout {
   onPlacementChange?: (placementKey: string, placement: SpritePlacement) => void;
   onFinishPlacement?: () => void;
 }
-
-/** "Phone" in the budget: a coarse pointer or a viewport below the md breakpoint. */
-const PHONE_QUERY = "(max-width: 767px), (pointer: coarse)";
-/** Average draw time (ms) above which a phone drops its idle frame rate. */
-const PHONE_LOAD_THRESHOLD_MS = 12;
 
 interface StageSlot {
   renderer: AvatarRenderer;
@@ -111,7 +109,7 @@ export function AvatarStage({
   onFinishPlacement,
 }: AvatarStageProps & AvatarStageLayout) {
   const { t } = useTranslation();
-  const phone = useMatchMedia(PHONE_QUERY);
+  const phone = useMatchMedia(AVATAR_PHONE_QUERY);
   const reducedMotion = useReducedAmbientEffects();
   const effectsPaused = useAvatarEffectsPaused();
   const stageRef = useRef<HTMLDivElement>(null);
@@ -188,25 +186,23 @@ export function AvatarStage({
     // One loop, one clock per avatar: the speaking avatar draws at the talking rate, the others at the idle rate.
     const clocks = new Map<string, AvatarDrawClock>();
     let underLoad = false;
-    let drawCostMs = 0;
     const tick = (now: number) => {
       frameRequest = requestAnimationFrame(tick);
-      const started = performance.now();
       let drew = false;
       for (const [ownerId, slot] of slots) {
         let clock = clocks.get(ownerId);
-        if (!clock) clocks.set(ownerId, (clock = { lastDrawMs: loopStarted, talking: false }));
+        if (!clock) clocks.set(ownerId, (clock = { lastDrawMs: loopStarted, talking: false, costMs: 0 }));
         if (!avatarDrawDue(clock, now, { phone, underLoad })) continue;
+        const started = performance.now();
         const dtMs = Math.min(now - clock.lastDrawMs, 250);
         clock.lastDrawMs = now;
         const frame = applyAvatarFeatures(director.frame(ownerId, now), slot.features, reducedMotion);
         clock.talking = frame.state === "talking";
         slot.renderer.update(frame, dtMs);
+        recordAvatarDrawCost(clock, performance.now() - started);
         drew = true;
       }
-      if (!drew) return;
-      drawCostMs = drawCostMs * 0.9 + (performance.now() - started) * 0.1;
-      underLoad = phone && drawCostMs > PHONE_LOAD_THRESHOLD_MS;
+      if (drew) underLoad = avatarsUnderLoad(clocks.values(), phone);
     };
     frameRequest = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameRequest);

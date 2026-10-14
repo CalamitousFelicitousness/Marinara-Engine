@@ -18,12 +18,15 @@ import {
 import type { SpriteInfo } from "../../../hooks/use-characters";
 import { useMatchMedia } from "../../../hooks/use-match-media";
 import { useReducedAmbientEffects } from "../../../hooks/use-reduced-ambient-effects";
-import { applyAvatarFeatures, avatarTargetFps, resolveAvatarImage } from "../stage/avatar-stage-logic";
+import {
+  AVATAR_PHONE_QUERY,
+  applyAvatarFeatures,
+  avatarTargetFps,
+  resolveAvatarImage,
+} from "../stage/avatar-stage-logic";
 import { useAvatarEffectsPaused, useOnScreen } from "../stage/use-avatar-pause";
 import { useAvatarRenderer } from "../stage/use-avatar-renderer";
 import { DEMO_AVATAR_CONFIG, DEMO_AVATAR_OWNER, resolveDemoAvatarImage } from "./demo-avatar";
-
-const PHONE_QUERY = "(max-width: 767px), (pointer: coarse)";
 
 export function AvatarSetupPreview({
   owner,
@@ -38,7 +41,7 @@ export function AvatarSetupPreview({
   sprites: SpriteInfo[] | null;
 }) {
   const { t } = useTranslation();
-  const phone = useMatchMedia(PHONE_QUERY);
+  const phone = useMatchMedia(AVATAR_PHONE_QUERY);
   const reducedMotion = useReducedAmbientEffects();
   const effectsPaused = useAvatarEffectsPaused();
   const boxRef = useRef<HTMLDivElement>(null);

@@ -96,6 +96,11 @@ export function ownerKey(owner: AvatarOwnerRef): string {
   return `${owner.ownerType}:${owner.ownerId}`;
 }
 
+/** "Phone" in the budget: a coarse pointer or a viewport below the md breakpoint. */
+export const AVATAR_PHONE_QUERY = "(max-width: 767px), (pointer: coarse)";
+/** Average time (ms) one draw of every avatar takes, above which a phone drops its idle frame rate. */
+const PHONE_LOAD_THRESHOLD_MS = 12;
+
 /** Frames per second the stage draws at. */
 export function avatarTargetFps(options: { talking: boolean; phone: boolean; underLoad: boolean }): number {
   const { fps } = AVATAR_RENDER_BUDGET;
@@ -110,6 +115,8 @@ export interface AvatarDrawClock {
   lastDrawMs: number;
   /** Its last frame was talking. */
   talking: boolean;
+  /** Running average of its draw time (ms). */
+  costMs: number;
 }
 
 /** Whether an avatar draws on this tick of the shared loop. Each avatar keeps its own rate: the speaking one
@@ -120,6 +127,20 @@ export function avatarDrawDue(
   options: { phone: boolean; underLoad: boolean },
 ): boolean {
   return nowMs - clock.lastDrawMs >= 1000 / avatarTargetFps({ ...options, talking: clock.talking }) - 1;
+}
+
+/** Adds one draw's time to the avatar's running average. */
+export function recordAvatarDrawCost(clock: AvatarDrawClock, costMs: number): void {
+  clock.costMs = clock.costMs * 0.9 + costMs * 0.1;
+}
+
+/** Whether a phone is under load: one draw of every avatar takes longer than the threshold on average. It adds
+ *  up each avatar's own average, so it does not depend on which avatars happen to draw on the same tick. */
+export function avatarsUnderLoad(clocks: Iterable<AvatarDrawClock>, phone: boolean): boolean {
+  if (!phone) return false;
+  let costMs = 0;
+  for (const clock of clocks) costMs += clock.costMs;
+  return costMs > PHONE_LOAD_THRESHOLD_MS;
 }
 
 /** The canvas device pixel ratio, capped by the budget. */

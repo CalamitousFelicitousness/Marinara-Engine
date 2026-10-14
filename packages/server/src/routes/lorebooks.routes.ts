@@ -75,7 +75,6 @@ import {
   clearCharacterEmbeddedLorebook,
   resolveEmbeddedCharacterId,
 } from "../services/lorebook/character-book-sync.js";
-import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../services/llm/local-sidecar.js";
 import {
   createMemoryRecallEmbeddingSpaceId,
@@ -1420,18 +1419,24 @@ export async function lorebooksRoutes(app: FastifyInstance) {
   // ── Vectorize: generate embeddings for all entries in a lorebook ──
 
   app.post<{ Params: { id: string } }>("/:id/vectorize", async (req, reply) => {
-    const body = req.body as { connectionId: string; model: string; onlyMissing?: boolean };
+    // `model` is still accepted from older clients but ignored: the server resolves it below.
+    const body = req.body as { connectionId: string; model?: string; onlyMissing?: boolean };
     if (!body.connectionId) {
       return reply.status(400).send({ error: "connectionId is required" });
     }
     const useLocalSidecar = body.connectionId === LOCAL_SIDECAR_CONNECTION_ID;
-    if (!useLocalSidecar && !body.model) {
-      return reply.status(400).send({ error: "model is required" });
-    }
 
     const connStorage = createConnectionsStorage(app.db);
     const conn = useLocalSidecar ? null : await connStorage.getWithKey(body.connectionId);
     if (!useLocalSidecar && !conn) return reply.status(404).send({ error: "Connection not found" });
+    // Resolve the source the way chat-time semantic matching does (Embedding Connection override
+    // included), so stored entry vectors and query vectors land in the same embedding space.
+    const remoteSource = conn ? await resolveMemoryRecallEmbeddingSource(app.db, { activeConnection: conn }) : null;
+    if (!useLocalSidecar && !remoteSource?.spaceId) {
+      return reply.status(400).send({
+        error: "This connection has no embedding model. Set one on the connection or on its Embedding Connection.",
+      });
+    }
 
     const allEntries = await storage.listEntries(req.params.id);
     if (!allEntries.length) return { vectorized: 0, total: 0, skipped: 0 };
@@ -1457,41 +1462,26 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       : vectorizableEntries;
     if (!entries.length) return { vectorized: 0, total: allEntries.length, skipped: allEntries.length };
 
-    const embeddingBaseUrl = useLocalSidecar
-      ? ""
-      : conn!.embeddingBaseUrl
-        ? (conn!.embeddingBaseUrl as string).replace(/\/+$/, "")
-        : (conn!.baseUrl as string);
-    const provider = useLocalSidecar
-      ? getLocalSidecarProvider()
-      : (() => {
-          const resolvedConn = conn!;
-          return createLLMProvider(
-            resolvedConn.provider as string,
-            embeddingBaseUrl,
-            resolvedConn.apiKey as string,
-            resolvedConn.maxContext,
-            resolvedConn.openrouterProvider,
-            resolvedConn.maxTokensOverride,
-            resolvedConn.claudeFastMode === "true",
-            resolvedConn.treatAsLocalEndpoint === "true",
-            resolvedConn.defaultParameters,
-            resolvedConn.id,
-          );
-        })();
-    const embeddingModel = useLocalSidecar ? LOCAL_SIDECAR_MODEL : body.model;
-    const embeddingProfileModel = useLocalSidecar
-      ? (sidecarModelService.getConfiguredModelRef() ?? LOCAL_SIDECAR_MODEL)
-      : embeddingModel;
-    const embeddingSpaceId = useLocalSidecar
-      ? createMemoryRecallEmbeddingSpaceId("sidecar", embeddingProfileModel, sidecarModelService.getResolvedBackend())
-      : createMemoryRecallEmbeddingSpaceId("remote", embeddingModel, conn!.provider as string, embeddingBaseUrl);
+    const sidecarProfileModel = sidecarModelService.getConfiguredModelRef() ?? LOCAL_SIDECAR_MODEL;
+    const embeddingSpaceId =
+      remoteSource?.spaceId ??
+      createMemoryRecallEmbeddingSpaceId("sidecar", sidecarProfileModel, sidecarModelService.getResolvedBackend());
+    const embedDocuments = async (batchTexts: string[]): Promise<number[][]> => {
+      if (!remoteSource) {
+        return getLocalSidecarProvider().embed(
+          formatMemoryRecallEmbeddingTexts(batchTexts, sidecarProfileModel, "document"),
+          LOCAL_SIDECAR_MODEL,
+        );
+      }
+      // The shared source formats the input profile itself, and logs and swallows provider errors.
+      const embeddings = await remoteSource.embed(batchTexts, undefined, "document");
+      if (!embeddings) {
+        throw new Error(`Embedding request through ${remoteSource.label} failed. Check the server log for details.`);
+      }
+      return embeddings;
+    };
 
-    const texts = formatMemoryRecallEmbeddingTexts(
-      (entries as LorebookEntry[]).map(buildLorebookEntryEmbeddingText),
-      embeddingProfileModel,
-      "document",
-    );
+    const texts = (entries as LorebookEntry[]).map(buildLorebookEntryEmbeddingText);
     const existingVectorEntries = body.onlyMissing
       ? (vectorizableEntries as Array<Record<string, unknown>>).filter(
           (entry) => Array.isArray(entry.embedding) && entry.embedding.length > 0,
@@ -1521,7 +1511,7 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       const batchEntries = entries.slice(i, i + BATCH_SIZE);
       let embeddings: number[][];
       try {
-        embeddings = await provider.embed(batchTexts, embeddingModel);
+        embeddings = await embedDocuments(batchTexts);
       } catch (error) {
         logger.warn(error, "[lorebooks] Embedding batch failed");
         return reply.status(502).send({

@@ -267,6 +267,7 @@ import {
 } from "./zones.js";
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
 import { rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
+import { rulesetFormAllowed, rulesetLeaveShape, rulesetTakeShape } from "./shape.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
  *  events it has produced so far. */
@@ -699,7 +700,28 @@ function applyDamage(
     dealt = Math.max(0, Math.min(dealt, before.value + before.temp - input.leavesAtLeast));
   }
   const toTemp = Math.min(before.temp, dealt);
-  if (dealt > 0) {
+  if (dealt > 0 && target.shape?.health) {
+    // A form with health of its own takes the blow (1.342); run out, the shape ends and the rest of
+    // the blow carries on to their own.
+    const form = target.shape.health;
+    form.temp -= toTemp;
+    const rest = dealt - toTemp;
+    const over = Math.max(0, rest - form.value);
+    form.value = Math.max(0, form.value - rest);
+    if (form.value <= 0) {
+      endShape(ctx, target, "damage");
+      if (over > 0) {
+        if (target.sheet) {
+          if (!deferWound)
+            writeHealthLoss(ctx, target, over, input.damageType, input.seals, input.lasting, input.pool?.kind);
+        } else if (target.health) {
+          const fromTemp = Math.min(target.health.temp, over);
+          target.health.temp -= fromTemp;
+          target.health.value = Math.max(0, target.health.value - (over - fromTemp));
+        }
+      }
+    }
+  } else if (dealt > 0) {
     if (target.sheet) {
       if (!deferWound)
         writeHealthLoss(ctx, target, dealt, input.damageType, input.seals, input.lasting, input.pool?.kind);
@@ -876,8 +898,12 @@ function dealHeal(
   const blocked = effects.has("cannot-heal") || (!input.magical && effects.has("cannot-heal-nonmagical"));
   const amount = blocked ? 0 : Math.max(0, Math.floor(input.amount));
   if (amount > 0) {
+    // A form's own health first (1.342).
+    if (target.shape?.health) {
+      target.shape.health.value = Math.min(target.shape.health.max, target.shape.health.value + amount);
+    }
     // Never past the maximum as it stands, which a level may have halved (1.115).
-    if (target.sheet) writeHealthGain(ctx, target, amount, before);
+    else if (target.sheet) writeHealthGain(ctx, target, amount, before);
     // Never past what only a rest gives back (1.193).
     else if (target.health) {
       const cap = Math.max(before.value, before.max - (target.health.sealed ?? 0));
@@ -1137,6 +1163,8 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
     }
     return;
   }
+  // Down, they are themselves again (1.342): a shapechanger dies in its true form.
+  if (target.shape) endShape(ctx, target, "damage");
   // A prop is nobody (1.316): nothing feeds on it falling.
   if (!target.object) feedAuras(ctx, target);
   target.down = true;
@@ -1905,6 +1933,12 @@ function applyConditionId(
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "full" });
     return;
   }
+  // A form above what its target may become changes nothing (1.342): Polymorph's "equal or less".
+  const shapeRule = ctx.combat.conditions?.find((one) => one.condition === condition)?.shape;
+  if (shapeRule && applies.form && !rulesetFormAllowed(ctx.definition, target, applies)) {
+    ctx.events.push({ type: "shaped", targetId: target.id, condition, form: applies.form.name, refused: true });
+    return;
+  }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
   const rounds = typeof applies.duration === "object" ? applies.duration.rounds : null;
   const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;
@@ -1979,6 +2013,8 @@ function applyConditionId(
       ? { type: "condition", targetId: target.id, condition, active: true, reason: "stacked", stacks }
       : { type: "condition", targetId: target.id, condition, active: true, reason: "applied" },
   );
+  // The shape it holds (1.342), in place of any other.
+  if (shapeRule && applies.form) takeShape(ctx, target, condition, shapeRule, applies.form);
   endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
   // What it makes its holder let fall at once (1.266): Fear.
@@ -1993,6 +2029,45 @@ function applyConditionId(
       target.budgets[change.budget] = Math.max(0, target.budgets[change.budget]! + change.flat);
     }
   }
+}
+
+/** `target` takes a form's shape (1.342), giving up one another condition held. */
+function takeShape(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  condition: string,
+  rule: NonNullable<NonNullable<RulesetCombat["conditions"]>[number]["shape"]>,
+  form: NonNullable<RulesetCombatApplies["form"]>,
+): void {
+  const other = target.shape && target.shape.condition !== condition ? target.shape.condition : undefined;
+  if (other) {
+    leaveShape(ctx, target, "moved");
+    removeCondition(ctx, target, other, "moved");
+  }
+  const shaped = rulesetTakeShape(ctx.definition, ctx.state, target, condition, rule, form, ctx.roll);
+  if (shaped) ctx.events.push({ type: "shaped", targetId: target.id, condition, form: shaped.name });
+}
+
+/** `target` is itself again (1.342), saying so. */
+function leaveShape(ctx: RulesetCombatContext, target: RulesetCombatant, reason: string): void {
+  const left = rulesetLeaveShape(target);
+  if (left) {
+    ctx.events.push({
+      type: "shaped",
+      targetId: target.id,
+      condition: left.condition,
+      form: left.name,
+      gone: true,
+      reason,
+    });
+  }
+}
+
+/** The shape ends with the condition holding it (1.342), and ends whatever keeps that condition on. */
+function endShape(ctx: RulesetCombatContext, target: RulesetCombatant, reason: "damage"): void {
+  const held = target.shape?.condition;
+  if (held) removeCondition(ctx, target, held, reason);
+  if (target.shape) leaveShape(ctx, target, reason);
 }
 
 /** What a condition makes its holder let fall (1.266): it lies where they stand. */
@@ -2081,6 +2156,8 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
+  // The shape it held ends with it (1.342).
+  if (target.shape?.condition === condition) leaveShape(ctx, target, reason);
   // Out of the sphere, nobody is carrying them (1.314).
   if (target.carriedBy && !rulesetSealed(ctx.definition, target, ctx.state)) delete target.carriedBy;
   // What an aura put on, ended, keeps that aura off them where it says so (1.269).
@@ -3993,7 +4070,7 @@ function applyChoice(
   // A creature type is picked as it is used (1.270): no kind, no Antipathy.
   // And so is the weapon put in hand (1.306).
   const namedIn = actor.actions.find((entry) => entry.id === option.id);
-  if (!mode && (namedIn?.kindChoice || namedIn?.conjures)) {
+  if (!mode && (namedIn?.kindChoice || namedIn?.conjures || namedIn?.shapes)) {
     return refusal(state, choice.actorId, "unknown-mode", option.id);
   }
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {

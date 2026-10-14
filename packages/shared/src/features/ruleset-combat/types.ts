@@ -13,6 +13,7 @@ import type {
   RulesetCreature,
   RulesetLightRadius,
   RulesetSheetBuild,
+  RulesetShapeForms,
   RulesetTargetIs,
   RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
@@ -135,6 +136,10 @@ export interface RulesetCombatApplies {
   condition: string;
   /** The creature type its user named as they used it (1.270), remembered by what it puts on. */
   kind?: string;
+  /** The form its user picked (1.342), taken by whoever it lands on while a condition with `shape`
+   *  holds; none above `cap` on them. */
+  form?: RulesetShapeForm;
+  cap?: RulesetShapeCap;
   duration:
     "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source"; untilLair?: true };
   /** Its source holds no more than this many with it at once (1.320). */
@@ -393,6 +398,8 @@ export interface RulesetStatBlockAction {
   brokenNextLair?: string | string[];
   /** Creatures it calls into the fight (1.325), by bestiary entry, `count` of them. */
   calls?: { creature: string; count: RulesetCombatAmount; initiative?: "roll" | "after" };
+  /** The forms it changes into (1.342), found in the bestiary as the fight begins. */
+  forms?: RulesetShapeForms;
   /** A permission (1.291): these standard actions taken with this action's budget, only while it
    *  stands obscured where it says so. 5e's Nimble Escape, Cunning Action, Shadow Stealth. */
   standard?: { actions: string[]; while?: "obscured" };
@@ -713,6 +720,12 @@ export interface RulesetCombatAction {
   cureOneOf?: true;
   /** Its user names a creature type as they use it (1.270), one of `modes`. */
   kindChoice?: true;
+  /** A form is picked as it is used (1.342), from its `modes`; `formCap` keeps out the forms above
+   *  what its target may become. */
+  shapes?: true;
+  formCap?: RulesetShapeCap;
+  /** Its forms as written, until the fight finds them in the bestiary (1.342). */
+  formsOf?: RulesetShapeForms;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
   /** Taken as somebody else's attack hits, these dice come off the roll (1.250): Cutting Words. */
@@ -1023,6 +1036,58 @@ export interface RulesetCombatAction {
 
 /** One other way to make an attack: how many it shoots, what it adds to hit (dice in a pool fight),
  *  how far it moves a pool fight's per-die target, and how many it may be aimed at. */
+/** A form a shape change offers (1.342), found in the bestiary as the fight began. */
+export interface RulesetShapeForm {
+  creature: { catalogId: string; entryId: string };
+  name: string;
+  block: RulesetStatBlock;
+  /** Its bestiary entry's value of the cap's filter (5e's challenge), when it has one. */
+  rank?: number;
+}
+
+/** What a target may become (1.342): no form whose `rank` is above the target's `filter` (a creature)
+ *  or `targetLevel` read off its sheet. */
+export interface RulesetShapeCap {
+  filter: string;
+  targetLevel?: RulesetValueRef;
+}
+
+/** Somebody in another shape (1.342). */
+export interface RulesetShaped {
+  condition: string;
+  form: RulesetShapeForm["creature"];
+  name: string;
+  /** The form's own health, while it has its own. */
+  health?: { value: number; max: number; temp: number };
+  /** What the shape took the place of, given back as it ends. */
+  was: Partial<Pick<RulesetCombatant, (typeof RULESET_SHAPE_KEYS)[number]>>;
+  /** Of `was`, what they did not have at all. */
+  lacked: Array<(typeof RULESET_SHAPE_KEYS)[number]>;
+}
+
+/** What a shape takes the place of on whoever takes it (1.342). */
+export const RULESET_SHAPE_KEYS = [
+  "actions",
+  "uses",
+  "spent",
+  "defense",
+  "saves",
+  "checks",
+  "speed",
+  "speeds",
+  "hover",
+  "senses",
+  "size",
+  "baseSize",
+  "span",
+  "riders",
+  "block",
+  "creature",
+  "soak",
+  "hardness",
+  "criticalFrom",
+] as const;
+
 export interface RulesetCombatMode {
   id: string;
   label: string;
@@ -1042,6 +1107,8 @@ export interface RulesetCombatMode {
   cure?: { ends?: string; track?: { track: string; by: number }; unseals?: true };
   /** The creature type named in this mode (1.270), remembered by what it puts on. */
   kind?: string;
+  /** The form picked in this mode (1.342), taken by whoever what it puts on lands on. */
+  form?: RulesetShapeForm;
   /** What a hit in this mode sets off around whoever it hit (1.312), `within` in cells. */
   aroundHit?: RulesetCombatAroundHit;
 }
@@ -1437,6 +1504,12 @@ export interface RulesetCombatant {
   /** The light a creature sheds now, in place of its block's, since one of its actions lit or put
    *  it out (1.296). */
   shedding?: RulesetLightRadius | "out";
+  /** The shape they are in (1.342), held by `condition`: the form, its own health while it has one,
+   *  and what they were before, given back when it ends. */
+  shape?: RulesetShaped;
+  /** Its bestiary entry's numbers by filter id (1.342), read as the fight began where a form is capped
+   *  by one: what it may be turned into. */
+  ranks?: Record<string, number>;
   /** A party member's sheet, which is where their health and conditions really live. */
   sheet?: {
     build: RulesetSheetBuild;
@@ -2260,6 +2333,17 @@ export type RulesetCombatEvent =
       item: string;
       /** Dismissed, or its maker dead (1.308). */
       gone?: true;
+    }
+  /** A shape taken (1.342), or given up (`gone`, `reason`), or refused one too strong for its
+   *  target (`refused`). */
+  | {
+      type: "shaped";
+      targetId: string;
+      condition: string;
+      form: string;
+      gone?: true;
+      reason?: string;
+      refused?: true;
     }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */

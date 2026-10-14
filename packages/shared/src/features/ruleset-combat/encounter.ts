@@ -226,6 +226,8 @@ export function rulesetCombatHealth(
   combat: RulesetCombat,
   combatant: RulesetCombatant,
 ): RulesetCombatHealth {
+  // In a form with health of its own (1.342), that is their health while it lasts.
+  if (combatant.shape?.health) return { ...combatant.shape.health };
   // A copy, always: an opponent's health lives in the state, and a caller that read it before a
   // blow has to still be holding what it was before. An opponent without a sheet is written in
   // plain numbers whichever shape the party's health takes; one with a sheet is read below, exactly
@@ -2801,6 +2803,11 @@ function mechanicsAction(
   // A weapon put in hand (1.306): which one is picked as it is used, its modes filled in once the
   // sheet's items and entries are known.
   if (mechanics.conjures) action.conjures = true;
+  // A form picked as it is used (1.342), its modes filled in once the fight's bestiary is known.
+  if (mechanics.forms) {
+    action.shapes = true;
+    action.formsOf = structuredClone(mechanics.forms);
+  }
   // A creature type named as it is used (1.270), picked like a weapon's mode: Antipathy/Sympathy.
   const creatureTypes = definition.combat?.creatureTypes;
   if (mechanics.kindChoice && creatureTypes) {
@@ -3321,6 +3328,8 @@ function blockActions(
     // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
+    // Its forms (1.342), found in the bestiary once the fight is built.
+    ...(action.forms ? { shapes: true as const, formsOf: structuredClone(action.forms) } : {}),
     ...(action.healsOnSlay ? { healsOnSlay: { ...action.healsOnSlay } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
     ...(action.recharge
@@ -4165,6 +4174,59 @@ export function rulesetBoardProps(grid: TacticalGrid, props: RulesetBoardPropInp
  * nobody in it rather than throwing: the caller reads the outcome and falls back to what it did
  * before.
  */
+/** A shape change's forms (1.342), each a mode of its action: from the bestiary, the fight's own and
+ *  its user's catalogs, kept to what its user's sheet allows them now. */
+function fillShapeForms(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  action: RulesetCombatAction,
+  bestiary: RulesetCatalogEntriesById,
+): void {
+  const forms = action.formsOf!;
+  delete action.formsOf;
+  const catalogs: RulesetCatalogEntriesById = { ...bestiary };
+  for (const [catalogId, entries] of Object.entries(combatant.sheet?.catalogs ?? {})) {
+    catalogs[catalogId] = [...(catalogs[catalogId] ?? []), ...entries];
+  }
+  const sheet = combatant.sheet;
+  let evaluated: ReturnType<typeof evaluateRulesetSheetLive> | undefined;
+  const read = (ref: RulesetValueRef) =>
+    sheet
+      ? resolveRulesetValueRef(
+          definition,
+          sheet.build,
+          ref,
+          (evaluated ??= evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items)),
+        )
+      : 0;
+  const cap = forms.upTo?.at && sheet ? read(forms.upTo.at) : undefined;
+  const modes: RulesetCombatMode[] = [];
+  for (const ref of forms.into) {
+    const [catalogId, entryId] = ref.split("/");
+    const entry = catalogId && entryId ? findRulesetCreatureEntry(catalogs, { catalogId, entryId }) : null;
+    const block = rulesetCreatureBlock(definition, entry);
+    if (!entry || !block) continue;
+    const ranked = forms.upTo ? entry.filters?.[forms.upTo.filter] : undefined;
+    const rank = typeof ranked === "number" ? ranked : undefined;
+    if (cap !== undefined && rank !== undefined && rank > cap) continue;
+    // A way of moving it may not have yet: no flying before druid level 8.
+    if (forms.without?.some((bar) => (block.speeds?.[bar.speed] ?? 0) > 0 && !(bar.unless && read(bar.unless) > 0)))
+      continue;
+    modes.push({
+      id: `form-${catalogId}-${entryId}`,
+      label: entry.label,
+      form: {
+        creature: { catalogId: catalogId!, entryId: entryId! },
+        name: entry.label,
+        block,
+        ...(rank !== undefined ? { rank } : {}),
+      },
+    });
+  }
+  action.modes = modes;
+  if (forms.upTo?.targetLevel) action.formCap = { filter: forms.upTo.filter, targetLevel: forms.upTo.targetLevel };
+}
+
 export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEncounterState {
   const { definition, seed } = input;
   const combat = definition.combat;
@@ -4441,6 +4503,31 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.initiative === "after" ? { after: true as const } : {}),
       };
     });
+  }
+  // The forms a shape change offers (1.342), found now in the ruleset's catalogs, the fight's bestiary
+  // or the user's own: one nobody can find is not offered, nor one its user may not take yet.
+  for (const combatant of state.combatants) {
+    for (const action of combatant.actions) {
+      if (action.formsOf) fillShapeForms(definition, combatant, action, callable());
+    }
+  }
+  // And what the creatures in it may be turned into: their own number by each filter a form is capped by.
+  const capped = new Set(
+    state.combatants.flatMap((one) => one.actions.flatMap((action) => (action.formCap ? [action.formCap.filter] : []))),
+  );
+  if (capped.size) {
+    const catalogs = callable();
+    for (const combatant of state.combatants) {
+      if (!combatant.creature) continue;
+      const entry = findRulesetCreatureEntry(catalogs, combatant.creature);
+      const ranks = Object.fromEntries(
+        [...capped].flatMap((filter) => {
+          const value = entry?.filters?.[filter];
+          return typeof value === "number" ? [[filter, value] as const] : [];
+        }),
+      );
+      if (Object.keys(ranks).length) combatant.ranks = ranks;
+    }
   }
   // Held Ground (1.323): nobody dies here.
   const held = heldGroundOf(definition, input.heldGround);

@@ -57,6 +57,16 @@ export function rulesetModedAction(
     ...(mode.cure ? cureOnly(mode.cure) : {}),
     // The creature type picked (1.270), remembered by what it puts on: Antipathy/Sympathy.
     ...(mode.kind && action.applies ? { applies: action.applies.map((one) => ({ ...one, kind: mode.kind })) } : {}),
+    // The form picked (1.342), taken by whoever what it puts on lands on, none above their cap.
+    ...(mode.form && action.applies
+      ? {
+          applies: action.applies.map((one) => ({
+            ...one,
+            form: mode.form!,
+            ...(action.formCap ? { cap: action.formCap } : {}),
+          })),
+        }
+      : {}),
     // What a hit sets off around whoever it hit (1.312): a Hammer of Thunderbolts' clap.
     ...(mode.aroundHit ? { aroundHit: mode.aroundHit } : {}),
   };

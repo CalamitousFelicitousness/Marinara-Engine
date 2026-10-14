@@ -281,6 +281,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
+    // The forms it changes into (1.342), found in the bestiary as the fight begins.
+    ...(action.forms ? { forms: structuredClone(action.forms) } : {}),
     // Who it calls into the fight (1.325), found in the bestiary as the fight begins.
     ...(action.calls && amountOf(action.calls.count)
       ? {

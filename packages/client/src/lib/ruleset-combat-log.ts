@@ -711,6 +711,12 @@ export function rulesetCombatEventLine(
         label: event.label,
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
+    // A shape taken, given up or refused (1.342): Wild Shape, Polymorph.
+    case "shaped":
+      return key(event.refused ? "shapeRefused" : event.gone ? "shapeGone" : "shaped", {
+        actor: names.combatant(event.targetId),
+        form: event.form,
+      });
     // Hanging on at 1 (1.320): the Hourglass.
     case "hangsOn":
       return key(event.label ? "hangsOnNamed" : "hangsOn", {

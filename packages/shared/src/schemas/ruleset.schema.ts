@@ -4255,6 +4255,53 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
     path: ["carriesSeen"],
   });
 
+/** The forms a shape change offers (Capability API 1.342), each a bestiary entry as
+ *  `"<catalogId>/<entryId>"`, from this ruleset's catalogs or the fight's bestiary: what its user picks
+ *  as they use it, like a weapon's mode. The entry also `applies` a condition with `shape`, and the
+ *  one it lands on becomes the picked form while that holds. `upTo` keeps out the forms whose bestiary
+ *  `filter` (5e's `challenge`) is above `at`, read off the user's sheet, and above `targetLevel`, read
+ *  off the target's sheet (a target with no sheet: its own bestiary entry's `filter`): Wild Shape's
+ *  challenge by druid level, Polymorph's "equal or less than the target's". `without` keeps out the
+ *  forms that move a way `speed` names unless `unless` reads above nought on the user's sheet: no
+ *  flying before druid level 8. */
+export const shapeFormsSchema = z
+  .object({
+    into: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(/^[^/\s]{1,80}\/[^/\s]{1,120}$/, 'A form is named "<catalogId>/<entryId>"'),
+      )
+      .min(1)
+      .max(64)
+      .refine((into) => new Set(into).size === into.length, { message: "A form is listed once" }),
+    upTo: z
+      .object({
+        filter: sheetId,
+        at: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+        targetLevel: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+      })
+      .strict()
+      .refine((upTo) => upTo.at !== undefined || upTo.targetLevel !== undefined, {
+        message: '"upTo" reads "at", "targetLevel" or both',
+      })
+      .optional(),
+    without: z
+      .array(
+        z
+          .object({
+            speed: z.enum(["fly", "swim", "climb", "burrow"]),
+            unless: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+          })
+          .strict(),
+      )
+      .max(4)
+      .optional(),
+  })
+  .strict();
+export type RulesetShapeForms = z.infer<typeof shapeFormsSchema>;
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -4541,6 +4588,9 @@ const catalogMechanicsObject = z
      *  1.270), picked like a weapon's mode: what it puts on remembers it, for an aura with
      *  `chosenKind` to reach only that kind (5e's Antipathy/Sympathy). */
     kindChoice: z.literal(true).optional(),
+    /** The forms it changes its target into (Capability API 1.342), picked as it is used: see
+     *  `shapeFormsSchema`. 5e's Wild Shape, Polymorph, True Polymorph, Shapechange. */
+    forms: shapeFormsSchema.optional(),
     /** Its damage lowers the health maximum as a creature's can (Capability API 1.235), with no save
      *  of its own: on every target, or with `onFailedSave` only on one that failed the entry's save
      *  (5e's Harm). Health only in points. */
@@ -5609,6 +5659,9 @@ const creatureActionSchema = z
       })
       .strict()
       .optional(),
+    /** The forms it changes into (Capability API 1.342), with `applies` putting on a condition with
+     *  `shape`: a monster's Change Shape. See `shapeFormsSchema`; `upTo.at` reads nothing here. */
+    forms: shapeFormsSchema.optional(),
     /** Whoever it lands on spends `spends` from their own budgets, if they have it left, to walk up
      *  to their speed toward the creature there and then (Capability API 1.326), by the shortest
      *  open way and drawing no strikes; with a save, only on a failed one. The Owed's Whisper a
@@ -8837,6 +8890,26 @@ const combatConditionSchema = z
      *  1.275): what they do stops and their clocks run on, and they hold again once this ends.
      *  Calm Emotions' charm and fright, Mindless Rage's. */
     suppresses: uniqueIds(12).optional(),
+    /** Its holder is changed into another creature's shape while it holds (Capability API 1.342): the
+     *  form an entry's `forms` picked, put on with this. They fight with the form's actions, defense,
+     *  saves, checks, speeds, senses, size and traits in place of their own; `keepsSaves` and
+     *  `keepsChecks` are their own still (Wild Shape's Intelligence, Wisdom and Charisma), and `keeps`
+     *  names their own actions they keep, by entry (`"<catalogId>/<entryId>"`) or action id. With
+     *  `health: "form"` (the default) the form has its own health, and when that runs out the shape
+     *  ends and what is left of the blow carries on to their own (5e's "reverts to its normal form ...
+     *  any excess damage carries over"); `"own"` keeps their own (Change Shape). `revert` offers
+     *  ending it on that budget (Wild Shape's bonus action). It ends as the condition does, and when
+     *  they go down. */
+    shape: z
+      .object({
+        health: z.enum(["form", "own"]).optional(),
+        keepsSaves: uniqueIds(12).optional(),
+        keepsChecks: uniqueIds(32).optional(),
+        keeps: z.array(z.string().trim().min(1).max(200)).max(24).optional(),
+        revert: sheetId.optional(),
+      })
+      .strict()
+      .optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied
@@ -13118,6 +13191,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       entry.suppresses?.forEach((held, heldIndex) => {
         if (!conditions.has(held)) issue([...path, "suppresses", heldIndex], `Unknown condition "${held}"`);
       });
+      // A shape (1.342): its revert's budget, and the saves it keeps, are the ruleset's own.
+      if (entry.shape?.revert && !combat.economy.budgets.some((budget) => budget.id === entry.shape!.revert)) {
+        issue([...path, "shape", "revert"], `Unknown budget "${entry.shape.revert}"`);
+      }
+      entry.shape?.keepsSaves?.forEach((save, saveIndex) => {
+        if (!sheet.saves.some((one) => one.id === save))
+          issue([...path, "shape", "keepsSaves", saveIndex], `Unknown save "${save}"`);
+      });
       // Gating an effect this condition does not have says nothing, and is nearly always a typo for
       // one it does.
       if (Array.isArray(entry.whileSourceInSight)) {
@@ -14432,6 +14513,15 @@ function creatureIssues(
     targetHoldsIssues(definition, action.targetHolds, [...path, "targetHolds"], add);
     targetTestIssues(definition, { plus: action.damage?.plus }, [...path, "damage"], add);
     targetTestIssues(definition, { applies: action.applies, save: action.save }, path, add);
+    if (action.forms) {
+      shapeFormsIssues(definition, action.applies, path, add);
+      // A stat block has no sheet to read its own cap off.
+      if (action.forms.upTo?.at) add([...path, "forms", "upTo", "at"], 'A creature has no sheet to read "at" off');
+      action.forms.without?.forEach((bar, barIndex) => {
+        if (bar.unless)
+          add([...path, "forms", "without", barIndex, "unless"], 'A creature has no sheet to read "unless" off');
+      });
+    }
     // What it ends is held to the names a catalog entry's cures are (1.261).
     if (action.ends) cureIssues(definition, { ends: action.ends }, path, add);
     action.applies?.forEach((applies, appliesIndex) => {
@@ -15907,6 +15997,24 @@ function contextualCheckIssues(
   return found;
 }
 
+/** What a shape change's forms need (1.342): a fight, and a condition with `shape` among what it puts
+ *  on, which is what holds the form. */
+function shapeFormsIssues(
+  definition: RulesetDefinition,
+  applies: ReadonlyArray<{ condition: string }> | undefined,
+  path: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (!definition.combat) {
+    add([...path, "forms"], "A shape is taken in a fight, so the ruleset declares a combat block");
+    return;
+  }
+  const shaped = new Set((definition.combat.conditions ?? []).filter((one) => one.shape).map((one) => one.condition));
+  if (!applies?.some((one) => shaped.has(one.condition))) {
+    add([...path, "forms"], 'The form is held by what it puts on, so "applies" names a condition with "shape"');
+  }
+}
+
 export function rulesetCatalogEntryIssues(
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
@@ -16435,6 +16543,24 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.kindChoice && !definition.combat?.creatureTypes)
       add([index, "mechanics", "kindChoice"], "This ruleset has no creature types to choose from");
+    if (mechanics?.forms) {
+      shapeFormsIssues(definition, mechanics.applies, [index, "mechanics"], add);
+      for (const [key, ref] of [
+        ["at", mechanics.forms.upTo?.at],
+        ["targetLevel", mechanics.forms.upTo?.targetLevel],
+      ] as const) {
+        if (!ref) continue;
+        for (const refIssue of rulesetValueRefIssues(ref, names, names.derived, false)) {
+          add([index, "mechanics", "forms", "upTo", key, refIssue.key], refIssue.message);
+        }
+      }
+      mechanics.forms.without?.forEach((bar, barIndex) => {
+        if (!bar.unless) return;
+        for (const refIssue of rulesetValueRefIssues(bar.unless, names, names.derived, false)) {
+          add([index, "mechanics", "forms", "without", barIndex, "unless", refIssue.key], refIssue.message);
+        }
+      });
+    }
     if (mechanics?.teleport && !definition.combat?.distance)
       add(
         [index, "mechanics", "teleport"],

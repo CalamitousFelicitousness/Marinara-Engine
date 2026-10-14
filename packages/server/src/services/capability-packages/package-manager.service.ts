@@ -2114,6 +2114,19 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
+/** A shape change (1.342): an entry or a creature's action offering `forms`, or a condition with a `shape`. */
+function carriesShapes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesShapes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(plainRecord(record.forms)?.into)) return true;
+  if (typeof record.condition === "string" && plainRecord(record.shape)) return true;
+  const creature = plainRecord(record.creature);
+  if (Array.isArray(creature?.actions) && creature.actions.some((one) => carriesShapes(one, depth + 1))) return true;
+  return featureValues(record).some((one) => carriesShapes(one, depth + 1));
+}
+
 /** A creature's action that calls creatures into the fight (1.325). */
 function carriesCalls(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5134,6 +5147,13 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Shape changes, 1.342.
+  if (
+    !declaresApi(342) &&
+    (carriesShapes(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesShapes(document)))
+  ) {
+    return "A ruleset with shape changes requires schemaVersion 2 and capabilityApi 1.342 or newer";
   }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (

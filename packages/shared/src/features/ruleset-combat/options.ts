@@ -2447,6 +2447,8 @@ function optionFrom(
     });
     if (modes.length > 0) option.modes = modes;
   }
+  // A shape change with no form its user may take is not offered (1.342).
+  if (action.shapes && !option.modes?.length) return null;
   // Where initiative is a number attacks move, the ways this attack may be made, each with what it
   // would do: a style that takes would take what its damage dice are worth off the target's number,
   // one that spends throws the actor's own number at their health.

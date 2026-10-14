@@ -1,0 +1,491 @@
+/**
+ * Shape changes (Capability API 1.342).
+ *
+ *   - `mechanics.forms` with a condition's `shape`: Wild Shape offers each form it may take as a mode,
+ *     capped by `upTo.at` off its user's sheet and kept off flying ones by `without`. The form's
+ *     actions, defense and speed take the place of the druid's own, with a way back on the bonus
+ *     action; a blow past the form's health ends the shape and the rest carries on to their own.
+ *   - Polymorph on a creature: `upTo.targetLevel` refuses a form above its own number; held by
+ *     concentration, the shape ends when it breaks.
+ *   - Refused shapes; the install gate.
+ */
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  applyRulesetCombatChoice,
+  createRulesetEncounter,
+  parseRulesetDefinition,
+  rowsFromCatalogEntry,
+  rulesetCombatant,
+  rulesetCombatConditions,
+  rulesetCombatHealth,
+  rulesetCombatOptions,
+  rulesetSheetBuildSchema,
+  supportedCapabilityApi,
+  type RulesetCatalogEntriesById,
+  type RulesetCatalogEntry,
+  type RulesetCombatChoice,
+  type RulesetCombatEvent,
+  type RulesetDefinition,
+  type RulesetEncounterState,
+} from "../../packages/shared/src/index.js";
+
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-shapes-"));
+process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+const { getCapabilityPackageInstallIssue } =
+  await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+
+try {
+  assert.ok(supportedCapabilityApi.minor >= 342);
+  const fiveEText = readFileSync(
+    fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
+    "utf8",
+  );
+  const beast = (id: string, label: string, cr: number, extra: Record<string, unknown>) => ({
+    id,
+    label,
+    filters: { challenge: `CR ${cr}`, kind: "Beast", places: ["Forest"], cr },
+    creature: {
+      health: 30,
+      defense: 14,
+      initiativeModifier: 0,
+      speed: 50,
+      abilities: { str: 17, dex: 15, con: 15, int: 3, wis: 12, cha: 7 },
+      tier: "cr_1",
+      actions: [
+        {
+          id: "maul",
+          name: "Maul",
+          budget: "action",
+          toHit: 5,
+          damage: { dice: "2d6", flat: 3, type: "piercing" },
+          reach: 5,
+        },
+      ],
+      ...extra,
+    },
+  });
+  const wolf = beast("dire-wolf", "Dire Wolf", 1, {});
+  const eagle = beast("giant-eagle", "Giant Eagle", 1, { speed: 10, speeds: { fly: 80 } });
+  const wildShape = (forms: Record<string, unknown>) => ({
+    id: "wild-shape",
+    label: "Wild Shape",
+    rows: [{ list: "spells", values: { name: "Wild Shape", level: 0, prepared: true } }],
+    mechanics: {
+      kind: "buff",
+      targets: "self",
+      budget: "action",
+      applies: [{ condition: "wild_shaped", duration: { rounds: 600 } }],
+      forms,
+    },
+  });
+  const polymorph = {
+    id: "polymorph",
+    label: "Polymorph",
+    rows: [{ list: "spells", values: { name: "Polymorph", level: 4, prepared: true } }],
+    mechanics: {
+      kind: "debuff",
+      targets: "enemy",
+      range: 60,
+      budget: "action",
+      concentration: true,
+      save: { save: "wis_save", onSuccess: "negates" },
+      applies: [{ condition: "polymorphed", duration: { rounds: 600 } }],
+      forms: {
+        into: ["creatures/dire-wolf", "creatures/hollow-sentinel"],
+        upTo: { filter: "cr", targetLevel: { field: "level" } },
+      },
+    },
+  };
+  const wolfOnly = wildShape({
+    into: ["creatures/dire-wolf", "creatures/giant-eagle", "creatures/hollow-sentinel"],
+    upTo: { filter: "cr", at: { const: 1 } },
+    without: [{ speed: "fly" }],
+  });
+  const document = (entries: unknown[], edit: (doc: Record<string, any>) => void = () => {}) => {
+    const doc = JSON.parse(fiveEText);
+    const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
+    creatures.filters.push({ id: "cr", label: "Challenge rating", type: "number" });
+    for (const [id, cr] of [
+      ["thorn-lurker", 0.5],
+      ["cinder-hound", 1],
+      ["grave-piper", 2],
+      ["hollow-sentinel", 3],
+      ["toll-sergeant", 5],
+    ] as const) {
+      creatures.entries.find((one: { id: string }) => one.id === id).filters.cr = cr;
+    }
+    creatures.entries.push(wolf, eagle);
+    doc.sheet.live.conditions.push(
+      { id: "wild_shaped", label: "Wild Shape" },
+      { id: "polymorphed", label: "Polymorphed" },
+    );
+    doc.combat.conditions.push(
+      {
+        condition: "wild_shaped",
+        effects: [],
+        shape: { keepsSaves: ["wis_save"], keeps: ["polymorph"], revert: "bonus" },
+      },
+      { condition: "polymorphed", effects: [], shape: {} },
+    );
+    doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries });
+    edit(doc);
+    return doc;
+  };
+  const parsed = (doc: unknown): RulesetDefinition => {
+    const result = parseRulesetDefinition(doc);
+    assert.ok(result.ok, result.ok ? "" : result.issues.join("; "));
+    return result.definition;
+  };
+  const refused = (doc: unknown, pattern: RegExp) => {
+    const result = parseRulesetDefinition(doc);
+    assert.equal(result.ok, false, `should be refused: ${pattern}`);
+    if (!result.ok)
+      assert.ok(
+        result.issues.some((issue) => pattern.test(issue)),
+        result.issues.join("; "),
+      );
+  };
+
+  // Each die shows what is queued for it, then 10.
+  let queued: number[] = [];
+  const roll = (sides: number) => Math.min(sides, queued.shift() ?? 10);
+  const of = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T) =>
+    events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
+
+  const fight = (definition: RulesetDefinition, entries: RulesetCatalogEntry[], level = 8) => {
+    const bestiary: RulesetCatalogEntriesById = {
+      creatures: definition.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries!,
+    };
+    const state = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: roll,
+      bestiary,
+      combatants: [
+        {
+          id: "druid",
+          name: "Druid",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { str: 10, dex: 12, con: 14, int: 10, wis: 18, cha: 10 },
+            fields: { level, ac: 12, speed: 30, hp_max: 40 },
+            lists: { spells: entries.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row)) },
+          }),
+          live: {},
+          catalogs: { spells: entries },
+        },
+        {
+          id: "brute",
+          name: "Brute",
+          side: "enemy",
+          block: {
+            health: 100,
+            defense: 10,
+            initiativeModifier: 0,
+            speed: 30,
+            actions: [
+              {
+                id: "smash",
+                label: "Smash",
+                kind: "attack",
+                budget: "action",
+                toHit: 30,
+                damage: { flat: 35, type: "bludgeoning" },
+              },
+            ],
+          },
+        },
+        {
+          id: "piper",
+          name: "Grave Piper",
+          side: "enemy",
+          creature: { catalogId: "creatures", entryId: "grave-piper" },
+        },
+      ],
+      board: {
+        grid: { width: 10, height: 1, tiles: [Array(10).fill("plains")], elevation: [Array(10).fill(0)] },
+        placements: { druid: { x: 3, y: 0 }, brute: { x: 4, y: 0 }, piper: { x: 6, y: 0 } },
+      },
+    });
+    state.order = ["druid", "brute", "piper"];
+    state.turn = 0;
+    return state;
+  };
+  const health = (definition: RulesetDefinition, one: Parameters<typeof rulesetCombatHealth>[2]) =>
+    rulesetCombatHealth(definition, definition.combat!, one);
+  const who = (state: RulesetEncounterState, id: string) => rulesetCombatant(state, id)!;
+  const step = (definition: RulesetDefinition, state: RulesetEncounterState, choice: RulesetCombatChoice) => {
+    const taken = applyRulesetCombatChoice(definition, state, choice, roll);
+    assert.deepEqual(of(taken.events, "refused"), [], JSON.stringify(taken.events));
+    return taken;
+  };
+  const optionFor = (definition: RulesetDefinition, state: RulesetEncounterState, actor: string, label: string) => {
+    const option = rulesetCombatOptions(definition, state, actor).find((one) => one.label === label);
+    assert.ok(option, `${label}: ${rulesetCombatOptions(definition, state, actor).map((one) => one.label)}`);
+    return option;
+  };
+
+  // ── Wild Shape: the forms it may take, and what taking one changes ──
+  {
+    const definition = parsed(document([wolfOnly, polymorph]));
+    const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
+    let state = fight(definition, entries);
+    const druid = who(state, "druid");
+    const ownActions = druid.actions.map((one) => one.id);
+    const ownDefense = druid.defense;
+    const ownSaves = structuredClone(druid.saves);
+    const option = optionFor(definition, state, "druid", "Wild Shape");
+    // CR 1 at most and nothing that flies: the wolf, not the eagle or the sentinel.
+    assert.deepEqual(
+      option.modes?.map((one) => one.id),
+      ["form-creatures-dire-wolf"],
+    );
+    const taken = step(definition, state, {
+      actorId: "druid",
+      optionId: option.id,
+      targetIds: ["druid"],
+      mode: "form-creatures-dire-wolf",
+    });
+    state = taken.state;
+    const shaped = of(taken.events, "shaped");
+    assert.equal(shaped.length, 1, JSON.stringify(taken.events));
+    assert.equal(shaped[0]!.form, "Dire Wolf");
+    const wolfDruid = who(state, "druid");
+    assert.ok(rulesetCombatConditions(definition, wolfDruid).includes("wild_shaped"));
+    assert.equal(wolfDruid.shape?.name, "Dire Wolf");
+    assert.equal(wolfDruid.defense, 14, "the wolf's hide");
+    assert.ok(
+      wolfDruid.actions.some((one) => one.id === "maul"),
+      "the wolf's own bite",
+    );
+    assert.ok(
+      wolfDruid.actions.some((one) => one.entry === "spells/polymorph"),
+      "what it keeps",
+    );
+    assert.ok(!wolfDruid.actions.some((one) => one.label === "Wild Shape"), "not what it does not keep");
+    assert.ok(
+      wolfDruid.actions.some((one) => one.id === "shape:revert"),
+      "a way back",
+    );
+    assert.equal(wolfDruid.saves.wis_save, ownSaves.wis_save, "its own wisdom save, kept");
+    assert.deepEqual(wolfDruid.creature, { catalogId: "creatures", entryId: "dire-wolf" }, "drawn as the wolf");
+    assert.deepEqual(health(definition, wolfDruid), { value: 30, max: 30, temp: 0 }, "the wolf's health");
+
+    // A blow of 35 at the wolf's 30: the shape ends, and 5 carries on to the druid's 40.
+    {
+      const hit = structuredClone(state);
+      hit.turn = 1;
+      who(hit, "brute").budgets.action = 1;
+      const struck = step(definition, hit, { actorId: "brute", optionId: "smash", targetIds: ["druid"] });
+      const back = who(struck.state, "druid");
+      assert.equal(back.shape, undefined, "the shape ends");
+      assert.ok(of(struck.events, "shaped").some((one) => one.gone && one.reason === "damage"));
+      assert.ok(!rulesetCombatConditions(definition, back).includes("wild_shaped"), "and what held it");
+      assert.equal(health(definition, back)!.value, 35, "the rest carries on");
+      assert.equal(back.defense, ownDefense);
+      assert.deepEqual(
+        back.actions.map((one) => one.id),
+        ownActions,
+        "its own actions back",
+      );
+      assert.equal(back.creature, undefined, "drawn as itself");
+    }
+    // A smaller blow stays in the form.
+    {
+      const hit = structuredClone(state);
+      hit.turn = 1;
+      who(hit, "brute").budgets.action = 1;
+      who(hit, "brute").actions[0]!.damage = { flat: 10, type: "bludgeoning" } as never;
+      const struck = step(definition, hit, { actorId: "brute", optionId: "smash", targetIds: ["druid"] });
+      const still = who(struck.state, "druid");
+      assert.equal(still.shape?.health?.value, 20);
+      assert.equal(health(definition, still)!.value, 20);
+    }
+    // The way back, on the bonus action.
+    {
+      const revert = rulesetCombatOptions(definition, state, "druid").find((one) => one.id === "shape:revert");
+      assert.ok(revert, "offered on the bonus action");
+      const back = step(definition, state, { actorId: "druid", optionId: "shape:revert", targetIds: [] });
+      const druidBack = who(back.state, "druid");
+      assert.equal(druidBack.shape, undefined);
+      assert.ok(!rulesetCombatConditions(definition, druidBack).includes("wild_shaped"));
+      assert.equal(druidBack.defense, ownDefense);
+      assert.equal(health(definition, druidBack)!.value, 40, "their own health, untouched");
+      assert.equal(druidBack.budgets.bonus, 0, "the bonus action spent");
+    }
+    // `unless`: flying once it reads above 0.
+    {
+      const flier = parsed(
+        document([
+          wildShape({
+            into: ["creatures/dire-wolf", "creatures/giant-eagle"],
+            upTo: { filter: "cr", at: { const: 1 } },
+            without: [{ speed: "fly", unless: { field: "level" } }],
+          }),
+        ]),
+      );
+      const flierEntries = flier.catalogs!.find((catalog) => catalog.id === "spells")!
+        .entries! as RulesetCatalogEntry[];
+      assert.deepEqual(
+        optionFor(flier, fight(flier, flierEntries), "druid", "Wild Shape").modes?.map((one) => one.id),
+        ["form-creatures-dire-wolf", "form-creatures-giant-eagle"],
+      );
+      // A cap nothing reaches leaves nothing to take, and nothing is offered.
+      const none = parsed(
+        document([wildShape({ into: ["creatures/hollow-sentinel"], upTo: { filter: "cr", at: { const: 1 } } })]),
+      );
+      const noneEntries = none.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
+      assert.ok(
+        !rulesetCombatOptions(none, fight(none, noneEntries), "druid").some((one) => one.label === "Wild Shape"),
+      );
+    }
+  }
+
+  // ── Polymorph on a creature: capped by its own number, held by concentration ──
+  {
+    const definition = parsed(document([polymorph]));
+    const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
+    const state = fight(definition, entries);
+    assert.deepEqual(who(state, "piper").ranks, { cr: 2 });
+    const option = optionFor(definition, state, "druid", "Polymorph");
+    assert.deepEqual(
+      option.modes?.map((one) => one.id),
+      ["form-creatures-dire-wolf", "form-creatures-hollow-sentinel"],
+    );
+    // CR 3 for a CR 2 piper: refused.
+    queued = [1];
+    const tooBig = applyRulesetCombatChoice(
+      definition,
+      structuredClone(state),
+      { actorId: "druid", optionId: option.id, targetIds: ["piper"], mode: "form-creatures-hollow-sentinel" },
+      roll,
+    );
+    assert.ok(
+      of(tooBig.events, "shaped").some((one) => one.refused),
+      JSON.stringify(tooBig.events),
+    );
+    assert.equal(who(tooBig.state, "piper").shape, undefined);
+    assert.ok(!rulesetCombatConditions(definition, who(tooBig.state, "piper")).includes("polymorphed"));
+    // The wolf, on a failed save.
+    queued = [1];
+    const turned = step(definition, structuredClone(state), {
+      actorId: "druid",
+      optionId: option.id,
+      targetIds: ["piper"],
+      mode: "form-creatures-dire-wolf",
+    });
+    queued = [];
+    const piper = who(turned.state, "piper");
+    assert.equal(piper.shape?.name, "Dire Wolf");
+    assert.deepEqual(
+      piper.actions.filter((one) => !one.id.startsWith("contest:")).map((one) => one.id),
+      ["maul"],
+      "only the wolf's, and no way back",
+    );
+    // A saved one stays itself.
+    queued = [20];
+    const saved = step(definition, structuredClone(state), {
+      actorId: "druid",
+      optionId: option.id,
+      targetIds: ["piper"],
+      mode: "form-creatures-dire-wolf",
+    });
+    queued = [];
+    assert.equal(who(saved.state, "piper").shape, undefined);
+    // Concentration broken: a hit on the druid, and a failed save.
+    const later = structuredClone(turned.state);
+    later.turn = 1;
+    who(later, "brute").budgets.action = 1;
+    queued = [10, 1];
+    const broken = step(definition, later, { actorId: "brute", optionId: "smash", targetIds: ["druid"] });
+    queued = [];
+    const piperBack = who(broken.state, "piper");
+    assert.equal(piperBack.shape, undefined, "the piper is itself again");
+    assert.ok(piperBack.actions.some((one) => one.id === "bone_rap"));
+    assert.deepEqual(piperBack.creature, { catalogId: "creatures", entryId: "grave-piper" });
+  }
+
+  // ── Refused shapes ──
+  {
+    refused(
+      document([
+        {
+          ...wolfOnly,
+          mechanics: { ...wolfOnly.mechanics, applies: [{ condition: "prone", duration: { rounds: 1 } }] },
+        },
+      ]),
+      /names a condition with "shape"/,
+    );
+    refused(
+      document([wolfOnly], (doc) => {
+        doc.combat.conditions.find((one: { condition: string }) => one.condition === "wild_shaped").shape.revert =
+          "nope";
+      }),
+      /Unknown budget "nope"/,
+    );
+    refused(
+      document([wolfOnly], (doc) => {
+        doc.combat.conditions.find((one: { condition: string }) => one.condition === "wild_shaped").shape.keepsSaves = [
+          "luck",
+        ];
+      }),
+      /Unknown save "luck"/,
+    );
+    refused(document([wildShape({ into: ["dire-wolf"] })]), /<catalogId>\/<entryId>/);
+    refused(
+      document([wildShape({ into: ["creatures/dire-wolf"], upTo: { filter: "cr" } })]),
+      /reads "at", "targetLevel" or both/,
+    );
+    refused(
+      document([], (doc) => {
+        doc.catalogs
+          .find((catalog: { holds?: string }) => catalog.holds === "creatures")
+          .entries[0].creature.actions.push({
+            id: "change",
+            name: "Change Shape",
+            budget: "action",
+            applies: [{ condition: "wild_shaped", duration: { rounds: 600 } }],
+            forms: { into: ["creatures/dire-wolf"], upTo: { filter: "cr", at: { const: 1 } } },
+          });
+      }),
+      /A creature has no sheet to read "at" off/,
+    );
+  }
+
+  // ── The install gate ──
+  {
+    const gate = "A ruleset with shape changes requires schemaVersion 2 and capabilityApi 1.342 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const shaper = document([wolfOnly]);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(341) as never, shaper), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(342) as never, shaper), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(341) as never, JSON.parse(fiveEText)), gate);
+    // A condition with a shape, on its own, needs it too.
+    const held = JSON.parse(fiveEText);
+    held.combat.conditions.push({ condition: "prone", effects: [], shape: {} });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(341) as never, held), gate);
+  }
+
+  console.log(
+    "Shapes: Wild Shape's wolf with the druid's own wisdom, the rest of a blow past it, the way back; Polymorph capped by the piper's own number and ended with concentration.",
+  );
+} finally {
+  rmSync(dataDir, { recursive: true, force: true });
+}

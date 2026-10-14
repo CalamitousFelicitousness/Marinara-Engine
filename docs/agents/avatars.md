@@ -191,7 +191,7 @@ You don't have to make anything to start. A character or persona with expression
 
 ### Blender with the VRM Add-on for Blender
 
-1. Install the VRM Add-on for Blender from Blender's **Get Extensions** in **Preferences**.
+1. Install the VRM Add-on for Blender from **Get Extensions** in Blender's **Preferences**. Blender before 4.2 installs the add-on's ZIP file under **Add-ons** instead.
 2. Give the model a humanoid armature and assign its VRM bones. The add-on can assign them automatically.
 3. Set up the expressions in the add-on's VRM panel: **Expressions** for VRM 1.0, or **VRM 0.x Blend Shape Proxy** for VRM 0.x. Each one must move a shape key or a material; an empty expression changes nothing, so the import leaves it unset. Custom expressions with a clear name, such as `Smile` or `Shock`, are matched too.
    - Faces: **Happy**, **Angry**, **Sad**, **Relaxed** and **Surprised**. VRM 0.x calls the first four **Joy**, **Angry**, **Sorrow** and **Fun**, and has no surprised preset, so add a custom one named `Surprised`.

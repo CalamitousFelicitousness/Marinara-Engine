@@ -7,12 +7,14 @@
 // dangling reference still reads as 0 instead of failing a turn.
 
 import {
+  rulesetPartyDefinition,
   RULESET_POOL_MAX_DICE,
   rulesetSheetEnvelopeSchema,
   type RulesetCatalogItem,
   type RulesetCombatAbilitySource,
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
+  type RulesetResolution,
   type RulesetHideWhen,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
@@ -20,7 +22,10 @@ import {
   type RulesetUntrained,
   type RulesetValueRef,
   rulesetDieSides,
+  type RulesetList,
   type RulesetListColumn,
+  rulesetOverriddenResolution,
+  type RulesetResolutionOverride,
 } from "../../schemas/ruleset.schema.js";
 
 type StepTable = ReadonlyArray<readonly [number, number]>;
@@ -149,14 +154,58 @@ export function migrateRulesetSheetBuild(
   return next;
 }
 
+/** A list row with its worked-out cells (Capability API 1.210) filled in: each the columns it names
+ *  added up (an empty cell reads its column's default), held to its own bounds. Unchanged, and the
+ *  same object, when the row already holds them. */
+export function workOutRulesetListRow<Row extends Record<string, unknown>>(
+  list: Pick<RulesetList, "columns">,
+  row: Row,
+): Row {
+  let next: Row | undefined;
+  for (const column of list.columns) {
+    if (column.type !== "number" || !column.sum) continue;
+    let total = 0;
+    for (const id of column.sum) {
+      const other = list.columns.find((each) => each.id === id);
+      const value = (next ?? row)[id];
+      total += finite(value) ?? (other?.type === "number" ? (other.default ?? 0) : 0);
+    }
+    let held = Math.min(column.max, Math.max(column.min, total));
+    if (column.integer) held = Math.floor(held);
+    if ((next ?? row)[column.id] !== held) next = { ...(next ?? row), [column.id]: held };
+  }
+  return next ?? row;
+}
+
+/** A build with every list's worked-out cells filled in; the same object when nothing changes. */
+export function workOutRulesetListCells(definition: RulesetDefinition, build: RulesetSheetBuild): RulesetSheetBuild {
+  let lists: RulesetSheetBuild["lists"] | undefined;
+  for (const list of definition.sheet.lists) {
+    if (!list.columns.some((column) => column.type === "number" && column.sum)) continue;
+    const rows = build.lists?.[list.id];
+    if (!Array.isArray(rows)) continue;
+    const worked = rows.map((row) => (row && typeof row === "object" ? workOutRulesetListRow(list, row) : row));
+    if (worked.some((row, index) => row !== rows[index])) lists = { ...(lists ?? build.lists), [list.id]: worked };
+  }
+  return lists ? { ...build, lists } : build;
+}
+
 /** A stored sheet as this version of its ruleset reads it, migrated to the current layout, or null
- *  when it is not a sheet at all. A sheet stored by a NEWER version is read as it stands. */
+ *  when it is not a sheet at all. A sheet stored by a NEWER version is read as it stands. Worked-out
+ *  list cells are filled in on every read, so nothing that reads a row sees a stale one. */
 export function readRulesetSheetEnvelope(definition: RulesetDefinition, stored: unknown): RulesetSheetEnvelope | null {
   const parsed = rulesetSheetEnvelopeSchema.safeParse(stored);
   if (!parsed.success) return null;
   const { v, build } = parsed.data;
-  if (v >= definition.sheet.version) return parsed.data;
-  return { ...parsed.data, v: definition.sheet.version, build: migrateRulesetSheetBuild(definition, build, v) };
+  if (v >= definition.sheet.version) {
+    const worked = workOutRulesetListCells(definition, build);
+    return worked === build ? parsed.data : { ...parsed.data, build: worked };
+  }
+  return {
+    ...parsed.data,
+    v: definition.sheet.version,
+    build: workOutRulesetListCells(definition, migrateRulesetSheetBuild(definition, build, v)),
+  };
 }
 
 /** The version a sheet written now is labelled with: this layout, never below what it already was. */
@@ -338,7 +387,8 @@ function sumListColumn(
   const list = definition.sheet.lists.find((entry) => entry.id === sum.list);
   const rows = build.lists?.[sum.list];
   if (!list || !Array.isArray(rows) || isRulesetItemHidden(list, build, definition)) return 0;
-  const column = list.columns.find((entry) => entry.id === sum.column);
+  const column = sum.column === undefined ? undefined : list.columns.find((entry) => entry.id === sum.column);
+  const keyed = sum.where === undefined ? undefined : list.columns.find((entry) => entry.id === sum.where!.column);
   const marker = sum.onlyWhen === undefined ? undefined : list.columns.find((entry) => entry.id === sum.onlyWhen);
   const cell = (row: unknown, id: string) =>
     row && typeof row === "object" && Object.prototype.hasOwnProperty.call(row, id)
@@ -347,7 +397,12 @@ function sumListColumn(
   let total = 0;
   for (const row of rows) {
     if (marker && (cell(row, marker.id) ?? marker.default) !== true) continue;
-    const value = cell(row, sum.column);
+    if (keyed && (cell(row, keyed.id) ?? keyed.default) !== sum.where!.equals) continue;
+    if (sum.count) {
+      total += 1;
+      continue;
+    }
+    const value = cell(row, sum.column!);
     total += finite(value) ?? (column?.type === "number" ? (column.default ?? 0) : 0);
   }
   return total;
@@ -421,10 +476,12 @@ export function rulesetSectionGroups<T extends { section?: string }>(
  *  check or a fight reads, goes through `evaluateRulesetSheetLive`, which supplies it. */
 export function evaluateRulesetSheet(
   definition: RulesetDefinition,
-  build: RulesetSheetBuild,
+  stored: RulesetSheetBuild,
   live?: RulesetSheetLiveValues,
 ): EvaluatedRulesetSheet {
   const { sheet, resolution } = definition;
+  // A draft row not yet read back through the envelope still counts its worked-out cells (1.210).
+  const build = workOutRulesetListCells(definition, stored);
   const abilityScores: Record<string, number> = {};
   const abilityMods: Record<string, number> = {};
   // What the character's items do to their abilities comes first, so everything reads the changed one:
@@ -509,25 +566,51 @@ export function evaluateRulesetSheet(
     });
   }
 
-  for (const entry of sheet.derived) {
-    if (entry.op === "sum") derived[entry.id] = entry.of.reduce((total, ref) => total + resolveRef(ref), 0);
-    else if (entry.op === "stepTable") derived[entry.id] = lookupStepTable(entry.table, resolveRef(entry.from));
-    else if (entry.op === "scale") {
-      derived[entry.id] = roundRulesetNumber(resolveRef(entry.of) * entry.multiplier, entry.round);
-    } else if (entry.op === "multiply") derived[entry.id] = entry.of.reduce((total, ref) => total * resolveRef(ref), 1);
-    else if (entry.op === "min") derived[entry.id] = Math.min(...entry.of.map(resolveRef));
-    else if (entry.op === "enumTable") {
-      // The value it is keyed on: a field as the sheet shows it, or a live state as it stands. With no
-      // live state at all (only where the format refuses such a read) there is no value to key on.
-      const key =
-        entry.from.field !== undefined
-          ? effectiveFieldValue(definition, build, entry.from.field)
-          : live?.states?.find((state) => state.id === entry.from.liveState)?.value;
-      derived[entry.id] =
-        typeof key === "string" && Object.prototype.hasOwnProperty.call(entry.table, key)
-          ? entry.table[key]!
-          : entry.default;
-    } else derived[entry.id] = Math.max(...entry.of.map(resolveRef));
+  const workOutDerived = () => {
+    for (const entry of sheet.derived) {
+      if (entry.op === "sum") derived[entry.id] = entry.of.reduce((total, ref) => total + resolveRef(ref), 0);
+      else if (entry.op === "stepTable") derived[entry.id] = lookupStepTable(entry.table, resolveRef(entry.from));
+      else if (entry.op === "scale") {
+        derived[entry.id] = roundRulesetNumber(resolveRef(entry.of) * entry.multiplier, entry.round);
+      } else if (entry.op === "multiply")
+        derived[entry.id] = entry.of.reduce((total, ref) => total * resolveRef(ref), 1);
+      else if (entry.op === "min") derived[entry.id] = Math.min(...entry.of.map(resolveRef));
+      else if (entry.op === "enumTable") {
+        // The value it is keyed on: a field as the sheet shows it, or a live state as it stands. With no
+        // live state at all (only where the format refuses such a read) there is no value to key on.
+        const key =
+          entry.from.field !== undefined
+            ? effectiveFieldValue(definition, build, entry.from.field)
+            : live?.states?.find((state) => state.id === entry.from.liveState)?.value;
+        derived[entry.id] =
+          typeof key === "string" && Object.prototype.hasOwnProperty.call(entry.table, key)
+            ? entry.table[key]!
+            : entry.default;
+      } else derived[entry.id] = Math.max(...entry.of.map(resolveRef));
+    }
+  };
+  workOutDerived();
+
+  // Worked-out scores (1.156), once everything they may read is: what is stored for one is ignored.
+  // None reads another, so one pass finds them all; what read them is then worked out again.
+  let workedOut = false;
+  for (const ability of sheet.abilities) {
+    if (!ability.value) continue;
+    workedOut = true;
+    const base = Math.floor(ability.value.reduce((total, ref) => total + resolveRef(ref), 0));
+    const change = fromItems.get(ability.id);
+    const score = Math.min(
+      ability.max,
+      Math.max(ability.min, change ? Math.max(base + change.add, change.set ?? -Infinity) : base),
+    );
+    abilityScores[ability.id] = Number.isFinite(score) ? score : ability.default;
+    abilityMods[ability.id] = rulesetAbilityModifier(definition, abilityScores[ability.id]!);
+  }
+  if (workedOut) {
+    proficiencyBonus = null;
+    for (const id of Object.keys(skillCaps)) delete skillCaps[id];
+    for (const id of Object.keys(saveCaps)) delete saveCaps[id];
+    workOutDerived();
   }
 
   const skillTiers: Record<string, string> = {};
@@ -540,6 +623,9 @@ export function evaluateRulesetSheet(
     saveTiers[save.id] = tierById.has(build.saves?.[save.id] ?? "") ? build.saves[save.id]! : firstTier.id;
     saveMods[save.id] = trainedModifier(save, build.saves, saveCaps);
   }
+  // A row that is a check of its own (1.161): its rating, with its ability the way a skill adds one.
+  for (const row of rulesetRowChecks(definition, build))
+    skillMods[row.key] = (row.ability ? (abilityMods[row.ability] ?? 0) : 0) + row.rating;
 
   return {
     abilityScores,
@@ -621,6 +707,8 @@ interface RulesetTrainedCheckTarget {
   ability?: string;
   /** The ability the request named instead. Only ever an ability this sheet declares. */
   withAbility?: string;
+  /** A row of a list that is a check of its own (1.161), rather than a skill the sheet declares. */
+  row?: true;
 }
 
 /** A raw ability check. `withAbility` is the second ability a pool ruleset with
@@ -650,6 +738,66 @@ function checkNames(entry: { id: string; label: string; short?: string }): strin
   ].filter(Boolean);
 }
 
+/** One row of a list that is a check of its own (Capability API 1.161). */
+export interface RulesetRowCheck {
+  /** Where the evaluated sheet keeps its number, among the skills'. */
+  key: string;
+  list: string;
+  check: string;
+  /** The row's name, with the check's label after it when the list has one. */
+  label: string;
+  ability?: string;
+  rating: number;
+}
+
+/** Every row check the sheet has. A name two rows share is no check at all: it is left out rather
+ *  than guessed at, and renaming one of them makes both addressable again. */
+export function rulesetRowChecks(definition: RulesetDefinition, build: RulesetSheetBuild): RulesetRowCheck[] {
+  const found: RulesetRowCheck[] = [];
+  for (const list of definition.sheet.lists) {
+    if (!list.checks) continue;
+    const rows = Array.isArray(build.lists?.[list.id]) ? build.lists[list.id]! : [];
+    for (const check of list.checks) {
+      const named = new Map<string, RulesetRowCheck[]>();
+      for (const row of rows) {
+        const raw = row?.[check.name];
+        const name = typeof raw === "string" ? raw.trim() : "";
+        if (!name) continue;
+        const label = check.label ? `${name} (${check.label})` : name;
+        const key = `row:${list.id}:${check.id}:${normalizeCheckName(name)}`;
+        const rating = finite(row[check.rating]) ?? 0;
+        const entry: RulesetRowCheck = {
+          key,
+          list: list.id,
+          check: check.id,
+          label,
+          rating,
+          ...(check.ability ? { ability: check.ability } : {}),
+        };
+        named.set(key, [...(named.get(key) ?? []), entry]);
+      }
+      for (const entries of named.values()) if (entries.length === 1) found.push(entries[0]!);
+    }
+  }
+  return found;
+}
+
+/** The stance a check is in (1.137): a skill a stance names, or a row check whose list puts its
+ *  rows in one (1.212). */
+export function rulesetCheckStance(
+  definition: RulesetDefinition,
+  checkId: string,
+): { id: string; label: string; count: "below" | "above" } | undefined {
+  const { resolution } = definition;
+  if (resolution.kind !== "dice-pool" || !resolution.stances) return undefined;
+  const named = resolution.stances.find((entry) => entry.skills.includes(checkId));
+  if (named) return named;
+  const row = /^row:([^:]+):([^:]+):/.exec(checkId);
+  if (!row) return undefined;
+  const check = definition.sheet.lists.find((list) => list.id === row[1])?.checks?.find((each) => each.id === row[2]);
+  return check?.stance ? resolution.stances.find((entry) => entry.id === check.stance) : undefined;
+}
+
 /** The ability a name means in this ruleset, or null. Used for `with=`, which is a bare ability
  *  name rather than a check request. */
 function matchAbilityId(definition: RulesetDefinition, requested: string): string | null {
@@ -677,6 +825,8 @@ export function matchRulesetCheckTarget(
   definition: RulesetDefinition,
   requested: string,
   withAbility?: string,
+  /** The roller's sheet, whose list rows may be checks of their own (1.161). */
+  build?: RulesetSheetBuild,
 ): RulesetCheckTarget | null {
   const { sheet } = definition;
   const name = normalizeCheckName(requested);
@@ -706,6 +856,14 @@ export function matchRulesetCheckTarget(
   }
   const skill = sheet.skills.find((entry) => names(entry).includes(name) || names(entry).includes(base));
   if (skill) return trained("skill", skill);
+  if (build) {
+    const rows = rulesetRowChecks(definition, build).filter((row) => {
+      const spelled = normalizeCheckName(row.label);
+      return spelled === name || spelled === base;
+    });
+    if (rows.length === 1)
+      return { ...trained("skill", { id: rows[0]!.key, label: rows[0]!.label, ability: rows[0]!.ability }), row: true };
+  }
   const ability = sheet.abilities.find((entry) => names(entry).includes(base));
   if (!ability) return null;
   const resolution = definition.resolution;
@@ -770,7 +928,9 @@ export function rulesetCheckAdjust(
 /** One check number, spelled the way its kind means it: a modifier added to the dice, or how many
  *  dice there are. Everywhere a check value is shown to a player or written into a prompt. */
 export function formatRulesetCheckValue(definition: RulesetDefinition, value: number): string {
-  if (definition.resolution.kind === "dice-pool") return `${value} ${value === 1 ? "die" : "dice"}`;
+  // Against the sheet's number (1.139) the number is the target itself, so it carries no sign.
+  if (definition.resolution.kind === "roll-against" || definition.resolution.kind === "symbol-pool") return `${value}`;
+  if (definition.resolution.kind !== "dice-sum") return `${value} ${value === 1 ? "die" : "dice"}`;
   return value >= 0 ? `+${value}` : `${value}`;
 }
 
@@ -786,6 +946,12 @@ export interface RulesetCheckRoll {
   rollMode: "advantage" | "disadvantage" | "normal";
   /** Notation for the dice actually thrown. */
   dice: string;
+  /** The label of the outcome band the check landed in, where the ruleset declares bands (1.135). */
+  outcome?: string;
+  /** What each face of the die is worth, lowest first, where the ruleset gives faces (1.136). */
+  faces?: number[];
+  /** The single die's face, where the ruleset marks it as rolled unmodified (1.136). */
+  unmodified?: number;
 }
 
 /** A check that threw nothing at all: the shape every "no roll happened" answer takes, so no path
@@ -803,6 +969,50 @@ function noRoll(): RulesetCheckRoll {
     dice: "",
   };
 }
+
+/**
+ * The band a check lands in (Capability API 1.135), and what it makes of the roll: success and the
+ * two criticals come from the band, never from the bare comparison, so a ruleset with bands has one
+ * answer. `measure` is the margin or the total the bands are read from, `natural` the kept face of a
+ * single die (+1 its highest, -1 its lowest, 0 neither) where the bands shift on one, and `forced`
+ * pins the best or the worst band whatever the measure says (a summed system's automatic success, a
+ * pool's botch), keeping the critical it came from. Without bands the roll comes back as it was.
+ */
+export function applyRulesetCheckOutcome<T extends RulesetCheckRoll>(
+  outcomes: RulesetResolution["outcomes"],
+  roll: T,
+  input: { margin: number; total: number; fraction?: number; natural?: -1 | 0 | 1; forced?: "best" | "worst" },
+): T {
+  if (!outcomes) return roll;
+  // The bands the measure reads; a band `on` a critical is reached by that critical alone.
+  const read = outcomes.tiers.filter((tier) => !tier.on);
+  const measure =
+    outcomes.by === "total" ? input.total : outcomes.by === "fraction" ? (input.fraction ?? 0) : input.margin;
+  let index = read.findIndex((tier) => tier.atLeast === undefined || measure >= tier.atLeast);
+  if (index < 0) index = read.length - 1;
+  if (outcomes.naturals === "shift" && input.natural) index -= input.natural;
+  if (input.forced === "best") index = 0;
+  if (input.forced === "worst") index = read.length - 1;
+  const onCritical =
+    input.forced === "best"
+      ? outcomes.tiers.find((tier) => tier.on === "critical-success")
+      : input.forced === "worst"
+        ? outcomes.tiers.find((tier) => tier.on === "critical-failure")
+        : undefined;
+  const tier = onCritical ?? read[Math.min(read.length - 1, Math.max(0, index))]!;
+  // A forced end keeps the critical it came from: a botch is still a botch in a worst band that is not
+  // marked critical, and an automatic success still a critical one.
+  return {
+    ...roll,
+    success: tier.success,
+    criticalSuccess: tier.success && (tier.critical || !!tier.on || input.forced === "best"),
+    criticalFailure: !tier.success && (tier.critical || !!tier.on || input.forced === "worst"),
+    outcome: tier.label,
+  };
+}
+
+/** The most dice one open-ended roll throws, the first included: an Engine bound, so a chain ends. */
+export const RULESET_OPEN_ENDED_MAX_ROLLS = 20;
 
 /** Roll a `dice-sum` check. Advantage and disadvantage cancel, and are ignored entirely when the
  *  ruleset does not allow them. `preRolled` stands in for the dice when the player rolled first;
@@ -833,23 +1043,58 @@ export function rollDiceSumCheck(
   const useAdvantage = preRolled === null && allowsAdvantage && !!input.advantage && !input.disadvantage;
   const useDisadvantage = preRolled === null && allowsAdvantage && !!input.disadvantage && !input.advantage;
 
-  const rollSet = () => Array.from({ length: dice.count }, () => rollDie(dice.sides));
-  const sum = (set: number[]) => set.reduce((total, value) => total + value, 0);
-  const first = preRolled === null ? rollSet() : [preRolled];
+  // One set of dice and what it is worth (1.136): its faces' own values where the ruleset gives them,
+  // and an open-ended die's chain, added on a high face and taken away on a low one. The faces are
+  // recorded as thrown; the worth is what the set adds to the roll.
+  const { faces, sides } = dice;
+  const openEnded = dice.count === 1 ? resolution.openEnded : undefined;
+  const faceWorth = (face: number) => (faces ? (faces[face - 1] ?? 0) : face);
+  // A face the player rolled first (single die only) starts the set, and still opens its chain.
+  const rollSet = (preset?: number): { thrown: number[]; worth: number } => {
+    const thrown = preset === undefined ? Array.from({ length: dice.count }, () => rollDie(sides)) : [preset];
+    let worth = thrown.reduce((total, face) => total + faceWorth(face), 0);
+    if (openEnded) {
+      const first = thrown[0]!;
+      const sign =
+        openEnded.high !== undefined && first >= openEnded.high
+          ? 1
+          : openEnded.low !== undefined && first <= openEnded.low
+            ? -1
+            : 0;
+      // Chained while the new die shows a high face, under an Engine ceiling so a roll ends.
+      let again = sign !== 0;
+      while (again && thrown.length < RULESET_OPEN_ENDED_MAX_ROLLS) {
+        const next = rollDie(sides);
+        thrown.push(next);
+        worth += sign * next;
+        again = openEnded.high !== undefined && next >= openEnded.high;
+      }
+    }
+    return { thrown, worth };
+  };
+  const first = rollSet(preRolled ?? undefined);
   const second = useAdvantage || useDisadvantage ? rollSet() : null;
-  const usedRoll = second
-    ? useAdvantage
-      ? Math.max(sum(first), sum(second))
-      : Math.min(sum(first), sum(second))
-    : sum(first);
-  const rolls = second ? [...first, ...second] : first;
+  const kept = !second
+    ? first
+    : useAdvantage
+      ? second.worth > first.worth
+        ? second
+        : first
+      : second.worth < first.worth
+        ? second
+        : first;
+  const usedRoll = kept.worth;
+  const rolls = second ? [...first.thrown, ...second.thrown] : first.thrown;
+  // The natural is the first face of the set that counted, before anything was added or rolled again.
+  const natural = kept.thrown[0]!;
 
   const policy = input.isSave ? naturals.save : naturals.check;
-  const criticalSuccess = single && usedRoll === dice.sides && (policy === "both" || policy === "max-only");
-  const criticalFailure = single && usedRoll === 1 && (policy === "both" || policy === "min-only");
+  const criticalSuccess = single && natural === dice.sides && (policy === "both" || policy === "max-only");
+  const criticalFailure = single && natural === 1 && (policy === "both" || policy === "min-only");
+  const unmodified = single && resolution.unmodified?.includes(natural) ? natural : undefined;
   const total = usedRoll + input.modifier;
 
-  return {
+  const roll: RulesetCheckRoll = {
     rolls,
     usedRoll,
     total,
@@ -858,7 +1103,17 @@ export function rollDiceSumCheck(
     criticalFailure,
     rollMode: useAdvantage ? "advantage" : useDisadvantage ? "disadvantage" : "normal",
     dice: `${rolls.length}d${dice.sides}`,
+    ...(faces ? { faces: [...faces] } : {}),
+    ...(unmodified !== undefined ? { unmodified } : {}),
   };
+  // Bands, where the ruleset declares them: a natural the policy makes automatic pins the best or the
+  // worst band, and a natural the bands shift on moves one band either way.
+  return applyRulesetCheckOutcome(resolution.outcomes, roll, {
+    margin: total - input.dc,
+    total,
+    natural: single ? (natural === dice.sides ? 1 : natural === 1 ? -1 : 0) : 0,
+    ...(criticalSuccess ? { forced: "best" as const } : criticalFailure ? { forced: "worst" as const } : {}),
+  });
 }
 
 export interface RulesetPoolRoll extends RulesetCheckRoll {
@@ -883,6 +1138,10 @@ export interface RulesetPoolRoll extends RulesetCheckRoll {
   /** Something went wrong on the side of a roll that did not botch outright: `botch.rule` is
    *  `halfOrMore` and low faces showed on half the dice or more, but a die still succeeded. */
   complication: boolean;
+  /** Which way the dice counted, where a stance made them count below or above the target (1.137). */
+  compare?: "below" | "above";
+  /** How many dice showed exactly the target, where the ruleset names that face (1.137). */
+  exact?: number;
 }
 
 /** The hard ceiling on how many dice ONE check may throw again, whatever a ruleset asks for. An
@@ -913,6 +1172,12 @@ export function rollDicePoolCheck(
     isSave: boolean;
     /** `threshold=`, honoured only where the ruleset lets the target move. */
     threshold?: number;
+    /** The target the ruleset reads off the roller's sheet (`target.from`, 1.137), already worked out.
+     *  It stands in for the default and for `threshold=`, held to the ruleset's range. */
+    sheetTarget?: number;
+    /** Which way this check's dice count (1.137): below or above the target, from the stance its
+     *  skill is in. Absent is at or above. */
+    stance?: "below" | "above";
     /** `bonus=`, honoured only where the ruleset declares situational dice. */
     bonusDice?: number;
     /** `explode=` and `double=`, honoured only where the ruleset gives that rule a `min`. */
@@ -929,6 +1194,8 @@ export function rollDicePoolCheck(
       reroll?: { upTo: number; mode: "once" | "until" };
       explode?: number;
       double?: number;
+      /** No face cancels a success on this roll (1.214). */
+      cancel?: false;
     };
   },
   rollDie: (sides: number) => number,
@@ -937,14 +1204,26 @@ export function rollDicePoolCheck(
   if (resolution.kind !== "dice-pool") {
     return { ...noRoll(), threshold: 0, bonusDice: 0, autoSuccesses: 0, rerolled: 0, complication: false };
   }
-  const { die, pool, target, double, explode, cancel, botch, exceptional, situationalDice } = resolution;
+  const { die, pool, target, double, explode, botch, exceptional, situationalDice } = resolution;
+  const cancel = input.bought?.cancel === false ? undefined : resolution.cancel;
 
   // A bought threshold is the entry's own and outranks the Game Master's `threshold=`, because the
   // player paid for it. Both are clamped into what the ruleset allows, and a ruleset whose target
   // cannot move ignores both.
-  const asked = Number.isFinite(input.bought?.threshold) ? input.bought!.threshold! : input.threshold;
+  // A target read off the sheet (1.137) is the character's own, so the Game Master's `threshold=` does
+  // not move it; a bought one still does, because the player paid for it.
+  const fromSheet = Number.isFinite(input.sheetTarget)
+    ? clampInteger(input.sheetTarget!, target.min, target.max)
+    : undefined;
+  const asked = Number.isFinite(input.bought?.threshold)
+    ? input.bought!.threshold!
+    : fromSheet === undefined
+      ? input.threshold
+      : undefined;
   const threshold =
-    target.min < target.max && Number.isFinite(asked) ? clampInteger(asked!, target.min, target.max) : target.default;
+    target.min < target.max && Number.isFinite(asked)
+      ? clampInteger(asked!, target.min, target.max)
+      : (fromSheet ?? target.default);
   const bonusDice =
     situationalDice && Number.isFinite(input.bonusDice)
       ? clampInteger(input.bonusDice!, situationalDice.min, situationalDice.max)
@@ -1007,10 +1286,20 @@ export function rollDicePoolCheck(
     }
   }
 
+  // Which faces count (1.137): at or above the target, or below or above it for a stance. A face
+  // showing exactly the target is counted apart, and counts too where the ruleset says so.
+  const stance = input.stance;
+  const counts = (roll: number) =>
+    stance === "below" ? roll < threshold : stance === "above" ? roll > threshold : roll >= threshold;
   let successes = 0;
   let cancelled = 0;
+  let exact = 0;
   for (const roll of rolls) {
-    if (roll >= threshold) successes += doubleFrom !== undefined && roll >= doubleFrom ? 2 : 1;
+    if (resolution.exact && roll === threshold) {
+      exact += 1;
+      if (!counts(roll) && resolution.exact.counts) successes += 1;
+    }
+    if (counts(roll)) successes += doubleFrom !== undefined && roll >= doubleFrom ? 2 : 1;
     if (cancel && roll <= cancel.upTo) cancelled += 1;
   }
   // Bought successes are added after the dice are counted and after cancelling, because they were
@@ -1035,7 +1324,7 @@ export function rollDicePoolCheck(
       : successes === 0 && rolls.some((roll) => roll <= botch.upTo);
   const complication = lowOnHalf && !criticalFailure;
   const success = !criticalFailure && total >= input.required;
-  return {
+  const roll: RulesetPoolRoll = {
     rolls,
     usedRoll: total,
     total,
@@ -1051,7 +1340,384 @@ export function rollDicePoolCheck(
     ...(explodeFrom !== undefined ? { explodeFrom } : {}),
     ...(doubleFrom !== undefined ? { doubleFrom } : {}),
     complication,
+    ...(stance ? { compare: stance } : {}),
+    ...(resolution.exact ? { exact } : {}),
   };
+  // Bands, where the ruleset declares them, read from the net successes; a botch is the worst band.
+  return applyRulesetCheckOutcome(resolution.outcomes, roll, {
+    margin: total - input.required,
+    total,
+    ...(criticalFailure ? { forced: "worst" as const } : {}),
+  });
+}
+
+/** A `dice-highest` check's roll (1.138): the light dice and then the dark ones, in `rolls`. */
+export interface RulesetHighestRoll extends RulesetCheckRoll {
+  /** How many of `rolls`, at the end, are dark dice. */
+  dark: number;
+  /** A dark die strictly beat every light die. */
+  darkHighest: boolean;
+  /** No dice: two were thrown and the lower kept. */
+  zero: boolean;
+  bonusDice: number;
+}
+
+/** Roll a `dice-highest` check: throw the sheet's number of dice (and any dark dice), keep the
+ *  highest (or the sum of the `keep` highest), and meet the difficulty. With no dice at all, two are
+ *  thrown and the lower is kept, which can never be a critical, or the check fails unrolled. */
+export function rollDiceHighestCheck(
+  definition: RulesetDefinition,
+  input: {
+    /** The sheet's number for this check: how many dice. */
+    modifier: number;
+    /** What the kept dice must reach. */
+    dc: number;
+    isSave: boolean;
+    /** `bonus=`, honoured only where the ruleset declares situational dice. */
+    bonusDice?: number;
+    /** `dark=`, honoured only where the ruleset has dark dice, held to their `max`. */
+    dark?: number;
+    /** Dice a spend bought on top of the pool. */
+    bought?: { dice?: number };
+  },
+  rollDie: (sides: number) => number,
+): RulesetHighestRoll {
+  const resolution = definition.resolution;
+  const nothing = { dark: 0, darkHighest: false, zero: false, bonusDice: 0 };
+  if (resolution.kind !== "dice-highest") return { ...noRoll(), ...nothing };
+  const { die, pool, keep, situationalDice } = resolution;
+  const sides = die.sides;
+  const bonusDice =
+    situationalDice && Number.isFinite(input.bonusDice)
+      ? clampInteger(input.bonusDice!, situationalDice.min, situationalDice.max)
+      : 0;
+  const bought = Number.isFinite(input.bought?.dice) ? Math.max(0, Math.round(input.bought!.dice!)) : 0;
+  const light = clampInteger(Math.round(input.modifier) + bonusDice, pool.min, pool.max) + bought;
+  const darkCount =
+    resolution.dark && Number.isFinite(input.dark) ? clampInteger(input.dark!, 0, resolution.dark.max) : 0;
+  const dc = Math.round(input.dc);
+
+  const lightOnly = resolution.dark?.outcome === "light";
+  const empty = light + (lightOnly ? 0 : darkCount) === 0;
+  const zero = empty && resolution.zeroDice === "lowest-of-two";
+  const lightRolls = Array.from({ length: zero ? 2 : light }, () => rollDie(sides));
+  const darkRolls = Array.from({ length: darkCount }, () => rollDie(sides));
+  const all = [...lightRolls, ...darkRolls];
+  const outcomeRolls = lightOnly ? lightRolls : all;
+  const kept = zero ? [Math.min(...lightRolls)] : [...outcomeRolls].sort((a, b) => b - a).slice(0, keep);
+  const total = kept.reduce((sum, face) => sum + face, 0);
+  const critFace = resolution.critical?.face ?? sides;
+  const critical =
+    !empty &&
+    !!resolution.critical &&
+    outcomeRolls.filter((face) => face >= critFace).length >= resolution.critical.count;
+  const darkHighest = darkCount > 0 && Math.max(...darkRolls) > (lightRolls.length > 0 ? Math.max(...lightRolls) : 0);
+  if (empty && !zero) {
+    const failed = {
+      ...noRoll(),
+      ...nothing,
+      rolls: all,
+      dark: darkCount,
+      darkHighest,
+      bonusDice,
+      dice: `${all.length}d${sides}`,
+    };
+    return applyRulesetCheckOutcome(resolution.outcomes, failed, { margin: -dc, total: 0, forced: "worst" });
+  }
+  const success = critical || total >= dc;
+  const roll: RulesetHighestRoll = {
+    rolls: all,
+    usedRoll: total,
+    total,
+    success,
+    criticalSuccess: critical,
+    criticalFailure: false,
+    rollMode: "normal",
+    dice: `${all.length}d${sides}`,
+    dark: darkCount,
+    darkHighest,
+    zero,
+    bonusDice,
+  };
+  return applyRulesetCheckOutcome(resolution.outcomes, roll, {
+    margin: total - dc,
+    total,
+    ...(critical ? { forced: "best" as const } : {}),
+  });
+}
+
+/** A symbol pool's characteristic and training rank, kept separate before dice are upgraded.
+ *  The existing tier math supplies rank; free bonuses and untrained adjustments stay situational. */
+export function rulesetSymbolPoolRatings(
+  definition: RulesetDefinition,
+  evaluated: EvaluatedRulesetSheet,
+  target: RulesetCheckTarget | null,
+): { ability: number; rank: number; bonusDice: number } {
+  if (!target) return { ability: 0, rank: 0, bonusDice: 0 };
+  const abilityId = target.type === "ability" ? target.id : (target.withAbility ?? target.ability);
+  const ability = abilityId ? (evaluated.abilityMods[abilityId] ?? 0) : 0;
+  const tierId =
+    target.type === "skill"
+      ? evaluated.skillTiers[target.id]
+      : target.type === "save"
+        ? evaluated.saveTiers[target.id]
+        : undefined;
+  const tier = tierId ? definition.resolution.proficiencyTiers.find((entry) => entry.id === tierId) : undefined;
+  const rank = tier ? roundRulesetNumber(tier.multiplier * evaluated.proficiencyBonus, tier.round) + tier.flat : 0;
+  return { ability, rank, bonusDice: rulesetCheckModifier(evaluated, target) - ability - rank };
+}
+
+/** A symbol pool (1.141): each 1-based face in `rolls` belongs to the matching die in `thrown`.
+ *  Symbols are the nonzero totals after cancellation. Face symbols and labels travel with the
+ *  record, so the card can show the ruleset's words even after the ruleset is uninstalled. */
+export interface RulesetSymbolRoll extends RulesetCheckRoll {
+  /** Additional setback dice and own upgrades actually applied (1.150). */
+  setback?: number;
+  upgradeOwn?: number;
+  thrown: string[];
+  symbols: Record<string, number>;
+  symbolLabels: Record<string, string>;
+  symbolFaces: string[][];
+}
+
+/** Build positive and opposing dice, count faces and their additional symbols, then cancel pairs.
+ *  Triumph and despair keep their critical markers independently of whether the check succeeds. */
+export function rollSymbolPoolCheck(
+  definition: RulesetDefinition,
+  input: {
+    ability: number;
+    rank: number;
+    difficulty: number;
+    upgrades?: number;
+    upgradeOwn?: number;
+    setback?: number;
+    bonusDice?: number;
+    bought?: { dice: number };
+    isSave: boolean;
+  },
+  rollDie: (sides: number) => number,
+): RulesetSymbolRoll {
+  const resolution = definition.resolution;
+  if (resolution.kind !== "symbol-pool")
+    return { ...noRoll(), thrown: [], symbols: {}, symbolLabels: {}, symbolFaces: [] };
+  const { pool, difficulty, boost, setback } = resolution;
+  const bounded = (value: number, max: number) => (Number.isFinite(value) ? clampInteger(value, 0, max) : 0);
+  const ability = bounded(input.ability, pool.max);
+  const rank = bounded(input.rank, pool.max);
+  let size = Math.min(
+    pool.max,
+    (pool.build === "sum" ? ability + rank : Math.max(ability, rank)) + bounded(input.bought?.dice ?? 0, pool.max),
+  );
+  let upgraded = pool.build === "larger-upgraded" && pool.upgrade ? Math.min(size, ability, rank) : 0;
+  const upgradeOwn =
+    resolution.allowOwnUpgrade && pool.upgrade ? bounded(input.upgradeOwn ?? 0, pool.max - upgraded) : 0;
+  upgraded += upgradeOwn;
+  // Once every existing die is upgraded, each remaining upgrade adds an upgraded die.
+  size = Math.max(size, upgraded);
+  const against = bounded(input.difficulty, difficulty.max);
+  const againstUp = difficulty.upgrade ? bounded(input.upgrades ?? 0, against) : 0;
+  const bonus = Number.isFinite(input.bonusDice) ? Math.round(input.bonusDice!) : 0;
+  const boosts = boost ? bounded(bonus, boost.max) : 0;
+  const bonusSetbacks = setback ? bounded(-bonus, setback.max) : 0;
+  const extraSetbacks = setback ? bounded(input.setback ?? 0, setback.max - bonusSetbacks) : 0;
+  const setbacks = bonusSetbacks + extraSetbacks;
+  const thrown = [
+    ...Array<string>(upgraded).fill(pool.upgrade ?? pool.die),
+    ...Array<string>(size - upgraded).fill(pool.die),
+    ...Array<string>(boosts).fill(boost?.die ?? ""),
+    ...Array<string>(againstUp).fill(difficulty.upgrade ?? difficulty.die),
+    ...Array<string>(against - againstUp).fill(difficulty.die),
+    ...Array<string>(setbacks).fill(setback?.die ?? ""),
+  ];
+  const dieById = new Map(resolution.dice.map((die) => [die.id, die]));
+  const counted = new Map<string, number>();
+  const symbolFaces: string[][] = [];
+  const rolls = thrown.map((id) => {
+    const die = dieById.get(id)!;
+    const face = rollDie(die.faces.length);
+    const symbols = die.faces[face - 1] ?? [];
+    symbolFaces.push([...symbols]);
+    for (const symbol of symbols) counted.set(symbol, (counted.get(symbol) ?? 0) + 1);
+    return face;
+  });
+  const totals = new Map(counted);
+  for (const symbol of resolution.symbols) {
+    if (symbol.counts) totals.set(symbol.counts, (totals.get(symbol.counts) ?? 0) + (counted.get(symbol.id) ?? 0));
+  }
+  for (const symbol of resolution.symbols) {
+    if (!symbol.cancels) continue;
+    const pair = Math.min(totals.get(symbol.id) ?? 0, totals.get(symbol.cancels) ?? 0);
+    totals.set(symbol.id, (totals.get(symbol.id) ?? 0) - pair);
+    totals.set(symbol.cancels, (totals.get(symbol.cancels) ?? 0) - pair);
+  }
+  const symbols = Object.fromEntries([...totals].filter(([, count]) => count > 0));
+  const net = totals.get(resolution.success.symbol) ?? 0;
+  const criticalSuccess = !!resolution.criticalSuccess && (counted.get(resolution.criticalSuccess) ?? 0) > 0;
+  const criticalFailure = !!resolution.criticalFailure && (counted.get(resolution.criticalFailure) ?? 0) > 0;
+  const result: RulesetSymbolRoll = {
+    rolls,
+    usedRoll: net,
+    total: net,
+    success: net >= resolution.success.needed,
+    criticalSuccess,
+    criticalFailure,
+    rollMode: "normal",
+    dice: `${rolls.length}d${Math.max(...resolution.dice.map((die) => die.faces.length))}`,
+    thrown,
+    ...(extraSetbacks ? { setback: extraSetbacks } : {}),
+    ...(upgradeOwn ? { upgradeOwn } : {}),
+    symbols,
+    symbolFaces,
+    symbolLabels: Object.fromEntries(resolution.symbols.map((symbol) => [symbol.id, symbol.label])),
+  };
+  const outcome = applyRulesetCheckOutcome(resolution.outcomes, result, {
+    margin: net - resolution.success.needed + 1,
+    total: net,
+  });
+  return {
+    ...outcome,
+    criticalSuccess: criticalSuccess || outcome.criticalSuccess,
+    criticalFailure: criticalFailure || outcome.criticalFailure,
+  };
+}
+
+/** A `roll-against` check's roll (1.139). `total` is the die result; the target it was read against
+ *  is the record's `dc`. */
+export interface RulesetAgainstRoll extends RulesetCheckRoll {
+  /** The target the roll was read against, after the step's divide and the check's modifier. */
+  target: number;
+  against: "at-most" | "at-least";
+  /** Bonus (+) or penalty (-) tens dice thrown, after the ruleset's limit. */
+  tens: number;
+}
+
+/** Whether a critical rule of a `roll-against` ruleset fires on this roll and target. */
+function againstCriticalFires(
+  rule: { from?: number; to?: number; pastTarget?: number; whenTarget?: { atLeast?: number; below?: number } },
+  roll: number,
+  target: number,
+  against: "at-most" | "at-least",
+): boolean {
+  if (rule.whenTarget?.atLeast !== undefined && target < rule.whenTarget.atLeast) return false;
+  if (rule.whenTarget?.below !== undefined && target >= rule.whenTarget.below) return false;
+  if (rule.pastTarget !== undefined) {
+    return against === "at-most" ? roll >= target + rule.pastTarget : roll <= target - rule.pastTarget;
+  }
+  return roll >= (rule.from ?? -Infinity) && roll <= (rule.to ?? Infinity);
+}
+
+/** Roll a `roll-against` check: throw the dice and read the result against the sheet's number, at
+ *  most it (Call of Cthulhu, GURPS) or at least it (an old-school saving throw). A ladder step may
+ *  divide the number (Hard is half, Extreme a fifth) and the check may move it. On a single d100,
+ *  bonus and penalty tens dice throw extra tens and keep the best or the worst. */
+export function rollAgainstCheck(
+  definition: RulesetDefinition,
+  input: {
+    /** The sheet's number for this check: the target. */
+    modifier: number;
+    /** What the check adds to or takes from the target. */
+    dc: number;
+    /** What the ladder step divides the target by, 1 when none. */
+    divide?: number;
+    isSave: boolean;
+    /** `bonus=`: tens dice, + for bonus and - for penalty, where the ruleset has them. */
+    tens?: number;
+  },
+  rollDie: (sides: number) => number,
+): RulesetAgainstRoll {
+  const resolution = definition.resolution;
+  if (resolution.kind !== "roll-against") {
+    return { ...noRoll(), target: 0, against: "at-most", tens: 0 };
+  }
+  const { dice, against } = resolution;
+  const divide = Number.isFinite(input.divide) && input.divide! >= 1 ? Math.round(input.divide!) : 1;
+  const target = Math.floor(Math.round(input.modifier) / divide) + Math.round(input.dc);
+  const tensMax = resolution.tens?.max ?? 0;
+  const tens =
+    dice.count === 1 && dice.sides === 100 && Number.isFinite(input.tens)
+      ? clampInteger(input.tens!, -tensMax, tensMax)
+      : 0;
+  let rolls: number[];
+  let roll: number;
+  let rollMode: RulesetCheckRoll["rollMode"] = "normal";
+  if (tens !== 0) {
+    // One units die, and one tens die for each candidate; 00 with a 0 is 100.
+    const units = rollDie(10) % 10;
+    const candidates = Array.from({ length: 1 + Math.abs(tens) }, () => {
+      const ten = (rollDie(10) % 10) * 10;
+      return ten + units === 0 ? 100 : ten + units;
+    });
+    rolls = candidates;
+    const better = against === "at-most" ? Math.min(...candidates) : Math.max(...candidates);
+    const worse = against === "at-most" ? Math.max(...candidates) : Math.min(...candidates);
+    roll = tens > 0 ? better : worse;
+    rollMode = tens > 0 ? "advantage" : "disadvantage";
+  } else {
+    rolls = Array.from({ length: dice.count }, () => rollDie(dice.sides));
+    roll = rolls.reduce((sum, face) => sum + face, 0);
+  }
+  const fires = (rules: typeof resolution.criticalSuccess) =>
+    (rules ?? []).some((rule) => againstCriticalFires(rule, roll, target, against));
+  const criticalSuccess = fires(resolution.criticalSuccess);
+  const criticalFailure = !criticalSuccess && fires(resolution.criticalFailure);
+  const reached = against === "at-most" ? roll <= target : roll >= target;
+  const success = criticalSuccess || (!criticalFailure && reached);
+  const result: RulesetAgainstRoll = {
+    rolls,
+    usedRoll: roll,
+    total: roll,
+    success,
+    criticalSuccess,
+    criticalFailure,
+    rollMode,
+    dice: `${rolls.length === dice.count ? dice.count : rolls.length}d${dice.sides}`,
+    target,
+    against,
+    tens,
+  };
+  const margin = against === "at-most" ? target - roll : roll - target;
+  return applyRulesetCheckOutcome(resolution.outcomes, result, {
+    margin,
+    total: roll,
+    fraction: roll > 0 ? target / roll : target > 0 ? Infinity : 0,
+    ...(criticalSuccess ? { forced: "best" as const } : criticalFailure ? { forced: "worst" as const } : {}),
+  });
+}
+
+/** The override a check rolls with (1.140), if any: the first that names the check's skill, save or
+ *  ability and whose `when` the roller's sheet meets. `meets` reads a value off that sheet. */
+export function rulesetCheckOverride(
+  definition: RulesetDefinition,
+  target: RulesetCheckTarget | null,
+  meets: (ref: RulesetValueRef) => boolean,
+): RulesetResolutionOverride | null {
+  if (!target) return null;
+  const list = target.type === "skill" ? "skills" : target.type === "save" ? "saves" : "abilities";
+  return (
+    definition.resolution.overrides?.find(
+      (override) => override[list]?.includes(target.id) && (!override.when || meets(override.when)),
+    ) ?? null
+  );
+}
+
+const overriddenDefinitions = new WeakMap<RulesetResolutionOverride, WeakMap<RulesetDefinition, RulesetDefinition>>();
+
+/** The definition a check rolls with: the ruleset's own, or with an override's resolution in place
+ *  (1.140). Worked out once per override and definition. An override the import let through always
+ *  reads; one that somehow does not leaves the ruleset's own resolution. */
+export function rulesetDefinitionForCheck(
+  definition: RulesetDefinition,
+  override: RulesetResolutionOverride | null,
+): RulesetDefinition {
+  if (!override) return definition;
+  let byDefinition = overriddenDefinitions.get(override);
+  if (!byDefinition) overriddenDefinitions.set(override, (byDefinition = new WeakMap()));
+  const known = byDefinition.get(definition);
+  if (known) return known;
+  const made = rulesetOverriddenResolution(definition.resolution, override.set);
+  const result = made.ok ? { ...definition, resolution: made.resolution } : definition;
+  byDefinition.set(definition, result);
+  return result;
 }
 
 /** The difficulty ladder step a name picks, or null. Matched without case or punctuation, and only
@@ -1166,6 +1832,41 @@ export function rulesetListRollNotation(
         ? rulesetDieSides(cell(sides.column))
         : rulesetDieSides(Math.trunc(resolveRulesetValueRef(definition, build, sides, evaluated)));
   return read === null ? null : `${count}d${read}`;
+}
+
+/** Missing party data starts at defaults; unreadable stored data is never silently replaced. */
+export function readRulesetPartySheet(
+  definition: RulesetDefinition,
+  stored: unknown,
+  /** The party's characters' builds, so the fields read off them (1.163) are what they are now. */
+  members?: readonly RulesetSheetBuild[],
+): RulesetSheetEnvelope | null {
+  const party = rulesetPartyDefinition(definition);
+  if (!party) return null;
+  const envelope = stored == null ? createRulesetSheetEnvelope(party) : readRulesetSheetEnvelope(party, stored);
+  if (!envelope || !members) return envelope;
+  return { ...envelope, build: rulesetPartyWithMembers(definition, envelope.build, members) };
+}
+
+/** The shared sheet's build with its `fromMembers` fields filled from the party's characters (1.163):
+ *  how many there are, or what one number field of theirs adds up to. Each character counts once. */
+export function rulesetPartyWithMembers(
+  definition: RulesetDefinition,
+  partyBuild: RulesetSheetBuild,
+  members: readonly RulesetSheetBuild[],
+): RulesetSheetBuild {
+  const from = definition.party?.fromMembers;
+  if (!from?.length) return partyBuild;
+  const evaluated = members.map((build) => evaluateRulesetSheet(definition, build));
+  const fields = { ...partyBuild.fields };
+  for (const entry of from) {
+    const value = entry.count
+      ? members.length
+      : evaluated.reduce((sum, sheet) => sum + (sheet.numbers[entry.sum!] ?? 0), 0);
+    const field = definition.party!.fields.find((each) => each.id === entry.field);
+    fields[entry.field] = field?.type === "number" ? Math.min(field.max, Math.max(field.min, value)) : value;
+  }
+  return { ...partyBuild, fields };
 }
 
 /** One row's spellcasting numbers (1.108). Missing columns never take their editor defaults: an old

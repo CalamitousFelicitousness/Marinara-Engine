@@ -41,6 +41,16 @@ export interface RulesetCombatClauseSave {
   onSuccess: "none" | "half";
 }
 
+/** A damage pool as thrown, including its floor and target's chosen wound kind. */
+export interface RulesetCombatDamagePool {
+  target: number;
+  successes: number;
+  soak?: { value: number; rolls?: number[]; taken: number };
+  minimum?: number;
+  kind?: string;
+  remappedFrom?: string;
+}
+
 /** One more amount on the same blow, rolled and typed on its own. A clause never rolls to hit: it
  *  rides the blow that carried it, and a critical doubles its dice exactly as it doubles the first
  *  amount's. */
@@ -77,6 +87,8 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
    *  after soak, a summed fight's damage. A spending blow throws its maker's number and is never
    *  raised to it. */
   floor?: number;
+  /** Minimum dice after soak, before counting successes (1.146). */
+  minimum?: number;
   /** The first amount's own dice at or below this are thrown again once, the new face standing: a
    *  weapon wielded two-handed by a fighter whose sheet gives it (1.98, 5e's Great Weapon Fighting). */
   reroll?: number;
@@ -1199,8 +1211,9 @@ export interface RulesetCombatant {
   name: string;
   side: RulesetCombatSide;
   /** The bestiary entry an opponent was made from, when it was made from one: what its art is found by
-   *  (design-game-creature-art.md). Never read by the fight's rules. */
-  creature?: { catalogId: string; entryId: string };
+   *  (design-game-creature-art.md). Never read by the fight's rules. Out of a borrowed catalog (1.220),
+   *  `from` names the lender's ruleset and catalog. */
+  creature?: { catalogId: string; entryId: string; from?: { ruleset: string; catalog: string } };
   initiative: number;
   initiativeRoll: number[];
   initiativeModifier: number;
@@ -1243,6 +1256,8 @@ export interface RulesetCombatant {
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
+  /** One pending skipped turn. A named condition is owned only if this daze put it on. */
+  dazed?: { condition?: string };
   /** Strikes the entries their rows came from let them buy with another budget (1.242). */
   strikeGrants?: RulesetStrikeGrant[];
   /** What this combatant adds to a qualifying hit without anybody choosing it. */
@@ -2109,11 +2124,7 @@ export type RulesetCombatEvent =
       /** Under `dice-pool`: `rolls` are the damage dice as they fell, `flat` the automatic successes,
        *  and this is what they counted, against which target, and what soak took off before
        *  `amount`. Soak thrown has its own dice; soak taken off the dice beforehand has none. */
-      pool?: {
-        target: number;
-        successes: number;
-        soak?: { value: number; rolls?: number[]; taken: number };
-      };
+      pool?: RulesetCombatDamagePool;
       /** The weapon's floor, when the blow was raised to it. */
       floor?: number;
     }
@@ -2203,8 +2214,18 @@ export type RulesetCombatEvent =
       label?: string;
       rolls?: number[];
       flat?: number;
-      pool?: { target: number; successes: number; soak?: { value: number; rolls?: number[]; taken: number } };
+      pool?: RulesetCombatDamagePool;
     }
+  | {
+      type: "daze";
+      targetId: string;
+      sourceId: string;
+      damage: number;
+      over: number;
+      condition?: string;
+      text?: string;
+    }
+  | { type: "skip"; actorId: string; reason: "daze" }
   | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }

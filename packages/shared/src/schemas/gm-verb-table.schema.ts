@@ -81,6 +81,7 @@ export const RESERVED_GM_TAG_NAMES = Object.freeze([
   "book",
   "branch",
   "choices",
+  "clock",
   "combat",
   "combat_result",
   "dialogue",

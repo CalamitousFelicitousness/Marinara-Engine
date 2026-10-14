@@ -553,6 +553,51 @@ export interface SkillCheckResult {
   from?: string[];
   /** The save failed without a roll, because something named in `from` makes it fail. */
   automatic?: boolean;
+  /**
+   * The label of the outcome band the check landed in, where the ruleset declares bands (Capability
+   * API 1.135): "Barely", "Hard success", "Success with style". `success` and the criticals are the
+   * band's own. Absent on a ruleset without bands.
+   */
+  outcome?: string;
+  /**
+   * What each face of the die is worth, lowest face first, where the ruleset's dice are not their own
+   * numbers (1.136): Fate's `[-1, 0, 1]`. `rolls` are still the faces thrown, 1 to the die's sides.
+   */
+  faces?: number[];
+  /** The face a single die showed, where the ruleset marks it as rolled unmodified (1.136). */
+  unmodified?: number;
+  /** Which way a pool's dice counted against `threshold`, where a stance made them count below or
+   *  above it rather than at or above it (1.137). */
+  compare?: "below" | "above";
+  /** How many dice showed exactly the target, and what the ruleset calls that, where it names the
+   *  face (1.137): Lasers & Feelings' LASER FEELINGS. */
+  exact?: number;
+  exactLabel?: string;
+  /** How many of the highest dice were kept, on a keep-the-highest check (1.138). The total is
+   *  theirs; `zeroDice` says the character had no dice and the lower of two was kept. */
+  highest?: number;
+  zeroDice?: boolean;
+  /** How many of `rolls`, at the end, were dark dice, what the ruleset calls them, and whether one
+   *  strictly beat every light die (1.138): Trophy Dark's Ruin. */
+  dark?: number;
+  darkLabel?: string;
+  darkHighest?: boolean;
+  /** Only light dice decided the outcome (1.149); absent means all dice. */
+  darkOutcome?: "light";
+  /** A roll read against the sheet's number (1.139): `at-most` succeeds at or under `dc`, which is
+   *  then the target; `at-least` at or over it. `tens` is the bonus (+) or penalty (-) tens dice
+   *  thrown, each candidate d100 one of `rolls`. */
+  against?: "at-most" | "at-least";
+  tens?: number;
+  /** Independent setback dice and own upgrades actually applied (1.150). */
+  setback?: number;
+  upgradeOwn?: number;
+  /** Narrative dice (1.141): net symbols, die ids beside their 1-based rolls, and the face symbols
+   *  with the ruleset's labels, so a saved check needs no installed ruleset to display. */
+  symbols?: Record<string, number>;
+  thrown?: string[];
+  symbolLabels?: Record<string, string>;
+  symbolFaces?: string[][];
 }
 
 // ── The sighted dice pool (opt-in, last) ──

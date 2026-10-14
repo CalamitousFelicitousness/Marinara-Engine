@@ -1,3 +1,4 @@
+import { applyClockCommandTags, type RulesetClocks } from "@marinara-engine/shared";
 import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
@@ -275,6 +276,7 @@ import {
   gameInventoryBagKey,
   gameInventoryBearerStatus,
   normalizeGameInventoryStacks,
+  normalizeCharacterLookupName,
   rulesetItemPromptFacts,
   rulesetLayerOptionKey,
   rulesetLayeredCurrencies,
@@ -312,9 +314,15 @@ import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
-import { createGameStateStorage, parseStoredRulesetLive } from "../services/storage/game-state.storage.js";
+import {
+  createGameStateStorage,
+  parseStoredRulesetLive,
+  parseStoredRulesetClocks,
+} from "../services/storage/game-state.storage.js";
 import {
   applyGameRulesetSheetTurn,
+  rulesetAdvancementTurnStart,
+  saveGameRulesetAdvancement,
   loadGameRulesetSheetContext,
   loadTurnRulesetCatalogs,
   renderGameRulesetSheetBlocks,
@@ -2909,6 +2917,42 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // the one the turn's sheet commands are checked against. Undefined until a game turn resolves it.
       let turnGameRuleset: ResolvedGameRuleset | null | undefined;
       let turnRulesetCatalogs: RulesetCatalogEntriesById | undefined;
+      // The prompt and commands share one snapshot, including an older reply being continued.
+      let turnStartSnapshotPromise: typeof selectedGameStateSnapshotPromise | null = null;
+      const turnStartRulesetSnapshot = () => {
+        // Until the turn's ruleset is read, nothing is cached: its clocks and party sheet decide the answer.
+        if (turnGameRuleset === undefined) return selectedGameStateSnapshotPromise;
+        turnStartSnapshotPromise ??= (async () => {
+          const continuedRow = input.continueMessageId
+            ? await gameStateStore.getByChatAndMessage(
+                input.chatId,
+                input.continueMessageId,
+                Number.isInteger(continueTargetMessage?.activeSwipeIndex)
+                  ? (continueTargetMessage.activeSwipeIndex as number)
+                  : 0,
+              )
+            : null;
+          if (
+            !continuedRow &&
+            input.continueMessageId &&
+            turnGameRuleset?.status === "ok" &&
+            (turnGameRuleset.definition.clocks || turnGameRuleset.definition.party)
+          ) {
+            const index = allChatMessages.findIndex((message) => message.id === input.continueMessageId);
+            if (index < 0) return null;
+            const before = allChatMessages.slice(0, index);
+            if (!before.length) return null;
+            return gameStateStore.getForGeneration(input.chatId, {
+              preferLatestVisible: true,
+              visibleAnchor: resolveVisibleGameStateAnchor(before),
+              fallbackMessageIds: before.map((message) => message.id),
+            });
+          }
+          return continuedRow ?? (await selectedGameStateSnapshotPromise);
+        })();
+        return turnStartSnapshotPromise;
+      };
+
       const getGmVerbTable = async (): Promise<ResolvedGmVerbTable | null> => {
         if (gmVerbTableResolved) return gmVerbTable;
         gmVerbTableResolved = true;
@@ -4778,6 +4822,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         });
 
         if (chatMode === "game") {
+          // Resolve once so the cached reference and per-turn guidance use the same ruleset.
+          // `loadRulesetRegistry` never throws: a failed read returns an empty registry, and a
+          // pin the install cannot honour keeps the built-in reminder and saves checks sparse.
+          const pinnedGameRuleset =
+            chatMeta.gameRuleset != null ? resolveGameRuleset(chatMeta, await loadRulesetRegistry()) : null;
+          turnGameRuleset = pinnedGameRuleset;
           const selectedGamePrompt =
             resolvedPreset && presetId
               ? resolvePresetModePrompt(resolvedPreset as Record<string, unknown>, "game")
@@ -4795,6 +4845,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               chat,
               chatMetadata: gamePromptMetadata,
               world: await loadGameWorld(app.db, input.chatId, gamePromptMetadata),
+              ruleset: pinnedGameRuleset?.status === "ok" ? pinnedGameRuleset.definition : undefined,
               characterIds,
               chars,
               chats,
@@ -4944,22 +4995,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // One read, on the switched-on path only, from the same loader the pass itself uses.
           // The loader refuses a ruleset pin the install cannot honour. That must cost this turn
           // only the advertised sheet names, never the turn itself.
+          const turnSheetMetadata = await rulesetAdvancementTurnStart(
+            app.db,
+            input.chatId,
+            chatMeta,
+            input.regenerateMessageId,
+          );
+          const turnSheetCards = Array.isArray(turnSheetMetadata.gameCharacterCards)
+            ? turnSheetMetadata.gameCharacterCards
+            : [];
           const gameSkillModifierContext = oneRequestDiceTurn
-            ? await loadSkillCheckModifierContext(app.db, input.chatId).catch((err: unknown) => {
-                logger.warn(err, "[game/one-request-dice] No sheet names to advertise for chat %s", input.chatId);
-                return null;
-              })
+            ? await loadSkillCheckModifierContext(app.db, input.chatId, undefined, input.regenerateMessageId).catch(
+                (err: unknown) => {
+                  logger.warn(err, "[game/one-request-dice] No sheet names to advertise for chat %s", input.chatId);
+                  return null;
+                },
+              )
             : null;
           const gameSkillModifierView = gameSkillModifierContext
             ? buildGameSkillModifierView(gameSkillModifierContext)
             : undefined;
-          // A pinned ruleset replaces the built-in check lines. One the install cannot honour
-          // renders the built-in reminder, and the resolver then saves its checks sparse.
-          // `loadRulesetRegistry` never throws: a failed read is logged there and comes back as an
-          // empty registry, which resolves to "unavailable" here.
-          const pinnedGameRuleset =
-            chatMeta.gameRuleset != null ? resolveGameRuleset(chatMeta, await loadRulesetRegistry()) : null;
-          turnGameRuleset = pinnedGameRuleset;
           const promptRulesetCatalogs =
             pinnedGameRuleset?.status === "ok" &&
             pinnedGameRuleset.definition.resolution.kind === "dice-pool" &&
@@ -4968,10 +5023,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   {
                     definition: pinnedGameRuleset.definition,
                     packageId: pinnedGameRuleset.packageId,
-                    cards: sheetCommandCards(
-                      pinnedGameRuleset.definition,
-                      Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : [],
-                    ),
+                    cards: sheetCommandCards(pinnedGameRuleset.definition, turnSheetCards),
                     playerName: gmCtx.playerName ?? null,
                   },
                   "",
@@ -5263,10 +5315,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     // there would land in the player's own message as visible text.
                     ...(!input.impersonate
                       ? {
+                          rulesetClocks: pinnedGameRuleset.definition.clocks
+                            ? parseStoredRulesetClocks((await turnStartRulesetSnapshot())?.rulesetClocks)
+                            : undefined,
                           rulesetSheetBlocks: renderGameRulesetSheetBlocks(
                             pinnedGameRuleset.definition,
-                            chatMeta.gameCharacterCards,
-                            parseStoredRulesetLive((await selectedGameStateSnapshotPromise)?.rulesetLive),
+                            turnSheetCards,
+                            parseStoredRulesetLive(
+                              (
+                                await (pinnedGameRuleset.definition.party
+                                  ? turnStartRulesetSnapshot()
+                                  : selectedGameStateSnapshotPromise)
+                              )?.rulesetLive,
+                            ),
                             promptRulesetCatalogs,
                             promptItemBook
                               ? {
@@ -5275,6 +5336,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   playerName: personaName || null,
                                 }
                               : undefined,
+                            turnSheetMetadata.gamePartySheet,
                           ),
                         }
                       : {}),
@@ -9368,22 +9430,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
            * row; reading "the newest stored row" instead is a different balance whenever the turn
            * does not follow the newest one, which is what a regenerate and a swipe are.
            */
-          let turnStartLivePromise: Promise<RulesetLiveStates | null> | null = null;
-          const turnStartRulesetLive = () => {
-            turnStartLivePromise ??= (async () => {
-              const continuedRow = input.continueMessageId
-                ? await gameStateStore.getByChatAndMessage(
-                    input.chatId,
-                    input.continueMessageId,
-                    Number.isInteger(continueTargetMessage?.activeSwipeIndex)
-                      ? (continueTargetMessage.activeSwipeIndex as number)
-                      : 0,
-                  )
-                : null;
-              return parseStoredRulesetLive((continuedRow ?? baseGameStateSnapshot)?.rulesetLive);
-            })();
-            return turnStartLivePromise;
-          };
+          const turnStartRulesetLive = async () =>
+            parseStoredRulesetLive((await turnStartRulesetSnapshot())?.rulesetLive);
 
           // Some models inline reasoning blocks instead of using provider-native
           // thinking channels. Lift those blocks into message.extra.thinking.
@@ -9963,7 +10011,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const dicePoolSession = await ensureGameDicePoolSession();
             const rolled = await resolveSkillCheckTagsInContent(fullResponse, {
               loadContext: async () =>
-                loadSkillCheckModifierContext(app.db, input.chatId, await turnStartRulesetLive()),
+                loadSkillCheckModifierContext(
+                  app.db,
+                  input.chatId,
+                  await turnStartRulesetLive(),
+                  input.regenerateMessageId,
+                ),
               chatId: input.chatId,
               // Keyed on the pin being PRESENT, not on it resolving. A pin the install cannot
               // honour must still fail closed (the context refuses to load and the checks are
@@ -9974,7 +10027,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // The prompt, check and sheet passes share the same catalog entries for this turn.
               loadCatalogs: async () => {
                 if (turnRulesetCatalogs) return turnRulesetCatalogs;
-                const context = await loadGameRulesetSheetContext(app.db, input.chatId, turnGameRuleset);
+                const context = await loadGameRulesetSheetContext(
+                  app.db,
+                  input.chatId,
+                  turnGameRuleset,
+                  input.regenerateMessageId,
+                );
                 return (turnRulesetCatalogs = context
                   ? await loadTurnRulesetCatalogs(context, fullResponse, { force: true })
                   : {});
@@ -10120,7 +10178,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const withSpends = (base: RulesetLiveStates | null) =>
               checkSpendLive ? { ...(base ?? {}), ...checkSpendLive } : base;
             try {
-              const sheetContext = await loadGameRulesetSheetContext(app.db, input.chatId, turnGameRuleset);
+              const sheetContext = await loadGameRulesetSheetContext(
+                app.db,
+                input.chatId,
+                turnGameRuleset,
+                input.regenerateMessageId,
+              );
               turnSheetContext = sheetContext;
               if (sheetContext) {
                 rulesetSheetTurn = applyGameRulesetSheetTurn(
@@ -10129,8 +10192,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   // The same turn-start state the check pass read, with whatever it already spent
                   // laid over it, so the two passes of one turn cannot begin from two balances.
                   withSpends(await turnStartRulesetLive()),
-                  turnRulesetCatalogs ?? (await loadTurnRulesetCatalogs(sheetContext, fullResponse)),
+                  (turnRulesetCatalogs ??= await loadTurnRulesetCatalogs(sheetContext, fullResponse)),
                 );
+                // Items used later in this reply read the build the advancement pass left.
+                turnSheetContext = {
+                  ...sheetContext,
+                  cards: sheetContext.cards.map((card) => ({
+                    ...card,
+                    build: rulesetSheetTurn!.builds[normalizeCharacterLookupName(card.name)] ?? card.build,
+                  })),
+                };
                 if (rulesetSheetTurn.content !== fullResponse) {
                   fullResponse = rulesetSheetTurn.content;
                   contentReplaced = true;
@@ -10139,6 +10210,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             } catch (err) {
               // The reply is saved as the Game Master wrote it; the commands stay unapplied.
               logger.error(err, "[game/sheet] Could not load the sheet context for chat %s", input.chatId);
+            }
+          }
+
+          let rulesetClocksAfterTurn: RulesetClocks | undefined;
+          if (turnSheetContext?.definition.clocks) {
+            const clockTurn = applyClockCommandTags(
+              fullResponse,
+              turnSheetContext.definition,
+              parseStoredRulesetClocks((await turnStartRulesetSnapshot())?.rulesetClocks),
+            );
+            rulesetClocksAfterTurn = clockTurn.clocks;
+            if (clockTurn.content !== fullResponse) {
+              fullResponse = clockTurn.content;
+              contentReplaced = true;
             }
           }
 
@@ -10963,6 +11048,77 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               logger.error(err, "[generate] Dungeon map update failed for chat %s", input.chatId);
             }
           }
+          // Permanent changes and their undo record are saved only with a durable reply.
+          if (rulesetSheetTurn && turnSheetContext && savedMsg?.id) {
+            let advancementSaved = false;
+            try {
+              await saveGameRulesetAdvancement(
+                app.db,
+                input.chatId,
+                savedMsg.id,
+                savedSwipeIndex ?? 0,
+                turnSheetContext.definition,
+                rulesetSheetTurn,
+              );
+              advancementSaved = true;
+              if (turnSheetContext.definition.sheet.advancement || turnSheetContext.definition.party) {
+                const metadata = parseExtra((await chats.getById(input.chatId))?.metadata);
+                sendSseEvent(reply, {
+                  type: "metadata_patch",
+                  data: {
+                    gameCharacterCards: metadata.gameCharacterCards,
+                    ...(turnSheetContext.definition.party ? { gamePartySheet: metadata.gamePartySheet } : {}),
+                  },
+                });
+              }
+            } catch (err) {
+              logger.error(err, "[game/sheet] Could not save advancement for chat %s", input.chatId);
+              if (!advancementSaved) {
+                // A refused build cannot lend its new maximums to the remaining live commands.
+                turnSheetContext = {
+                  ...turnSheetContext,
+                  advancementRefusal: "save-failed",
+                  cards: turnSheetContext.cards.map((card) => ({
+                    ...card,
+                    build: rulesetSheetTurn!.baseBuilds[normalizeCharacterLookupName(card.name)] ?? card.build,
+                  })),
+                };
+                const base = await turnStartRulesetLive();
+                rulesetSheetTurn = applyGameRulesetSheetTurn(
+                  turnSheetContext,
+                  fullResponse,
+                  checkSpendLive ? { ...(base ?? {}), ...checkSpendLive } : base,
+                  turnRulesetCatalogs ?? {},
+                );
+                if (inventoryTurn?.uses) {
+                  inventoryTurn.uses.context = turnSheetContext;
+                  inventoryTurn.uses.live = rulesetSheetTurn.live;
+                  inventoryTurn.uses.rests = rulesetSheetTurn.rests;
+                }
+                const before = fullResponse;
+                fullResponse = rulesetSheetTurn.content;
+                const at = savedMsg.content.lastIndexOf(before);
+                if (at >= 0) {
+                  const corrected =
+                    savedMsg.content.slice(0, at) + fullResponse + savedMsg.content.slice(at + before.length);
+                  try {
+                    const active = await chats.getMessage(savedMsg.id);
+                    if (active?.activeSwipeIndex === (savedSwipeIndex ?? 0)) {
+                      savedMsg = (await chats.updateMessageContent(savedMsg.id, corrected)) ?? savedMsg;
+                      if (continuedMessageRewriteSource !== null) continuedMessageRewriteSource = corrected;
+                    }
+                  } catch (writeError) {
+                    logger.error(
+                      writeError,
+                      "[game/sheet] Could not record refused advancement for chat %s",
+                      input.chatId,
+                    );
+                  }
+                }
+              }
+            }
+          }
+
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
           // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──
           // Now that the reply is saved, its tags are carried out on the stacks as they are, in one
@@ -11159,7 +11315,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // turn whose sheet pass was skipped or threw would keep the automatic successes a player
           // bought and quietly give the points back, which is a free success.
           const liveAfterTurn = inventoryLive ?? rulesetSheetTurn?.live ?? checkSpendLive;
-          if (liveAfterTurn && savedMsg?.id) {
+          const rulesetStatePatch = {
+            ...(liveAfterTurn ? { rulesetLive: liveAfterTurn } : {}),
+            ...(rulesetClocksAfterTurn !== undefined ? { rulesetClocks: rulesetClocksAfterTurn } : {}),
+          };
+          if ((liveAfterTurn || rulesetClocksAfterTurn !== undefined) && savedMsg?.id) {
             try {
               const swipeIndex = savedSwipeIndex ?? 0;
               const siblingSwipeRow =
@@ -11170,11 +11330,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 savedMsg.id,
                 swipeIndex,
                 input.chatId,
-                { rulesetLive: liveAfterTurn },
+                rulesetStatePatch,
                 undefined,
                 { baseSnapshot: siblingSwipeRow ?? baseGameStateSnapshot },
               );
-              sendSseEvent(reply, { type: "game_state_patch", data: { rulesetLive: liveAfterTurn } });
+              sendSseEvent(reply, { type: "game_state_patch", data: rulesetStatePatch });
             } catch (err) {
               logger.error(err, "[game/sheet] Could not save live sheet state for chat %s", input.chatId);
             }

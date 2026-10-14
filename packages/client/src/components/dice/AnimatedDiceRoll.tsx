@@ -15,10 +15,18 @@ interface AnimatedDiceRollProps extends DiceRollResult {
   onDismiss?: () => void;
   hero?: boolean;
   highlightValue?: number;
+  /** Explicit kept dice, including an empty selection when none count. */
+  highlightIndices?: number[];
   resolution?: "sum" | "successes";
   /** The per-die target a success pool counted with. Given, the dice that reached it are marked as
    *  the ones that counted and the rest are dimmed. Absent, every die reads as it always has. */
   threshold?: number;
+  /** Which way a pool counted against its target: a die under it, or over it. Absent, a die counts
+   *  at the target or more. */
+  compare?: "below" | "above";
+  /** What each face of the die is worth, lowest first, where it is not its own number (Fate's
+   *  `[-1, 0, 1]`). Given, each die shows its worth and the breakdown adds the worths. */
+  faceValues?: number[];
 }
 
 function parseDiceSides(notation: string): number {
@@ -65,8 +73,11 @@ export function AnimatedDiceRoll({
   onDismiss,
   hero,
   highlightValue,
+  highlightIndices,
   resolution = "sum",
   threshold,
+  compare,
+  faceValues,
 }: AnimatedDiceRollProps) {
   const { t: localizeUi } = useUiTranslation();
   const sides = parseDiceSides(notation);
@@ -113,8 +124,23 @@ export function AnimatedDiceRoll({
 
   const style = accentColor ? ({ "--dice-accent": accentColor } as CSSProperties) : undefined;
   const modifierText = modifier !== 0 ? `${modifier > 0 ? "+" : ""}${modifier}` : "";
-  const sumsToTotal = resolution === "sum" && skillCheckDiceSumToTotal({ rolls, modifier, total, resolution });
-  const rollText = useMemo(() => rolls.map((roll) => getFaceLabel(sides, roll)).join(", "), [rolls, sides]);
+  // What a face adds, where the die's faces are worth other numbers.
+  const worthOf = (face: number) => faceValues?.[face - 1] ?? face;
+  const sumsToTotal =
+    resolution === "sum" && skillCheckDiceSumToTotal({ rolls: rolls.map(worthOf), modifier, total, resolution });
+  // A face's worth as text, where the die's faces are not their own numbers: Fate's dice read -, blank, +.
+  const faceText = (face: number): string | undefined => {
+    const worth = faceValues?.[face - 1];
+    if (worth === undefined) return undefined;
+    const fate = faceValues!.every((value) => value >= -1 && value <= 1);
+    if (fate) return worth > 0 ? "+" : worth < 0 ? "−" : " ";
+    return worth > 0 ? `+${worth}` : String(worth);
+  };
+  const rollText = useMemo(
+    () => rolls.map((roll) => faceText(roll) ?? getFaceLabel(sides, roll)).join(", "),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rolls, sides, faceValues],
+  );
   const totalVisible = phase === "impact" || phase === "settled";
   // A pool that reported the target it counted with marks the dice that reached it.
   const countedFrom = resolution === "successes" && threshold != null ? threshold : null;
@@ -155,12 +181,21 @@ export function AnimatedDiceRoll({
         {rolls.map((roll, index) => {
           const shown = displayValues[index] ?? roll;
           const emphasized =
-            countedFrom == null ? highlightValue == null || roll === highlightValue : roll >= countedFrom;
+            highlightIndices !== undefined
+              ? highlightIndices.includes(index)
+              : countedFrom == null
+                ? highlightValue == null || roll === highlightValue
+                : compare === "below"
+                  ? roll < countedFrom
+                  : compare === "above"
+                    ? roll > countedFrom
+                    : roll >= countedFrom;
           return (
             <DiceGlyph
               key={`${index}-${roll}`}
               sides={sides}
               value={shown}
+              faceText={faceText(shown)}
               phase={phase}
               size={glyphSize}
               index={index}
@@ -174,7 +209,16 @@ export function AnimatedDiceRoll({
       {/* Which dice counted is shown by dimming the ones that did not, which is a picture. The rule
           behind it is said in words here so it reaches a screen reader too. */}
       {countedFrom != null && (
-        <span className="sr-only">{localizeUi("ui.dice.animateddiceroll.countedFrom", { value: countedFrom })}</span>
+        <span className="sr-only">
+          {localizeUi(
+            compare === "below"
+              ? "ui.dice.animateddiceroll.countedBelow"
+              : compare === "above"
+                ? "ui.dice.animateddiceroll.countedAbove"
+                : "ui.dice.animateddiceroll.countedFrom",
+            { value: countedFrom },
+          )}
+        </span>
       )}
 
       <div className="dice-roll-footer">
@@ -185,12 +229,12 @@ export function AnimatedDiceRoll({
               makes correct results look like broken arithmetic. */}
           {sumsToTotal ? (
             <>
-              {rolls.join(" + ")}
+              {rolls.map(worthOf).join(" + ")}
               {modifierText && ` ${modifierText}`}
             </>
           ) : (
             <>
-              {rolls.join(" · ")}
+              {rolls.map(worthOf).join(" · ")}
               {resolution === "sum" && modifierText && ` ${modifierText}`}
             </>
           )}

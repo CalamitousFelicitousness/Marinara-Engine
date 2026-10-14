@@ -520,6 +520,9 @@ try {
     const claimed = `[skill_check: skill="Sneak" dc="8" rolls="6|6" used="12" modifier="${plainSneak.modifier}" total="${12 + plainSneak.modifier}" result="success" mode="normal" resolution="sum" dice="2d6"]`;
     const trusted = await resolve(bare, claimed);
     assert.equal(trusted.trusted, 1, "an unchanged check is vouched for");
+    // Nor one that names rows to apply (1.156): those change the roll and cost, so the Engine rolls it.
+    const applying = await resolve(bare, claimed.replace(' dc="8"', ' dc="8" apply="Anything"'));
+    assert.equal(applying.trusted, 0, "a check that applies rows is never vouched for");
     const retaken = await resolve(dressed, claimed);
     assert.equal(retaken.trusted, 0, "a changed one is not");
     assert.match(retaken.content, /effects="-1" from="Leather coat"/);

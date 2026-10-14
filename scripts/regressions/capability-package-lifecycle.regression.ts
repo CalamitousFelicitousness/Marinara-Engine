@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 339 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 340 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,20 +140,71 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.339/,
+    /requires capability API 2\.0; this Engine supports 1\.340/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 339 },
+    capabilityApi: { major: 1, minor: 340 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
+  assert.equal(
+    getCapabilityApiCompatibilityIssue({
+      ...currentMinorManifest,
+      capabilityApi: { major: 1, minor: 28 },
+    }),
+    null,
+    "the pre-merge capability minor remains compatible",
+  );
+  // Every minor this Engine added stays installable alongside the newest.
+  const supportedMinors: Array<[number, string]> = [
+    [144, "party sheet"],
+    [151, "builder choices"],
+    [152, "builder allocation"],
+    [153, "builder spending"],
+    [154, "builder named rows"],
+    [155, "builder legality"],
+    [156, "contextual effects"],
+    [157, "starting coins"],
+    [158, "starting values"],
+    [159, "priced choices"],
+    [160, "creation profiles"],
+    [161, "row checks"],
+    [162, "creation rolls"],
+    [163, "shared party creation"],
+    [164, "trades"],
+    [205, "row counts"],
+    [206, "row prices"],
+    [207, "unpriced offers"],
+    [208, "more fields"],
+    [209, "roll abilities"],
+    [210, "worked-out list columns"],
+    [211, "partial score increases"],
+    [212, "row check stances"],
+    [213, "ability specialties"],
+    [214, "no-cancel check effects"],
+    [215, "item access"],
+    [216, "row dots"],
+    [217, "best-rating check effects"],
+    [218, "track costs"],
+    [219, "advancement lists up to 64 fields"],
+    [339, "the newest minor before this one"],
+  ];
+  for (const [minor, label] of supportedMinors) {
+    assert.equal(
+      getCapabilityApiCompatibilityIssue(
+        capabilityPackageManifestSchema.parse({ ...manifestV2, capabilityApi: { major: 1, minor } }),
+      ),
+      null,
+      `Capability API 1.${minor} (${label}) is supported`,
+    );
+  }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 340 },
+    capabilityApi: { major: 1, minor: 341 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.340; this Engine supports 1\.339/,
+    /requires capability API 1\.341; this Engine supports 1\.340/,
   );
   const startupManifest = {
     ...currentMinorManifest,

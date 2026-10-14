@@ -409,3 +409,444 @@ test("the guided builder applies picks, rolls and buys scores, and saves the she
     expect(restored.ok(), await restored.text()).toBeTruthy();
   }
 });
+
+test("counted builder choices explain exclusions, replacements and conditional badges without blocking Next", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(180000);
+  const policyBefore = await request.get("/api/agents/import-policy");
+  const importsWereEnabled = (await policyBefore.json()).enabled === true;
+  let chatId: string | undefined;
+  let rulesetId: string | undefined;
+  let characterId: string | undefined;
+  try {
+    await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    const doc = JSON.parse(ruleset(`builder-choices-e2e-${test.info().project.name}`));
+    doc.catalogs.push({
+      id: "backgrounds",
+      label: "Backgrounds",
+      entries: [
+        {
+          id: "scholar",
+          label: "Scholar",
+          grants: {
+            abilities: {
+              choose: [
+                { id: "restricted", count: 1, amount: 2, from: ["str", "dex"] },
+                {
+                  id: "free",
+                  count: 1,
+                  amount: 2,
+                  from: ["str", "dex", "con"],
+                  excludeChoices: ["background/restricted"],
+                },
+              ],
+            },
+            trained: {
+              skills: ["athletics"],
+              choose: [{ id: "skill", what: "skills", count: 1, from: ["athletics"], onDuplicate: "replace" }],
+            },
+          },
+        },
+      ],
+    });
+    doc.catalogs.push({
+      id: "talents",
+      label: "Talents",
+      feeds: ["features"],
+      filters: [{ id: "tier", label: "Tier", type: "number" }],
+      entries: [1, 1, 2].map((tier, index) => ({
+        id: `talent-${index}`,
+        label: `Talent ${index}`,
+        filters: { tier },
+        rows: [{ list: "features", values: { name: `Talent ${index}` } }],
+      })),
+    });
+    // The sample's unused entries still offer languages, so keep their required host step.
+    doc.sheet.builder = {
+      tier: "proficient",
+      steps: [
+        { id: "fields", label: "Details", kind: "fields", fields: ["xp"] },
+        { id: "background", label: "Background", kind: "catalog", catalog: "backgrounds" },
+        { id: "training", label: "Training", kind: "trained" },
+        {
+          id: "talents",
+          label: "Talents",
+          kind: "catalog",
+          catalog: "talents",
+          min: 3,
+          max: 3,
+          quotaBelow: { filter: "tier" },
+          quotas: [{ filter: "tier", value: 2, min: 1, max: 1 }],
+        },
+        { id: "languages", label: "Languages", kind: "choices", catalog: "tongues" },
+        {
+          id: "conditional",
+          label: "Subrace",
+          kind: "catalog",
+          catalog: "backgrounds",
+          when: { field: "xp" },
+          requiredWhen: { field: "xp" },
+        },
+      ],
+    };
+    const imported = await request.post("/api/game-rulesets/import", { data: { definition: JSON.stringify(doc) } });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    rulesetId = (await imported.json()).rulesetId;
+    const character = await request.post("/api/characters", { data: { data: { name: "Bram" } } });
+    characterId = (await character.json()).id;
+    chatId = await seedGame(request, rulesetId!, characterId!);
+    await openSheetEditor(page, chatId);
+    const steps = page.getByRole("navigation", { name: "Character builder steps" });
+    await expect(steps.getByRole("button", { name: /^Subrace/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(steps.getByRole("button", { name: "Background 1 choice left", exact: true })).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(steps.getByRole("button", { name: /^Training/ })).toHaveAttribute("aria-current", "step");
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("button", { name: "Select Scholar", exact: true }).click();
+    const boosts = page.getByRole("group", { name: /Scholar: choose 1 score,/ });
+    await boosts.nth(0).getByRole("button", { name: "Strength", exact: true }).click();
+    await expect(boosts.nth(1).getByRole("button", { name: /Strength Excluded by an earlier choice/ })).toBeDisabled();
+    await boosts.nth(1).getByRole("button", { name: "Dexterity", exact: true }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page
+      .getByRole("group", { name: /^Scholar: choose 1 skill\b/ })
+      .getByRole("button", { name: "Athletics", exact: true })
+      .click();
+    const replacement = page.getByRole("group", { name: /^Replacement: Scholar/ });
+    await expect(replacement).toBeVisible();
+    await replacement.getByRole("button", { name: "Perception", exact: true }).click();
+    await expect(steps.getByRole("button", { name: "Training Nothing left to choose", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.getByText("Tier 2: choose 1.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select Talent 2", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Select Talent 0", exact: true }).click();
+    await page.getByRole("button", { name: "Select Talent 1", exact: true }).click();
+    await page.getByRole("button", { name: "Select Talent 2", exact: true }).click();
+    await page.getByRole("button", { name: "Remove Talent 0", exact: true }).click();
+    await expect(page.getByText(/Some saved answers no longer apply/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove Talent 2", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+    await steps.getByRole("button", { name: /^Details/ }).click();
+    await page.getByRole("textbox", { name: "Experience points", exact: true }).fill("1");
+    await page.getByRole("textbox", { name: "Experience points", exact: true }).press("Tab");
+    await expect(steps.getByRole("button", { name: "Subrace 1 choice left", exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "All fields", exact: true }).click();
+    await page.getByRole("textbox", { name: "Experience points", exact: true }).fill("0");
+    await page.getByRole("textbox", { name: "Experience points", exact: true }).press("Tab");
+    await page.getByRole("tab", { name: "Guided", exact: true }).click();
+    await expect(steps.getByRole("button", { name: /^Subrace/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Save sheet", exact: true }).click();
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`);
+    if (rulesetId) await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(rulesetId)}&force=true`);
+    if (characterId) await request.delete(`/api/characters/${characterId}`);
+    await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+  }
+});
+
+test("rating stages retain priority purchases, free ranks and manual overrides", async ({ page, request }) => {
+  test.setTimeout(180000);
+  const policyBefore = await request.get("/api/agents/import-policy");
+  const importsWereEnabled = (await policyBefore.json()).enabled === true;
+  let chatId: string | undefined;
+  let rulesetId: string | undefined;
+  let characterId: string | undefined;
+  try {
+    await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    const doc = JSON.parse(
+      readFileSync(new URL("../docs/development/ruleset-5e-2014.example.json", import.meta.url), "utf8"),
+    );
+    doc.id = `allocation-e2e-${test.info().project.name}`;
+    for (const ability of doc.sheet.abilities) Object.assign(ability, { min: 0, default: 1 });
+    doc.sheet.abilities.find((ability: { id: string }) => ability.id === "cha").label = "Appearance";
+    doc.catalogs.push({
+      id: "heritages",
+      label: "Heritages",
+      entries: [
+        { id: "first", label: "First heritage", grants: { ratings: [{ target: { skill: "athletics" }, add: 1 }] } },
+        { id: "second", label: "Second heritage", grants: { ratings: [{ target: { skill: "athletics" }, add: 1 }] } },
+      ],
+    });
+    doc.sheet.builder = {
+      ratingTiers: [{ target: { skill: "athletics" }, tiers: ["none", "proficient", "expertise"] }],
+      steps: [
+        { id: "heritage", label: "Heritage", kind: "catalog", catalog: "heritages", min: 0, max: 2 },
+        {
+          id: "dots",
+          label: "Dots",
+          kind: "allocate",
+          priorities: [7, 5, 3],
+          annotations: true,
+          groups: [
+            {
+              id: "physical",
+              label: "Physical",
+              targets: ["str", "dex", "con"].map((ability) => ({ ability })),
+              base: 1,
+              min: 1,
+              max: 5,
+            },
+            { id: "social", label: "Social", targets: [{ ability: "int" }], base: 1, min: 1, max: 5 },
+            { id: "mental", label: "Mental", targets: [{ ability: "wis" }], base: 1, min: 1, max: 5 },
+          ],
+        },
+        {
+          id: "ranks",
+          label: "Ranks",
+          kind: "allocate",
+          groups: [
+            {
+              id: "training",
+              label: "Training",
+              targets: [{ skill: "athletics" }],
+              base: 0,
+              min: 0,
+              max: 2,
+              budget: { const: 1 },
+            },
+          ],
+        },
+        {
+          id: "appearance",
+          label: "Appearance",
+          kind: "allocate",
+          groups: [
+            {
+              id: "fixed",
+              label: "Fixed",
+              targets: [{ ability: "cha" }],
+              base: 0,
+              min: 0,
+              max: 0,
+              budget: { const: 0 },
+            },
+          ],
+        },
+        { id: "details", label: "Details", kind: "fields", fields: ["xp"] },
+      ],
+    };
+    const imported = await request.post("/api/game-rulesets/import", { data: { definition: JSON.stringify(doc) } });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    rulesetId = (await imported.json()).rulesetId;
+    const character = await request.post("/api/characters", { data: { data: { name: "Bram" } } });
+    characterId = (await character.json()).id;
+    chatId = await seedGame(request, rulesetId!, characterId!);
+    await openSheetEditor(page, chatId);
+    await page.getByRole("button", { name: "Select First heritage", exact: true }).click();
+    await page.getByRole("button", { name: "Select Second heritage", exact: true }).click();
+    const steps = page.getByRole("navigation", { name: "Character builder steps" });
+    await steps.getByRole("button", { name: /^Ranks/ }).click();
+    await expect(page.getByText("Base/prior 0 · Free 2 · Bought 0 · Total 2", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Raise Athletics", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+    await steps.getByRole("button", { name: /^Dots/ }).click();
+    await expect(page.getByRole("button", { name: "Raise Strength", exact: true })).toBeDisabled();
+    await page.getByLabel("Allotment for Physical", { exact: true }).selectOption("0");
+    await page.getByLabel("Allotment for Social", { exact: true }).selectOption("1");
+    await page.getByLabel("Allotment for Mental", { exact: true }).selectOption("2");
+    for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "Raise Strength", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Raise Strength", exact: true })).toBeDisabled();
+    for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Raise Dexterity", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Raise Constitution", exact: true })).toBeDisabled();
+    await page.getByLabel("Notes for Strength (optional)", { exact: true }).fill("Heritage specialty");
+    await page.getByLabel("Allotment for Physical", { exact: true }).selectOption("2");
+    await expect(page.getByLabel("Allotment for Mental", { exact: true })).toHaveValue("0");
+    await expect(
+      page.getByText("4 saved dots are inactive. Reduce or clear them to fit this stage.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+    await page.getByLabel("Allotment for Physical", { exact: true }).selectOption("0");
+    await expect(page.getByText("Base/prior 1 · Free 0 · Bought 4 · Total 5", { exact: true })).toBeVisible();
+    await steps.getByRole("button", { name: /^Appearance/ }).click();
+    await expect(page.getByRole("button", { name: "Raise Appearance", exact: true })).toBeDisabled();
+    await page.getByRole("tab", { name: "All fields", exact: true }).click();
+    await page.getByRole("textbox", { name: "Appearance", exact: true }).fill("4");
+    await page.getByRole("textbox", { name: "Appearance", exact: true }).press("Tab");
+    await page.getByRole("tab", { name: "Guided", exact: true }).click();
+    await steps.getByRole("button", { name: /^Appearance/ }).click();
+    await expect(
+      page.getByText("Sheet override: 4. Edit it in All fields; guided purchases are kept.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Save sheet", exact: true }).click();
+    // Wait for the builder to close, or .last() can land on the character card's Edit sheet button.
+    await expect(steps).toBeHidden();
+    await page.getByRole("button", { name: "Edit sheet", exact: true }).last().click();
+    await steps.getByRole("button", { name: /^Dots/ }).click();
+    await expect(page.getByLabel("Notes for Strength (optional)", { exact: true })).toHaveValue("Heritage specialty");
+    await expect(page.getByText("Base/prior 1 · Free 0 · Bought 4 · Total 5", { exact: true })).toBeVisible();
+    await steps.getByRole("button", { name: /^Ranks/ }).click();
+    await expect(page.getByText("Base/prior 0 · Free 2 · Bought 0 · Total 2", { exact: true })).toBeVisible();
+    await steps.getByRole("button", { name: /^Heritage/ }).click();
+    await page.getByRole("button", { name: "Remove First heritage", exact: true }).click();
+    await steps.getByRole("button", { name: /^Ranks/ }).click();
+    await expect(page.getByRole("button", { name: "Raise Athletics", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Raise Athletics", exact: true }).click();
+    await expect(page.getByText("Base/prior 0 · Free 1 · Bought 1 · Total 2", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Save sheet", exact: true }).click();
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`);
+    if (rulesetId) await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(rulesetId)}&force=true`);
+    if (characterId) await request.delete(`/api/characters/${characterId}`);
+    await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+  }
+});
+
+test("priced builder purchases preserve free dots and preview career repricing", async ({ page, request }) => {
+  test.setTimeout(180000);
+  const importsWereEnabled = (await (await request.get("/api/agents/import-policy")).json()).enabled === true;
+  let chatId: string | undefined;
+  let rulesetId: string | undefined;
+  let characterId: string | undefined;
+  try {
+    await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    const doc = JSON.parse(
+      readFileSync(new URL("../docs/development/ruleset-5e-2014.example.json", import.meta.url), "utf8"),
+    );
+    doc.id = "spend-e2e-" + test.info().project.name;
+    doc.sheet.fields.push(
+      { id: "background_value", label: "Background dots", type: "number", min: 0, max: 20, default: 0 },
+      { id: "career_cost", label: "Career cost", type: "number", min: 0, max: 1, default: 0 },
+      { id: "flaw_value", label: "Flaw dots", type: "number", min: 0, max: 10, default: 0 },
+    );
+    doc.catalogs.push({
+      id: "heritages",
+      label: "Heritages",
+      entries: [
+        {
+          id: "free",
+          label: "Free background",
+          grants: { ratings: [{ target: { field: "background_value" }, add: 2 }] },
+        },
+      ],
+    });
+    doc.sheet.builder = {
+      pools: [
+        {
+          id: "points",
+          label: "Creation points",
+          budget: { const: 10 },
+          creditLimit: 2,
+          caps: [{ filter: "flaw", maxCredit: 2 }],
+        },
+      ],
+      steps: [
+        { id: "heritage", label: "Heritage", kind: "catalog", catalog: "heritages" },
+        { id: "career", label: "Career", kind: "fields", fields: ["career_cost"] },
+        {
+          id: "purchases",
+          label: "Purchases",
+          kind: "spend",
+          pool: "points",
+          offers: [
+            {
+              id: "background",
+              label: "Background",
+              target: { field: "background_value" },
+              min: 0,
+              max: 10,
+              cost: { flat: 1 },
+              overrides: [{ when: { field: "career_cost" }, cost: { flat: 2 } }],
+            },
+          ],
+        },
+        {
+          id: "flaws",
+          label: "Flaws",
+          kind: "spend",
+          pool: "points",
+          offers: [
+            {
+              id: "flaw",
+              label: "Flaw",
+              target: { field: "flaw_value" },
+              min: 0,
+              max: 10,
+              cost: { flat: -1 },
+              credit: true,
+              tags: ["flaw"],
+            },
+          ],
+        },
+        { id: "details", label: "Details", kind: "fields", fields: ["xp"] },
+      ],
+    };
+    const imported = await request.post("/api/game-rulesets/import", { data: { definition: JSON.stringify(doc) } });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    rulesetId = (await imported.json()).rulesetId;
+    characterId = (await (await request.post("/api/characters", { data: { data: { name: "Bram" } } })).json()).id;
+    chatId = await seedGame(request, rulesetId!, characterId!);
+    await openSheetEditor(page, chatId);
+    await page.getByRole("button", { name: "Select Free background", exact: true }).click();
+    const steps = page.getByRole("navigation", { name: "Character builder steps" });
+    await steps.getByRole("button", { name: /^Purchases/ }).click();
+    const buy = page.getByRole("button", { name: "Buy a rating for Background", exact: true });
+    for (let i = 0; i < 5; i++) await buy.click();
+    await expect(
+      page.getByText("Starting/free 2 · Bought 5 · Requested total 7 · Paid 5", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Creation points: available 10 · Spent 5 · Credit 0 · Remaining 5", { exact: true }),
+    ).toBeVisible();
+    await steps.getByRole("button", { name: /^Career/ }).click();
+    const career = page.getByRole("textbox", { name: "Career cost", exact: true });
+    await career.fill("1");
+    await career.press("Tab");
+    await steps.getByRole("button", { name: /^Purchases/ }).click();
+    await expect(page.getByText("Price after repair: 10 points for this pool.", { exact: true })).toBeVisible();
+    await expect(buy).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Reprice saved purchases", exact: true }).click();
+    await expect(
+      page.getByText("Starting/free 2 · Bought 5 · Requested total 7 · Paid 10", { exact: true }),
+    ).toBeVisible();
+    await expect(buy).toBeDisabled();
+    await page.getByRole("button", { name: "Refund last purchase for Background", exact: true }).click();
+    await expect(
+      page.getByText("Starting/free 2 · Bought 4 · Requested total 6 · Paid 8", { exact: true }),
+    ).toBeVisible();
+    await steps.getByRole("button", { name: /^Flaws/ }).click();
+    await page.getByRole("button", { name: "Buy a rating for Flaw", exact: true }).click();
+    await page.getByRole("button", { name: "Buy a rating for Flaw", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Buy a rating for Flaw", exact: true })).toBeDisabled();
+    await expect(page.getByText("Total credit limit: 2.", { exact: true })).toBeVisible();
+    await expect(page.getByText("flaw credit limit: 2.", { exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("spend-pool.png") });
+    await expect(
+      page.getByText("Creation points: available 10 · Spent 6 · Credit 2 · Remaining 4", { exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Save sheet", exact: true }).click();
+    // Wait for the builder to close, or .last() can land on the character card's Edit sheet button.
+    await expect(steps).toBeHidden();
+    await page.getByRole("button", { name: "Edit sheet", exact: true }).last().click();
+    await steps.getByRole("button", { name: /^Purchases/ }).click();
+    await expect(
+      page.getByText("Starting/free 2 · Bought 4 · Requested total 6 · Paid 8", { exact: true }),
+    ).toBeVisible();
+    await page.getByText("Purchase history", { exact: true }).click();
+    await expect(page.getByText("2 → 3: 2 points", { exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "All fields", exact: true }).click();
+    const dots = page.getByRole("textbox", { name: "Background dots", exact: true });
+    await dots.fill("12");
+    await dots.press("Tab");
+    await page.getByRole("tab", { name: "Guided", exact: true }).click();
+    await steps.getByRole("button", { name: /^Purchases/ }).click();
+    await expect(
+      page.getByText("Sheet override: 12. Edit it in All fields; guided purchases are kept.", { exact: true }),
+    ).toBeVisible();
+    await expect(buy).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+  } finally {
+    if (chatId) await request.delete("/api/chats/" + chatId);
+    if (rulesetId)
+      await request.delete("/api/game-rulesets?rulesetId=" + encodeURIComponent(rulesetId) + "&force=true");
+    if (characterId) await request.delete("/api/characters/" + characterId);
+    await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+  }
+});

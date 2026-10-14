@@ -56,7 +56,7 @@ The repository root may contain an `agents.json` array using the same agent-defi
 ]
 ```
 
-The repository root may also contain a `rulesets` folder holding one Game Mode ruleset per `.json` file, up to 32 files of 256 KB each. Only files directly inside `rulesets` are read, so anything in a subfolder is ignored. Each ruleset is listed in the preview with its name, version, and what it covers. A ruleset's Game Master text is sent to the model in every game that uses it, so only install rulesets from people you trust.
+The repository root may also contain a `rulesets` folder holding one Game Mode ruleset per `.json` file, up to 32 files of 512 KB each. Only files directly inside `rulesets` are read, so anything in a subfolder is ignored. Each ruleset is listed in the preview with its name, version, and what it covers. A ruleset's Game Master text is sent to the model in every game that uses it, so only install rulesets from people you trust.
 
 An imported ruleset is named after the repository owner, such as `alice/my-5e`, so it can never take an official ruleset's name and two authors can both publish a ruleset called `v20`. Every imported version is kept and a game always plays on the exact version it was created on. If the same version arrives again with different contents, Marinara keeps the installed one and tells you to ask the author to raise the version number. A file Marinara cannot read is listed with the reason and skipped; the rest of the repository still installs.
 

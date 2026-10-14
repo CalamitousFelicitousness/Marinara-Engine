@@ -531,6 +531,23 @@ export function AdvancedMemorySettings({
               {t("chat.advancedMemory.excerptMessagesHelp")}
             </p>
           </div>
+          <SettingsSwitch
+            label={t("chat.advancedMemory.characterRecollections")}
+            description={t("chat.advancedMemory.characterRecollectionsHelp")}
+            checked={settings.characterRecollections}
+            disabled={disabled}
+            // Turning it on for a prepared chat starts writing recollections for its scenes.
+            onChange={(characterRecollections) =>
+              action.mutate({
+                action: "settings",
+                settings: { characterRecollections },
+                debugMode: useUIStore.getState().debugMode,
+              })
+            }
+            labelPosition="start"
+            className="justify-between rounded-md bg-[var(--secondary)] px-3 py-2.5 text-left"
+            labelClassName="text-xs font-medium"
+          />
           <label className="block space-y-1 text-xs">
             <span>{t("chat.advancedMemory.initialModel")}</span>
             <select

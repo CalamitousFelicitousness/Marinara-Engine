@@ -7,6 +7,7 @@ import {
   type Request,
   type TestInfo,
 } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import type { AdvancedMemoryStatus, Message } from "@marinara-engine/shared";
@@ -1836,6 +1837,141 @@ test("Advanced Memory offers automatic message visibility only in individual gro
     await expect(settings.getByRole("checkbox", { name: toggleName })).toHaveCount(0);
   } finally {
     await request.delete(`/api/chats/${solo.id}?force=true`);
+    await fixture.cleanup();
+  }
+});
+
+test("Character recollections switch saves for its chat and recollections are edited inside their scene", async ({
+  page,
+  request,
+}, info) => {
+  const fixture = await createFixture(request);
+  const endpoint = `/api/chats/${fixture.chat.id}/advanced-memory`;
+  const drawer = page.locator(".mari-chat-settings-drawer");
+  const status = async () => (await (await request.get(endpoint)).json()) as AdvancedMemoryStatus;
+  const summary = "Dottore promises to preserve the blue notebook.";
+  const generated = "I remember the weight of that notebook and how carefully I wrote the promise down.";
+  try {
+    expect(
+      (
+        await request.patch(`${endpoint}/settings`, {
+          data: {
+            enabled: true,
+            knowledgeConfirmed: true,
+            knowledgeStarts: Object.fromEntries(fixture.characters.map(({ id }) => [id, null])),
+          },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    const envelope = await (await request.get(`${endpoint}/export`)).json();
+    const scene = {
+      chatId: fixture.chat.id,
+      sceneId: `scene-${fixture.firstMessage.id}`,
+      status: "closed",
+      startMessageId: fixture.firstMessage.id,
+      endMessageId: fixture.lastMessage.id,
+      messageIds: [fixture.firstMessage.id, fixture.lastMessage.id],
+      timeline: null,
+      enabled: true,
+      manualOverride: false,
+    };
+    const imported = await request.post(`${endpoint}/import`, {
+      data: {
+        ...envelope,
+        records: [
+          {
+            valid: true,
+            record: {
+              ...scene,
+              id: scene.sceneId,
+              kind: "scene",
+              audienceCharacterIds: [],
+              content: "",
+              title: "Scene",
+              dependencies: [],
+            },
+          },
+          {
+            valid: true,
+            record: {
+              ...scene,
+              id: "recollection-proof-summary",
+              kind: "scene",
+              audienceCharacterIds: [fixture.character.id],
+              content: summary,
+              title: "Scene",
+              dependencies: [ADVANCED_MEMORY_SCENE_AUDIENCE],
+            },
+          },
+          {
+            valid: true,
+            record: {
+              ...scene,
+              id: "recollection-proof-dottore",
+              kind: "recollection",
+              audienceCharacterIds: [fixture.character.id],
+              content: generated,
+              title: "Recollection",
+              // Written with this summary text, so it is current.
+              dependencies: [
+                {
+                  id: "recollection-summary",
+                  revision: createHash("sha256").update(JSON.stringify(summary)).digest("hex"),
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(imported.ok()).toBeTruthy();
+    expect(((await imported.json()) as { imported: number }).imported).toBe(3);
+
+    await openChat(page, fixture.chat.id);
+    const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
+    await expect(section).toBeVisible();
+    if (!(await section.locator('[data-component="AdvancedMemorySettings"]').isVisible()))
+      await drawerToggle(section).click();
+    const settings = section.locator('[data-component="AdvancedMemorySettings"]');
+    const toggle = settings.getByRole("checkbox", { name: /^Character recollections/ });
+    await expect(toggle).not.toBeChecked();
+    await expect(
+      settings.getByText(
+        "Adds each character's short memory of a scene, in their own voice, when that scene is recalled.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await settings.getByText("Character recollections", { exact: true }).click();
+    await expect.poll(async () => (await status()).settings.characterRecollections).toBe(true);
+    await expect(toggle).toBeChecked();
+    await captureThemes(page, info, "character-recollections-switch", settings);
+
+    await drawer.getByRole("button", { name: "Access memories for this chat", exact: true }).click();
+    const inspector = drawer.locator('[data-component="AdvancedMemoryInspector"]');
+    await expect(inspector).toBeVisible();
+    // A recollection is not a scene card of its own.
+    await expect(inspector.getByRole("button", { name: /^Scene #\d+\b/ })).toHaveCount(1);
+    await inspector.getByRole("button", { name: /^Scene #1\b/ }).click();
+    const recollections = inspector.locator('[data-component="AdvancedMemoryRecollections"]');
+    await expect(recollections.getByRole("heading", { name: "Character recollections" })).toBeVisible();
+    const text = recollections.getByRole("textbox", { name: "Dottore's recollection", exact: true });
+    await expect(text).toHaveValue(generated);
+    await expect(recollections.getByText("Generated", { exact: true })).toBeVisible();
+    const save = recollections.getByRole("button", { name: "Save Dottore's recollection", exact: true });
+    await expect(save).toBeDisabled();
+    await text.fill("I wrote the promise in blue ink so I could never pretend I forgot it.");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect
+      .poll(async () => {
+        const record = (await status()).records.find((item) => item.kind === "recollection");
+        return [record?.content, record?.manualOverride];
+      })
+      .toEqual(["I wrote the promise in blue ink so I could never pretend I forgot it.", true]);
+    await expect(recollections.getByText("Manually edited", { exact: true })).toBeVisible();
+    await expect(save).toBeDisabled();
+    await captureThemes(page, info, "character-recollections-inspector", recollections);
+  } finally {
     await fixture.cleanup();
   }
 });

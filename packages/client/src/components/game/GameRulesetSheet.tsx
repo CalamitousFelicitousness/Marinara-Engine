@@ -381,8 +381,9 @@ export function GameRulesetSheet({
   ].filter((entry) => entry.tier !== undefined && entry.tier !== untrainedTier);
 
   const startEditing = () => {
-    // Labelled with this layout, and never older than the sheet already was.
-    setDraft({ v: rulesetSheetStamp(definition, envelope), build });
+    // Labelled with this layout, and never older than the sheet already was. Everything else the
+    // envelope carries (the guided builder's choices) goes along, or re-picking would grant twice.
+    setDraft({ ...envelope, v: rulesetSheetStamp(definition, envelope), build });
     setRestNotice(null);
   };
 

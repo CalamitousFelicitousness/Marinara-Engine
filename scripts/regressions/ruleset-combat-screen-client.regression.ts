@@ -858,6 +858,12 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["hangsOn", say({ type: "hangsOn", actorId: "lurker", label: "Hourglass", left: 0 })],
     ["auraGrows", say({ type: "auraGrows", actorId: "lurker", condition: "poisoned", distance: 30 })],
     ["felled", say({ type: "felled", actorId: "lurker", label: "Held Ground" })],
+    ["shaped", say({ type: "shaped", targetId: "brenna", condition: "wild_shape", form: "Brown Bear" })],
+    ["shaped", say({ type: "shaped", targetId: "brenna", condition: "wild_shape", form: "Brown Bear", gone: true })],
+    ["shaped", say({ type: "shaped", targetId: "lurker", condition: "polymorph", form: "Toad", refused: true })],
+    ["sentAway", say({ type: "sentAway", actorId: "brenna", ids: ["lurker"], reason: "rounds" })],
+    ["regenerates", say({ type: "regenerates", actorId: "lurker", amount: 10 })],
+    ["regenerates", say({ type: "regenerates", actorId: "lurker", amount: 0, stopped: true })],
     ["reaped", say({ type: "reaped", actorId: "lurker", sourceId: "brenna" })],
     ["called", say({ type: "called", actorId: "lurker", label: "Jars Burst", ids: ["brenna"] })],
     [

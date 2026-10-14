@@ -57,7 +57,8 @@ export function formatRelativeUntil(timestamp: number, now = Date.now()): string
   const minutes = Math.ceil(diffMs / 60_000);
   if (minutes < 60) return format.format(minutes, "minute");
 
-  const hours = Math.floor(diffMs / 3_600_000);
+  // Minutes round up, so 59m01s lands here; keep it from reading "in 0h".
+  const hours = Math.max(1, Math.floor(diffMs / 3_600_000));
   if (hours < 24) return format.format(hours, "hour");
 
   return format.format(Math.floor(diffMs / 86_400_000), "day");

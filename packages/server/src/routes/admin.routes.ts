@@ -34,6 +34,7 @@ import {
   scanAbandonedAvatarFiles,
 } from "../services/image/avatar-file-lifecycle.js";
 import { removeAvatarOwnersOfType } from "../services/avatars/storage.js";
+import { TRIPO_API_KEY_SETTING } from "../services/avatars/generation/tripo-key.js";
 
 type ExpungeScope =
   "chats" | "characters" | "personas" | "lorebooks" | "presets" | "connections" | "automation" | "media";
@@ -303,6 +304,10 @@ export async function adminRoutes(app: FastifyInstance) {
       );
       await runDelete("app_settings", () =>
         db.delete(schema.appSettings).where(eq(schema.appSettings.key, SPEECH_TO_TEXT_SETTINGS_KEY)).run(),
+      );
+      // The Tripo API key was a connection until it moved to the 3D Avatars page, so it is cleared here too.
+      await runDelete("app_settings", () =>
+        db.delete(schema.appSettings).where(eq(schema.appSettings.key, TRIPO_API_KEY_SETTING)).run(),
       );
     }
 

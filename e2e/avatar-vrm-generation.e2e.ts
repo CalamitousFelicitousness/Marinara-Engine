@@ -8,7 +8,9 @@ import { seedUIState } from "./ui-state-fixture.js";
 // full-body neutral sprite is picked for the user, the balance and the cost show before starting, each step
 // shows with the credits used, errors are plain, Cancel stops the run and says Tripo may still charge for the
 // step it was on, and the result is labelled body only and kept through the normal VRM import, after which
-// setup shows the model as body only instead of the face picker. Connections no longer offers Tripo.
+// setup shows the model as body only instead of the face picker. The key field tells screen readers whether a
+// key is saved, keeps keyboard focus after Remove, and says so when it can't check. Connections no longer
+// offers Tripo.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -190,6 +192,7 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     const keyInput = keyField.getByLabel("Tripo API key", { exact: true });
     await expect(keyInput).toHaveAttribute("type", "password");
     await expect(keyField.getByText("Paste your Tripo API key to make 3D models.")).toBeVisible();
+    await expect(keyInput).toHaveAccessibleDescription("Paste your Tripo API key to make 3D models.");
     const getKey = keyField.getByRole("link", { name: "Get a key" });
     await expect(getKey).toHaveAttribute("href", TRIPO_KEYS_URL);
     await expect(getKey).toHaveAttribute("target", "_blank");
@@ -212,6 +215,9 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     await expect(page.getByText("Tripo API key saved.")).toBeVisible();
     await expect(keyInput).toHaveValue("");
     await expect(keyField.getByText("Your key is saved. Paste a new one to replace it.")).toBeVisible();
+    await expect(keyInput, "a screen reader hears that a key is saved").toHaveAccessibleDescription(
+      "Your key is saved. Paste a new one to replace it.",
+    );
     await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
     const status = await request.get(TRIPO_KEY_ROUTE);
     expect(await status.text(), "the key never comes back").toBe('{"saved":true}');
@@ -357,13 +363,19 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     expect(saved.kinds.vrm.meta.title).toBe("Tripo fixture");
     await setup.screenshot({ path: info.outputPath("vrm-model-saved.png"), animations: "disabled" });
 
-    // Remove takes the key away, and with it the way to start a model.
+    // Remove takes the key away, and with it the way to start a model. From the keyboard, focus goes back to
+    // the key field instead of dropping to the page when Remove goes.
     const keyRemoved = page.waitForResponse(
       (response) => new URL(response.url()).pathname === TRIPO_KEY_ROUTE && response.request().method() === "DELETE",
     );
-    await keyField.getByRole("button", { name: "Remove", exact: true }).click();
+    await keyInput.focus();
+    await page.keyboard.press("Tab");
+    await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
     await keyRemoved;
     await expect(page.getByText("Tripo API key removed.")).toBeVisible();
+    await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toHaveCount(0);
+    await expect(keyInput).toBeFocused();
     await expect(keyField.getByText("Paste your Tripo API key to make 3D models.")).toBeVisible();
     await expect(maker.getByRole("button", { name: "Make 3D model", exact: true })).toHaveCount(0);
     expect(await (await request.get(TRIPO_KEY_ROUTE)).json()).toEqual({ saved: false });
@@ -396,6 +408,36 @@ test("Make 3D model waits until the Tripo balance covers a model", async ({ page
     );
     await expect(maker.getByRole("button", { name: "Make 3D model", exact: true })).toBeDisabled();
     expect(started).toBe(false);
+  } finally {
+    await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
+    await request.delete(TRIPO_KEY_ROUTE).catch(() => undefined);
+  }
+});
+
+test("A failed key check says so, and a key can still be saved", async ({ page, request }) => {
+  const characterResponse = await request.post("/api/characters", { data: { data: { name: "Check fixture" } } });
+  expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string };
+  expect((await request.delete(TRIPO_KEY_ROUTE)).ok(), "start without a saved key").toBeTruthy();
+  try {
+    await preparePage(page, character.id);
+    await page.route(`**${TRIPO_KEY_ROUTE}`, (route) =>
+      route.request().method() === "GET" ? route.fulfill({ status: 503, json: { error: "down" } }) : route.fallback(),
+    );
+    await page.goto("/");
+    const setup = page.locator('[data-avatar-setup="3d-avatars"]');
+    await expect(setup).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    await setup.getByLabel("Character or persona").selectOption(`character:${character.id}`);
+    const keyField = setup.locator("[data-vrm-model-maker] [data-tripo-key]");
+    await expect(keyField.getByText("Couldn't check whether your Tripo API key is saved.")).toBeVisible({
+      timeout: FIRST_LOAD_TIMEOUT_MS,
+    });
+    await expect(keyField.getByText("Paste your Tripo API key to make 3D models.")).toHaveCount(0);
+    await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toHaveCount(0);
+    await keyField.getByLabel("Tripo API key", { exact: true }).fill(TEST_KEY);
+    await keyField.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(keyField.getByText("Your key is saved. Paste a new one to replace it.")).toBeVisible();
+    expect(await (await request.get(TRIPO_KEY_ROUTE)).json()).toEqual({ saved: true });
   } finally {
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
     await request.delete(TRIPO_KEY_ROUTE).catch(() => undefined);

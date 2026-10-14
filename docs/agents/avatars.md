@@ -126,7 +126,7 @@ Tripo is a paid service that makes 3D models from pictures. On the **3D Avatars*
 
 If something goes wrong, the setup says what to do:
 
-- **Key not accepted:** paste your key into **Tripo API key** on the **3D Avatars** page again and select **Save**.
+- **Key not accepted:** paste a working key into **Tripo API key** on the **3D Avatars** page and select **Save**. **Get a key** opens Tripo's key page.
 - **Not enough credits:** top up at Tripo. The balance is checked before anything starts, so nothing is spent.
 - **Content policy:** Tripo refused the picture. Try another sprite.
 - **Busy:** try again in a minute.

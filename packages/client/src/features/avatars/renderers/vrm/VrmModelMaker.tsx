@@ -3,7 +3,7 @@
 // one is saved). Shows the balance and the cost before starting, each step with the credits used while it
 // runs, and the result before it is kept. Keeping imports the file like a picked .vrm, so the importer checks
 // it and everything after works as for any VRM. The model has no face: it is labelled "Body only".
-import { useId, useMemo, useState, type FormEvent } from "react";
+import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AlertTriangle, Check, Circle, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
@@ -90,7 +90,14 @@ export function VrmModelMaker({
   return (
     <div className="space-y-3" data-vrm-model-maker>
       <MakerHeading />
-      {keyStatus.isPending ? null : <TripoKeyField saved={keySaved} disabled={job.running} />}
+      {keyStatus.isPending ? null : (
+        <TripoKeyField
+          saved={keySaved}
+          // Without an answer the field can't say whether a key is saved; saving one still works.
+          checkFailed={keyStatus.data === undefined && keyStatus.isError}
+          disabled={job.running}
+        />
+      )}
       {!keySaved || isLoading ? null : sprites.length === 0 ? (
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("avatars.generation.noSprites")}</p>
       ) : (
@@ -263,12 +270,23 @@ export function VrmModelMaker({
 }
 
 /** The Tripo API key: pasted here and saved on the server, which only ever says whether one is saved. */
-function TripoKeyField({ saved, disabled }: { saved: boolean; disabled: boolean }) {
+function TripoKeyField({ saved, checkFailed, disabled }: { saved: boolean; checkFailed: boolean; disabled: boolean }) {
   const { t } = useTranslation();
   const inputId = useId();
+  const helpId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const { save, remove } = useTripoKeyActions();
   const pending = save.isPending || remove.isPending;
+  // Save and Remove are disabled while saving, and Remove goes once the key is gone, so keyboard focus would
+  // drop to the page: it goes back to the key field. Not after a tap or a click, where it would open a phone's
+  // keyboard.
+  const refocusAfter = () => {
+    const fromKeyboard = document.activeElement?.matches(":focus-visible") === true;
+    return () => {
+      if (fromKeyboard) inputRef.current?.focus();
+    };
+  };
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const apiKey = draft.trim();
@@ -279,12 +297,14 @@ function TripoKeyField({ saved, disabled }: { saved: boolean; disabled: boolean 
         toast.success(t("avatars.vrm.make.key.saved"));
       },
       onError: (error) => toast.error(t("avatars.vrm.make.key.saveFailed", { error: errorText(error) })),
+      onSettled: refocusAfter(),
     });
   };
   const removeKey = () =>
     remove.mutate(undefined, {
       onSuccess: () => toast.success(t("avatars.vrm.make.key.removed")),
       onError: (error) => toast.error(t("avatars.vrm.make.key.removeFailed", { error: errorText(error) })),
+      onSettled: refocusAfter(),
     });
   return (
     <form onSubmit={submit} className="space-y-1" data-tripo-key>
@@ -293,12 +313,16 @@ function TripoKeyField({ saved, disabled }: { saved: boolean; disabled: boolean 
       </label>
       <div className="flex flex-wrap items-center gap-2">
         <input
+          ref={inputRef}
           id={inputId}
           type="password"
           autoComplete="off"
           spellCheck={false}
           value={draft}
-          disabled={disabled || pending}
+          aria-describedby={helpId}
+          disabled={disabled}
+          // Read-only rather than disabled while saving, so it keeps focus.
+          readOnly={pending}
           onChange={(event) => setDraft(event.target.value)}
           className={INPUT_CLASS}
         />
@@ -313,8 +337,12 @@ function TripoKeyField({ saved, disabled }: { saved: boolean; disabled: boolean 
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-x-2">
-        <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-          {saved ? t("avatars.vrm.make.key.savedHelp") : t("avatars.vrm.make.key.help")}
+        <p id={helpId} className="text-[0.625rem] text-[var(--muted-foreground)]">
+          {saved
+            ? t("avatars.vrm.make.key.savedHelp")
+            : checkFailed
+              ? t("avatars.vrm.make.key.checkFailed")
+              : t("avatars.vrm.make.key.help")}
         </p>
         <a
           href={TRIPO_API_KEYS_URL}

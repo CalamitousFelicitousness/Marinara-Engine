@@ -274,6 +274,42 @@ try {
         ["post", "party", 9, true],
       ],
     );
+    // Felled, such an ally is out of the fight, not dying as a character would be.
+    const felled = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: roll,
+      combatants: [
+        {
+          id: "post",
+          name: "Post",
+          side: "party",
+          block: { health: 9, defense: 10, initiativeModifier: 0, speed: 0, actions: [] },
+        },
+        {
+          id: "ogre",
+          name: "Ogre",
+          side: "enemy",
+          block: {
+            health: 50,
+            defense: 10,
+            initiativeModifier: 0,
+            speed: 30,
+            actions: [{ name: "Club", budget: "action", toHit: 30, damage: { count: 0, sides: 0, flat: 20 } }],
+          },
+        },
+      ],
+    });
+    felled.order = ["ogre", "post"];
+    felled.turn = 0;
+    const clubbed = step(definition, felled, {
+      actorId: "ogre",
+      optionId: who(felled, "ogre").actions[0]!.id,
+      targetIds: ["post"],
+    });
+    assert.equal(who(clubbed.state, "post").defeated, true);
+    assert.ok(!who(clubbed.state, "post").dying, "never dying");
+    assert.equal(of(clubbed.events, "defeated").length, 1);
   }
 
   // ── Refused shapes ──

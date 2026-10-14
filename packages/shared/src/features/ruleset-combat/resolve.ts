@@ -1136,6 +1136,12 @@ function endConditionsFromSource(ctx: RulesetCombatContext, source: RulesetComba
   }
 }
 
+/** Out of the fight at 0 rather than dying (1.344): an opponent, or a creature fighting beside the
+ *  party with no sheet of its own, a summoned wolf. */
+function rulesetDiesAtZero(target: RulesetCombatant): boolean {
+  return target.side === "enemy" || !target.sheet;
+}
+
 function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain = false): void {
   // Hanging on at 1 instead (1.320): the Miller's Hourglass, once, with a turn of its own straight
   // after this one.
@@ -1184,7 +1190,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   }
   // Defeated before its concentration ends, so what a spell it held leaves behind as it ends (Haste's
   // lethargy) is not put on somebody already out of the fight.
-  if (target.side === "enemy") {
+  if (rulesetDiesAtZero(target)) {
     target.defeated = true;
     target.diedRound = ctx.state.round;
     endSummons(ctx, target);
@@ -1193,7 +1199,7 @@ function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant, slain =
   }
   endConcentration(ctx, target, "down");
   endConditionsFromSource(ctx, target);
-  if (target.side === "enemy") {
+  if (rulesetDiesAtZero(target)) {
     ctx.events.push({ type: "defeated", actorId: target.id });
     return;
   }
@@ -1233,7 +1239,7 @@ function fell(ctx: RulesetCombatContext, target: RulesetCombatant, held: Ruleset
   target.dying = false;
   target.stable = true;
   // An opponent is out of the fight; a character lies stable where they fell, to be healed up.
-  if (target.side === "enemy") {
+  if (rulesetDiesAtZero(target)) {
     target.defeated = true;
     target.diedRound = ctx.state.round;
     endSummons(ctx, target);
@@ -1253,7 +1259,7 @@ function fell(ctx: RulesetCombatContext, target: RulesetCombatant, held: Ruleset
       target.diedRound = ctx.state.round;
     }
   }
-  const down = target.side === "enemy" ? undefined : ctx.combat.dying?.condition;
+  const down = rulesetDiesAtZero(target) ? undefined : ctx.combat.dying?.condition;
   for (const condition of new Set([down, target.reaped ? undefined : held.condition])) {
     if (condition) applyConditionId(ctx, target, condition, { condition, duration: "instant" });
   }

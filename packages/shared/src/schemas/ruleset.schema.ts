@@ -3120,23 +3120,23 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
-    /** Senses a target must have for this to affect it (Capability API 1.126). */
+    /** Senses a target must have for this to affect it (Capability API 1.127). */
     needs: combatSensesSchema.optional(),
     /** Any one of `needs` is enough (Capability API 1.267): Turn Undead's "can see or hear you". */
     needsAny: z.literal(true).optional(),
     /** The creatures it is aimed at must all stand within this distance of each other (Capability
      *  API 1.267): 5e's Command, "within 30 feet of each other when you target them". */
     targetsWithin: z.number().finite().gt(0).optional(),
-    /** Only a creature its maker can see may be picked (Capability API 1.177): 5e's "a creature you
+    /** Only a creature its maker can see may be picked (Capability API 1.178): 5e's "a creature you
      *  can see within range". Who sees whom is the fight's `sight`, obscuring zones and senses. */
     seen: z.literal(true).optional(),
-    /** What using it needs, by the ids of `combat.components` (Capability API 1.178): a 5e spell's
+    /** What using it needs, by the ids of `combat.components` (Capability API 1.179): a 5e spell's
      *  verbal and somatic components, which Silence or a gag can take away. */
     components: componentIdsSchema.optional(),
     /** Offered in a fight only while a value off its holder's sheet, live state and items stands
-     *  within these bounds (Capability API 1.165): 5e's Protection, which needs a shield in hand. */
+     *  within these bounds (Capability API 1.166): 5e's Protection, which needs a shield in hand. */
     usableWhen: catalogUsableWhenSchema.optional(),
-    /** Who may be picked or caught at all, by what they are (Capability API 1.167): Animal
+    /** Who may be picked or caught at all, by what they are (Capability API 1.168): Animal
      *  Friendship takes only a beast (`is`), Sleep passes over the undead (`not`). A combatant with
      *  no type never matches `is` and always passes `not`. */
     targetTypes: catalogTargetTypesSchema.optional(),
@@ -3149,21 +3149,21 @@ const catalogMechanicsObject = z
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
     amount: z.object(catalogAmountShape).strict().optional(),
-    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.82): 5e's
+    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.83): 5e's
      *  Second Wind heals 1d10 plus the fighter's level. Needs an amount. */
     amountAdd: rulesetValueRefSchema.optional(),
     damageType: promptSafeText(40).optional(),
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
     /** What the entry's harm carries past a resistance's or an immunity's `except`, as a weapon
-     *  item's tags do (Capability API 1.100): a spell is `["magical"]`, so a resistance to its type
+     *  item's tags do (Capability API 1.101): a spell is `["magical"]`, so a resistance to its type
      *  "from nonmagical attacks" does not halve it. */
     qualities: z.array(sheetId).min(1).max(8).optional(),
     attackRoll: z.boolean().optional(),
     /** A miss still deals half its damage (Capability API 1.255), and nothing else it does on a hit:
      *  5e's Acid Arrow. Only on an entry that rolls to hit and deals damage. */
     halfOnMiss: z.literal(true).optional(),
-    /** `ignoresCover` (Capability API 1.73): the target gains nothing from cover on this save, as a
+    /** `ignoresCover` (Capability API 1.74): the target gains nothing from cover on this save, as a
      *  spell whose text says so (5e's Sacred Flame). */
     save: z
       .object({
@@ -5779,7 +5779,7 @@ export const rulesetItemAttackSchema = z
       .object({ condition: sheetId, mode: z.enum(["advantage", "disadvantage"]), ranged: z.literal(true).optional() })
       .strict()
       .optional(),
-    /** More damage on the same blow, each rolled and typed on its own (Capability API 1.168): a
+    /** More damage on the same blow, each rolled and typed on its own (Capability API 1.169): a
      *  javelin of lightning's lightning, a dragon slayer's dice against dragons (`targetIs`), a
      *  sword of sharpness's extra on a critical hit only (`when: "critical"`). A clause's save names
      *  its own difficulty: an item's blow has no save of its own to borrow one from. */

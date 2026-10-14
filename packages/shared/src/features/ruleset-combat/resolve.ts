@@ -2400,7 +2400,7 @@ function endSummons(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId
   if (actor.summons.length === 0) delete actor.summons;
 }
 
-/** Each ending of a zone is said once, as a summon's is (1.171). */
+/** Each ending of a zone is said once, as a summon's is (1.172). */
 function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?: string): void {
   if (!actor.zones) return;
   const ended: RulesetCombatZone[] = [];
@@ -2627,7 +2627,7 @@ function burnAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   }
 }
 
-/** A cast that stays leaves its area once the last reaction has been answered (1.171): the cells it
+/** A cast that stays leaves its area once the last reaction has been answered (1.172): the cells it
  *  covered where it was aimed, or a burst around its caster that goes where they go. Off a board it
  *  holds whom it was cast on. Whoever the cast itself caught counts as caught this turn. */
 function placeZone(

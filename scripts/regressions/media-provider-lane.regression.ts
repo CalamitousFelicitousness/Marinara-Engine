@@ -23,6 +23,7 @@ const {
 } = await import("../../packages/server/src/services/image/image-generation-queue.js");
 const { generateImage, retryOnProviderBusy } =
   await import("../../packages/server/src/services/image/image-generation.js");
+const { generateVideo } = await import("../../packages/server/src/services/video/video-generation.js");
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -286,6 +287,49 @@ try {
   idle();
 } finally {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+}
+
+// ── 8) Videos share a lane per provider account too ──
+{
+  const mp4 = Buffer.from("00000018667479706d703432000000006d70343269736f6d", "hex");
+  let videosInFlight = 0;
+  let videoPeak = 0;
+  const swarm = createServer(async (request, response) => {
+    for await (const _chunk of request) void _chunk;
+    if (request.url === "/API/GetNewSession") return response.end(JSON.stringify({ session_id: "session" }));
+    if (request.url === "/API/GenerateText2Image") {
+      videosInFlight += 1;
+      videoPeak = Math.max(videoPeak, videosInFlight);
+      await sleep(40);
+      videosInFlight -= 1;
+      return response.end(JSON.stringify({ images: [`data:video/mp4;base64,${mp4.toString("base64")}`] }));
+    }
+    response.end(mp4);
+  });
+  await new Promise<void>((resolve) => swarm.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = swarm.address();
+    assert.ok(address && typeof address === "object");
+    const base = `http://127.0.0.1:${address.port}`;
+    const video = (connectionKey: string) =>
+      generateVideo("swarmui", base, "fixture-token", "swarmui", {
+        prompt: "A wave",
+        durationSeconds: 4,
+        aspectRatio: "16:9",
+        comfyWorkflow: "{}",
+        connectionKey,
+      });
+    // Two connection rows for one server: the legacy per-connection queue would let both through.
+    await Promise.all([video("scene-video"), video("game-video")]);
+    assert.equal(videoPeak, 1, "one provider account must never render two videos at once");
+    await tick();
+    idle();
+  } finally {
+    await new Promise<void>((resolve) => {
+      swarm.close(() => resolve());
+      swarm.closeAllConnections();
+    });
+  }
 }
 
 console.log("media-provider-lane regression passed");

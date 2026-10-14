@@ -6,7 +6,11 @@ import { newId } from "../../utils/id-generator.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { assertInsideDir, safeFetch } from "../../utils/security.js";
 import { notifyGenerationFallback } from "../generation/fallback-notification.js";
-import { runMediaGenerationRequest } from "../image/image-generation-queue.js";
+import {
+  mediaProviderLaneKey,
+  runInMediaProviderLane,
+  runMediaGenerationRequest,
+} from "../image/image-generation-queue.js";
 import {
   COMFYUI_MAX_REFERENCE_IMAGES,
   numberedComfyReferencePlaceholder,
@@ -80,13 +84,26 @@ export async function generateVideo(
   request: VideoGenerationRequest,
 ): Promise<VideoGenerationResult> {
   // The request deadline begins when the queued task starts; queue wait time is
-  // governed separately by the shared media-generation queue.
-  return runMediaGenerationRequest({
-    connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
-    queue: request.queue === true,
+  // governed separately by the shared media-generation queue. The provider lane
+  // (#7662) comes first, so its waiters hold neither a connection turn nor a permit.
+  // Video lanes are their own keyspace: a minutes-long video must not hold up images.
+  return runInMediaProviderLane({
+    laneKey: mediaProviderLaneKey(`video:${resolveVideoService(source, serviceHint)}:${baseUrl.trim()}`, apiKey),
     signal: request.signal,
-    task: () => generateVideoUnqueued(source, baseUrl, apiKey, serviceHint, request),
+    task: () =>
+      runMediaGenerationRequest({
+        connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
+        queue: request.queue === true,
+        signal: request.signal,
+        task: () => generateVideoUnqueued(source, baseUrl, apiKey, serviceHint, request),
+      }),
   });
+}
+
+function resolveVideoService(source: string, serviceHint: string): string {
+  return normalizeVideoService(source) === "swarmui" || normalizeVideoService(source) === "nanogpt"
+    ? normalizeVideoService(source)
+    : normalizeVideoService(serviceHint || source);
 }
 
 async function generateVideoUnqueued(
@@ -96,10 +113,7 @@ async function generateVideoUnqueued(
   serviceHint: string,
   request: VideoGenerationRequest,
 ): Promise<VideoGenerationResult> {
-  const resolvedService =
-    normalizeVideoService(source) === "swarmui" || normalizeVideoService(source) === "nanogpt"
-      ? normalizeVideoService(source)
-      : normalizeVideoService(serviceHint || source);
+  const resolvedService = resolveVideoService(source, serviceHint);
   const primaryRequest = { ...request, fallback: undefined };
   try {
     if (resolvedService === "gemini_omni") {

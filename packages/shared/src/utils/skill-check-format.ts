@@ -1,16 +1,20 @@
 import type { SkillCheckResult } from "../types/game.js";
 
 export function getSkillCheckOutcomeLabel(
-  result: Pick<SkillCheckResult, "success" | "criticalSuccess" | "criticalFailure">,
+  result: Pick<SkillCheckResult, "success" | "criticalSuccess" | "criticalFailure" | "outcome" | "symbols">,
 ): string {
+  // A ruleset's own band says it in the ruleset's words, and says whether it succeeded beside it.
+  if (result.outcome) return `${result.outcome} (${result.success ? "success" : "failure"})`;
+  if (result.symbols) return result.success ? "Success" : "Failure";
   if (result.criticalSuccess) return "Critical success";
   if (result.criticalFailure) return "Critical failure";
   return result.success ? "Success" : "Failure";
 }
 
 export function getSkillCheckOutcomeKey(
-  result: Pick<SkillCheckResult, "success" | "criticalSuccess" | "criticalFailure">,
+  result: Pick<SkillCheckResult, "success" | "criticalSuccess" | "criticalFailure" | "symbols">,
 ): string {
+  if (result.symbols) return result.success ? "success" : "failure";
   if (result.criticalSuccess) return "critical_success";
   if (result.criticalFailure) return "critical_failure";
   return result.success ? "success" : "failure";
@@ -28,24 +32,75 @@ export function getSkillCheckOutcomeKey(
  * of still display honestly.
  */
 export function skillCheckDiceSumToTotal(
-  result: Pick<SkillCheckResult, "rolls" | "modifier" | "total" | "resolution">,
+  result: Pick<SkillCheckResult, "rolls" | "modifier" | "total" | "resolution" | "symbols">,
 ): boolean {
   return (
-    result.resolution === "sum" && result.rolls.reduce((sum, roll) => sum + roll, 0) + result.modifier === result.total
+    !result.symbols &&
+    result.resolution === "sum" &&
+    result.rolls.reduce((sum, roll) => sum + roll, 0) + result.modifier === result.total
   );
 }
 
+/** A face's worth as a card shows it: the die's own number, or its value where the ruleset gives its
+ *  faces values (1.136), signed so Fate's dice read -1, 0, +1. */
+export function skillCheckFaceText(result: Pick<SkillCheckResult, "faces">, face: number): string {
+  if (!result.faces) return String(face);
+  const worth = result.faces[face - 1];
+  if (worth === undefined) return String(face);
+  return worth > 0 ? `+${worth}` : String(worth);
+}
+
+/** The net narrative symbols, in the ruleset's own words. Empty is left to each caller's locale. */
+export function skillCheckSymbolText(result: Pick<SkillCheckResult, "symbols" | "symbolLabels">): string {
+  return Object.entries(result.symbols ?? {})
+    .map(([id, count]) => `${count} ${result.symbolLabels?.[id] ?? id}`)
+    .join(", ");
+}
+
+/** The dice kept for a light-only outcome. Indices keep tied dark dice out of the highlight. */
+export function skillCheckLightKeptIndices(
+  result: Pick<SkillCheckResult, "rolls" | "dark" | "darkOutcome" | "highest" | "zeroDice">,
+): number[] | undefined {
+  if (result.darkOutcome !== "light" || !result.highest) return undefined;
+  return result.rolls
+    .slice(0, Math.max(0, result.rolls.length - (result.dark ?? 0)))
+    .map((face, index) => ({ face, index }))
+    .sort((a, b) => (result.zeroDice ? a.face - b.face : b.face - a.face))
+    .slice(0, result.zeroDice ? 1 : result.highest)
+    .map(({ index }) => index);
+}
+
 export function formatSkillCheckResultSummary(result: SkillCheckResult): string {
+  if (result.symbols) {
+    return `${result.skill} check (${result.dc} difficulty dice): ${skillCheckSymbolText(result) || "no net symbols"}. ${getSkillCheckOutcomeLabel(result)}.`;
+  }
   const modifier = result.modifier === 0 ? "" : ` ${result.modifier > 0 ? "+" : ""}${result.modifier}`;
   const rollMode = result.rollMode !== "normal" ? ` (${result.rollMode})` : "";
   // Only claim the dice add up to the total when they actually do; otherwise
   // report the total on its own so the GM reads back what the player saw.
   const arithmetic = skillCheckDiceSumToTotal(result)
     ? `[${result.rolls.join(", ")}]${modifier}${rollMode} = ${result.total}`
-    : `[${result.rolls.join(", ")}]${result.resolution === "successes" ? "" : modifier}${rollMode} → ${result.total}${result.resolution === "successes" ? ` ${result.total === 1 ? "success" : "successes"}` : ""}`;
+    : `[${result.rolls.map((face) => skillCheckFaceText(result, face)).join(", ")}]${result.resolution === "successes" ? "" : modifier}${rollMode} → ${result.total}${result.resolution === "successes" ? ` ${result.total === 1 ? "success" : "successes"}` : ""}`;
   // A complication is alongside the outcome, never instead of it, so the outcome is still said first.
   const complication = result.complication ? " Something went wrong on the side." : "";
-  return `${result.skill} check (DC ${result.dc}): ${arithmetic}. ${getSkillCheckOutcomeLabel(result)}.${complication}`;
+  const unmodified = result.unmodified !== undefined ? ` Unmodified ${result.unmodified}.` : "";
+  const exact = result.exact
+    ? ` ${result.exact} ${result.exact === 1 ? "die" : "dice"} showed exactly ${result.threshold}${result.exactLabel ? `: ${result.exactLabel}` : ""}.`
+    : "";
+  // A keep-the-highest check (1.138) says which dice it read; the dark dice are the last ones thrown.
+  const highest = result.highest
+    ? result.darkOutcome === "light" && result.rolls.length === (result.dark ?? 0)
+      ? " No light dice: the check failed."
+      : result.zeroDice
+        ? " No dice: the lower of two was kept."
+        : ` Highest ${result.highest === 1 ? "die" : `${result.highest} dice`} kept.`
+    : "";
+  const dark = result.dark
+    ? ` ${result.dark} ${result.darkLabel ?? "dark"} ${result.dark === 1 ? "die" : "dice"} (the last ${result.dark === 1 ? "one" : result.dark})${result.darkHighest ? `; a ${result.darkLabel ?? "dark"} die rolled highest` : ""}.`
+    : "";
+  // A roll at most a target (1.139) says so, because "DC 45" would read as needing 45 or more.
+  const needed = result.against === "at-most" ? `at most ${result.dc}` : `DC ${result.dc}`;
+  return `${result.skill} check (${needed}): ${arithmetic}. ${getSkillCheckOutcomeLabel(result)}.${complication}${unmodified}${exact}${highest}${dark}${result.darkOutcome === "light" ? " Only light dice decide the outcome." : ""}`;
 }
 
 function serializeSkillCheckAttribute(value: string): string {
@@ -119,6 +174,37 @@ export interface SkillCheckTagExtras {
   from?: string[];
   /** `automatic="true"` — the save failed without a roll. */
   automatic?: boolean;
+  /** `outcome="Barely"` — the ruleset's outcome band the check landed in (1.135). */
+  outcome?: string; /** `faces="-1|0|1"` — what each face of the die is worth (1.136). */
+  faces?: number[];
+  /** `unmodified="66"` — the single die's face, rolled unmodified (1.136). */
+  unmodified?: number;
+  /** `compare="below"` — a stance made the pool's dice count below or above the target (1.137). */
+  compare?: "below" | "above";
+  /** `exact="1" exactLabel="LASER FEELINGS"` — dice that showed exactly the target (1.137). */
+  exact?: number;
+  exactLabel?: string;
+  /** `highest="1"` — a keep-the-highest check and how many dice it kept; `zeroDice="true"` — no
+   *  dice, the lower of two kept (1.138). */
+  highest?: number;
+  zeroDice?: boolean;
+  /** `dark="2" darkLabel="Dark" darkHighest="true"` — the dark dice at the end of `rolls` (1.138). */
+  dark?: number;
+  darkLabel?: string;
+  darkHighest?: boolean;
+  darkOutcome?: "light";
+  /** `against="at-most"` and `tens="+1"` — a roll read against the sheet's number (1.139). */
+  against?: "at-most" | "at-least";
+  tens?: number;
+  upgrade?: number;
+  setback?: number;
+  upgradeOwn?: number;
+  symbols?: Record<string, number>;
+  thrown?: string[];
+  symbolLabels?: Record<string, string>;
+  symbolFaces?: string[][];
+  criticalSuccess?: boolean;
+  criticalFailure?: boolean;
 }
 
 /** A name in `from=`: no brackets, which would end the tag, and no semicolons, which part the names. */
@@ -161,6 +247,53 @@ function serializeSkillCheckExtras(extras: SkillCheckTagExtras | undefined): str
   const from = (extras.from ?? []).map(fromName).filter(Boolean);
   if (from.length > 0) parts.push(`from="${from.join("; ")}"`);
   if (extras.automatic) parts.push(`automatic="true"`);
+  if (extras.outcome) parts.push(`outcome="${serializeSkillCheckAttribute(extras.outcome)}"`);
+  if (extras.faces?.length) parts.push(`faces="${extras.faces.join("|")}"`);
+  if (extras.unmodified != null && Number.isInteger(extras.unmodified)) parts.push(`unmodified="${extras.unmodified}"`);
+  if (extras.compare) parts.push(`compare="${extras.compare}"`);
+  if (extras.exact != null && Number.isInteger(extras.exact) && extras.exact > 0) {
+    parts.push(`exact="${extras.exact}"`);
+    if (extras.exactLabel) parts.push(`exactLabel="${serializeSkillCheckAttribute(extras.exactLabel)}"`);
+  }
+  if (extras.highest != null && Number.isInteger(extras.highest) && extras.highest > 0) {
+    parts.push(`highest="${extras.highest}"`);
+    if (extras.zeroDice) parts.push(`zeroDice="true"`);
+  }
+  if (extras.upgrade != null && Number.isInteger(extras.upgrade) && extras.upgrade >= 0)
+    parts.push(`upgrade="${extras.upgrade}"`);
+  for (const key of ["setback", "upgradeOwn"] as const) {
+    const value = extras[key];
+    if (value != null && Number.isInteger(value) && value >= 0) parts.push(`${key}="${value}"`);
+  }
+  if (extras.darkOutcome === "light") parts.push('darkOutcome="light"');
+  if (extras.symbols) {
+    parts.push(
+      `symbols="${Object.entries(extras.symbols)
+        .map(([id, count]) => `${count}${id}`)
+        .join(" ")}"`,
+    );
+    parts.push(`thrown="${(extras.thrown ?? []).join("|")}"`);
+    // URI encoding keeps arbitrary labels, including quotes and tag brackets, inside one attribute.
+    parts.push(
+      `symbolDetails="${encodeURIComponent(
+        JSON.stringify({
+          labels: extras.symbolLabels ?? {},
+          faces: extras.symbolFaces ?? [],
+          criticalSuccess: !!extras.criticalSuccess,
+          criticalFailure: !!extras.criticalFailure,
+        }),
+      ).replace(/'/g, "%27")}"`,
+    );
+  }
+  if (extras.against) parts.push(`against="${extras.against}"`);
+  if (extras.tens != null && Number.isInteger(extras.tens) && extras.tens !== 0) {
+    parts.push(`tens="${extras.tens > 0 ? "+" : ""}${extras.tens}"`);
+  }
+  if (extras.dark != null && Number.isInteger(extras.dark) && extras.dark > 0) {
+    parts.push(`dark="${extras.dark}"`);
+    if (extras.darkLabel) parts.push(`darkLabel="${serializeSkillCheckAttribute(extras.darkLabel)}"`);
+    if (extras.darkHighest) parts.push(`darkHighest="true"`);
+  }
   return parts.length > 0 ? ` ${parts.join(" ")}` : "";
 }
 
@@ -210,6 +343,34 @@ export function serializeResolvedSkillCheckTag(result: SkillCheckResult, extras?
     ...(result.effects ? { effects: result.effects } : {}),
     ...(result.from?.length ? { from: result.from } : {}),
     ...(result.automatic ? { automatic: true } : {}),
+    ...(result.outcome ? { outcome: result.outcome } : {}),
+    ...(result.faces?.length ? { faces: result.faces } : {}),
+    ...(result.unmodified !== undefined ? { unmodified: result.unmodified } : {}),
+    ...(result.compare ? { compare: result.compare } : {}),
+    ...(result.exact ? { exact: result.exact, ...(result.exactLabel ? { exactLabel: result.exactLabel } : {}) } : {}),
+    ...(result.symbols
+      ? {
+          symbols: result.symbols,
+          setback: result.setback,
+          upgradeOwn: result.upgradeOwn,
+          thrown: result.thrown,
+          symbolLabels: result.symbolLabels,
+          symbolFaces: result.symbolFaces,
+          criticalSuccess: result.criticalSuccess,
+          criticalFailure: result.criticalFailure,
+        }
+      : {}),
+    ...(result.against ? { against: result.against } : {}),
+    ...(result.tens ? { tens: result.tens } : {}),
+    ...(result.highest ? { highest: result.highest, ...(result.zeroDice ? { zeroDice: true } : {}) } : {}),
+    ...(result.darkOutcome ? { darkOutcome: result.darkOutcome } : {}),
+    ...(result.dark
+      ? {
+          dark: result.dark,
+          ...(result.darkLabel ? { darkLabel: result.darkLabel } : {}),
+          ...(result.darkHighest ? { darkHighest: true } : {}),
+        }
+      : {}),
     // An extra a caller left undefined is absent, not an instruction to erase what the result says.
     ...Object.fromEntries(Object.entries(extras ?? {}).filter(([, value]) => value !== undefined)),
   };

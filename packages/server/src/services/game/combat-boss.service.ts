@@ -181,6 +181,28 @@ export function buildRulesetCombatBossPrompt(
           ? { board: { width: view.grid.width, height: view.grid.height, distance: view.grid.distance } }
           : {}),
         ...(positions ? { positions } : {}),
+        ...(definition.combat?.damage?.minimum ||
+        fight.encounter.combatants.some((unit) => unit.actions.some((action) => action.damage?.minimum !== undefined))
+          ? {
+              minimumDamage:
+                "The damage pool has an attacker or weapon minimum after soak; this is dice, not guaranteed wounds.",
+            }
+          : {}),
+        ...(definition.combat?.daze
+          ? {
+              daze: {
+                rule: "One hit strictly above the target's threshold skips exactly their next turn. The Engine applies and clears the condition; do not award an extra skip.",
+                ...(definition.combat.daze.text ? { text: definition.combat.daze.text } : {}),
+                pending: fight.encounter.combatants.filter((unit) => unit.dazed).map((unit) => unit.id),
+              },
+            }
+          : {}),
+        ...(definition.combat?.damageKinds?.remap
+          ? {
+              damageKinds:
+                "The target's first matching remap chooses the wound kind before soak. Events record the original and final kinds.",
+            }
+          : {}),
         recentEvents: fight.events.slice(-16),
       }),
     },

@@ -87,7 +87,11 @@ import { createPersonaGalleryStorage } from "../services/storage/persona-gallery
 import { createGalleryStorage } from "../services/storage/gallery.storage.js";
 import { createGameSceneVideosStorage } from "../services/storage/game-scene-videos.storage.js";
 import { createGameStoryboardsStorage } from "../services/storage/game-storyboards.storage.js";
-import { createGameStateStorage, parseStoredRulesetLive } from "../services/storage/game-state.storage.js";
+import {
+  createGameStateStorage,
+  parseStoredRulesetLive,
+  parseStoredRulesetClocks,
+} from "../services/storage/game-state.storage.js";
 import {
   createGameEngineStateStorage,
   EXPERIENCE_GAME_TYPE_PREFIX,
@@ -8068,6 +8072,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             // A new session continues with the party as the last one left it: spent slots stay
             // spent until a rest restores them.
             rulesetLive: parseStoredRulesetLive(previousState.rulesetLive),
+            rulesetClocks: parseStoredRulesetClocks(previousState.rulesetClocks),
             committed: true,
           });
         } catch (err) {
@@ -16511,6 +16516,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         hiddenTrackerFields: parseTrackerHiddenFields(snapshot.hiddenTrackerFields),
         // Restoring a checkpoint restores the sheets as they stood then, spent slots included.
         rulesetLive: parseStoredRulesetLive(snapshot.rulesetLive),
+        rulesetClocks: parseStoredRulesetClocks(snapshot.rulesetClocks),
         committed: true,
       },
       manualOverrides,

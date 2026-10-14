@@ -34,7 +34,14 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "./live-state.js";
-import { resolveRulesetValueRef, rollDicePoolCheck, rollDiceSumCheck } from "./sheet-math.js";
+import {
+  resolveRulesetValueRef,
+  rulesetSymbolPoolRatings,
+  rollSymbolPoolCheck,
+  rollDiceHighestCheck,
+  rollDicePoolCheck,
+  rollDiceSumCheck,
+} from "./sheet-math.js";
 
 /** Why an item could not be used. */
 export type RulesetItemUseRefusal =
@@ -345,6 +352,30 @@ function rollGateOutsideFight(
     const required = Math.min(rulesetPoolMaxSuccesses(resolution), Math.max(1, ask.difficulty));
     const rolled = rollDicePoolCheck(definition, { modifier, required, isSave: false }, roll);
     return { total: rolled.total, difficulty: required, success: rolled.success, rolls: rolled.rolls };
+  }
+  if (resolution.kind === "dice-highest") {
+    const dc = Math.min(resolution.keep * resolution.die.sides, Math.max(1, ask.difficulty));
+    const rolled = rollDiceHighestCheck(definition, { modifier, dc, isSave: false }, roll);
+    return { total: rolled.total, difficulty: dc, success: rolled.success, rolls: rolled.rolls };
+  }
+  if (resolution.kind === "symbol-pool") {
+    const ratings = rulesetSymbolPoolRatings(
+      definition,
+      evaluateRulesetSheetLive(definition, user.build, user.live, held),
+      ask.target,
+    );
+    const difficulty = Math.min(resolution.difficulty.max, Math.max(0, ask.difficulty));
+    const rolled = rollSymbolPoolCheck(
+      definition,
+      {
+        ...ratings,
+        difficulty,
+        isSave: false,
+        bonusDice: modifier - ratings.ability - ratings.rank,
+      },
+      roll,
+    );
+    return { total: rolled.total, difficulty, success: rolled.success, rolls: rolled.rolls };
   }
   const mode = rulesetCheckRollMode({}, effects);
   const rolled = rollDiceSumCheck(

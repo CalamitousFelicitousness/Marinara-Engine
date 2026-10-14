@@ -157,7 +157,8 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
   // `/rulesets`, and the picker that reads it is the ordinary sheet editor.
   app.get("/rulesets/catalog", async (request, reply) => {
     const { rulesetId, catalogId, version } = rulesetCatalogQuery.parse(request.query);
-    const registered = (await readRulesetRegistry(app.db)).get(rulesetId);
+    const registry = await readRulesetRegistry(app.db);
+    const registered = registry.get(rulesetId);
     if (!registered) {
       return reply.status(404).send({ error: "That ruleset is not installed", code: "ruleset_not_installed" });
     }
@@ -186,7 +187,7 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
     });
     const unusable = (issues: string[]) =>
       reply.status(422).send({ error: "That catalog cannot be read", code: "ruleset_catalog_unusable", issues });
-    const opened = await openRulesetCatalog(registered.packageId, definition, catalog);
+    const opened = await openRulesetCatalog(registered.packageId, definition, catalog, registry);
     if (opened.kind === "missing") {
       return reply.status(404).send({ error: "That ruleset has no such catalog", code: "ruleset_catalog_missing" });
     }

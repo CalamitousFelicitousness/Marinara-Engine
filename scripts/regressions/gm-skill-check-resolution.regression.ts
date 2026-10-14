@@ -736,7 +736,7 @@ assert.match(
 // whenever those differ, which is what a regenerate and a swipe are. One reader, used twice.
 assert.match(
   generateRoutes,
-  /loadSkillCheckModifierContext\(app\.db, input\.chatId, await turnStartRulesetLive\(\)\)/u,
+  /loadSkillCheckModifierContext\(\s*app\.db,\s*input\.chatId,\s*await turnStartRulesetLive\(\),\s*input\.regenerateMessageId,\s*\)/u,
   "the check pass reads the turn's own starting state, not the newest stored one",
 );
 assert.match(
@@ -745,10 +745,14 @@ assert.match(
   "and the sheet pass starts from that same state with the check's purchases laid over it",
 );
 assert.equal(
-  generateRoutes.match(/parseStoredRulesetLive\(\(continuedRow \?\? baseGameStateSnapshot\)\?\.rulesetLive\)/gu)
-    ?.length ?? 0,
+  generateRoutes.match(/return continuedRow \?\? \(await selectedGameStateSnapshotPromise\);/gu)?.length ?? 0,
   1,
   "the turn-start row is resolved in exactly one place, so the two passes cannot drift apart",
+);
+assert.match(
+  generateRoutes,
+  /parseStoredRulesetLive\(\(await turnStartRulesetSnapshot\(\)\)\?\.rulesetLive\)/u,
+  "live sheet reads use the shared turn-start snapshot",
 );
 
 // ── 13. The tag reader does not slow down on a long run of word characters ──

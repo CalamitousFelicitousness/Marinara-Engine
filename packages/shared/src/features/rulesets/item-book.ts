@@ -693,7 +693,11 @@ export function rulesetValueRefLabel(
   if (ref.livePool !== undefined) return { what: find(sheet.live.pools, ref.livePool) };
   if (ref.listSum) {
     const list = sheet.lists.find((entry) => entry.id === ref.listSum!.list);
-    return { what: `${find(list?.columns, ref.listSum.column)} (${list?.label ?? ref.listSum.list})` };
+    return {
+      what: ref.listSum.count
+        ? `rows (${list?.label ?? ref.listSum.list})`
+        : `${find(list?.columns, ref.listSum.column!)} (${list?.label ?? ref.listSum.list})`,
+    };
   }
   const items = definition.items;
   const stat = ref.itemStat!;

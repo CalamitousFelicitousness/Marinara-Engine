@@ -17,6 +17,8 @@ import {
   parseTrackerFieldLocks,
   parseTrackerHiddenFields,
   rulesetLiveStatesSchema,
+  rulesetClocksSchema,
+  type RulesetClocks,
   trackerFieldLocksAreEmpty,
   trackerHiddenFieldsAreEmpty,
   type GameState,
@@ -51,6 +53,7 @@ type GameStateUpdateFields = Partial<
     | "fieldLocks"
     | "hiddenTrackerFields"
     | "rulesetLive"
+    | "rulesetClocks"
   >
 >;
 
@@ -180,6 +183,7 @@ function emptyGameStateRow(chatId: string): GameStateRow {
     fieldLocks: null,
     hiddenTrackerFields: null,
     rulesetLive: null,
+    rulesetClocks: null,
     committed: 0,
     createdAt: "",
   };
@@ -200,6 +204,16 @@ function serializeHiddenTrackerFields(hiddenFields: TrackerHiddenFields | null |
 export function parseStoredRulesetLive(value: unknown): RulesetLiveStates | null {
   const parsed = rulesetLiveStatesSchema.safeParse(parseSnapshotJson<unknown>(value, null));
   return parsed.success && Object.keys(parsed.data).length > 0 ? parsed.data : null;
+}
+
+export function parseStoredRulesetClocks(value: unknown): RulesetClocks {
+  const parsed = rulesetClocksSchema.safeParse(parseSnapshotJson<unknown>(value, []));
+  return parsed.success ? parsed.data : [];
+}
+
+function serializeRulesetClocks(value: unknown): string | null {
+  const clocks = parseStoredRulesetClocks(value);
+  return clocks.length ? JSON.stringify(clocks) : null;
 }
 
 function serializeRulesetLive(value: unknown): string | null {
@@ -570,6 +584,9 @@ export function createGameStateStorage(db: DB) {
         fieldLocks: serializeFieldLocks(state.fieldLocks),
         hiddenTrackerFields: serializeHiddenTrackerFields(state.hiddenTrackerFields),
         rulesetLive: serializeRulesetLive(state.rulesetLive !== undefined ? state.rulesetLive : replaced?.rulesetLive),
+        rulesetClocks: serializeRulesetClocks(
+          state.rulesetClocks !== undefined ? state.rulesetClocks : replaced?.rulesetClocks,
+        ),
         committed: state.committed ? 1 : 0,
         createdAt: ensureTimestampAfter(now(), latestBeforeInsert?.createdAt),
       });
@@ -699,6 +716,7 @@ export function createGameStateStorage(db: DB) {
         fieldLocks: parseTrackerFieldLocks(latest?.fieldLocks),
         hiddenTrackerFields: parseTrackerHiddenFields(latest?.hiddenTrackerFields),
         rulesetLive: parseStoredRulesetLive(latest?.rulesetLive),
+        rulesetClocks: parseStoredRulesetClocks(latest?.rulesetClocks),
       };
       baseState.fieldLocks = normalizeTrackerFieldLocksForState(
         baseState.fieldLocks,
@@ -728,6 +746,7 @@ export function createGameStateStorage(db: DB) {
         baseState.hiddenTrackerFields = normalizeTrackerHiddenFields(fields.hiddenTrackerFields);
       }
       if (fields.rulesetLive !== undefined) baseState.rulesetLive = parseStoredRulesetLive(fields.rulesetLive);
+      if (fields.rulesetClocks !== undefined) baseState.rulesetClocks = parseStoredRulesetClocks(fields.rulesetClocks);
 
       // The record covers only this edit, never the base's own edits.
       const manualOverrides: Record<string, string> = {};
@@ -756,6 +775,7 @@ export function createGameStateStorage(db: DB) {
       if (fields.hiddenTrackerFields !== undefined)
         updates.hiddenTrackerFields = serializeHiddenTrackerFields(fields.hiddenTrackerFields);
       if (fields.rulesetLive !== undefined) updates.rulesetLive = serializeRulesetLive(fields.rulesetLive);
+      if (fields.rulesetClocks !== undefined) updates.rulesetClocks = serializeRulesetClocks(fields.rulesetClocks);
 
       const edits: Record<string, string> = {};
       if (manual || (row.manualOverrides && Object.keys(updates).length > 0)) {

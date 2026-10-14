@@ -129,7 +129,27 @@ Lip sync does not change how the voice plays. Marinara Engine reads a separate c
 
 ## Making an avatar from a sprite
 
-How to make blink and talk variants or a mesh avatar from one of your sprites in one click.
+On the **2D Avatars** page in the Agent editor, choose a character or persona, then use **Make an avatar from a sprite**. It works from the sprites the character or persona already has. Your avatar stays the same until you save a result, so you can try as often as you like.
+
+### Blink and talk pictures
+
+1. Pick one or more sprites, then choose **Eyes closed**, **Mouth open** or both. When the character or persona has portrait sprites, only those are offered, because the avatar never mixes portrait and full-body faces.
+2. Check the **Image connection** (your default image connection is picked for you) and select **Make pictures**. Every picture is one image request. With **Expose media prompts before sending** on (Settings), you see and can edit each prompt first.
+3. The new pictures appear one at a time. Select **Keep** on the ones that look right and **Try again** on the others. **Cancel** stops the picture being made. Pictures you already have stay when you make more: **Make pictures** only makes the missing ones, and if **Try again** fails, the old picture stays. To redo a kept picture, select **Kept** to let it go first.
+4. Select **Save kept pictures**. They become the PNGTuber avatar's blink and talk pictures for those expressions, next to a copy of the sprite they were drawn from so they always line up. If the avatar was still showing your sprites as they are, it keeps all of them and gains the new pictures. If you replace a sprite before saving, make its pictures again.
+
+Image models that edit pictures work best, because they get your sprite as a reference. Your sprite is sent at the size and shape the model accepts and cut back out of the result, so a model that keeps the picture in place gives pictures that line up. If a picture changes more than the eyes or mouth, the avatar jumps when it blinks or talks; try that one again.
+
+### Mesh avatar
+
+1. Pick one sprite. A front-facing bust (head and shoulders) works best; on a full-body sprite the face is small.
+2. Choose the **Chat connection that can see pictures**. **The agent's connection** uses the connection set on the 2D Avatars page, then your default agent connection. Its model must accept pictures.
+3. Select **Make mesh avatar**. The chat model finds the face, and Marinara Engine builds the avatar from your sprite. **Cancel** stops it.
+4. Check the preview: the outlines should sit on the eyes, brows and mouth. Select **Save as mesh avatar**, or **Discard** and try another sprite or model.
+
+A generated mesh avatar moves its head, eyes, brows and mouth, and blinks and talks with its own eyelids and mouth. Its hair moves with the head; hands, single hair strands and hanging accessories are not rigged. When the face fills most of a large sprite, the avatar is built from a smaller copy so making it stays quick.
+
+Your sprite is sent to the image connection for blink and talk pictures (and to that connection's fallback image connection if it fails and one is set), and to the chat connection for a mesh avatar. The prompts come with the 2D Avatars agent. With **Expose media prompts before sending** on, you can read and change each picture's prompt before it is sent. With debug mode on, every prompt is written to the server log.
 
 ## Performance and devices
 

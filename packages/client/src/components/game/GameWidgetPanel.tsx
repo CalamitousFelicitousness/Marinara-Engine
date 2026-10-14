@@ -870,6 +870,7 @@ export function GameWidgetSessionPrepModal({
         confirmLabel: localizeUi("settings.notifications.customSound.actions.remove"),
         cancelLabel: localizeUi("chat.delete.dialog.cancel"),
         tone: "destructive",
+        chatStyle: true,
       });
       if (!confirmed) return;
 

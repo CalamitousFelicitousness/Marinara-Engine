@@ -60,10 +60,15 @@ export function isSpriteVariant(expression: string): boolean {
   return mouthOpen || eyesClosed;
 }
 
+/** A full-body sprite (`full_happy`, `Full Happy`), not a portrait. */
+export function isFullBodySprite(expression: string): boolean {
+  return FULL_BODY.test(expression.trim());
+}
+
 /** The sprites a PNGTuber setup uses: portrait sprites when there are any, otherwise full-body ones, so the
  *  faces never mix the two framings. */
 export function pngtuberSpriteFamily<T extends SpriteLike>(sprites: readonly T[]): T[] {
-  const portraits = sprites.filter((sprite) => !FULL_BODY.test(sprite.expression.trim()));
+  const portraits = sprites.filter((sprite) => !isFullBodySprite(sprite.expression));
   return portraits.length > 0 ? portraits : [...sprites];
 }
 

@@ -1,8 +1,9 @@
 // The 2D avatar renderers and setup panels in a real browser, before the base lane mounts them in chats:
 // the PNGTuber renderer swaps talk, blink and face pictures, crossfades and hops; mesh avatars draw through
 // one shared WebGL2 context, load under the server's Content-Security-Policy, reuse their pictures, and fall
-// back to the owner's sprites; both redraw when resized; the setup panels save what the user picks, and the
-// VRM panel still reports a failed import after it closes.
+// back to the owner's sprites; both redraw when resized; the setup panels save what the user picks, the
+// VRM panel still reports a failed import after it closes, and making a mesh avatar starts from the
+// full-body neutral sprite (else the neutral one) until the user picks another.
 import { expect, test, type Page } from "@playwright/test";
 import { securityHeadersHook } from "../packages/server/src/middleware/security-headers.js";
 import { meshAvatarFiles, paintPng, solid, zipFiles } from "../scripts/regressions/fixtures/avatar-2d-fixtures.js";
@@ -70,6 +71,7 @@ declare global {
   interface Window {
     __avatar2d?: PageAvatar;
     __meshProbe?: MeshProbe;
+    __meshSourceSprites?: (expressions: string[]) => void;
   }
 }
 
@@ -613,4 +615,85 @@ test("the mesh avatar setup imports a file and saves the look for a feeling", as
   expect(saved[0]).toMatchObject({
     kinds: { "mesh-avatar": { expressionMap: { relaxed: { target: "shy", source: "user", confidence: 1 } } } },
   });
+});
+
+test("making a mesh avatar preselects the full-body neutral sprite, else the neutral one, and keeps the user's pick", async ({
+  page,
+}) => {
+  let generationRequests = 0;
+  await page.route("**/api/avatar-generation/**", (route) => {
+    generationRequests += 1;
+    return route.fulfill({ status: 500, json: { error: "Not in this test." } });
+  });
+  await openApp(page);
+  await prepareViteFixtureDependencies(page);
+  // The section as the generation panel shows it, drawn again with each new sprite list.
+  await page.evaluate(async () => {
+    const url = window.__viteFixtureDependencyUrl;
+    const { default: React } = await import(url("react"));
+    const { default: ReactDOM } = await import(url("react-dom_client"));
+    const { QueryClient, QueryClientProvider } = await import(url("@tanstack_react-query"));
+    const { MeshAvatarSection } = await import("/src/features/avatars/generation/MeshAvatarSection.tsx" as string);
+    const mount = document.createElement("div");
+    mount.dataset.avatarPanel = "true";
+    mount.style.cssText =
+      "position:fixed;inset:0;z-index:99999;overflow:auto;background:var(--background);color:var(--foreground);padding:12px";
+    document.body.append(mount);
+    const root = ReactDOM.createRoot(mount);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const owner = { ownerType: "character", ownerId: "e2e-mesh-source" };
+    const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    window.__meshSourceSprites = (expressions) =>
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client },
+          React.createElement(MeshAvatarSection, {
+            owner,
+            sprites: expressions.map((expression) => ({ expression, filename: `${expression}.png`, url: PIXEL })),
+            languageConnections: [],
+            onChanged: () => {},
+          }),
+        ),
+      );
+    window.__meshSourceSprites([]);
+  });
+  const panel = page.locator("[data-avatar-panel]");
+  const picked = panel.getByRole("group", { name: "Sprite to use" }).getByRole("button", { pressed: true });
+  const make = panel.getByRole("button", { name: "Make mesh avatar" });
+  const showSprites = (expressions: string[]) =>
+    page.evaluate((list) => window.__meshSourceSprites?.(list), expressions);
+
+  // Sprites arrive after the section opens, and the preselection follows the list until the user picks.
+  await expect(picked).toHaveCount(0);
+  await expect(make).toBeDisabled();
+  await showSprites(["happy", "neutral", "full_neutral"]);
+  await expect(picked).toHaveText(["full neutral"]);
+  await expect(make).toBeEnabled();
+  await showSprites(["happy", "neutral", "Full Neutral"]);
+  await expect(picked).toHaveText(["Full Neutral"]);
+  await showSprites(["happy", "neutral"]);
+  await expect(picked).toHaveText(["neutral"]);
+  await showSprites(["happy"]);
+  await expect(picked).toHaveCount(0);
+  await expect(make).toBeDisabled();
+
+  // The user's pick stays when the list changes; a pick that leaves the list falls back to the preselection.
+  await showSprites(["happy", "neutral", "full_neutral"]);
+  await expect(picked).toHaveText(["full neutral"]);
+  await panel.getByRole("button", { name: "happy" }).click();
+  await expect(picked).toHaveText(["happy"]);
+  await showSprites(["happy", "neutral", "full_neutral", "sad"]);
+  await expect(picked).toHaveText(["happy"]);
+  await showSprites(["neutral", "full_neutral", "sad"]);
+  await expect(picked).toHaveText(["full neutral"]);
+  await expect(make).toBeEnabled();
+  // Clearing the choice is kept too.
+  await panel.getByRole("button", { name: "full neutral" }).click();
+  await expect(picked).toHaveCount(0);
+  await expect(make).toBeDisabled();
+  await showSprites(["happy", "neutral", "full_neutral"]);
+  await expect(picked).toHaveCount(0);
+  // Choosing a sprite never starts making the avatar.
+  expect(generationRequests).toBe(0);
 });

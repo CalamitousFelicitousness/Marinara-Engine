@@ -2,10 +2,12 @@ import {
   normalizeTextForMatch,
   resolveChatPersonaCandidate,
   resolveMacros,
+  usesLorebookIncludes,
   type MacroContext,
   type Persona,
   type ScopedRegexMode,
 } from "@marinara-engine/shared";
+import { api, requestTimeoutSignal } from "./api-client";
 import { parseChatMetadata } from "./chat-display";
 
 export interface MacroCharacterData {
@@ -281,10 +283,37 @@ export function createInputMacroResolverForChat(
   });
 }
 
+/** How long a send waits for the server to put lorebook entries in before sending the include as written. */
+const EXPAND_INCLUDES_TIMEOUT_MS = 10_000;
+
+/**
+ * `{{include::...}}` reads lorebooks, which only the server has, so the server puts the
+ * entries in and the caller's macro pass then fills in their macros with the rest (#7607).
+ * Without a chat, or if the server fails or does not answer in time, the include stays as
+ * written and the prompt fills it in, as before. Exported for turns that skip
+ * prepareUserInputMessage but fill in macros the same way (Game).
+ */
+export async function expandMessageIncludes(text: string, chatId: string | null | undefined): Promise<string> {
+  // A short-form name is looked up in the chat's lorebooks, so without a chat it would read as empty.
+  if (!chatId || !usesLorebookIncludes(text)) return text;
+  try {
+    const result = await api.post<{ text?: unknown }>(
+      "/lorebooks/expand-includes",
+      { text, chatId },
+      { signal: requestTimeoutSignal(EXPAND_INCLUDES_TIMEOUT_MS) },
+    );
+    return typeof result?.text === "string" ? result.text : text;
+  } catch (error) {
+    console.warn("[chat-macros] Could not fill in lorebook includes; sending them as written", error);
+    return text;
+  }
+}
+
 /**
  * What a composer send stores as the user's message: user-input regex scripts, optional
  * input translation, then the macros. Send, Post Only and /send all store this text, so
- * a stored message holds the resolved macros the chat shows and the model reads (#7585).
+ * a stored message holds the resolved macros the chat shows and the model reads (#7585),
+ * lorebook includes too (#7607).
  */
 export async function prepareUserInputMessage(
   text: string,
@@ -296,7 +325,9 @@ export async function prepareUserInputMessage(
     onTranslationError,
   }: {
     chat:
-      (NonNullable<Parameters<typeof createInputMacroResolverForChat>[0]> & { metadata?: unknown }) | null | undefined;
+      | (NonNullable<Parameters<typeof createInputMacroResolverForChat>[0]> & { id?: string; metadata?: unknown })
+      | null
+      | undefined;
     characters: Array<{ id: string; data: unknown }> | undefined;
     personas: Persona[] | undefined;
     applyToUserInput: (
@@ -326,5 +357,6 @@ export async function prepareUserInputMessage(
   }
 
   // Final pass: resolve macros introduced by translation while {{input}} still points to raw.
-  return resolveInputMacros(message);
+  // Lorebook includes go in first, as resolveMacros puts them in before every other macro.
+  return resolveInputMacros(await expandMessageIncludes(message, chat?.id));
 }

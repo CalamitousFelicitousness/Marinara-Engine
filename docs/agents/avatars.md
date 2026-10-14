@@ -158,7 +158,7 @@ Image models that edit pictures work best, because they get your sprite as a ref
 
 ### Mesh avatar
 
-1. Pick one sprite. A front-facing bust (head and shoulders) works best; on a full-body sprite the face is small.
+1. Pick one sprite. The full-body neutral sprite is picked for you when the character has one, otherwise the neutral sprite; you can choose another. A front-facing full-body or bust sprite works best.
 2. Choose the **Chat connection that can see pictures**. **The agent's connection** uses the connection set on the 2D Avatars page, then your default agent connection. Its model must accept pictures.
 3. Select **Make mesh avatar**. The chat model finds the face, and Marinara Engine builds the avatar from your sprite. **Cancel** stops it.
 4. Check the preview: the outlines should sit on the eyes, brows and mouth. Select **Save as mesh avatar**, or **Discard** and try another sprite or model.

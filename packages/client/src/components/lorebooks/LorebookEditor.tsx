@@ -3213,6 +3213,8 @@ function VectorizeSection({
   const queryClient = useQueryClient();
   const { data: rawConnections } = useConnections();
   const { data: defaultEmbedding } = useDefaultEmbeddingConnection();
+  // Once the user picks, even "No semantic search", the default must not snap back in.
+  const userPickedConnectionRef = useRef(false);
   const sidecarModelDownloaded = useSidecarStore((s) => s.modelDownloaded);
   const sidecarModelDisplayName = useSidecarStore((s) => s.modelDisplayName);
   const fetchSidecarStatus = useSidecarStore((s) => s.fetchStatus);
@@ -3289,12 +3291,17 @@ function VectorizeSection({
     }
     // Nothing remembered: start on the app-wide default, so entries share the vector space chats query.
     const defaultId = defaultEmbedding?.connectionId;
-    if (defaultId && embeddingConnections.some((connection) => connection.id === defaultId)) {
+    if (
+      !userPickedConnectionRef.current &&
+      defaultId &&
+      embeddingConnections.some((connection) => connection.id === defaultId)
+    ) {
       setSelectedConnectionId(defaultId);
     }
   }, [defaultEmbedding?.connectionId, embeddingConnections, selectedConnectionId]);
 
   const handleConnectionChange = (nextConnectionId: string) => {
+    userPickedConnectionRef.current = true;
     setSelectedConnectionId(nextConnectionId);
     try {
       if (nextConnectionId) {

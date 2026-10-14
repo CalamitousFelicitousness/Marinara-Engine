@@ -1156,6 +1156,7 @@ export function generatedEnemyToCombatant(enemy: CombatEnemy, index: number, fal
     ...(typeof enemy.tier === "string" && enemy.tier.trim() ? { tier: enemy.tier.trim() } : {}),
     ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
     ...(enemy.surprised === true ? { surprised: true } : {}),
+    ...(enemy.inLair === true ? { inLair: true } : {}),
   };
 }
 

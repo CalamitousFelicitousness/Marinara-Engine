@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Minimize2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { handleTextareaTab } from "../../lib/textarea-editing";
+import { isBrowserExtensionUi } from "../../lib/chat-floating-ui-events";
 import {
   NEUTRAL_PANEL_HEADER,
   NEUTRAL_PANEL_SCROLL_AREA,
@@ -49,7 +50,8 @@ export function ExpandedTextarea({
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Escape in a browser extension's card (Grammarly's) closes that card, not this editor.
+      if (e.key === "Escape" && !isBrowserExtensionUi(e.target)) onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);

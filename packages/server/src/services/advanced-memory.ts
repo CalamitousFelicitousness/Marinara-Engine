@@ -17,6 +17,7 @@ import {
   combineChatSummaryEntryHistory,
   compileChatSummaryEntries,
   resolveMacros,
+  attachConditionalLineBreaks,
   scopeCharacterSummary,
   characterConditionNames,
   markReaderVersions,
@@ -326,7 +327,7 @@ function preparationPolicyRevision(ctx: Context): string {
   // Automatic message visibility changes no prepared memory; keep existing snapshots reusable.
   const { autoMessageVisibility: _visibility, ...settings } = ctx.settings;
   return hash([
-    "scene-timeframe-constants-v24", // Invalidate reusable contexts without rebuilding valid source archives.
+    "scene-timeframe-constants-v25", // Invalidate reusable contexts without rebuilding valid source archives.
     policyFingerprint(ctx),
     settings,
     ctx.metadata.summaryEntries,
@@ -1884,6 +1885,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
 
   /** With `everySection` off, the narrator reads only the sections written for it. */
   function renderEntry(ctx: Context, text: string, audience: string[], everySection = true): string {
+    // A section for someone who is not reading leaves no empty line: its line breaks go with it.
+    text = attachConditionalLineBreaks(text);
     // The narrator alone reads every character's section, plain and once, whoever its condition names.
     if (everySection && audience.length === 1 && audience[0] === ctx.settings.narratorCharacterId)
       text = flattenCharacterConditions(text);
@@ -1900,26 +1903,36 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         ).personaSnapshot,
       ).name ?? "User",
     );
-    const render = (part: string, char: string) =>
-      resolveMacros(part, {
-        user,
-        char,
-        characters: names,
-        groupCharacters: ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character"),
-        variables: {},
-        localVariables: normalizeChatMacroVariables(ctx.metadata.macroVariables),
-        chatId: ctx.chatId,
-      });
+    const render = (part: string, char: string, trimResult?: boolean) =>
+      resolveMacros(
+        part,
+        {
+          user,
+          char,
+          characters: names,
+          groupCharacters: ctx.characterIds.map((id) => ctx.names.get(id) ?? "Character"),
+          variables: {},
+          localVariables: normalizeChatMacroVariables(ctx.metadata.macroVariables),
+          chatId: ctx.chatId,
+        },
+        { trimResult },
+      );
     // A merged reply may voice any present character: keep what any of them knows and say who (#7237).
     const readers = [...new Set(mergedReaders(ctx, audience).map((id) => ctx.names.get(id) ?? "Character"))];
     const rendered =
       readers.length > 1
         ? scopeCharacterSummary(text, readers, 0, (part, known) =>
-            // Check what scoping left (variable conditions mixed with names, {{char}}) for each reader.
-            markReaderVersions(known, readers.length, (reader) => (part.includes("{{") ? render(part, reader) : part)),
-          )
+            // Check what scoping left (variable conditions mixed with names, {{char}}) for each reader. A part
+            // keeps its line breaks, as the Chat Summary's parts do, since a section's own line break is in it;
+            // the whole is trimmed, as a single reader's is.
+            markReaderVersions(known, readers.length, (reader) =>
+              part.includes("{{") ? render(part, reader, false) : part,
+            ),
+          ).trim()
         : render(text, char ? (ctx.names.get(char) ?? "Character") : (names[0] ?? "Character"));
-    return parseRoleplayUserCommands(rendered).content;
+    // Back-to-back sections that all hide still leave a blank line too many. The memory joins the prompt after
+    // the request collapses blank lines, so collapse them here the same way.
+    return parseRoleplayUserCommands(rendered).content.replace(/\n([ \t]*\n){2,}/g, "\n\n");
   }
 
   async function embedRecord(

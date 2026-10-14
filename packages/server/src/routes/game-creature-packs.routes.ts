@@ -28,10 +28,14 @@ const SAVE_BODY_LIMIT = CREATURE_PACK_MAX_BYTES + 16_384;
 /** A share file sent as text (a sheet's base64 never needs escaping; the rest is small). */
 const IMPORT_BODY_LIMIT = CREATURE_PACK_MAX_BYTES * 2 + 16_384;
 
+/** Where a saved pack is filed: under `local/` by its own name, whatever namespace it came with
+ *  (`board/forest` edited in the maker is filed as `local/forest`), as a pack's id has one at most. */
 const localId = (id: string) => {
-  const filed = id.startsWith(LOCAL) ? id : `${LOCAL}${id}`;
+  const filed = `${LOCAL}${id.slice(id.indexOf("/") + 1)}`;
   return filed.length <= 80 ? filed : null;
 };
+/** The pack a removal names: an id without a namespace is a library one, as it was filed. */
+const removalId = (id: string) => (id.includes("/") ? id : `${LOCAL}${id}`);
 const packIdSchema = z.string().min(1).max(80);
 
 /** A stored row read back as a pack, under the id it is filed by. */
@@ -119,9 +123,10 @@ export async function gameCreaturePacksRoutes(app: FastifyInstance) {
   app.delete("/", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Creature pack removal" })) return;
     const { id } = z.object({ id: packIdSchema }).parse(req.query);
-    const removed = await store.removeAll(id);
+    const filed = removalId(id);
+    const removed = await store.removeAll(filed);
     if (!removed) return reply.status(404).send({ error: "No such creature pack." });
-    if ((await readSelection()) === id) await settings.set(SELECTION_KEY, "");
+    if ((await readSelection()) === filed) await settings.set(SELECTION_KEY, "");
     return { removed };
   });
 

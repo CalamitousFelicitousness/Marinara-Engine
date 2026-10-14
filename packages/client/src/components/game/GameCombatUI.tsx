@@ -1,3 +1,5 @@
+import { artPortraitFor } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import { CombatAiControls } from "./CombatAiControls";
 // ──────────────────────────────────────────────
 // Game: Turn-Based Combat UI
@@ -437,7 +439,16 @@ function CombatantSpriteVisual({
     );
   }
 
-  return <span className={textClassName}>{combatant.name.charAt(0).toUpperCase()}</span>;
+  // No picture of their own: their pixel bust from the portraits pack (1.338), else their initial.
+  return (
+    <ArtIcon
+      kind="portraits"
+      ids={[artPortraitFor(combatant.name)]}
+      label={combatant.name}
+      className={imageClassName}
+      fallback={<span className={textClassName}>{combatant.name.charAt(0).toUpperCase()}</span>}
+    />
+  );
 }
 
 interface GameCombatUIProps {

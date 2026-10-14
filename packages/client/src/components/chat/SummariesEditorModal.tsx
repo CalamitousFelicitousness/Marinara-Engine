@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { X, Plus, Trash2, CalendarClock, ChevronRight, ChevronsDownUp, ChevronsUpDown, RefreshCw } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
+import { isBrowserExtensionUi } from "../../lib/chat-floating-ui-events";
 import {
   estimateTextTokens,
   type Chat,
@@ -141,7 +142,8 @@ export function SummariesEditorModal({ chat, open, onClose }: SummariesEditorMod
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      // Escape in a browser extension's card (Grammarly's) closes that card, not this editor and its drafts.
+      if (event.key === "Escape" && !isBrowserExtensionUi(event.target)) onClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);

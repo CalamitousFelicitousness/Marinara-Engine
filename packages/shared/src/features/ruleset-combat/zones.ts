@@ -14,6 +14,7 @@ import {
   rulesetZoneCells,
 } from "./grid.js";
 import type {
+  RulesetBoardProp,
   RulesetCombatAction,
   RulesetCombatant,
   RulesetCombatCell,
@@ -99,6 +100,15 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
       walls[key] = (walls[key] ?? 0) | bits;
     }
   }
+  // A prop closes its cells while it stands (1.316).
+  for (const prop of rulesetStandingProps(state)) {
+    const bits = (prop.blocks?.move ? 1 : 0) | (prop.blocks?.sight ? 2 : 0);
+    if (!bits) continue;
+    for (const cell of prop.cells) {
+      const key = `${cell.x},${cell.y}`;
+      walls[key] = (walls[key] ?? 0) | bits;
+    }
+  }
   if (Object.keys(walls).length > 0) grid.walls = walls;
   else delete grid.walls;
 }
@@ -111,11 +121,14 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   cells: RulesetCombatCell[];
   side?: RulesetCombatCell[];
   sections?: Array<{ cells: RulesetCombatCell[]; health: number; max: number }>;
+  /** How it looks (1.333): a `bz_` tile of the board's pack. */
+  art?: string;
 }> {
   return rulesetStandingZones(state).map(({ caster, zone, action }) => ({
     casterId: caster.id,
     label: zone.label,
     rounds: zone.rounds,
+    ...(action.zone?.art ? { art: action.zone.art } : {}),
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
     ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
     // Each section and what it has left (1.200).
@@ -129,6 +142,11 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
         }
       : {}),
   }));
+}
+
+/** What still stands on the board that may be broken (1.316). */
+export function rulesetStandingProps(state: RulesetEncounterState): RulesetBoardProp[] {
+  return (state.board?.props ?? []).filter((prop) => prop.health > 0);
 }
 
 /** The standing sections of walls that may be struck (1.200), each with its zone. */

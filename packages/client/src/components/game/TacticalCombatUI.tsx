@@ -47,7 +47,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
-import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
+import { boardCellArt, boardSliceStyle, useBoardArt } from "../../lib/board-art";
 import { audioManager } from "../../lib/game-audio";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useTacticalCombatStart, useTacticalCombatAction } from "../../hooks/use-game";
@@ -514,6 +514,9 @@ export function TacticalCombatUI({
     () => TERRAIN_PALETTES[activeEnvironment ?? "default"] ?? TERRAIN_PALETTES.default,
     [activeEnvironment],
   );
+  // Board art (1.338 on Classic, as on the ruleset board since 1.333): its environment's board pack draws
+  // the ground, edges and raised rims; without one, the painted textures below.
+  const boardArt = useBoardArt(undefined, activeEnvironment);
   // Stronger palette tint over the painted textures when a themed environment applies.
   const tileTintAlpha =
     activeEnvironment && TERRAIN_PALETTES[activeEnvironment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
@@ -1437,6 +1440,15 @@ export function TacticalCombatUI({
                 const isInspected = inspectTile?.x === x && inspectTile?.y === y;
                 const icon = resolveTerrainIcon(activeEnvironment, terrain);
                 const height = elevationAt(liveState.grid, x, y);
+                const art = boardArt.board
+                  ? boardCellArt(
+                      boardArt,
+                      { x, y, terrain, height },
+                      (cx, cy) => liveState.grid.tiles[cy]?.[cx] ?? "plains",
+                      liveState.grid.width,
+                      liveState.grid.height,
+                    )
+                  : null;
                 return (
                   <button
                     type="button"
@@ -1458,21 +1470,44 @@ export function TacticalCombatUI({
                       },
                     )}
                   >
-                    {/* Painted terrain texture (rotated per-tile for variety) */}
-                    <span
-                      className="pointer-events-none absolute inset-0"
-                      style={{
-                        backgroundImage: `url(${TILE_TEXTURES[terrain]})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        transform: `rotate(${((x * 7 + y * 13) % 4) * 90}deg) scale(1.03)`,
-                      }}
-                    />
-                    {/* Environment palette tint over the texture */}
-                    <span
-                      className="pointer-events-none absolute inset-0"
-                      style={{ backgroundColor: palette[terrain] + tileTintAlpha }}
-                    />
+                    {art?.ground ? (
+                      // The pack's ground, then its edge blocks over it, a quarter of a corner each.
+                      <>
+                        <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ground)} />
+                        {art.edges.map(({ quarter, slice }) => (
+                          <span
+                            key={quarter}
+                            className={cn(
+                              "pointer-events-none absolute h-1/2 w-1/2",
+                              quarter % 2 ? "left-1/2" : "left-0",
+                              quarter > 1 ? "top-1/2" : "top-0",
+                            )}
+                            style={boardSliceStyle(slice)}
+                          />
+                        ))}
+                        {art.rim && (
+                          <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.rim)} />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {/* Painted terrain texture (rotated per-tile for variety) */}
+                        <span
+                          className="pointer-events-none absolute inset-0"
+                          style={{
+                            backgroundImage: `url(${TILE_TEXTURES[terrain]})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            transform: `rotate(${((x * 7 + y * 13) % 4) * 90}deg) scale(1.03)`,
+                          }}
+                        />
+                        {/* Environment palette tint over the texture */}
+                        <span
+                          className="pointer-events-none absolute inset-0"
+                          style={{ backgroundColor: palette[terrain] + tileTintAlpha }}
+                        />
+                      </>
+                    )}
                     {/* Top-light depth gradient */}
                     <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/25" />
                     {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}

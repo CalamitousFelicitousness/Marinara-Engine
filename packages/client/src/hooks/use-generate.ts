@@ -1572,6 +1572,18 @@ export function useGenerate() {
         (splitPartIdsBefore.get(id) ?? []).flatMap((partId) => persistedMessages.get(partId) ?? []);
       const isSplitPart = (id: string) =>
         pendingSplitPartIds.includes(id) || [...splitPartIdsBefore.values()].some((ids) => ids.includes(id));
+      // A reply held for a rewrite is shown by the live stream and joins the message list only after its
+      // agent results, so while this stream is live they check the held reply (#7592). Any other reply
+      // the list does not show, such as one the user deleted, still turns its results away.
+      const heldUnlistedReplies = new Map<string, Message>();
+      const agentResultOwnsVisibleSwipe = (result: AgentResultEventPayload) =>
+        agentResultMatchesVisibleSwipe(
+          getCachedMessages(qc, params.chatId),
+          result,
+          useChatStore.getState().abortControllers.get(params.chatId) === abortController
+            ? heldUnlistedReplies
+            : undefined,
+        );
       let vnReplyPublished = false;
       const publishVnReply = (message: Message | null) => {
         if (
@@ -2140,7 +2152,12 @@ export function useGenerate() {
                 if (agentEventGenerationId && agentEventGenerationId !== result.generationId) break;
                 agentEventGenerationId ??= result.generationId;
               }
-              const ownsVisibleSwipe = agentResultMatchesVisibleSwipe(getCachedMessages(qc, params.chatId), result);
+              const ownsVisibleSwipe = agentResultOwnsVisibleSwipe(result);
+              if (!ownsVisibleSwipe) {
+                console.debug(
+                  `[Agent] Skipped ${result.agentName} (${result.agentType}): reply ${result.messageId} swipe ${result.swipeIndex} is not on screen`,
+                );
+              }
 
               if (debugMode) {
                 if (result.success) {
@@ -2268,10 +2285,7 @@ export function useGenerate() {
                       for (const pending of pendingEntries) {
                         enqueuePendingCardUpdate(pending);
                       }
-                      if (
-                        isActiveChat() &&
-                        agentResultMatchesVisibleSwipe(getCachedMessages(qc, params.chatId), result)
-                      ) {
+                      if (isActiveChat() && agentResultOwnsVisibleSwipe(result)) {
                         useUIStore.getState().openModal("character-card-update");
                       }
                     }
@@ -2774,6 +2788,9 @@ export function useGenerate() {
                 persistedMessages.set(heldMessage.id, heldMessage);
                 if (!isGameGeneration && (!streamingEnabled || !shouldDisplayRawStream)) {
                   upsertPersistedMessages(qc, params.chatId, [heldMessage]);
+                } else if (!isGameGeneration) {
+                  // A Game reply stays hidden until its reveal, so it does not count as on screen.
+                  heldUnlistedReplies.set(heldMessage.id, heldMessage);
                 }
                 break;
               }
@@ -2811,6 +2828,7 @@ export function useGenerate() {
                 if (pendingText.length > 0 || typingActive) await waitForTypewriterDrain();
                 const savedMessage = persistedMessages.get(message.id);
                 if (savedMessage) upsertPersistedMessages(qc, params.chatId, [savedMessage]);
+                heldUnlistedReplies.delete(message.id);
                 publishVnReply(savedMessage ?? null);
                 if (useChatStore.getState().streamingChatId === params.chatId) {
                   setStreaming(false);
@@ -3819,6 +3837,11 @@ export function useGenerate() {
                 retryAgentEventGenerationId ??= result.generationId;
               }
               const ownsVisibleSwipe = agentResultMatchesVisibleSwipe(getCachedMessages(qc, chatId), result);
+              if (!ownsVisibleSwipe) {
+                console.debug(
+                  `[Retry Agent] Skipped ${result.agentName} (${result.agentType}): reply ${result.messageId} swipe ${result.swipeIndex} is not on screen`,
+                );
+              }
               const shouldApplyVisibleResult = isActiveChat() && ownsVisibleSwipe;
               agentResultCount += 1;
 

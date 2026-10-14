@@ -1539,7 +1539,12 @@ try {
       extra: { hiddenFromAI: true },
     });
     await chats.patchMetadata(liveChat.id, {
-      advancedMemory: { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, enabled: true, sceneCheckInterval: 100 },
+      advancedMemory: {
+        ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
+        enabled: true,
+        sceneCheckInterval: 100,
+        summaryBudgetTokens: 4096, // The constants below are sized to pass 70% of it.
+      },
       macroVariables: { memory: "LIVE_CONSTANT_TO_COMBINE ".repeat(600) },
       summaryEntries: [
         createChatSummaryEntry({
@@ -1713,6 +1718,7 @@ try {
       ...DEFAULT_ADVANCED_MEMORY_SETTINGS,
       enabled: true,
       sceneCheckInterval: 100,
+      summaryBudgetTokens: 4096, // The summaries below are sized to pass 70% of it.
       knowledgeStarts: { [privateA.id]: null, [privateB.id]: null },
     },
     summaryEntries: [

@@ -31,7 +31,7 @@ import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { useCreateMessage, useDeleteMessage, useUpdateMessageExtra, chatKeys } from "../../hooks/use-chats";
 import { useConnections } from "../../hooks/use-connections";
-import { characterKeys } from "../../hooks/use-characters";
+import { characterKeys, ensureCharacterAndPersonaLists } from "../../hooks/use-characters";
 import {
   buildGuidedGenerationInstructionMessage,
   formatTextQuotes,
@@ -49,7 +49,7 @@ import {
   type SlashCommand,
   type SlashCommandContext,
 } from "../../lib/slash-commands";
-import { createInputMacroResolverForChat, isPromptPreviewMacro } from "../../lib/chat-macros";
+import { isPromptPreviewMacro, prepareUserInputMessage } from "../../lib/chat-macros";
 import { parseChatMetadata } from "../../lib/chat-display";
 import type { AvatarCrop } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
@@ -788,6 +788,24 @@ export const ChatInput = memo(function ChatInput({
   // Get the current textarea value (always from the DOM directly)
   const getValue = () => textareaRef.current?.value ?? "";
 
+  const prepareUserMessage = useCallback(
+    async (text: string, onTranslationError: () => void) => {
+      const chat = useChatStore.getState().activeChat;
+      // Only typed macros wait for the lists, so a plain message never waits on a slow first load.
+      // ponytail: a macro that a regex script or translation adds still falls back to "User" on that
+      // first load; also check the chat's regex replacements here if that case ever matters.
+      if (text.includes("{{")) await ensureCharacterAndPersonaLists(qc);
+      return prepareUserInputMessage(text, {
+        chat,
+        characters: qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
+        personas: qc.getQueryData<Persona[]>(characterKeys.personas),
+        applyToUserInput,
+        onTranslationError,
+      });
+    },
+    [applyToUserInput, qc],
+  );
+
   const buildContext = useCallback((): SlashCommandContext | null => {
     if (!activeChatId) return null;
     return {
@@ -804,6 +822,10 @@ export const ChatInput = memo(function ChatInput({
         await createMessage.mutateAsync(data);
         requestChatScrollToBottom({ chatId: activeChatId, behavior: "auto" });
       },
+      prepareUserMessage: (text) =>
+        prepareUserMessage(text, () =>
+          toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+        ),
       invalidate: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
       invalidateCharacter: (characterId) => qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) }),
       characterNames: activeCharacterNames,
@@ -823,6 +845,8 @@ export const ChatInput = memo(function ChatInput({
     mode,
     generateWithNarrativeDirector,
     createMessage,
+    prepareUserMessage,
+    localizeUi,
     activeCharacterNames,
     activeChatCharacters,
     canSubmitSpatialMove,
@@ -1006,27 +1030,9 @@ export const ChatInput = memo(function ChatInput({
       return;
     }
 
-    const cachedCharacters = qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list());
-    const cachedPersonas = qc.getQueryData<Persona[]>(characterKeys.personas);
-    const resolveInputMacros = createInputMacroResolverForChat(chat, cachedCharacters, cachedPersonas, normalized);
-    const chatMeta = parseChatMetadata(chat?.metadata);
-    let message = applyToUserInput(normalized, {
-      resolveMacros: resolveInputMacros,
-      scopedMode: chatMeta.scopedRegexMode,
-    });
-
-    // Input translation: translate user's message before sending
-    if (chatMeta.translateInput && message.trim()) {
-      try {
-        const { translateText } = await import("../../lib/translate-text");
-        const translated = await translateText(message, "input");
-        if (translated.trim()) message = translated;
-      } catch {
-        toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessageSendingOriginal"));
-      }
-    }
-
-    message = resolveInputMacros(message);
+    const message = await prepareUserMessage(normalized, () =>
+      toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessageSendingOriginal")),
+    );
 
     const submittingChatId = activeChatId;
     const submittedDraft = textareaRef.current?.value ?? "";
@@ -1130,7 +1136,7 @@ export const ChatInput = memo(function ChatInput({
     mode,
     isInputBusy,
     generateWithNarrativeDirector,
-    applyToUserInput,
+    prepareUserMessage,
     buildContext,
     qc,
     clearInputDraft,
@@ -1264,27 +1270,9 @@ export const ChatInput = memo(function ChatInput({
       draftTimerRef.current = null;
     }
 
-    const chat = useChatStore.getState().activeChat;
-    const cachedCharacters = qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list());
-    const cachedPersonas = qc.getQueryData<Persona[]>(characterKeys.personas);
-    const resolveInputMacros = createInputMacroResolverForChat(chat, cachedCharacters, cachedPersonas, normalized);
-    const chatMeta = parseChatMetadata(chat?.metadata);
-    let message = applyToUserInput(normalized, {
-      resolveMacros: resolveInputMacros,
-      scopedMode: chatMeta.scopedRegexMode,
-    });
-
-    if (chatMeta.translateInput && message.trim()) {
-      try {
-        const { translateText } = await import("../../lib/translate-text");
-        const translated = await translateText(message, "input");
-        if (translated.trim()) message = translated;
-      } catch {
-        toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal"));
-      }
-    }
-
-    message = resolveInputMacros(message);
+    const message = await prepareUserMessage(normalized, () =>
+      toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+    );
     const submittedDraft = raw;
     const submittedHeight = textareaRef.current?.style.height ?? "auto";
     const submittedAttachments = attachments;
@@ -1365,8 +1353,7 @@ export const ChatInput = memo(function ChatInput({
     isReadingAttachments,
     attachments,
     completions,
-    applyToUserInput,
-    qc,
+    prepareUserMessage,
     syncInputState,
     clearInputDraft,
     setInputDraft,

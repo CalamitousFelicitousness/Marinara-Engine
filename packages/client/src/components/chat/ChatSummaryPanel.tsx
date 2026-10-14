@@ -3072,7 +3072,7 @@ function SummaryEntryRow({
             type="button"
             onClick={onDelete}
             disabled={mutationPending}
-            className="rounded p-1 text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/15 active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
             title={localizeUi("lorebook.editor.batch.delete")}
             aria-label={localizeUi("ui.chat.summaryentryrow.deleteSummaryEntry")}
           >
@@ -3093,6 +3093,11 @@ function SummaryEntryRow({
             />
           ) : (
             <div className="space-y-3 px-0.5 py-0.5">
+              {/* Phones cut the row's title and range short, so an opened summary shows them in full. */}
+              <div data-summary-entry-heading className="space-y-0.5 md:hidden">
+                <p className="break-words text-xs font-semibold">{entry.title}</p>
+                <p className="break-words text-[0.625rem] text-[var(--muted-foreground)]">{metaLine}</p>
+              </div>
               {parseSummarySections(entry.content).map((section, sectionIndex) => (
                 <SummaryReadableSection
                   key={`${entry.id}-${section.title ?? "summary"}-${sectionIndex}`}

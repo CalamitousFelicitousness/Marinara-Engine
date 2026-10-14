@@ -4,7 +4,9 @@ import {
   resolveMacros,
   type MacroContext,
   type Persona,
+  type ScopedRegexMode,
 } from "@marinara-engine/shared";
+import { parseChatMetadata } from "./chat-display";
 
 export interface MacroCharacterData {
   id?: string;
@@ -273,4 +275,52 @@ export function createInputMacroResolverForChat(
     characters: chatCharacters,
     lastInput,
   });
+}
+
+/**
+ * What a composer send stores as the user's message: user-input regex scripts, optional
+ * input translation, then the macros. Send, Post Only and /send all store this text, so
+ * a stored message holds the resolved macros the chat shows and the model reads (#7585).
+ */
+export async function prepareUserInputMessage(
+  text: string,
+  {
+    chat,
+    characters,
+    personas,
+    applyToUserInput,
+    onTranslationError,
+  }: {
+    chat:
+      (NonNullable<Parameters<typeof createInputMacroResolverForChat>[0]> & { metadata?: unknown }) | null | undefined;
+    characters: Array<{ id: string; data: unknown }> | undefined;
+    personas: Persona[] | undefined;
+    applyToUserInput: (
+      text: string,
+      options: { resolveMacros: (value: string) => string; scopedMode?: ScopedRegexMode | null },
+    ) => string;
+    onTranslationError: () => void;
+  },
+): Promise<string> {
+  const resolveInputMacros = createInputMacroResolverForChat(chat, characters, personas, text);
+  const chatMeta = parseChatMetadata(chat?.metadata);
+  // First pass: resolve macros against raw input, so {{input}} uses the pre-translation text.
+  let message = applyToUserInput(text, {
+    resolveMacros: resolveInputMacros,
+    scopedMode: chatMeta.scopedRegexMode,
+  });
+
+  // Input translation: translate user's message before sending
+  if (chatMeta.translateInput && message.trim()) {
+    try {
+      const { translateText } = await import("./translate-text");
+      const translated = await translateText(message, "input");
+      if (translated.trim()) message = translated;
+    } catch {
+      onTranslationError();
+    }
+  }
+
+  // Final pass: resolve macros introduced by translation while {{input}} still points to raw.
+  return resolveInputMacros(message);
 }

@@ -176,7 +176,7 @@ export function VrmModelMaker({
                 : balance.data
                   ? t("avatars.vrm.make.balance", { balance: balance.data.balance, cost })
                   : null}
-            {tooFewCredits ? ` ${t("avatars.vrm.make.notEnough")}` : null}
+            {tooFewCredits ? <> {t("avatars.vrm.make.notEnough")}</> : null}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <button

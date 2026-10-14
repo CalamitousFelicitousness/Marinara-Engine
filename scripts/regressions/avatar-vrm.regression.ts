@@ -475,6 +475,44 @@ const emptyModernMap = buildVrmImport(emptyExpressions, input(new Uint8Array([1]
 assert.equal(emptyModernMap.happy?.source, "missing", "VRM 1.0: no morph target, colour or texture bind");
 assert.equal(emptyModernMap.angry?.source, "preset");
 assert.equal(emptyModernMap.aa?.source, "preset", "a texture transform is a change");
+// Only an empty expression that would have taken a slot is pointed out: an empty custom face is, an empty
+// look-at preset (common where the eyes turn by bone) is not.
+const emptyCustom = await vrmImporter.validate(
+  input(
+    glb(
+      vrm0([
+        { name: "Joy", presetName: "joy", binds: GROUP_BINDS },
+        { name: "Shock", presetName: "unknown" },
+      ]),
+    ),
+  ),
+);
+assert.ok(
+  buildVrmImport(emptyCustom, input(new Uint8Array([1])), null).warnings.some((warning) =>
+    /empty and change nothing/u.test(warning),
+  ),
+  "an empty custom face is pointed out",
+);
+const emptyLookAt = await vrmImporter.validate(
+  input(
+    glb(
+      vrm1(
+        {},
+        {
+          expressions: {
+            ...vrm1().extensions.VRMC_vrm.expressions,
+            preset: { ...vrm1().extensions.VRMC_vrm.expressions.preset, lookUp: {} },
+          },
+        },
+      ),
+    ),
+  ),
+);
+assert.deepEqual(
+  buildVrmImport(emptyLookAt, input(new Uint8Array([1])), null).warnings,
+  [],
+  "an empty expression no slot uses is not worth a warning",
+);
 
 // Many expressions: capped at what avatar.json stores, with a warning; a preset past the cap still binds.
 const many = await vrmImporter.validate(

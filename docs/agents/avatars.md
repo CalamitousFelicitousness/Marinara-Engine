@@ -203,7 +203,7 @@ You don't have to make anything to start. A character or persona with expression
 ### What to avoid when exporting
 
 - **Compression.** Draco or meshopt mesh compression and KTX2 textures don't load. The VRM exports above never use them, but Blender's plain glTF export offers Draco, and model optimizers can add all three. Export again with compression turned off.
-- **Plain glTF.** A `.glb` or `.gltf` file has no face expressions or humanoid skeleton. Export a `.vrm` instead.
+- **Plain glTF.** A plain `.glb` or `.gltf` file lacks the VRM data that names its faces and skeleton. Export a `.vrm` instead.
 - **Separate files.** A model whose textures or data sit in separate files can't be used. Export one `.vrm` file.
 - **PNGTuber Plus extras.** Wobble, drag and animation don't come across: each layer shows at rest, and an animated layer shows its first frame.
 

@@ -578,10 +578,14 @@ export function buildVrmImport(
   }
   const expressionMap = bindVrmExpressions(validated.expressionNames, validated.presetNames, validated.inertNames);
   const warnings = [...validated.warnings];
+  // Said only when an empty expression would have taken a slot: models often carry empty look-at or spare
+  // expressions that nobody would bind anyway.
+  const unfiltered = bindVrmExpressions(validated.expressionNames, validated.presetNames);
   if (
-    AVATAR_EXPRESSION_SLOTS.some(
-      (slot) => slot !== "neutral" && validated.presetNames.has(slot) && validated.inertNames.has(slot),
-    )
+    AVATAR_EXPRESSION_SLOTS.some((slot) => {
+      const target = unfiltered[slot]?.target;
+      return slot !== "neutral" && target != null && validated.inertNames.has(target);
+    })
   ) {
     warnings.push("Some of this model's expressions are empty and change nothing, so they weren't used.");
   }

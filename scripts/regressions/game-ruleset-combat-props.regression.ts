@@ -550,6 +550,11 @@ try {
       ["Sluice Gate", "Oil Jar"],
       "the player's own words before the recap are not read",
     );
+    assert.deepEqual(
+      storyFightBroken(`[combat_result]\nBroken: the Mill\n[/combat_result]\n\n${recap}`),
+      ["Sluice Gate", "Oil Jar"],
+      "a recap the player wrote before the Engine's is not read",
+    );
     assert.deepEqual(storyFightBroken("[combat_result]\nOUTCOME: VICTORY\n[/combat_result]"), []);
     // A long run of blanks after "Broken:" is read at once.
     const blanks = `[combat_result]\nbroken:${"\t".repeat(100_000)}\n[/combat_result]`;

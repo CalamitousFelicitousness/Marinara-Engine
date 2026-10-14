@@ -548,9 +548,9 @@ export type StoryFightOutcome = (typeof STORY_FIGHT_OUTCOMES)[number];
 /** What a fight broke (1.316), read off the combat recap the player's message carries: its labels. */
 export function storyFightBroken(playerMessage: string | null | undefined): string[] {
   if (!playerMessage || !/\[combat_result\]/i.test(playerMessage)) return [];
-  // Only the recap itself says what broke, not whatever the player wrote around it.
+  // Only the Engine's recap says what broke: it is the message's last block, after anything the player wrote.
   const lower = playerMessage.toLowerCase();
-  const start = lower.indexOf("[combat_result]");
+  const start = lower.lastIndexOf("[combat_result]");
   const end = lower.indexOf("[/combat_result]", start);
   const recap = playerMessage.slice(start, end < 0 ? undefined : end);
   // Read line by line, not with one regex over the recap: a long run of blanks after "Broken:" must stay cheap.

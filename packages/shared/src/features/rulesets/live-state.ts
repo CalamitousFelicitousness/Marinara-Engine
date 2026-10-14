@@ -91,7 +91,7 @@ const MAX_LIVE_KEY_LENGTH = 200;
 const MAX_LIVE_TRACKS = 30;
 const MAX_LIVE_TEXTS = 12;
 const MAX_LIVE_TEXT_LENGTH = 500;
-// As many as a sheet may declare (160 since Capability API 1.188).
+// As many as a sheet may declare (320 since Capability API 1.269, 160 from 1.188).
 const MAX_LIVE_CONDITIONS = RULESET_CONDITIONS_MAX;
 const MAX_LIVE_CONDITION_LENGTH = 80;
 const MAX_LIVE_STATES = 30;

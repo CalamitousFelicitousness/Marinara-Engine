@@ -1842,6 +1842,14 @@ function windowOptions(
     ...(candidate.action.choice.payWith !== undefined ? { payWith: candidate.action.choice.payWith } : {}),
     ...(candidate.action.choice.style !== undefined ? { style: candidate.action.choice.style } : {}),
     ...(candidate.action.choice.mode !== undefined ? { mode: candidate.action.choice.mode } : {}),
+    // A zone moved or turned keeps where it goes, and an option that needs an alteration keeps it:
+    // without them the rules refuse the choice and the boss loses its turn.
+    ...(candidate.action.choice.to &&
+    (candidate.action.option.id.startsWith(RULESET_ZONE_OPTION_PREFIX) ||
+      candidate.action.option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX))
+      ? { zoneTo: { ...candidate.action.choice.to } }
+      : {}),
+    ...(candidate.action.choice.alters?.length ? { alters: [...candidate.action.choice.alters] } : {}),
   }));
 }
 
@@ -2031,6 +2039,8 @@ export function commandRulesetCombatDirector(
               // is carried for the same reason: a boss with a sheet pays out of one.
               ...(chosen.at ? { at: { ...chosen.at } } : {}),
               ...(chosen.payWith !== undefined ? { payWith: chosen.payWith } : {}),
+              ...(chosen.zoneTo ? { to: { ...chosen.zoneTo } } : {}),
+              ...(chosen.alters?.length ? { alters: [...chosen.alters] } : {}),
             }
           : chosen
             ? null
@@ -2055,6 +2065,8 @@ export function commandRulesetCombatDirector(
           ...(chosen.style !== undefined ? { style: chosen.style } : {}),
           ...(chosen.mode !== undefined ? { mode: chosen.mode } : {}),
           ...(chosen.at ? { at: { ...chosen.at } } : {}),
+          ...(chosen.zoneTo ? { to: { ...chosen.zoneTo } } : {}),
+          ...(chosen.alters?.length ? { alters: [...chosen.alters] } : {}),
         }
       : // The local picker is the fallback, so a Game Master that answered nothing usable costs the
         // fight nothing but the model call.

@@ -1068,6 +1068,19 @@ const capabilityPackageManifestBaseSchema = z
 //        and refusal.
 // 1.265: an aura's `needs`, `harms` and `save` (Countercharm, a balor's Fire Aura, a pit fiend's Fear
 //        Aura); a save modifier's `against.casts` (Holy Nimbus).
+// 1.266: a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun
+//        stuck, a save rolled only out of sight, and a condition that destroys by threat tier.
+// 1.267: senses any one of which serves, targets kept near each other, an area that grows with its
+//        cost, more uses on an item, and things a stat block holds.
+// 1.268: auras reaching only some kinds of creature or whoever holds their holder, an aura save
+//        worse when failed by enough or one whose holder's eyes can be averted, and a save rolled
+//        leaning while its source is in sight.
+// 1.269: up to 320 conditions (160 before), an aura save whose aura stays off once what it put on
+//        ends (`immuneWhenEnds`), an item use's `sheetDifficulty`, and `chargeStep` (more charges
+//        spent for more).
+// 1.270: a catalog entry whose creature type is chosen as it is used (`kindChoice`), an aura reaching
+//        only that kind or whoever sees its holder, and a save that ends a condition only from far
+//        enough away.
 export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 270 } as const);
 
 const capabilityApiVersionSchema = z

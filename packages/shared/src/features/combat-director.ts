@@ -98,6 +98,11 @@ export interface CombatDecisionOption {
   /** Where a ruleset fight's own shape is aimed. `to` above is where the actor walks first, which
    *  a positioned candidate may carry too. */
   at?: { x: number; y: number };
+  /** Where a zone its actor moves or turns goes (1.173, 1.182): the choice's own `to`, never the
+   *  walk `to` above. */
+  zoneTo?: { x: number; y: number };
+  /** The altering actions a ruleset candidate is used with (1.253). */
+  alters?: string[];
 }
 export interface CombatDecisionWindow {
   id: string;

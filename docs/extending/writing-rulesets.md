@@ -3318,8 +3318,9 @@ fall is a separate event. Feather Fall uses the same `fallsSafely` condition as 
 Said plainly, because a ruleset should not claim what the Engine does not do:
 
 - **Beyond the modest board**: no flying over
-  obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
-  walk and a contest's push. Nobody drags a creature they hold.
+  obstacles, no squeezing, no mounts, and no hiding by a check: being hidden is a condition (5e's
+  invisible, Capability API 1.178). A creature is moved only by its own walk and by what pushes it (a contest, an entry, a
+  creature's action or a zone). Nobody drags a creature they hold.
 - **A contest is plain.** Its roll opens no window, but a fall it causes may be answered.
 - **An entry may wait for six moments only**, `used`, `aimed`, `hit`, `harmed`, `falls` and `turn-start` (see Windows, above).
   Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody

@@ -836,9 +836,15 @@ export function rulesetChosenUsesMax(
   combatant: RulesetCombatant,
   action: RulesetCombatAction,
 ): number {
-  let most = 0;
-  while (most < 1000 && planRulesetCombatCost(definition, combatant, action, undefined, most + 1)) most += 1;
-  return most;
+  // Whatever pays for some uses pays for fewer, so the most is found by halving the range.
+  let low = 0;
+  let high = 1000;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (planRulesetCombatCost(definition, combatant, action, undefined, mid)) low = mid;
+    else high = mid - 1;
+  }
+  return low;
 }
 
 /** Whether paying this would stay inside every limit on what the combatant may spend this turn or

@@ -1,15 +1,20 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page, type Route } from "@playwright/test";
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-// A Game turn is stored with its macros filled in, as a Roleplay or Conversation send is (#7585).
-// Left raw, the Game log rolled {{random}} with one seed and the model's prompt with another.
-test("a Game turn stores its macros resolved, and the log and the model read that text", async ({ page, request }) => {
-  test.setTimeout(90_000);
-  page.setDefaultTimeout(10_000);
+type GameChat = { chatId: string; prompts: string[][]; storedTurns: () => Promise<string[]> };
+
+// Opens a Game chat with the persona "Pat Persona" and the chat variable gold = 12. The persona list
+// request goes through `personaList`, so a test can hold it back or fail it.
+async function withGameChat(
+  page: Page,
+  request: APIRequestContext,
+  personaList: (route: Route) => Promise<void>,
+  run: (chat: GameChat) => Promise<void>,
+) {
   const prompts: string[][] = [];
   const provider = createServer(async (incoming, response) => {
     if (incoming.method !== "POST") {
@@ -75,13 +80,7 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
     });
     expect(opening.ok(), await opening.text()).toBeTruthy();
     await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
-    // Hold the persona list, as on a slow first load: the turn must wait for it, not store "User" for {{user}}.
-    let releasePersonas = () => {};
-    const personasHeld = new Promise<void>((resolve) => (releasePersonas = resolve));
-    await page.route("**/api/characters/personas/list", async (route) => {
-      await personasHeld;
-      await route.continue();
-    });
+    await page.route("**/api/characters/personas/list", personaList);
     await seedUIState(page, {
       hasCompletedOnboarding: true,
       sidebarOpen: false,
@@ -98,27 +97,54 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
       { id: chat.id, version },
     );
     await page.goto("/");
-    const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
-    await expect(narration).toContainText("A gate blocks the path.");
-    await page
-      .getByPlaceholder("What do you do?", { exact: true })
-      .fill("I shout {{random::red::green}}, I am {{user}} with {{getvar::gold}} gold.");
-    await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText(
+      "A gate blocks the path.",
+    );
+    await run({
+      chatId: chat.id,
+      prompts,
+      storedTurns: async () =>
+        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as Array<{ role: string; content: string }>)
+          .filter((message) => message.role === "user")
+          .map((message) => message.content),
+    });
+  } finally {
+    for (const path of cleanup) await request.delete(path);
+    await new Promise<void>((resolve) => provider.close(() => resolve()));
+  }
+}
+
+async function sendTurn(page: Page, text: string) {
+  await page.getByPlaceholder("What do you do?", { exact: true }).fill(text);
+  await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+}
+
+// A Game turn is stored with its macros filled in, as a Roleplay or Conversation send is (#7585).
+// Left raw, the Game log rolled {{random}} with one seed and the model's prompt with another.
+test("a Game turn stores its macros resolved, and the log and the model read that text", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  page.setDefaultTimeout(10_000);
+  // Hold the persona list, as on a slow first load: the turn must wait for it, not store "User" for {{user}}.
+  let releasePersonas = () => {};
+  const personasHeld = new Promise<void>((resolve) => (releasePersonas = resolve));
+  const holdPersonas = async (route: Route) => {
+    await personasHeld;
+    await route.continue();
+  };
+  await withGameChat(page, request, holdPersonas, async ({ chatId, prompts, storedTurns }) => {
+    await sendTurn(page, "I shout {{random::red::green}}, I am {{user}} with {{getvar::gold}} gold.");
     releasePersonas();
 
-    const storedTurn = async () =>
-      ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as Array<{ role: string; content: string }>)
-        .filter((message) => message.role === "user")
-        .map((message) => message.content);
     // A Game turn reads the chat's variables, as the server did when it filled the raw turn in.
     await expect
-      .poll(storedTurn)
+      .poll(storedTurns)
       .toEqual([expect.stringMatching(/^I shout (red|green), I am Pat Persona with 12 gold\.$/u)]);
-    const [turn] = await storedTurn();
+    const [turn] = await storedTurns();
     await expect.poll(() => prompts.length).toBeGreaterThan(0);
     expect(prompts[0]!.some((content) => content.includes(turn!))).toBe(true);
     expect(prompts[0]!.join("\n")).not.toContain("{{random");
 
+    const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
     await expect(narration).toContainText(/The gate creaks open\.|I shout/u);
     await page.getByRole("button", { name: "Logs", exact: true }).click();
     const logs = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Session Logs" }) });
@@ -127,18 +153,27 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
     await expect(logs).toHaveCount(0);
 
     // A turn that writes a chat variable stays raw, so the server still applies the write.
-    await page.getByPlaceholder("What do you do?", { exact: true }).fill("{{setvar::met::yes}}I wave.");
-    await page.getByRole("button", { name: "Send game turn", exact: true }).click();
-    await expect.poll(storedTurn).toEqual([turn, "{{setvar::met::yes}}I wave."]);
+    await sendTurn(page, "{{setvar::met::yes}}I wave.");
+    await expect.poll(storedTurns).toEqual([turn, "{{setvar::met::yes}}I wave."]);
     await expect
       .poll(async () => {
-        const saved = (await (await request.get(`/api/chats/${chat.id}`)).json()) as { metadata?: unknown };
+        const saved = (await (await request.get(`/api/chats/${chatId}`)).json()) as { metadata?: unknown };
         const meta = typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
         return (meta as { macroVariables?: Record<string, string> } | undefined)?.macroVariables;
       })
       .toEqual({ gold: "12", met: "yes" });
-  } finally {
-    for (const path of cleanup) await request.delete(path);
-    await new Promise<void>((resolve) => provider.close(() => resolve()));
-  }
+  });
+});
+
+// With no persona list to read, filling the turn in would store "User"; the server knows the persona.
+test("a Game turn stays raw for the server when the persona list fails to load", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  page.setDefaultTimeout(10_000);
+  const failPersonas = (route: Route) => route.fulfill({ status: 500, json: { error: "Persona list is down" } });
+  await withGameChat(page, request, failPersonas, async ({ prompts, storedTurns }) => {
+    await sendTurn(page, "I am {{user}}.");
+    await expect.poll(storedTurns, { timeout: 20_000 }).toEqual(["I am {{user}}."]);
+    await expect.poll(() => prompts.length).toBeGreaterThan(0);
+    expect(prompts[0]!.some((content) => content.includes("I am Pat Persona."))).toBe(true);
+  });
 });

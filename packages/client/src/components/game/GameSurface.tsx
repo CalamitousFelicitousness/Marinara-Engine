@@ -7058,13 +7058,14 @@ function GameSurfaceComponent({
         if (!queryClient.getQueryData(characterKeys.list()) || !queryClient.getQueryData(characterKeys.personas)) {
           await ensureCharacterAndPersonaLists(queryClient);
         }
-        userMessage = createInputMacroResolverForChat(
-          submittingChat,
-          queryClient.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
-          queryClient.getQueryData<Persona[]>(characterKeys.personas),
-          userMessage,
-          { ...parseChatMetadata(submittingChat?.metadata).macroVariables },
-        )(userMessage);
+        const characters = queryClient.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list());
+        const personas = queryClient.getQueryData<Persona[]>(characterKeys.personas);
+        // A list that failed to load leaves the turn raw for the server to fill in, as before, not with "User".
+        if (characters && personas) {
+          userMessage = createInputMacroResolverForChat(submittingChat, characters, personas, userMessage, {
+            ...parseChatMetadata(submittingChat?.metadata).macroVariables,
+          })(userMessage);
+        }
       }
       return await generate({
         chatId: activeChatId,

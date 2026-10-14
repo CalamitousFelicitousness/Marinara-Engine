@@ -479,8 +479,10 @@ export function MariComposer({
                             const modelsShown = connectionMenuRef.current
                               ?.querySelector(".mari-connection-picker__models")
                               ?.getClientRects().length;
-                            if (connection.id === LOCAL_SIDECAR_CONNECTION_ID || !modelsShown)
+                            if (connection.id === LOCAL_SIDECAR_CONNECTION_ID || !modelsShown) {
                               setConnectionMenuOpen(false);
+                              connectionButtonRef.current?.focus();
+                            }
                           }}
                           action={
                             connection.id !== LOCAL_SIDECAR_CONNECTION_ID ? (

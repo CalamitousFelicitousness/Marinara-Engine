@@ -199,6 +199,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
       if (connId !== activeConnectionId) updateChat.mutate({ id: activeChatId, connectionId: connId });
       // Tapping a row only switches; the row's arrow opens the model list (picking a model there switches too).
       setOpen(false);
+      btnRef.current?.focus();
     },
     [activeChatId, activeConnectionId, updateChat],
   );

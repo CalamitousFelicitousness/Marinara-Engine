@@ -2,7 +2,7 @@
 // Author's Note Preset Zod Schemas
 // ──────────────────────────────────────────────
 import { z } from "zod";
-import type { AuthorNotePresetSet } from "../types/author-note-preset.js";
+import type { AuthorNotePresetSet, AuthorNoteRole } from "../types/author-note-preset.js";
 
 /** Storage-side sanity bound. Depth is clamped again at assembly. */
 export const AUTHOR_NOTE_PRESET_MAX_DEPTH = 1000;
@@ -15,6 +15,15 @@ export function normalizeAuthorNoteDepth(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.floor(value))
     : DEFAULT_AUTHOR_NOTE_DEPTH;
+}
+
+export const AUTHOR_NOTE_ROLES = ["system", "user", "assistant"] as const satisfies readonly AuthorNoteRole[];
+
+export const DEFAULT_AUTHOR_NOTE_ROLE: AuthorNoteRole = "system";
+
+/** A stored or user-supplied role, or the default when unrecognized. */
+export function normalizeAuthorNoteRole(value: unknown): AuthorNoteRole {
+  return AUTHOR_NOTE_ROLES.find((role) => role === value) ?? DEFAULT_AUTHOR_NOTE_ROLE;
 }
 
 /**
@@ -44,6 +53,7 @@ const authorNotePresetShape = z.object({
   name: z.string().min(1).max(200),
   content: z.string().default(""),
   depth: z.number().int().min(0).max(AUTHOR_NOTE_PRESET_MAX_DEPTH).default(DEFAULT_AUTHOR_NOTE_DEPTH),
+  role: z.enum(AUTHOR_NOTE_ROLES).default(DEFAULT_AUTHOR_NOTE_ROLE),
   order: z.number().int().optional(),
 });
 

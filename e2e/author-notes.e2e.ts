@@ -296,3 +296,74 @@ test("Author's Notes preset sets replace a chat's presets and stay per chat", as
     await request.delete(`/api/chats/${b}`);
   }
 });
+
+test("Author's Notes sends each note with the role chosen for it", async ({ page, request }, testInfo) => {
+  test.setTimeout(90000);
+  const connectionResponse = await request.post("/api/connections", {
+    data: {
+      name: "Author notes role",
+      provider: "custom",
+      baseUrl: "http://127.0.0.1:1/v1",
+      apiKey: "fixture",
+      model: "notes-fixture",
+      maxContext: 32768,
+    },
+  });
+  expect(connectionResponse.ok()).toBeTruthy();
+  const connection = await connectionResponse.json();
+  const chatId = await seedChat(request, "Notes role", connection.id);
+  const presetResponse = await request.post("/api/author-note-presets", {
+    data: { name: "Role Whisper", content: "Role Whisper note", depth: 2, role: "user" },
+  });
+  expect(presetResponse.ok()).toBeTruthy();
+  const preset = (await presetResponse.json()) as { id: string; role: string };
+  expect(preset.role).toBe("user");
+  const note = "ROLE_NOTE: the narrator answers in verse.";
+  const caveat = "System is sent as User when Post-Processing Messages is set to Apply.";
+  try {
+    await prepare(page, chatId);
+    const notes = await openNotes(page);
+    const role = page.getByRole("combobox", { name: "Role", exact: true });
+    await expect(role, "Notes without a saved role go as system").toHaveValue("system");
+    await expect(page.getByText(caveat)).toBeVisible();
+
+    await notes.fill(note);
+    await role.selectOption("assistant");
+    await expect(page.getByText(caveat), "The caveat is about System only").toHaveCount(0);
+    await saveButton(notes).click();
+    await expect
+      .poll(async () => {
+        const chat = await (await request.get(`/api/chats/${chatId}`)).json();
+        const metadata = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata;
+        return metadata.authorNotesRole;
+      })
+      .toBe("assistant");
+
+    const dryRun = await request.post("/api/generate/dryRun", { data: { chatId, returnPrompt: true } });
+    expect(dryRun.ok(), await dryRun.text()).toBeTruthy();
+    const messages = (await dryRun.json()).prompt.messages as Array<{ role: string; content: string }>;
+    expect(messages.find((message) => message.content.includes(note))?.role).toBe("assistant");
+
+    const row = page.getByRole("listitem").filter({ hasText: "Role Whisper" });
+    await expect(row.getByText("User", { exact: true }), "A non-system preset shows its role").toBeVisible();
+    await row.getByRole("button", { name: "Role Whisper", exact: true }).click();
+    await expect(role).toHaveValue("user");
+    await role.selectOption("assistant");
+    await saveButton(notes).click();
+    await expect
+      .poll(async () => {
+        const presets = (await (await request.get("/api/author-note-presets")).json()) as Array<{
+          id: string;
+          role: string;
+        }>;
+        return presets.find((candidate) => candidate.id === preset.id)?.role;
+      })
+      .toBe("assistant");
+    await page.screenshot({ path: testInfo.outputPath("notes-role.png"), animations: "disabled" });
+  } finally {
+    await page.unrouteAll({ behavior: "wait" });
+    await request.delete(`/api/author-note-presets/${preset.id}`);
+    await request.delete(`/api/chats/${chatId}`);
+    await request.delete(`/api/connections/${connection.id}`);
+  }
+});

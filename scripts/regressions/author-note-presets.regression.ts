@@ -4,6 +4,7 @@ import {
   authorNotePresetSetListSchema,
   findMatchingAuthorNotePresetSet,
   normalizeAuthorNoteDepth,
+  normalizeAuthorNoteRole,
 } from "../../packages/shared/dist/index.js";
 import {
   collectAuthorNoteEntries,
@@ -11,6 +12,7 @@ import {
   toAuthorNotesContextText,
 } from "../../packages/server/src/services/prompt/author-notes.js";
 import { injectAtDepth } from "../../packages/server/src/services/lorebook/prompt-injector.js";
+import { postProcessMessages } from "../../packages/server/src/routes/generate/generate-route-utils.js";
 
 // Author's notes = chat-local note + active presets, each at its own depth.
 // Assembly lives in one module; consumers are generation, dry-run, agent retry.
@@ -23,6 +25,7 @@ function preset(overrides: Partial<AuthorNotePreset> & { id: string }): AuthorNo
     name: `preset-${overrides.id}`,
     content: `content-${overrides.id}`,
     depth: 4,
+    role: "system",
     order: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -216,6 +219,49 @@ assert.deepEqual(
 // Depth 0 lands after the final original message; depth 4 lands before the first.
 assert.equal(injected.at(-1)!.content, library.find((entry) => entry.depth === 0)!.content);
 assert.equal(injected[0]!.content, library.find((entry) => entry.depth === 4)!.content);
+
+// ── Each note carries its own role into the prompt ──
+assert.equal(normalizeAuthorNoteRole(undefined), "system");
+assert.equal(normalizeAuthorNoteRole("narrator"), "system");
+assert.equal(normalizeAuthorNoteRole("assistant"), "assistant");
+const roled = collectAuthorNoteEntries(
+  { authorNotes: "chat voice", authorNotesDepth: 0, authorNotesRole: "user", activeAuthorNotePresetIds: ["s", "v"] },
+  [
+    preset({ id: "s", depth: 2, order: 0, content: "system voice" }),
+    preset({ id: "v", depth: 1, order: 1, role: "assistant", content: "assistant voice" }),
+  ],
+  identity,
+);
+assert.deepEqual(
+  toAuthorNoteDepthEntries(roled).map((entry) => [entry.content, entry.role]),
+  [
+    ["system voice", "system"],
+    ["assistant voice", "assistant"],
+    ["chat voice", "user"],
+  ],
+);
+// Chats saved before notes had a role read as system.
+assert.equal(collectAuthorNoteEntries({ authorNotes: "old note" }, [], identity)[0]!.role, "system");
+
+// Post-Processing Messages "Apply" sends a mid-history system note as user; user and assistant pass through.
+const roledPrompt = injectAtDepth(
+  [
+    { role: "system" as const, content: "system prompt" },
+    { role: "user" as const, content: "u1" },
+    { role: "assistant" as const, content: "a1" },
+    { role: "user" as const, content: "u2" },
+  ] as never,
+  toAuthorNoteDepthEntries(roled) as never,
+);
+const roleOf = (messages: Array<{ role: string; content: string }>, text: string) =>
+  messages.find((message) => message.content.includes(text))?.role;
+const applied = postProcessMessages(roledPrompt as never, { strictRoleFormatting: true });
+assert.equal(roleOf(applied, "system voice"), "user");
+assert.equal(roleOf(applied, "assistant voice"), "assistant");
+assert.equal(roleOf(applied, "chat voice"), "user");
+const notApplied = postProcessMessages(roledPrompt as never, { strictRoleFormatting: false });
+assert.equal(roleOf(notApplied, "system voice"), "system");
+assert.equal(roleOf(notApplied, "assistant voice"), "assistant");
 
 // ── Agents receive one flattened block, since depth is meaningless there ──
 const contextText = toAuthorNotesContextText(combined);

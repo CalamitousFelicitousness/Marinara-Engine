@@ -563,6 +563,18 @@ Upstream files patched for sets: `ChatRoleplayPanels.tsx` (the chip row), `en.js
 `ui.chat.authornotespanel.*` keys), and `e2e/author-notes.e2e.ts` (a third test). Matching and
 list validation are covered in `author-note-presets.regression.ts`.
 
+Each note also carries a message role: System, User, or Assistant, picked beside the depth for
+the chat note (`ChatMetadata.authorNotesRole`) and for each preset (a `role` column on
+`author_note_presets`). Missing or unrecognized values read as System through
+`normalizeAuthorNoteRole`, and the file store fills the column default for older rows on load,
+so neither the chats nor the table need a migration or a `STORAGE_VERSION` bump. System is still
+subject to the preset's Post-Processing Messages: under Apply,
+`appendNonLeadingSystemMessagesToLastUser` sends any system message after the first chat turn as
+user, so the panel says so while System is selected. Preset rows show a role badge for User and
+Assistant. Upstream files patched: `chat.ts`, `ChatRoleplayPanels.tsx`, `en.json` (5 keys), and
+`e2e/author-notes.e2e.ts` (a fourth test, which reads the role back from a dry run). The lane
+pins role normalization and what Apply does to each role.
+
 ### Peek Prompt shows where each sampling parameter came from
 
 A sampling parameter passes through the preset (roleplay-style chats only), connection defaults,

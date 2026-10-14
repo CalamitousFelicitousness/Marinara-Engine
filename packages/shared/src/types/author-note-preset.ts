@@ -2,6 +2,9 @@
 // Author's Note Preset Types
 // ──────────────────────────────────────────────
 
+/** Message role a note is injected with. */
+export type AuthorNoteRole = "system" | "user" | "assistant";
+
 /**
  * Saved, reusable author's note.
  *
@@ -19,6 +22,7 @@ export interface AuthorNotePreset {
    * land at different positions in one generation.
    */
   depth: number;
+  role: AuthorNoteRole;
   /** List position, and the tie-break when presets share a depth. */
   order: number;
   createdAt: string;

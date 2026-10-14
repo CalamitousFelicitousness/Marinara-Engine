@@ -2,7 +2,7 @@
 // Hooks: Author's Note Presets (React Query)
 // ──────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { AuthorNotePreset, AuthorNotePresetSet } from "@marinara-engine/shared";
+import type { AuthorNotePreset, AuthorNotePresetSet, AuthorNoteRole } from "@marinara-engine/shared";
 import { api } from "../lib/api-client";
 
 const authorNotePresetKeys = {
@@ -24,7 +24,7 @@ export function useAuthorNotePresets() {
 export function useCreateAuthorNotePreset() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; content?: string; depth?: number }) =>
+    mutationFn: (data: { name: string; content?: string; depth?: number; role?: AuthorNoteRole }) =>
       api.post<AuthorNotePreset>("/author-note-presets", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authorNotePresetKeys.all });
@@ -35,8 +35,16 @@ export function useCreateAuthorNotePreset() {
 export function useUpdateAuthorNotePreset() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; content?: string; depth?: number }) =>
-      api.patch<AuthorNotePreset>(`/author-note-presets/${id}`, data),
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name?: string;
+      content?: string;
+      depth?: number;
+      role?: AuthorNoteRole;
+    }) => api.patch<AuthorNotePreset>(`/author-note-presets/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authorNotePresetKeys.all });
     },

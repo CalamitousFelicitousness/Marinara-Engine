@@ -13,7 +13,13 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { findMatchingAuthorNotePresetSet, type AuthorNotePresetSet } from "@marinara-engine/shared";
+import {
+  AUTHOR_NOTE_ROLES,
+  findMatchingAuthorNotePresetSet,
+  normalizeAuthorNoteRole,
+  type AuthorNotePresetSet,
+  type AuthorNoteRole,
+} from "@marinara-engine/shared";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
 import {
   useAuthorNotePresets,
@@ -412,18 +418,25 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
 type AuthorNoteEditTarget = { kind: "chat" } | { kind: "preset"; id: string };
 
 /** Editor contents as last written to the server. `name` is unused for the chat note. */
-type AuthorNoteBaseline = { notes: string; depth: number; name: string };
+type AuthorNoteBaseline = { notes: string; depth: number; role: AuthorNoteRole; name: string };
 
 /** Everything the editor holds for one chat, saved or not. */
 type AuthorNoteDraft = {
   target: AuthorNoteEditTarget;
   notes: string;
   depthStr: string;
+  role: AuthorNoteRole;
   presetName: string;
   baseline: AuthorNoteBaseline;
 };
 
 const AUTHOR_NOTE_DEFAULT_DEPTH = 4;
+
+const AUTHOR_NOTE_ROLE_LABEL_KEYS: Record<AuthorNoteRole, string> = {
+  system: "ui.chat.authornotespanel.roleSystem",
+  user: "ui.chat.authornotespanel.roleUser",
+  assistant: "ui.chat.authornotespanel.roleAssistant",
+};
 
 // Unsaved editor state, parked by chat id across drawer unmount.
 // The drawer unmounts when it collapses or Chat Settings closes. Autosave made
@@ -444,6 +457,7 @@ function readChatNoteBaseline(chatMeta: Record<string, any>): AuthorNoteBaseline
   return {
     notes: (chatMeta.authorNotes as string) ?? "",
     depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
+    role: normalizeAuthorNoteRole(chatMeta.authorNotesRole),
     name: "",
   };
 }
@@ -454,6 +468,7 @@ function chatNoteDraft(chatMeta: Record<string, any>): AuthorNoteDraft {
     target: { kind: "chat" },
     notes: baseline.notes,
     depthStr: String(baseline.depth),
+    role: baseline.role,
     presetName: "",
     baseline,
   };
@@ -469,6 +484,7 @@ function isAuthorNoteDraftDirty(draft: AuthorNoteDraft): boolean {
   return (
     draft.notes !== draft.baseline.notes ||
     parseAuthorNoteDepth(draft.depthStr) !== draft.baseline.depth ||
+    draft.role !== draft.baseline.role ||
     (draft.target.kind === "preset" && draft.presetName.trim() !== draft.baseline.name)
   );
 }
@@ -500,7 +516,7 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
   // Mounted with key={chatId} at both call sites, so switching chats remounts
   // and re-reads the parked draft. Nothing here handles chatId changing in place.
   const [draft, setDraft] = useState<AuthorNoteDraft>(() => authorNoteDrafts.get(chatId) ?? chatNoteDraft(chatMeta));
-  const { target, notes, depthStr, presetName, baseline } = draft;
+  const { target, notes, depthStr, role, presetName, baseline } = draft;
   const dirty = isAuthorNoteDraftDirty(draft);
   const savePending = updateMeta.isPending || updatePreset.isPending;
 
@@ -530,11 +546,17 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
     setDraft((current) => {
       if (current.target.kind !== "chat" || isAuthorNoteDraftDirty(current)) return current;
       const next = readChatNoteBaseline(chatMeta);
-      if (next.notes === current.baseline.notes && next.depth === current.baseline.depth) return current;
-      return { ...current, notes: next.notes, depthStr: String(next.depth), baseline: next };
+      if (
+        next.notes === current.baseline.notes &&
+        next.depth === current.baseline.depth &&
+        next.role === current.baseline.role
+      ) {
+        return current;
+      }
+      return { ...current, notes: next.notes, depthStr: String(next.depth), role: next.role, baseline: next };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatMeta.authorNotes, chatMeta.authorNotesDepth]);
+  }, [chatMeta.authorNotes, chatMeta.authorNotesDepth, chatMeta.authorNotesRole]);
 
   const editingPreset = target.kind === "preset" ? presets.find((p) => p.id === target.id) : undefined;
   const editorLabel =
@@ -548,15 +570,20 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
     const depth = parseAuthorNoteDepth(depthStr);
     try {
       if (target.kind === "chat") {
-        await updateMeta.mutateAsync({ id: chatId, authorNotes: notes, authorNotesDepth: depth });
-        patchDraft({ baseline: { notes, depth, name: "" } });
+        await updateMeta.mutateAsync({
+          id: chatId,
+          authorNotes: notes,
+          authorNotesDepth: depth,
+          authorNotesRole: role,
+        });
+        patchDraft({ baseline: { notes, depth, role, name: "" } });
         return true;
       }
       // A preset always keeps a name; blanking the field reverts to the saved one.
       const name = presetName.trim() || baseline.name;
       if (name !== presetName) patchDraft({ presetName: name });
-      await updatePreset.mutateAsync({ id: target.id, content: notes, depth, name });
-      patchDraft({ baseline: { notes, depth, name } });
+      await updatePreset.mutateAsync({ id: target.id, content: notes, depth, role, name });
+      patchDraft({ baseline: { notes, depth, role, name } });
       return true;
     } catch {
       // Nothing else reports this: no global mutation error handler, and the
@@ -596,8 +623,9 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
       target: next,
       notes: preset.content,
       depthStr: String(preset.depth),
+      role: preset.role,
       presetName: preset.name,
-      baseline: { notes: preset.content, depth: preset.depth, name: preset.name },
+      baseline: { notes: preset.content, depth: preset.depth, role: preset.role, name: preset.name },
     });
   };
 
@@ -619,7 +647,7 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
     const name = entered?.trim();
     if (!name) return;
     createPreset.mutate(
-      { name, content, depth: parseAuthorNoteDepth(depthStr) },
+      { name, content, depth: parseAuthorNoteDepth(depthStr), role },
       {
         onSuccess: (created) => {
           if (!created) return;
@@ -630,15 +658,16 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
             authorNotes: "",
             activeAuthorNotePresetIds: [...activeIds, created.id],
           });
-          // Depth was saved onto the preset, not the chat, so the emptied chat
-          // note keeps the depth already stored for it.
-          const depth = (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH;
+          // Depth and role were saved onto the preset, not the chat, so the
+          // emptied chat note keeps the ones already stored for it.
+          const stored = readChatNoteBaseline(chatMeta);
           setDraft({
             target: { kind: "chat" },
             notes: "",
-            depthStr: String(depth),
+            depthStr: String(stored.depth),
+            role: stored.role,
             presetName: "",
-            baseline: { notes: "", depth, name: "" },
+            baseline: { ...stored, notes: "" },
           });
         },
       },
@@ -757,6 +786,21 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
               onBlur={() => patchDraft({ depthStr: String(parseAuthorNoteDepth(depthStr)) })}
               className="mari-chrome-field mari-chrome-field--compact w-14 !rounded-md px-2 py-0.5 text-center text-[0.625rem] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
+            <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.authornotespanel.role")}
+            </span>
+            <select
+              value={role}
+              onChange={(e) => patchDraft({ role: normalizeAuthorNoteRole(e.target.value) })}
+              aria-label={localizeUi("ui.chat.authornotespanel.role")}
+              className="mari-chrome-field mari-chrome-field--compact !rounded-md px-1.5 py-0.5 text-[0.625rem]"
+            >
+              {AUTHOR_NOTE_ROLES.map((option) => (
+                <option key={option} value={option}>
+                  {localizeUi(AUTHOR_NOTE_ROLE_LABEL_KEYS[option])}
+                </option>
+              ))}
+            </select>
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
               {dirty && (
                 <span className="text-[0.625rem] italic text-[var(--muted-foreground)]">
@@ -779,6 +823,7 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
 
       <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">
         {localizeUi("ui.chat.authornotespanel.depth0AfterTheLatestMessage4FourMessages")}
+        {role === "system" && ` ${localizeUi("ui.chat.authornotespanel.systemSentAsUserWhenApplied")}`}
       </p>
 
       {target.kind === "chat" && (
@@ -922,6 +967,14 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
                   >
                     {localizeUi("ui.chat.authornotespanel.depthBadge", { depth: preset.depth })}
                   </span>
+                  {preset.role !== "system" && (
+                    <span
+                      title={localizeUi("ui.chat.authornotespanel.role")}
+                      className="shrink-0 rounded bg-[var(--background)] px-1 text-[0.5625rem] text-[var(--muted-foreground)]"
+                    >
+                      {localizeUi(AUTHOR_NOTE_ROLE_LABEL_KEYS[preset.role])}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDeletePreset(preset.id)}

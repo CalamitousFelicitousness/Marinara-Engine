@@ -6,7 +6,12 @@
 // Consumers: generate.routes, generate/dry-run-route, generate/retry-agents-route.
 // Each previously re-derived the note and hardcoded depth 4.
 //
-import { normalizeAuthorNoteDepth, type AuthorNotePreset } from "@marinara-engine/shared";
+import {
+  normalizeAuthorNoteDepth,
+  normalizeAuthorNoteRole,
+  type AuthorNotePreset,
+  type AuthorNoteRole,
+} from "@marinara-engine/shared";
 
 /** One resolved note, ready to position in the prompt. */
 export interface AuthorNoteEntry {
@@ -18,12 +23,14 @@ export interface AuthorNoteEntry {
   content: string;
   /** 0 = after the latest message. */
   depth: number;
+  role: AuthorNoteRole;
 }
 
 /** Fields read off the chat row. Loosely typed: callers hold raw rows. */
 interface AuthorNoteChatMeta {
   authorNotes?: unknown;
   authorNotesDepth?: unknown;
+  authorNotesRole?: unknown;
   activeAuthorNotePresetIds?: unknown;
 }
 
@@ -49,6 +56,7 @@ function collectChatLocalNote(chatMeta: AuthorNoteChatMeta, resolve: (raw: strin
     name: null,
     content,
     depth: normalizeAuthorNoteDepth(chatMeta.authorNotesDepth),
+    role: normalizeAuthorNoteRole(chatMeta.authorNotesRole),
   };
 }
 
@@ -78,6 +86,7 @@ function collectActivePresets(
       name: preset.name,
       content,
       depth: normalizeAuthorNoteDepth(preset.depth),
+      role: normalizeAuthorNoteRole(preset.role),
     });
   }
   return entries;
@@ -112,8 +121,8 @@ export function collectAuthorNoteEntries(
 /** Shape for injectAtDepth. */
 export function toAuthorNoteDepthEntries(
   entries: AuthorNoteEntry[],
-): Array<{ content: string; role: "system"; depth: number }> {
-  return entries.map((entry) => ({ content: entry.content, role: "system" as const, depth: entry.depth }));
+): Array<{ content: string; role: AuthorNoteRole; depth: number }> {
+  return entries.map((entry) => ({ content: entry.content, role: entry.role, depth: entry.depth }));
 }
 
 /**

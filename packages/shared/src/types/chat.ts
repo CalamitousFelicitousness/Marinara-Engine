@@ -9,6 +9,7 @@ import type { HapticFeedbackSensitivity } from "./haptic.js";
 import type { CustomEmojiSelectionPrefs } from "../schemas/custom-emoji.schema.js";
 import type { DiceRollResult, GameDicePoolConsumption, GameDicePoolMismatch } from "./game.js";
 import type { SpotifySourceType } from "./spotify.js";
+import type { AuthorNoteRole } from "./author-note-preset.js";
 import type {
   RoleplayCommandActivity,
   RoleplayCommandAudience,
@@ -327,12 +328,14 @@ export interface ChatMetadata {
    */
   hideSummarisedMessages?: boolean;
   /**
-   * Chat-local author's note, injected as a system message every generation.
+   * Chat-local author's note, injected every generation.
    * Always active when non-empty. Not part of the preset library.
    */
   authorNotes?: string;
   /** Depth for `authorNotes`. 0 = after the latest message. Default 4. */
   authorNotesDepth?: number;
+  /** Message role for `authorNotes`. Default "system". */
+  authorNotesRole?: AuthorNoteRole;
   /**
    * Preset ids switched on for this chat. Each injects at its own depth
    * alongside `authorNotes`. Unresolvable ids are ignored at assembly.

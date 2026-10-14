@@ -44,6 +44,7 @@ export function createAuthorNotePresetsStorage(db: DB) {
         name: input.name,
         content: input.content ?? "",
         depth: input.depth ?? 4,
+        role: input.role ?? "system",
         order: input.order ?? (await getNextOrder()),
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -56,6 +57,7 @@ export function createAuthorNotePresetsStorage(db: DB) {
       if (data.name !== undefined) updateFields.name = data.name;
       if (data.content !== undefined) updateFields.content = data.content;
       if (data.depth !== undefined) updateFields.depth = data.depth;
+      if (data.role !== undefined) updateFields.role = data.role;
       if (data.order !== undefined) updateFields.order = data.order;
       await db.update(authorNotePresets).set(updateFields).where(eq(authorNotePresets.id, id));
       return this.getById(id);

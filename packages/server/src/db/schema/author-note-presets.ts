@@ -14,6 +14,9 @@ export const authorNotePresets = fileTable("author_note_presets", {
   content: text("content").notNull().default(""),
   /** 0 = after the latest message. */
   depth: integer("depth").notNull().default(4),
+  role: text("role", { enum: ["system", "user", "assistant"] })
+    .notNull()
+    .default("system"),
   /** List position, and the tie-break when presets share a depth. */
   order: integer("order").notNull().default(0),
   createdAt: text("created_at").notNull(),

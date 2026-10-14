@@ -337,11 +337,8 @@ export interface AvatarImageEditRequest {
   image: AvatarImageConnection;
   prompt: string;
   negativePrompt?: string;
-  /** The sprite the picture is drawn for; a cut-out gives the picture its outline. */
+  /** The sprite the picture is drawn from; a see-through sprite gives the picture its outline. */
   source: AvatarSourceSprite;
-  /** The same sprite as the image model sees it, when that isn't `source`: the sprite with its background
-   *  (some image services drop see-through pixels, and a model edits a whole picture best). */
-  shown?: AvatarSourceSprite;
   signal?: AbortSignal;
   debug: boolean;
   /** Short name for the debug log, e.g. "pngtuber happy eyes-closed". */
@@ -377,7 +374,7 @@ export function avatarCanvasPlacement(
 }
 
 /** Edits a sprite through the image connection (with its fallback) and returns a PNG of exactly the
- *  sprite's size. The provider gets the sprite (`shown`) already on a canvas of the size it is asked for, with
+ *  sprite's size. The provider gets the sprite already on a canvas of the size it is asked for, with
  *  see-through or repeated edges around it, so an edit that keeps the picture where it is comes back
  *  lined up with the sprite whatever canvas shapes the model accepts. No see-through background is asked
  *  for: some models can't make one (GPT Image 2), and a cut-out gets the sprite's own outline back. */
@@ -386,16 +383,17 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
   const model = conn.model || "";
   const size = avatarImageRequestSize(request.source.width, request.source.height, model);
   const place = avatarCanvasPlacement(request.source, size);
-  const shown = request.shown ?? request.source;
   const sharp = await getSharp();
-  const reference = await sharp(shown.png)
+  const reference = await sharp(request.source.png)
     .resize(place.width, place.height, { fit: "fill" })
     .extend({
       top: place.top,
       bottom: size.height - place.height - place.top,
       left: place.left,
       right: size.width - place.width - place.left,
-      ...(shown.transparent ? { background: { r: 0, g: 0, b: 0, alpha: 0 } } : { extendWith: "copy" as const }),
+      ...(request.source.transparent
+        ? { background: { r: 0, g: 0, b: 0, alpha: 0 } }
+        : { extendWith: "copy" as const }),
     })
     .png()
     .toBuffer();

@@ -236,18 +236,18 @@ const sprites = [
 ];
 assert.equal(
   resolveAvatarImage(owner, { updatedAt: "2026-10-13T00:00:00.000Z" }, sprites, { source: "sprite", label: "happy" }),
-  "/api/avatar-models/persona/p1/sprite-cutouts/Happy?v=2",
-  "an expression sprite wins over a full-body one, shown as its cut-out of that sprite version",
+  "/api/sprites/p1/file/Happy.png?v=2",
+  "an expression sprite wins over a full-body one, shown as the sprite itself with its version",
 );
 assert.equal(
   resolveAvatarImage(owner, { updatedAt: "x" }, sprites, { source: "sprite", label: "mad_face" }),
-  "/api/avatar-models/persona/p1/sprite-cutouts/Mad%20face?v=3",
-  "the cut-out is asked for by the sprite's own name",
+  "/api/sprites/p1/file/Mad%20face.webp?v=3",
+  "a sprite is found by its own name and shown as it is, never as a cut-out",
 );
 assert.equal(
   resolveAvatarImage(owner, { updatedAt: "x" }, sprites, { source: "sprite", label: "shy" }),
   "/api/sprites/p1/file/shy.svg?v=4",
-  "an SVG sprite can't be cut out, so it shows as it is",
+  "an SVG sprite shows as it is",
 );
 assert.equal(resolveAvatarImage(owner, { updatedAt: "x" }, sprites, { source: "sprite", label: "sad" }), null);
 assert.equal(

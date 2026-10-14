@@ -1,4 +1,5 @@
 import {
+  DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY,
   generationParametersSchema,
   LOCAL_SIDECAR_CONNECTION_ID,
   PROVIDERS,
@@ -12,6 +13,7 @@ import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "./llm/local-sideca
 import { createLLMProvider } from "./llm/provider-registry.js";
 import type { MemoryRecallEmbeddingInputType, MemoryRecallEmbeddingSource } from "./memory-recall.js";
 import { sidecarModelService } from "./sidecar/sidecar-model.service.js";
+import { createAppSettingsStorage } from "./storage/app-settings.storage.js";
 import { createConnectionsStorage } from "./storage/connections.storage.js";
 
 type ConnectionStorage = ReturnType<typeof createConnectionsStorage>;
@@ -168,14 +170,69 @@ function isLocalSidecarEmbeddingSupported(): boolean {
   );
 }
 
+function createLocalSidecarEmbeddingSource(): MemoryRecallEmbeddingSource | null {
+  if (!isLocalSidecarEmbeddingSupported()) {
+    logger.warn(
+      "[memory-recall] Local sidecar was selected for embeddings, but sidecar embeddings require an enabled llama.cpp local model",
+    );
+    return null;
+  }
+
+  const provider = getLocalSidecarProvider();
+  const label = "Local Model sidecar";
+  const configuredModelRef = sidecarModelService.getConfiguredModelRef() ?? LOCAL_SIDECAR_MODEL;
+  return {
+    spaceId: createMemoryRecallEmbeddingSpaceId(
+      "sidecar",
+      configuredModelRef,
+      sidecarModelService.getResolvedBackend(),
+    ),
+    label,
+    async embed(texts: string[], signal?: AbortSignal, inputType: MemoryRecallEmbeddingInputType = "document") {
+      try {
+        return await provider.embed(
+          formatMemoryRecallEmbeddingTexts(texts, configuredModelRef, inputType),
+          LOCAL_SIDECAR_MODEL,
+          signal,
+        );
+      } catch (err) {
+        logger.warn(err, "[memory-recall] Configured embedding source %s failed", label);
+        return null;
+      }
+    },
+  };
+}
+
+type EmbeddingSourceOptions = {
+  chatMetadata?: unknown;
+  connectionId?: string | null;
+  activeConnection?: EmbeddingConnectionLike | null;
+  activeBaseUrl?: string | null;
+};
+
+export async function readDefaultEmbeddingConnectionId(db: DB): Promise<string | null> {
+  return nonEmptyString(await createAppSettingsStorage(db).get(DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY));
+}
+
+/** The app-wide default (Connection defaults > Embeddings), resolved like an ordinary connection. */
+async function resolveDefaultEmbeddingSource(db: DB): Promise<MemoryRecallEmbeddingSource | null> {
+  const defaultId = await readDefaultEmbeddingConnectionId(db);
+  if (!defaultId) return null;
+  if (defaultId === LOCAL_SIDECAR_CONNECTION_ID) return createLocalSidecarEmbeddingSource();
+  return resolveEmbeddingSource(db, { connectionId: defaultId }, false);
+}
+
 export async function resolveMemoryRecallEmbeddingSource(
   db: DB,
-  options: {
-    chatMetadata?: unknown;
-    connectionId?: string | null;
-    activeConnection?: EmbeddingConnectionLike | null;
-    activeBaseUrl?: string | null;
-  },
+  options: EmbeddingSourceOptions,
+): Promise<MemoryRecallEmbeddingSource | null> {
+  return resolveEmbeddingSource(db, options, true);
+}
+
+async function resolveEmbeddingSource(
+  db: DB,
+  options: EmbeddingSourceOptions,
+  useDefault: boolean,
 ): Promise<MemoryRecallEmbeddingSource | null> {
   const connections = createConnectionsStorage(db);
   if (options.connectionId === "random") {
@@ -184,15 +241,20 @@ export async function resolveMemoryRecallEmbeddingSource(
     // later recall queries stay in the same vector space.
     const pool = (await connections.listRandomPool()).sort((left, right) => left.id.localeCompare(right.id));
     for (const connection of pool) {
-      const source = await resolveMemoryRecallEmbeddingSource(db, {
-        chatMetadata: options.chatMetadata,
-        connectionId: connection.id,
-        activeConnection: connection,
-        activeBaseUrl: resolveBaseUrl(connection),
-      });
+      const source = await resolveEmbeddingSource(
+        db,
+        {
+          chatMetadata: options.chatMetadata,
+          connectionId: connection.id,
+          activeConnection: connection,
+          activeBaseUrl: resolveBaseUrl(connection),
+        },
+        false,
+      );
       if (source) return source;
     }
-    return null;
+    // Only when no pool member has embeddings of its own, so one member cannot shadow another.
+    return useDefault ? resolveDefaultEmbeddingSource(db) : null;
   }
 
   let activeConnection =
@@ -201,44 +263,17 @@ export async function resolveMemoryRecallEmbeddingSource(
     const defaultConnection = await connections.getDefault();
     activeConnection = defaultConnection ? await connections.getWithKey(defaultConnection.id) : null;
   }
-  if (!activeConnection) return null;
+  if (!activeConnection) return useDefault ? resolveDefaultEmbeddingSource(db) : null;
 
   const chatMeta = parseMetadata(options.chatMetadata);
   const embeddingConnId =
     nonEmptyString(chatMeta.embeddingConnectionId) ?? nonEmptyString(activeConnection.embeddingConnectionId);
-
-  if (embeddingConnId === LOCAL_SIDECAR_CONNECTION_ID) {
-    if (!isLocalSidecarEmbeddingSupported()) {
-      logger.warn(
-        "[memory-recall] Local sidecar was selected for embeddings, but sidecar embeddings require an enabled llama.cpp local model",
-      );
-      return null;
-    }
-
-    const provider = getLocalSidecarProvider();
-    const label = "Local Model sidecar";
-    const configuredModelRef = sidecarModelService.getConfiguredModelRef() ?? LOCAL_SIDECAR_MODEL;
-    return {
-      spaceId: createMemoryRecallEmbeddingSpaceId(
-        "sidecar",
-        configuredModelRef,
-        sidecarModelService.getResolvedBackend(),
-      ),
-      label,
-      async embed(texts: string[], signal?: AbortSignal, inputType: MemoryRecallEmbeddingInputType = "document") {
-        try {
-          return await provider.embed(
-            formatMemoryRecallEmbeddingTexts(texts, configuredModelRef, inputType),
-            LOCAL_SIDECAR_MODEL,
-            signal,
-          );
-        } catch (err) {
-          logger.warn(err, "[memory-recall] Configured embedding source %s failed", label);
-          return null;
-        }
-      },
-    };
+  // Embedding settings on the chat or connection win; the app-wide default only fills the gap.
+  if (useDefault && !embeddingConnId && !nonEmptyString(activeConnection.embeddingModel)) {
+    return resolveDefaultEmbeddingSource(db);
   }
+
+  if (embeddingConnId === LOCAL_SIDECAR_CONNECTION_ID) return createLocalSidecarEmbeddingSource();
 
   let embeddingConnection = activeConnection;
   let embeddingBaseUrl = options.activeBaseUrl ?? null;

@@ -222,3 +222,12 @@ export interface ConnectionTestResult {
   /** A chat-model Decision connection: whether the model answered without thinking first. */
   answersDirectly?: boolean;
 }
+
+/**
+ * App-wide default embedding source: a connection id, or LOCAL_SIDECAR_CONNECTION_ID.
+ *
+ * Used only when the connection in play sets neither an embedding model nor an Embedding
+ * Connection of its own, so per-connection settings keep winning. Empty means no default:
+ * those connections fall back to the built-in local embedder as before.
+ */
+export const DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY = "default-embedding-connection";

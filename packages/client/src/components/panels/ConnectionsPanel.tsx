@@ -3,6 +3,7 @@ import { useLibraryOrder } from "../../hooks/use-library-order";
 import { useLibraryFolderDrag } from "../../hooks/use-library-folder-drag";
 import { type InsertEdge } from "../../lib/library-order";
 import { DecisionDefaultControl } from "../connections/DecisionDefaultControl";
+import { EmbeddingDefaultControl } from "../connections/EmbeddingDefaultControl";
 import { DecisionModelModal } from "../modals/DecisionModelModal";
 // ──────────────────────────────────────────────
 // Panel: API Connections (polished, with folders)
@@ -1229,6 +1230,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.noDefaultAudioConnection")}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
           />
+          <EmbeddingDefaultControl connections={languageConnections} />
           <DecisionDefaultControl />
         </div>
       </SmoothFolderContent>

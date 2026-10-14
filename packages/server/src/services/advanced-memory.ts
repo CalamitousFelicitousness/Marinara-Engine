@@ -427,7 +427,7 @@ function preparationPolicyRevision(ctx: Context): string {
   // Automatic message visibility changes no prepared memory; keep existing snapshots reusable.
   const { autoMessageVisibility: _visibility, ...settings } = ctx.settings;
   return hash([
-    "scene-timeframe-constants-v25", // Invalidate reusable contexts without rebuilding valid source archives.
+    "scene-timeframe-constants-v26", // Invalidate reusable contexts without rebuilding valid source archives.
     policyFingerprint(ctx),
     settings,
     ctx.metadata.summaryEntries,

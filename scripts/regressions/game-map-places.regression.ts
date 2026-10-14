@@ -24,6 +24,7 @@ import {
   createConnectionSchema,
   DUNGEON_SETS,
   dungeonSetForPlace,
+  dungeonWayOutId,
   dungeonWayOutWords,
   gameDungeonMapPromptText,
   gameDungeonOnWayOut,
@@ -96,6 +97,10 @@ try {
   assert.equal(wayOut("dungeon_crypt"), "the stairs");
   assert.equal(wayOut("dungeon_sewer"), "the ladder");
   assert.equal(wayOut("station_lab"), "the ladder hatch");
+  // The client shows the way out by id, in the reader's language.
+  const wayOutId = (id: string) => dungeonWayOutId(DUNGEON_SETS.find((set) => set.id === id)!);
+  assert.deepEqual(["cave_rock", "dungeon_crypt", "station_lab"].map(wayOutId), ["ladder", "stairs", "ladder_hatch"]);
+  assert.equal(dungeonWayOutId(undefined), "way_out");
 
   // ── Through the routes ──
   const game = gameOf("high_fantasy", 21);

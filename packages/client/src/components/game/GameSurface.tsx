@@ -12795,7 +12795,7 @@ function GameSurfaceComponent({
               </Suspense>
             )}
           </div>
-          {avatarAgentIds.length > 0 && avatarParticipants.length > 0 && !overworldShown && (
+          {avatarAgentIds.length > 0 && avatarParticipants.length > 0 && !overworldShown && !dungeonShown && (
             <Suspense fallback={null}>
               <AvatarStage
                 chatId={activeChatId}

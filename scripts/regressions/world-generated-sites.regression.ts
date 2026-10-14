@@ -99,6 +99,14 @@ try {
         `${label}: every generated site is a site, and nothing else became one`,
       );
       assert.equal(worldSites({ ...game, world: v1, generatorVersion: 1 }).length, 0, `${label}: version 1 has none`);
+      // A version 1 world's own place a few steps out of town, named like one to go into, stays a building
+      // in its town: only generator 2 reads sites from names.
+      const named = { ...v1, places: [...v1.places, added[0]!] };
+      assert.equal(
+        worldIsSite({ ...game, world: named, generatorVersion: 1 }, added[0]!.id),
+        false,
+        `${label}: not by name in version 1`,
+      );
       const family = worldKitArtFamily(kit);
       const names = new Set(v2.places.map((place) => place.name.toLowerCase()));
       assert.equal(names.size, v2.places.length, `${label}: names stay unique`);

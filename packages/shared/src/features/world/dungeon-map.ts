@@ -811,6 +811,18 @@ export function dungeonWayOutWords(set: DungeonSet): string {
   return /^(an?|the) /u.test(tile) ? tile.replace(/^an? /u, "the ") : `the ${tile}`;
 }
 
+/** The ways out a set can have, for the label the client shows in the reader's language. */
+export const DUNGEON_WAY_OUT_IDS = ["stairs", "ladder", "ladder_hatch", "way_out"] as const;
+export type DungeonWayOutId = (typeof DUNGEON_WAY_OUT_IDS)[number];
+
+/** The way out of a set as an id (`dungeonWayOutWords` without its words): "stairs", "ladder",
+ *  "ladder_hatch", else "way_out". */
+export function dungeonWayOutId(set: DungeonSet | undefined): DungeonWayOutId {
+  if (!set) return "way_out";
+  const id = dungeonWayOutWords(set).replace(/^the /u, "").replace(/\s+/gu, "_");
+  return (DUNGEON_WAY_OUT_IDS as readonly string[]).includes(id) ? (id as DungeonWayOutId) : "way_out";
+}
+
 /** Words in a place's name that make it one to go down into (map editor Phase 3, generated maps for
  *  places), and the look each gives. Only these: a "Frozen Flagon" or a "Gem Merchant" stays an inn and
  *  a shop. Station words only in a science fiction setting, and only for a station that is a ruin or a

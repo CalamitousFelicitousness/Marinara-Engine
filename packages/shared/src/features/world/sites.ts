@@ -28,12 +28,16 @@ export function worldSites(game: GameWorld): WorldPlace[] {
     for (const settlement of places.filter((place) => place.rank !== undefined))
       for (let up = byId.get(settlement.parentId ?? ""); up; up = byId.get(up.parentId ?? "")) holding.add(up.id);
     const family = worldKitArtFamily(game.kit);
+    const byName = game.world.generatorVersion >= 2;
     found = places.filter((place) => {
       if (place.rank !== undefined || holding.has(place.id)) return false;
       // Out of its settlement's own cell (a cave a few steps out of a village), or in no settlement.
       const settlement = worldSettlementOf(game, place.id);
       if (settlement && settlement.at.x === place.at.x && settlement.at.y === place.at.y) return false;
-      return worldPlaceMap(game, place.id) !== null || dungeonSetForPlace(place, family) !== null;
+      // A map made by hand makes a site in any world; a name alone only from generator 2, the one that
+      // made sites, so a version 1 world's towns keep every building they had.
+      if (worldPlaceMap(game, place.id) !== null) return true;
+      return byName && dungeonSetForPlace(place, family) !== null;
     });
     sitesOfGame.set(game, found);
   }

@@ -117,6 +117,15 @@ test("a new game starts on the Overworld RPG, with a setting kit for its genre a
   if (testInfo.project.name === "desktop-chromium") {
     await styles.screenshot({ path: testInfo.outputPath("game-mode-style.png") });
   }
+  // A radio group: the chosen style is the one tab stop, and the arrow keys move the choice.
+  await expect(styles.getByRole("radio", { name: /Overworld RPG/ })).toHaveAttribute("tabindex", "0");
+  await expect(styles.getByRole("radio", { name: /Classic/ })).toHaveAttribute("tabindex", "-1");
+  await styles.getByRole("radio", { name: /Overworld RPG/ }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(styles.getByRole("radio", { name: /Classic/ })).toHaveAttribute("aria-checked", "true");
+  await expect(styles.getByRole("radio", { name: /Classic/ })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(styles.getByRole("radio", { name: /Overworld RPG/ })).toHaveAttribute("aria-checked", "true");
 
   await stepTo(wizard, "World");
   await expect(wizard.getByText("Setting kit", { exact: true })).toBeVisible();

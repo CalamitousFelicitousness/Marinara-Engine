@@ -11411,7 +11411,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         ...(kept.hand && kept.place
           ? {
               place: kept.place,
-              steps: [...(pending?.map === kept.id ? (pending.steps ?? []) : []), ...path!].slice(-2000),
+              steps: [...(pending?.map === kept.id ? (pending.steps ?? []) : []), ...path!].slice(
+                -WORLD_WALK_STEPS_MAX,
+              ),
             }
           : {}),
       };

@@ -303,6 +303,14 @@ try {
     const carried = carryWorldLedger(null, ['At last. [map: reveal name="Wolf Den Caves"]']);
     assert.match(carried.tags, /\[map: reveal name="Wolf Den Caves"\]/u);
     assert.deepEqual([...worldSiteLocks(lockedWorld, story, [carried.tags])], [], "open in the session after");
+    // So is a site gone into by name; leaving it is not carried.
+    const wentIn = carryWorldLedger(null, ['Down we go. [map: kind="cave" name="Wolf Den Caves"] [map: leave]']);
+    assert.equal(wentIn.tags, '[map: kind="cave" name="Wolf Den Caves"]');
+    assert.deepEqual(
+      [...worldSiteLocks(lockedWorld, story, [wentIn.tags])],
+      [],
+      "gone into, open in the session after",
+    );
   } finally {
     await app.close();
     await closeDB();

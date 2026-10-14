@@ -122,6 +122,8 @@ test("a world file another generator made comes into setup as it was made, until
     .setInputFiles(file(worldFile("Old Riverlands", kit, older, null, snapshot), "old.world.json"));
   await expect(wizard.getByText("Imported the world Old Riverlands with its setting kit.")).toBeVisible();
   await expect(wizard.getByText("Your world", { exact: true })).toBeVisible();
+  // The imported world is the one the game will have: its seed in the field.
+  await expect(wizard.getByLabel("World seed", { exact: true })).toHaveValue("5151");
   await page.screenshot({ path: testInfo.outputPath("old-world-imported.png") });
   // Its Download keeps it as it was made: the older generator's recipe and its snapshot.
   const kept = await download(page, () =>

@@ -261,7 +261,8 @@ export function useOverworldAtlas(
   // and nothing is drawn, never the code-drawn look first.
   // The pack's id and version, and a fingerprint of its tiles and sheets: two packs that share an id and a
   // version (two Experiences' map packs, a package installed again) are never drawn from one atlas.
-  const imageKey = image ? `${image.id}@${image.version}#${imageFingerprint(image)}` : null;
+  // Kept per pack: the fingerprint reads every sheet, and the view renders on each drag and clock tick.
+  const imageKey = useMemo(() => (image ? `${image.id}@${image.version}#${imageFingerprint(image)}` : null), [image]);
   const [compact, setCompact] = useState<{ key: string; atlas: ImageAtlas } | null>(null);
   useEffect(() => {
     if (!image || !imageKey) return;

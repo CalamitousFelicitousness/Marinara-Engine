@@ -210,6 +210,8 @@ test("a game with no map shows no map toggle and plays as before", async ({ page
     await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText("A quiet road.", {
       timeout: 30_000,
     });
+    await expect(page.locator('[data-component="DungeonMapView"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Show the map", exact: true })).toHaveCount(0);
   } finally {
     await request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
   }

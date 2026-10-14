@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   DUNGEON_EXIT_PROP,
-  dungeonWayOutWords,
+  dungeonWayOutId,
   gameDungeonOnWayOut,
   gameDungeonSpotsAt,
   DUNGEON_SETS,
@@ -74,7 +74,23 @@ export function DungeonMapView({
   const { t } = useTranslation();
   const { data } = useDungeonMap(chatId, turnKey, true);
   const kept = data?.map ?? null;
-  const cells = useMemo(() => (kept ? dungeonFromGameDungeonMap(kept) : null), [kept]);
+  // Each walk writes a new record (its `at` moves); the cells, and the base canvas drawn from them, follow
+  // the map's layout only.
+  const layoutKey = kept
+    ? JSON.stringify([
+        kept.set,
+        kept.seed,
+        kept.width,
+        kept.height,
+        kept.ground,
+        kept.props,
+        kept.rooms,
+        kept.entrance,
+        kept.hand ?? null,
+      ])
+    : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the layout key stands for every field the cells read
+  const cells = useMemo(() => (kept ? dungeonFromGameDungeonMap(kept) : null), [layoutKey]);
   const set = kept ? DUNGEON_SETS.find((each) => each.id === kept.set) : undefined;
   const pack = useDungeonPack(kept?.pack ?? kept?.set);
   // A pack of the set's own: "dungeon" names no family the library chooses for, so only `own` draws.
@@ -372,7 +388,7 @@ export function DungeonMapView({
             className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/70 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/85 disabled:opacity-50"
           >
             <DoorOpen size={13} aria-hidden="true" />
-            {t("game.dungeon.leave", { way: dungeonWayOutWords(set) })}
+            {t("game.dungeon.leave", { way: t(`game.dungeon.wayOut.${dungeonWayOutId(set)}`) })}
           </button>
         )}
       </div>

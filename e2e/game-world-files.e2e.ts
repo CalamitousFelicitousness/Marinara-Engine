@@ -145,6 +145,9 @@ test("a world file comes into a new game's setup with its kit and hand edits, an
     .setInputFiles(file(worldFile("Riverlands", kit, { ...world, edits }, story), "riverlands.world.json"));
   await expect(wizard.getByText("Imported the world Riverlands with its setting kit.")).toBeVisible();
   await expect(wizard.getByText("Your world", { exact: true })).toBeVisible();
+  // The imported world is the one the game will have: its kit chosen and its seed in the field.
+  await expect(wizard.getByRole("button", { name: /^High fantasy/u })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByLabel("World seed", { exact: true })).toHaveValue("4242");
   await expect(wizard.getByText("This world has hand edits.", { exact: false })).toBeVisible();
   await expect(wizard.getByText("This world has a story", { exact: false })).toBeVisible();
   await wizard.getByRole("button", { name: "Import a world file", exact: true }).scrollIntoViewIfNeeded();

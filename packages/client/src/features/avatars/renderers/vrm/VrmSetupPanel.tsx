@@ -1,5 +1,7 @@
 // VRM setup on the 3D Avatars agent page (lane: 3D): import a `.vrm` (and an optional `.vrma`), show the
-// author's terms from the file, and check or change which expression shows each face and mouth shape.
+// author's terms from the file, and check or change which expression shows each face and mouth shape. Under
+// "Get a 3D model", "Make 3D model" makes one from a sprite with Tripo (VrmModelMaker). A model without any
+// expressions (a Tripo one, for example) is shown as body only, with no faces to pick.
 import { useId, useRef, useState, type ReactNode } from "react";
 import { ExternalLink, Info, Loader2, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -15,6 +17,7 @@ import {
 import { useAvatarModelActions } from "../../../../hooks/use-avatar-models";
 import { showConfirmDialog } from "../../../../lib/app-dialogs";
 import type { AvatarKindSetupPanelProps } from "../../contract";
+import { VrmModelMaker } from "./VrmModelMaker";
 
 /** Plain words for the values VRM 1.0 and 0.x files use in their terms; anything else shows as written. */
 const TERM_KEYS: ReadonlyMap<string, string> = new Map([
@@ -290,20 +293,29 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
       </ul>
     ) : null;
 
+  const getModel = (
+    <Section title={t("avatars.vrm.getModel.title")} description={t("avatars.vrm.getModel.makeDescription")}>
+      <VrmModelMaker owner={owner} hasModel={!!data} onChanged={onChanged} />
+    </Section>
+  );
+
   if (!data) {
     return (
-      <Section title={t("avatars.vrm.title")} description={t("avatars.vrm.description")}>
-        <div className="flex flex-wrap gap-2">
-          <FileButton
-            accept=".vrm"
-            label={t("avatars.vrm.import")}
-            busy={importFile.isPending}
-            disabled={busy}
-            onFile={importVrmFile}
-          />
-        </div>
-        {warningList}
-      </Section>
+      <div className="min-w-0 max-w-full space-y-3">
+        <Section title={t("avatars.vrm.title")} description={t("avatars.vrm.description")}>
+          <div className="flex flex-wrap gap-2">
+            <FileButton
+              accept=".vrm"
+              label={t("avatars.vrm.import")}
+              busy={importFile.isPending}
+              disabled={busy}
+              onFile={importVrmFile}
+            />
+          </div>
+          {warningList}
+        </Section>
+        {getModel}
+      </div>
     );
   }
 
@@ -342,8 +354,16 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
         </div>
         {warningList}
       </Section>
+      {getModel}
 
-      {data.expressionNames ? (
+      {data.expressionNames?.length === 0 ? (
+        // Nothing to pick: the model has no face expressions at all.
+        <Section title={t("avatars.vrm.expressions.title")} description={t("avatars.vrm.bodyOnlyHelp")}>
+          <p className="text-xs font-medium text-[var(--foreground)]" data-vrm-body-only>
+            {t("avatars.vrm.bodyOnly")}
+          </p>
+        </Section>
+      ) : data.expressionNames ? (
         <Section title={t("avatars.vrm.expressions.title")} description={t("avatars.vrm.expressions.description")}>
           <ExpressionBindings
             data={data}

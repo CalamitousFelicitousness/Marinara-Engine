@@ -841,6 +841,31 @@ const motion = await import("../../packages/client/src/features/avatars/renderer
   );
   assert.ok(view(4).bottom > body.hipsY, "a wide canvas shows the head and shoulders");
 }
+{
+  // The top of the model: hair or ears above the head estimate stay in view (a Tripo model's reach 0.3 m and
+  // more above its head bone), a model whose top is lower frames exactly as before, and a part far above the
+  // head can't shrink the face more than one head-to-hips length allows.
+  const body = { headY: 1.45, hipsY: 0.95, footY: 0.05 };
+  const tanHalf = Math.tan((25 * Math.PI) / 360);
+  const viewTop = (heights: typeof body & { topY?: number }, aspect: number) => {
+    const framing = motion.frameCamera(heights, aspect, 25);
+    return framing.targetY + framing.distance * tanHalf;
+  };
+  for (const aspect of [0.4, 0.6, 0.75, 1, 1.5, 4]) {
+    assert.deepEqual(
+      motion.frameCamera({ ...body, topY: 1.6 }, aspect, 25),
+      motion.frameCamera(body, aspect, 25),
+      `a top under the head estimate changes nothing at aspect ${aspect}`,
+    );
+    assert.ok(viewTop({ ...body, topY: 1.84 }, aspect) >= 1.84, `tall hair stays in view at aspect ${aspect}`);
+    assert.deepEqual(
+      motion.frameCamera({ ...body, topY: 9 }, aspect, 25),
+      motion.frameCamera({ ...body, topY: body.headY + (body.headY - body.hipsY) }, aspect, 25),
+      "a part far above the head counts only up to one head-to-hips length",
+    );
+  }
+  assert.deepEqual(motion.frameCamera({ ...body, topY: Number.NaN }, 1, 25), motion.frameCamera(body, 1, 25));
+}
 assert.deepEqual(motion.canvasPixels(300, 300, 3, 2), { width: 600, height: 600 }, "the pixel ratio is capped");
 assert.deepEqual(
   motion.canvasPixels(400, 1200, 2, 2),

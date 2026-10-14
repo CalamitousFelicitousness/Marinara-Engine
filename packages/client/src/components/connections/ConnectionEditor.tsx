@@ -7,6 +7,8 @@ import {
   defaultDecisionTimeoutMs,
   resolveDecisionConnectionTimeoutMs,
   type DecisionSource,
+  isChatProvider,
+  TRIPO_API_KEYS_URL,
 } from "@marinara-engine/shared";
 import { isLanguageGenerationConnection } from "../../lib/connection-filters";
 import { useEffectiveGenerationParameters } from "../../hooks/use-effective-generation-parameters";
@@ -291,24 +293,11 @@ const AUDIO_SOURCE_OPTIONS: Array<{
 ];
 
 function canProviderTreatAsLocalEndpoint(provider: APIProvider): boolean {
-  return (
-    provider !== "image_generation" &&
-    provider !== "video_generation" &&
-    provider !== "audio" &&
-    provider !== "decision" &&
-    !isLocalAuthConnectionProvider(provider)
-  );
+  return isChatProvider(provider) && !isLocalAuthConnectionProvider(provider);
 }
 
 function providerSupportsDirectEmbeddingConfig(provider: APIProvider): boolean {
-  return (
-    provider !== "image_generation" &&
-    provider !== "video_generation" &&
-    provider !== "audio" &&
-    provider !== "decision" &&
-    provider !== "anthropic" &&
-    !isLocalAuthConnectionProvider(provider)
-  );
+  return isChatProvider(provider) && provider !== "anthropic" && !isLocalAuthConnectionProvider(provider);
 }
 
 function normalizeConnectionMaxContext(provider: APIProvider, value: unknown): number {
@@ -737,7 +726,9 @@ export function ConnectionEditor() {
                                 label: t("connections.mediaSources.spicyapi.apiKeyLink"),
                                 url: "https://spicyapi.ai/console/keys",
                               }
-                            : API_KEY_LINKS[localProvider];
+                            : localProvider === "tripo"
+                              ? { label: t("connections.tripo.apiKeyLink"), url: TRIPO_API_KEYS_URL }
+                              : API_KEY_LINKS[localProvider];
 
   useEffect(() => {
     if (localProvider !== "image_generation" || !selectedImageDefaultsService) {
@@ -852,7 +843,12 @@ export function ConnectionEditor() {
     const isImageProvider = localProvider === "image_generation";
     const isVideoProvider = localProvider === "video_generation";
     const isAudioProvider = localProvider === "audio";
-    const isMediaProvider = isImageProvider || isVideoProvider || isAudioProvider || localProvider === "decision";
+    const isMediaProvider =
+      isImageProvider ||
+      isVideoProvider ||
+      isAudioProvider ||
+      localProvider === "decision" ||
+      localProvider === "tripo";
     const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
     const canTreatAsLocalEndpoint = canProviderTreatAsLocalEndpoint(localProvider);
     const existingEmbeddingModel = (conn as { embeddingModel?: string | null } | undefined)?.embeddingModel ?? "";
@@ -1084,7 +1080,12 @@ export function ConnectionEditor() {
     const isImageProvider = localProvider === "image_generation";
     const isVideoProvider = localProvider === "video_generation";
     const isAudioProvider = localProvider === "audio";
-    const isMediaProvider = isImageProvider || isVideoProvider || isAudioProvider || localProvider === "decision";
+    const isMediaProvider =
+      isImageProvider ||
+      isVideoProvider ||
+      isAudioProvider ||
+      localProvider === "decision" ||
+      localProvider === "tripo";
     const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
     const defaultParameters = isImageProvider
       ? buildImageDefaultParameters(
@@ -1498,8 +1499,9 @@ export function ConnectionEditor() {
   const isVideoGenerationProvider = localProvider === "video_generation";
   const isAudioProvider = localProvider === "audio";
   const isDecisionProvider = localProvider === "decision";
+  const isTripoProvider = localProvider === "tripo";
   const isMediaGenerationProvider =
-    isImageGenerationProvider || isVideoGenerationProvider || isAudioProvider || isDecisionProvider;
+    isImageGenerationProvider || isVideoGenerationProvider || isAudioProvider || isDecisionProvider || isTripoProvider;
   const isClaudeSubscriptionProvider = localProvider === "claude_subscription";
   const isOpenAIChatGPTProvider = localProvider === "openai_chatgpt";
   const isGrokSubscriptionProvider = localProvider === "grok_subscription";
@@ -1922,6 +1924,8 @@ export function ConnectionEditor() {
             </button>
           )}
 
+          {isTripoProvider && <p className="text-xs text-[var(--muted-foreground)]">{t("connections.tripo.help")}</p>}
+
           {isDecisionProvider && (
             <section className="space-y-3">
               <label className="block text-xs font-medium" htmlFor="decision-source">
@@ -2173,69 +2177,71 @@ export function ConnectionEditor() {
               )}
 
               {/* ── Base URL ── */}
-              <FieldGroup
-                label={localizeUi("ui.connections.connectioneditor.baseUrl")}
-                icon={<Globe size="0.875rem" className="text-sky-400" />}
-                help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
-              >
-                <input
-                  disabled={isDecisionProvider && localDecisionSource === "openrouter"}
-                  value={localBaseUrl}
-                  onChange={(e) => {
-                    setLocalBaseUrl(e.target.value);
-                    markDirty();
-                  }}
-                  className={cn(
-                    "w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm font-mono ring-1 placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]",
-                    baseUrlValidation.error ? "ring-[var(--destructive)]" : "ring-[var(--border)]",
+              {!isTripoProvider && (
+                <FieldGroup
+                  label={localizeUi("ui.connections.connectioneditor.baseUrl")}
+                  icon={<Globe size="0.875rem" className="text-sky-400" />}
+                  help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
+                >
+                  <input
+                    disabled={isDecisionProvider && localDecisionSource === "openrouter"}
+                    value={localBaseUrl}
+                    onChange={(e) => {
+                      setLocalBaseUrl(e.target.value);
+                      markDirty();
+                    }}
+                    className={cn(
+                      "w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm font-mono ring-1 placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]",
+                      baseUrlValidation.error ? "ring-[var(--destructive)]" : "ring-[var(--border)]",
+                    )}
+                    placeholder={providerDef?.defaultBaseUrl || "https://api.example.com/v1"}
+                  />
+                  {providerDef?.defaultBaseUrl && !localBaseUrl && (
+                    <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.connections.connectioneditor.default")} {providerDef.defaultBaseUrl}
+                    </p>
                   )}
-                  placeholder={providerDef?.defaultBaseUrl || "https://api.example.com/v1"}
-                />
-                {providerDef?.defaultBaseUrl && !localBaseUrl && (
-                  <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.connections.connectioneditor.default")} {providerDef.defaultBaseUrl}
-                  </p>
-                )}
-                {baseUrlValidation.error && (
-                  <p className="mt-1 text-[0.625rem] text-[var(--destructive)]">{baseUrlValidation.error}</p>
-                )}
-                {!baseUrlValidation.error && baseUrlValidation.value !== localBaseUrl.trim() && (
-                  <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.connections.connectioneditor.willSaveAs")} {baseUrlValidation.value}
-                  </p>
-                )}
-                {localProvider === "custom" && (
-                  <p className="mt-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.connections.connectioneditor.localModelExamplesOllama")}{" "}
-                    <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:11434/v1"}</code>{" "}
-                    {localizeUi("ui.connections.connectioneditor.lmStudio")}{" "}
-                    <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:1234/v1"}</code>{" "}
-                    {localizeUi("ui.connections.connectioneditor.koboldcpp")}{" "}
-                    <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:5001/v1"}</code>
-                  </p>
-                )}
-                <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-amber-400/80">
-                  <AlertCircle size="0.625rem" className="mt-px shrink-0" />
-                  <span>
-                    {localizeUi("ui.connections.connectioneditor.onlyUseUrlsFromProvidersYouTrustAMalicious")}
-                  </span>
-                </p>
-                {localProvider === "custom" && (
-                  <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-sky-400/80">
+                  {baseUrlValidation.error && (
+                    <p className="mt-1 text-[0.625rem] text-[var(--destructive)]">{baseUrlValidation.error}</p>
+                  )}
+                  {!baseUrlValidation.error && baseUrlValidation.value !== localBaseUrl.trim() && (
+                    <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.connections.connectioneditor.willSaveAs")} {baseUrlValidation.value}
+                    </p>
+                  )}
+                  {localProvider === "custom" && (
+                    <p className="mt-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.connections.connectioneditor.localModelExamplesOllama")}{" "}
+                      <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:11434/v1"}</code>{" "}
+                      {localizeUi("ui.connections.connectioneditor.lmStudio")}{" "}
+                      <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:1234/v1"}</code>{" "}
+                      {localizeUi("ui.connections.connectioneditor.koboldcpp")}{" "}
+                      <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:5001/v1"}</code>
+                    </p>
+                  )}
+                  <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-amber-400/80">
                     <AlertCircle size="0.625rem" className="mt-px shrink-0" />
                     <span>
-                      <strong>{localizeUi("ui.connections.connectioneditor.windowsUsers")}</strong>{" "}
-                      {localizeUi("ui.connections.connectioneditor.ifYourProxyOrLocalServerIsnTDetected")}{" "}
-                      <em>
-                        {localizeUi(
-                          "ui.connections.connectioneditor.windowsSecurityFirewallNetworkProtectionAllowAnAppThrough",
-                        )}
-                      </em>{" "}
-                      {localizeUi("ui.connections.connectioneditor.andAddNodeJsOrYourProxyApplication")}
+                      {localizeUi("ui.connections.connectioneditor.onlyUseUrlsFromProvidersYouTrustAMalicious")}
                     </span>
                   </p>
-                )}
-              </FieldGroup>
+                  {localProvider === "custom" && (
+                    <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-sky-400/80">
+                      <AlertCircle size="0.625rem" className="mt-px shrink-0" />
+                      <span>
+                        <strong>{localizeUi("ui.connections.connectioneditor.windowsUsers")}</strong>{" "}
+                        {localizeUi("ui.connections.connectioneditor.ifYourProxyOrLocalServerIsnTDetected")}{" "}
+                        <em>
+                          {localizeUi(
+                            "ui.connections.connectioneditor.windowsSecurityFirewallNetworkProtectionAllowAnAppThrough",
+                          )}
+                        </em>{" "}
+                        {localizeUi("ui.connections.connectioneditor.andAddNodeJsOrYourProxyApplication")}
+                      </span>
+                    </p>
+                  )}
+                </FieldGroup>
+              )}
             </>
           )}
 
@@ -2534,223 +2540,225 @@ export function ConnectionEditor() {
           )}
 
           {/* ── Model Selection ── */}
-          <FieldGroup
-            label={localizeUi("ui.connections.connectioneditor.model")}
-            icon={<Server size="0.875rem" className="text-sky-400" />}
-            help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
-          >
-            {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
-            <div ref={modelDropdownRef} className={cn("relative min-w-0", showModelDropdown && "z-50")}>
-              <div
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
-                className={cn(
-                  "relative flex min-w-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
-                  showModelDropdown && "z-50 ring-sky-400/50",
-                )}
-              >
-                <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
-                {showModelDropdown ? (
-                  <input
-                    ref={modelSearchInputRef}
-                    value={modelSearch}
-                    onChange={(e) => setModelSearch(e.target.value)}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
-                    placeholder={localizeUi("ui.connections.connectioneditor.searchModels")}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span
-                    className={cn("min-w-0 flex-1 truncate text-sm", !localModel && "text-[var(--muted-foreground)]")}
-                  >
-                    {localModel
-                      ? selectedModelInfo
-                        ? localizeUi("ui.connections.connectioneditor.value1Value2", {
-                            value1: selectedModelInfo.name,
-                            value2: selectedModelInfo.id,
-                          })
-                        : localModel
-                      : emptyModelLabel}
-                  </span>
-                )}
-                <ChevronDown
-                  size="0.875rem"
+          {!isTripoProvider && (
+            <FieldGroup
+              label={localizeUi("ui.connections.connectioneditor.model")}
+              icon={<Server size="0.875rem" className="text-sky-400" />}
+              help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
+            >
+              {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
+              <div ref={modelDropdownRef} className={cn("relative min-w-0", showModelDropdown && "z-50")}>
+                <div
+                  onClick={() => setShowModelDropdown(!showModelDropdown)}
                   className={cn(
-                    "shrink-0 text-[var(--muted-foreground)] transition-transform",
-                    showModelDropdown && "rotate-180",
+                    "relative flex min-w-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
+                    showModelDropdown && "z-50 ring-sky-400/50",
                   )}
-                />
-              </div>
-
-              {showModelDropdown && (
-                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
-                  {/* Fetch from API button */}
-                  {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
-                    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleFetchModels();
-                        }}
-                        disabled={fetchModels.isPending}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
-                      >
-                        {fetchModels.isPending ? (
-                          <Loader2 size="0.75rem" className="animate-spin" />
-                        ) : (
-                          <Globe size="0.75rem" />
-                        )}
-                        {fetchModels.isPending
-                          ? localizeUi("ui.connections.connectioneditor.fetching")
-                          : modelFetchButtonLabel}
-                      </button>
-                      {fetchError && (
-                        <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
-                      )}
-                      {remoteModels.length > 0 && !fetchError && (
-                        <p className="mt-1 text-[0.625rem] text-emerald-400">
-                          {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
-                          {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
-                          {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {localProvider === "custom" ? (
-                    <div className="p-3">
-                      <p className="mb-2 text-[0.625rem] text-[var(--muted-foreground)]">
-                        {localizeUi("ui.connections.connectioneditor.customEndpointsTypeTheModelIdOrFetchFrom")}
-                      </p>
-                      <input
-                        value={localModel}
-                        onChange={(e) => handleManualModelChange(e.target.value)}
-                        className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
-                        placeholder={localizeUi("ui.connections.connectioneditor.modelNameOrPath")}
-                      />
-                      {/* Show fetched models for custom provider */}
-                      {remoteModels.length > 0 && (
-                        <div className="mt-2 max-h-48 overflow-y-auto">
-                          {remoteModels
-                            .filter((m) => {
-                              const q = (modelSearch || localModel).trim().toLowerCase();
-                              if (!q) return true;
-                              return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+                >
+                  <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
+                  {showModelDropdown ? (
+                    <input
+                      ref={modelSearchInputRef}
+                      value={modelSearch}
+                      onChange={(e) => setModelSearch(e.target.value)}
+                      className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+                      placeholder={localizeUi("ui.connections.connectioneditor.searchModels")}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span
+                      className={cn("min-w-0 flex-1 truncate text-sm", !localModel && "text-[var(--muted-foreground)]")}
+                    >
+                      {localModel
+                        ? selectedModelInfo
+                          ? localizeUi("ui.connections.connectioneditor.value1Value2", {
+                              value1: selectedModelInfo.name,
+                              value2: selectedModelInfo.id,
                             })
-                            .map((m) => (
-                              <button
-                                key={m.id}
-                                onClick={() => selectModel({ ...m, isRemote: true })}
-                                className={cn(
-                                  "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]",
-                                  localModel === m.id && "bg-sky-400/5",
-                                )}
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-medium">{m.name}</span>
-                                    {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
+                          : localModel
+                        : emptyModelLabel}
+                    </span>
+                  )}
+                  <ChevronDown
+                    size="0.875rem"
+                    className={cn(
+                      "shrink-0 text-[var(--muted-foreground)] transition-transform",
+                      showModelDropdown && "rotate-180",
+                    )}
+                  />
+                </div>
+
+                {showModelDropdown && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
+                    {/* Fetch from API button */}
+                    {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
+                      <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFetchModels();
+                          }}
+                          disabled={fetchModels.isPending}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
+                        >
+                          {fetchModels.isPending ? (
+                            <Loader2 size="0.75rem" className="animate-spin" />
+                          ) : (
+                            <Globe size="0.75rem" />
+                          )}
+                          {fetchModels.isPending
+                            ? localizeUi("ui.connections.connectioneditor.fetching")
+                            : modelFetchButtonLabel}
+                        </button>
+                        {fetchError && (
+                          <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
+                        )}
+                        {remoteModels.length > 0 && !fetchError && (
+                          <p className="mt-1 text-[0.625rem] text-emerald-400">
+                            {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
+                            {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
+                            {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {localProvider === "custom" ? (
+                      <div className="p-3">
+                        <p className="mb-2 text-[0.625rem] text-[var(--muted-foreground)]">
+                          {localizeUi("ui.connections.connectioneditor.customEndpointsTypeTheModelIdOrFetchFrom")}
+                        </p>
+                        <input
+                          value={localModel}
+                          onChange={(e) => handleManualModelChange(e.target.value)}
+                          className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
+                          placeholder={localizeUi("ui.connections.connectioneditor.modelNameOrPath")}
+                        />
+                        {/* Show fetched models for custom provider */}
+                        {remoteModels.length > 0 && (
+                          <div className="mt-2 max-h-48 overflow-y-auto">
+                            {remoteModels
+                              .filter((m) => {
+                                const q = (modelSearch || localModel).trim().toLowerCase();
+                                if (!q) return true;
+                                return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+                              })
+                              .map((m) => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => selectModel({ ...m, isRemote: true })}
+                                  className={cn(
+                                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]",
+                                    localModel === m.id && "bg-sky-400/5",
+                                  )}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium">{m.name}</span>
+                                      {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
+                                    </div>
+                                    <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
                                   </div>
-                                  <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
-                                </div>
-                                <span className="shrink-0 rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
+                                  <span className="shrink-0 rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
+                                    {modelFetchSourceLabel}
+                                  </span>
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => {
+                            setShowModelDropdown(false);
+                            setModelSearch("");
+                          }}
+                          className="mt-2 w-full rounded-lg bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-400 hover:bg-sky-400/20"
+                        >
+                          {localizeUi("lorebook.editor.batch.done")}
+                        </button>
+                      </div>
+                    ) : filteredModels.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-[var(--muted-foreground)]">
+                        {localizeUi("ui.connections.connectioneditor.noModelsFoundTryADifferentSearchOrType")}
+                        <input
+                          value={localModel}
+                          onChange={(e) => handleManualModelChange(e.target.value)}
+                          className="mt-2 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
+                          placeholder={localizeUi("ui.connections.connectioneditor.customModelId")}
+                        />
+                      </div>
+                    ) : (
+                      filteredModels.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => selectModel(m)}
+                          className={cn(
+                            "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--accent)]",
+                            localModel === m.id && "bg-sky-400/5",
+                          )}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">{m.name}</span>
+                              {m.isRemote && (
+                                <span className="rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
                                   {modelFetchSourceLabel}
                                 </span>
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                      <button
-                        onClick={() => {
-                          setShowModelDropdown(false);
-                          setModelSearch("");
-                        }}
-                        className="mt-2 w-full rounded-lg bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-400 hover:bg-sky-400/20"
-                      >
-                        {localizeUi("lorebook.editor.batch.done")}
-                      </button>
-                    </div>
-                  ) : filteredModels.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-[var(--muted-foreground)]">
-                      {localizeUi("ui.connections.connectioneditor.noModelsFoundTryADifferentSearchOrType")}
-                      <input
-                        value={localModel}
-                        onChange={(e) => handleManualModelChange(e.target.value)}
-                        className="mt-2 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
-                        placeholder={localizeUi("ui.connections.connectioneditor.customModelId")}
-                      />
-                    </div>
-                  ) : (
-                    filteredModels.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => selectModel(m)}
-                        className={cn(
-                          "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--accent)]",
-                          localModel === m.id && "bg-sky-400/5",
-                        )}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{m.name}</span>
-                            {m.isRemote && (
-                              <span className="rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
-                                {modelFetchSourceLabel}
-                              </span>
-                            )}
-                            {localShowUsageWidget && <SubscriptionCostPill model={m} />}
-                            {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
-                          </div>
-                          <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          {m.context > 0 && (
-                            <div className="text-[0.625rem] font-medium text-sky-400">{formatContext(m.context)}</div>
-                          )}
-                          {m.maxOutput > 0 && (
-                            <div className="text-[0.5625rem] text-[var(--muted-foreground)]">
-                              {formatContext(m.maxOutput)} {localizeUi("ui.connections.connectioneditor.out")}
+                              )}
+                              {localShowUsageWidget && <SubscriptionCostPill model={m} />}
+                              {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
                             </div>
-                          )}
-                        </div>
-                      </button>
-                    ))
-                  )}
+                            <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            {m.context > 0 && (
+                              <div className="text-[0.625rem] font-medium text-sky-400">{formatContext(m.context)}</div>
+                            )}
+                            {m.maxOutput > 0 && (
+                              <div className="text-[0.5625rem] text-[var(--muted-foreground)]">
+                                {formatContext(m.maxOutput)} {localizeUi("ui.connections.connectioneditor.out")}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual model ID input below dropdown */}
+              {localProvider !== "custom" && (
+                <div className="mt-2 flex min-w-0 items-center gap-2">
+                  <input
+                    value={localModel}
+                    onChange={(e) => {
+                      handleManualModelChange(e.target.value);
+                    }}
+                    className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
+                    placeholder={
+                      isGrokSubscriptionProvider
+                        ? localizeUi("ui.connections.connectioneditor.optionalTypeAGrokCliModelIdOrLeave")
+                        : localizeUi("ui.connections.connectioneditor.orTypeModelIdDirectly")
+                    }
+                  />
                 </div>
               )}
-            </div>
 
-            {/* Manual model ID input below dropdown */}
-            {localProvider !== "custom" && (
-              <div className="mt-2 flex min-w-0 items-center gap-2">
-                <input
-                  value={localModel}
-                  onChange={(e) => {
-                    handleManualModelChange(e.target.value);
-                  }}
-                  className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
-                  placeholder={
-                    isGrokSubscriptionProvider
-                      ? localizeUi("ui.connections.connectioneditor.optionalTypeAGrokCliModelIdOrLeave")
-                      : localizeUi("ui.connections.connectioneditor.orTypeModelIdDirectly")
-                  }
-                />
-              </div>
-            )}
-
-            {/* Context display */}
-            {selectedModelInfo && (
-              <div className="mt-2 flex items-center gap-4 rounded-lg bg-sky-400/5 px-3 py-2 text-[0.6875rem]">
-                <span className="text-[var(--muted-foreground)]">
-                  {localizeUi("ui.connections.connectioneditor.context")}{" "}
-                  <strong className="text-sky-400">{formatContext(selectedModelInfo.context)}</strong>
-                </span>
-                <span className="text-[var(--muted-foreground)]">
-                  {localizeUi("ui.connections.connectioneditor.maxOutput")}{" "}
-                  <strong className="text-sky-400">{formatContext(selectedModelInfo.maxOutput)}</strong>
-                </span>
-              </div>
-            )}
-          </FieldGroup>
+              {/* Context display */}
+              {selectedModelInfo && (
+                <div className="mt-2 flex items-center gap-4 rounded-lg bg-sky-400/5 px-3 py-2 text-[0.6875rem]">
+                  <span className="text-[var(--muted-foreground)]">
+                    {localizeUi("ui.connections.connectioneditor.context")}{" "}
+                    <strong className="text-sky-400">{formatContext(selectedModelInfo.context)}</strong>
+                  </span>
+                  <span className="text-[var(--muted-foreground)]">
+                    {localizeUi("ui.connections.connectioneditor.maxOutput")}{" "}
+                    <strong className="text-sky-400">{formatContext(selectedModelInfo.maxOutput)}</strong>
+                  </span>
+                </div>
+              )}
+            </FieldGroup>
+          )}
 
           {/* ── RunPod Endpoint ID ── */}
           {localProvider === "image_generation" && selectedImageService === "runpod_comfyui" && (
@@ -3265,11 +3273,7 @@ export function ConnectionEditor() {
                           {((allConnections ?? []) as Record<string, unknown>[])
                             .filter(
                               (connection) =>
-                                connection.id !== connectionDetailId &&
-                                connection.provider !== "image_generation" &&
-                                connection.provider !== "video_generation" &&
-                                connection.provider !== "audio" &&
-                                connection.provider !== "decision",
+                                connection.id !== connectionDetailId && isChatProvider(connection.provider),
                             )
                             .map((connection) => (
                               <option key={connection.id as string} value={connection.id as string}>
@@ -3597,14 +3601,7 @@ export function ConnectionEditor() {
                     </option>
                   )}
                   {((allConnections ?? []) as Record<string, unknown>[])
-                    .filter(
-                      (c) =>
-                        c.id !== connectionDetailId &&
-                        c.provider !== "image_generation" &&
-                        c.provider !== "video_generation" &&
-                        c.provider !== "audio" &&
-                        c.provider !== "decision",
-                    )
+                    .filter((c) => c.id !== connectionDetailId && isChatProvider(c.provider))
                     .map((c) => (
                       <option key={c.id as string} value={c.id as string}>
                         {c.name as string}
@@ -3710,9 +3707,11 @@ export function ConnectionEditor() {
               <strong>{localizeUi("ui.connections.connectioneditor.testConnection")}</strong>{" "}
               {selectedImageService === "fal"
                 ? t("connections.mediaSources.fal.testHelp")
-                : isCodexImageService
-                  ? t("connections.mediaSources.codexChatgpt.testHelp")
-                  : localizeUi("ui.connections.connectioneditor.verifiesYourApiKeyAgainstTheProviderCatalogOr")}
+                : isTripoProvider
+                  ? t("connections.tripo.testHelp")
+                  : isCodexImageService
+                    ? t("connections.mediaSources.codexChatgpt.testHelp")
+                    : localizeUi("ui.connections.connectioneditor.verifiesYourApiKeyAgainstTheProviderCatalogOr")}
               {!isMediaGenerationProvider && (
                 <>
                   {" "}

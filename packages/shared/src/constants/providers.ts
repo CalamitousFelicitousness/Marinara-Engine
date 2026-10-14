@@ -25,8 +25,8 @@ export const NON_CHAT_PROVIDERS: readonly APIProvider[] = [
 ];
 
 /** Whether a connection of this provider can answer a chat or agent request. */
-export function isChatProvider(provider: string | null | undefined): boolean {
-  return !!provider && !(NON_CHAT_PROVIDERS as readonly string[]).includes(provider);
+export function isChatProvider(provider: unknown): boolean {
+  return !(NON_CHAT_PROVIDERS as readonly unknown[]).includes(provider);
 }
 
 /** Tripo's API: the only address a Tripo key is ever sent to (the connection's base URL is not used). */

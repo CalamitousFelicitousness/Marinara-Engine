@@ -6,6 +6,7 @@
 // Results stay in the browser until the user keeps them, so the owner's avatar does not change before that.
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { isChatProvider } from "@marinara-engine/shared";
 import { useConnections } from "../../../hooks/use-connections";
 import { useCharacterSprites, useSpriteCapabilities } from "../../../hooks/use-characters";
 import { useUIStore } from "../../../stores/ui.store";
@@ -15,13 +16,9 @@ import {
   type ImagePromptReviewItem,
 } from "../../../components/ui/ImagePromptReviewModal";
 import type { AvatarKindSetupPanelProps } from "../contract";
-import { isSpriteVariant } from "../renderers/pngtuber/pngtuber-layers";
 import { MeshAvatarSection, type ConnectionOption } from "./MeshAvatarSection";
 import { PngtuberVariantsSection } from "./PngtuberVariantsSection";
-
-/** Sprites an image model can read (the server refuses SVG sprites the same way). */
-const RASTER_SPRITE = /\.(?:png|jpe?g|webp|avif|gif)$/iu;
-const NON_LANGUAGE_PROVIDERS = new Set(["image_generation", "video_generation", "audio", "decision"]);
+import { avatarSourceSprites } from "./SpritePicker";
 
 type ConnectionRow = ConnectionOption & { defaultForAgents?: boolean | string };
 
@@ -35,16 +32,12 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
   const reviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
   // Talk and blink pictures belong to another face, so they are never offered as a source.
-  const sprites = useMemo(
-    () =>
-      (spriteList ?? []).filter((sprite) => RASTER_SPRITE.test(sprite.filename) && !isSpriteVariant(sprite.expression)),
-    [spriteList],
-  );
+  const sprites = useMemo(() => avatarSourceSprites(spriteList), [spriteList]);
   const { imageConnections, languageConnections } = useMemo(() => {
     const rows = (connectionList ?? []) as ConnectionRow[];
     return {
       imageConnections: rows.filter((row) => row.provider === "image_generation"),
-      languageConnections: rows.filter((row) => !NON_LANGUAGE_PROVIDERS.has(row.provider)),
+      languageConnections: rows.filter((row) => isChatProvider(row.provider)),
     };
   }, [connectionList]);
   const defaultImageConnection = imageConnections.find(

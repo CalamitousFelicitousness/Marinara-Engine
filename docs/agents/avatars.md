@@ -59,7 +59,7 @@ Importing a save needs image processing on the server. Some Android installs (Te
 
 ### Mesh avatars
 
-A mesh avatar is a `.mavatar` file made with [Mesh Avatar Studio](https://github.com/shinshin86/mesh-avatar-studio). Choose **Import .mavatar file** to add one, or **Replace file** to swap it. With idle motion on, the avatar breathes and looks around on its own. It blinks, and its mouth follows the reply. If the file has drawn mouth shapes, they are used; otherwise simple ones are drawn for it.
+A mesh avatar is a `.mavatar` file. Marinara Engine can make one from one of your sprites (see [Making an avatar from a sprite](#mesh-avatar)), or you can make one with [Mesh Avatar Studio](https://github.com/shinshin86/mesh-avatar-studio) (see [Make your own model](#mesh-avatar-studio)). Choose **Import .mavatar file** to add one, or **Replace file** to swap it. With idle motion on, the avatar breathes and looks around on its own. It blinks, and its mouth follows the reply. If the file has drawn mouth shapes, they are used; otherwise simple ones are drawn for it.
 
 Under **Look for each feeling**, choose what each feeling shows: one of the six feelings, or **Smile**, **Shy**, **Half-closed eyes** or **Wink**.
 
@@ -74,7 +74,7 @@ Mesh avatars need WebGL2, which current browsers have. Without it, or when the b
 1. Open **3D Avatars** in the Agent editor and pick the character or persona.
 2. Under **VRM model**, select **Import VRM** and choose a `.vrm` file.
 3. Read **The author's terms**. They come from the model file and say who may use the model as an avatar, whether commercial use is allowed, whether you may change the model, whether sexual or very violent content is allowed, and for VRM 1.0 models whether you must credit the author and may share the file. When the file links to a license or to the author's own terms, open them too. Marinara Engine shows the terms but does not enforce them, so please follow them yourself.
-4. Under **Faces and mouth shapes**, check which of the model's expressions shows each face (Neutral, Happy, Angry, Sad, Relaxed and Surprised), each mouth shape (A, I, U, E and O) and blinking. Most are filled in for you: **Set by the model** means the model has the standard VRM expression, and **Guessed from its name** means one of its own expressions has a matching name. Pick another expression, or **None**, whenever a guess looks wrong.
+4. Under **Faces and mouth shapes**, check which of the model's expressions shows each face (Neutral, Happy, Angry, Sad, Relaxed and Surprised), each mouth shape (A, I, U, E and O) and blinking. Most are filled in for you: **Set by the model** means the model has the standard VRM expression, and **Guessed from its name** means one of its own expressions has a matching name. An expression the model has but left empty changes nothing, so it is left unset and the import says so. Pick another expression, or **None**, whenever a guess looks wrong.
 5. Optionally, under **Idle animation**, add a `.vrma` file for the model to play while it waits. Without one, the model breathes and sways gently.
 
 **Replace model** keeps the idle animation, because VRM animations fit any VRM model. **Remove model** deletes the model and its idle animation.
@@ -84,7 +84,7 @@ While a chat runs, the model looks at you, blinks on its own when it has a blink
 Some files can't be used, and the import says why:
 
 - **Compressed models.** Files saved with Draco or meshopt compression, or with KTX2 textures, don't load. Export the model again with compression turned off.
-- **Plain 3D models.** A `.glb` or `.gltf` model without VRM data has no face expressions or humanoid skeleton. Convert it to VRM first, for example with the VRM add-on for Blender.
+- **Plain 3D models.** A `.glb` or `.gltf` model without VRM data has no face expressions or humanoid skeleton. Convert it to VRM first, for example with the VRM add-on for Blender (see [Make your own model](#blender-with-the-vrm-add-on-for-blender)).
 - **Incomplete models.** A model whose skeleton is missing bones VRM needs or points to parts that aren't in the file, or that points to files outside itself, is refused.
 
 There is no size limit beyond the app's usual upload limit, but large models take longer to load, especially on phones.
@@ -150,6 +150,62 @@ Image models that edit pictures work best, because they get your sprite as a ref
 A generated mesh avatar moves its head, eyes, brows and mouth, and blinks and talks with its own eyelids and mouth. Its hair moves with the head; hands, single hair strands and hanging accessories are not rigged. When the face fills most of a large sprite, the avatar is built from a smaller copy so making it stays quick.
 
 Your sprite is sent to the image connection for blink and talk pictures (and to that connection's fallback image connection if it fails and one is set), and to the chat connection for a mesh avatar. The prompts come with the 2D Avatars agent. With **Expose media prompts before sending** on, you can read and change each picture's prompt before it is sent. With debug mode on, every prompt is written to the server log.
+
+## Make your own model
+
+You don't have to make anything to start. A character or persona with expression sprites already has a PNGTuber avatar, and [Making an avatar from a sprite](#making-an-avatar-from-a-sprite) adds blink and talk pictures or builds a mesh avatar for you. To make your own model instead, use one of these free tools. Every path ends the same way: you import the result on the agent's page in **Agents**.
+
+| What you want | Tool | What you import |
+| --- | --- | --- |
+| PNGTuber sprites | Any drawing app, then the character's **Sprites** tab | The sprites |
+| PNGTuber sprites with layers and costumes | [PNGTuber Plus](https://github.com/kaiakairos/PNGTuber-Plus) | A `.save` file |
+| A mesh avatar | [Mesh Avatar Studio](https://github.com/shinshin86/mesh-avatar-studio) | A `.mavatar` file |
+| A 3D model | [VRoid Studio](https://vroid.com/en/studio), or Blender with the [VRM Add-on for Blender](https://vrm-addon-for-blender.info/en-us/) | A `.vrm` file, and optionally a `.vrma` idle animation |
+
+### Your own sprites
+
+1. Draw one picture for each feeling, all the same size and with the character in the same place. Name each after its feeling: `neutral`, `happy`, `angry`, `sad`, `relaxed` and `surprised`. Names that contain a feeling word work too, such as `smile`, `cry`, `calm` or `shock`.
+2. For a moving mouth, draw the same picture with only the mouth open and add `_talk` to its name, for example `happy_talk`. For blinking, close only the eyes and add `_blink`; with both, add `_blink_talk`. A feeling without these pictures still hops while it talks.
+3. Add the pictures on the **Sprites** tab of the character or persona, under **Facial Expressions**. **Upload Folder** adds a whole folder and names each sprite after its file. See [Character Sprites](../characters/sprites.md).
+4. Open **2D Avatars** in **Agents**, choose the character or persona, and select **Use my sprites**.
+
+### PNGTuber Plus
+
+1. Build the avatar from separate layers. Set the open mouth to show only while talking and the closed mouth only while quiet. Set the closed eyes to show only while blinking and the open eyes only while not blinking.
+2. For each feeling, make a costume that swaps the eyes or the mouth, and name those pictures after the feeling, for example `angry eyes.png` or `happy_mouth.png`. Costume 1 is the resting face.
+3. Save the avatar to get a `.save` file.
+4. Open **2D Avatars** in **Agents**, choose the character or persona, then **PNGTuber sprites** and **Import PNGTuber Plus save**. Choose a face for any feeling the names did not cover.
+
+### Mesh Avatar Studio
+
+1. Start from a front-facing head-and-shoulders picture with a transparent background. Mesh Avatar Studio runs on your computer with Node.js, and a coding agent such as Claude Code or Codex rigs the picture. Its README walks you through it.
+2. Optionally, add drawn eyes and mouths under **Drawn variants**. Marinara Engine uses its mouth shapes (`mouth_a`, `mouth_i`, `mouth_o` and `mouth_a_half`) and closed eyes (`eyes_closed_0` and `eyes_closed_1`) by themselves. Every mesh avatar has the six feelings built in, so there is nothing to name.
+3. Choose **Export .mavatar**. Don't zip the project folder yourself.
+4. Open **2D Avatars** in **Agents**, choose the character or persona, then **Mesh avatar** and **Import .mavatar file**.
+
+### VRoid Studio
+
+1. Make the character in VRoid Studio. Its faces, mouth shapes and blink are standard VRM expressions, so they are found automatically.
+2. Export it as VRM. VRM 1.0 and VRM 0.0 both work. Fill in the model's details and terms when VRoid Studio asks.
+3. Open **3D Avatars** in **Agents**, choose the character or persona, and select **Import VRM**.
+
+### Blender with the VRM Add-on for Blender
+
+1. Install the VRM Add-on for Blender from Blender's **Get Extensions** in **Preferences**.
+2. Give the model a humanoid armature and assign its VRM bones. The add-on can assign them automatically.
+3. Set up the expressions in the add-on's VRM panel: **Expressions** for VRM 1.0, or **VRM 0.x Blend Shape Proxy** for VRM 0.x. Each one must move a shape key or a material; an empty expression changes nothing, so the import leaves it unset. Custom expressions with a clear name, such as `Smile` or `Shock`, are matched too.
+   - Faces: **Happy**, **Angry**, **Sad**, **Relaxed** and **Surprised**. VRM 0.x calls the first four **Joy**, **Angry**, **Sorrow** and **Fun**, and has no surprised preset, so add a custom one named `Surprised`.
+   - Mouth shapes: **Aa**, **Ih**, **Ou**, **Ee** and **Oh** (**A**, **I**, **U**, **E** and **O** in VRM 0.x).
+   - Blinking: **Blink**.
+4. Export with **File → Export → VRM (.vrm)**. For an idle animation, animate the armature and use **File → Export → VRM Animation (.vrma)**.
+5. Open **3D Avatars** in **Agents**, choose the character or persona, and select **Import VRM**. Add the animation with **Add animation** under **Idle animation**.
+
+### What to avoid when exporting
+
+- **Compression.** Draco or meshopt mesh compression and KTX2 textures don't load. The VRM exports above never use them, but Blender's plain glTF export offers Draco, and model optimizers can add all three. Export again with compression turned off.
+- **Plain glTF.** A `.glb` or `.gltf` file has no face expressions or humanoid skeleton. Export a `.vrm` instead.
+- **Separate files.** A model whose textures or data sit in separate files can't be used. Export one `.vrm` file.
+- **PNGTuber Plus extras.** Wobble, drag and animation don't come across: each layer shows at rest, and an animated layer shows its first frame.
 
 ## Performance and devices
 

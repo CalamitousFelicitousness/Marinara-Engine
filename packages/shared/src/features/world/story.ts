@@ -548,7 +548,9 @@ export type StoryFightOutcome = (typeof STORY_FIGHT_OUTCOMES)[number];
 /** What a fight broke (1.316), read off the combat recap the player's message carries: its labels. */
 export function storyFightBroken(playerMessage: string | null | undefined): string[] {
   if (!playerMessage || !/\[combat_result\]/i.test(playerMessage)) return [];
-  const line = /^Broken:\s*(.+)$/im.exec(playerMessage)?.[1] ?? "";
+  // Read line by line, not with one regex over the message: a long run of blanks after "Broken:" must stay cheap.
+  const found = playerMessage.split("\n").find((one) => one.slice(0, 7).toLowerCase() === "broken:");
+  const line = found?.slice(7) ?? "";
   return line
     .split(";")
     .map((label) => label.trim())

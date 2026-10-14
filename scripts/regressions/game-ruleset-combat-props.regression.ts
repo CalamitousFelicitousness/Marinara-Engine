@@ -546,6 +546,12 @@ try {
     assert.deepEqual(storyFightBroken(recap), ["Sluice Gate", "Oil Jar"]);
     assert.deepEqual(storyFightBroken("Broken: Sluice Gate"), [], "only a combat recap says so");
     assert.deepEqual(storyFightBroken("[combat_result]\nOUTCOME: VICTORY\n[/combat_result]"), []);
+    // A long run of blanks after "Broken:" is read at once.
+    const blanks = `[combat_result]\nbroken:${"\t".repeat(100_000)}\n[/combat_result]`;
+    const started = performance.now();
+    assert.deepEqual(storyFightBroken(blanks), []);
+    assert.ok(performance.now() - started < 200, "a long blank line is read quickly");
+    assert.deepEqual(storyFightBroken("[combat_result]\r\nBROKEN:  Sluice Gate ; \r\n"), ["Sluice Gate"]);
     const input: StoryScriptInput = {
       storyVersion: 1,
       flags: [

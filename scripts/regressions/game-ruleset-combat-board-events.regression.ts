@@ -32,6 +32,7 @@ import {
   rulesetBoardEvents,
   rulesetBoardEventTime,
   rulesetBoardShading,
+  rulesetChangeGround,
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetLightAt,
@@ -761,6 +762,24 @@ try {
     } as never) as { fight: { encounter: RulesetEncounterState } };
     assert.equal(plain.fight.encounter.board?.grid.ground, undefined);
     assert.equal(plain.fight.encounter.board?.events, undefined);
+  }
+
+  // ── Only cells on the board change ──
+  {
+    const state = fight();
+    const before = JSON.stringify(state.board!.grid);
+    const off = [
+      { x: -1, y: 0 },
+      { x: 12, y: 0 },
+      { x: 0, y: 10 },
+      { x: 1.5, y: 0 },
+      { x: "__proto__", y: 0 },
+      { x: 0, y: "__proto__" },
+    ] as unknown as RulesetCombatCell[];
+    rulesetChangeGround(state, off, { terrain: "water", height: 2, light: "dark" });
+    assert.equal(JSON.stringify(state.board!.grid), before, "nothing off the board changes");
+    rulesetChangeGround(state, [{ x: 0, y: 0 }], { terrain: "water" });
+    assert.equal(state.board!.grid.tiles[0]![0], "water", "a cell on the board still changes");
   }
 
   console.log(

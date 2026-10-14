@@ -337,10 +337,14 @@ export function rulesetChangeGround(
 }
 
 function changeCell(grid: TacticalGrid, cell: RulesetCombatCell, change: RulesetBoardEventChange): void {
-  if (change.terrain && grid.tiles[cell.y]) grid.tiles[cell.y]![cell.x] = change.terrain;
+  // Only a whole cell on the board: its numbers index the grid's rows.
+  const { x, y } = cell;
+  if (typeof x !== "number" || typeof y !== "number" || !Number.isInteger(x) || !Number.isInteger(y)) return;
+  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
+  if (change.terrain && grid.tiles[y]) grid.tiles[y]![x] = change.terrain;
   if (change.height !== undefined) {
     grid.elevation ??= Array.from({ length: grid.height }, () => Array(grid.width).fill(0));
-    if (grid.elevation[cell.y]) grid.elevation[cell.y]![cell.x] = change.height;
+    if (grid.elevation[y]) grid.elevation[y]![x] = change.height;
   }
   const here: TacticalGroundCell = { ...grid.ground?.[key(cell)] };
   if (change.light === "clear") delete here.light;

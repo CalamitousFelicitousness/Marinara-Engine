@@ -73,7 +73,9 @@ async function withGameChat(
     });
     expect(metadata.ok(), await metadata.text()).toBeTruthy();
     // Chat variables are their own metadata patch: the route takes macroVariables only on its own.
-    const variables = await request.patch(`/api/chats/${chat.id}/metadata`, { data: { macroVariables: { gold: "12" } } });
+    const variables = await request.patch(`/api/chats/${chat.id}/metadata`, {
+      data: { macroVariables: { gold: "12" } },
+    });
     expect(variables.ok(), await variables.text()).toBeTruthy();
     const opening = await request.post(`/api/chats/${chat.id}/messages`, {
       data: { role: "assistant", content: "A gate blocks the path." },
@@ -97,20 +99,24 @@ async function withGameChat(
       { id: chat.id, version },
     );
     await page.goto("/");
-    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText(
-      "A gate blocks the path.",
-    );
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText("A gate blocks the path.");
     await run({
       chatId: chat.id,
       prompts,
       storedTurns: async () =>
-        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as Array<{ role: string; content: string }>)
+        (
+          (await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as Array<{
+            role: string;
+            content: string;
+          }>
+        )
           .filter((message) => message.role === "user")
           .map((message) => message.content),
     });
   } finally {
-    for (const path of cleanup) await request.delete(path);
+    // The provider closes first, so a failed delete cannot leave it open.
     await new Promise<void>((resolve) => provider.close(() => resolve()));
+    for (const path of cleanup) await request.delete(path);
   }
 }
 

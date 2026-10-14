@@ -1265,7 +1265,11 @@ export function TacticalCombatUI({
 
       {/* The bar and the turn order, measured so the game's own floating controls (the map, the party,
           the menu) sit below them rather than over the order. */}
-      <div ref={chromeRef} className="z-20 flex shrink-0 flex-col">
+      <div
+        ref={chromeRef}
+        data-game-section="tactical-status"
+        className={cn(GAME_SECTION_CLASS, "z-20 flex shrink-0 flex-col")}
+      >
         {/* Top bar: round/phase + controls */}
         <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-black/40 px-3 py-2 backdrop-blur">
           <div className="flex items-center gap-2">
@@ -1681,6 +1685,7 @@ export function TacticalCombatUI({
           defaultController="manual"
           locked={!playerPhase || animating}
           onChange={(unitId, controller) => sendAction({ type: "control", unitId, controller })}
+          className={GAME_SECTION_CLASS}
         />
       )}
 
@@ -1704,7 +1709,11 @@ export function TacticalCombatUI({
             dragElastic={0}
             dragConstraints={rootRef}
             style={{ x: actionMenuX, y: actionMenuY }}
-            className="pointer-events-auto w-full max-w-md rounded-2xl border border-[var(--border)] bg-slate-900/85 p-3 shadow-2xl backdrop-blur-md sm:w-72"
+            data-game-section="tactical-actions"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "pointer-events-auto w-full max-w-md rounded-2xl border border-[var(--border)] bg-slate-900/85 p-3 shadow-2xl backdrop-blur-md sm:w-72",
+            )}
           >
             <div className="mb-2 flex cursor-grab items-center justify-between active:cursor-grabbing">
               <span className="flex min-w-0 items-center text-sm font-bold text-white">
@@ -1959,7 +1968,11 @@ export function TacticalCombatUI({
       {logOpen && (
         <div className="absolute inset-0 z-40 flex" onClick={() => setLogOpen(false)}>
           <div
-            className="ml-auto h-full w-full max-w-sm border-l border-[var(--border)] bg-slate-950/95 backdrop-blur"
+            data-game-section="tactical-log"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "ml-auto h-full w-full max-w-sm border-l border-[var(--border)] bg-slate-950/95 backdrop-blur",
+            )}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
@@ -1993,7 +2006,13 @@ export function TacticalCombatUI({
       {/* Flee confirm */}
       {fleeConfirm && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center">
+          <div
+            data-game-section="tactical-confirm"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center",
+            )}
+          >
             <Flag className="mx-auto mb-2 h-6 w-6 text-amber-300" />
             <p className="mb-4 text-sm text-white/90">
               {localizeUi("ui.game.tacticalcombatui.retreatFromThisBattleTheGmWillNarrateYour")}
@@ -2021,7 +2040,13 @@ export function TacticalCombatUI({
       {/* Restart confirm (patterned after the flee confirm) */}
       {restartConfirm && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center">
+          <div
+            data-game-section="tactical-confirm"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center",
+            )}
+          >
             <RotateCcw className="mx-auto mb-2 h-6 w-6 text-[var(--primary)]" />
             <p className="mb-4 text-sm text-white/90">
               {localizeUi("ui.game.tacticalcombatui.restartCurrentBattlefield")}
@@ -2405,7 +2430,11 @@ function TileInspect({
       dragMomentum={false}
       dragElastic={0}
       dragConstraints={constraintsRef}
-      className="pointer-events-auto absolute left-2 top-24 z-20 w-44 rounded-xl border border-[var(--border)] bg-slate-900/95 p-2.5 text-xs shadow-xl backdrop-blur sm:left-4 sm:top-16"
+      data-game-section="tactical-inspect"
+      className={cn(
+        GAME_SECTION_CLASS,
+        "pointer-events-auto absolute left-2 top-24 z-20 w-44 rounded-xl border border-[var(--border)] bg-slate-900/95 p-2.5 text-xs shadow-xl backdrop-blur sm:left-4 sm:top-16",
+      )}
     >
       <div className="mb-1 flex cursor-grab items-center justify-between active:cursor-grabbing">
         <span className="flex items-center gap-1 font-bold text-white">

@@ -28,6 +28,7 @@ import {
 } from "@marinara-engine/shared";
 import { Modal } from "../ui/Modal";
 import { rulesetItemStatsLine } from "./RulesetItemPicker";
+import { GAME_DIALOG_CLASS } from "../../lib/chat-widget-colors";
 import type { InventoryBag } from "./GameInventory";
 
 const inputClass =
@@ -258,6 +259,7 @@ export function StartingGearPicker({
       title={t("game.ruleset.startingGear.title")}
       width="max-w-2xl"
       mobileFullscreen
+      panelClassName={GAME_DIALOG_CLASS}
       {...(bags.length > 1 ? { initialFocusRef: firstRef } : {})}
       contentClassName="flex flex-col"
     >

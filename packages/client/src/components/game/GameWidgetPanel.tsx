@@ -14,6 +14,7 @@ import type { HudWidget } from "@marinara-engine/shared";
 import { useUpdateGameWidgets } from "../../hooks/use-game";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
+import { GAME_DIALOG_CLASS } from "../../lib/chat-widget-colors";
 import { useGameModeStore } from "../../stores/game-mode.store";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { Modal } from "../ui/Modal";
@@ -550,6 +551,7 @@ function WidgetEditorModal({
       onClose={isSaving ? () => {} : onClose}
       title={localizeUi("ui.game.mobilewidgetpanel.editValue1", { value1: widget.label })}
       width="max-w-lg"
+      panelClassName={GAME_DIALOG_CLASS}
     >
       <div className="space-y-4">
         <p className="text-sm text-[var(--muted-foreground)]">{description}</p>
@@ -905,7 +907,13 @@ export function GameWidgetSessionPrepModal({
 
   return (
     <>
-      <Modal open={open} onClose={interactionsLocked ? () => {} : onClose} title={copy.title} width="max-w-2xl">
+      <Modal
+        open={open}
+        onClose={interactionsLocked ? () => {} : onClose}
+        title={copy.title}
+        width="max-w-2xl"
+        panelClassName={GAME_DIALOG_CLASS}
+      >
         <div className="space-y-4">
           <p className="text-sm text-[var(--muted-foreground)]">{copy.description}</p>
 

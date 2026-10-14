@@ -575,6 +575,14 @@ Assistant. Upstream files patched: `chat.ts`, `ChatRoleplayPanels.tsx`, `en.json
 `e2e/author-notes.e2e.ts` (a fourth test, which reads the role back from a dry run). The lane
 pins role normalization and what Apply does to each role.
 
+Popped out of Chat Settings, the panel fills its window: the note box takes whatever height the
+window gains, and below its four starting rows the window scrolls instead. `Drawer` has a
+`fillWindow` prop, forwarded by `ChatSettingsSection`, that makes a popped-out drawer and its body
+a full-height flex column. Only the Author's Notes section sets it, so other popped-out sections
+keep their look. At narrow widths the depth and role controls wrap as label-and-field pairs.
+Upstream files patched: `Drawer.tsx`, `ChatSettingsSection.tsx`, `ChatSettingsDrawer.tsx`,
+`ChatRoleplayPanels.tsx`, and `e2e/author-notes.e2e.ts` (a fifth test, which resizes the window).
+
 ### Peek Prompt shows where each sampling parameter came from
 
 A sampling parameter passes through the preset (roleplay-style chats only), connection defaults,

@@ -772,35 +772,39 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
         placeholder={localizeUi("ui.chat.authornotespanel.eGKeepTheToneDarkAndSuspensefulThe")}
         rows={4}
         ariaLabel={localizeUi("ui.chat.authornotespanel.authorSNotes")}
-        wrapperClassName="mari-author-notes-field min-w-0"
+        wrapperClassName="mari-author-notes-field flex min-w-0 flex-1 flex-col"
         tokenCountFooter={
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
-              {localizeUi("ui.chat.authornotespanel.injectionDepth")}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                {localizeUi("ui.chat.authornotespanel.injectionDepth")}
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={depthStr}
+                onChange={(e) => patchDraft({ depthStr: e.target.value.replace(/[^0-9]/g, "") })}
+                onBlur={() => patchDraft({ depthStr: String(parseAuthorNoteDepth(depthStr)) })}
+                className="mari-chrome-field mari-chrome-field--compact w-14 !rounded-md px-2 py-0.5 text-center text-[0.625rem] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
             </span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={depthStr}
-              onChange={(e) => patchDraft({ depthStr: e.target.value.replace(/[^0-9]/g, "") })}
-              onBlur={() => patchDraft({ depthStr: String(parseAuthorNoteDepth(depthStr)) })}
-              className="mari-chrome-field mari-chrome-field--compact w-14 !rounded-md px-2 py-0.5 text-center text-[0.625rem] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-            <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
-              {localizeUi("ui.chat.authornotespanel.role")}
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                {localizeUi("ui.chat.authornotespanel.role")}
+              </span>
+              <select
+                value={role}
+                onChange={(e) => patchDraft({ role: normalizeAuthorNoteRole(e.target.value) })}
+                aria-label={localizeUi("ui.chat.authornotespanel.role")}
+                className="mari-chrome-field mari-chrome-field--compact !rounded-md px-1.5 py-0.5 text-[0.625rem]"
+              >
+                {AUTHOR_NOTE_ROLES.map((option) => (
+                  <option key={option} value={option}>
+                    {localizeUi(AUTHOR_NOTE_ROLE_LABEL_KEYS[option])}
+                  </option>
+                ))}
+              </select>
             </span>
-            <select
-              value={role}
-              onChange={(e) => patchDraft({ role: normalizeAuthorNoteRole(e.target.value) })}
-              aria-label={localizeUi("ui.chat.authornotespanel.role")}
-              className="mari-chrome-field mari-chrome-field--compact !rounded-md px-1.5 py-0.5 text-[0.625rem]"
-            >
-              {AUTHOR_NOTE_ROLES.map((option) => (
-                <option key={option} value={option}>
-                  {localizeUi(AUTHOR_NOTE_ROLE_LABEL_KEYS[option])}
-                </option>
-              ))}
-            </select>
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
               {dirty && (
                 <span className="text-[0.625rem] italic text-[var(--muted-foreground)]">
@@ -818,7 +822,7 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
             </div>
           </div>
         }
-        className="mari-chrome-field resize-none !rounded-md px-2.5 py-2 text-xs leading-relaxed"
+        className="mari-chrome-field flex-1 resize-none !rounded-md px-2.5 py-2 text-xs leading-relaxed"
       />
 
       <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">

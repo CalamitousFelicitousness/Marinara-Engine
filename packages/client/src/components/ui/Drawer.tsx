@@ -55,6 +55,8 @@ export interface DrawerProps {
   onPopOut?: (layout: WindowLayout) => void;
   /** Forces the detached look; a drawer inside a host follows its popped-out state by itself. */
   detached?: boolean;
+  /** Popped out, the body fills the window's height as a flex column; children with flex-1 take the spare room. */
+  fillWindow?: boolean;
   className?: string;
   style?: CSSProperties;
   /** Top spacing of the body; defaults to "pt-3". */
@@ -109,6 +111,7 @@ export function Drawer({
   onOpenChange,
   onPopOut,
   detached = false,
+  fillWindow = false,
   className,
   style,
   bodyClassName,
@@ -137,6 +140,7 @@ export function Drawer({
         icon={icon}
         banner={banner}
         help={help}
+        fillWindow={fillWindow}
         className={className}
         bodyClassName={bodyClassName}
         rootAttributes={rootAttributes}
@@ -356,6 +360,7 @@ interface DetachedDrawerWindowProps {
   icon?: ReactNode;
   banner?: ReactNode;
   help?: string;
+  fillWindow: boolean;
   className?: string;
   bodyClassName?: string;
   rootAttributes?: Record<`data-${string}`, string | undefined>;
@@ -387,6 +392,7 @@ function DetachedDrawerWindow({
   icon,
   banner,
   help,
+  fillWindow,
   className,
   bodyClassName,
   rootAttributes,
@@ -478,9 +484,11 @@ function DetachedDrawerWindow({
                 data-drawer={drawerId}
                 data-detached="true"
                 {...rootAttributes}
-                className={cn("mari-drawer", className)}
+                className={cn("mari-drawer", fillWindow && "flex flex-1 flex-col", className)}
               >
-                <div className={cn("mari-drawer__body", bodyClassName ?? "pt-3")}>{children}</div>
+                <div className={cn("mari-drawer__body", fillWindow && "flex flex-1 flex-col", bodyClassName ?? "pt-3")}>
+                  {children}
+                </div>
               </div>
             </div>
           </FloatingWindow>,

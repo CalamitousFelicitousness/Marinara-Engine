@@ -7711,6 +7711,7 @@ export function ChatSettingsDrawer({
               label={localizeUi("chat.settings.authorNotes")}
               icon={<PenLine size="0.875rem" />}
               help={localizeUi("chat.settings.authorNotesHelp")}
+              fillWindow
             >
               {chatTools.authorNotes}
             </Section>

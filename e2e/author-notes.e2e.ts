@@ -367,3 +367,61 @@ test("Author's Notes sends each note with the role chosen for it", async ({ page
     await request.delete(`/api/connections/${connection.id}`);
   }
 });
+
+test("Author's Notes grows and shrinks with its popped-out window", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Phones open a popped-out section as a sheet.");
+  const response = await request.post("/api/chats", {
+    data: { name: "Notes window", mode: "roleplay", characterIds: [] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chatId = ((await response.json()) as { id: string }).id;
+  const drag = async (handle: Locator, dx: number, dy: number) => {
+    const rect = (await handle.boundingBox())!;
+    const from = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + dx, from.y + dy, { steps: 8 });
+    await page.mouse.up();
+  };
+  const height = async (locator: Locator) => (await locator.boundingBox())!.height;
+  try {
+    await prepare(page, chatId);
+    const drawer = await openChatSettingsTool(page, "author-notes");
+    await drawer.locator('[data-drawer-control="pop-out"]').click();
+    const popped = page.locator('.mari-window[data-window="drawer:chat-settings:roleplay-author-notes"]');
+    await expect(popped).toBeVisible();
+    await popped.evaluate((element) => Promise.all(element.getAnimations().map((a) => a.finished.catch(() => {}))));
+    const notes = popped.getByRole("textbox", { name: "Author's Notes", exact: true });
+    const corner = popped.locator('.mari-window__resize-handle[data-edge="se"]');
+
+    // Room below the window to grow into.
+    const header = popped.locator(".mari-window__header");
+    await drag(header, 0, 60 - (await header.boundingBox())!.y);
+    const minimum = await height(notes);
+
+    // The window opens with its content overflowing; once that is uncovered, the note box takes the rest.
+    await drag(corner, 0, 300);
+    await expect.poll(() => height(notes)).toBeGreaterThan(minimum + 80);
+    const grown = { window: await height(popped), notes: await height(notes) };
+
+    await drag(corner, 0, -50);
+    const shrunkWindow = await height(popped);
+    expect(grown.window - shrunkWindow).toBeGreaterThan(30);
+    await expect.poll(async () => grown.notes - (await height(notes))).toBeCloseTo(grown.window - shrunkWindow, 0);
+
+    // Past its starting rows the note box stops shrinking and the window scrolls instead.
+    await drag(corner, 0, -600);
+    await expect.poll(() => height(notes)).toBeCloseTo(minimum, 0);
+
+    // At its narrowest the depth, role and Save controls wrap inside the window.
+    await drag(corner, -600, 400);
+    const scroller = popped.locator(".mari-window__body > div").first();
+    await expect.poll(() => scroller.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+    const save = (await popped.getByRole("button", { name: "Save", exact: true }).boundingBox())!;
+    const narrow = (await popped.boundingBox())!;
+    expect(save.x + save.width).toBeLessThanOrEqual(narrow.x + narrow.width);
+    await page.screenshot({ path: testInfo.outputPath("notes-window.png"), animations: "disabled" });
+  } finally {
+    await request.delete(`/api/chats/${chatId}`);
+  }
+});

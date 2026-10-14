@@ -271,62 +271,58 @@ export async function generateVrmModel(
   request: AvatarVrmModelRequest,
   options: VrmModelOptions = {},
 ): Promise<AvatarVrmModelDraft> {
-  // The job's signal stops on a closed stream (options.signal) and on Cancel (POST /cancel, kind "vrm").
-  return withAvatarGenerationJob(
-    request.owner,
-    "vrm",
-    async (signal) => {
-      const debug = avatarGenerationDebug(request.debugMode);
-      let creditsUsed = 0;
-      const report = (step: AvatarVrmModelStep, status: "running" | "done", progress: number | null, credits = 0) => {
-        creditsUsed += Number.isFinite(credits) ? credits : 0;
-        options.onProgress?.({ step, status, progress, creditsUsed });
-      };
-      try {
-        const [conn, owner] = await Promise.all([
-          tripoConnection(db, request.connectionId),
-          readAvatarOwnerInfo(db, request.owner),
-        ]);
-        const image = await tripoSourceImage(request.owner.ownerId, request.sourceLabel);
-        const client = createTripoClient({
-          apiKey: conn.apiKey,
-          signal,
-          debug,
-          fetch: options.fetch,
-          wait: options.wait,
-        });
-        // Checked first, so a model the account can't pay for doesn't stop halfway with credits spent.
-        const { balance } = await client.balance();
-        if (balance < TRIPO_VRM_MODEL_CREDITS) {
-          throw new AvatarGenerationError(
-            402,
-            `This model needs about ${TRIPO_VRM_MODEL_CREDITS} Tripo credits and your account has ${balance}. Top up at Tripo, then try again.`,
-          );
-        }
-        const rigged = await makeTripoRiggedModel(client, image, report);
-
-        report("convert", "running", null);
-        const converted = convertRiggedGlbToVrm(rigged.glb, { name: owner.name });
-        const shrunk = await shrinkGlbTextures(converted.vrm, getSharp);
-        logDebugReport(debug, converted.report, shrunk);
-        const fileName = vrmFileName(owner.name);
-        const input = { owner: request.owner, filename: fileName, bytes: new Uint8Array(shrunk.glb) };
-        const imported = buildVrmImport(await vrmImporter.validate(input), input, null);
-        report("convert", "done", 100);
-        return {
-          vrm: shrunk.glb.toString("base64"),
-          fileName,
-          preview: await previewDataUrl(rigged.preview),
-          tpose: await previewDataUrl(rigged.tpose),
-          creditsUsed,
-          warnings: [...converted.report.warnings, ...imported.warnings],
-        };
-      } catch (error) {
-        throw asGenerationError(error);
+  const job = async (signal: AbortSignal): Promise<AvatarVrmModelDraft> => {
+    const debug = avatarGenerationDebug(request.debugMode);
+    let creditsUsed = 0;
+    const report = (step: AvatarVrmModelStep, status: "running" | "done", progress: number | null, credits = 0) => {
+      creditsUsed += Number.isFinite(credits) ? credits : 0;
+      options.onProgress?.({ step, status, progress, creditsUsed });
+    };
+    try {
+      const [conn, owner] = await Promise.all([
+        tripoConnection(db, request.connectionId),
+        readAvatarOwnerInfo(db, request.owner),
+      ]);
+      const image = await tripoSourceImage(request.owner.ownerId, request.sourceLabel);
+      const client = createTripoClient({
+        apiKey: conn.apiKey,
+        signal,
+        debug,
+        fetch: options.fetch,
+        wait: options.wait,
+      });
+      // Checked first, so a model the account can't pay for doesn't stop halfway with credits spent.
+      const { balance } = await client.balance();
+      if (balance < TRIPO_VRM_MODEL_CREDITS) {
+        throw new AvatarGenerationError(
+          402,
+          `This model needs about ${TRIPO_VRM_MODEL_CREDITS} Tripo credits and your account has ${balance}. Top up at Tripo, then try again.`,
+        );
       }
-    },
-    options.signal,
-  );
+      const rigged = await makeTripoRiggedModel(client, image, report);
+
+      report("convert", "running", null);
+      const converted = convertRiggedGlbToVrm(rigged.glb, { name: owner.name });
+      const shrunk = await shrinkGlbTextures(converted.vrm, getSharp);
+      logDebugReport(debug, converted.report, shrunk);
+      const fileName = vrmFileName(owner.name);
+      const input = { owner: request.owner, filename: fileName, bytes: new Uint8Array(shrunk.glb) };
+      const imported = buildVrmImport(await vrmImporter.validate(input), input, null);
+      report("convert", "done", 100);
+      return {
+        vrm: shrunk.glb.toString("base64"),
+        fileName,
+        preview: await previewDataUrl(rigged.preview),
+        tpose: await previewDataUrl(rigged.tpose),
+        creditsUsed,
+        warnings: [...converted.report.warnings, ...imported.warnings],
+      };
+    } catch (error) {
+      throw asGenerationError(error);
+    }
+  };
+  // The job's signal stops on a closed stream (options.signal) and on Cancel (POST /cancel, kind "vrm").
+  return withAvatarGenerationJob(request.owner, "vrm", job, options.signal);
 }
 
 function logDebugReport(

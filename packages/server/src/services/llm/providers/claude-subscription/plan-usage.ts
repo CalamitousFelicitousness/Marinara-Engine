@@ -19,6 +19,7 @@
 import type { PlanUsage, PlanUsageWindow, PlanUsageWindowId } from "@marinara-engine/shared";
 import { logger } from "../../../../lib/logger.js";
 import { loadSdk } from "../claude-subscription.provider.js";
+import { claudeCodeExecutableOption } from "./installed-cli.js";
 
 /** Usage reads are informational, so they fail fast rather than hold a handler open. */
 const CLAUDE_PLAN_USAGE_TIMEOUT_MS = 15_000;
@@ -78,6 +79,8 @@ async function readClaudePlanUsage(): Promise<PlanUsage> {
         skills: [],
         settingSources: [],
         maxTurns: 1,
+        // The same Claude Code the chat runs, so the login and version match.
+        ...(await claudeCodeExecutableOption()),
         // No ANTHROPIC_API_KEY override: the plan windows belong to the login.
         env: { ...process.env, ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
       },

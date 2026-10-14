@@ -50,6 +50,9 @@ export interface GameInventoryStack {
   /** The charges an item holds, as a ruleset fight left them. Kept on a stack of one item only, as a
    *  loaded count is, and an item without one holds all it can. */
   charges?: number;
+  /** Its switch is on (Capability API 1.170): a flame tongue's flames. Kept on a stack of one item
+   *  only, as charges are; off without it. */
+  on?: true;
   /** A fake (Capability API 1.79): the ruleset item this truly is, while `item` and `name` are what it
    *  passes for. Set only by a dishonest seller's sale, never by an op a client sends. Only the Game
    *  Master's view, curses, use, sale and a reveal read it; everything the player sees reads `item`. */
@@ -118,6 +121,8 @@ export interface GameInventoryRulesetItem {
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
    *  one spent rolls a d`die` that breaks it at `atMost` or under. */
   charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
+  /** It has a switch (Capability API 1.170): what turning it on does, in the ruleset's words. */
+  toggle?: { label: string };
 }
 
 /** An item the Game Master proposes, as its inventory tag gives it: every part optional, each in the
@@ -339,9 +344,10 @@ function makeStack(stack: {
   bound?: boolean;
   loaded?: number;
   charges?: number;
+  on?: boolean;
   truly?: string;
 }): GameInventoryStack {
-  const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, truly } = stack;
+  const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, on, truly } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
     id,
@@ -354,6 +360,7 @@ function makeStack(stack: {
     ...(bound ? { bound: true as const } : {}),
     ...(loaded !== undefined && quantity === 1 ? { loaded } : {}),
     ...(charges !== undefined && quantity === 1 ? { charges } : {}),
+    ...(on && quantity === 1 ? { on: true as const } : {}),
     ...(truly && item && truly !== item ? { truly } : {}),
   };
 }
@@ -443,6 +450,7 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
           typeof source.charges === "number" && Number.isInteger(source.charges) && source.charges >= 0
             ? Math.min(GAME_INVENTORY_MAX_QUANTITY, source.charges)
             : undefined,
+        on: source.on === true && quantity === 1,
         quantity,
         stored,
         holder: cleanGameInventoryHolder(source.holder),
@@ -518,7 +526,7 @@ export function revealGameInventoryFake(
 ): GameInventoryStack[] {
   return stacks.map((stack) => {
     if (stack.id !== id || !stack.truly) return stack;
-    const { truly, loaded: _loaded, charges: _charges, ...rest } = stack;
+    const { truly, loaded: _loaded, charges: _charges, on: _on, ...rest } = stack;
     return makeStack({ ...rest, item: truly, name: rules?.itemOf(truly)?.name ?? rest.name });
   });
 }
@@ -726,7 +734,8 @@ function addLike(
   const next = stacks.map((stack) => {
     if (gameInventoryStackKind(stack) !== kind || !inBag(stack, bag)) return stack;
     first ??= stack;
-    if (gameInventoryStackWorn(stack)) return stack;
+    // A worn stack, or one switched on (one item only), takes nothing more.
+    if (gameInventoryStackWorn(stack) || stack.on) return stack;
     const topUp = Math.min(Math.max(0, limit - stack.quantity), left);
     if (topUp < 1) return stack;
     left -= topUp;
@@ -1342,14 +1351,17 @@ export function setGameInventoryStackQuantity(
   if (next === stack.quantity) return stacks;
   if (next < stack.quantity && keptByCurse(stack, rules)) return stacks;
   if (next === 0) return stacks.filter((_, i) => i !== index);
-  const worn = gameInventoryStackWorn(stack);
-  const limit = worn ? 1 : stackLimit(gameInventoryItemId(stack), rules);
+  // A worn stack and one switched on stay one item; what is added beside them is neither, and holds
+  // its own loads and charges.
+  const single = gameInventoryStackWorn(stack) || stack.on === true;
+  const limit = single ? 1 : stackLimit(gameInventoryItemId(stack), rules);
   if (next <= limit) return stacks.map((each, i) => (i === index ? { ...each, quantity: next } : each));
-  const beside = worn ? stackLimit(gameInventoryItemId(stack), rules) : limit;
+  const beside = single ? stackLimit(gameInventoryItemId(stack), rules) : limit;
   if (Math.ceil((next - limit) / beside) > GAME_INVENTORY_MAX_NEW_STACKS) return stacks;
+  const { on: _on, loaded: _loaded, charges: _charges, ...off } = unworn(stack);
   const rest: GameInventoryStack[] = [];
   for (let left = next - limit; left > 0; left -= beside) {
-    rest.push({ ...unworn(stack), id: newId(), quantity: Math.min(left, beside) });
+    rest.push({ ...off, id: newId(), quantity: Math.min(left, beside) });
   }
   return [...stacks.slice(0, index), { ...stack, quantity: limit }, ...rest, ...stacks.slice(index + 1)];
 }
@@ -1422,7 +1434,7 @@ export function mergeGameInventoryStacks(
   return stacks.flatMap((stack) => {
     if (stack.id === intoId) {
       // Several now, and a loaded count or charges are one item's: each of them reads as full.
-      const { loaded: _loaded, charges: _charges, ...rest } = stack;
+      const { loaded: _loaded, charges: _charges, on: _on, ...rest } = stack;
       return [{ ...rest, quantity: stack.quantity + moved }];
     }
     if (stack.id !== fromId) return [stack];

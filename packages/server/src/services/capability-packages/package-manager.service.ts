@@ -32,6 +32,7 @@ import {
   type CapabilityReleaseNotes,
   type InstalledCapabilityPackage,
   rulesetFakeIssue,
+  parseRulesetDefinition,
   RULESET_DERIVED_MAX_BEFORE_179,
   RULESET_DERIVED_MAX_BEFORE_183,
   RULESET_DERIVED_MAX_BEFORE_1106,
@@ -1203,6 +1204,515 @@ function entriesCarryDamageReroll(entries: unknown): boolean {
   );
 }
 
+/** Harm that names what it carries past a resistance's `except` (1.101): `qualities` on an entry's
+ *  mechanics or on a creature action's damage, a new key on each strict object. */
+function entriesCarryBlowQualities(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      if (plainRecord(record?.mechanics)?.qualities !== undefined) return true;
+      const actions = plainRecord(record?.creature)?.actions;
+      return (
+        Array.isArray(actions) &&
+        actions.some((action) => plainRecord(plainRecord(action)?.damage)?.qualities !== undefined)
+      );
+    })
+  );
+}
+
+/** A creature action that deals another amount while something holds, or a creature that carries a
+ *  shield (1.102): `alternatives` on the strict damage, `shield` on the strict creature. */
+function entriesCarryDamageAlternatives(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const creature = plainRecord(plainRecord(entry)?.creature);
+      if (creature?.shield !== undefined) return true;
+      const actions = creature?.actions;
+      return (
+        Array.isArray(actions) &&
+        actions.some((action) => plainRecord(plainRecord(action)?.damage)?.alternatives !== undefined)
+      );
+    })
+  );
+}
+
+/** A creature's size, or a condition that names what escaping it is rolled against (1.103): `size` on
+ *  the strict creature, `escapeDc` on the strict applies of a creature action, an entry's mechanics
+ *  or an item's use. */
+function entriesCarrySizes(entries: unknown): boolean {
+  const escapes = (applies: unknown) =>
+    Array.isArray(applies) && applies.some((entry) => plainRecord(entry)?.escapeDc !== undefined);
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const creature = plainRecord(record?.creature);
+      if (creature?.size !== undefined) return true;
+      if (escapes(plainRecord(record?.mechanics)?.applies)) return true;
+      if (escapes(plainRecord(plainRecord(record?.item)?.use)?.applies)) return true;
+      const actions = creature?.actions;
+      return Array.isArray(actions) && actions.some((action) => escapes(plainRecord(action)?.applies));
+    })
+  );
+}
+
+/** A creature that moves other ways than walking (1.113): `speeds` and `hover` on the strict creature. */
+function entriesCarryMoveModes(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const creature = plainRecord(plainRecord(entry)?.creature);
+      return creature?.speeds !== undefined || creature?.hover !== undefined;
+    })
+  );
+}
+
+/** An attack that leaves something to strike on later turns (1.122). */
+function entriesCarrySummons(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) && entries.some((entry) => plainRecord(plainRecord(entry)?.mechanics)?.summons !== undefined)
+  );
+}
+
+/** A creature that casts catalog spells without slots (1.123). */
+function entriesCarryCreatureSpellcasting(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(entry)?.creature)?.spellcasting !== undefined)
+  );
+}
+
+/** A line with a width (1.128), on an entry or a creature action. */
+function entriesCarryLineWidth(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const actions = plainRecord(record?.creature)?.actions;
+      return (
+        plainRecord(plainRecord(record?.mechanics)?.area)?.width !== undefined ||
+        (Array.isArray(actions) &&
+          actions.some((action) => plainRecord(plainRecord(action)?.area)?.width !== undefined))
+      );
+    })
+  );
+}
+
+/** An effect whose target needs a sense (1.127), on an entry or a creature action. */
+function entriesCarrySenseNeeds(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const actions = plainRecord(record?.creature)?.actions;
+      return (
+        plainRecord(record?.mechanics)?.needs !== undefined ||
+        (Array.isArray(actions) && actions.some((action) => plainRecord(action)?.needs !== undefined))
+      );
+    })
+  );
+}
+
+/** A rider that needs an adjacent ally without disadvantage (1.126), on an entry or a creature. */
+function entriesCarryRiderNoDisadvantage(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const riders = plainRecord(record?.creature)?.riders;
+      return [
+        plainRecord(plainRecord(record?.mechanics)?.rider),
+        ...(Array.isArray(riders) ? riders.map(plainRecord) : []),
+      ].some((rider) => Array.isArray(rider?.when) && rider.when.includes("ally-adjacent-no-disadvantage"));
+    })
+  );
+}
+
+/** A creature action that heals or reaches its own side (1.121): new keys on the strict action. */
+function entriesCarryCreatureHealing(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const actions = plainRecord(plainRecord(entry)?.creature)?.actions;
+      return (
+        Array.isArray(actions) &&
+        actions.some((action) => {
+          const record = plainRecord(action);
+          return record?.heal !== undefined || record?.targets !== undefined;
+        })
+      );
+    })
+  );
+}
+
+/** Anything that halves the health maximum (1.115): a new target of the strict modifier, wherever a
+ *  modifier sits (a level, a condition, an item's effect). */
+function carriesHealthMax(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealthMax(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (record.to === "health-max") return true;
+  return Object.values(record).some((one) => carriesHealthMax(one, depth + 1));
+}
+
+/** A reaction that stops only so high, or the check above it (1.116): new keys on the strict moment,
+ *  wherever a reaction sits (a catalog entry's mechanics, a creature's action). */
+function carriesCounterReach(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCounterReach(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  if (reaction && (reaction.upTo !== undefined || reaction.above !== undefined)) return true;
+  return Object.values(record).some((one) => carriesCounterReach(one, depth + 1));
+}
+
+/** A reaction that answers named entries, or is also taken at more moments (1.117): new keys on the
+ *  strict moment and its `against`. */
+function carriesNamedAnswers(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesNamedAnswers(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  if (reaction && (reaction.also !== undefined || plainRecord(reaction.against)?.entries !== undefined)) return true;
+  return Object.values(record).some((one) => carriesNamedAnswers(one, depth + 1));
+}
+
+/** Reactions for others, at turn start, on a save, or for several fallers (1.131). */
+function carriesReactionMoments(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesReactionMoments(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (record.duration === "this-action") return true;
+  const reaction = plainRecord(record.reaction);
+  const moments = [reaction, ...(Array.isArray(reaction?.also) ? reaction.also.map(plainRecord) : [])];
+  if (
+    moments.some(
+      (moment) =>
+        moment &&
+        ((moment.for !== undefined && moment.for !== "self") ||
+          moment.at === "target" ||
+          moment.on === "turn-start" ||
+          moment.cancelSave !== undefined ||
+          plainRecord(moment.against)?.actions !== undefined ||
+          (moment.on === "falls" && typeof record.targetCount === "number" && record.targetCount > 1)),
+    )
+  )
+    return true;
+  return Object.values(record).some((one) => carriesReactionMoments(one, depth + 1));
+}
+
+/** Mechanics offered only while the holder's sheet allows (1.166). */
+function carriesUsableWhen(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUsableWhen(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (plainRecord(record.mechanics)?.usableWhen !== undefined) return true;
+  return Object.values(record).some((one) => carriesUsableWhen(one, depth + 1));
+}
+
+/** A reaction that catches a fall, at its first moment or one it is also taken at (1.124). */
+function carriesFalls(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFalls(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  if (reaction?.on === "falls") return true;
+  if (Array.isArray(reaction?.also) && reaction.also.some((one) => plainRecord(one)?.on === "falls")) return true;
+  return Object.values(record).some((one) => carriesFalls(one, depth + 1));
+}
+
+/** A reaction narrowed to one kind of blow, or to a source its holder sees (1.118): new keys on the
+ *  strict moment, at its first moment or one it is `also` taken at. */
+function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBlowNarrowing(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  const reaction = plainRecord(record.reaction);
+  const narrowed = (moment: Record<string, unknown> | undefined) =>
+    !!moment && (moment.blow !== undefined || moment.seesSource !== undefined);
+  if (narrowed(reaction)) return true;
+  if (Array.isArray(reaction?.also) && reaction.also.some((one) => narrowed(plainRecord(one)))) return true;
+  return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
+}
+
+/** A catalog entry whose area stays, in catalog files too (1.172). */
+function carriesZones(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZones(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.mechanics)?.zone !== undefined) return true;
+  return Object.values(record).some((one) => carriesZones(one, depth + 1));
+}
+
+/** A box or wall area, or a zone that blocks or has a side, in catalog files too (1.177). */
+function carriesWalls(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWalls(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    const area = plainRecord(mechanics.area);
+    if (area && (area.shape === "box" || area.shape === "wall" || area.ring !== undefined)) return true;
+    const zone = plainRecord(mechanics.zone);
+    if (zone && (zone.blocks !== undefined || zone.side !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesWalls(one, depth + 1));
+}
+
+/** Components, and zones that work on whoever stands in them (1.179): the combat block's
+ *  components, what an entry, a creature's action or a condition needs or stops, and a zone's
+ *  `inside`, `forbids` or `wards`, in catalog files too. */
+function carriesZoneInside(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneInside(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.combat)?.components !== undefined) return true;
+  if (record.condition !== undefined && record.forbids !== undefined) return true;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    const zone = plainRecord(mechanics.zone);
+    if (zone && (zone.inside !== undefined || zone.forbids !== undefined || zone.wards !== undefined)) return true;
+    if (mechanics.components !== undefined && (mechanics.budget !== undefined || mechanics.kind !== undefined)) {
+      return true;
+    }
+  }
+  return Object.values(record).some((one) => carriesZoneInside(one, depth + 1));
+}
+
+/** What ends a condition when its holder attacks or casts, senses a condition or an item gives, a
+ *  condition that gives away the unseen, and an item's use that casts (1.180), in catalog files too. */
+function carriesSightExtras(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSightExtras(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.endsWhenHolder !== undefined) return true;
+  if (record.condition !== undefined && (record.senses !== undefined || record.cancelsUnseen !== undefined)) {
+    return true;
+  }
+  for (const effect of [plainRecord(record.worn), plainRecord(record.carried), plainRecord(record.otherwise)]) {
+    if (effect?.senses !== undefined) return true;
+  }
+  if (plainRecord(record.use)?.casts !== undefined) return true;
+  return Object.values(record).some((one) => carriesSightExtras(one, depth + 1));
+}
+
+/** Wards by base level or raised by their cast's steps, saves that say what else they are against or
+ *  who passes them outright, a creature's spell components said in place of the entries', and an
+ *  item's utility use (1.181), in catalog files too. */
+function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWardsAndSaves(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    const wards = plainRecord(plainRecord(mechanics.zone)?.wards);
+    if (wards && (wards.by !== undefined || wards.maxLevelPerCostStep !== undefined)) return true;
+    const save = plainRecord(mechanics.save);
+    if (save && (save.against !== undefined || save.succeeds !== undefined)) return true;
+  }
+  if (plainRecord(record.use)?.kind === "utility") return true;
+  const casting = plainRecord(record.spellcasting);
+  if (casting) {
+    if (casting.components !== undefined) return true;
+    const spells = Array.isArray(casting.spells) ? casting.spells : [];
+    if (spells.some((spell) => plainRecord(spell)?.components !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesWardsAndSaves(one, depth + 1));
+}
+
+/** Senses and seeing (1.178): the combat block's senses or sight, a condition that hides, a zone
+ *  that obscures, an area set down several times, "a creature you can see", or a creature's senses,
+ *  in catalog files too. */
+function carriesSight(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSight(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const combat = plainRecord(record.combat);
+  if (combat && (combat.senses !== undefined || combat.sight !== undefined)) return true;
+  if (record.condition !== undefined && record.unseen !== undefined) return true;
+  // A creature's senses are a record of ranges, where the combat block's are a list.
+  if (record.tier !== undefined && plainRecord(record.senses)) return true;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use), record]) {
+    if (!mechanics) continue;
+    if (plainRecord(mechanics.area)?.copies !== undefined) return true;
+    if (plainRecord(mechanics.zone)?.obscures !== undefined) return true;
+    if (mechanics.seen !== undefined && (mechanics.budget !== undefined || mechanics.kind !== undefined)) return true;
+  }
+  return Object.values(record).some((one) => carriesSight(one, depth + 1));
+}
+
+/** A catalog entry or item use that ends conditions, steadies the dying or brings back the dead, in
+ *  catalog files too (1.176). */
+function carriesCures(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCures(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use)]) {
+    if (!mechanics) continue;
+    if (mechanics.ends !== undefined || mechanics.stabilizes !== undefined || mechanics.revives !== undefined) {
+      return true;
+    }
+  }
+  return Object.values(record).some((one) => carriesCures(one, depth + 1));
+}
+
+/** A zone moved to ram or hurting whom it holds, ground that costs several steps or halves speed, or
+ *  a hold broken only by its escape DC and checks, in catalog files too (1.175). */
+function carriesZoneGround(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneGround(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const zone = plainRecord(plainRecord(record.mechanics)?.zone) ?? plainRecord(plainRecord(record.use)?.zone);
+  const terrain = plainRecord(zone?.terrain);
+  if (plainRecord(zone?.move)?.ram !== undefined || zone?.whileHeld !== undefined) return true;
+  if (record.escapeChecks !== undefined || plainRecord(record.from)?.escapable !== undefined) return true;
+  if (terrain && (terrain.costTimes !== undefined || terrain.halvesSpeed !== undefined)) return true;
+  return Object.values(record).some((one) => carriesZoneGround(one, depth + 1));
+}
+
+/** An escape against the applier's save, a zone that breaks concentration or ends at a damage cap,
+ *  or an item use that concentrates or leaves a zone, in catalog files too (1.174). */
+function carriesZoneRules(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneRules(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.escapeDc === "save") return true;
+  const zone = plainRecord(plainRecord(record.mechanics)?.zone);
+  if (zone && (zone.breaksConcentration !== undefined || zone.damageCap !== undefined)) return true;
+  const use = plainRecord(record.use);
+  if (use && typeof record.category === "string" && (use.zone !== undefined || use.concentration !== undefined)) {
+    return true;
+  }
+  return Object.values(record).some((one) => carriesZoneRules(one, depth + 1));
+}
+
+/** A lasting area that moves, drifts, or makes its ground hard going, in catalog files too (1.173). */
+function carriesMovingZones(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMovingZones(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const zone = plainRecord(plainRecord(record.mechanics)?.zone);
+  if (zone && (zone.move !== undefined || zone.drift !== undefined || zone.terrain !== undefined)) return true;
+  return Object.values(record).some((one) => carriesMovingZones(one, depth + 1));
+}
+
+/** A live pool that pays for another group, or a catalog entry whose targets grow with its cost,
+ *  in catalog files too (1.171). */
+function carriesCostLadder(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCostLadder(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.mechanics)?.targetsPerCostStep !== undefined) return true;
+  if (Array.isArray(record.pays) && record.max !== undefined) return true;
+  return Object.values(record).some((one) => carriesCostLadder(one, depth + 1));
+}
+
+/** An item's switch, or a weapon clause dealt while it is on, in catalog files too (1.170). */
+function carriesItemToggles(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemToggles(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.toggle) && typeof record.category === "string") return true;
+  const plus = plainRecord(record.attack)?.plus;
+  if (Array.isArray(plus) && plus.some((one) => plainRecord(one)?.when === "toggled")) return true;
+  return Object.values(record).some((one) => carriesItemToggles(one, depth + 1));
+}
+
+/** A weapon item's extra damage, or a save on what its hit puts on, in catalog files too (1.169). */
+function carriesItemAttackExtras(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemAttackExtras(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const attack = plainRecord(record.attack);
+  if (attack?.plus !== undefined) return true;
+  if (
+    Array.isArray(attack?.onHit) &&
+    attack.onHit.some((one) => plainRecord(one)?.save !== undefined || plainRecord(one)?.saveEnds !== undefined)
+  )
+    return true;
+  return Object.values(record).some((one) => carriesItemAttackExtras(one, depth + 1));
+}
+
+/** Creature types, a creature's type or tags, or a target test, in catalog files too (1.168). */
+function carriesCreatureTypes(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureTypes(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.creatureTypes !== undefined || record.targetIs !== undefined || record.targetTypes !== undefined)
+    return true;
+  // A creature is the record with actions: its `type` is what it is, never a damage type.
+  if (Array.isArray(record.actions) && (record.type !== undefined || record.tags !== undefined)) return true;
+  return Object.values(record).some((one) => carriesCreatureTypes(one, depth + 1));
+}
+
+/** A condition an entry applies only while its applier's sheet allows, in catalog files too (1.167). */
+function carriesAppliesWhen(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAppliesWhen(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.applies) && record.applies.some((one) => plainRecord(one)?.when !== undefined)) return true;
+  return Object.values(record).some((one) => carriesAppliesWhen(one, depth + 1));
+}
+
+/** Save modifiers narrowed by what is saved against, including item effects in catalog files (1.134). */
+function carriesSaveAgainst(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSaveAgainst(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.modifiers) && record.modifiers.some((one) => plainRecord(one)?.against !== undefined))
+    return true;
+  return Object.values(record).some((one) => carriesSaveAgainst(one, depth + 1));
+}
+
+/** A save rolled only when its holder takes damage (1.129), wherever an `applies` is written. */
+function carriesDamageOnlySaves(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDamageOnlySaves(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (plainRecord(record.saveEnds)?.at === "damaged") return true;
+  return Object.values(record).some((one) => carriesDamageOnlySaves(one, depth + 1));
+}
+
+/** A condition's duration counted on its source's turns (1.119): `of`, a new key on the strict
+ *  duration, wherever an `applies` is written. */
+function carriesSourceClock(value: unknown, depth = 0): boolean {
+  if (depth > 40 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSourceClock(one, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (plainRecord(record.duration)?.of !== undefined) return true;
+  return Object.values(record).some((one) => carriesSourceClock(one, depth + 1));
+}
+
+/** Creatures immune to a track rather than a condition (1.115): 5e's immunity to exhaustion. */
+function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): boolean {
+  return (
+    tracks.size > 0 &&
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const immunities = plainRecord(plainRecord(entry)?.creature)?.conditionImmunities;
+      return Array.isArray(immunities) && immunities.some((one) => typeof one === "string" && tracks.has(one));
+    })
+  );
+}
+
 /** Entries a builder step offers only while the sheet says so (1.99): `offeredWhen`, a new key on the
  *  strict entry. */
 function entriesCarryOfferedWhen(entries: unknown): boolean {
@@ -1475,9 +1985,40 @@ export function getCapabilityPackageInstallIssue(
   let carriesDamageSheetBonus = false;
   let carriesDamageReroll = false;
   let carriesOfferedWhen = false;
+  let carriesBlowQualities = false;
+  let carriesDamageAlternatives = false;
+  let carriesSizes = false;
+  let carriesMoveModes = false;
   let carriesHeldChoices = false;
   let carriesExclusive = false;
   let carriesSheetBonus = false;
+  let carriesExhaustion = false;
+  let carriesCounterReachKeys = false;
+  let carriesNamedAnswerKeys = false;
+  let carriesBlowNarrowingKeys = false;
+  let carriesFallMoments = false;
+  let carriesReactionMomentKeys = false;
+  let carriesUsableWhenKeys = false;
+  let carriesSourceClockKeys = false;
+  let carriesCreatureHealing = false;
+  let carriesSummons = false;
+  let carriesCreatureSpellcasting = false;
+  let carriesRiderNoDisadvantage = false;
+  let carriesSenseNeeds = false;
+  let carriesLineWidth = false;
+  let carriesDamageOnlySaveKeys = false;
+  // The tracks a level reads and no condition shares a name with: an immunity naming one is new.
+  const conditionIds = new Set(
+    (Array.isArray(plainRecord(plainRecord(plainRecord(ruleset?.sheet)?.live))?.conditions)
+      ? (plainRecord(plainRecord(ruleset?.sheet)?.live)!.conditions as unknown[])
+      : []
+    ).map((condition) => plainRecord(condition)?.id),
+  );
+  const leveledTracks = new Set(
+    (Array.isArray(plainRecord(ruleset?.combat)?.levels) ? (plainRecord(ruleset?.combat)!.levels as unknown[]) : [])
+      .map((level) => plainRecord(level)?.track)
+      .filter((track): track is string => typeof track === "string" && !conditionIds.has(track)),
+  );
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1579,6 +2120,27 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageSheetBonus(header.entries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(header.entries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(header.entries)) carriesOfferedWhen = true;
+      if (entriesCarryBlowQualities(header.entries)) carriesBlowQualities = true;
+      if (entriesCarryDamageAlternatives(header.entries)) carriesDamageAlternatives = true;
+      if (entriesCarrySizes(header.entries)) carriesSizes = true;
+      if (entriesCarryMoveModes(header.entries)) carriesMoveModes = true;
+      if (carriesCounterReach(header.entries)) carriesCounterReachKeys = true;
+      if (carriesNamedAnswers(header.entries)) carriesNamedAnswerKeys = true;
+      if (carriesBlowNarrowing(header.entries)) carriesBlowNarrowingKeys = true;
+      if (carriesReactionMoments(header.entries)) carriesReactionMomentKeys = true;
+      if (carriesUsableWhen(header.entries)) carriesUsableWhenKeys = true;
+      if (carriesFalls(header.entries)) carriesFallMoments = true;
+      if (carriesSourceClock(header.entries)) carriesSourceClockKeys = true;
+      if (entriesCarryCreatureHealing(header.entries)) carriesCreatureHealing = true;
+      if (entriesCarrySummons(header.entries)) carriesSummons = true;
+      if (entriesCarryCreatureSpellcasting(header.entries)) carriesCreatureSpellcasting = true;
+      if (entriesCarryRiderNoDisadvantage(header.entries)) carriesRiderNoDisadvantage = true;
+      if (entriesCarrySenseNeeds(header.entries)) carriesSenseNeeds = true;
+      if (entriesCarryLineWidth(header.entries)) carriesLineWidth = true;
+      if (carriesDamageOnlySaves(header.entries)) carriesDamageOnlySaveKeys = true;
+      if (carriesHealthMax(header.entries) || entriesImmuneToTracks(header.entries, leveledTracks)) {
+        carriesExhaustion = true;
+      }
       if (entriesCarryHeldChoices(header.entries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(header.entries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(header.entries)) carriesSheetBonus = true;
@@ -1633,6 +2195,25 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryDamageSheetBonus(fileEntries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(fileEntries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(fileEntries)) carriesOfferedWhen = true;
+      if (entriesCarryBlowQualities(fileEntries)) carriesBlowQualities = true;
+      if (entriesCarryDamageAlternatives(fileEntries)) carriesDamageAlternatives = true;
+      if (entriesCarrySizes(fileEntries)) carriesSizes = true;
+      if (entriesCarryMoveModes(fileEntries)) carriesMoveModes = true;
+      if (carriesHealthMax(fileEntries) || entriesImmuneToTracks(fileEntries, leveledTracks)) carriesExhaustion = true;
+      if (carriesCounterReach(fileEntries)) carriesCounterReachKeys = true;
+      if (carriesNamedAnswers(fileEntries)) carriesNamedAnswerKeys = true;
+      if (carriesBlowNarrowing(fileEntries)) carriesBlowNarrowingKeys = true;
+      if (carriesReactionMoments(fileEntries)) carriesReactionMomentKeys = true;
+      if (carriesUsableWhen(fileEntries)) carriesUsableWhenKeys = true;
+      if (carriesFalls(fileEntries)) carriesFallMoments = true;
+      if (carriesSourceClock(fileEntries)) carriesSourceClockKeys = true;
+      if (entriesCarryCreatureHealing(fileEntries)) carriesCreatureHealing = true;
+      if (entriesCarrySummons(fileEntries)) carriesSummons = true;
+      if (entriesCarryCreatureSpellcasting(fileEntries)) carriesCreatureSpellcasting = true;
+      if (entriesCarryRiderNoDisadvantage(fileEntries)) carriesRiderNoDisadvantage = true;
+      if (entriesCarrySenseNeeds(fileEntries)) carriesSenseNeeds = true;
+      if (entriesCarryLineWidth(fileEntries)) carriesLineWidth = true;
+      if (carriesDamageOnlySaves(fileEntries)) carriesDamageOnlySaveKeys = true;
       if (entriesCarryHeldChoices(fileEntries)) carriesHeldChoices = true;
       if (entriesCarryExclusive(fileEntries)) carriesExclusive = true;
       if (entriesCarryToHitSheetBonus(fileEntries)) carriesSheetBonus = true;
@@ -1961,6 +2542,355 @@ export function getCapabilityPackageInstallIssue(
   // A catalog entry a builder step offers only while the sheet says so, 1.99: a new key on the strict entry.
   if (!declaresApi(99) && carriesOfferedWhen) {
     return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.99 or newer";
+  }
+  // Ways of moving besides walking, 1.113: new keys on the strict creature and the strict economy.
+  if (
+    !declaresApi(113) &&
+    (carriesMoveModes || plainRecord(plainRecord(ruleset?.combat)?.economy)?.movementModes !== undefined)
+  ) {
+    return "A ruleset whose combatants fly, swim, climb or burrow requires schemaVersion 2 and capabilityApi 1.113 or newer";
+  }
+  // Levels that halve the health maximum or defeat, and immunity to a track, 1.115: a new modifier
+  // target and level key, and a track where a condition was the only word an immunity knew.
+  if (
+    !declaresApi(115) &&
+    (carriesExhaustion ||
+      carriesHealthMax(ruleset?.combat) ||
+      (Array.isArray(plainRecord(ruleset?.combat)?.levels) &&
+        (plainRecord(ruleset?.combat)!.levels as unknown[]).some((level) => plainRecord(level)?.defeats !== undefined)))
+  ) {
+    return "A ruleset whose levels halve the health maximum or defeat, or whose creatures are immune to a track, requires schemaVersion 2 and capabilityApi 1.115 or newer";
+  }
+  // Answers that stop only so high, and pools that say their level, 1.116.
+  if (
+    !declaresApi(116) &&
+    (carriesCounterReachKeys ||
+      ((plainRecord(plainRecord(ruleset?.sheet)?.live)?.pools as unknown[] | undefined) ?? []).some(
+        (pool) => plainRecord(pool)?.level !== undefined,
+      ))
+  ) {
+    return "A ruleset whose answers stop only what was paid no higher than themselves, or whose pools say their level, requires schemaVersion 2 and capabilityApi 1.116 or newer";
+  }
+  // Answers to named entries, answers at more than one moment, and conditions that keep an entry's
+  // harm off, 1.117.
+  if (
+    !declaresApi(117) &&
+    (carriesNamedAnswerKeys ||
+      ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
+        (condition) => plainRecord(condition)?.noDamageFrom !== undefined,
+      ))
+  ) {
+    return "A ruleset whose answers name the entries they answer or more than one moment, or whose conditions keep an entry's harm off, requires schemaVersion 2 and capabilityApi 1.117 or newer";
+  }
+  // Answers to one kind of blow, or only to a source their holder sees, 1.118.
+  if (!declaresApi(118) && carriesBlowNarrowingKeys) {
+    return "A ruleset whose answers wait for one kind of blow, or for a source their holder sees, requires schemaVersion 2 and capabilityApi 1.118 or newer";
+  }
+  // Conditions that run on their source's clock, 1.119: in a catalog entry, a creature's action, a
+  // contest or what a condition leaves behind.
+  if (!declaresApi(119) && (carriesSourceClockKeys || carriesSourceClock(ruleset?.combat))) {
+    return "A ruleset whose conditions count their rounds on the turns of whoever put them on requires schemaVersion 2 and capabilityApi 1.119 or newer";
+  }
+  // Conditions that hold what their holder uses over to the next turn, 1.120.
+  if (
+    !declaresApi(120) &&
+    ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
+      (condition) => plainRecord(condition)?.delays !== undefined,
+    )
+  ) {
+    return "A ruleset whose conditions hold what their holder uses over to the next turn requires schemaVersion 2 and capabilityApi 1.120 or newer";
+  }
+  // Creatures that heal or point an action at their own side, 1.121.
+  if (!declaresApi(121) && carriesCreatureHealing) {
+    return "A ruleset whose creatures heal, or point an action at their own side, requires schemaVersion 2 and capabilityApi 1.121 or newer";
+  }
+  // Spells that leave something to strike on later turns, 1.122.
+  if (!declaresApi(122) && carriesSummons) {
+    return "A ruleset whose spells leave something behind that strikes on later turns requires schemaVersion 2 and capabilityApi 1.122 or newer";
+  }
+  // Creatures that cast without slots, 1.123.
+  if (!declaresApi(123) && carriesCreatureSpellcasting) {
+    return "A ruleset whose creatures cast spells without slots requires schemaVersion 2 and capabilityApi 1.123 or newer";
+  }
+  // Reactions that catch a fall, and conditions that let their holder land safely, 1.124.
+  if (
+    !declaresApi(124) &&
+    (carriesFallMoments ||
+      ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
+        (condition) => plainRecord(condition)?.fallsSafely !== undefined,
+      ))
+  ) {
+    return "A ruleset whose reactions catch a fall requires schemaVersion 2 and capabilityApi 1.124 or newer";
+  }
+  // Conditions that end on harm, a new save or an ally's action, 1.125.
+  if (
+    !declaresApi(125) &&
+    ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some((condition) =>
+      ["endsWhen", "saveWhenDamaged", "shakeOff"].some((key) => plainRecord(condition)?.[key] !== undefined),
+    )
+  ) {
+    return "A ruleset whose conditions end on harm, a new save or being shaken out requires schemaVersion 2 and capabilityApi 1.125 or newer";
+  }
+  // Riders that need an adjacent ally without disadvantage, 1.126.
+  if (!declaresApi(126) && carriesRiderNoDisadvantage) {
+    return "A ruleset whose riders need an adjacent ally without disadvantage requires schemaVersion 2 and capabilityApi 1.126 or newer";
+  }
+  // Effects that need a sense a condition takes away, 1.127.
+  if (
+    !declaresApi(127) &&
+    (carriesSenseNeeds ||
+      ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
+        (condition) => plainRecord(condition)?.lacks !== undefined,
+      ))
+  ) {
+    return "A ruleset whose effects need a sense a condition can take away requires schemaVersion 2 and capabilityApi 1.127 or newer";
+  }
+  // Lines wider than one cell, 1.128.
+  if (!declaresApi(128) && carriesLineWidth) {
+    return "A ruleset whose lines are wider than one cell requires schemaVersion 2 and capabilityApi 1.128 or newer";
+  }
+  // Saves rolled only on damage, 1.129.
+  if (!declaresApi(129) && (carriesDamageOnlySaveKeys || carriesDamageOnlySaves(ruleset?.combat))) {
+    return "A ruleset whose saves are rolled only on damage requires schemaVersion 2 and capabilityApi 1.129 or newer";
+  }
+  // Builder stamps read from the offering parent pick, 1.130.
+  if (
+    !declaresApi(130) &&
+    Array.isArray(fieldsSteps) &&
+    fieldsSteps.some((step) =>
+      Object.values(plainRecord(plainRecord(step)?.stamp) ?? {}).some(
+        (value) => plainRecord(value)?.fromWithin !== undefined,
+      ),
+    )
+  ) {
+    return "A ruleset whose builder stamps from the offering pick requires schemaVersion 2 and capabilityApi 1.130 or newer";
+  }
+  // Reactions for others, at turn start, on a save, or for several fallers, 1.131.
+  if (!declaresApi(131) && (carriesReactionMomentKeys || carriesReactionMoments(ruleset?.combat))) {
+    return "A ruleset whose reactions answer for others, at a turn's start, on a save or for several fallers requires schemaVersion 2 and capabilityApi 1.131 or newer";
+  }
+  // Conditions, levels, sheet rows and item exceptions keep harm off, 1.132.
+  const hideCombat = plainRecord(ruleset?.combat);
+  const carriesTypedHides = ["conditions", "levels"].some((key) => {
+    const entries = hideCombat?.[key];
+    return (
+      Array.isArray(entries) &&
+      entries.some((entry) =>
+        ["resist", "vulnerable", "immune", "conditionImmunities"].some(
+          (kind) => plainRecord(entry)?.[kind] !== undefined,
+        ),
+      )
+    );
+  });
+  const carriesItemExceptions = [...itemsByRef.values()].some((item) =>
+    [
+      item.worn,
+      item.carried,
+      ...(Array.isArray(item.requires) ? item.requires.map((need) => plainRecord(need)?.otherwise) : []),
+    ].some((effect) =>
+      [plainRecord(effect)?.resist, plainRecord(effect)?.immune].some(
+        (entries) => Array.isArray(entries) && entries.some((entry) => plainRecord(entry) !== undefined),
+      ),
+    ),
+  );
+  if (!declaresApi(132) && (carriesTypedHides || hideCombat?.sheetHides !== undefined || carriesItemExceptions)) {
+    return "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.132 or newer";
+  }
+  // Modifiers to damage dealt or taken, 1.133, including worn and carried items in catalog files.
+  const carriesDamageModifiers = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(carriesDamageModifiers);
+    const record = plainRecord(value);
+    if (!record) return false;
+    if (
+      Array.isArray(record.modifiers) &&
+      record.modifiers.some((one) => plainRecord(one)?.to === "damage" || plainRecord(one)?.to === "damage-taken")
+    )
+      return true;
+    return Object.values(record).some(carriesDamageModifiers);
+  };
+  if (
+    !declaresApi(133) &&
+    (carriesDamageModifiers(ruleset) || [...(catalogDocuments?.values() ?? [])].some(carriesDamageModifiers))
+  ) {
+    return "A ruleset whose modifiers change damage requires schemaVersion 2 and capabilityApi 1.133 or newer";
+  }
+  // A sheet list with more than 12 columns, 1.165.
+  const sheetLists = plainRecord(ruleset?.sheet)?.lists;
+  if (
+    !declaresApi(165) &&
+    Array.isArray(sheetLists) &&
+    sheetLists.some((list) => {
+      const columns = plainRecord(list)?.columns;
+      return Array.isArray(columns) && columns.length > 12;
+    })
+  ) {
+    return "A ruleset with a sheet list of more than 12 columns requires schemaVersion 2 and capabilityApi 1.165 or newer";
+  }
+  // Mechanics offered only while the holder's sheet allows, 1.166.
+  if (!declaresApi(166) && (carriesUsableWhenKeys || carriesUsableWhen(ruleset?.combat))) {
+    return "A ruleset whose abilities are usable only while the sheet allows requires schemaVersion 2 and capabilityApi 1.166 or newer";
+  }
+  // Save modifiers narrowed by conditions, damage or magic, 1.134.
+  if (
+    !declaresApi(134) &&
+    (carriesSaveAgainst(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveAgainst(document)))
+  ) {
+    return "A ruleset whose save modifiers count against conditions, damage or magic requires schemaVersion 2 and capabilityApi 1.134 or newer";
+  }
+  // Conditions applied only while the applier's sheet allows, 1.167.
+  if (
+    !declaresApi(167) &&
+    (carriesAppliesWhen(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAppliesWhen(document)))
+  ) {
+    return "A ruleset whose conditions are applied only while the applier's sheet allows requires schemaVersion 2 and capabilityApi 1.167 or newer";
+  }
+  // Creature types and the target tests that read them, 1.168.
+  if (
+    !declaresApi(168) &&
+    (carriesCreatureTypes(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureTypes(document)))
+  ) {
+    return "A ruleset with creature types or target tests requires schemaVersion 2 and capabilityApi 1.168 or newer";
+  }
+  // A weapon's extra damage and saves on what its hit puts on, 1.169.
+  if (
+    !declaresApi(169) &&
+    (carriesItemAttackExtras(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemAttackExtras(document)))
+  ) {
+    return "A ruleset whose weapons deal extra damage or put on conditions a save resists requires schemaVersion 2 and capabilityApi 1.169 or newer";
+  }
+  // An item's switch and the clauses dealt while it is on, 1.170.
+  if (
+    !declaresApi(170) &&
+    (carriesItemToggles(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemToggles(document)))
+  ) {
+    return "A ruleset whose items switch on and off requires schemaVersion 2 and capabilityApi 1.170 or newer";
+  }
+  // Pools that pay for other groups, and targets that grow with the cost, 1.171.
+  if (
+    !declaresApi(171) &&
+    (carriesCostLadder(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCostLadder(document)))
+  ) {
+    return "A ruleset whose pools pay for another group or whose targets grow with the cost requires schemaVersion 2 and capabilityApi 1.171 or newer";
+  }
+  // Areas that stay, 1.172.
+  if (
+    !declaresApi(172) &&
+    (carriesZones(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesZones(document)))
+  ) {
+    return "A ruleset with lasting zones requires schemaVersion 2 and capabilityApi 1.172 or newer";
+  }
+  // Areas that move, drift or make their ground hard going, 1.173.
+  if (
+    !declaresApi(173) &&
+    (carriesMovingZones(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMovingZones(document)))
+  ) {
+    return "A ruleset with zones that move or change the ground requires schemaVersion 2 and capabilityApi 1.173 or newer";
+  }
+  // Escapes against the applier's save, zones that shake concentration or stop at a damage cap, and
+  // items whose use concentrates or leaves a zone, 1.174.
+  if (
+    !declaresApi(174) &&
+    (carriesZoneRules(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneRules(document)))
+  ) {
+    return "A ruleset with save escapes, concentration-breaking or capped zones, or zones on item uses requires schemaVersion 2 and capabilityApi 1.174 or newer";
+  }
+  // Zones that ram or hurt whom they hold, ground that costs several steps or halves speed, and
+  // holds broken only by their escape DC and checks, 1.175.
+  if (
+    !declaresApi(175) &&
+    (carriesZoneGround(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneGround(document)))
+  ) {
+    return "A ruleset with zones that ram or hurt whom they hold, ground that costs more or halves speed, or holds broken only by their escape DC and checks requires schemaVersion 2 and capabilityApi 1.175 or newer";
+  }
+  // Cures that end conditions, steady the dying or bring back the dead, 1.176.
+  if (
+    !declaresApi(176) &&
+    (carriesCures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCures(document)))
+  ) {
+    return "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.176 or newer";
+  }
+  // Square and cube areas, and walls that block or have a side, 1.177.
+  if (
+    !declaresApi(177) &&
+    (carriesWalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalls(document)))
+  ) {
+    return "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.177 or newer";
+  }
+  // Senses, obscuring zones, hiding conditions, seen-only targets and area copies, 1.178.
+  if (
+    !declaresApi(178) &&
+    (carriesSight(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSight(document)))
+  ) {
+    return "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.178 or newer";
+  }
+  // Components, and zones that work on whoever stands in them, stop components or ward, 1.179.
+  if (
+    !declaresApi(179) &&
+    (carriesZoneInside(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneInside(document)))
+  ) {
+    return "A ruleset with combat components, or zones that work on whoever stands inside, stop components or ward off spells, requires schemaVersion 2 and capabilityApi 1.179 or newer";
+  }
+  // Conditions that end when their holder attacks or casts, granted senses, giving away the unseen, 1.180.
+  if (
+    !declaresApi(180) &&
+    (carriesSightExtras(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSightExtras(document)))
+  ) {
+    return "A ruleset with conditions that end when their holder attacks or casts, senses given by conditions or items, conditions that give away the unseen, or item uses that cast, requires schemaVersion 2 and capabilityApi 1.180 or newer";
+  }
+  // Wards by base level or raised per step, save extras, creature spell components, utility uses, 1.181.
+  if (
+    !declaresApi(181) &&
+    (carriesWardsAndSaves(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWardsAndSaves(document)))
+  ) {
+    return "A ruleset with wards by base level or raised by their cast, saves that say what else they are against or who passes them outright, creature spell components, or utility item uses, requires schemaVersion 2 and capabilityApi 1.181 or newer";
+  }
+  if (carriesCreatureSpellcasting) {
+    // The references can only be checked once the catalog files are beside their headers.
+    const complete = {
+      ...ruleset,
+      catalogs: (Array.isArray(catalogs) ? catalogs : []).map((raw) => {
+        const header = plainRecord(raw);
+        if (!header || typeof header.asset !== "string") return raw;
+        const { asset, ...inline } = header;
+        return { ...inline, entries: plainRecord(catalogDocuments?.get(asset))?.entries ?? [] };
+      }),
+    };
+    const parsed = parseRulesetDefinition(complete);
+    if (!parsed.ok) return parsed.issues.slice(0, 5).join("; ");
+  }
+  // Sizes and escape DCs, 1.103: new keys on the strict combat block, contest, creature and applies.
+  if (!declaresApi(103)) {
+    const combat = plainRecord(ruleset?.combat);
+    const contests = combat?.contests;
+    if (
+      carriesSizes ||
+      combat?.sizes !== undefined ||
+      (Array.isArray(contests) && contests.some((contest) => plainRecord(contest)?.maxSizeAbove !== undefined))
+    ) {
+      return "A ruleset whose combatants have sizes or whose holds name an escape DC requires schemaVersion 2 and capabilityApi 1.103 or newer";
+    }
+  }
+  // A creature attack that deals another amount with both hands or when bloodied, 1.102: new keys on the
+  // strict creature damage and the strict creature.
+  if (!declaresApi(102) && carriesDamageAlternatives) {
+    return "A ruleset whose creature attacks deal another amount two-handed or when hurt requires schemaVersion 2 and capabilityApi 1.102 or newer";
+  }
+  // Harm that carries qualities past a resistance's exception, 1.101: a new key on the strict mechanics
+  // and the strict creature damage.
+  if (!declaresApi(101) && carriesBlowQualities) {
+    return "A ruleset whose spells or creature attacks carry qualities past a resistance (magical) requires schemaVersion 2 and capabilityApi 1.101 or newer";
   }
   // A weapon's damage dice rerolled off the holder's sheet, 1.98: a new key on the strict damage.
   if (!declaresApi(98) && carriesDamageReroll) {

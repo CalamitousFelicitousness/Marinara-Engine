@@ -89,7 +89,12 @@ export function buildRulesetCombatBossPrompt(
   const fight = state.rulesetFight!;
   const difficulty = normalizeGameDifficulty(state.difficulty);
   const view = directedRulesetView(definition, state)!;
-  const menu = new Map(rulesetMenu(definition, fight.encounter, window.actorId).map((option) => [option.id, option]));
+  const menu = new Map(
+    rulesetMenu(definition, fight.encounter, window.actorId, !!fight.encounter.window).map((option) => [
+      option.id,
+      option,
+    ]),
+  );
   const candidates = window.options.map((option) => {
     const entry = option.optionId ? menu.get(option.optionId) : undefined;
     return {
@@ -100,6 +105,7 @@ export function buildRulesetCombatBossPrompt(
       ...(entry?.cost ? { cost: entry.cost } : {}),
       ...(entry?.left !== undefined ? { usesLeft: entry.left } : {}),
       ...(entry?.forecast ? { forecast: entry.forecast } : {}),
+      ...(entry?.cancelSave ? { cancelSave: entry.cancelSave } : {}),
       // Where this candidate walks first, and where its shape lands. Both are cells of the board
       // the view already carries; neither is a die that has not been thrown.
       ...(option.to ? { moveTo: option.to } : {}),
@@ -161,6 +167,15 @@ export function buildRulesetCombatBossPrompt(
         actorId: window.actorId,
         order: view.order,
         candidates,
+        ...(view.window
+          ? {
+              moment: {
+                ...view.window,
+                source: view.combatants.find((one) => one.id === view.window!.sourceId)?.name,
+                targets: view.window.targetIds?.map((id) => view.combatants.find((one) => one.id === id)?.name ?? id),
+              },
+            }
+          : {}),
         units: view.combatants,
         ...(view.grid
           ? { board: { width: view.grid.width, height: view.grid.height, distance: view.grid.distance } }

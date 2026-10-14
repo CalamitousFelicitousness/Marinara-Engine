@@ -220,6 +220,7 @@ try {
       optionId: tossOption.id,
       label: "Coldfire Toss",
       catalog: "knacks",
+      entry: "knacks/coldfire-toss",
     });
     assert.deepEqual(window.waiting, ["pell"]);
     assert.deepEqual(eventsOf(held.events, "window")[0], {

@@ -50,7 +50,7 @@ export function terrainInfoAt(grid: TacticalGrid, x: number, y: number) {
 }
 
 export function isImpassable(grid: TacticalGrid, x: number, y: number): boolean {
-  return !!terrainInfoAt(grid, x, y).impassable;
+  return !!terrainInfoAt(grid, x, y).impassable || ((grid.walls?.[`${x},${y}`] ?? 0) & 1) === 1;
 }
 
 /** How high a cell stands (combat C6b): 0 to 3, and 0 on a flat board or off it. */
@@ -72,7 +72,9 @@ export function climbCost(grid: TacticalGrid, from: TacticalCoord, to: TacticalC
 export function blocksSight(grid: TacticalGrid, x: number, y: number): boolean {
   if (!inBounds(grid, x, y)) return true;
   const terrain = grid.tiles[y]?.[x];
-  return terrain === undefined || TERRAIN_DATA[terrain]?.blocksSight === true;
+  return (
+    terrain === undefined || TERRAIN_DATA[terrain]?.blocksSight === true || ((grid.walls?.[`${x},${y}`] ?? 0) & 2) === 2
+  );
 }
 
 /**

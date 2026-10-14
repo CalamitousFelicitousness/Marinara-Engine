@@ -1277,6 +1277,14 @@ export function planRulesetUse(
     return definition.sheet.live.pools.some((entry) => entry.group === target) ? target : undefined;
   };
 
+  /** The level of what a pool pays at: its own `level`, else its place in its group (1.116). */
+  const poolLevel = (id: string): number => {
+    const pool = definition.sheet.live.pools.find((one) => one.id === id);
+    if (!pool) return 0;
+    if (pool.level) return Math.max(0, Math.trunc(resolveRulesetValueRef(definition, build, pool.level)));
+    const family = pool.group ? definition.sheet.live.pools.filter((one) => one.group === pool.group) : [];
+    return family.indexOf(pool) + 1;
+  };
   const terms = entry.mechanics?.cost ?? [];
   let costs: Array<{ pool: string; amount: number }> = [...terms];
   if (op.pool !== undefined) {
@@ -1287,7 +1295,15 @@ export function planRulesetUse(
     const target = named
       ? declared.find((pool) => sameName(pool.key, named) || sameName(pool.label, named))
       : undefined;
-    if (!group || !target || target.group !== group) return { ok: false, reason: "bad-pool" };
+    // A pool of another group pays too where it says so (1.171): 5e's pact slots, for a spell
+    // costed from the spell slots, and at no lower a level than the cost's own.
+    const pays = definition.sheet.live.pools.find((pool) => pool.id === target?.key)?.pays;
+    if (!group || !target) return { ok: false, reason: "bad-pool" };
+    if (target.group !== group) {
+      if (!pays?.includes(group) || poolLevel(target.key) < poolLevel(terms[0]!.pool)) {
+        return { ok: false, reason: "bad-pool" };
+      }
+    }
     costs = [{ pool: target.key, amount: terms[0]!.amount }];
   }
 

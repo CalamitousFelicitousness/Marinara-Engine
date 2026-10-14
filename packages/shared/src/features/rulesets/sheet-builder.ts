@@ -177,6 +177,33 @@ export function rulesetBuilderOptions(
   });
 }
 
+/** The values written when a step adds an entry's rows (1.130): a `fromWithin` reads the first
+ *  parent pick whose id the entry's `within.filter` names, in pick order, as the offer is judged. */
+export function rulesetBuilderStamp(
+  definition: RulesetDefinition,
+  step: StepOf<"catalog">,
+  entry: RulesetCatalogEntry,
+  state: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+  build?: RulesetSheetBuild,
+): Record<string, Scalar> {
+  const parent = step.within
+    ? rulesetBuilderPicks(definition, step.within.step, state, catalogs, build).find((picked) =>
+        filterHas(entry, step.within!.filter, picked.id),
+      )
+    : undefined;
+  const stamp: Record<string, Scalar> = {};
+  for (const [column, value] of Object.entries(step.stamp ?? {})) {
+    if (typeof value !== "object") stamp[column] = value;
+    else if (parent) {
+      const from = value.fromWithin;
+      const resolved = from === "id" ? parent.id : from === "label" ? parent.label : parent.filters?.[from];
+      if (typeof resolved === "string" || typeof resolved === "number") stamp[column] = resolved;
+    }
+  }
+  return stamp;
+}
+
 /** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.100):
  *  what they wrote taken back, everything else as it was. The sheet itself when none are picked. */
 function rulesetBuilderBuildWithoutGroup(
@@ -917,7 +944,12 @@ function applyRulesetBuilderOnce(
   const stampsByRef = new Map<string, Record<string, Scalar>>();
   for (const { step, entry } of rulesetBuilderGranting(definition, state, catalogs, build)) {
     entriesByRef.set(catalogRowRef(step.catalog, entry.id), entry);
-    if (step.stamp) stampsByRef.set(catalogRowRef(step.catalog, entry.id), step.stamp);
+    if (step.stamp) {
+      stampsByRef.set(
+        catalogRowRef(step.catalog, entry.id),
+        rulesetBuilderStamp(definition, step, entry, state, catalogs, build),
+      );
+    }
   }
   for (const slot of rulesetBuilderEntrySlots(definition, state, catalogs, build)) {
     for (const id of slot.chosen) {

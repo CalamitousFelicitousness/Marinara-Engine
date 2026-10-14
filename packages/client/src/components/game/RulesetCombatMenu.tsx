@@ -11,9 +11,16 @@
 // two ways of finishing it, and the same pure rules behind both.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { RULESET_PASS_OPTION } from "@marinara-engine/shared";
-import type { DirectedRulesetOption, DirectedRulesetView, RulesetCombatCell } from "@marinara-engine/shared";
+import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
-import { rulesetOptionHasAim, rulesetOptionNeedsAim, rulesetOptionNeedsCell } from "../../lib/ruleset-combat-board";
+import {
+  rulesetAimSoFar,
+  rulesetAimTurning,
+  type RulesetCellChoice,
+  rulesetOptionHasAim,
+  rulesetOptionNeedsAim,
+  rulesetOptionNeedsCell,
+} from "../../lib/ruleset-combat-board";
 import {
   rulesetDefaultTargets,
   rulesetMenuGroups,
@@ -43,7 +50,7 @@ export interface RulesetCombatMenuProps {
     targetIds: string[],
     payWith?: string,
     /** Where a walk goes, and where a shape is aimed. Only a positioned fight ever sends one. */
-    cell?: { to?: RulesetCombatCell; at?: RulesetCombatCell },
+    cell?: RulesetCellChoice,
     /** The initiative style an attack is made in, where initiative is a number attacks move. */
     style?: string,
     /** The weapon's mode an attack is made in. */
@@ -69,6 +76,8 @@ const WINDOW_PROMPTS = {
   aimed: "Aimed",
   hit: "Hit",
   harmed: "Harmed",
+  falls: "Falls",
+  "turn-start": "TurnStart",
   used: "Used",
   signature: "Between",
   reaction: "Leaving",
@@ -175,7 +184,12 @@ export function RulesetCombatMenu({
     }
     const stage = stageFor(aimed);
     if (stage) {
-      setStep({ stage, option: aimed, ...how, targets: [] });
+      setStep({
+        stage,
+        option: aimed,
+        ...how,
+        targets: view.window?.moment === "falls" ? aimed.targetIds.slice(0, aimed.targets.count) : [],
+      });
       return;
     }
     send(aimed, rulesetDefaultTargets(aimed), undefined, style, mode);
@@ -198,12 +212,21 @@ export function RulesetCombatMenu({
   };
   const paid = (payWith?: string) => {
     if (!step) return;
-    const stage = stageFor(step.option);
+    // A pool that lets it take more targets aims at as many as it lets it (1.171).
+    const count = payWith ? step.option.targetsWith?.[payWith] : undefined;
+    const option = count !== undefined ? { ...step.option, targets: { ...step.option.targets, count } } : step.option;
+    const stage = stageFor(option);
     if (!stage) {
-      send(step.option, rulesetDefaultTargets(step.option), payWith, step.style, step.mode);
+      send(option, rulesetDefaultTargets(option), payWith, step.style, step.mode);
       return;
     }
-    setStep({ ...step, stage, ...(payWith ? { payWith } : {}), targets: [] });
+    setStep({
+      ...step,
+      option,
+      stage,
+      ...(payWith ? { payWith } : {}),
+      targets: view.window?.moment === "falls" ? option.targetIds.slice(0, option.targets.count) : [],
+    });
   };
   const pick = (id: string) => {
     if (!step) return;
@@ -299,18 +322,22 @@ export function RulesetCombatMenu({
           {t("game.combat.ruleset.upcast.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2">
-          <button
-            ref={first}
-            type="button"
-            disabled={busy}
-            onClick={() => paid(undefined)}
-            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
-          >
-            {t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) })}
-          </button>
-          {pools.map((pool) => (
+          {/* Its own pool is empty, so only a higher one pays for it now (1.171). */}
+          {!option.upcastOnly && (
+            <button
+              ref={first}
+              type="button"
+              disabled={busy}
+              onClick={() => paid(undefined)}
+              className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+            >
+              {t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) })}
+            </button>
+          )}
+          {pools.map((pool, index) => (
             <button
               key={pool}
+              ref={option.upcastOnly && index === 0 ? first : undefined}
               type="button"
               disabled={busy}
               onClick={() => paid(pool)}
@@ -331,18 +358,75 @@ export function RulesetCombatMenu({
   // hunting for it on the grid.
   if (step?.stage === "move" || step?.stage === "aim") {
     const option = step.option;
+    const lay = step.lay;
+    const area = step.stage === "aim" ? option.area : undefined;
+    const wall = area?.shape === "wall";
+    const copies = area?.copies ?? 1;
+    const placed = lay?.at ? 1 + (lay.also?.length ?? 0) : 0;
+    const turning = step.stage === "aim" && rulesetAimTurning(option, lay);
+    const sendLaid = () => {
+      const laid = rulesetAimSoFar(lay);
+      if (!laid) return;
+      closeStep();
+      onChoose(option.id, [], step.payWith, laid, step.style, step.mode);
+    };
+    const prompt =
+      step.stage === "move"
+        ? "game.combat.ruleset.board.movePrompt"
+        : turning
+          ? "game.combat.ruleset.board.aimTurnPrompt"
+          : wall && !lay?.ring
+            ? "game.combat.ruleset.board.aimWallPrompt"
+            : copies > 1
+              ? "game.combat.ruleset.board.aimCopiesPrompt"
+              : rulesetOptionHasAim(option)
+                ? "game.combat.ruleset.board.aimPrompt"
+                : "game.combat.ruleset.board.aimNobody";
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200">
-          {t(
-            step.stage === "move"
-              ? "game.combat.ruleset.board.movePrompt"
-              : rulesetOptionHasAim(option)
-                ? "game.combat.ruleset.board.aimPrompt"
-                : "game.combat.ruleset.board.aimNobody",
-            { label: rulesetOptionLabel(option, t), name: actorName },
-          )}
+          {t(prompt, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
         </p>
+        {/* How a wall is laid (1.177) and how many copies are down (1.178): the board takes the cells. */}
+        {(wall || copies > 1) && (
+          <div className="flex flex-wrap gap-2">
+            {wall && area?.ring !== undefined && !turning && (
+              <button
+                type="button"
+                disabled={busy}
+                aria-pressed={!!lay?.ring}
+                onClick={() => setStep({ ...step, lay: { ...lay, ring: !lay?.ring } })}
+                className={cn(buttonClass, lay?.ring ? "border-[var(--primary)]/60 bg-[var(--primary)]/25" : "")}
+              >
+                {t("game.combat.ruleset.board.aimRing")}
+              </button>
+            )}
+            {wall && area?.sided && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setStep({ ...step, lay: { ...lay, side: lay?.side === "near" ? "far" : "near" } })}
+                className={buttonClass}
+              >
+                {t(
+                  lay?.side === "near"
+                    ? "game.combat.ruleset.board.aimSideNear"
+                    : "game.combat.ruleset.board.aimSideFar",
+                )}
+              </button>
+            )}
+            {turning && (
+              <button type="button" disabled={busy} onClick={sendLaid} className={buttonClass}>
+                {t("game.combat.ruleset.board.aimAcross")}
+              </button>
+            )}
+            {copies > 1 && placed > 0 && (
+              <button type="button" disabled={busy} onClick={sendLaid} className={buttonClass}>
+                {t("game.combat.ruleset.board.aimCastNow", { count: placed })}
+              </button>
+            )}
+          </div>
+        )}
         <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
       </div>
     );
@@ -428,18 +512,22 @@ export function RulesetCombatMenu({
           phone the shell above still names the actor, and the two would otherwise contradict. */}
       {view.window ? (
         <p className="text-[0.65rem] uppercase tracking-wide text-[var(--primary)]">
-          {t(`game.combat.ruleset.menu.window${WINDOW_PROMPTS[view.window.moment ?? view.window.kind]}`, {
-            name: askedName,
-            mover: nameOf(view.window.sourceId ?? view.window.moverId),
-            label: view.window.label ?? "",
-            total: view.window.total ?? "",
-            defense:
-              view.window.defense === undefined
-                ? ""
-                : defenseLabel
-                  ? `${defenseLabel} ${view.window.defense}`
-                  : String(view.window.defense),
-          })}
+          {t(
+            `game.combat.ruleset.menu.window${view.window.targetIds?.some((id) => id !== view.window!.actorId) && (view.window.moment === "aimed" || view.window.moment === "hit") ? "Bystander" : WINDOW_PROMPTS[view.window.moment ?? view.window.kind]}`,
+            {
+              name: askedName,
+              target: view.window.targetIds?.map(nameOf).join(", ") ?? askedName,
+              mover: nameOf(view.window.sourceId ?? view.window.moverId),
+              label: view.window.label ?? "",
+              total: view.window.total ?? "",
+              defense:
+                view.window.defense === undefined
+                  ? ""
+                  : defenseLabel
+                    ? `${defenseLabel} ${view.window.defense}`
+                    : String(view.window.defense),
+            },
+          )}
         </p>
       ) : (
         <p className="hidden text-[0.65rem] uppercase tracking-wide text-white/45 sm:block">
@@ -472,6 +560,14 @@ export function RulesetCombatMenu({
                     )}
                   >
                     <span className="block font-semibold text-white/90">{rulesetOptionLabel(option, t)}</span>
+                    {option.cancelSave && (
+                      <span className="block text-[0.65rem] text-white/55">
+                        {t("game.combat.ruleset.menu.cancelSave", {
+                          save: option.cancelSave.label,
+                          dc: option.cancelSave.dc,
+                        })}
+                      </span>
+                    )}
                     {cost && <span className="mt-0.5 block text-[0.65rem] text-white/45">{cost}</span>}
                     {forecast && <span className="block text-[0.65rem] text-white/45">{forecast}</span>}
                   </button>

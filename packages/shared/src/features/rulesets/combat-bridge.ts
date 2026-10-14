@@ -249,8 +249,9 @@ function powerFromAmount(amount: RulesetCatalogMechanics["amount"]): number {
  *  as many units sideways as it does forward, and a line is one cell wide. */
 function areaRadius(area: NonNullable<RulesetCatalogMechanics["area"]>, perCell: number): number {
   const cells = inCells(area.size, perCell);
-  if (area.shape === "line") return 1;
-  return area.shape === "cone" ? Math.max(1, Math.round(cells / 2)) : cells;
+  if (area.shape === "line" || area.shape === "wall") return 1;
+  // A box reaches half its side from its middle (1.177).
+  return area.shape === "cone" || area.shape === "box" ? Math.max(1, Math.round(cells / 2)) : cells;
 }
 
 function combatSkillFromEntry(

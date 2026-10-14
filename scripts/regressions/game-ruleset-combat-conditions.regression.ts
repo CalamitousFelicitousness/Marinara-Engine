@@ -272,19 +272,24 @@ try {
     refuses(
       fiveEText,
       modifier({ to: "attacks" }),
-      /by a flat amount, by dice, for speed by times, or for checks and saves by a mode/,
+      /by a flat amount, by dice, for speed, health-max or damage by times, or for checks and saves by a mode/,
       "no amount",
     );
     refuses(fiveEText, modifier({ to: "attacks", flat: 0 }), /A flat change of 0 changes nothing/, "zero");
     refuses(fiveEText, modifier({ to: "defense", dice: "1d4" }), /Dice are rolled/, "dice on defense");
     refuses(fiveEText, modifier({ to: "speed", dice: "1d4" }), /Dice are rolled/, "dice on speed");
     refuses(fiveEText, modifier({ to: "attacks", flat: 1, minus: true }), /"minus" takes dice away/, "minus, no dice");
-    refuses(fiveEText, modifier({ to: "attacks", times: 2 }), /"times" changes speed only/, "times on attacks");
     refuses(
       fiveEText,
-      modifier({ to: "damage", flat: 2 }),
+      modifier({ to: "attacks", times: 2 }),
+      /"times" changes speed, the health maximum and damage only/,
+      "times on attacks",
+    );
+    refuses(
+      fiveEText,
+      modifier({ to: "healing", flat: 2 }),
       /Invalid enum value/,
-      "damage is not a number a condition changes",
+      "healing is not a number a condition changes",
     );
     refuses(
       fiveEText,

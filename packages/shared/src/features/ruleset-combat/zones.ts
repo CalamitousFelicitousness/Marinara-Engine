@@ -1,0 +1,141 @@
+/**
+ * Lasting areas (Capability API 1.172): what a zone covers now, and whom it may catch.
+ *
+ * A zone held at a point keeps the cells it was cast on. One held by its caster is a burst worked
+ * out around them wherever they stand, so it goes where they go. Nothing here changes the fight;
+ * the resolver decides when a zone catches somebody and does it.
+ */
+import { rulesetCombatant } from "./encounter.js";
+import { rulesetCellDistance, rulesetPositionOf, rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
+import type {
+  RulesetCombatAction,
+  RulesetCombatant,
+  RulesetCombatCell,
+  RulesetCombatZone,
+  RulesetEncounterState,
+  RulesetReachableCell,
+} from "./types.js";
+
+// Worked out beside the walking they slow (1.173), and said here too, where a zone is read.
+export { rulesetZoneCatches, rulesetZoneCells } from "./grid.js";
+
+/** Every zone standing, with whose it is. */
+export function rulesetStandingZones(
+  state: RulesetEncounterState,
+): Array<{ caster: RulesetCombatant; zone: RulesetCombatZone; action: RulesetCombatAction }> {
+  return state.combatants.flatMap((caster) =>
+    (caster.zones ?? []).flatMap((zone) => {
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      return action ? [{ caster, zone, action }] : [];
+    }),
+  );
+}
+
+/** Whether a cell is one of a zone's. */
+export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: RulesetCombatCell | null): boolean {
+  return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);
+}
+
+/** Who a zone has inside it now, among those it may catch. */
+export function rulesetZoneOccupants(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+): string[] {
+  const cells = rulesetZoneCells(state, caster, zone);
+  return state.combatants
+    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHolds(cells, rulesetPositionOf(one)))
+    .map((one) => one.id);
+}
+
+/** Who stands on a wall's chosen side now (1.177), among those it may catch. */
+export function rulesetZoneSideOccupants(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+): string[] {
+  const cells = zone.sideCells ?? [];
+  if (cells.length === 0) return [];
+  return state.combatants
+    .filter((one) => rulesetZoneCatches(caster, zone, action, one) && rulesetZoneHolds(cells, rulesetPositionOf(one)))
+    .map((one) => one.id);
+}
+
+/**
+ * The cells standing walls close (1.177), written onto the board's grid where moving and seeing read
+ * them, and taken off again as each wall ends. Worked out afresh from every standing zone, so a wall
+ * that ended however it ended closes nothing any more.
+ */
+export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
+  const grid = state.board?.grid;
+  if (!grid) return;
+  const walls: Record<string, number> = {};
+  for (const { zone, action } of rulesetStandingZones(state)) {
+    const blocks = action.zone?.blocks;
+    if (!blocks || zone.anchor !== "point") continue;
+    const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
+    for (const cell of zone.cells ?? []) {
+      const key = `${cell.x},${cell.y}`;
+      walls[key] = (walls[key] ?? 0) | bits;
+    }
+  }
+  if (Object.keys(walls).length > 0) grid.walls = walls;
+  else delete grid.walls;
+}
+
+/** The zones a fight shows: each one's caster, label, rounds left and cells, and a wall's side. */
+export function rulesetZonesShown(state: RulesetEncounterState): Array<{
+  casterId: string;
+  label: string;
+  rounds: number;
+  cells: RulesetCombatCell[];
+  side?: RulesetCombatCell[];
+}> {
+  return rulesetStandingZones(state).map(({ caster, zone }) => ({
+    casterId: caster.id,
+    label: zone.label,
+    rounds: zone.rounds,
+    cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
+    ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
+  }));
+}
+
+/** Where a zone may be moved to (1.173): any cell of the board within its `move` distance of where
+ *  it is centred, its own cell aside. Priced as the distance, so a board draws it as a walk. */
+export function rulesetZoneMoveCells(
+  state: RulesetEncounterState,
+  zone: RulesetCombatZone,
+  distance: number,
+): RulesetReachableCell[] {
+  const grid = state.board?.grid;
+  if (!grid || !zone.at) return [];
+  const cells: RulesetReachableCell[] = [];
+  for (let y = Math.max(0, zone.at.y - distance); y <= Math.min(grid.height - 1, zone.at.y + distance); y++) {
+    for (let x = Math.max(0, zone.at.x - distance); x <= Math.min(grid.width - 1, zone.at.x + distance); x++) {
+      const away = rulesetCellDistance(zone.at, { x, y });
+      if (away > 0) cells.push({ x, y, cost: away, path: [], provokes: [] });
+    }
+  }
+  return cells;
+}
+
+/** Where a drifting zone goes next (1.173): `distance` cells straight away from its caster, stopping
+ *  at the board's edge. A zone centred on its caster's own cell has no "away" and stays. */
+export function rulesetZoneDriftCell(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  distance: number,
+): RulesetCombatCell | null {
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(caster);
+  if (!grid || !zone.at || !from) return null;
+  const dx = Math.sign(zone.at.x - from.x);
+  const dy = Math.sign(zone.at.y - from.y);
+  if (dx === 0 && dy === 0) return null;
+  const x = Math.min(grid.width - 1, Math.max(0, zone.at.x + dx * distance));
+  const y = Math.min(grid.height - 1, Math.max(0, zone.at.y + dy * distance));
+  return x === zone.at.x && y === zone.at.y ? null : { x, y };
+}

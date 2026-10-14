@@ -14,10 +14,13 @@ import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.sch
 import { rulesetShotsAvailable } from "./ammo.js";
 import { rulesetActiveConditions, rulesetCombatant, rulesetCombatEffects, rulesetCombatStanding } from "./encounter.js";
 import type {
+  RulesetBlowKind,
+  RulesetMoveMode,
   RulesetCombatAction,
   RulesetCombatant,
   RulesetCombatArea,
   RulesetCombatCell,
+  RulesetCombatZone,
   RulesetEncounterState,
   RulesetReachableCell,
 } from "./types.js";
@@ -70,7 +73,7 @@ function inBounds(grid: TacticalGrid, x: number, y: number): boolean {
 export function rulesetCellBlocked(grid: TacticalGrid, x: number, y: number): boolean {
   if (!inBounds(grid, x, y)) return true;
   const terrain = grid.tiles[y]?.[x];
-  return terrain === undefined || !!TERRAIN_DATA[terrain]?.impassable;
+  return terrain === undefined || !!TERRAIN_DATA[terrain]?.impassable || ((grid.walls?.[`${x},${y}`] ?? 0) & 1) === 1;
 }
 
 /** What it costs to step INTO this cell, by the same terrain table the Engine's own fights use. */
@@ -95,6 +98,131 @@ export function rulesetStepCost(grid: TacticalGrid, from: RulesetCombatCell, to:
   return climb === null ? null : rulesetCellEnterCost(grid, to.x, to.y) + climb;
 }
 
+/** How high somebody is, in the board's levels: a flier's altitude while it is up, or the ground under
+ *  them (1.114). */
+export function rulesetLevelOf(grid: TacticalGrid, combatant: RulesetCombatant): number {
+  const ground = typeof combatant.x === "number" ? elevationAt(grid, combatant.x, combatant.y!) : 0;
+  return combatant.altitude !== undefined && combatant.altitude > ground ? combatant.altitude : ground;
+}
+
+/** Whether a flier is up in the air above the ground under it (1.114). */
+export function rulesetAirborne(grid: TacticalGrid | undefined, combatant: RulesetCombatant): boolean {
+  if (!grid || combatant.altitude === undefined || typeof combatant.x !== "number") return false;
+  return combatant.altitude > elevationAt(grid, combatant.x, combatant.y!);
+}
+
+/**
+ * How far apart two combatants are, in cells (1.114): the board's own distance, or the height
+ * between them when one is up in the air and that is further. Two on the ground are as far apart
+ * as their cells, whatever the ground under them, exactly as before anybody flew.
+ */
+export function rulesetCombatantDistance(
+  state: RulesetEncounterState,
+  a: RulesetCombatant,
+  b: RulesetCombatant,
+): number {
+  const from = rulesetPositionOf(a);
+  const to = rulesetPositionOf(b);
+  if (!from || !to) return 0;
+  const flat = rulesetCellDistance(from, to);
+  const grid = state.board?.grid;
+  const levelCells = state.board?.levelCells;
+  if (!grid || !levelCells || !(rulesetAirborne(grid, a) || rulesetAirborne(grid, b))) return flat;
+  return Math.max(flat, Math.abs(rulesetLevelOf(grid, a) - rulesetLevelOf(grid, b)) * levelCells);
+}
+
+/** Whether one combatant sees another (1.118). Nobody sees somebody who has hidden (the Hide
+ *  standard action, until it wears off); otherwise it is a line of sight between them on the board,
+ *  and a fight with no board, or anybody without a place on it, sees everybody, as a condition gated
+ *  on sight reads it. */
+export function rulesetSees(
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  other: RulesetCombatant | undefined,
+): boolean {
+  if (other?.flags.hidden) return false;
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(holder);
+  const to = rulesetPositionOf(other);
+  if (!grid || !from || !to) return true;
+  return rulesetLineOfSight(grid, from, to);
+}
+
+/** Whether a blow is struck in reach or from afar (1.118). Something with a reach and no range is
+ *  melee and something with a range and no reach is ranged; something with both (a thrown dagger) is
+ *  melee while its target stands in its reach, and with no board it is taken as swung in hand. */
+export function rulesetBlowKind(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  action: { reach?: number; range?: unknown },
+): RulesetBlowKind {
+  if (!action.range) return "melee";
+  if (action.reach === undefined) return "ranged";
+  if (!state.board || !rulesetPositionOf(actor) || !rulesetPositionOf(target)) return "melee";
+  return rulesetCombatantDistance(state, actor, target) <= Math.max(1, action.reach) ? "melee" : "ranged";
+}
+
+/** Whether a cell is water, which nobody walks into and a swimmer or a flier crosses (1.113). */
+function isWater(grid: TacticalGrid, x: number, y: number): boolean {
+  return inBounds(grid, x, y) && grid.tiles[y]?.[x] === "water";
+}
+
+/** What is left this turn of one way of moving, in cells (1.113). Somebody who only walks walks on
+ *  what is left of their allowance. */
+function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
+  if (!mover.modeLeft) return mode === "walk" ? (mover.movementLeft ?? 0) : 0;
+  return mover.modeLeft[mode] ?? 0;
+}
+
+/** Whether a cell is solid to this mover, for stepping into it and for squeezing past its corner: water
+ *  is not, to a swimmer or a flier (1.113). */
+export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mover?: RulesetCombatant): boolean {
+  if (!rulesetCellBlocked(grid, x, y)) return false;
+  return !(isWater(grid, x, y) && (!!mover?.speeds?.fly || !!mover?.speeds?.swim));
+}
+
+/**
+ * The cheapest way this mover takes one step, and what it costs (1.113), with `spent` already moved
+ * this turn: a way of moving whose own allowance the step would pass is not one it may use. On foot
+ * (and burrowing, which a board moves as a walk) a step costs what `rulesetStepCost` says; a climber
+ * takes a step of any height for the ground it steps onto; a flier steps anywhere not solid for one
+ * cell, water and heights included; a swimmer crosses water for one cell, and walks on land. Null
+ * when no way it moves takes the step. Somebody who only walks gets exactly `rulesetStepCost`.
+ */
+export function rulesetMoveStep(
+  grid: TacticalGrid,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell,
+  mover: RulesetCombatant,
+  spent = 0,
+): { mode: RulesetMoveMode; cost: number } | null {
+  const speeds = mover.speeds ?? {};
+  const options: Array<{ mode: RulesetMoveMode; cost: number | null }> = [];
+  // Up in the air (1.114) it only flies, a cell a step over anything not solid. Ground as high as
+  // it is, or higher, it lands on, exactly as a flier on the ground flies onto a cliff.
+  const altitude = mover.altitude;
+  if (altitude !== undefined && altitude > elevationAt(grid, from.x, from.y)) {
+    if (speeds.fly && !rulesetCellSolidFor(grid, to.x, to.y, mover)) {
+      options.push({ mode: "fly", cost: 1 });
+    }
+  } else if (isWater(grid, to.x, to.y)) {
+    if (speeds.swim) options.push({ mode: "swim", cost: 1 });
+    if (speeds.fly) options.push({ mode: "fly", cost: 1 });
+  } else if (!rulesetCellBlocked(grid, to.x, to.y)) {
+    options.push({ mode: "walk", cost: rulesetStepCost(grid, from, to) });
+    if (speeds.climb) options.push({ mode: "climb", cost: rulesetCellEnterCost(grid, to.x, to.y) });
+    if (speeds.fly) options.push({ mode: "fly", cost: 1 });
+    if (speeds.burrow) options.push({ mode: "burrow", cost: rulesetStepCost(grid, from, to) });
+  }
+  let best: { mode: RulesetMoveMode; cost: number } | null = null;
+  for (const option of options) {
+    if (option.cost === null || spent + option.cost > modeLeftOf(mover, option.mode)) continue;
+    if (!best || option.cost < best.cost) best = { mode: option.mode, cost: option.cost };
+  }
+  return best;
+}
+
 /** Whether one cell can see another: the Engine's one sight test (combat C6), which a wall or a mountain
  *  blocks and water does not. Symmetric, so the two always see each other or never do. */
 export function rulesetLineOfSight(grid: TacticalGrid, a: RulesetCombatCell, b: RulesetCombatCell): boolean {
@@ -105,8 +233,8 @@ export function rulesetLineOfSight(grid: TacticalGrid, a: RulesetCombatCell, b: 
  * The cells a shape covers, in cells, with nothing solid in the way.
  *
  * A burst is every cell within `size` of the cell it was aimed at. A cone runs from the actor toward
- * that cell, as wide at each step as it is far, and a line runs the same way one cell wide. All
- * three stop at anything solid: a cell the origin cannot see is not in the area.
+ * that cell, as wide at each step as it is far, and a line runs the same way one cell wide by default.
+ * All three stop at anything solid: a cell the origin cannot see is not in the area.
  */
 export function rulesetAreaCells(
   shape: RulesetCombatArea["shape"],
@@ -114,14 +242,20 @@ export function rulesetAreaCells(
   origin: RulesetCombatCell,
   toward: RulesetCombatCell,
   grid: TacticalGrid,
+  width = 1,
 ): RulesetCombatCell[] {
   const reach = Math.max(1, Math.round(size));
   if (shape === "burst") return burstCells(reach, toward, grid);
+  if (shape === "box") return boxCells(reach, origin, toward, grid);
+  // A wall is shown run across the line from its maker; how it was really laid is the cast's.
+  if (shape === "wall") return rulesetWallShape(grid, { size, width }, toward, origin).cells;
   const dx = Math.sign(toward.x - origin.x);
   const dy = Math.sign(toward.y - origin.y);
   // Aimed at the cell it is standing in: there is no direction, so the shape covers nothing.
   if (dx === 0 && dy === 0) return [];
-  return shape === "line" ? lineCells(reach, origin, dx, dy, grid) : coneCells(reach, origin, dx, dy, grid);
+  return shape === "line"
+    ? lineCells(reach, origin, dx, dy, grid, Math.max(1, Math.round(width)))
+    : coneCells(reach, origin, dx, dy, grid);
 }
 
 /** The part of the board within `reach` of a cell. Every shape is scanned over THIS, never over its
@@ -134,6 +268,136 @@ function boardBox(grid: TacticalGrid, around: RulesetCombatCell, reach: number) 
     left: Math.max(0, around.x - reach),
     right: Math.min(grid.width - 1, around.x + reach),
   };
+}
+
+/** A box (1.177): `side` cells a side, its near corner on the cell aimed at, reaching away from its
+ *  maker. Along an axis the maker is level with, it is centred on that cell instead, so a cube set
+ *  down straight ahead covers the cells either side of the line evenly. */
+function boxCells(
+  side: number,
+  maker: RulesetCombatCell,
+  at: RulesetCombatCell,
+  grid: TacticalGrid,
+): RulesetCombatCell[] {
+  const span = (from: number, toward: number) => {
+    const sign = Math.sign(toward - from);
+    if (sign > 0) return [toward, toward + side - 1] as const;
+    if (sign < 0) return [toward - side + 1, toward] as const;
+    const low = toward - Math.floor((side - 1) / 2);
+    return [low, low + side - 1] as const;
+  };
+  const [left, right] = span(maker.x, at.x);
+  const [top, bottom] = span(maker.y, at.y);
+  const cells: RulesetCombatCell[] = [];
+  for (let y = Math.max(0, top); y <= Math.min(grid.height - 1, bottom); y++) {
+    for (let x = Math.max(0, left); x <= Math.min(grid.width - 1, right); x++) {
+      if (rulesetCellBlocked(grid, x, y)) continue;
+      if (!rulesetLineOfSight(grid, at, { x, y })) continue;
+      cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+/**
+ * A wall (1.177), in cells, and the cells of its chosen side.
+ *
+ * A straight wall is `size` cells long, run from `at` toward `toward`, or across the line from its
+ * maker to `at` and centred there when no way is given. A diagonal one fills the corner of every step
+ * so nothing slips between two of its cells. `width` thickens it to either side of that line. Laid as
+ * a ring, when its area allows one, it is the cells `ring / 2` out from `at`, thickened inward. Its side is the cells within `distance` of
+ * it toward its maker (`near`, inside a ring) or away (`far`, outside a ring), never its own cells.
+ */
+export function rulesetWallShape(
+  grid: TacticalGrid,
+  area: { size: number; width?: number; ring?: number },
+  at: RulesetCombatCell,
+  maker: RulesetCombatCell,
+  toward?: RulesetCombatCell,
+  side?: { distance: number; which: "near" | "far" },
+  asRing = false,
+): { cells: RulesetCombatCell[]; side: RulesetCombatCell[] } {
+  const length = Math.max(1, Math.round(area.size));
+  const thick = Math.max(1, Math.round(area.width ?? 1));
+  const keys = new Set<string>();
+  const cells: RulesetCombatCell[] = [];
+  const add = (x: number, y: number) => {
+    const key = `${x},${y}`;
+    if (keys.has(key) || x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
+    if (rulesetCellBlocked(grid, x, y)) return;
+    keys.add(key);
+    cells.push({ x, y });
+  };
+  const sideCells: RulesetCombatCell[] = [];
+  const reach = side ? Math.max(1, Math.round(side.distance)) : 0;
+  if (asRing && area.ring) {
+    const radius = Math.max(1, Math.round(area.ring / 2));
+    const inner = radius - thick + 1;
+    const box = boardBox(grid, at, radius + reach);
+    for (let y = box.top; y <= box.bottom; y++) {
+      for (let x = box.left; x <= box.right; x++) {
+        const away = rulesetCellDistance(at, { x, y });
+        if (away >= inner && away <= radius) add(x, y);
+      }
+    }
+    if (side) {
+      for (let y = box.top; y <= box.bottom; y++) {
+        for (let x = box.left; x <= box.right; x++) {
+          const away = rulesetCellDistance(at, { x, y });
+          const inside = away < inner && away >= inner - reach;
+          const outside = away > radius && away <= radius + reach;
+          if ((side.which === "near" ? inside : outside) && !rulesetCellBlocked(grid, x, y)) sideCells.push({ x, y });
+        }
+      }
+    }
+    return { cells, side: sideCells };
+  }
+  let dx: number;
+  let dy: number;
+  let start: RulesetCombatCell;
+  if (toward && (toward.x !== at.x || toward.y !== at.y)) {
+    dx = Math.sign(toward.x - at.x);
+    dy = Math.sign(toward.y - at.y);
+    start = at;
+  } else {
+    const mx = Math.sign(at.x - maker.x);
+    const my = Math.sign(at.y - maker.y);
+    [dx, dy] = mx === 0 && my === 0 ? [1, 0] : [-my, mx];
+    const back = Math.floor((length - 1) / 2);
+    start = { x: at.x - dx * back, y: at.y - dy * back };
+  }
+  // Across the wall: thickened to both sides of its line, an even thickness one more to the left.
+  const low = -Math.floor((thick - 1) / 2);
+  for (let step = 0; step < length; step++) {
+    const x = start.x + dx * step;
+    const y = start.y + dy * step;
+    for (let across = low; across < low + thick; across++) {
+      add(x - dy * across, y + dx * across);
+      // A diagonal step leaves two corners touching; fill one so the wall is closed.
+      if (dx !== 0 && dy !== 0 && step < length - 1) add(x + dx - dy * across, y + dx * across);
+    }
+  }
+  if (side && cells.length > 0) {
+    const crossOf = (cell: RulesetCombatCell) => (cell.x - start.x) * dy - (cell.y - start.y) * dx;
+    const makerSign = Math.sign(crossOf(maker)) || -1;
+    const wanted = side.which === "near" ? makerSign : -makerSign;
+    const xs = cells.map((cell) => cell.x);
+    const ys = cells.map((cell) => cell.y);
+    const top = Math.max(0, Math.min(...ys) - reach);
+    const bottom = Math.min(grid.height - 1, Math.max(...ys) + reach);
+    const left = Math.max(0, Math.min(...xs) - reach);
+    const right = Math.min(grid.width - 1, Math.max(...xs) + reach);
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const cell = { x, y };
+        if (keys.has(`${x},${y}`) || rulesetCellBlocked(grid, x, y)) continue;
+        if (Math.sign(crossOf(cell)) !== wanted) continue;
+        if (!cells.some((one) => rulesetCellDistance(one, cell) <= reach)) continue;
+        sideCells.push(cell);
+      }
+    }
+  }
+  return { cells, side: sideCells };
 }
 
 function burstCells(reach: number, centre: RulesetCombatCell, grid: TacticalGrid): RulesetCombatCell[] {
@@ -155,7 +419,31 @@ function lineCells(
   dx: number,
   dy: number,
   grid: TacticalGrid,
+  width: number,
 ): RulesetCombatCell[] {
+  // Keep the one-cell path unchanged, including how a diagonal stops at a wall.
+  if (width > 1) {
+    const cells: RulesetCombatCell[] = [];
+    const left = Math.floor(width / 2);
+    const right = Math.floor((width - 1) / 2);
+    const box = boardBox(grid, origin, reach + left);
+    const axes = dx !== 0 && dy !== 0 ? 2 : 1;
+    for (let y = box.top; y <= box.bottom; y++) {
+      for (let x = box.left; x <= box.right; x++) {
+        const offX = x - origin.x;
+        const offY = y - origin.y;
+        const along = offX * dx + offY * dy;
+        // Screen y grows downwards: positive across is the caster's left. An even width puts
+        // its extra column there. Diagonals measure across by the difference of their axes,
+        // and along by their average, so the band stays contiguous on a square grid.
+        const across = offX * dy - offY * dx;
+        if (along <= 0 || along > reach * axes || across < -right || across > left) continue;
+        if (rulesetCellBlocked(grid, x, y) || !rulesetLineOfSight(grid, origin, { x, y })) continue;
+        cells.push({ x, y });
+      }
+    }
+    return cells;
+  }
   const cells: RulesetCombatCell[] = [];
   // `blocksSight` reads off the board as solid, so the line ends at the edge whatever its size.
   for (let step = 1; step <= reach; step++) {
@@ -264,7 +552,14 @@ export function rulesetThreateningEnemies(
     const at = rulesetPositionOf(combatant);
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;
-    threats.push({ combatant, at, reach: Math.max(1, strike.reach ?? 1) });
+    const reach = Math.max(1, strike.reach ?? 1);
+    // Somebody up in the air too high above (or below) to be reached is no threat to them (1.114).
+    const grid = state.board?.grid;
+    const levelCells = state.board?.levelCells;
+    if (grid && levelCells && (rulesetAirborne(grid, mover) || rulesetAirborne(grid, combatant))) {
+      if (Math.abs(rulesetLevelOf(grid, mover) - rulesetLevelOf(grid, combatant)) * levelCells > reach) continue;
+    }
+    threats.push({ combatant, at, reach });
   }
   return threats;
 }
@@ -311,6 +606,7 @@ export function rulesetReachableCells(
   }
 
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
+  const slowed = rulesetSlowedCells(state, actor);
   const best = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
   const cameFrom = new Map<string, string>();
   const cells = new Map<string, RulesetReachableCell>();
@@ -335,7 +631,7 @@ export function rulesetReachableCells(
       const x = at.x + dx;
       const y = at.y + dy;
       const next = `${x},${y}`;
-      if (rulesetCellBlocked(grid, x, y) || blockers.has(next)) continue;
+      if (rulesetCellSolidFor(grid, x, y, actor) || blockers.has(next)) continue;
       // Somebody this combatant may not approach is not walked PAST either. A route that dips
       // inside the ring and comes out the far side is still getting nearer, which is the thing the
       // condition forbids, and the board DRAWS that route. So the step is refused rather than only
@@ -346,12 +642,15 @@ export function rulesetReachableCells(
       if (
         dx !== 0 &&
         dy !== 0 &&
-        rulesetCellBlocked(grid, at.x + dx, at.y) &&
-        rulesetCellBlocked(grid, at.x, at.y + dy)
+        rulesetCellSolidFor(grid, at.x + dx, at.y, actor) &&
+        rulesetCellSolidFor(grid, at.x, at.y + dy, actor)
       )
         continue;
-      const step = rulesetStepCost(grid, at, { x, y });
-      if (step === null) continue;
+      // The cheapest way they move that takes this step on what that way has left (1.113).
+      const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
+      if (plain === undefined) continue;
+      // Ground a lasting area makes hard going (1.173).
+      const step = rulesetSlowedStep(grid, { x, y }, plain, slowed);
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);
@@ -427,7 +726,21 @@ export function rulesetPushPath(
 export function rulesetWalkingDistances(
   grid: TacticalGrid,
   goals: ReadonlyArray<RulesetCombatCell>,
+  /** Who is moving, when they move some way besides walking (1.113): their ways count, with no
+   *  turn's allowance to run out of. */
+  mover?: RulesetCombatant,
 ): Map<string, number> {
+  const unbounded = mover?.speeds
+    ? {
+        ...mover,
+        modeLeft: Object.fromEntries(
+          (["walk", ...Object.keys(mover.speeds)] as RulesetMoveMode[]).map((mode) => [mode, Infinity]),
+        ),
+      }
+    : undefined;
+  const solid = (x: number, y: number) => rulesetCellSolidFor(grid, x, y, unbounded);
+  const into = (from: RulesetCombatCell, to: RulesetCombatCell) =>
+    unbounded ? (rulesetMoveStep(grid, from, to, unbounded)?.cost ?? null) : rulesetStepCost(grid, from, to);
   const best = new Map<string, number>();
   // Terrain costs are small whole numbers, so the cheapest open cell is kept in buckets by cost
   // rather than found by a scan over a board that may be 64 by 64.
@@ -440,7 +753,7 @@ export function rulesetWalkingDistances(
   // Standing next to a goal is where a walk towards it ends, so those cells cost nothing more.
   for (const goal of goals) {
     for (const [dx, dy] of STEPS) {
-      if (!rulesetCellBlocked(grid, goal.x + dx, goal.y + dy)) reach(goal.x + dx, goal.y + dy, 0);
+      if (!solid(goal.x + dx, goal.y + dy)) reach(goal.x + dx, goal.y + dy, 0);
     }
   }
   for (let cost = 0; cost < buckets.length; cost++) {
@@ -451,17 +764,12 @@ export function rulesetWalkingDistances(
       for (const [dx, dy] of STEPS) {
         const x = at.x + dx;
         const y = at.y + dy;
-        if (rulesetCellBlocked(grid, x, y)) continue;
-        if (
-          dx !== 0 &&
-          dy !== 0 &&
-          rulesetCellBlocked(grid, at.x + dx, at.y) &&
-          rulesetCellBlocked(grid, at.x, at.y + dy)
-        ) {
+        if (solid(x, y)) continue;
+        if (dx !== 0 && dy !== 0 && solid(at.x + dx, at.y) && solid(at.x, at.y + dy)) {
           continue;
         }
-        const into = rulesetStepCost(grid, { x, y }, at);
-        if (into !== null) reach(x, y, cost + into);
+        const step = into({ x, y }, at);
+        if (step !== null) reach(x, y, cost + step);
       }
     }
   }
@@ -512,4 +820,86 @@ function provokedBy(
     previous = cell;
   }
   return provoked;
+}
+
+/** The cells a zone covers as the fight stands. None off a board, or for a caster with no cell. */
+export function rulesetZoneCells(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  if (!grid) return [];
+  if (zone.anchor === "point") return zone.cells ?? [];
+  const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  const at = rulesetPositionOf(caster);
+  if (!action?.area || !at) return [];
+  return rulesetAreaCells("burst", action.area.size, at, at, grid);
+}
+
+/** Whether a zone's area may catch this combatant at all, as the cast's own area would have: its
+ *  own side left out where the entry said so, a mend only for whom it was pointed at, and the caster
+ *  never caught by a zone they carry. */
+export function rulesetZoneCatches(
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  combatant: RulesetCombatant,
+): boolean {
+  if (combatant.defeated) return false;
+  if (zone.anchor === "caster" && combatant.id === caster.id) return false;
+  const sameSide = combatant.side === caster.side;
+  if (action.area?.friendlyFire === false && sameSide) return false;
+  // A mend, or a blessing pointed at allies, stays on the caster's own side.
+  if ((action.heal || action.targets.side === "ally") && !sameSide) return false;
+  return true;
+}
+
+/** How a zone slows a cell for one mover: the plain steps moving into it costs at least (1.173, 1.175),
+ *  and whether speed is halved there on top (1.175). */
+export interface RulesetSlowedCell {
+  times: number;
+  halves: boolean;
+}
+
+/** The cells a mover finds hard going because a zone that catches them covers them (1.173): the
+ *  slowest of each cell's zones, and halved where any of them halves speed (1.175). */
+export function rulesetSlowedCells(
+  state: RulesetEncounterState,
+  mover: RulesetCombatant,
+): Map<string, RulesetSlowedCell> {
+  const slowed = new Map<string, RulesetSlowedCell>();
+  for (const caster of state.combatants) {
+    for (const zone of caster.zones ?? []) {
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      const rule = action?.zone;
+      if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed)) continue;
+      if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
+      const times = rule.costTimes ?? (rule.difficult ? 2 : 1);
+      for (const cell of rulesetZoneCells(state, caster, zone)) {
+        const key = `${cell.x},${cell.y}`;
+        const was = slowed.get(key);
+        slowed.set(key, {
+          times: Math.max(was?.times ?? 1, times),
+          halves: (was?.halves ?? false) || !!rule.halvesSpeed,
+        });
+      }
+    }
+  }
+  return slowed;
+}
+
+/** A step into a cell a zone slows costs its times the ground's plain price, without charging again
+ *  for ground that was already hard going: difficult terrain does not stack (1.173). Halved speed is
+ *  on top of that, as the step costs double again (1.175). */
+export function rulesetSlowedStep(
+  grid: TacticalGrid,
+  cell: RulesetCombatCell,
+  step: number,
+  slowed: ReadonlyMap<string, RulesetSlowedCell>,
+): number {
+  const slow = slowed.get(`${cell.x},${cell.y}`);
+  if (!slow) return step;
+  const hard = step + Math.max(0, slow.times - rulesetCellEnterCost(grid, cell.x, cell.y));
+  return slow.halves ? hard * 2 : hard;
 }

@@ -5,7 +5,13 @@
 // arithmetic; it groups what arrived, spells what an option spends out of the words the option
 // carries, and keeps a player's picking inside the option's own list and count.
 import type { DirectedRulesetOption } from "@marinara-engine/shared";
-import { RULESET_MOVE_OPTION, RULESET_STAND_OPTION } from "@marinara-engine/shared";
+import {
+  RULESET_FLY_DOWN_OPTION,
+  RULESET_FLY_UP_OPTION,
+  RULESET_MOVE_OPTION,
+  RULESET_ZONE_OPTION_PREFIX,
+  RULESET_STAND_OPTION,
+} from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
 import { rulesetDistanceText, type RulesetBoardDistance } from "./ruleset-combat-board";
 
@@ -19,6 +25,7 @@ export const RULESET_MENU_KINDS = [
   "reload",
   "ability",
   "item",
+  "switch",
   "block",
   "contest",
   "standard",
@@ -33,9 +40,11 @@ export type RulesetMenuKind = (typeof RULESET_MENU_KINDS)[number];
 /** The Engine's own word for each of the two moves a board adds, keyed by the resolver's own id.
  *  A key segment is built from the WORD and never from the id, which may carry punctuation a
  *  localization key may not. */
-const MOVE_OPTION_WORDS: Record<string, "walk" | "stand"> = {
+const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "flyUp" | "flyDown"> = {
   [RULESET_MOVE_OPTION]: "walk",
   [RULESET_STAND_OPTION]: "stand",
+  [RULESET_FLY_UP_OPTION]: "flyUp",
+  [RULESET_FLY_DOWN_OPTION]: "flyDown",
 };
 
 export interface RulesetMenuStep {
@@ -47,6 +56,17 @@ export interface RulesetMenuStep {
   mode?: string;
   payWith?: string;
   targets: string[];
+  /** How a shape is being laid while it is aimed (1.177, 1.178). */
+  lay?: RulesetAimLay;
+}
+
+/** A shape half laid on the board: the cell it was first set down on, further copies of it, and for
+ *  a wall whether it is a ring and which side faces out. */
+export interface RulesetAimLay {
+  at?: { x: number; y: number };
+  also?: Array<{ x: number; y: number }>;
+  ring?: boolean;
+  side?: "near" | "far";
 }
 
 export interface RulesetMenuGroup {
@@ -78,12 +98,20 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
  * implements are the Engine's own closed vocabulary and are named here, as is ending a turn.
  */
 export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction): string {
+  if (option.shakeOff)
+    return t("game.combat.ruleset.menu.shakeOff", {
+      name: option.shakeOff.name,
+      condition: option.shakeOff.label,
+    });
   if (option.kind === "end-turn") return t("game.combat.ruleset.menu.endTurn", { defaultValue: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.
   // Which is which comes off the two exported ids, never off the spelling of one: the ids belong to
   // the resolver and have already changed once.
   if (option.kind === "move") {
+    // Moving a lasting area (1.173) is named by the area the ruleset named.
+    if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX))
+      return t("game.combat.ruleset.menu.moveZone", { zone: option.label });
     const word = MOVE_OPTION_WORDS[option.id];
     return word ? t(`game.combat.ruleset.board.${word}`, { defaultValue: option.label }) : option.label;
   }
@@ -91,6 +119,11 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // blow with a weapon in the off hand.
   if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
   if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
+  // A switch says which way it turns the item, which is the Engine's own word too.
+  if (option.kind === "switch")
+    return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {
+      item: option.label,
+    });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }

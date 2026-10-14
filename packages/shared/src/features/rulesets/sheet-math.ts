@@ -214,6 +214,8 @@ export interface RulesetSheetItem {
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */
   charges?: number;
+  /** Its switch is on, as the stack keeps it (1.170). */
+  on?: true;
   /** A fake (Capability API 1.79): what it truly is, which `item` passes for. The sheet reads it as
    *  what it seems; a fight's use of it does what this one does. */
   truly?: { item: RulesetCatalogItem; name: string };

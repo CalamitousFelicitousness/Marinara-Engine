@@ -21,6 +21,8 @@ import {
   capabilityPackageManifestSchema,
   isRulesetCatalogAssetPath,
   parseRulesetCatalogFile,
+  rulesetCatalogEntryIssues,
+  type RulesetCatalogEntriesById,
   parseRulesetDefinition,
   rulesetShapeIssue,
   RULESET_CATALOG_MAX_BYTES,
@@ -229,6 +231,7 @@ function readPackage(value: unknown): RulesetPackageRead {
 
   // Its catalog files, exactly the ones the ruleset names.
   const catalogs: Record<string, string> = {};
+  const entriesById: RulesetCatalogEntriesById = {};
   const named = (definition.catalogs ?? []).filter((catalog) => catalog.asset);
   for (const catalog of named) {
     const file = catalog.asset!;
@@ -239,6 +242,20 @@ function readPackage(value: unknown): RulesetPackageRead {
     const read = parseRulesetCatalogFile(definition, catalog.id, document.value);
     if (!read.ok) return refused(...read.issues.slice(0, 10).map((issue) => `${file} ${issue}`));
     catalogs[catalog.id] = JSON.stringify(document.value);
+    entriesById[catalog.id] = read.entries;
+  }
+  const complete = {
+    ...definition,
+    catalogs: definition.catalogs?.map((catalog) => ({
+      ...catalog,
+      entries: [...(entriesById[catalog.id] ?? catalog.entries ?? [])],
+    })),
+  };
+  for (const catalog of complete.catalogs ?? []) {
+    if (!catalog.entries?.some((entry) => entry.creature?.spellcasting)) continue;
+    const issues = rulesetCatalogEntryIssues(complete, catalog, catalog.entries ?? []);
+    if (issues.length)
+      return refused(...issues.slice(0, 10).map((issue) => `${catalog.id} ${issue.path.join(".")}: ${issue.message}`));
   }
   const unnamed = contents.filter(
     (name) => name !== "ruleset.json" && !named.some((catalog) => catalog.asset === name),

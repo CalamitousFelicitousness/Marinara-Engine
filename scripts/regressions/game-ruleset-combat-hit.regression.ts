@@ -316,6 +316,7 @@ try {
       sourceId: "snag",
       optionId: "scimitar",
       label: "Scimitar",
+      blow: "melee",
       total: 20,
       defense: 18,
     });

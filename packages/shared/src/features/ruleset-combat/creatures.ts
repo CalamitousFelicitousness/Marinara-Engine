@@ -219,12 +219,6 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
-    // Held by the creature's concentration (1.307).
-    ...(action.concentration ? { concentration: true as const } : {}),
-    // At the dying, and deadly to them (1.311): a will-o'-wisp's Consume Life.
-    ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
-    ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
-    ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
     ...(action.targetCount !== undefined ? { targetCount: action.targetCount } : {}),
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
     // In the ruleset's distance, as reach is: the encounter turns both into cells (1.184).
@@ -232,8 +226,6 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // What its attack is made with (1.189), so changes narrowed to an ability reach it.
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
-    // What it dealt comes back to it (1.281): an aboleth's Psychic Drain.
-    ...(action.drain ? { drain: { ...action.drain } } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
@@ -260,16 +252,6 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
         }
       : {}),
     ...(action.self ? { self: true as const } : {}),
-    // In the ruleset's distance, as push is (1.276): the encounter turns it into cells.
-    ...(action.teleport ? { teleport: { ...action.teleport } } : {}),
-    // In the ruleset's distance too (1.283).
-    ...(action.move ? { move: { ...action.move } } : {}),
-    ...(action.casting ? { casting: { ...action.casting } } : {}),
-    ...(action.search ? { search: true as const } : {}),
-    // Its light lit or put out (1.296).
-    ...(action.sheds !== undefined ? { sheds: action.sheds === "out" ? ("out" as const) : { ...action.sheds } } : {}),
-    // Standard actions with its own budget (1.291): Nimble Escape.
-    ...(action.standard ? { standard: structuredClone(action.standard) } : {}),
   };
 }
 
@@ -419,16 +401,6 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.abilities ? { abilities: { ...creature.abilities } } : {}),
     ...(creature.saves ? { saves: { ...creature.saves } } : {}),
     ...(creature.checks ? { checks: { ...creature.checks } } : {}),
-    // Keen senses, sensitivity to light, camouflage (1.291); a printed passive Perception.
-    ...(creature.checkModes ? { checkModes: structuredClone(creature.checkModes) } : {}),
-    ...(creature.passive !== undefined ? { passive: creature.passive } : {}),
-    // Its own ways of hiding and finding (1.292); its own modes on attacks (1.293).
-    ...(creature.hiding ? { hiding: structuredClone(creature.hiding) } : {}),
-    ...(creature.attackModes ? { attackModes: structuredClone(creature.attackModes) } : {}),
-    // The light it sheds (1.294).
-    ...(creature.light ? { light: { ...creature.light } } : {}),
-    ...(creature.unlit ? { unlit: true as const } : {}),
-    ...(creature.lightOutWhile ? { lightOutWhile: [...creature.lightOutWhile] } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),

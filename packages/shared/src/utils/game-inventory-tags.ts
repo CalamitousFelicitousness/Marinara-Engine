@@ -27,7 +27,6 @@ import {
   gameInventoryStackKind,
   gameInventoryStackNamed,
   revealGameInventoryFake,
-  releaseGameInventoryUnmetBindings,
 } from "./game-inventory-stacks.js";
 import { payGameInventoryCoins, type GameInventoryPayment } from "./game-inventory-coins.js";
 import {
@@ -646,8 +645,7 @@ export function applyGameInventoryTags(
     if (drops.length === 0) return serializeLootTag(request);
     return drops.map((drop) => addAnswered(drop.name, { item: drop.item }, drop.count, request.who, who.bag)).join(" ");
   });
-  // A binding whose needed items went elsewhere, or came off, is undone (1.313).
-  return { content: looted, stacks: releaseGameInventoryUnmetBindings(current, rules), journal, tags };
+  return { content: looted, stacks: current, journal, tags };
 }
 
 /** One tag body answered as refused: one tag per item it names, or its sanitized text when it names

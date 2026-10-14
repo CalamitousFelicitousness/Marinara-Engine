@@ -57,8 +57,6 @@ export function rulesetModedAction(
     ...(mode.cure ? cureOnly(mode.cure) : {}),
     // The creature type picked (1.270), remembered by what it puts on: Antipathy/Sympathy.
     ...(mode.kind && action.applies ? { applies: action.applies.map((one) => ({ ...one, kind: mode.kind })) } : {}),
-    // What a hit sets off around whoever it hit (1.312): a Hammer of Thunderbolts' clap.
-    ...(mode.aroundHit ? { aroundHit: mode.aroundHit } : {}),
   };
 }
 
@@ -237,51 +235,9 @@ export function breakRulesetItem(
 ): RulesetCombatEvent | null {
   const use = action.itemUse;
   const breaks = use?.charges?.breaksOn;
-  if (!use?.charges || !breaks || rulesetItemUseLeft(actor, use) > 0 || actor.broken?.[use.item]) return null;
+  if (!use || !breaks || rulesetItemUseLeft(actor, use) > 0 || actor.broken?.[use.item]) return null;
   const face = roll(breaks.die);
-  // A high face gives charges back instead (1.271): a Staff of the Magi's 20.
-  if (breaks.regains && face >= breaks.regains.atLeast) {
-    const amount = breaks.regains.amount;
-    const rolls = Array.from({ length: Math.max(0, amount.count) }, () => roll(amount.sides));
-    const back = Math.max(0, Math.min(use.charges.max, rolls.reduce((sum, one) => sum + one, 0) + amount.flat));
-    (actor.charges ??= {})[use.item] = back;
-    return {
-      type: "recharged",
-      actorId: actor.id,
-      optionId: action.id,
-      label: action.label,
-      roll: face,
-      rolls,
-      amount: back,
-    };
-  }
-  if (breaks.atMost === undefined || face > breaks.atMost) return null;
-  // It becomes another item instead (1.272): a staff of striking's nonmagical quarterstaff, struck
-  // and used as that from now on.
-  const next = breaks.becomes !== undefined ? actor.becomes?.[use.item] : undefined;
-  if (next) {
-    const held = actor.sheet?.items?.[use.item];
-    if (held && actor.sheet?.items) {
-      const { charges: _charges, ...rest } = held;
-      actor.sheet.items = actor.sheet.items.map((one, at) =>
-        at === use.item ? { ...rest, item: next.item, name: next.name } : one,
-      );
-    }
-    actor.actions = [
-      ...actor.actions.filter((one) => rulesetActionItemIndex(one) !== use.item),
-      ...structuredClone(next.actions),
-    ];
-    (actor.became ??= {})[use.item] = next.ref;
-    delete actor.charges?.[use.item];
-    return {
-      type: "broke",
-      actorId: actor.id,
-      optionId: action.id,
-      label: action.label,
-      roll: face,
-      becomes: next.name,
-    };
-  }
+  if (face > breaks.atMost) return null;
   (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
   (actor.broken ??= {})[use.item] = true;
   return { type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face };
@@ -299,8 +255,6 @@ export interface RulesetFightItemChange {
   charges?: number;
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
-  /** It became another item when its last charge was spent (1.272): that item, and its name. */
-  becomes?: { ref: string; name: string };
   /** A fake's true name (1.78): what a use of it is written as. */
   truly?: string;
   /** Its switch as the fight left it, when the fight turned it (1.170). */
@@ -322,7 +276,7 @@ export function rulesetFightItemChanges(
     if (
       combatant.side !== "party" ||
       !items ||
-      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on && !combatant.became)
+      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on)
     ) {
       continue;
     }
@@ -336,10 +290,7 @@ export function rulesetFightItemChanges(
       const spent = charges !== undefined && charges !== earlier?.charges?.[index];
       const on = combatant.on?.[index];
       const switched = on !== undefined && on !== (earlier?.on?.[index] ?? held.on === true);
-      // Become another item on its last charge (1.272), since `before`.
-      const became = combatant.became?.[index];
-      const turned = became !== undefined && earlier?.became?.[index] === undefined;
-      if (taken === 0 && !reloaded && !spent && !switched && !turned) return;
+      if (taken === 0 && !reloaded && !spent && !switched) return;
       changes.push({
         stack: { ...held.stack },
         name: held.name ?? held.stack.ref,
@@ -348,7 +299,6 @@ export function rulesetFightItemChanges(
         ...(spent ? { charges } : {}),
         ...(switched ? { on } : {}),
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
-        ...(turned ? { becomes: { ref: became, name: combatant.sheet?.items?.[index]?.name ?? became } } : {}),
         ...(held.truly ? { truly: held.truly.name } : {}),
       });
     });
@@ -402,14 +352,6 @@ export function applyRulesetFightItemChanges(
     }
     const { on: wasOn, ...kept } = stack;
     const on = change.on ?? wasOn === true;
-    // Become another item (1.272): the stack holds that item now, under its name, with no charges.
-    if (change.becomes) {
-      const { charges: _charges, loaded: _loaded, ...plain } = kept;
-      journal.push({ item: stack.name, action: "lost", quantity: 1 });
-      journal.push({ item: change.becomes.name, action: "acquired", quantity: 1 });
-      next[at] = { ...plain, item: change.becomes.ref, name: change.becomes.name, quantity };
-      continue;
-    }
     next[at] = {
       ...kept,
       quantity,
@@ -439,11 +381,11 @@ export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string 
 /** Averting the eyes from a gaze's holder, or looking again (1.268): `avert:<holder id>`. */
 export const RULESET_AVERT_OPTION_PREFIX = "avert:";
 
-const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend):(\d+)(?::\d+)?$/;
+const ITEM_ACTION = /^(?:item|offhand|use|switch|reload):(\d+)(?::\d+)?$/;
 
 /** The place in its holder's items of the item an action is made with, when it is one: a weapon's
- *  blow, its off-hand blow, a use, a switch, a reload or charges spent on a hit (1.273). */
-export function rulesetActionItemIndex(action: Pick<RulesetCombatAction, "id">): number | undefined {
+ *  blow, its off-hand blow, a use, a switch or a reload. */
+export function rulesetActionItemIndex(action: RulesetCombatAction): number | undefined {
   const match = ITEM_ACTION.exec(action.id);
   return match ? Number(match[1]) : undefined;
 }

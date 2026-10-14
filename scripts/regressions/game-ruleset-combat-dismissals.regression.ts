@@ -26,9 +26,6 @@ import {
   rulesetOptionTargets,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
-  rulesetOpportunityAttack,
-  type RulesetCombatAction,
-  type RulesetCombatant,
   type RulesetCatalogEntry,
   type RulesetCombatEvent,
   type RulesetDefinition,
@@ -413,31 +410,6 @@ try {
     assert.notEqual(issue(235, { ...without, extra: { ends: { conditions: ["charmed"] } } }), gate);
     assert.notEqual(issue(235, without), gate);
     assert.equal(issue(235, without, new Map([["spells.json", { entries: [dismissal] }]])), gate);
-  }
-
-  // ── A strike a condition gives is no opportunity attack while the condition is off ──
-  {
-    const strike = (id: string, count: number, whileHolds?: string) =>
-      ({
-        id,
-        label: id,
-        kind: "attack",
-        budget: "action",
-        reach: 1,
-        toHit: 5,
-        damage: { count, sides: 6, flat: 0 },
-        ...(whileHolds ? { whileHolds } : {}),
-      }) as unknown as RulesetCombatAction;
-    const paladin = {
-      id: "paladin",
-      actions: [strike("longsword", 1), strike("flame-blade", 3, "flaming")],
-      uses: {},
-      spent: [],
-      tracked: [] as Array<{ condition: string }>,
-    } as unknown as RulesetCombatant;
-    assert.equal(rulesetOpportunityAttack(paladin)?.id, "longsword", "the blade not called up");
-    paladin.tracked.push({ condition: "flaming" } as never);
-    assert.equal(rulesetOpportunityAttack(paladin)?.id, "flame-blade", "the blade in hand");
   }
 
   console.log(

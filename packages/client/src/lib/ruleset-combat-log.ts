@@ -15,8 +15,6 @@ import type {
   RulesetCombatPoolRoll,
   RulesetCombatRollMode,
   RulesetConditionBonus,
-  RulesetContestSide,
-  RulesetSearchApart,
   RulesetDefinition,
   RulesetValueRef,
 } from "@marinara-engine/shared";
@@ -235,21 +233,7 @@ export function rulesetRefusalText(code: string | undefined, serverText: string,
   return translated || serverText;
 }
 
-/** A check thrown on its own (1.287), as one side of a contest is written. */
-function checkRollText(roll: RulesetContestSide, names: RulesetCombatNames, t: TFunction): string {
-  return roll.pool
-    ? rulesetPoolRollText({ ...roll, pool: roll.pool }, t, bonusNamer(names, t))
-    : rulesetRollText(
-        {
-          ...roll,
-          kept: roll.total - roll.modifier - (roll.bonuses ?? []).reduce((sum, bonus) => sum + bonus.value, 0),
-        },
-        t,
-        bonusNamer(names, t),
-      );
-}
-
-const STANDARD_ACTIONS = new Set(["dash", "disengage", "dodge", "help", "hide", "ready", "search"]);
+const STANDARD_ACTIONS = new Set(["dash", "disengage", "dodge", "help", "hide", "ready"]);
 
 /** What each kind of held-open moment is called on screen. A window is not an interruption to
  *  apologise for: each of these says what is happening and who may answer it. */
@@ -274,17 +258,6 @@ export function rulesetCombatEventLine(
   names: RulesetCombatNames,
   t: TFunction,
 ): string | null {
-  // Those a search looked for with a throw of their own (1.290): a Cloak of Elvenkind's wearer.
-  const searchApart = (apart: RulesetSearchApart[] | undefined) =>
-    (apart ?? [])
-      .map(
-        (one) =>
-          ` ${key("searchApart", {
-            names: one.ids.map((id) => names.combatant(id)).join(", "),
-            roll: checkRollText(one.check, names, t),
-          })}`,
-      )
-      .join("");
   const key = (name: string, params: Record<string, unknown> = {}) =>
     t(`game.combat.ruleset.event.${name}`, params) as string;
   switch (event.type) {
@@ -429,8 +402,6 @@ export function rulesetCombatEventLine(
         maxHealth: event.maxHealth,
       });
     case "temporary":
-      // Lost with the condition that gave them (1.274): Heroism's.
-      if (event.lost) return key("temporaryLost", { target: names.combatant(event.targetId), amount: event.amount });
       return key("temporary", { target: names.combatant(event.targetId), amount: event.amount });
     case "restored":
       return key("restored", {
@@ -446,49 +417,6 @@ export function rulesetCombatEventLine(
         condition: names.condition(event.condition),
         ...(event.stacks !== undefined ? { stacks: event.stacks } : {}),
       });
-    // Readying (1.288).
-    case "ready":
-      return key(
-        event.outcome === "readied"
-          ? event.on === "comes"
-            ? "readyComes"
-            : "readyActs"
-          : event.outcome === "released"
-            ? "readyReleased"
-            : event.outcome === "expired"
-              ? "readyExpired"
-              : "readyLost",
-        { actor: names.combatant(event.actorId), label: event.label },
-      );
-    // A legendary search (1.287).
-    case "search": {
-      const roll = checkRollText(event.check, names, t);
-      const line =
-        event.found.length > 0
-          ? key("searchFound", {
-              actor: names.combatant(event.actorId),
-              label: event.label,
-              roll,
-              names: event.found.map((id) => names.combatant(id)).join(", "),
-            })
-          : key("searchNone", { actor: names.combatant(event.actorId), label: event.label, roll });
-      return `${line}${searchApart(event.apart)}`;
-    }
-    // Hiding given away (1.287).
-    case "revealed":
-      return key(
-        event.reason === "attack"
-          ? "revealedAttack"
-          : event.reason === "noise"
-            ? "revealedNoise"
-            : event.reason === "moved"
-              ? "revealedMoved"
-              : "revealedSeen",
-        {
-          actor: names.combatant(event.actorId),
-          names: event.byIds.map((id) => names.combatant(id)).join(", "),
-        },
-      );
     case "contest": {
       // Both sides as a roll, with the check each one added, so the line reads the way the table
       // would say it without adding anything up itself.
@@ -585,31 +513,8 @@ export function rulesetCombatEventLine(
         label: event.label,
         ...(event.while ? { condition: names.condition(event.while) } : {}),
       });
-    case "left":
-      return event.by
-        ? key("leftAlong", {
-            actor: names.combatant(event.actorId),
-            by: names.combatant(event.by),
-            label: event.label,
-          })
-        : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
-    // A check made to end a condition (1.313): Maze's way out.
-    case "checkEnded":
-      return key(event.automatic ? "checkEndedAutomatic" : event.success ? "checkEnded" : "checkEndedFailed", {
-        actor: names.combatant(event.actorId),
-        condition: names.condition(event.condition),
-        total: event.total ?? 0,
-        difficulty: event.difficulty,
-      });
-    case "sphere":
-      return event.how === "rolled"
-        ? key("sphereRolled", { actor: names.combatant(event.actorId), cells: event.cells ?? 0 })
-        : key(event.how === "lifted" ? "sphereLifted" : "spherePutDown", {
-            actor: names.combatant(event.actorId),
-            target: names.combatant(event.targetId ?? ""),
-          });
     case "charged":
       return key("charged", {
         actor: names.combatant(event.actorId),
@@ -666,21 +571,6 @@ export function rulesetCombatEventLine(
         x: event.to.x,
         y: event.to.y,
       });
-    case "teleported":
-      return event.by
-        ? key("teleportedAlong", {
-            actor: names.combatant(event.actorId),
-            by: names.combatant(event.by),
-            label: event.label,
-            x: event.to.x,
-            y: event.to.y,
-          })
-        : key("teleported", {
-            actor: names.combatant(event.actorId),
-            label: event.label,
-            x: event.to.x,
-            y: event.to.y,
-          });
     case "spend":
       return key("spend", { actor: names.combatant(event.actorId), amount: event.amount, pool: event.label });
     case "budget":
@@ -692,15 +582,7 @@ export function rulesetCombatEventLine(
     case "uses":
       return key("uses", { label: event.label, left: event.left, of: event.of });
     case "broke":
-      return event.becomes
-        ? key("brokeBecomes", { label: event.label, roll: event.roll, becomes: event.becomes })
-        : key("broke", { label: event.label, roll: event.roll });
-    case "recharged":
-      return key("recharged", { label: event.label, roll: event.roll, amount: event.amount });
-    case "conjured":
-      return event.gone
-        ? key("conjuredGone", { actor: names.combatant(event.actorId), item: event.item })
-        : key("conjured", { actor: names.combatant(event.actorId), label: event.label, item: event.item });
+      return key("broke", { label: event.label, roll: event.roll });
     case "fake":
       return key(event.dud ? "fakeDud" : "fake", { label: event.label, truly: event.truly });
     case "gate":
@@ -741,14 +623,6 @@ export function rulesetCombatEventLine(
           actor: names.combatant(event.actorId),
           label: event.label,
         });
-      }
-      // Blown away by a strong wind (1.286).
-      if (event.outcome === "dispersed") {
-        return key("zoneDispersed", { actor: names.combatant(event.actorId), label: event.label });
-      }
-      // Magical darkness a light met (1.297).
-      if (event.outcome === "dispelled") {
-        return key("zoneDispelled", { actor: names.combatant(event.actorId), label: event.label });
       }
       if (event.outcome === "turned") {
         return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
@@ -896,13 +770,6 @@ export function rulesetCombatEventLine(
     case "window":
       // Who the fight stopped for. The window between two turns is nobody's interruption, so it is
       // said as a pause rather than as somebody being caught out.
-      // What somebody readied, set off (1.288).
-      if (event.readied) {
-        return key(event.readied === "comes" ? "windowReadiedComes" : "windowReadiedActs", {
-          actor: names.combatant(event.waiting[0] ?? ""),
-          mover: names.combatant(event.sourceId ?? ""),
-        });
-      }
       return key(
         event.targetIds?.some((id) => id !== event.waiting[0]) && (event.moment === "aimed" || event.moment === "hit")
           ? "windowBystander"
@@ -1004,20 +871,6 @@ export function rulesetCombatEventLine(
       if (!STANDARD_ACTIONS.has(event.action)) {
         return key("standardOther", { actor: names.combatant(event.actorId), action: event.action });
       }
-      // A real Hide or Search (1.287): the check, and whom it hid from or found.
-      if (event.check) {
-        const roll = checkRollText(event.check, names, t);
-        const list = (ids: string[] | undefined) => (ids ?? []).map((id) => names.combatant(id)).join(", ");
-        if (event.action === "hide") {
-          return event.from?.length
-            ? key("standardHideFrom", { actor: names.combatant(event.actorId), roll, names: list(event.from) })
-            : key("standardHideSeen", { actor: names.combatant(event.actorId), roll });
-        }
-        const line = event.found?.length
-          ? key("standardSearchFound", { actor: names.combatant(event.actorId), roll, names: list(event.found) })
-          : key("standardSearchNone", { actor: names.combatant(event.actorId), roll });
-        return `${line}${searchApart(event.apart)}`;
-      }
       return key(`standard${event.action[0]!.toUpperCase()}${event.action.slice(1)}`, {
         actor: names.combatant(event.actorId),
         target: names.combatant(event.targetId),
@@ -1059,9 +912,7 @@ export function rulesetCombatEventLine(
       return key("revived", { actor: names.combatant(event.actorId), health: event.health });
     case "outcome":
       if (event.outcome === "ongoing") return null;
-      return key(
-        event.outcome === "victory" ? "outcomeVictory" : event.outcome === "fled" ? "outcomeFled" : "outcomeDefeat",
-      );
+      return key(event.outcome === "victory" ? "outcomeVictory" : "outcomeDefeat");
     case "refused":
       return key("refused", {
         actor: names.combatant(event.actorId),

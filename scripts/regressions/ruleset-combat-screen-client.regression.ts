@@ -591,28 +591,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["uses", say({ type: "uses", actorId: "lurker", optionId: "thorns", label: "Thorns", left: 1, of: 3 })],
     ["broke", say({ type: "broke", actorId: "corwin", optionId: "use:0", label: "Wand of sparks", roll: 1 })],
     [
-      "recharged",
-      say({
-        type: "recharged",
-        actorId: "corwin",
-        optionId: "use:0",
-        label: "Staff of the magi",
-        roll: 20,
-        rolls: [6],
-        amount: 7,
-      }),
-    ],
-    [
-      "conjured",
-      say({
-        type: "conjured",
-        actorId: "corwin",
-        optionId: "ability:1:0",
-        label: "Pact of the Blade",
-        item: "Longsword",
-      }),
-    ],
-    [
       "fake",
       say({
         type: "fake",
@@ -770,10 +748,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         path: [{ x: 4, y: 2 }],
       }),
     ],
-    [
-      "teleported",
-      say({ type: "teleported", actorId: "brenna", from: { x: 3, y: 2 }, to: { x: 6, y: 1 }, label: "Misty Step" }),
-    ],
     ["slain", say({ type: "slain", actorId: "brenna", targetId: "lurker", label: "Mace of Disruption" })],
     ["dropped", say({ type: "dropped", actorId: "brenna", targetId: "lurker", label: "Quivering Palm" })],
     [
@@ -838,14 +812,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["unsealed", say({ type: "unsealed", targetId: "lurker", sourceId: "brenna", amount: 5, maxHealth: 30 })],
     ["dismissed", say({ type: "dismissed", actorId: "brenna", targetId: "lurker", label: "Dismissal" })],
     ["returned", say({ type: "returned", targetId: "lurker" })],
-    [
-      "checkEnded",
-      say({ type: "checkEnded", actorId: "lurker", condition: "poisoned", difficulty: 20, total: 21, success: true }),
-    ],
-    ["sphere", say({ type: "sphere", actorId: "lurker", how: "rolled", cells: 3 })],
-    ["sphere", say({ type: "sphere", actorId: "brenna", how: "lifted", targetId: "lurker" })],
-    ["sphere", say({ type: "sphere", actorId: "brenna", how: "put-down", targetId: "lurker" })],
-    ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
     ["extraTurn", say({ type: "extraTurn", actorId: "brenna", initiative: 7, label: "Thief's Reflexes" })],
@@ -897,69 +863,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       "switch",
       say({ type: "switch", actorId: "brenna", optionId: "switch:0", label: "Flame Tongue: Flames", on: true }),
     ],
-    // Hiding, and looking (1.287).
-    [
-      "search",
-      say({
-        type: "search",
-        actorId: "lurker",
-        label: "Detect",
-        check: { check: "perception", rolls: [12], modifier: 3, total: 15 },
-        found: ["brenna"],
-      }),
-    ],
-    ["revealed", say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "attack" })],
-    // Ready (1.288).
-    ["ready", say({ type: "ready", actorId: "brenna", label: "Sword", on: "comes", outcome: "readied" })],
   ];
   const printed = new Map(table);
-  assert.equal(printed.get("search"), "Thorn Lurker uses Detect (12 + 3 = 15) and finds Brenna.");
-  assert.equal(
-    say({
-      type: "search",
-      actorId: "lurker",
-      label: "Detect",
-      check: { check: "perception", rolls: [12], modifier: 3, total: 15 },
-      found: [],
-      apart: [
-        {
-          ids: ["brenna"],
-          check: { check: "perception", rolls: [12, 2], modifier: 3, total: 5, mode: "disadvantage" },
-        },
-      ],
-    })?.startsWith("Thorn Lurker uses Detect (12 + 3 = 15) and finds nobody. Looking for Brenna: "),
-    true,
-  );
-  assert.equal(printed.get("revealed"), "Brenna attacks and gives away where they were hiding.");
-  assert.equal(printed.get("ready"), "Brenna readies Sword for an enemy coming in reach.");
-  assert.equal(
-    say({ type: "ready", actorId: "brenna", label: "Sword", on: "acts", outcome: "lost" }),
-    "Brenna loses the readied Sword with their concentration.",
-  );
-  assert.equal(
-    say({ type: "revealed", actorId: "brenna", byIds: ["lurker"], reason: "seen" }),
-    "Thorn Lurker spots Brenna.",
-  );
-  assert.equal(
-    say({
-      type: "standard",
-      actorId: "brenna",
-      action: "hide",
-      check: { check: "stealth", rolls: [10], modifier: 3, total: 13 },
-      from: ["lurker"],
-    }),
-    "Brenna hides (10 + 3 = 13), unseen by Thorn Lurker.",
-  );
-  assert.equal(
-    say({
-      type: "standard",
-      actorId: "lurker",
-      action: "search",
-      check: { check: "perception", rolls: [4], modifier: 3, total: 7 },
-      found: [],
-    }),
-    "Thorn Lurker searches (4 + 3 = 7) and finds nobody.",
-  );
   for (const [type, text] of table) {
     assert.ok(text && text.length > 0, `a "${type}" event prints nothing`);
   }
@@ -968,24 +873,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
   assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
   assert.equal(printed.get("broke"), "Wand of sparks breaks (a 1 on its die).");
-  assert.equal(
-    say({
-      type: "broke",
-      actorId: "corwin",
-      optionId: "use:0",
-      label: "Staff of striking",
-      roll: 1,
-      becomes: "Quarterstaff",
-    }),
-    "Staff of striking becomes Quarterstaff (a 1 on its die).",
-  );
-  assert.equal(printed.get("recharged"), "Staff of the magi gets 7 charges back (a 20 on its die).");
   assert.equal(printed.get("fake"), "The Potion of healing was really Potion of poison.");
-  assert.equal(printed.get("conjured"), "Corwin uses Pact of the Blade and holds Longsword.");
-  assert.equal(
-    say({ type: "conjured", actorId: "corwin", optionId: "ability:1:0", label: "", item: "Longsword", gone: true }),
-    "Corwin's Longsword vanishes.",
-  );
   assert.equal(
     say({
       type: "fake",
@@ -1072,11 +960,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("heal"), "Corwin recovers 9, and is on 29 of 38.");
   assert.equal(printed.get("temporary"), "Brenna gains 5 temporary points.");
-  // Lost with the condition that gave them (1.274).
-  assert.equal(
-    say({ type: "temporary", targetId: "brenna", rolls: [], flat: 0, amount: 4, lost: true }),
-    "Brenna loses the last 4 temporary points.",
-  );
   assert.equal(printed.get("condition"), "Brenna is now Prone.");
   assert.equal(printed.get("spend"), "Corwin spends 1 1st-level slots.");
   assert.equal(printed.get("budget"), "Brenna has 0 Bonus action left.");
@@ -1193,19 +1076,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
-  assert.equal(printed.get("teleported"), "Brenna teleports with Misty Step, to 6, 1.");
-  // Carried along (1.276).
-  assert.equal(
-    say({
-      type: "teleported",
-      actorId: "lurker",
-      from: { x: 4, y: 2 },
-      to: { x: 7, y: 1 },
-      label: "Dimension Door",
-      by: "brenna",
-    }),
-    "Thorn Lurker goes along with Brenna's Dimension Door, to 7, 1.",
-  );
   assert.equal(printed.get("resized"), "Thorn Lurker is now Large.");
   assert.equal(printed.get("section"), "Brenna's Mace strikes the Wall of Ice for 7; that section has 23 left.");
   const struck = (outcome: "hit" | "miss" | "critical", dealt: number, health: number, broken?: true) =>
@@ -1251,13 +1121,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Brenna's Banishment sends Thorn Lurker away for as long as they are Prone.",
   );
   assert.equal(printed.get("returned"), "Thorn Lurker comes back into the fight.");
-  // Out of the fight by a teleport (1.279), and along with whoever went.
-  assert.equal(printed.get("left"), "Thorn Lurker leaves the fight with Teleport.");
-  assert.equal(
-    say({ type: "left", actorId: "brenna", label: "Teleport", by: "lurker" }),
-    "Brenna leaves the fight along with Thorn Lurker's Teleport.",
-  );
-  assert.equal(say({ type: "outcome", outcome: "fled" }), "The party has left the fight.");
   assert.equal(
     say({ type: "returned", targetId: "lurker", gone: true }),
     "Thorn Lurker stays where they were sent, gone for good.",
@@ -1427,11 +1290,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     rulesetOptionCostText({ ...sword, budget: undefined, strikes: 1 }, budgetLabel, t),
     "Free, 1 strike left",
   );
-  // The other half of an action already made this turn (1.280): a blink dog's bite after its teleport.
-  assert.equal(
-    rulesetOptionCostText({ ...sword, budget: undefined, followUp: true }, budgetLabel, t),
-    "Free, part of the same action",
-  );
   // A weapon says what it has loaded and what its holder carries to shoot, and a reload is named for
   // the weapon it fills and says what there is to load.
   assert.equal(
@@ -1479,16 +1337,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.deepEqual(rulesetPickTarget(sword, [], "lurker"), ["lurker"]);
   assert.deepEqual(rulesetPickTarget(sword, [], "brenna"), [], "an id the option does not list cannot be picked");
   assert.deepEqual(rulesetPickTarget(sword, ["lurker"], "lurker"), [], "picking it again takes it off");
-  // One that may be pointed at the same one again (1.305) adds another while there is room, and
-  // once full a click on a picked one takes one of theirs off.
-  const beams = {
-    ...sword,
-    targets: { ...sword.targets, count: 3, repeat: true as const },
-    targetIds: ["lurker", "brenna"],
-  };
-  assert.deepEqual(rulesetPickTarget(beams, ["lurker"], "lurker"), ["lurker", "lurker"]);
-  assert.deepEqual(rulesetPickTarget(beams, ["lurker", "brenna", "lurker"], "lurker"), ["lurker", "brenna"]);
-  assert.deepEqual(rulesetPickTarget(beams, ["lurker", "lurker", "lurker"], "brenna"), ["lurker", "lurker", "lurker"]);
 
   // A heal is offered the allies the server said it may be pointed at, and never the other side.
   assert.equal(heal.targets.side, "ally");
@@ -1719,17 +1567,6 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Sheets: the 5e (SRD 5.1) sheets were kept up to date while the fight ran, so every cost is already paid. Do not change those numbers again.",
   ]);
 
-  // Gone from the fight alive by a teleport (1.279): neither beaten nor still standing.
-  const away = {
-    ...summary,
-    party: [{ ...summary.party[0]!, left: true as const }, summary.party[1]!],
-    enemies: [{ id: "lurker", name: "Thorn Lurker", health: 3, maxHealth: 12, defeated: true, left: true as const }],
-  };
-  assert.deepEqual(rulesetCombatRecapLines(fiveE, away).slice(0, 2), [
-    "Party on 5e (SRD 5.1) rules: Brenna: 60/60 Hit points (left the fight); Corwin: 20/38 Hit points",
-    "Got away: Thorn Lurker (3/12)",
-  ]);
-
   // A condition that OUTLIVES the fight is the Game Master's to end, as it is at a table: the thing
   // that would lift a charm is the spell's own terms or the fiction, never arithmetic, so the recap
   // names who is still carrying one and hands over the command rather than guessing. The condition
@@ -1855,10 +1692,6 @@ function drawn(...rows: string[]): TacticalGrid {
     "Costs 15 ft",
   );
   assert.ok(!rulesetOptionNeedsCell(stand), "it goes nowhere, so nothing is picked on the board");
-  // A legendary move (1.283) is walked the same way, bought between turns.
-  const legendaryMove = { ...walk, id: "move", kind: "ability" as const, signature: { cost: 1, points: 3 } };
-  assert.ok(rulesetOptionNeedsCell(legendaryMove), "a legendary move asks for a square");
-  assert.ok(!rulesetOptionNeedsCell({ ...legendaryMove, cells: undefined }), "one with nowhere to go does not");
 
   // Walking: the cells the server offered, each with its cost and the way it got there.
   const step: RulesetMenuStep = { stage: "move", option: walk, targets: [] };
@@ -1878,19 +1711,6 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.deepEqual(path.at(-1), { x: 3, y: 0 }, "and the way ends where it was going");
   assert.deepEqual(rulesetPathTo(step, { x: 2, y: 1 }), [], "a square nobody offered has no way to it");
   assert.deepEqual(rulesetPathTo(null, { x: 1, y: 1 }), [], "and neither has any square without a step");
-  // A teleport is aimed at where it goes (1.276), and each square it may go to says so.
-  const blink: DirectedRulesetOption = {
-    ...walk,
-    id: "teleport",
-    kind: "ability",
-    cells: undefined,
-    teleport: { cells: [{ x: 3, y: 0 }] },
-    aim: [{ x: 3, y: 0, targetIds: [] }],
-  };
-  assert.ok(rulesetOptionNeedsAim(blink) && !rulesetOptionNeedsCell(blink));
-  const blinking = rulesetBoardCells(view, { stage: "aim", option: blink, targets: [] });
-  assert.ok(rulesetCellSentences(at(blinking, 3, 0), view, t).includes("Can be teleported to."));
-  assert.ok(!rulesetCellSentences(at(blinking, 3, 0), view, t).includes("Can be aimed at, catching nobody."));
 
   // Nobody can be swung at from where she stands, and the board says so out loud rather than
   // offering an attack that can be pointed at nobody.

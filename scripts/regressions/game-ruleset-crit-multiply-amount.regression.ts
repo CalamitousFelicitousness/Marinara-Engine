@@ -100,16 +100,12 @@ try {
       issues({ ...secondWind, mechanics: { ...secondWind.mechanics, amountAdd: { field: "nope" } } }),
       /nope/,
     );
-    // An item's use adds a value off its holder's sheet too since 1.271 (a Staff of Healing's), and
-    // still only beside an amount.
+    // An item's use reads its own stats, never the sheet's: amountAdd is not an item's.
     const gravewatch = JSON.parse(read("../../docs/examples/rulesets/gravewatch.json"));
-    const tonicUse = gravewatch.catalogs
+    gravewatch.catalogs
       .find((catalog: { id: string }) => catalog.id === "kit")
-      .entries.find((entry: { id: string }) => entry.id === "warming-tonic").item.use;
-    tonicUse.amountAdd = { const: 1 };
-    assert.equal(parseRulesetDefinition(gravewatch).ok, true, "an item's use may add a sheet value");
-    delete tonicUse.amount;
-    assert.equal(parseRulesetDefinition(gravewatch).ok, false, "but only to an amount");
+      .entries.find((entry: { id: string }) => entry.id === "warming-tonic").item.use.amountAdd = { const: 1 };
+    assert.equal(parseRulesetDefinition(gravewatch).ok, false, "an item's use cannot add a sheet value");
     const t = ((key: string, params?: Record<string, unknown>) =>
       key === "game.ruleset.catalog.mechanics.amountAdd" ? `${params!.amount} + ${params!.value}` : key) as never;
     const line = formatCatalogMechanics(

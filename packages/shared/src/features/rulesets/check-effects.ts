@@ -87,8 +87,6 @@ export interface RulesetCheckSource {
   conditionImmunities?: readonly string[];
   /** How far it lets its holder sense with each of the fight's senses (Capability API 1.179). */
   senses?: Readonly<Record<string, number | { add: number }>>;
-  /** The light it sheds for its holder (Capability API 1.294). */
-  light?: Readonly<{ bright: number; dim: number }>;
 }
 
 /**

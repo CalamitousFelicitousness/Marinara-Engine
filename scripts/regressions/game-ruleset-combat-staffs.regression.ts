@@ -243,7 +243,7 @@ try {
     );
     refused(
       withStaff((item) => (item.use.chargeStep = { max: 2 })),
-      /A charge more adds an amount, targets, a push, or some of them/,
+      /A charge more adds an amount, targets, or both/,
     );
     refused(
       withStaff((item) => (item.use.sheetDifficulty = { derived: "nope" })),

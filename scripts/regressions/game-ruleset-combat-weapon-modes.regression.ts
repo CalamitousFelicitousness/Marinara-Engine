@@ -307,7 +307,7 @@ try {
     parse(withItem(plainItem));
     refused(
       withItem(javelinItem({ id: "bolt", label: "Bolt" })),
-      /charges are spent by its use, its weapon's slay, one of its weapon's modes or its hits/,
+      /charges are spent by its use, its weapon's slay or one of its weapon's modes/,
     );
   }
 

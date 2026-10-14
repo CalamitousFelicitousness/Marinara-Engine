@@ -685,83 +685,24 @@ export function RulesetCombatMenu({
       closeStep();
       onChoose(option.id, [], step.payWith, laid, step.style, step.mode, step.amount, step.alters);
     };
-    // Who may go along on a teleport (1.276), ticked here while the board takes the cell.
-    const carries = step.stage === "aim" ? option.teleport?.carries : undefined;
     const prompt =
       step.stage === "move"
         ? "game.combat.ruleset.board.movePrompt"
-        : option.teleport
-          ? option.teleport.cells.length === 0
-            ? "game.combat.ruleset.board.teleportLeavePrompt"
-            : "game.combat.ruleset.board.teleportPrompt"
-          : turning
-            ? "game.combat.ruleset.board.aimTurnPrompt"
-            : wall && !lay?.ring
-              ? "game.combat.ruleset.board.aimWallPrompt"
-              : copies > 1
-                ? "game.combat.ruleset.board.aimCopiesPrompt"
-                : rulesetOptionHasAim(option)
-                  ? "game.combat.ruleset.board.aimPrompt"
-                  : "game.combat.ruleset.board.aimNobody";
+        : turning
+          ? "game.combat.ruleset.board.aimTurnPrompt"
+          : wall && !lay?.ring
+            ? "game.combat.ruleset.board.aimWallPrompt"
+            : copies > 1
+              ? "game.combat.ruleset.board.aimCopiesPrompt"
+              : rulesetOptionHasAim(option)
+                ? "game.combat.ruleset.board.aimPrompt"
+                : "game.combat.ruleset.board.aimNobody";
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200">
           {t(prompt, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
         </p>
         {/* How a wall is laid (1.176) and how many copies are down (1.177): the board takes the cells. */}
-        {carries && (
-          <div className="flex flex-wrap gap-2">
-            {carries.ids.map((id) => {
-              const along = step.targets.includes(id);
-              const full = !along && step.targets.length >= carries.count;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={busy || full}
-                  aria-pressed={along}
-                  onClick={() =>
-                    setStep({
-                      ...step,
-                      targets: along ? step.targets.filter((one) => one !== id) : [...step.targets, id],
-                    })
-                  }
-                  className={cn(buttonClass, along ? "border-[var(--primary)]/60 bg-[var(--primary)]/25" : "")}
-                >
-                  {t("game.combat.ruleset.board.teleportCarry", {
-                    name: view.combatants.find((one) => one.id === id)?.name ?? id,
-                  })}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {/* Out of the fight altogether (1.279), with whoever is ticked to go along. */}
-        {option.teleport?.leaves && step.stage === "aim" && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                const along = step.targets;
-                closeStep();
-                onChoose(
-                  option.id,
-                  [],
-                  step.payWith,
-                  along.length ? { carries: along } : undefined,
-                  step.style,
-                  step.mode,
-                  step.amount,
-                  step.alters,
-                );
-              }}
-              className={buttonClass}
-            >
-              {t("game.combat.ruleset.board.teleportLeave")}
-            </button>
-          </div>
-        )}
         {(wall || copies > 1) && (
           <div className="flex flex-wrap gap-2">
             {wall && area?.ring !== undefined && !turning && (
@@ -823,22 +764,15 @@ export function RulesetCombatMenu({
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-amber-200" id="ruleset-target-prompt">
           {many
-            ? t(
-                option.targets.repeat
-                  ? "game.combat.ruleset.target.promptRepeat"
-                  : "game.combat.ruleset.target.promptMany",
-                {
-                  label: rulesetOptionLabel(option, t),
-                  count: option.targets.count,
-                },
-              )
+            ? t("game.combat.ruleset.target.promptMany", {
+                label: rulesetOptionLabel(option, t),
+                count: option.targets.count,
+              })
             : t("game.combat.ruleset.target.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-target-prompt">
           {targets.map((combatant, index) => {
             const picked = step.targets.includes(combatant.id);
-            // Picked more than once (1.305): eldritch blast's beams at one target.
-            const times = step.targets.filter((id) => id === combatant.id).length;
             return (
               <button
                 ref={index === 0 ? first : undefined}
@@ -863,11 +797,6 @@ export function RulesetCombatMenu({
                     max: combatant.health.max,
                   })}
                 </span>
-                {times > 1 && (
-                  <span className="mt-0.5 block text-[0.65rem] font-semibold tabular-nums text-white/80">
-                    {t("game.combat.ruleset.target.times", { count: times })}
-                  </span>
-                )}
               </button>
             );
           })}

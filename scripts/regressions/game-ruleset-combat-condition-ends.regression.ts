@@ -610,10 +610,7 @@ try {
     ]) {
       refused(withKeys({ endsWhen: value }), /endsWhen|unique/);
     }
-    refused(
-      withKeys({ endsWhen: ["damaged", "harmed-by-source-side", "attacked", "ally-harmed-in-sight", "damaged"] }),
-      /at most 4/,
-    );
+    refused(withKeys({ endsWhen: ["damaged", "harmed-by-source-side", "damaged"] }), /at most 2/);
     refused(withKeys({ shakeOff: {} }), /Required/);
     for (const value of [false, "true", 1, null]) refused(withKeys({ saveWhenDamaged: value }), /saveWhenDamaged/);
     for (const value of [
@@ -636,14 +633,9 @@ try {
       readFileSync(fileURLToPath(new URL("../../docs/extending/ruleset.schema.json", import.meta.url)), "utf8"),
     );
     const condition = editor.properties.combat.properties.conditions.items.properties;
-    assert.deepEqual(condition.endsWhen.items.enum, [
-      "damaged",
-      "harmed-by-source-side",
-      "attacked",
-      "ally-harmed-in-sight",
-    ]);
+    assert.deepEqual(condition.endsWhen.items.enum, ["damaged", "harmed-by-source-side"]);
     assert.equal(condition.endsWhen.minItems, 1);
-    assert.equal(condition.endsWhen.maxItems, 4);
+    assert.equal(condition.endsWhen.maxItems, 2);
     assert.equal(condition.endsWhen.uniqueItems, true);
     assert.equal(condition.saveWhenDamaged.const, true);
     assert.deepEqual(condition.shakeOff.required, ["budget"]);

@@ -238,8 +238,8 @@ export function rulesetHeldItemDoes(held: RulesetSheetItem): RulesetSheetItem["i
  *  `add`s, from each worn item's `worn` effect and each other item's `carried` one, one item once. */
 function itemAbilityChanges(
   items: ReadonlyArray<RulesetSheetItem> | undefined,
-): Map<string, { set?: number; add: number; topped: Array<{ add: number; max: number }> }> {
-  const changes = new Map<string, { set?: number; add: number; topped: Array<{ add: number; max: number }> }>();
+): Map<string, { set?: number; add: number }> {
+  const changes = new Map<string, { set?: number; add: number }>();
   const seen = new Set<unknown>();
   for (const held of items ?? []) {
     const does = rulesetHeldItemDoes(held);
@@ -247,10 +247,8 @@ function itemAbilityChanges(
     if (!effect?.abilities || seen.has(effect)) continue;
     seen.add(effect);
     for (const [id, change] of Object.entries(effect.abilities)) {
-      const current = changes.get(id) ?? { add: 0, topped: [] };
+      const current = changes.get(id) ?? { add: 0 };
       if ("set" in change) current.set = Math.max(current.set ?? change.set, change.set);
-      // On top of the score sets leave, up to its most (1.313).
-      else if (change.max !== undefined) current.topped.push({ add: change.add, max: change.max });
       else current.add += change.add;
       changes.set(id, current);
     }
@@ -433,13 +431,9 @@ export function evaluateRulesetSheet(
   for (const ability of sheet.abilities) {
     const base = finite(build.abilities?.[ability.id]) ?? ability.default;
     const change = fromItems.get(ability.id);
-    let score = change
+    const score = change
       ? Math.min(ability.max, Math.max(ability.min, Math.max(base + change.add, change.set ?? -Infinity)))
       : base;
-    // An add with a most goes on top of that, never past its most, nor lowering a score above it (1.313).
-    for (const top of change?.topped ?? []) {
-      score = Math.max(score, Math.min(score + top.add, top.max, ability.max));
-    }
     abilityScores[ability.id] = score;
     abilityMods[ability.id] = rulesetAbilityModifier(definition, score);
   }

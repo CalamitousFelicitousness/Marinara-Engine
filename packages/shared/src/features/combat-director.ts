@@ -63,8 +63,6 @@ export type DirectedCommand =
       also?: Array<{ x: number; y: number }>;
       /** A wall's section struck at instead of a creature (1.200): one of the option's `walls`. */
       wall?: { x: number; y: number };
-      /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
-      carries?: string[];
       /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
       amount?: number;
       /** The alterations it is used with (1.253), from the option's `alters`: Metamagic. */
@@ -144,8 +142,6 @@ export interface DirectedRulesetCombatant {
   defeated: boolean;
   /** Sent out of the fight, alive (1.236): off the board until it comes back, if it does. */
   away?: true;
-  /** Gone of its own accord, by a teleport that leaves the fight (1.279). */
-  left?: true;
   /** Caught unaware (1.237): their first turn is only ended, and they answer nothing until then. */
   surprised?: true;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */

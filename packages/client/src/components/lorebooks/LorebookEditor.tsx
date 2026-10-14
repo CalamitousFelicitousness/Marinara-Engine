@@ -3216,7 +3216,13 @@ function VectorizeSection({
   const sidecarModelDisplayName = useSidecarStore((s) => s.modelDisplayName);
   const fetchSidecarStatus = useSidecarStore((s) => s.fetchStatus);
   const connections = useMemo(
-    () => (rawConnections ?? []) as Array<{ id: string; name: string; embeddingModel?: string }>,
+    () =>
+      (rawConnections ?? []) as Array<{
+        id: string;
+        name: string;
+        embeddingModel?: string;
+        embeddingConnectionId?: string | null;
+      }>,
     [rawConnections],
   );
   const sidecarEmbeddingConnections = useMemo(() => {
@@ -3232,7 +3238,8 @@ function VectorizeSection({
   const embeddingConnections = useMemo(
     () => [
       ...sidecarEmbeddingConnections,
-      ...connections.filter((c) => typeof c.embeddingModel === "string" && c.embeddingModel.trim()),
+      // A connection can also get its embedding model from its Embedding Connection; the server resolves it.
+      ...connections.filter((c) => c.embeddingModel?.trim() || c.embeddingConnectionId?.trim()),
     ],
     [connections, sidecarEmbeddingConnections],
   );
@@ -3327,7 +3334,6 @@ function VectorizeSection({
       try {
         const res = await api.post(`/lorebooks/${lorebookId}/vectorize`, {
           connectionId: selectedConnectionId,
-          model: conn?.embeddingModel ?? "",
           onlyMissing: mode === "missing",
         });
         const data = res as { vectorized: number; total?: number; skipped?: number };
@@ -3508,7 +3514,8 @@ function VectorizeSection({
               <option value="">{localizeUi("ui.lorebooks.vectorizesection.noSemanticSearch")}</option>
               {embeddingConnections.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.embeddingModel})
+                  {c.name}
+                  {c.embeddingModel?.trim() ? <> ({c.embeddingModel})</> : null}
                 </option>
               ))}
             </select>

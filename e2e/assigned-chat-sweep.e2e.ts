@@ -682,6 +682,108 @@ test("Echo Chamber rejects malformed saved and live reactions without crashing t
   }
 });
 
+test("Echo Chamber shows reactions that arrive before a held new reply joins the chat (#7592)", async ({
+  page,
+  request,
+}) => {
+  const data = await fixture(request, "roleplay");
+  try {
+    expect(
+      (
+        await request.patch(`/api/chats/${data.chat.id}/metadata`, {
+          data: { enableAgents: true, activeAgentIds: ["echo-chamber"] },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    expect(
+      (await request.patch(`/api/chats/${data.chat.id}`, { data: { connectionId: "echo-7592-connection" } })).ok(),
+    ).toBeTruthy();
+    await page.route(`**/api/agents/echo-messages/${data.chat.id}`, (route) => route.fulfill({ json: [] }));
+    const replyId = "__echo_7592_reply__";
+    const content = "The lab door creaks open.";
+    const echoResult = (reaction: string, messageId: string, swipeIndex: number) => ({
+      type: "agent_result",
+      data: {
+        agentType: "echo-chamber",
+        agentName: "Echo Chamber",
+        resultType: "echo_message",
+        data: { reactions: [{ characterName: "Reader", reaction }] },
+        success: true,
+        error: null,
+        durationMs: 10,
+        chatId: data.chat.id,
+        messageId,
+        swipeIndex,
+        generationId: "echo-7592-generation",
+      },
+    });
+    // Prose Guardian holds the saved reply out of the message list until the stream's cleanup,
+    // so the parallel Echo Chamber results reach the client first.
+    await page.route("**/api/generate", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: [
+          { type: "token", data: content },
+          {
+            type: "message_saved",
+            data: {
+              id: replyId,
+              chatId: data.chat.id,
+              role: "assistant",
+              characterId: data.character.id,
+              content,
+              activeSwipeIndex: 0,
+              extra: { postProcessingPending: { agentType: "prose-guardian" } },
+              createdAt: new Date().toISOString(),
+            },
+          },
+          { type: "agent_start", data: { phase: "parallel" } },
+          echoResult("Reaction to the new reply", replyId, 0),
+          echoResult("Reaction to another swipe", replyId, 1),
+          echoResult("Reaction to another reply", "__echo_7592_other__", 0),
+          {
+            type: "text_rewrite",
+            data: { editedText: content, rewriteApplied: false, originalText: content, agentType: "prose-guardian" },
+          },
+          { type: "done", data: {} },
+        ]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join(""),
+      }),
+    );
+    await open(page, data.chat.id, { echoChamberOpen: true, enableStreaming: true });
+    await page.locator("textarea[data-chat-composer]").fill("Open the door.");
+    await page.locator("button.mari-chat-send-btn").click();
+
+    const readReactions = () =>
+      page.evaluate(async () => {
+        const { useAgentStore } = await import("/src/stores/agent.store.ts" as string);
+        return (useAgentStore.getState().echoMessages as Array<{ reaction: string }>).map((m) => m.reaction);
+      });
+    await expect.poll(readReactions).toContain("Reaction to the new reply");
+    await expect
+      .poll(() =>
+        page.evaluate(async (chatId) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return Boolean(useChatStore.getState().abortControllers.get(chatId));
+        }, data.chat.id),
+      )
+      .toBe(false);
+    // The whole stream has run, so the other swipe's and the other reply's reactions were turned away.
+    expect(await readReactions()).toEqual(["Reaction to the new reply"]);
+    await page.evaluate(async () => {
+      const { useAgentStore } = await import("/src/stores/agent.store.ts" as string);
+      useAgentStore.getState().revealNextEchoMessage();
+    });
+    await expect(
+      page.locator('[data-roleplay-agent-window="echo"]').getByText("Reaction to the new reply", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    await data.cleanup();
+  }
+});
+
 test("Roleplay recipient actions share the tray and keep their menus visible", async ({
   page,
   request,

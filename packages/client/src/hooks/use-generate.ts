@@ -1572,6 +1572,17 @@ export function useGenerate() {
         (splitPartIdsBefore.get(id) ?? []).flatMap((partId) => persistedMessages.get(partId) ?? []);
       const isSplitPart = (id: string) =>
         pendingSplitPartIds.includes(id) || [...splitPartIdsBefore.values()].some((ids) => ids.includes(id));
+      // A reply held for a rewrite is shown by the live stream and joins the message list only at cleanup,
+      // after its agent results, so while this stream is live they check the reply it saved (#7592).
+      // A Game reply stays hidden until its reveal, so it does not count as on screen.
+      const agentResultOwnsVisibleSwipe = (result: AgentResultEventPayload) =>
+        agentResultMatchesVisibleSwipe(
+          getCachedMessages(qc, params.chatId),
+          result,
+          !isGameGeneration && useChatStore.getState().abortControllers.get(params.chatId) === abortController
+            ? persistedMessages
+            : undefined,
+        );
       let vnReplyPublished = false;
       const publishVnReply = (message: Message | null) => {
         if (
@@ -2140,7 +2151,12 @@ export function useGenerate() {
                 if (agentEventGenerationId && agentEventGenerationId !== result.generationId) break;
                 agentEventGenerationId ??= result.generationId;
               }
-              const ownsVisibleSwipe = agentResultMatchesVisibleSwipe(getCachedMessages(qc, params.chatId), result);
+              const ownsVisibleSwipe = agentResultOwnsVisibleSwipe(result);
+              if (!ownsVisibleSwipe) {
+                console.debug(
+                  `[Agent] Skipped ${result.agentName} (${result.agentType}): reply ${result.messageId} swipe ${result.swipeIndex} is not on screen`,
+                );
+              }
 
               if (debugMode) {
                 if (result.success) {
@@ -2268,10 +2284,7 @@ export function useGenerate() {
                       for (const pending of pendingEntries) {
                         enqueuePendingCardUpdate(pending);
                       }
-                      if (
-                        isActiveChat() &&
-                        agentResultMatchesVisibleSwipe(getCachedMessages(qc, params.chatId), result)
-                      ) {
+                      if (isActiveChat() && agentResultOwnsVisibleSwipe(result)) {
                         useUIStore.getState().openModal("character-card-update");
                       }
                     }

@@ -46,6 +46,12 @@ export const AVATAR_STORAGE_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/** Avatar faces: a streaming reply asks at most once per 1.2 seconds (about 50 a minute); room for two tabs. */
+export const AVATAR_CLASSIFY_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const SPRITE_RENAME_RATE_LIMIT = {
   max: 60,
   timeWindow: 60_000,
@@ -66,6 +72,16 @@ export const GAME_TILE_PACKS_RATE_LIMIT = {
  * a whole world. A person building worlds stays far below this; a scripted loop does not.
  */
 export const GAME_WORLDS_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
+/**
+ * Rulesets and creature packs: reading a package file, a ruleset's own files or the published schema, and
+ * filing or choosing a creature pack. A person importing or editing stays far below this; a scripted loop
+ * does not.
+ */
+export const GAME_RULESETS_RATE_LIMIT = {
   max: 120,
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
@@ -200,6 +216,14 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
       key: "avatar-storage",
       limit: AVATAR_STORAGE_RATE_LIMIT.max,
       windowMs: AVATAR_STORAGE_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
+    pattern: /^\/api\/avatar-classify(?:\/|\?|$)/,
+    rule: {
+      key: "avatar-classify",
+      limit: AVATAR_CLASSIFY_RATE_LIMIT.max,
+      windowMs: AVATAR_CLASSIFY_RATE_LIMIT.timeWindow,
     },
   },
   {

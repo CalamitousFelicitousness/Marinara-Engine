@@ -1,5 +1,5 @@
 /**
- * Light from zones (Capability API 1.296).
+ * Light from zones (Capability API 1.297).
  *
  *   - A zone's `lights`: bright within `bright` of its middle and dim in the rest of its own cells.
  *     5e's Daylight at a point, a bullseye lantern's cone held by its caster.
@@ -94,7 +94,7 @@ try {
     range: 120,
     zone: { rounds: 10, triggers: [], obscures: {} },
   });
-  // Sunlight over a single cell's burst (1.297).
+  // Sunlight over a single cell's burst (1.298).
   const sunbeam = spell("sunbeam", {
     area: { shape: "burst", size: 5 },
     range: 120,
@@ -191,7 +191,7 @@ try {
     assert.equal(sees(lit.state, "mage", "a"), true, "a lit up");
   }
 
-  // ── A zone's sunlight (1.297) ──
+  // ── A zone's sunlight (1.298) ──
   {
     const lit = cast(fight(), "mage", "Sunbeam", { x: 12, y: 7 });
     assert.equal(light(lit.state, 12, 7), "sunlight", "its middle");
@@ -304,7 +304,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with zones that shed light or end magical darkness, or light that shows the invisible, requires schemaVersion 2 and capabilityApi 1.296 or newer";
+      "A ruleset with zones that shed light or end magical darkness, or light that shows the invisible, requires schemaVersion 2 and capabilityApi 1.297 or newer";
     const only = (entry: RulesetCatalogEntry) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [entry] });
@@ -322,13 +322,13 @@ try {
       light: { bright: 30, dim: 30, reveals: true },
     } as never;
     for (const entry of [bullseye, dispels, dark, reveal, lantern]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(295) as never, only(entry)), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(296) as never, only(entry)), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(296) as never, only(entry)), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(297) as never, only(entry)), gate, entry.id);
     }
   }
 
   console.log(
-    "Light zones: Daylight at a point, a bullseye lantern's cone, darkness ended by a light of its level or more, the invisible shown in a revealing light; refusals; gated at 1.296.",
+    "Light zones: Daylight at a point, a bullseye lantern's cone, darkness ended by a light of its level or more, the invisible shown in a revealing light; refusals; gated at 1.297.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

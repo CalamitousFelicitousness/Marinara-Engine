@@ -252,8 +252,8 @@ function readPackage(value: unknown): RulesetPackageRead {
     })),
   };
   for (const catalog of complete.catalogs ?? []) {
-    // What names entries of other catalogs: a creature's spells, an entry's amends (1.301), the
-    // weapons it conjures (1.305).
+    // What names entries of other catalogs: a creature's spells, an entry's amends (1.302), the
+    // weapons it conjures (1.306).
     if (
       !catalog.entries?.some(
         (entry) => entry.creature?.spellcasting || entry.mechanics?.amends || entry.mechanics?.conjures,

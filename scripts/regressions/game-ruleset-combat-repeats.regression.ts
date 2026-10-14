@@ -1,5 +1,5 @@
 /**
- * A concentration entry made again, and a condition that ends at a distance (Capability API 1.309).
+ * A concentration entry made again, and a condition that ends at a distance (Capability API 1.310).
  *
  *   - `repeats` offers the entry's effect again on its own budget while its user concentrates on it,
  *     costing nothing off the sheet and grown by what the cast was paid at: Vampiric Touch.
@@ -317,7 +317,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an entry made again while its user concentrates on it, or a condition that ends at a distance from whoever put it on, requires schemaVersion 2 and capabilityApi 1.309 or newer";
+      "A ruleset with an entry made again while its user concentrates on it, or a condition that ends at a distance from whoever put it on, requires schemaVersion 2 and capabilityApi 1.310 or newer";
     const docWith = (entries: unknown[]) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries });
@@ -328,16 +328,16 @@ try {
     const unended = structuredClone(plainEyebite);
     delete unended.mechanics.applies[0].endsAway;
     for (const doc of [docWith([touch]), docWith([plainEyebite])]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(308) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(309) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(309) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(310) as never, doc), gate);
     }
     for (const doc of [JSON.parse(fiveEText), docWith([unended])]) {
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(308) as never, doc), gate, "nothing new, no gate");
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(309) as never, doc), gate, "nothing new, no gate");
     }
   }
 
   console.log(
-    "Repeats: Vampiric Touch made again at its cast's level for nothing, Eyebite never at who saved and its panic ended far and unseen, Heat Metal only at its target; refusals; gated at 1.309.",
+    "Repeats: Vampiric Touch made again at its cast's level for nothing, Eyebite never at who saved and its panic ended far and unseen, Heat Metal only at its target; refusals; gated at 1.310.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

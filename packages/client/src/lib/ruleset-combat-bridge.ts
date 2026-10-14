@@ -92,12 +92,12 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
     const left = alive.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ");
     lines.push(`Still standing: ${left}`);
   }
-  // Gone alive by a teleport out of the fight (1.278): neither beaten nor still here.
+  // Gone alive by a teleport out of the fight (1.279): neither beaten nor still here.
   const gone = summary.enemies.filter((enemy) => enemy.left);
   if (gone.length > 0) {
     lines.push(`Got away: ${gone.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ")}`);
   }
-  // What the fight broke (1.315): the story goes on with it broken.
+  // What the fight broke (1.316): the story goes on with it broken.
   if (summary.broken?.length) lines.push(`Broken: ${summary.broken.join("; ")}`);
   lines.push(
     `Sheets: the ${definition.name} sheets were kept up to date while the fight ran, so every cost is already paid. Do not change those numbers again.`,

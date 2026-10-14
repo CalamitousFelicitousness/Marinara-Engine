@@ -1,4 +1,4 @@
-/** Each class keeps its spellcasting numbers (1.107), from a builder pick through a rolled fight. */
+/** Each class keeps its spellcasting numbers (1.108), from a builder pick through a rolled fight. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -330,18 +330,18 @@ try {
     if (key === "stamp") delete doc.combat.abilities[0].byColumn;
     else for (const step of doc.sheet.builder.steps) delete step.stamp;
     const issue =
-      "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.107 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(106) as any, doc), issue);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(107) as any, doc), null);
-    const missing = manifest(107) as any;
+      "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.108 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(107) as any, doc), issue);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(108) as any, doc), null);
+    const missing = manifest(108) as any;
     delete missing.capabilityApi;
     assert.match(getCapabilityPackageInstallIssue(missing, doc) ?? "", /requires schemaVersion 2/);
     assert.match(
-      getCapabilityPackageInstallIssue({ ...manifest(107), schemaVersion: 1 } as any, doc) ?? "",
+      getCapabilityPackageInstallIssue({ ...manifest(108), schemaVersion: 1 } as any, doc) ?? "",
       /requires schemaVersion 2/,
     );
   }
-  assert.equal(getCapabilityPackageInstallIssue(manifest(106) as any, legacyDoc), null);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(107) as any, legacyDoc), null);
 
   // The emitted schema retains the bounds Zod implements as refinements.
   const schema = JSON.parse(read("docs/extending/ruleset.schema.json"));
@@ -360,7 +360,7 @@ try {
   const editor = read("packages/client/src/components/rulesets/RulesetSheetEditor.tsx");
   assert.match(editor, /rulesetRowSpellcastingText\(definition, build, list.id, row, evaluated, t\)/);
   assert.match(editor, /\{spellcasting\}/);
-  console.log("Class spellcasting: builder, sheet, prompt, forecast, rolls, refusals and 1.107 gate passed.");
+  console.log("Class spellcasting: builder, sheet, prompt, forecast, rolls, refusals and 1.108 gate passed.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -53,7 +53,7 @@ export type GameInventoryItemUser = (
       stacks: GameInventoryStack[];
       journal: GameInventoryJournalEntry[];
       line: string;
-      /** A fake used was shown for what it truly is first (1.78): its true name. */
+      /** A fake used was shown for what it truly is first (1.79): its true name. */
       revealed?: string;
     }
   | { ok: false; reason: string };
@@ -105,7 +105,7 @@ export interface GameInventoryMarket {
         seller?: string;
         /** Out of the seller's stock today. */
         stock?: true;
-        /** A fake a dishonest seller passed off (Capability API 1.78): what it truly is. The buyer
+        /** A fake a dishonest seller passed off (Capability API 1.79): what it truly is. The buyer
          *  gets it as `item`, and the stack keeps this. */
         truly?: string;
       }
@@ -117,7 +117,7 @@ export interface GameInventoryMarket {
     seller?: string;
     who?: string;
     stacks: readonly GameInventoryStack[];
-    /** The stack sold is a fake: what it truly is, which an honest buyer spots (1.78). */
+    /** The stack sold is a fake: what it truly is, which an honest buyer spots (1.79). */
     truly?: string;
   }):
     | {
@@ -308,7 +308,7 @@ export function applyGameInventoryTags(
       }
       current = worn.stacks;
       done += 1;
-      // A fake bound is found out, as what it truly is (1.78).
+      // A fake bound is found out, as what it truly is (1.79).
       if (wear === "bind" && stack.truly) revealed ??= rules?.itemOf(stack.truly)?.name ?? stack.truly;
     }
     const now = current.reduce((total, stack) => total + (mine(stack) && stack[flag] ? stack.quantity : 0), 0);
@@ -387,7 +387,7 @@ export function applyGameInventoryTags(
               break;
             }
             // A use that found a fake out was a use of the fake: the rest of the count is not moved
-            // onto the real thing it passed for (1.78).
+            // onto the real thing it passed for (1.79).
             if (!used || revealed) break;
           }
           if (lines.length === 0) return serializeInventoryTag(shown, { ok: false, reason: refused ?? "none-held" });
@@ -509,7 +509,7 @@ export function applyGameInventoryTags(
           if (!market?.sale) return serializeInventoryTag(shown, { ok: false, reason: "no-market" });
           const asked = { ...shown, ...(request.seller ? { seller: request.seller } : {}) };
           // The stack the name finds: a fake is offered for what it seems, which an honest buyer sees
-          // through (1.78).
+          // through (1.79).
           const offered = gameInventoryStackNamed(current, item, who.bag ?? {});
           const sale = market.sale({
             item,
@@ -526,7 +526,7 @@ export function applyGameInventoryTags(
           const answered = { ...asked, item: sale.name, ...(sale.seller ? { seller: sale.seller } : {}), ...seen };
           const holder = who.bag?.holder;
           // Only stacks of the kind the sale was priced by: a fake is never sold with the real thing it
-          // passes for, nor the real thing with a fake (1.78).
+          // passes for, nor the real thing with a fake (1.79).
           const sold = offered && current.find((stack) => stack.id === offered.id);
           const kind = sold ? gameInventoryStackKind(sold) : undefined;
           const taken = applyGameInventoryOps(
@@ -570,7 +570,7 @@ export function applyGameInventoryTags(
           );
         }
         if (request.action === "reveal") {
-          // A fake shown for what it truly is (1.78): the stack the name finds in who's bag becomes its
+          // A fake shown for what it truly is (1.79): the stack the name finds in who's bag becomes its
           // true item. Anything else is already what it seems, and nothing changes.
           const fake = gameInventoryStackNamed(current, item, who.bag ?? {}, true);
           if (!fake) return serializeInventoryTag(shown, { ok: false, reason: "none-held" });
@@ -646,7 +646,7 @@ export function applyGameInventoryTags(
     if (drops.length === 0) return serializeLootTag(request);
     return drops.map((drop) => addAnswered(drop.name, { item: drop.item }, drop.count, request.who, who.bag)).join(" ");
   });
-  // A binding whose needed items went elsewhere, or came off, is undone (1.312).
+  // A binding whose needed items went elsewhere, or came off, is undone (1.313).
   return { content: looted, stacks: releaseGameInventoryUnmetBindings(current, rules), journal, tags };
 }
 

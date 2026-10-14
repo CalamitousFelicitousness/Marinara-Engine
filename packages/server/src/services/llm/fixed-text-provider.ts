@@ -1,7 +1,7 @@
 import { BaseLLMProvider, type ChatMessage, type ChatOptions, type LLMUsage } from "./base-provider.js";
 
 /**
- * A provider whose reply is already written (Capability API 1.338): a defined Game Master intro is the
+ * A provider whose reply is already written (Capability API 1.339): a defined Game Master intro is the
  * game's first message exactly as set, so the turn streams it instead of asking a model. Everything the
  * reply goes through after (its tags, the story, the scene) is as for any other.
  */

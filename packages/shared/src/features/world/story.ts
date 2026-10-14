@@ -68,7 +68,7 @@ const trigger = z.discriminatedUnion("on", [
   z.object({ on: z.literal("day"), day: z.number().int().min(0).max(1_000_000) }).strict(),
   z.object({ on: z.literal("turn"), turn: z.number().int().min(1).max(1_000_000) }).strict(),
   z.object({ on: z.literal("fight"), outcome: z.enum(STORY_FIGHT_OUTCOMES) }).strict(),
-  /** A fight broke this prop (Capability API 1.315), by its label: an oil jar, the mill's sluice gate. */
+  /** A fight broke this prop (Capability API 1.316), by its label: an oil jar, the mill's sluice gate. */
   z.object({ on: z.literal("broke"), prop: z.string().trim().min(1).max(40) }).strict(),
   z
     .object({
@@ -197,7 +197,7 @@ export const storyScriptSchema = z
       )
       .max(STORY_MAX.cutscenes)
       .default([]),
-    /** The Game Master's intro message (Capability API 1.338): exactly the game's first message
+    /** The Game Master's intro message (Capability API 1.339): exactly the game's first message
      *  (`"defined"`) or guidance for the one the Game Master writes (`"guided"`); `locked` keeps a player
      *  from changing it at setup. */
     intro: gameIntroSchema.optional(),
@@ -316,7 +316,7 @@ export function checkStoryScript(
     if (when.on === "arrive") placeOk(when.place, where);
     if (when.on === "meet") personOk(when.person, where);
     if (when.on === "deed" && when.place) placeOk(when.place, where);
-    // Only what stands on one of the world's battlefields can be broken (1.315).
+    // Only what stands on one of the world's battlefields can be broken (1.316).
     if (when.on === "broke") {
       const label = when.prop.trim().toLowerCase();
       const painted = (game.edits?.battlefields ?? []).some((map) =>
@@ -604,10 +604,17 @@ export function storyFightOutcome(playerMessage: string | null | undefined): Sto
 }
 export type StoryFightOutcome = (typeof STORY_FIGHT_OUTCOMES)[number];
 
-/** What a fight broke (1.315), read off the combat recap the player's message carries: its labels. */
+/** What a fight broke (1.316), read off the combat recap the player's message carries: its labels. */
 export function storyFightBroken(playerMessage: string | null | undefined): string[] {
   if (!playerMessage || !/\[combat_result\]/i.test(playerMessage)) return [];
-  const line = /^Broken:\s*(.+)$/im.exec(playerMessage)?.[1] ?? "";
+  // Only the Engine's recap says what broke: it is the message's last block, after anything the player wrote.
+  const lower = playerMessage.toLowerCase();
+  const start = lower.lastIndexOf("[combat_result]");
+  const end = lower.indexOf("[/combat_result]", start);
+  const recap = playerMessage.slice(start, end < 0 ? undefined : end);
+  // Read line by line, not with one regex over the recap: a long run of blanks after "Broken:" must stay cheap.
+  const found = recap.split("\n").find((one) => one.slice(0, 7).toLowerCase() === "broken:");
+  const line = found?.slice(7) ?? "";
   return line
     .split(";")
     .map((label) => label.trim())
@@ -633,7 +640,7 @@ export interface StoryTurnWorld {
   day: number;
   /** What this turn's player message says a fight ended in. */
   fight: StoryFightOutcome | null;
-  /** What this turn's player message says a fight broke (1.315), by label. */
+  /** What this turn's player message says a fight broke (1.316), by label. */
   broke?: readonly string[];
   /** The player's name, for a page the player speaks. */
   playerName?: string;

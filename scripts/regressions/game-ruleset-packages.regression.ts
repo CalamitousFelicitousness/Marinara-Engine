@@ -70,7 +70,7 @@ function packageOfFiles(
     files: files.map((file) => ({ path: file.name, sha256: sha256(file.data), bytes: file.data.length })),
     permissions: [],
     restartRequired: false,
-    capabilityApi: { major: 1, minor: 78 },
+    capabilityApi: { major: 1, minor: 79 },
     builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
   };
   manifestEdit?.(manifest);
@@ -530,6 +530,18 @@ try {
     const fileCheck = (await post("/check", { package: good })).json();
     assert.equal(fileCheck.ok, true);
     assert.deepEqual(Object.keys(fileCheck.catalogs), [firstCatalog.id], "a package file comes back read");
+    // What a catalog file holds counts toward the least API: a risky item in its own file asks for 1.79.
+    const riskyDocs = packageDocs((docs) => {
+      const outfitter = (docs.ruleset.catalogs as Array<Record<string, any>>).find((c) => c.id === "outfitter")!;
+      const entries = structuredClone(outfitter.entries) as Array<Record<string, any>>;
+      entries[0]!.item.risky = "It may spoil.";
+      docs.catalogs.outfitter = { schemaVersion: 1, catalog: "outfitter", entries };
+      delete outfitter.entries;
+      outfitter.asset = "catalogs/outfitter.json";
+    });
+    const riskyCheck = (await post("/check", { package: fileOf(riskyDocs) })).json();
+    assert.equal(riskyCheck.ok, true, JSON.stringify(riskyCheck.issues));
+    assert.deepEqual(riskyCheck.capabilityApi, { major: 1, minor: 79 }, "read from the catalog file");
     // Reading a package costs work: only the Engine's own pages may ask.
     assert.equal(
       (await post("/check", { definition: JSON.stringify(example) }, { host: "evil.example" })).statusCode,

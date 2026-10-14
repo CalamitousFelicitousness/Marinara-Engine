@@ -1,5 +1,5 @@
 /**
- * The board doing things on its own each round (Capability API 1.317), and growth.
+ * The board doing things on its own each round (Capability API 1.318), and growth.
  *
  *   - `board.events`: checked as handed (where, what, when); the cells a ring, a sweep, a block, a
  *     list or a spread of growth reaches each time; when each happens.
@@ -32,6 +32,7 @@ import {
   rulesetBoardEvents,
   rulesetBoardEventTime,
   rulesetBoardShading,
+  rulesetChangeGround,
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetLightAt,
@@ -67,7 +68,7 @@ const { createRulesetFight, directedRulesetView } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 313);
+  assert.ok(supportedCapabilityApi.minor >= 318);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -405,7 +406,7 @@ try {
     assert.deepEqual([rulesetCombatant(turned.state, "mage")!.x, rulesetCombatant(turned.state, "mage")!.y], [1, 1]);
   }
 
-  // ── The millrace carries, the drifts blow (1.328) ──
+  // ── The millrace carries, the drifts blow (1.329) ──
   {
     assert.ok(supportedCapabilityApi.minor >= 324);
     // Checked as handed: a way and at most 6 squares; anything else is left out.
@@ -631,11 +632,11 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.317 or newer";
+      "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.318 or newer";
     const doc = shears({ range: 5, area: { shape: "box", size: 15 }, clears: "growth" });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(316) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(316) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(317) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(318) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, fiveE()), gate);
   }
 
   // ── Painted on a world's battlefield: the director's fight and its view, drawn and said ──
@@ -683,7 +684,7 @@ try {
           change: { growth: true },
         },
       ],
-      // What standing in its light does (1.318) is carried along too.
+      // What standing in its light does (1.319) is carried along too.
       lightRule: { rounds: 2, tracks: [{ track: "exhaustion", by: 1 }] },
     });
     assert.deepEqual(worldBattlefieldIssues(map), []);
@@ -761,6 +762,24 @@ try {
     } as never) as { fight: { encounter: RulesetEncounterState } };
     assert.equal(plain.fight.encounter.board?.grid.ground, undefined);
     assert.equal(plain.fight.encounter.board?.events, undefined);
+  }
+
+  // ── Only cells on the board change ──
+  {
+    const state = fight();
+    const before = JSON.stringify(state.board!.grid);
+    const off = [
+      { x: -1, y: 0 },
+      { x: 12, y: 0 },
+      { x: 0, y: 10 },
+      { x: 1.5, y: 0 },
+      { x: "__proto__", y: 0 },
+      { x: 0, y: "__proto__" },
+    ] as unknown as RulesetCombatCell[];
+    rulesetChangeGround(state, off, { terrain: "water", height: 2, light: "dark" });
+    assert.equal(JSON.stringify(state.board!.grid), before, "nothing off the board changes");
+    rulesetChangeGround(state, [{ x: 0, y: 0 }], { terrain: "water" });
+    assert.equal(state.board!.grid.tiles[0]![0], "water", "a cell on the board still changes");
   }
 
   console.log(

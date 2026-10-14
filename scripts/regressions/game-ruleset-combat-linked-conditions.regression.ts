@@ -1,5 +1,5 @@
 /**
- * Conditions that end with another one put on with them (Capability API 1.201).
+ * Conditions that end with another one put on with them (Capability API 1.202).
  *
  *   - An applied condition's `endsWith` names another of the same list: 5e's Hypnotic Pattern,
  *     whose incapacitation ends whenever its charm does, by a cure, a save, or the fight ending.
@@ -286,18 +286,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions that end with another condition put on with them requires schemaVersion 2 and capabilityApi 1.201 or newer";
+      "A ruleset with conditions that end with another condition put on with them requires schemaVersion 2 and capabilityApi 1.202 or newer";
     const withPattern = fiveE();
-    assert.equal(getCapabilityPackageInstallIssue(manifest(200) as never, withPattern), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(201) as never, withPattern), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(201) as never, withPattern), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(202) as never, withPattern), gate);
     const without = JSON.parse(fiveEText);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(200) as never, without), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(201) as never, without), gate);
     const files = new Map([["spells.json", { entries: [pattern] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(200) as never, without, files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(201) as never, without, files as never), gate);
   }
 
   console.log(
-    "Ruleset linked conditions: Hypnotic Pattern's incapacitation ends with its charm, by a cure, a save or the fight ending, only for the same use; gated at 1.201.",
+    "Ruleset linked conditions: Hypnotic Pattern's incapacitation ends with its charm, by a cure, a save or the fight ending, only for the same use; gated at 1.202.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

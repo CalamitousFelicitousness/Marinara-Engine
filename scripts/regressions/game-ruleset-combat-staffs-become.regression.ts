@@ -1,5 +1,5 @@
 /**
- * An item that becomes another on its last charge (Capability API 1.271).
+ * An item that becomes another on its last charge (Capability API 1.272).
  *
  *   - `charges.breaksOn.becomes`: on the faces that would break it, a Staff of Striking becomes a
  *     plain quarterstaff instead: in a fight its uses go and it strikes as the quarterstaff from
@@ -208,6 +208,15 @@ try {
     ]);
     // A later step writes nothing more for it.
     assert.deepEqual(rulesetFightItemChanges(done.state, done.state), []);
+    // A later step that changes it names the stack by what it became, which the stack now holds.
+    const later = structuredClone(done.state);
+    who(later, "hero").on = { 0: true };
+    const after = rulesetFightItemChanges(done.state, later);
+    assert.deepEqual(
+      after.map((one) => one.stack.ref),
+      ["gear/quarterstaff"],
+    );
+    assert.ok(applyRulesetFightItemChanges(written.stacks, after), "applied to the quarterstaff's stack");
     // Any other face, it holds, empty.
     const state2 = fight();
     faces = { 20: [5, 15] };
@@ -305,20 +314,20 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with an item that becomes another when its last charge is spent requires schemaVersion 2 and capabilityApi 1.271 or newer";
+      "A ruleset with an item that becomes another when its last charge is spent requires schemaVersion 2 and capabilityApi 1.272 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const plain = document((doc) => delete striking(doc).charges.breaksOn.becomes);
-    assert.notEqual(issue(270, plain), gate, "nothing of 1.271 left");
-    assert.equal(issue(270, document()), gate);
-    assert.notEqual(issue(271, document()), gate);
+    assert.notEqual(issue(271, plain), gate, "nothing of 1.272 left");
+    assert.equal(issue(271, document()), gate);
+    assert.notEqual(issue(272, document()), gate);
     assert.equal(
-      issue(270, plain, new Map([["extra.json", [{ id: "x", item: { charges: { breaksOn: { becomes: "a/b" } } } }]]])),
+      issue(271, plain, new Map([["extra.json", [{ id: "x", item: { charges: { breaksOn: { becomes: "a/b" } } } }]]])),
       gate,
     );
     assert.equal(
       issue(
-        271,
+        272,
         document((doc) => (striking(doc).charges.breaksOn.becomes = "gear/broom")),
       ),
       'The item "gear/striking" cannot become "gear/broom": it is no other item of this ruleset',
@@ -326,7 +335,7 @@ try {
   }
 
   console.log(
-    "Ruleset staffs become: on its last charge's 1 a Staff of Striking becomes a plain quarterstaff, in a fight (its uses gone, struck as the quarterstaff, written back as it), outside one and in the inventory; gated at 1.271.",
+    "Ruleset staffs become: on its last charge's 1 a Staff of Striking becomes a plain quarterstaff, in a fight (its uses gone, struck as the quarterstaff, written back as it), outside one and in the inventory; gated at 1.272.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

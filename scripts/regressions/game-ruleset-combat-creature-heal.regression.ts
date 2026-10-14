@@ -1,5 +1,5 @@
 /**
- * Creature healing (Capability API 1.120): Healing Touch gives hit points back to its own side.
+ * Creature healing (Capability API 1.121): Healing Touch gives hit points back to its own side.
  *
  *   - The same amount and maximum as a catalog heal, for creatures without sheets too.
  *   - Ally and any targets, limited uses, and a heal that never hurts.
@@ -371,7 +371,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose creatures heal, or point an action at their own side, requires schemaVersion 2 and capabilityApi 1.120 or newer";
+      "A ruleset whose creatures heal, or point an action at their own side, requires schemaVersion 2 and capabilityApi 1.121 or newer";
     for (const action of [
       touch,
       { id: "heal", name: "Heal", budget: "action", heal: { flat: 1 } },
@@ -386,12 +386,12 @@ try {
           delete header.entries;
           header.asset = "healers.json";
         }
-        assert.equal(getCapabilityPackageInstallIssue(manifest(119) as any, doc, catalogs), gate);
-        assert.equal(getCapabilityPackageInstallIssue(manifest(120) as any, doc, catalogs), null);
+        assert.equal(getCapabilityPackageInstallIssue(manifest(120) as any, doc, catalogs), gate);
+        assert.equal(getCapabilityPackageInstallIssue(manifest(121) as any, doc, catalogs), null);
       }
     }
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(119) as any, fiveE()),
+      getCapabilityPackageInstallIssue(manifest(120) as any, fiveE()),
       null,
       "unchanged creatures need no new API",
     );
@@ -425,7 +425,7 @@ try {
     assert.ok(found > 0, "the published schema has creature actions");
   }
 
-  console.log("Creature healing: ally and any targets, capped amounts, daily uses, import and clamp, gated at 1.120.");
+  console.log("Creature healing: ally and any targets, capped amounts, daily uses, import and clamp, gated at 1.121.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

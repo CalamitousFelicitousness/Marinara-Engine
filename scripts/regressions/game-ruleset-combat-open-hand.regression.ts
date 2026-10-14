@@ -1,5 +1,5 @@
 /**
- * Open Hand Technique (Capability API 1.247).
+ * Open Hand Technique (Capability API 1.248).
  *
  *   - A `hit` moment's `budget`: only a hit by a strike paid for from that budget opens it, so the
  *     riders answer Flurry of Blows' strikes and no other unarmed strike.
@@ -266,7 +266,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with answers to a hit by a strike from one budget, or one answer of a group per hit, requires schemaVersion 2 and capabilityApi 1.247 or newer";
+      "A ruleset with answers to a hit by a strike from one budget, or one answer of a group per hit, requires schemaVersion 2 and capabilityApi 1.248 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -276,19 +276,19 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(246, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(247, document), gate);
+      assert.equal(issue(247, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(248, document), gate);
     }
     // A mechanics' own budget is older than this.
     const older = structuredClone(without);
     older.extra = { entry: { budget: "bonus", reaction: { on: "hit", by: "self" } } };
-    assert.notEqual(issue(246, older), gate);
-    assert.notEqual(issue(246, without), gate);
-    assert.equal(issue(246, without, new Map([["monk.json", { entries: [topple] }]])), gate);
+    assert.notEqual(issue(247, older), gate);
+    assert.notEqual(issue(247, without), gate);
+    assert.equal(issue(247, without, new Map([["monk.json", { entries: [topple] }]])), gate);
   }
 
   console.log(
-    "Ruleset open hand: only Flurry of Blows' strikes open Open Hand Technique, one of its three riders per hit (prone, pushed, no reactions); gated at 1.247.",
+    "Ruleset open hand: only Flurry of Blows' strikes open Open Hand Technique, one of its three riders per hit (prone, pushed, no reactions); gated at 1.248.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,11 +1,11 @@
 /**
- * Draining blows (Capability API 1.280).
+ * Draining blows (Capability API 1.281).
  *
  *   - `drain` on a creature's action: an aboleth's Psychic Drain, whose maker regains hit points equal
  *     to the damage its target takes. Nothing comes off the target's maximum.
  *   - `drain.share` and `drain.damageType` on a catalog entry: Vampiric Touch, half of the necrotic
  *     damage dealt, rounded down; damage of another type gives nothing back.
- *   - A bestiary creature's drain reaches the fight too (fixed after 1.280).
+ *   - A bestiary creature's drain reaches the fight too (fixed after 1.281).
  *   - What comes back is what was dealt, after a resistance halved it, and never above the maximum.
  *   - Import refusals and the install gate.
  */
@@ -317,7 +317,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a blow whose maker regains the damage it dealt requires schemaVersion 2 and capabilityApi 1.280 or newer";
+      "A ruleset with a blow whose maker regains the damage it dealt requires schemaVersion 2 and capabilityApi 1.281 or newer";
     const docs: Array<[string, Record<string, any>]> = [
       ["spell", fiveE((doc) => doc.catalogs.push({ id: "x", label: "X", entries: [touch] }))],
       [
@@ -332,10 +332,10 @@ try {
       ],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(279) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(280) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(280) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(281) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(279) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(280) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

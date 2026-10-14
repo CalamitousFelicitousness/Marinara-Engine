@@ -1,5 +1,5 @@
 /**
- * Legendary Resistance (Capability API 1.316): "If the dragon fails a saving throw, it can choose to
+ * Legendary Resistance (Capability API 1.317): "If the dragon fails a saving throw, it can choose to
  * succeed instead", so many times.
  *
  *   - A creature's `legendaryResistance` turns that many failed saves into successes in a fight,
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 312);
+  assert.ok(supportedCapabilityApi.minor >= 317);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -297,18 +297,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.316 or newer";
+      "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.317 or newer";
     const doc = fiveE((doc) => {
       const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
       creatures.entries[0].creature.legendaryResistance = 3;
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(315) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(316) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(315) as never, fiveE()), gate, "the plain 5e example");
-    assert.equal(getCapabilityPackageInstallIssue(manifest(315) as never, scrolled({ targetsUpTo: "large" })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(316) as never, scrolled({ targetsUpTo: "large" })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(316) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(316) as never, fiveE()), gate, "the plain 5e example");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(316) as never, scrolled({ targetsUpTo: "large" })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, scrolled({ targetsUpTo: "large" })), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(315) as never, scrolled({})),
+      getCapabilityPackageInstallIssue(manifest(316) as never, scrolled({})),
       gate,
       "a scroll with no limit",
     );

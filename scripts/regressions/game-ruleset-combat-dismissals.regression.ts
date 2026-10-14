@@ -1,5 +1,5 @@
 /**
- * Actions a condition gives, cures by who put it on, and sending somebody away (Capability API 1.235).
+ * Actions a condition gives, cures by who put it on, and sending somebody away (Capability API 1.236).
  *
  *   - A condition's `actions`: 5e's Dispel Evil and Good lets its caster Break Enchantment or Dismiss
  *     while it lasts, and either one ends it (`endsCondition`), concentration and all.
@@ -391,7 +391,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions that give actions, uses that end a condition, cures of only what some creatures put on, or uses that send somebody out of the fight, requires schemaVersion 2 and capabilityApi 1.235 or newer";
+      "A ruleset with conditions that give actions, uses that end a condition, cures of only what some creatures put on, or uses that send somebody out of the fight, requires schemaVersion 2 and capabilityApi 1.236 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -402,17 +402,17 @@ try {
       { ends: { conditions: ["charmed"], from: planar } },
     ]) {
       const document = { ...without, extra: { spell: { mechanics: one } } };
-      assert.equal(issue(234, document), gate, JSON.stringify(one));
-      assert.notEqual(issue(235, document), gate);
+      assert.equal(issue(235, document), gate, JSON.stringify(one));
+      assert.notEqual(issue(236, document), gate);
     }
     const giving = structuredClone(without);
     giving.combat.conditions.push({ condition: "warded", effects: [], actions: ["spells/break"] });
-    assert.equal(issue(234, giving), gate);
-    assert.notEqual(issue(235, giving), gate);
+    assert.equal(issue(235, giving), gate);
+    assert.notEqual(issue(236, giving), gate);
     // A cure with no `from`, and a creature's own actions, are not this.
-    assert.notEqual(issue(234, { ...without, extra: { ends: { conditions: ["charmed"] } } }), gate);
-    assert.notEqual(issue(234, without), gate);
-    assert.equal(issue(234, without, new Map([["spells.json", { entries: [dismissal] }]])), gate);
+    assert.notEqual(issue(235, { ...without, extra: { ends: { conditions: ["charmed"] } } }), gate);
+    assert.notEqual(issue(235, without), gate);
+    assert.equal(issue(235, without, new Map([["spells.json", { entries: [dismissal] }]])), gate);
   }
 
   // ── A strike a condition gives is no opportunity attack while the condition is off ──
@@ -441,7 +441,7 @@ try {
   }
 
   console.log(
-    "Ruleset dismissals: Dispel Evil and Good gives Break Enchantment and Dismissal and ends with them, Banishment sends away until it ends and keeps a fiend gone; gated at 1.235.",
+    "Ruleset dismissals: Dispel Evil and Good gives Break Enchantment and Dismissal and ends with them, Banishment sends away until it ends and keeps a fiend gone; gated at 1.236.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

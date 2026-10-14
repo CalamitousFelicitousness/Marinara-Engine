@@ -1,5 +1,5 @@
 /**
- * Answers to one kind of blow, from a source in sight (Capability API 1.117): 5e's Parry.
+ * Answers to one kind of blow, from a source in sight (Capability API 1.118): 5e's Parry.
  *
  *   - `blow: "melee" | "ranged"` on a `hit` moment. A blow is melee while its target stands in the
  *     weapon's reach: a scimitar always, a bow never, a thrown dagger only next to its target. With
@@ -7,7 +7,7 @@
  *   - `seesSource: true` opens the moment only while its holder sees the attacker: never one who has
  *     hidden, and on a board only with a line of sight between them.
  *   - Both on a moment in `also`; `blow` only on a `hit` one.
- *   - Import and the install gate (1.117).
+ *   - Import and the install gate (1.118).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -279,7 +279,7 @@ try {
     parsedOrThrow(withCreatureAnswer({ on: "harmed", seesSource: true }), "sight on any moment");
   }
 
-  // ── The install gate: 1.117 ──
+  // ── The install gate: 1.118 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -297,7 +297,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /one kind of blow.*capabilityApi 1\.117/;
+    const gate = /one kind of blow.*capabilityApi 1\.118/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     const answering = (reaction: Record<string, unknown>) => (doc: Record<string, any>) => {
@@ -308,14 +308,14 @@ try {
       ["sight", answering({ on: "hit", seesSource: true })],
       ["a blow in also", answering({ on: "aimed", also: [{ on: "hit", blow: "ranged" }] })],
     ] as const) {
-      assert.match(issue(116, fiveE(edit)) ?? "", gate, what);
-      assert.doesNotMatch(issue(117, fiveE(edit)) ?? "", gate, what);
+      assert.match(issue(117, fiveE(edit)) ?? "", gate, what);
+      assert.doesNotMatch(issue(118, fiveE(edit)) ?? "", gate, what);
     }
-    assert.doesNotMatch(issue(116, fiveE(answering({ on: "hit" }))) ?? "", gate, "a plain hit asks nothing new");
-    assert.doesNotMatch(issue(116, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
+    assert.doesNotMatch(issue(117, fiveE(answering({ on: "hit" }))) ?? "", gate, "a plain hit asks nothing new");
+    assert.doesNotMatch(issue(117, fiveE()) ?? "", gate, "the example as shipped asks nothing new");
   }
 
-  console.log("Blow kind: Parry answers melee from a source in sight, gated at 1.117.");
+  console.log("Blow kind: Parry answers melee from a source in sight, gated at 1.118.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

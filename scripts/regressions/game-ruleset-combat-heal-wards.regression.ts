@@ -1,6 +1,6 @@
 /**
  * Heals kept off, conditions kept off by who puts them on, ability floors, and saves against named
- * actions (Capability API 1.190).
+ * actions (Capability API 1.191).
  *
  *   - The effect "cannot-heal": Chill Touch. The heal is rolled, nothing comes back, the log says so.
  *   - `conditionImmunitiesFrom`: Protection from Evil and Good keeps a fiend's fright off, not a
@@ -431,7 +431,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions that keep heals off or keep conditions off by who puts them on, targets that need an ability score of at least some number, or saves against named actions requires schemaVersion 2 and capabilityApi 1.190 or newer";
+      "A ruleset with conditions that keep heals off or keep conditions off by who puts them on, targets that need an ability score of at least some number, or saves against named actions requires schemaVersion 2 and capabilityApi 1.191 or newer";
     const plain = () => JSON.parse(fiveEText) as Record<string, any>;
     const condition = (entry: Record<string, unknown>) => {
       const doc = plain();
@@ -452,20 +452,20 @@ try {
       ["ability at least", withSpell({ kind: "debuff", targetTypes: { abilityAtLeast: { int: 5 } } })],
       ["save actions", condition({ modifiers: [{ to: "saves", mode: "advantage", against: { actions: ["bite"] } }] })],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(189) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(190) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(190) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(191) as never, doc), gate, label);
     }
-    // A reaction's own `against.actions` is older, and an Animal Friendship ceiling is 1.184's.
+    // A reaction's own `against.actions` is older, and an Animal Friendship ceiling is 1.185's.
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(189) as never,
+        manifest(190) as never,
         withSpell({ kind: "debuff", targetTypes: { abilityAtMost: { int: 3 } } }),
       ),
       gate,
     );
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(189) as never,
+        manifest(190) as never,
         condition({ modifiers: [{ to: "saves", mode: "advantage", against: { magic: true } }] }),
       ),
       gate,
@@ -473,12 +473,12 @@ try {
     // Named actions anywhere but a saves modifier are not this minor's.
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(189) as never,
+        manifest(190) as never,
         condition({ modifiers: [{ to: "attacks", flat: 1, against: { actions: ["bite"] } }] }),
       ),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(189) as never, plain()), gate, "plain 5e");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(190) as never, plain()), gate, "plain 5e");
   }
 
   console.log(

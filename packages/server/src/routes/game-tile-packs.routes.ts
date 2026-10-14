@@ -40,10 +40,14 @@ const IMPORT_BODY_LIMIT = TILE_PACK_IMAGE_FILE_MAX_BYTES * 6 + 16_384;
 
 /** The id a pack is filed by, under `local/`; none when that would be longer than an id can be (cutting
  *  it short could file two packs as one). */
+/** Where a saved pack is filed: under `local/` by its own name, whatever namespace it came with
+ *  (`board/forest` edited in the maker is filed as `local/forest`), as a pack's id has one at most. */
 const localId = (id: string) => {
-  const filed = id.startsWith(LOCAL) ? id : `${LOCAL}${id}`;
+  const filed = `${LOCAL}${id.slice(id.indexOf("/") + 1)}`;
   return filed.length <= 80 ? filed : null;
 };
+/** The pack a removal names: an id without a namespace is a library one, as it was filed. */
+const removalId = (id: string) => (id.includes("/") ? id : `${LOCAL}${id}`);
 const familySchema = z.string().trim().min(1).max(40);
 
 /** A stored row read back as a pack, under the id it is filed by. */
@@ -173,10 +177,10 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
   app.delete("/", { config: { rateLimit: GAME_TILE_PACKS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack removal" })) return;
     const { id } = z.object({ id: z.string().min(1).max(80) }).parse(req.query);
-    const removed = await store.removeAll(id);
+    const removed = await store.removeAll(removalId(id));
     if (!removed) return reply.status(404).send({ error: "No such tile pack." });
     const selection = await readSelection();
-    const kept = Object.fromEntries(Object.entries(selection).filter(([, packId]) => packId !== id));
+    const kept = Object.fromEntries(Object.entries(selection).filter(([, packId]) => packId !== removalId(id)));
     if (Object.keys(kept).length !== Object.keys(selection).length)
       await settings.set(SELECTION_KEY, JSON.stringify(kept));
     return { removed };

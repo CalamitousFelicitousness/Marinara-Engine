@@ -1,5 +1,5 @@
 /**
- * Held weapons in attack rules, what is wielded, and rows every sheet has (Capability API 1.243).
+ * Held weapons in attack rules, what is wielded, and rows every sheet has (Capability API 1.244).
  *
  *   - `combat.attacks[].always`: rows every sheet's fight has, in the list's own columns, unless the
  *     sheet has a row of the same name: 5e's unarmed strike.
@@ -7,7 +7,7 @@
  *     weapon), and `names` matches a held weapon by the name its attack goes by.
  *   - `wielding.only`: a rule, or a granted strike, holds only while every weapon held is one of
  *     these, or none is. `grantsStrike.when` keeps a granted strike within the sheet's bounds.
- *   - `afterAttack`'s `items` (1.245): the attack action taken with a club +1 is taken with a monk
+ *   - `afterAttack`'s `items` (1.246): the attack action taken with a club +1 is taken with a monk
  *     weapon, and Martial Arts' bonus strike follows it.
  *   - Import refusals and the install gate.
  */
@@ -290,7 +290,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with attack lists that give every sheet a row, entries that change held weapons' attacks, or rules kept only while wielding certain weapons or granted strikes kept within bounds, requires schemaVersion 2 and capabilityApi 1.243 or newer";
+      "A ruleset with attack lists that give every sheet a row, entries that change held weapons' attacks, or rules kept only while wielding certain weapons or granted strikes kept within bounds, requires schemaVersion 2 and capabilityApi 1.244 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -302,20 +302,20 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: { mechanics } };
-      assert.equal(issue(242, document), gate, JSON.stringify(mechanics));
-      assert.notEqual(issue(243, document), gate);
+      assert.equal(issue(243, document), gate, JSON.stringify(mechanics));
+      assert.notEqual(issue(244, document), gate);
     }
     const always = structuredClone(without);
     always.combat.attacks[0].always = [unarmed];
-    assert.equal(issue(242, always), gate);
-    assert.notEqual(issue(243, always), gate);
-    assert.notEqual(issue(242, without), gate);
+    assert.equal(issue(243, always), gate);
+    assert.notEqual(issue(244, always), gate);
+    assert.notEqual(issue(243, without), gate);
     const later =
-      "A ruleset with entries or grants that come after the attack action taken with weapons matched by tags requires schemaVersion 2 and capabilityApi 1.245 or newer";
+      "A ruleset with entries or grants that come after the attack action taken with weapons matched by tags requires schemaVersion 2 and capabilityApi 1.246 or newer";
     const older = structuredClone(martialArts);
     older.mechanics.grantsStrike.afterAttack = { names: ["Unarmed Strike", "Shortsword"] } as never;
-    assert.equal(issue(242, without, new Map([["monk.json", { entries: [older] }]])), gate);
-    assert.equal(issue(244, without, new Map([["monk.json", { entries: [martialArts] }]])), later);
+    assert.equal(issue(243, without, new Map([["monk.json", { entries: [older] }]])), gate);
+    assert.equal(issue(245, without, new Map([["monk.json", { entries: [martialArts] }]])), later);
 
     for (const mechanics of [
       { afterAttack: { items: { tags: ["simple"] } } },
@@ -323,14 +323,14 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: { mechanics } };
-      assert.equal(issue(244, document), later, JSON.stringify(mechanics));
-      assert.notEqual(issue(245, document), later);
+      assert.equal(issue(245, document), later, JSON.stringify(mechanics));
+      assert.notEqual(issue(246, document), later);
     }
-    assert.notEqual(issue(244, without), later);
+    assert.notEqual(issue(245, without), later);
   }
 
   console.log(
-    "Ruleset weapon match: every sheet strikes unarmed, Martial Arts reaches held monk weapons by tag and holds only while wielding monk weapons, and its bonus strike keeps to its bounds and follows an attack with a magic monk weapon; gated at 1.243 and 1.245.",
+    "Ruleset weapon match: every sheet strikes unarmed, Martial Arts reaches held monk weapons by tag and holds only while wielding monk weapons, and its bonus strike keeps to its bounds and follows an attack with a magic monk weapon; gated at 1.244 and 1.246.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

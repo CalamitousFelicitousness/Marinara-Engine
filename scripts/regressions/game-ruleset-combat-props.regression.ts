@@ -1,5 +1,5 @@
 /**
- * Props on the fight board that may be broken (Capability API 1.315): a jar, a crate, a door.
+ * Props on the fight board that may be broken (Capability API 1.316): a jar, a crate, a door.
  *
  *   - An encounter's `board.props`: kept on the board with their health, off-board cells and empty
  *     ones dropped; one that closes its cells closes them from the start, and nobody stands in it.
@@ -545,7 +545,24 @@ try {
       "*Done.*\n\n[combat_result]\nOUTCOME: VICTORY (2 rounds)\nBroken: Sluice Gate; Oil Jar\n[/combat_result]";
     assert.deepEqual(storyFightBroken(recap), ["Sluice Gate", "Oil Jar"]);
     assert.deepEqual(storyFightBroken("Broken: Sluice Gate"), [], "only a combat recap says so");
+    assert.deepEqual(
+      storyFightBroken(`Broken: the Mill\n\n${recap}`),
+      ["Sluice Gate", "Oil Jar"],
+      "the player's own words before the recap are not read",
+    );
+    assert.deepEqual(
+      storyFightBroken(`[combat_result]\nBroken: the Mill\n[/combat_result]\n\n${recap}`),
+      ["Sluice Gate", "Oil Jar"],
+      "a recap the player wrote before the Engine's is not read",
+    );
     assert.deepEqual(storyFightBroken("[combat_result]\nOUTCOME: VICTORY\n[/combat_result]"), []);
+    // A long run of blanks after "Broken:" is read at once.
+    const blanks = `[combat_result]\nbroken:${"\t".repeat(100_000)}\n[/combat_result]`;
+    const started = performance.now();
+    assert.deepEqual(storyFightBroken(blanks), []);
+    // A regex that backtracks over 100,000 blanks takes minutes; a loaded runner never takes 2 seconds.
+    assert.ok(performance.now() - started < 2_000, "a long blank line is read quickly");
+    assert.deepEqual(storyFightBroken("[combat_result]\r\nBROKEN:  Sluice Gate ; \r\n"), ["Sluice Gate"]);
     const input: StoryScriptInput = {
       storyVersion: 1,
       flags: [

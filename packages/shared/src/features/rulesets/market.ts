@@ -94,7 +94,7 @@ export function rulesetMarketSellersAt(market: RulesetMarket, rank: number): Rul
   );
 }
 
-/** A fake or a cursed item (Capability API 1.78): never among anybody's wares, never in an honest
+/** A fake or a cursed item (Capability API 1.79): never among anybody's wares, never in an honest
  *  seller's stock; a dishonest seller passes a fake off from their stock as what it passes for. */
 export function rulesetItemDeceptive(item: RulesetCatalogItem): boolean {
   return item.passesFor !== undefined || item.binds?.cursed === true;

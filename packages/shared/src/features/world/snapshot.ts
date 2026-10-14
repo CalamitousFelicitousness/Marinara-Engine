@@ -133,7 +133,10 @@ const compiledSchema = z
     width: z.number().int().min(1).max(4096),
     height: z.number().int().min(1).max(4096),
     terrain: z.array(id).max(36),
-    ground: z.string().max(4_000_000),
+    ground: z
+      .string()
+      .max(4_000_000)
+      .regex(/^[0-9a-z]*$/, "The ground is one of 0-9 or a-z for each cell"),
     places: z.array(placeSchema).max(20_000),
     links: z
       .array(z.object({ from: id, to: id, way: id, days: z.number().finite().min(0).max(100_000) }).strict())

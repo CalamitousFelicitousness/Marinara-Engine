@@ -118,7 +118,7 @@ function requireOneHideComparison(node) {
   }
 }
 
-// A condition's size change is at least one step, up or down (1.194), another refinement. Found by
+// A condition's size change is at least one step, up or down (1.195), another refinement. Found by
 // its shape: an object of `steps` alone, from -5 to 5.
 function refuseNoSizeStep(node) {
   if (Array.isArray(node)) return node.forEach(refuseNoSizeStep);
@@ -167,9 +167,9 @@ function enumTableShape(node) {
   properties.table.maxProperties = 40;
 }
 
-// What winning a contest does is at least one thing: it applies, ends, pushes or stabilizes (1.192). A
+// What winning a contest does is at least one thing: it applies, ends, pushes or stabilizes (1.193). A
 // refinement, so the editor is told here. Found by its shape: the first three side by side. A contest
-// is rolled against a defender or a fixed difficulty (1.192), exactly one: found by the two side by side.
+// is rolled against a defender or a fixed difficulty (1.193), exactly one: found by the two side by side.
 function contestDoesSomething(node) {
   if (Array.isArray(node)) return node.forEach(contestDoesSomething);
   if (!node || typeof node !== "object") return;
@@ -201,7 +201,7 @@ function restStepTo(node) {
   ];
 }
 
-// Senses an effect needs or a condition takes away cannot be named twice (1.126).
+// Senses an effect needs or a condition takes away cannot be named twice (1.127).
 function uniqueCombatSenses(node) {
   if (Array.isArray(node)) return node.forEach(uniqueCombatSenses);
   if (!node || typeof node !== "object") return;
@@ -211,7 +211,7 @@ function uniqueCombatSenses(node) {
   }
 }
 
-// A condition cannot name the same ending twice (1.124).
+// A condition cannot name the same ending twice (1.125).
 function uniqueConditionEndings(node) {
   if (Array.isArray(node)) return node.forEach(uniqueConditionEndings);
   if (!node || typeof node !== "object") return;
@@ -241,7 +241,7 @@ function cancelOnlyWhenAimed(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(cancelOnlyWhenAimed);
   const keys = Object.keys(node.properties ?? {}).filter((key) => key !== "$comment");
-  // Falls have no source entry, including when taken as an additional moment (1.123).
+  // Falls have no source entry, including when taken as an additional moment (1.124).
   if (node.type === "object" && ["on", "against", "blow", "seesSource"].every((key) => keys.includes(key))) {
     node.allOf = [
       ...(node.allOf ?? []),
@@ -473,7 +473,7 @@ function requireDamageAmount(node) {
   // A rider's amount carries no type of its own, so its keys alone look like every other pair of
   // dice and flat in the file, a creature's health included. The schema marks it by name instead.
   const riderAmountShaped = node.description === "rider-amount";
-  // An amount a blow deals instead (1.101) is `when` beside dice and flat, and nothing else.
+  // An amount a blow deals instead (1.102) is `when` beside dice and flat, and nothing else.
   const alternativeShaped =
     ["when", "dice", "flat"].every((key) => keys.includes(key)) &&
     keys.every((key) => ["when", "dice", "flat"].includes(key));
@@ -578,7 +578,7 @@ function soakSaysSomething(node) {
   requireAnyOf(node, ["all", "byKind"]);
 }
 
-// What a wall's broken section deals (1.199) names dice or a flat number, and its `onSave` its save.
+// What a wall's broken section deals (1.200) names dice or a flat number, and its `onSave` its save.
 // Found by its shape: `triggers`, `amount` and `onSave` together, wherever a zone sits.
 function brokenSectionRules(node) {
   if (Array.isArray(node)) return node.forEach(brokenSectionRules);
@@ -601,10 +601,10 @@ function requireMechanicsPairs(node) {
   Object.values(node).forEach(requireMechanicsPairs);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.kind || !properties.rider || !properties.free) return;
-  // A health pool (1.195) names dice or a flat number.
+  // A health pool (1.196) names dice or a flat number.
   if (properties.healthPool) requireAnyOf(properties.healthPool, ["dice", "flat"]);
   if (properties.healthPoolSkips) requireAnyOf(properties.healthPoolSkips, ["conditions", "unseeing"]);
-  // A track is moved by at least one level (1.200).
+  // A track is moved by at least one level (1.201).
   const by = properties.tracks?.items?.properties?.by;
   if (by) by.not = { const: 0 };
   node.allOf = [

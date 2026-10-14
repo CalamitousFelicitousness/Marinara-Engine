@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   advancedMemoryProblems,
@@ -23,6 +23,8 @@ import { useChatMessageCount } from "../../hooks/use-chats";
 
 const fieldClass = "mari-chrome-field w-full rounded-lg px-3 py-2 text-xs disabled:opacity-50";
 const actionClass = "mari-chrome-control min-h-9 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50";
+// Side by side, a label that wraps pushes only its own text up, so both inputs share one row.
+const pairedFieldClass = "flex flex-col justify-between text-xs";
 // Scenes with unclear participants are listed with the other scene problems in the Fix box.
 const warningKeys: Record<string, string> = {
   "decision-connection-unavailable": "chat.advancedMemory.warning.decisionConnectionUnavailable",
@@ -53,6 +55,7 @@ export function AdvancedMemorySettings({
   variant?: "drawer" | "wizard";
 }) {
   const { t } = useTranslation();
+  const excerptHelpId = useId();
   const status = useAdvancedMemoryStatus(chatId);
   const action = useAdvancedMemoryAction(chatId);
   const savedConnections = useConnections();
@@ -308,7 +311,7 @@ export function AdvancedMemorySettings({
               variant === "drawer" ? "grid grid-cols-1 gap-3 @lg:grid-cols-2" : "grid grid-cols-1 gap-3 sm:grid-cols-2"
             }
           >
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.contextCap")}</span>
               <DraftNumberInput
                 value={settings.maxContextTokens}
@@ -325,7 +328,7 @@ export function AdvancedMemorySettings({
                 className={fieldClass}
               />
             </label>
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.memoryBudget")}</span>
               <DraftNumberInput
                 value={settings.summaryBudgetTokens}
@@ -342,7 +345,9 @@ export function AdvancedMemorySettings({
               />
             </label>
           </div>
-          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("chat.advancedMemory.budgetHelp")}</p>
+          <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+            {t("chat.advancedMemory.budgetHelp")}
+          </p>
           <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
             {t("chat.advancedMemory.memoryAllocationHelp")}
           </p>
@@ -482,8 +487,8 @@ export function AdvancedMemorySettings({
               {t("chat.advancedMemory.maximumScenesHelp")}
             </span>
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-xs">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.minimumMessages")}</span>
               <DraftNumberInput
                 value={settings.retrieveMinMessages}
@@ -497,10 +502,11 @@ export function AdvancedMemorySettings({
                   }))
                 }
                 ariaLabel={t("chat.advancedMemory.minimumMessages")}
+                ariaDescribedBy={excerptHelpId}
                 className={fieldClass}
               />
             </label>
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.maximumMessages")}</span>
               <DraftNumberInput
                 value={settings.retrieveMaxMessages}
@@ -514,9 +520,16 @@ export function AdvancedMemorySettings({
                   }))
                 }
                 ariaLabel={t("chat.advancedMemory.maximumMessages")}
+                ariaDescribedBy={excerptHelpId}
                 className={fieldClass}
               />
             </label>
+            <p
+              id={excerptHelpId}
+              className="col-span-2 text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]"
+            >
+              {t("chat.advancedMemory.excerptMessagesHelp")}
+            </p>
           </div>
           <label className="block space-y-1 text-xs">
             <span>{t("chat.advancedMemory.initialModel")}</span>

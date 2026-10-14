@@ -239,6 +239,14 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     kind: "Select",
   },
   {
+    id: "mari-runtime",
+    sectionId: "omnibar",
+    label: "Professor Mari runtime",
+    description: "How Professor Mari works: Classic, or Pi (experimental), which lets her think more before she acts.",
+    aliases: ["mari", "runtime", "pi", "classic", "experimental", "tool calls", "reasoning"],
+    kind: "Select",
+  },
+  {
     id: "mari-window-height",
     sectionId: "omnibar",
     label: "Professor Mari window height",

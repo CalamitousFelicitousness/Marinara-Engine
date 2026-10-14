@@ -89,16 +89,16 @@ assert.doesNotMatch(
 // so a superseded run can never stamp or relabel another run's record.
 assert.match(
   workspaceAgent,
-  /if \(parsedAction\.commands\.some\(isMutatingWorkspaceCommand\)\) \{\s*\n\s*runUnderstoodRequest = \{/u,
+  /if \(parsedAction\.commands\.some\(isMutatingWorkspaceCommand\)\) \{\s*\n\s*recordUnderstood\(/u,
 );
 // The outcome is OBSERVED, never asserted up front: the record starts as
 // held/interrupted and only the command batch's own results upgrade it -
 // a Plan-floor refusal must never read as an execution in a pasted report.
-assert.match(workspaceAgent, /outcome: shouldDeferMutations \? "held" : "interrupted"/u);
+assert.match(workspaceAgent, /outcome: held \? "held" : "interrupted"/u);
 // #5756: a staged sensitive change applied nothing, so the upgrade reports
 // "held" for it - "applied" stays reserved for batches that actually applied.
-assert.match(workspaceAgent, /outcome: anyMutatingFailed \? "failed" : anyStaged \? "held" : "applied"/u);
-assert.match(workspaceAgent, /const anyStaged = commandResults\.some\(isStagedSensitiveMutation\);/u);
+assert.match(workspaceAgent, /outcome: failed \? "failed" : staged \? "held" : "applied"/u);
+assert.match(workspaceAgent, /commandResults\.some\(isStagedSensitiveMutation\),/u);
 // Model-authored command labels are flattened and capped before entering the
 // record (they feed a line-oriented diagnostics report).
 assert.match(workspaceAgent, /label\.replace\(\/\\s\+\/gu, " "\)\.trim\(\)\.slice\(0, 80\)/u);
@@ -128,10 +128,10 @@ const conditionalHeads = [...workspaceAgent.matchAll(/if\s*\([^)]*[Uu]nderstoodR
 assert.deepEqual(
   conditionalHeads,
   [
+    // settleUnderstood (classic batch and pi turn): upgrade the run's OWN record with the observed outcome.
+    "if (runUnderstoodRequest === null || this.latestUnderstoodRequest !== runUnderstoodRequest",
     // persistAssistantMessage: bind the run's OWN record to its message.
     "if ( runUnderstoodRequest !== null && this.latestUnderstoodRequest === runUnderstoodRequest && runUnderstoodRequest.messageId === null",
-    // post-batch: upgrade the run's OWN record with the observed outcome.
-    "if ( runUnderstoodRequest !== null && this.latestUnderstoodRequest === runUnderstoodRequest && action.commands.some(isMutatingWorkspaceCommand",
     // prompt build: read the chat's record back to Mari as context so she can
     // explain her own interpretation when asked - inclusion-only, never a gate.
     "if (understoodRequestRecord !== null && understoodRequestRecord.chatId === chatId",
@@ -180,11 +180,7 @@ assert.match(mariChat, /MARI_PERMISSIONS_MODE_LABELS\[understoodRequest\.permiss
 assert.match(mariChat, /actingOnOutcomeApplied/u);
 assert.match(mariChat, /actingOnOutcomeFailed/u);
 assert.match(mariChat, /actingOnOutcomeInterrupted/u);
-assert.match(
-  mariChat,
-  /aria-expanded=\{expanded\}/u,
-  "the disclosure exposes its expanded state to assistive tech",
-);
+assert.match(mariChat, /aria-expanded=\{expanded\}/u, "the disclosure exposes its expanded state to assistive tech");
 assert.match(
   mariChat,
   /expanded \? "ui\.chat\.homeprofessormarichat\.actingOnCollapse" : "ui\.chat\.homeprofessormarichat\.actingOnExpand"/u,

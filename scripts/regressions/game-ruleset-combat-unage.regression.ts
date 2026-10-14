@@ -1,5 +1,5 @@
 /**
- * Save difficulty moved by a condition (Capability API 1.327): the Miller of Hours' Un-age.
+ * Save difficulty moved by a condition (Capability API 1.328): the Miller of Hours' Un-age.
  *
  *   - `{ to: "save-difficulty", flat: -2 }` on a condition: every save its holder calls for while they
  *     hold it is 2 easier, its own and the save that ends what it put on; nothing else of theirs moves.
@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   applyRulesetCombatChoice,
+  rulesetOpenLairWindow,
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetCombatant,
@@ -32,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 323);
+  assert.ok(supportedCapabilityApi.minor >= 328);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -60,6 +61,16 @@ try {
               saveEnds: { save: "con_save", at: "turn-end" },
             },
           ],
+        },
+        // Taken in its lair, inside a choice of its own (1.315).
+        {
+          id: "frost",
+          name: "Mill Frost",
+          budget: "action",
+          lair: true,
+          range: 60,
+          save: { save: "con_save", difficulty: 15, onSuccess: "negates" },
+          damage: { dice: "1d4" },
         },
       ],
     },
@@ -157,6 +168,40 @@ try {
     );
   }
 
+  // ── A lair action, a choice within a choice: moved once, not twice ──
+  {
+    const state = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: roll,
+      bestiary,
+      combatants: [
+        { id: "ada", name: "Ada", side: "party", build, live: {} },
+        { id: "miller", name: "The Miller", side: "enemy", creature: { catalogId: "creatures", entryId: "miller" } },
+      ],
+      inLair: ["miller"],
+    });
+    for (const one of state.combatants) one.initiative = one.id === "miller" ? 10 : 5;
+    state.order = ["miller", "ada"];
+    state.turn = 0;
+    who(state, "miller").tracked.push({ condition: "unaged", rounds: 3 });
+    const open = rulesetOpenLairWindow(definition, state);
+    assert.ok(open.window, "its lair's count comes before everybody");
+    const taken = applyRulesetCombatChoice(
+      definition,
+      open,
+      { actorId: "miller", optionId: "lair>frost", targetIds: ["ada"], window: open.window!.id },
+      roll,
+    );
+    assert.deepEqual(of(taken.events, "refused"), [], JSON.stringify(taken.events));
+    assert.deepEqual(
+      of(taken.events, "save").map((one) => one.difficulty),
+      [13],
+    );
+    const frost = who(taken.state, "miller").actions.find((one) => one.id === "frost")!;
+    assert.equal(frost.save?.difficulty, 15, "as written after the step");
+  }
+
   // ── Refused, and the gate ──
   {
     const bad = parseRulesetDefinition(withMiller({ to: "save-difficulty", dice: "1d4" }));
@@ -167,7 +212,7 @@ try {
         bad.issues.join("; "),
       );
     const gate =
-      "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.327 or newer";
+      "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.328 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -181,9 +226,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(326) as never, withMiller()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(327) as never, withMiller()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(326) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(327) as never, withMiller()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(328) as never, withMiller()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(327) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

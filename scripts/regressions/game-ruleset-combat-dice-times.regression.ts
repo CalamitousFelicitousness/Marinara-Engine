@@ -1,6 +1,6 @@
 /**
  * A blow's own dice thrown more times over, and a creature's own action on itself (Capability API
- * 1.196), as an enlarged duergar has them.
+ * 1.197), as an enlarged duergar has them.
  *
  *   - A creature's action with `self: true` taken on its turn lands on the creature: its `applies` go on.
  *   - A damage modifier's `diceTimes`: the blow's own dice that many times over, its flat part as it
@@ -200,15 +200,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with damage modifiers that throw a blow's own dice more times over requires schemaVersion 2 and capabilityApi 1.196 or newer";
+      "A ruleset with damage modifiers that throw a blow's own dice more times over requires schemaVersion 2 and capabilityApi 1.197 or newer";
     const doubled = document((doc) => delete doc.combat.conditions.at(-1).size);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, doubled), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(196) as never, doubled), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(195) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(196) as never, doubled), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(197) as never, doubled), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(196) as never, JSON.parse(fiveEText)), gate);
     const files = new Map([
       ["items.json", { entries: [{ item: { worn: { modifiers: [{ to: "damage", diceTimes: 2 }] } } }] }],
     ]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, JSON.parse(fiveEText), files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(196) as never, JSON.parse(fiveEText), files as never), gate);
   }
 
   console.log(

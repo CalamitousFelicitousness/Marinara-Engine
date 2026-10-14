@@ -161,14 +161,14 @@ export function rulesetStandardName(optionId: string): string {
 
 /** Whether this action would be taken out of strikes already in hand rather than out of a budget. */
 /** Whether its holder has taken the attack action this turn: with anything, or with one of `names`
- *  (1.241). */
+ *  (1.242). */
 export function rulesetTookAttackAction(actor: RulesetCombatant, after: RulesetAfterAttack): boolean {
   const made = actor.flags.attackAction ?? [];
   if (after === true) return made.length > 0;
   return made.some(
     (label) =>
       (after.names !== undefined && rulesetAttackNamed(label, after.names)) ||
-      // Or a held weapon that is these (1.245), read off the attack made with it.
+      // Or a held weapon that is these (1.246), read off the attack made with it.
       (after.items !== undefined &&
         actor.actions.some(
           (action) =>
@@ -187,7 +187,7 @@ export function rulesetFreeStrike(actor: RulesetCombatant, action: RulesetCombat
  *  standard actions its holder may buy with another budget is a PERMISSION, not something to take:
  *  what it grants is on the menu as `standard:<id>@<budget>`, and the entry itself is not. */
 function actionDoesSomething(action: RulesetCombatAction): boolean {
-  // A way of hiding that is its holder's own (1.291) is a permission too.
+  // A way of hiding that is its holder's own (1.292) is a permission too.
   if (!action.standard && !action.hiding) return true;
   return !!(
     action.damage ||
@@ -235,7 +235,7 @@ function grantedStandardOptions(
   for (const action of actor.actions) {
     const granted = action.standard;
     if (!granted || (actor.budgets[granted.budget] ?? 0) < 1) continue;
-    // Only out of sight, where it says so (1.290): Shadow Stealth.
+    // Only out of sight, where it says so (1.291): Shadow Stealth.
     if (!grantHolds(definition, action, actor, state)) continue;
     if (!rulesetActionAvailable(actor, action, state, definition)) continue;
     const paid = planRulesetCombatCost(definition, actor, action);
@@ -258,7 +258,7 @@ function grantedStandardOptions(
   return options;
 }
 
-/** Whether a permission holds now (1.290): one given only while its holder stands obscured. */
+/** Whether a permission holds now (1.291): one given only while its holder stands obscured. */
 function grantHolds(
   definition: RulesetDefinition,
   action: RulesetCombatAction,
@@ -300,7 +300,7 @@ function positioned(state: RulesetEncounterState): boolean {
   return !!state.board?.grid;
 }
 
-/** Whether an action with a teleport does anything besides (1.275), off a board where it cannot go. */
+/** Whether an action with a teleport does anything besides (1.276), off a board where it cannot go. */
 function rulesetDoesMoreThanTeleport(action: RulesetCombatAction): boolean {
   return !!(
     action.damage ||
@@ -333,7 +333,7 @@ export function rulesetRoomAt(
 }
 
 /**
- * Where a teleport may go (1.275): every cell its user's corner may stand on within its distance of
+ * Where a teleport may go (1.276): every cell its user's corner may stand on within its distance of
  * where they stand now, nearest cell to nearest cell, with room for all of them and nobody there,
  * and, where it says `seen`, a cell of it they can see. Never where they already are.
  */
@@ -366,17 +366,17 @@ export function rulesetTeleportCells(
   return cells;
 }
 
-/** Who may go along on a teleport (1.275): standing creatures of its user's side, no bigger than
+/** Who may go along on a teleport (1.276): standing creatures of its user's side, no bigger than
  *  they are, within its `carriesWithin` of them (touching when it says nothing), never held off the
  *  board. None for one that carries nobody. */
 export function rulesetTeleportPassengers(
   state: RulesetEncounterState,
   actor: RulesetCombatant,
   teleport: NonNullable<RulesetCombatAction["teleport"]>,
-  /** Given, `carriesSeen` keeps to those its user sees (1.278). */
+  /** Given, `carriesSeen` keeps to those its user sees (1.279). */
   definition?: RulesetDefinition,
 ): string[] {
-  // Off a board only leaving goes anywhere (1.278), and nothing measures who stands near.
+  // Off a board only leaving goes anywhere (1.279), and nothing measures who stands near.
   const board = !!state.board?.grid && !!rulesetPositionOf(actor);
   if (!teleport.carries || (!board && !teleport.leaves)) return [];
   const within = teleport.carriesWithin ?? 1;
@@ -402,17 +402,17 @@ const RULESET_AIM_SCAN_CEILING = 64 * 64;
  *  action called "move" or "stand" can never be mistaken for walking. The same trick the standard
  *  actions use (`standard:dodge`). */
 export const RULESET_MOVE_OPTION = "move:walk";
-/** Moving a lasting area (1.172): this, then the id of the action that left it. */
+/** Moving a lasting area (1.173): this, then the id of the action that left it. */
 export const RULESET_ZONE_OPTION_PREFIX = "zone:";
-/** Turning a line or cone its caster carries to face another way (1.181): this, then the action's id. */
+/** Turning a line or cone its caster carries to face another way (1.182): this, then the action's id. */
 export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 export const RULESET_STAND_OPTION = "move:stand";
-/** A flier going up a level, or down one, where it stands (1.113). */
+/** A flier going up a level, or down one, where it stands (1.114). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
-/** Lighting a prop again (1.331), followed by its id. */
+/** Lighting a prop again (1.332), followed by its id. */
 export const RULESET_RELIGHT_OPTION_PREFIX = "relight:";
 
-/** Every cell a prop that may be lit again lights (1.331): within its `squares` of it. */
+/** Every cell a prop that may be lit again lights (1.332): within its `squares` of it. */
 export function rulesetRelightCells(state: RulesetEncounterState, prop: RulesetBoardProp): RulesetCombatCell[] {
   const grid = state.board?.grid;
   if (!grid || !prop.relight) return [];
@@ -443,7 +443,7 @@ export interface RulesetOptionReach {
 
 /** The actor's own action behind an option id, when the option is one of theirs. */
 function actionOf(actor: RulesetCombatant, optionId: string): RulesetCombatAction | undefined {
-  // A lair action as its window offers it (1.314) is aimed as the action itself: without this an area
+  // A lair action as its window offers it (1.315) is aimed as the action itself: without this an area
   // lair action had nowhere to be aimed, and an opponent the Engine runs let every one go by.
   const id = optionId.startsWith(RULESET_LAIR_OPTION_PREFIX)
     ? optionId.slice(RULESET_LAIR_OPTION_PREFIX.length)
@@ -463,7 +463,7 @@ export function rulesetOptionReach(
   state: RulesetEncounterState,
   actorId: string,
   optionId: string,
-  /** A weapon mode's own reach (1.189), in place of the weapon's. */
+  /** A weapon mode's own reach (1.190), in place of the weapon's. */
   range?: { normal: number; long?: number },
 ): RulesetOptionReach | null {
   if (!positioned(state)) return null;
@@ -473,7 +473,7 @@ export function rulesetOptionReach(
   const action = found && range ? { ...found, range } : found;
   if (!action) return { max: 1, normal: 1, shot: false, swing: 1 };
   // Breaking free of a hold that names its escape DC is a struggle against the hold itself, which
-  // its holder throws nothing for, so it is not limited by how far away they stand (1.174).
+  // its holder throws nothing for, so it is not limited by how far away they stand (1.175).
   if (action.contest?.from && rulesetEscapeDc(actor, action.contest) !== undefined) return null;
   if (action.area) {
     // An area is aimed at a cell rather than at anybody. With a distance of its own it may be sent
@@ -481,7 +481,7 @@ export function rulesetOptionReach(
     // goes off where it is set down, while a cone or a line is aimed within its own size, because
     // there the cell only says which way it points.
     const carried = action.range?.long ?? action.range?.normal;
-    // A box with none sits against its maker (1.176), the cell beside them its near corner.
+    // A box with none sits against its maker (1.177), the cell beside them its near corner.
     const max = carried ?? (action.area.shape === "burst" ? 0 : action.area.shape === "box" ? 1 : action.area.size);
     // Only a shape with a distance of its own is SHOT: one that comes off the actor, a breath or a
     // burst set down where they stand, is not made harder by a foe at their elbow.
@@ -509,7 +509,7 @@ export function rulesetTargetRefusal(
   actorId: string,
   optionId: string,
   targetId: string,
-  /** A weapon mode's own reach (1.189). */
+  /** A weapon mode's own reach (1.190). */
   range?: { normal: number; long?: number },
 ): "out-of-reach" | "no-line-of-sight" | null {
   const summon = optionId.startsWith("summon:")
@@ -518,7 +518,7 @@ export function rulesetTargetRefusal(
   if (summon) {
     const target = rulesetCombatant(state, targetId);
     if (!positioned(state) || !summon.at || !rulesetPositionOf(target)) return null;
-    // To the nearest cell they fill (1.193).
+    // To the nearest cell they fill (1.194).
     return rulesetDistanceTo(summon.at, target) > (summon.move ?? 0) + (summon.reach ?? 1) ? "out-of-reach" : null;
   }
   const reach = rulesetOptionReach(state, actorId, optionId, range);
@@ -529,7 +529,7 @@ export function rulesetTargetRefusal(
   if (!from || !to || !grid) return null;
   if (actorId === targetId) return null;
   const target = rulesetCombatant(state, targetId);
-  // Height counts where somebody is up in the air (1.113).
+  // Height counts where somebody is up in the air (1.114).
   const away = target ? rulesetCombatantDistance(state, rulesetCombatant(state, actorId)!, target) : 0;
   // A shot carries further down from higher ground when the ruleset says so (combat C6b).
   const further =
@@ -537,15 +537,15 @@ export function rulesetTargetRefusal(
       ? (state.board?.rangeBonus ?? 0)
       : 0;
   if (away > reach.max + further) return "out-of-reach";
-  // Any cell of one to any cell of the other (1.193).
+  // Any cell of one to any cell of the other (1.194).
   const actor = rulesetCombatant(state, actorId);
   if (rulesetGap(actor, target) > 1 && !rulesetFootprintsSee(grid, actor, target)) return "no-line-of-sight";
   return null;
 }
 
 /**
- * The cells of standing wall sections, and of props (1.315), an attack may be pointed at instead of a
- * creature (1.199):
+ * The cells of standing wall sections, and of props (1.316), an attack may be pointed at instead of a
+ * creature (1.200):
  * one aimed at a single foe or anybody, dealing damage, not an area, a contest or a sequence, with the
  * section within its reach and seen from where its maker stands.
  */
@@ -558,11 +558,11 @@ export function rulesetWallTargets(
   if (!grid || !rulesetPositionOf(actor)) return [];
   if (action.toHit === undefined || !action.damage || action.area || action.contest || action.sequence) return [];
   if (action.targets.count < 1 || (action.targets.side !== "enemy" && action.targets.side !== "any")) return [];
-  // And what stands on the board that may be broken (1.315).
+  // And what stands on the board that may be broken (1.316).
   const cells = [
     ...rulesetStandingSections(state).flatMap(({ section }) => section.cells),
     ...rulesetStandingProps(state).flatMap((prop) => prop.cells),
-    // Growth an edge that cuts may cut back (1.317).
+    // Growth an edge that cuts may cut back (1.318).
     ...(cutsGrowth(state, action)
       ? Object.entries(grid.ground ?? {}).flatMap(([at, here]) => {
           if (!here.growth) return [];
@@ -585,7 +585,7 @@ export function rulesetWallTargets(
     .map((cell) => ({ x: cell.x, y: cell.y }));
 }
 
-/** Whether an action's damage is of a kind that cuts growth back (1.317): slashing, unless the board
+/** Whether an action's damage is of a kind that cuts growth back (1.318): slashing, unless the board
  *  says otherwise. */
 function cutsGrowth(state: RulesetEncounterState, action: RulesetCombatAction): boolean {
   if (!state.board?.grid.ground) return false;
@@ -611,7 +611,7 @@ export function rulesetAimLegal(
   if (!grid || !action?.area || !from || !reach) return false;
   if (!Number.isInteger(at.x) || !Number.isInteger(at.y)) return false;
   if (at.x < 0 || at.y < 0 || at.x >= grid.width || at.y >= grid.height) return false;
-  // From whichever cell the actor fills (1.193).
+  // From whichever cell the actor fills (1.194).
   if (rulesetDistanceTo(at, actor) > reach.max) return false;
   return rulesetFootprint(actor).some((cell) => rulesetLineOfSight(grid, cell, at));
 }
@@ -649,7 +649,7 @@ export function rulesetAimCells(
   const action = actionOf(rulesetCombatant(state, actorId)!, optionId);
   const shape = action?.area;
   // Something that stays (a zone, a wall) or is set down several times is worth putting down where
-  // nobody stands yet (1.177): a wall across a corridor, a cube beside the one on the foe.
+  // nobody stands yet (1.178): a wall across a corridor, a cube beside the one on the foe.
   const anywhere = !occupiedOnly && (!!action?.zone || !!shape?.copies);
   const boxes =
     shape?.shape === "burst" && !anywhere
@@ -657,7 +657,7 @@ export function rulesetAimCells(
           // Anybody still in the fight, on their feet or on the ground: a shape that MENDS is set
           // down on the ally who fell, and that cell has to be offered.
           .filter((combatant) => !combatant.defeated && rulesetPositionOf(combatant))
-          // Around every cell they fill (1.193): from the top-left one, as far again as they are big.
+          // Around every cell they fill (1.194): from the top-left one, as far again as they are big.
           .map((combatant) => {
             const box_ = box(rulesetPositionOf(combatant)!, shape.size);
             const more = rulesetSpanOf(combatant) - 1;
@@ -706,12 +706,12 @@ export function rulesetAimCells(
 }
 
 /** How an area is laid from the cell it is aimed at: which way a wall runs or whether it is a ring
- *  (1.176), and the cells further copies are set down on (1.177). */
+ *  (1.177), and the cells further copies are set down on (1.178). */
 export interface RulesetAreaLay {
   toward?: RulesetCombatCell;
   ring?: boolean;
   also?: readonly RulesetCombatCell[];
-  /** Cells more of size, for a higher cost it was paid with (1.266). */
+  /** Cells more of size, for a higher cost it was paid with (1.267). */
   grow?: number;
 }
 
@@ -729,7 +729,7 @@ export function rulesetAimedCells(
   const from = rulesetPositionOf(actor);
   if (!grid || !actor || !action?.area || !from) return [];
   const area = action.area;
-  // Around the props with its label (1.330), wherever it was aimed: every cell within its size of
+  // Around the props with its label (1.331), wherever it was aimed: every cell within its size of
   // one, behind them too.
   if (area.aroundProp) {
     const named = area.aroundProp;
@@ -745,7 +745,7 @@ export function rulesetAimedCells(
     }
     return cells;
   }
-  // Laid from whichever cell the actor fills nearest the aim (1.193).
+  // Laid from whichever cell the actor fills nearest the aim (1.194).
   const one = (aim: RulesetCombatCell) => {
     const origin = rulesetNearestCell(actor, aim) ?? from;
     return area.shape === "wall"
@@ -760,7 +760,7 @@ export function rulesetAimedCells(
 }
 
 /**
- * Whether further copies of an area may be set down where `also` says (1.177): as many as its
+ * Whether further copies of an area may be set down where `also` says (1.178): as many as its
  * `copies` allows, each on a cell it may be aimed at, none twice, and each one's cells touching the
  * cells of those set down before it, as Fire Storm's cubes each touch another.
  */
@@ -782,7 +782,7 @@ export function rulesetCopiesLegal(
     if (aims.has(key)) return false;
     aims.add(key);
     const cells = rulesetAimedCells(state, actorId, optionId, aim);
-    // Near enough another's middle (1.300), or touching the cells of those before it.
+    // Near enough another's middle (1.301), or touching the cells of those before it.
     if (area.copiesWithin !== undefined) {
       const near = [at, ...also.slice(0, also.indexOf(aim))];
       if (!near.some((other) => rulesetCellDistance(aim, other) <= area.copiesWithin!)) return false;
@@ -799,7 +799,7 @@ export function rulesetAreaTargets(
   actorId: string,
   optionId: string,
   at: RulesetCombatCell,
-  /** How it is laid from `at` (1.176, 1.177): which way a wall runs, a ring, further copies. */
+  /** How it is laid from `at` (1.177, 1.178): which way a wall runs, a ring, further copies. */
   lay?: RulesetAreaLay,
 ): string[] {
   const actor = rulesetCombatant(state, actorId);
@@ -819,13 +819,13 @@ export function rulesetAreaTargets(
         if (action.targets.side === "ally" && !sameSide) return false;
         if (action.targets.side === "enemy" && sameSide) return false;
       }
-      // Caught by any cell they fill (1.193).
+      // Caught by any cell they fill (1.194).
       return rulesetFootprint(combatant).some((cell) => covered.has(`${cell.x},${cell.y}`));
     })
     .map((combatant) => combatant.id);
 }
 
-/** Everybody a burst centred on its user catches (1.281): within its size of them on a board, and
+/** Everybody a burst centred on its user catches (1.282): within its size of them on a board, and
  *  seen from where they stand unless it goes through walls; off a board, everybody. Never its user,
  *  and never its user's own side when it spares them. A mending one, only whom it mends. */
 export function rulesetAroundTargets(
@@ -861,7 +861,7 @@ export function rulesetCoverBonus(
   target: RulesetCombatant,
   from: RulesetCombatCell | null,
   against: "attack" | "save" = "attack",
-  /** Who it comes from, whose own cells never screen it (1.193). */
+  /** Who it comes from, whose own cells never screen it (1.194). */
   attackerId?: string,
 ): number {
   const cover = combat.cover;
@@ -873,11 +873,11 @@ export function rulesetCoverBonus(
     ? new Set(
         state.combatants
           .filter((one) => one.id !== target.id && one.id !== attackerId && rulesetCombatStanding(one))
-          // Every cell they fill (1.193).
+          // Every cell they fill (1.194).
           .flatMap((one) => rulesetFootprint(one).map((cell) => `${cell.x},${cell.y}`)),
       )
     : undefined;
-  // Somebody bigger than one cell is as covered as the least covered cell they fill (1.193), from
+  // Somebody bigger than one cell is as covered as the least covered cell they fill (1.194), from
   // whichever cell of the attacker's is nearest it.
   const order = ["none", "half", "three-quarters", "total"] as const;
   let tier: (typeof order)[number] = "none";
@@ -910,7 +910,7 @@ export function rulesetAbove(
   const grid = state.board?.grid;
   const from = rulesetPositionOf(actor);
   const at = rulesetPositionOf(target);
-  // A flier is as high as it flies (1.113).
+  // A flier is as high as it flies (1.114).
   return !!grid && !!actor && !!from && !!at && rulesetLevelOf(grid, actor) > rulesetLevelOf(grid, target);
 }
 
@@ -927,7 +927,7 @@ export function rulesetDefenseAgainst(
   state: RulesetEncounterState,
   target: RulesetCombatant,
   attacker: RulesetCombatant | undefined,
-  /** The blow itself, where one weapon ignores cover against this target (1.188). */
+  /** The blow itself, where one weapon ignores cover against this target (1.189). */
   action?: RulesetCombatAction,
 ): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
@@ -940,7 +940,7 @@ export function rulesetDefenseAgainst(
       value: modifier.flat ?? 0,
     }),
   );
-  // What a dropped item gave it is gone with it (1.265): a shield let fall.
+  // What a dropped item gave it is gone with it (1.266): a shield let fall.
   let lost = 0;
   if (target.heldDefense && target.dropped?.length) {
     for (const index of rulesetDroppedItems(target)) lost += target.heldDefense[index] ?? 0;
@@ -1017,13 +1017,13 @@ export function planRulesetCombatCost(
   combatant: RulesetCombatant,
   action: RulesetCombatAction,
   payWith?: string,
-  /** How many uses, where its user chooses (1.250). */
+  /** How many uses, where its user chooses (1.251). */
   count?: number,
 ): RulesetCombatCost | null {
   const free: RulesetCombatCost = { steps: [], live: null, cost: [] };
-  // More of an item's charges is the item's to spend (1.268), never a pool's.
+  // More of an item's charges is the item's to spend (1.269), never a pool's.
   if (rulesetChargeSteps(action, payWith) !== null) payWith = undefined;
-  // Paid already, as it was readied (1.287).
+  // Paid already, as it was readied (1.288).
   if (rulesetUseIsFree(combatant.id, action.id)) return free;
   // An opponent's actions cost nothing off a sheet: their block is the only bookkeeping there is.
   if (action.innate || !combatant.sheet) return payWith ? null : free;
@@ -1054,16 +1054,22 @@ export function planRulesetCombatCost(
   return { steps: plan.steps, live, cost };
 }
 
-/** The most uses its user may choose to spend on it right now (1.250): Lay on Hands' points left.
+/** The most uses its user may choose to spend on it right now (1.251): Lay on Hands' points left.
  *  Zero when it cannot be paid at all. */
 export function rulesetChosenUsesMax(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   action: RulesetCombatAction,
 ): number {
-  let most = 0;
-  while (most < 1000 && planRulesetCombatCost(definition, combatant, action, undefined, most + 1)) most += 1;
-  return most;
+  // Whatever pays for some uses pays for fewer, so the most is found by halving the range.
+  let low = 0;
+  let high = 1000;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (planRulesetCombatCost(definition, combatant, action, undefined, mid)) low = mid;
+    else high = mid - 1;
+  }
+  return low;
 }
 
 /** Whether paying this would stay inside every limit on what the combatant may spend this turn or
@@ -1101,7 +1107,7 @@ export function rulesetPoolFamily(definition: RulesetDefinition, group: string |
 }
 
 /**
- * The level of what an action was paid with (Capability API 1.115): the pool's own `level` when it
+ * The level of what an action was paid with (Capability API 1.116): the pool's own `level` when it
  * says one, read off its holder's sheet, else its place in its group, the first pool being 1. A
  * pool in no group, and an action that costs nothing, is level 0: a cantrip.
  */
@@ -1126,7 +1132,7 @@ export function rulesetPaidLevel(
 }
 
 /** How many steps up the family a payment is, or 0 when it is not a climb at all. A pool of
- *  another group that pays for this one (`pays`, 1.170) climbs as far as its level is above the
+ *  another group that pays for this one (`pays`, 1.171) climbs as far as its level is above the
  *  action's, read off the payer's sheet. */
 export function rulesetCostSteps(
   definition: RulesetDefinition,
@@ -1134,13 +1140,13 @@ export function rulesetCostSteps(
   payWith: string,
   combatant?: Pick<RulesetCombatant, "sheet">,
 ): number {
-  // More of an item's charges (1.268): a step each.
+  // More of an item's charges (1.269): a step each.
   const charged = rulesetChargeSteps(action, payWith);
   if (charged !== null) return charged;
   const family = rulesetPoolFamily(definition, action.use?.group);
   const from = family.indexOf(action.use?.pool ?? "");
   const to = family.indexOf(payWith);
-  // Past its most, paying more adds nothing (1.240).
+  // Past its most, paying more adds nothing (1.241).
   const most = action.use?.stepsMax ?? Infinity;
   if (to < 0 && from >= 0 && combatant && rulesetPoolPaysFor(definition, payWith, action.use?.group)) {
     return Math.min(
@@ -1154,7 +1160,7 @@ export function rulesetCostSteps(
   return from >= 0 && to > from ? Math.min(most, to - from) : 0;
 }
 
-/** The more charges an item's use may be paid with now (1.268): one to as many as its step allows
+/** The more charges an item's use may be paid with now (1.269): one to as many as its step allows
  *  and the item still holds beyond the use's own. */
 function chargePayments(actor: RulesetCombatant, action: RulesetCombatAction): string[] {
   const charges = action.itemUse?.charges;
@@ -1166,7 +1172,7 @@ function chargePayments(actor: RulesetCombatant, action: RulesetCombatAction): s
   );
 }
 
-/** Whether a pool of another group may pay for this group's costs (1.170). */
+/** Whether a pool of another group may pay for this group's costs (1.171). */
 export function rulesetPoolPaysFor(definition: RulesetDefinition, pool: string, group: string | undefined): boolean {
   if (!group) return false;
   return definition.sheet.live.pools.find((entry) => entry.id === pool)?.pays?.includes(group) === true;
@@ -1175,7 +1181,7 @@ export function rulesetPoolPaysFor(definition: RulesetDefinition, pool: string, 
 /**
  * The other pools that could pay for an action right now: the higher pools of its own family, in
  * the order the ruleset declared them, then the pools of other groups that pay for it (`pays`,
- * 1.170) at a level no lower than its own. Each is one the sheet would accept the price from.
+ * 1.171) at a level no lower than its own. Each is one the sheet would accept the price from.
  */
 export function rulesetPaymentPools(
   definition: RulesetDefinition,
@@ -1197,7 +1203,7 @@ export function rulesetPaymentPools(
 }
 
 /** How many targets an action takes when paid for this way: one more for each step of a higher cost
- *  by its `targetsPerCostStep` (1.170), up to 20. */
+ *  by its `targetsPerCostStep` (1.171), up to 20. */
 export function rulesetPaidTargetCount(
   definition: RulesetDefinition,
   combatant: Pick<RulesetCombatant, "sheet">,
@@ -1246,7 +1252,7 @@ export function rulesetContestCheck(
   contest: RulesetCombatContest,
   side: "attacker" | "defender",
 ): { check: string; modifier: number } {
-  // A hold that names the checks that break it (1.174) is broken with those.
+  // A hold that names the checks that break it (1.175) is broken with those.
   const named =
     side === "attacker" && contest.from
       ? combatant.tracked.find((entry) => entry.condition === contest.from)?.escapeChecks
@@ -1273,7 +1279,7 @@ export function rulesetContestChance(
 ): number | null {
   const mine = contestTotals(definition, combat, actor, rulesetContestCheck(actor, contest, "attacker"), state);
   // Breaking free of a hold that names its escape DC is a roll against that number, which the
-  // actor meets to win (1.102).
+  // actor meets to win (1.103).
   const escapeDc = rulesetEscapeDc(actor, contest);
   if (mine && escapeDc !== undefined) {
     return mine.reduce((win, [total, chance]) => (total >= escapeDc ? win + chance : win), 0);
@@ -1298,7 +1304,7 @@ function contestTotals(
   check: { check?: string; modifier: number },
   state: RulesetEncounterState | undefined,
 ): Array<[number, number]> | null {
-  // What is narrowed to the ability the check is made with counts (1.187).
+  // What is narrowed to the ability the check is made with counts (1.188).
   const ability = rulesetCheckAbility(definition, check.check);
   const modifiers = rulesetConditionModifiers(
     definition,
@@ -1349,7 +1355,7 @@ function keptDistribution(count: number, sides: number, mode: RulesetCombatRollM
   return kept;
 }
 
-/** What breaking free is rolled against, when what holds the actor names it (1.102). Only a summed
+/** What breaking free is rolled against, when what holds the actor names it (1.103). Only a summed
  *  fight has one: the schema refuses it in a pool fight. */
 export function rulesetEscapeDc(actor: RulesetCombatant, contest: RulesetCombatContest): number | undefined {
   if (!contest.from) return contest.difficulty;
@@ -1365,7 +1371,7 @@ export function rulesetContestHolder(
 ): RulesetCombatant | undefined {
   if (!contest.from) return undefined;
   const hold = actor.tracked.find((entry) => entry.condition === contest.from);
-  // Only a hold that names an escape DC is broken by an `escapable` contest (1.174).
+  // Only a hold that names an escape DC is broken by an `escapable` contest (1.175).
   if (contest.escapable && hold?.escapeDc === undefined) return undefined;
   const source = hold?.source;
   const holder = source === undefined ? undefined : rulesetCombatant(state, source);
@@ -1381,7 +1387,7 @@ export function rulesetHitChance(
   mode: RulesetCombatRollMode = "normal",
   /** What the attacker's conditions add on top of the dice, rolled once whichever throw is kept. */
   bonus?: RulesetBonusDice,
-  /** The lowest natural face that is a critical for this attacker (1.80), which always lands. */
+  /** The lowest natural face that is a critical for this attacker (1.81), which always lands. */
   criticalFrom?: number,
 ): number | null {
   if (bonus && (bonus.flat !== 0 || bonus.dice.length > 0)) {
@@ -1431,7 +1437,7 @@ function blocked(
   return rulesetCombatEffects(definition, combat, actor, state).has("cannot-act");
 }
 
-/** Whom an entry used once a creature until a rest (1.303) went to already: names, as a fight
+/** Whom an entry used once a creature until a rest (1.304) went to already: names, as a fight
  *  outlives its combatants' ids, kept on a sheet's live state so they last until that rest, and on
  *  the combatant for one without a sheet. */
 export function rulesetUsedOn(
@@ -1452,13 +1458,13 @@ export function rulesetUsedOnName(combatant: Pick<RulesetCombatant, "name">): st
   return normalizeCharacterLookupName(combatant.name);
 }
 
-/** Whether a name is borne by nobody else in this fight (1.307): only then does it say who is meant. */
+/** Whether a name is borne by nobody else in this fight (1.308): only then does it say who is meant. */
 function usedOnNameUnique(state: RulesetEncounterState, combatant: RulesetCombatant): boolean {
   const name = rulesetUsedOnName(combatant);
   return !state.combatants.some((other) => other.id !== combatant.id && rulesetUsedOnName(other) === name);
 }
 
-/** How a combatant is written down as used on (1.307): by name and id, so a second creature of the
+/** How a combatant is written down as used on (1.308): by name and id, so a second creature of the
  *  same name is not taken for the first, and by name alone too while nobody else in the fight bears
  *  it, which is what a later fight knows them by. */
 export function rulesetUsedOnMarks(state: RulesetEncounterState, combatant: RulesetCombatant): string[] {
@@ -1467,7 +1473,7 @@ export function rulesetUsedOnMarks(state: RulesetEncounterState, combatant: Rule
   return usedOnNameUnique(state, combatant) ? [own, name] : [own];
 }
 
-/** Whether a list of marks means this combatant (1.307): by its name and id, or by a name only it
+/** Whether a list of marks means this combatant (1.308): by its name and id, or by a name only it
  *  bears in this fight. Two of one name in a fight are told apart, and neither is taken for one met
  *  under that name before. */
 export function rulesetUsedOnMeans(
@@ -1493,14 +1499,14 @@ export function rulesetForbiddenTargets(
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
     const source = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
     if (source && entry.effects.includes("cannot-target-source")) forbidden.add(source);
-    // Nor anybody on their side (1.277), unless it is the holder's own: a friend is not kept off.
+    // Nor anybody on their side (1.278), unless it is the holder's own: a friend is not kept off.
     const by =
       source && entry.effects.includes("cannot-target-source-side") ? rulesetCombatant(state, source) : undefined;
     if (by && by.side !== actor.side) {
       for (const one of state.combatants) if (one.side === by.side) forbidden.add(one.id);
     }
   }
-  // A turn the dice made a strike at one creature (1.263): nobody else.
+  // A turn the dice made a strike at one creature (1.264): nobody else.
   if (actor.flags.compelled === "strike" && actor.flags.compelledTarget) {
     for (const one of state.combatants) if (one.id !== actor.flags.compelledTarget) forbidden.add(one.id);
   }
@@ -1516,7 +1522,7 @@ export function rulesetForbiddenTargets(
  * A combatant who is down can still be healed and can still be hit while they are down. Only one
  * the fight is over for is off the table.
  */
-/** Whether a revive may be aimed at this one: dead, and not for longer than it reaches back (1.175).
+/** Whether a revive may be aimed at this one: dead, and not for longer than it reaches back (1.176).
  *  Somebody a condition took out was never killed, and no round of death is on them to measure. */
 export function rulesetCanRevive(
   state: RulesetEncounterState,
@@ -1527,7 +1533,7 @@ export function rulesetCanRevive(
   return state.round - combatant.diedRound <= action.revives.withinRounds;
 }
 
-/** Whether an action that does nothing but cure has something to cure on this one (1.175): a
+/** Whether an action that does nothing but cure has something to cure on this one (1.176): a
  *  condition it ends that they hold, or a dying they can be steadied from. One that also heals or
  *  harms or puts something on is aimed as that says. */
 function rulesetCureReaches(
@@ -1536,11 +1542,11 @@ function rulesetCureReaches(
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
 ): boolean {
-  // A contest that treats somebody (1.192) is taken only on whoever has what it treats.
+  // A contest that treats somebody (1.193) is taken only on whoever has what it treats.
   const contest = action.contest;
   if (contest?.targetHolds && !combatant.tracked.some((entry) => entry.condition === contest.targetHolds)) return false;
   if (contest?.targetDying && !(combatant.dying && !combatant.stable && !combatant.defeated)) return false;
-  // A track moved down or sealed health given back cures too (1.200); one moved up harms.
+  // A track moved down or sealed health given back cures too (1.201); one moved up harms.
   const lowers = action.tracks?.filter((entry) => entry.by < 0) ?? [];
   if (!action.ends && !action.stabilizes && !lowers.length && !action.unseals) return true;
   if (action.damage || action.heal || action.temporary || action.restore || action.applies?.length) return true;
@@ -1555,7 +1561,7 @@ function rulesetCureReaches(
   );
 }
 
-/** Whether a creature that is `from` put this on (1.235); anything does without a test. One whose
+/** Whether a creature that is `from` put this on (1.236); anything does without a test. One whose
  *  maker is not in the fight was put on by nobody it can name. */
 export function rulesetPutOnBy(
   definition: RulesetDefinition,
@@ -1568,7 +1574,7 @@ export function rulesetPutOnBy(
   return !!source && rulesetTargetIs(definition, source, from);
 }
 
-/** Whether this one holds a condition an action names (1.234): one of `conditions` from anybody, or
+/** Whether this one holds a condition an action names (1.235): one of `conditions` from anybody, or
  *  one of `fromSelf` that the actor put on them. */
 function rulesetHoldsFor(
   definition: RulesetDefinition,
@@ -1583,7 +1589,7 @@ function rulesetHoldsFor(
   );
 }
 
-/** What only a rest would give back to this one (1.192). */
+/** What only a rest would give back to this one (1.193). */
 function rulesetSealedHealth(definition: RulesetDefinition, combatant: RulesetCombatant): number {
   if (!combatant.sheet) return combatant.health?.sealed ?? 0;
   const health = definition.combat?.health;
@@ -1606,7 +1612,7 @@ export function rulesetOptionTargets(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,
-  /** `range` is a weapon mode's own (1.189). */
+  /** `range` is a weapon mode's own (1.190). */
   option: { id: string; targets: RulesetCombatAction["targets"]; range?: { normal: number; long?: number } },
   ignoreRange = false,
 ): string[] {
@@ -1622,7 +1628,7 @@ export function rulesetOptionTargets(
   // Breaking free is aimed at whoever is holding on, and at nobody else.
   const contest = actionOf(actor, option.id)?.contest;
   const holder = contest?.from ? rulesetContestHolder(state, actor, contest)?.id : undefined;
-  // A grab or a shove is not taken against somebody too much bigger (1.102). Whoever's size nothing
+  // A grab or a shove is not taken against somebody too much bigger (1.103). Whoever's size nothing
   // says is never too big.
   const combat = definition.combat;
   const actorSize = contest?.maxSizeAbove !== undefined && combat ? rulesetSizeRank(combat, actor) : undefined;
@@ -1634,32 +1640,32 @@ export function rulesetOptionTargets(
   return (
     state.combatants
       .filter((combatant) => {
-        // Bringing back the dead is aimed at the dead, and only them (1.175).
+        // Bringing back the dead is aimed at the dead, and only them (1.176).
         if (cure?.revives) {
           if (!rulesetCanRevive(state, cure, combatant)) return false;
         } else if (combatant.defeated) return false;
         if (cure && !rulesetCureReaches(definition, cure, combatant, state)) return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs, actionOf(actor, option.id)?.needsAny))
           return false;
-        // Only somebody at no health and still alive (1.310): Consume Life.
+        // Only somebody at no health and still alive (1.311): Consume Life.
         if (cure?.dyingOnly && !(combatant.down && !combatant.defeated)) return false;
-        // Only somebody who has taken their turn this round (1.326): the Hour Bell.
+        // Only somebody who has taken their turn this round (1.327): the Hour Bell.
         if (cure?.actedOnly && !rulesetActedThisRound(state, combatant.id)) return false;
-        // "A creature you can see" (1.177).
+        // "A creature you can see" (1.178).
         if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
-        // Only on somebody holding what it names (1.234): grappled by its maker, or restrained.
+        // Only on somebody holding what it names (1.235): grappled by its maker, or restrained.
         if (cure?.targetHolds && !rulesetHoldsFor(definition, combatant, actor.id, cure.targetHolds)) return false;
-        // Behind a ward it cannot reach (1.178). One that may be paid higher is offered, and its
+        // Behind a ward it cannot reach (1.179). One that may be paid higher is offered, and its
         // payment decides when it is used.
         if (cure && !cure.use?.group && rulesetWarded(definition, state, actor, cure, combatant)) return false;
         if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
-        // No bigger than it holds (1.313).
+        // No bigger than it holds (1.314).
         if (cure?.targetsUpTo && combat?.sizes) {
           const most = combat.sizes.order.findIndex((size) => size.id === cure.targetsUpTo);
           const size = rulesetSizeRank(combat, combatant);
           if (size !== undefined && size > most) return false;
         }
-        // A sphere between them (1.313), but for what breaks it, aimed at the one inside.
+        // A sphere between them (1.314), but for what breaks it, aimed at the one inside.
         if (rulesetSealedApart(definition, state, actor, combatant)) {
           const sealed = rulesetSealed(definition, combatant, state);
           if (!(sealed && cure?.entry && sealed.brokenBy?.includes(cure.entry))) return false;
@@ -1671,26 +1677,26 @@ export function rulesetOptionTargets(
         if (tooBig(combatant)) return false;
         // Whoever put a condition on this actor that says they may not be pointed at.
         if (forbidden.has(combatant.id)) return false;
-        // Nor anybody hidden from them (1.286): where they are is not known.
+        // Nor anybody hidden from them (1.287): where they are is not known.
         if (rulesetHiddenFrom(actor, combatant)) return false;
         // Helping yourself is not help.
         // Read the NAME rather than the id: the same standard action is also offered bought with
         // another budget, as `standard:help@bonus`, and nobody helps themselves whichever they took.
         if (rulesetStandardName(option.id) === "help" && combatant.id === actor.id) return false;
-        // "One creature other than you" (1.255).
+        // "One creature other than you" (1.256).
         if (cure?.notSelf && combatant.id === actor.id) return false;
-        // A repeat never at one that saved against the cast (1.309), or only at whom it was aimed at.
+        // A repeat never at one that saved against the cast (1.310), or only at whom it was aimed at.
         if (cure?.again?.notSaved && actor.concentrating?.saved?.includes(combatant.id)) return false;
         if (cure?.again?.sameTargets && !actor.concentrating?.targets?.includes(combatant.id)) return false;
-        // Used on them already since the rest that frees it (1.303).
+        // Used on them already since the rest that frees it (1.304).
         if (cure?.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, cure), combatant)) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
-        // A strike the dice aimed (1.263) is at whoever they picked, friend or foe.
+        // A strike the dice aimed (1.264) is at whoever they picked, friend or foe.
         if (actor.flags.compelled === "strike" && option.targets.side === "enemy" && combatant.id !== actor.id)
           return true;
         if (option.targets.side === "ally") return combatant.side === actor.side;
         if (option.targets.side === "enemy") return combatant.side !== actor.side;
-        // An area named off a board (1.191) catches either side, but never the one who made it.
+        // An area named off a board (1.192) catches either side, but never the one who made it.
         if (cure?.area && combatant.id === actor.id) return false;
         return true;
       })
@@ -1722,7 +1728,7 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
 }
 
 /**
- * Whether a ward keeps this action off this target (1.178): the target stands in a zone that wards
+ * Whether a ward keeps this action off this target (1.179): the target stands in a zone that wards
  * off the action's catalog at its level or lower, and its maker stands outside that zone. Read at
  * the level it is paid at; without a payment, at its own.
  */
@@ -1740,11 +1746,11 @@ export function rulesetWarded(
   if (wards.length === 0) return false;
   const own = new Set(rulesetWardsOn(state, actor).map((ward) => ward.key));
   const paid = rulesetPaidLevel(definition, actor, action, payWith);
-  // Its own base level, however it was paid (1.180): Globe of Invulnerability.
+  // Its own base level, however it was paid (1.181): Globe of Invulnerability.
   const base = action.innate ? action.innate.baseLevel : rulesetPaidLevel(definition, actor, action);
   return wards.some(({ key, wards: ward, caster, zone }) => {
     if (own.has(key) || !ward.catalogs.includes(catalog)) return false;
-    // Raised for each step the ward's own cast was paid above its base (1.180).
+    // Raised for each step the ward's own cast was paid above its base (1.181).
     const cast = caster.actions.find((entry) => entry.id === zone.actionId);
     const steps =
       !ward.maxLevelPerCostStep || !cast
@@ -1758,7 +1764,7 @@ export function rulesetWarded(
   });
 }
 
-/** Uses left on this holder, or shared by its coven for this spell (1.122). */
+/** Uses left on this holder, or shared by its coven for this spell (1.123). */
 export function rulesetActionUses(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
@@ -1770,7 +1776,7 @@ export function rulesetActionUses(
     : (actor.uses[action.id] ?? 0);
 }
 
-/** Whether its holder's sheet, as it stands, allows the action (1.165). A holder without a sheet, or
+/** Whether its holder's sheet, as it stands, allows the action (1.166). A holder without a sheet, or
  *  a caller without the ruleset, has nothing to read, so nothing holds it back. */
 export function rulesetActionUsable(
   definition: RulesetDefinition | undefined,
@@ -1781,7 +1787,7 @@ export function rulesetActionUsable(
 }
 
 /** Whether a value off the combatant's sheet, live state and items stands within the bounds: an
- *  action's `usableWhen` (1.165), one of its conditions' `when` (1.166). No bounds, no sheet or no
+ *  action's `usableWhen` (1.166), one of its conditions' `when` (1.167). No bounds, no sheet or no
  *  ruleset to read it with holds nothing back. */
 export function rulesetSheetWithin(
   definition: RulesetDefinition | undefined,
@@ -1801,7 +1807,7 @@ export function rulesetSheetWithin(
   );
 }
 
-/** A number off a combatant's own sheet as it stands now (1.273), whole, or undefined for one with
+/** A number off a combatant's own sheet as it stands now (1.274), whole, or undefined for one with
  *  no sheet to read. */
 export function rulesetSheetValue(
   definition: RulesetDefinition,
@@ -1820,7 +1826,7 @@ export function rulesetSheetValue(
 }
 
 /** Whether the action has uses left, has recharged, and has the coven members it needs nearby, and
- *  (given the ruleset) whether its holder's sheet allows it (1.165). */
+ *  (given the ruleset) whether its holder's sheet allows it (1.166). */
 export function rulesetActionAvailable(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
@@ -1828,7 +1834,7 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
-  // A strike made before a teleport (1.279) has what both of them have left.
+  // A strike made before a teleport (1.280) has what both of them have left.
   if (
     action.pairedWith?.some((id) => {
       const part = actor.actions.find((one) => one.id === id);
@@ -1836,39 +1842,39 @@ export function rulesetActionAvailable(
     })
   )
     return false;
-  // What it is made with lies where it was dropped (1.265).
+  // What it is made with lies where it was dropped (1.266).
   if (rulesetActionDropped(actor, action)) return false;
-  // Only in the light it says, where they stand (1.302): One with Shadows in dim light or darkness.
+  // Only in the light it says, where they stand (1.303): One with Shadows in dim light or darkness.
   if (action.usableIn) {
     const at = rulesetPositionOf(actor);
     if (!definition || !state || !at) return false;
     if (!action.usableIn.light.includes(rulesetLightAt(definition, state, at))) return false;
   }
-  // Only beside a prop (1.331): Fennick's Hymnal at the Year-Wheel.
+  // Only beside a prop (1.332): Fennick's Hymnal at the Year-Wheel.
   if (action.usableNear && !(state && rulesetNearProp(state, actor, action.usableNear.prop, action.usableNear.within)))
     return false;
-  // A light only while they carry one, and for nothing once a turn (1.294).
+  // A light only while they carry one, and for nothing once a turn (1.295).
   if (action.switches && "carried" in action.switches) {
     if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
     if (action.free && actor.flags.lightSwitched) return false;
   }
-  // Giving its own user back a pool they do not have is nothing (1.251): a 4th-level slot made by a
+  // Giving its own user back a pool they do not have is nothing (1.252): a 4th-level slot made by a
   // sorcerer with no 4th-level slots at all.
   if (action.restore && action.targets.side === "self" && actor.sheet && definition) {
     const wanted = action.restore.pool.trim().toLowerCase();
     const pools = readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools;
     if (!pools.some((pool) => pool.key === action.restore!.pool || pool.label.toLowerCase() === wanted)) return false;
   }
-  // Made again only while its cast is concentrated on (1.309).
+  // Made again only while its cast is concentrated on (1.310).
   if (action.again && !rulesetRepeatsHeld(actor, action.again)) return false;
-  // Given by a condition, only while its user holds it (1.235).
+  // Given by a condition, only while its user holds it (1.236).
   if (action.whileHolds) {
     const held = definition
       ? rulesetCombatConditions(definition, actor)
       : actor.tracked.map((entry) => entry.condition);
     if (!held.includes(action.whileHolds)) return false;
   }
-  // A component something stops (1.178): Silence around its holder, a gag on them.
+  // A component something stops (1.179): Silence around its holder, a gag on them.
   if (action.components?.length && definition?.combat) {
     const stopped = rulesetActiveConditions(definition, definition.combat, actor, state).flatMap(
       (entry) => entry.forbids?.components ?? [],
@@ -2001,7 +2007,7 @@ function forecastFor(
         action.ability,
       ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action)),
     );
-    // What the weapon adds against what the target is (1.186), as the roll will.
+    // What the weapon adds against what the target is (1.187), as the roll will.
     const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
     const chance = rulesetCombatIsPool(combat)
       ? rulesetPoolChance(
@@ -2048,11 +2054,11 @@ function forecastFor(
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
 }
 
-/** Modifiers that belong to THIS attack hit (Capability API 1.132). Rows and held weapons are
+/** Modifiers that belong to THIS attack hit (Capability API 1.133). Rows and held weapons are
  *  attacks; a single-target stat-block roll is a creature's weapon. Catalog abilities and item
  *  uses are spell/other attacks. A save or an automatic hit never carries these additions. */
 /** Whether an action is a weapon's blow rather than a spell's or an item's: an attack, or a stat
- *  block's single-target action, from no catalog (1.240). */
+ *  block's single-target action, from no catalog (1.241). */
 export function rulesetWeaponBlow(action: RulesetCombatAction): boolean {
   return (
     (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&
@@ -2061,7 +2067,7 @@ export function rulesetWeaponBlow(action: RulesetCombatAction): boolean {
   );
 }
 
-/** Whether a change to attacks narrowed to a kind of blow (1.246) reaches this one: a weapon's or a
+/** Whether a change to attacks narrowed to a kind of blow (1.247) reaches this one: a weapon's or a
  *  spell's, struck in reach or from afar. Nothing narrowed reaches a roll it cannot read. */
 export function rulesetAttackModifierReaches(
   modifier: { attacks?: "weapon" | "spell" | "any"; blow?: "melee" | "ranged" },
@@ -2112,7 +2118,7 @@ export function rulesetDamageModifiers(
 function modifiedAverage(
   average: number,
   modifiers: RulesetConditionModifier[],
-  /** The blow's own damage, whose dice a `diceTimes` throws again (1.196). */
+  /** The blow's own damage, whose dice a `diceTimes` throws again (1.197). */
   own?: RulesetCombatAmount,
 ): number {
   for (const { modifier } of modifiers) {
@@ -2127,7 +2133,7 @@ function modifiedAverage(
   return Math.max(0, average * modifiers.reduce((times, { modifier }) => times * (modifier.times ?? 1), 1));
 }
 
-/** What a weapon adds to hit against this target, by what it is (1.186): a mace of smiting's +2 more
+/** What a weapon adds to hit against this target, by what it is (1.187): a mace of smiting's +2 more
  *  against a construct. Every entry that matches adds. */
 export function rulesetToHitAgainst(
   definition: RulesetDefinition,
@@ -2138,8 +2144,8 @@ export function rulesetToHitAgainst(
   return rulesetAgainstHere(definition, action, target, actor).reduce((sum, entry) => sum + (entry.toHit ?? 0), 0);
 }
 
-/** The entries of a weapon's `against` this target meets: what it is (1.186), and a condition the
- *  wielder put on it (1.188), an oathbow's sworn enemy. Both, where an entry names both. */
+/** The entries of a weapon's `against` this target meets: what it is (1.187), and a condition the
+ *  wielder put on it (1.189), an oathbow's sworn enemy. Both, where an entry names both. */
 export function rulesetAgainstHere(
   definition: RulesetDefinition,
   action: RulesetCombatAction | undefined,
@@ -2153,7 +2159,7 @@ export function rulesetAgainstHere(
   );
 }
 
-/** Whether this combatant carries this condition, put on by this source (1.188). */
+/** Whether this combatant carries this condition, put on by this source (1.189). */
 export function rulesetMarkedBy(combatant: RulesetCombatant, condition: string, sourceId: string): boolean {
   return combatant.tracked.some((entry) => entry.condition === condition && entry.source === sourceId);
 }
@@ -2168,9 +2174,9 @@ function averageHarm(
   target?: RulesetCombatant,
   actor?: RulesetCombatant,
 ): number {
-  // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.167).
-  // One of an item's switch counts only while the item is on (1.169).
-  // One kept off some targets (1.186) counts against one it would still reach.
+  // A clause dealt only to some targets counts against one it would reach, and never unaimed (1.168).
+  // One of an item's switch counts only while the item is on (1.170).
+  // One kept off some targets (1.187) counts against one it would still reach.
   const reaches = (clause: {
     targetIs?: RulesetTargetIs;
     not?: RulesetTargetIs;
@@ -2179,7 +2185,7 @@ function averageHarm(
     marked?: string;
   }) =>
     !clause.onCritical &&
-    // One dealt only to a target the maker marked (1.188) counts against one they did.
+    // One dealt only to a target the maker marked (1.189) counts against one they did.
     (clause.marked === undefined || (!!target && !!actor && rulesetMarkedBy(target, clause.marked, actor.id))) &&
     (clause.whileOn === undefined || (!!actor && rulesetItemOn(actor, clause.whileOn))) &&
     (!clause.targetIs || (!!target && rulesetTargetIs(definition, target, clause.targetIs))) &&
@@ -2225,24 +2231,24 @@ function optionFrom(
   // A signature action is bought with points at the end of somebody else's turn, so it is never on
   // the actor's own menu. `rulesetSignatureOptions` is where it is offered.
   if (action.signature) return null;
-  // Nor a lair action (1.314), but on the turn lent for it.
+  // Nor a lair action (1.315), but on the turn lent for it.
   if (action.lair && !lairLent) return null;
   // A reaction waits for its moment, which is never a turn. `rulesetWindowOptions` is where the
   // moment offers it.
   if (action.reaction && !atItsMoment) return null;
-  // Spent when its holder's roll fails, never chosen (1.248).
+  // Spent when its holder's roll fails, never chosen (1.249).
   if (action.rescue) return null;
-  // Chosen with what it changes, never on its own (1.252): Metamagic.
+  // Chosen with what it changes, never on its own (1.253): Metamagic.
   if (action.alters) return null;
   // A sequence whose parts are all gone, or all spent, would spend a budget and do nothing.
   if (!rulesetSequenceCanHappen(actor, action)) return null;
   // Breaking free is only there while something holds on.
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
   if (!actionDoesSomething(action)) return null;
-  // A teleport and nothing else (1.275) goes nowhere without a board.
+  // A teleport and nothing else (1.276) goes nowhere without a board.
   if (action.teleport && !positioned(state) && !action.teleport.leaves && !rulesetDoesMoreThanTeleport(action))
     return null;
-  // Nor, then, the strike made before one (1.279).
+  // Nor, then, the strike made before one (1.280).
   if (
     action.pairedWith &&
     !positioned(state) &&
@@ -2252,9 +2258,9 @@ function optionFrom(
     })
   )
     return null;
-  // Only once the attack action has been taken this turn (1.241): Flurry of Blows.
+  // Only once the attack action has been taken this turn (1.242): Flurry of Blows.
   if (action.afterAttack && !rulesetTookAttackAction(actor, action.afterAttack)) return null;
-  // Only on its holder's own turn before they have attacked in it (1.246): Reckless Attack.
+  // Only on its holder's own turn before they have attacked in it (1.247): Reckless Attack.
   if (action.beforeAttack && (!rulesetOnOwnTurn(state, actor) || (actor.flags.attacks ?? 0) > 0)) return null;
   // A cap on attacks a turn (combat C6d, as Slow's): one that has made them all makes no more, however
   // many strikes an action would give. It is a cap on the holder's own turn, as Slow's is.
@@ -2268,7 +2274,7 @@ function optionFrom(
   }
   // Free of the economy, or paid for out of strikes a spend already bought. Either way no budget is
   // asked for, and the option says so by carrying none.
-  // The other half of an action made this turn (1.279): a blink dog's bite after its teleport.
+  // The other half of an action made this turn (1.280): a blink dog's bite after its teleport.
   const following = rulesetOnOwnTurn(state, actor)
     ? actor.flags.followUps?.find((one) => one.id === action.id)
     : undefined;
@@ -2295,7 +2301,7 @@ function optionFrom(
         ((entry.attacks === true &&
           weapon &&
           (!entry.melee || !action.range || action.reach !== undefined) &&
-          // Only the attacks it names, and only after the attack action (1.241): Martial Arts.
+          // Only the attacks it names, and only after the attack action (1.242): Martial Arts.
           (!entry.names || rulesetAttackNamed(action.label, entry.names)) &&
           (!entry.afterAttack || rulesetTookAttackAction(actor, entry.afterAttack))) ||
           (!!action.itemUse &&
@@ -2308,7 +2314,7 @@ function optionFrom(
   }
   if (!following?.paid && !rulesetActionAvailable(actor, action, state, definition)) return null;
   // Its own price, or, with that pool empty, a higher one that pays for it: a 1st-level spell is
-  // still cast with a 2nd-level slot, or a warlock's pact slot (1.170).
+  // still cast with a 2nd-level slot, or a warlock's pact slot (1.171).
   const paid = planRulesetCombatCost(definition, actor, action);
   const payments = [...rulesetPaymentPools(definition, actor, action), ...chargePayments(actor, action)];
   if (!paid && payments.length === 0) return null;
@@ -2321,7 +2327,7 @@ function optionFrom(
     ...(free ? {} : { budget }),
     ...(following ? { followUp: true as const } : {}),
     ...(oneStrike ? { oneStrike: true as const } : {}),
-    // A melee grant's thrown weapon is swung (1.238): its reach is all it has.
+    // A melee grant's thrown weapon is swung (1.239): its reach is all it has.
     ...(inReach ? { range: { normal: 0 } } : {}),
     targets: action.targets,
     ...(action.reaction?.cancelSave
@@ -2345,7 +2351,7 @@ function optionFrom(
     ...(action.again ? { again: true as const } : {}),
   };
   if (paid && paid.cost.length > 0) option.cost = paid.cost;
-  // As many uses as its user chooses (1.250).
+  // As many uses as its user chooses (1.251).
   if (action.usesChosen) option.amount = { max: rulesetChosenUsesMax(definition, actor, action) };
   if (!paid) {
     option.upcastOnly = true;
@@ -2369,7 +2375,7 @@ function optionFrom(
       shape: action.area.shape,
       size: action.area.size,
       ...(action.area.width !== undefined ? { width: action.area.width } : {}),
-      // How a wall may be laid (1.176) and how many times it may be set down (1.177).
+      // How a wall may be laid (1.177) and how many times it may be set down (1.178).
       ...(action.area.ring !== undefined ? { ring: action.area.ring } : {}),
       ...(action.zone?.side ? { sided: true as const } : {}),
       ...(action.area.copies !== undefined ? { copies: action.area.copies } : {}),
@@ -2380,7 +2386,7 @@ function optionFrom(
   // than a player discovering it.
   if (payments.length > 0) {
     option.payWith = payments;
-    // A use that takes more targets the more it is paid says how many each way takes (1.170).
+    // A use that takes more targets the more it is paid says how many each way takes (1.171).
     if ((action.use?.targetsPerStep || action.itemUse?.charges?.step?.targets) && action.targets.count > 0) {
       option.targetsWith = Object.fromEntries(
         payments.map((pool) => [pool, rulesetPaidTargetCount(definition, actor, action, pool)]),
@@ -2389,14 +2395,14 @@ function optionFrom(
   }
   const forecast = forecastFor(definition, combat, state, actor, action);
   if (forecast) option.forecast = forecast;
-  // Wall sections it may strike instead (1.199). Not in a window: what is taken at its moment is
+  // Wall sections it may strike instead (1.200). Not in a window: what is taken at its moment is
   // aimed where its moment says.
   if (!atItsMoment) {
     const walls = rulesetWallTargets(state, actor, action);
     if (walls.length > 0) option.walls = walls;
   }
-  // Where a teleport may go, and who may go along (1.275). With nowhere to go it is not offered.
-  // Or out of the fight altogether, where it may leave it (1.278), the only way it goes off a board.
+  // Where a teleport may go, and who may go along (1.276). With nowhere to go it is not offered.
+  // Or out of the fight altogether, where it may leave it (1.279), the only way it goes off a board.
   if (action.teleport && (positioned(state) || action.teleport.leaves)) {
     const cells = positioned(state) ? rulesetTeleportCells(definition, state, actor, action.teleport) : [];
     if (cells.length === 0 && !action.teleport.leaves) return null;
@@ -2414,7 +2420,7 @@ function optionFrom(
     const modes = action.modes.flatMap((mode) => {
       const moded = rulesetModedAction(definition, action, mode.id);
       if (!moded || !rulesetShotsAvailable(actor, moded)) return [];
-      // One that spends the item's charges only while it has them (1.189).
+      // One that spends the item's charges only while it has them (1.190).
       if (mode.charges && rulesetItemChargesLeft(actor, mode.charges) < mode.charges.cost) return [];
       const expected = forecastFor(definition, combat, state, actor, moded);
       return [
@@ -2442,7 +2448,7 @@ function optionFrom(
       return { id: style.id, label: style.label, forecast: worth };
     });
   }
-  // What it may be used with (1.252): Metamagic its user can pay for now.
+  // What it may be used with (1.253): Metamagic its user can pay for now.
   if (!atItsMoment) {
     const alters = rulesetAlterOffers(definition, state, actor, action);
     if (alters.length > 0) option.alters = alters;
@@ -2450,7 +2456,7 @@ function optionFrom(
   return option;
 }
 
-/** An action its user cannot take as it is but can with one alteration (1.252): a spell Quickened
+/** An action its user cannot take as it is but can with one alteration (1.253): a spell Quickened
  *  once the action is spent, or Subtle under Silence. */
 function alterNeededOption(
   definition: RulesetDefinition,
@@ -2489,10 +2495,10 @@ function alterNeededOption(
   return null;
 }
 
-/** A day, the longest an alteration stretches anything (1.252). */
+/** A day, the longest an alteration stretches anything (1.253). */
 const ALTER_LASTS_MOST = 14400;
 
-/** Whether an altering action may change this one (1.252): every change it makes has something
+/** Whether an altering action may change this one (1.253): every change it makes has something
  *  to change. */
 export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetCombatAction): boolean {
   if (!action.catalog || !alter.catalogs.includes(action.catalog) || action.alters || action.reaction) return false;
@@ -2529,12 +2535,12 @@ export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetComba
   return true;
 }
 
-/** The action as its alterations change it (1.252). What they leave for it to do as it resolves is
+/** The action as its alterations change it (1.253). What they leave for it to do as it resolves is
  *  its `altered`. */
 export function rulesetAlteredAction(
   action: RulesetCombatAction,
   alters: RulesetCombatAction[],
-  /** Who of its user's side it spares (1.253), and who it heightens (1.254), where they were picked. */
+  /** Who of its user's side it spares (1.254), and who it heightens (1.255), where they were picked. */
   picks: { spared?: string[]; heightened?: string } = {},
 ): RulesetCombatAction {
   const { spared, heightened } = picks;
@@ -2580,7 +2586,7 @@ export function rulesetAlteredAction(
   return out;
 }
 
-/** What an altering action costs on this action paid this way (1.252), or null when it cannot be
+/** What an altering action costs on this action paid this way (1.253), or null when it cannot be
  *  paid. */
 export function planRulesetAlterCost(
   definition: RulesetDefinition,
@@ -2599,7 +2605,7 @@ export function planRulesetAlterCost(
   );
 }
 
-/** The alterations this action may be used with now (1.252): ones that fit it and can be paid for
+/** The alterations this action may be used with now (1.253): ones that fit it and can be paid for
  *  at its own level. */
 export function rulesetAlterOffers(
   definition: RulesetDefinition,
@@ -2669,17 +2675,17 @@ export function rulesetAttackMode(
   if (!rulesetCombatAdvantage(combat)) return "normal";
   const own = rulesetCombatEffects(definition, combat, actor, where?.state);
   const theirs = rulesetCombatEffects(definition, combat, target, where?.state);
-  // What the weapon does differently against this target (1.188): an oathbow at its sworn enemy.
+  // What the weapon does differently against this target (1.189): an oathbow at its sworn enemy.
   const blow = where ? (where.action ?? actionOf(actor, where.optionId)) : undefined;
   const against = rulesetAgainstHere(definition, blow, target, actor);
   const farIsFine = against.some((entry) => entry.ignoresLongRange);
   const distance = where
     ? distanceModes(combat, where.state, where.optionId, actor, target, theirs, farIsFine, blow?.range)
     : null;
-  // Not seeing (1.177): striking at somebody you cannot see is harder, at somebody who cannot see
+  // Not seeing (1.178): striking at somebody you cannot see is harder, at somebody who cannot see
   // you easier.
   const unseen = combat.sight?.unseenAttacks && where;
-  // Unless not seeing is nothing to its attacks (1.308): Feral Senses.
+  // Unless not seeing is nothing to its attacks (1.309): Feral Senses.
   const blindStrike =
     !!unseen &&
     !rulesetHidingTraits(definition, actor).unseenStrikes &&
@@ -2698,10 +2704,10 @@ export function rulesetAttackMode(
     !!target.flags.dodging ||
     !!distance?.disadvantage ||
     blindStrike;
-  // Changes that roll attacks twice (1.184): the attacker's own, some only against whoever put them
+  // Changes that roll attacks twice (1.185): the attacker's own, some only against whoever put them
   // on (Chill Touch), and the target's against attackers of some kind (Protection from Evil and Good).
   const leans = new Set<string>();
-  // Narrowed to an ability (1.187), only an attack made with it: what it is made with is the action's.
+  // Narrowed to an ability (1.188), only an attack made with it: what it is made with is the action's.
   const ability = blow?.ability;
   for (const entry of rulesetActiveConditions(definition, combat, actor, where?.state)) {
     for (const modifier of entry.modifiers ?? []) {
@@ -2724,11 +2730,11 @@ export function rulesetAttackMode(
     }
   }
   for (const entry of against) if (entry.mode) leans.add(entry.mode);
-  // A creature's own (1.292): sensitivity to sunlight, where it holds.
+  // A creature's own (1.293): sensitivity to sunlight, where it holds.
   for (const rule of actor.block?.attackModes ?? []) {
     if (rulesetModeRuleHolds(definition, combat, actor, where?.state, rule)) leans.add(rule.mode);
   }
-  // Another weapon's mark still standing (1.191): an oathbow's disadvantage with every other weapon
+  // Another weapon's mark still standing (1.192): an oathbow's disadvantage with every other weapon
   // while its sworn enemy lives.
   if (blow?.kind === "attack" && where) {
     for (const other of actor.actions) {
@@ -2754,7 +2760,7 @@ function foeAdjacent(state: RulesetEncounterState, actor: RulesetCombatant): boo
     if (combatant.side === actor.side || !rulesetCombatStanding(combatant)) return false;
     const cell = rulesetPositionOf(combatant);
     if (!cell) return false;
-    // Beside any cell either fills (1.193); a foe far below (or above) is not beside them (1.113).
+    // Beside any cell either fills (1.194); a foe far below (or above) is not beside them (1.114).
     return rulesetCombatantDistance(state, actor, combatant) <= 1;
   });
 }
@@ -2768,9 +2774,9 @@ function distanceModes(
   actor: RulesetCombatant,
   target: RulesetCombatant,
   theirs: ReadonlySet<string>,
-  /** Long range costs nothing (1.188). */
+  /** Long range costs nothing (1.189). */
   farIsFine = false,
-  /** The reach the blow is made at, a weapon mode's own (1.189). */
+  /** The reach the blow is made at, a weapon mode's own (1.190). */
   range?: { normal: number; long?: number },
 ): { advantage: boolean; disadvantage: boolean } | null {
   const from = rulesetPositionOf(actor);
@@ -2840,7 +2846,7 @@ function movementOptions(
   // A condition that pins somebody takes their movement away the moment it lands, not at the start
   // of their next turn.
   if (rulesetCombatEffects(definition, combat, actor, state).has("speed-zero")) return [];
-  // Held where it stands by the light it is in (1.318): Lantern-Shy in bright light.
+  // Held where it stands by the light it is in (1.319): Lantern-Shy in bright light.
   const still = actor.block?.stillIn;
   if (
     still &&
@@ -2872,7 +2878,7 @@ function movementOptions(
   if (cells.length > 0) {
     options.push({ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells });
   }
-  // Up or down a level where it stands (1.113): a flier, on a board with levels, paying what a level
+  // Up or down a level where it stands (1.114): a flier, on a board with levels, paying what a level
   // is worth out of what is left of its flight.
   const grid = state.board?.grid;
   const levelCells = state.board?.levelCells;
@@ -2909,7 +2915,7 @@ export function rulesetCombatOptions(
 }
 
 /**
- * What a condition that decides its holder's turn leaves of the menu (1.263): a turn the table
+ * What a condition that decides its holder's turn leaves of the menu (1.264): a turn the table
  * said does nothing, or was walked away, is only ended; one that must strike keeps the melee
  * attacks at the creature the dice picked; `only` keeps walking, breaking free and the standard
  * actions named, and `onlyWhenStuck` those it names while there is nowhere to walk. Which way they
@@ -2934,7 +2940,7 @@ function compelled(
       return rulesetOptionTargets(definition, state, actor.id, option).includes(actor.flags.compelledTarget ?? "");
     });
   }
-  // One that frees a turn begun with nowhere to walk (1.265) holds nothing of it then.
+  // One that frees a turn begun with nowhere to walk (1.266) holds nothing of it then.
   const rules = rulesetActiveConditions(definition, combat, actor, state).flatMap((entry) =>
     entry.behavior?.only && !(entry.behavior.onlyWhenStuck === "any" && actor.flags.stuck) ? [entry.behavior] : [],
   );
@@ -2960,7 +2966,7 @@ function compelled(
   });
 }
 
-/** Picking up what they dropped (1.265), from where it fell or beside it: once a turn for nothing,
+/** Picking up what they dropped (1.266), from where it fell or beside it: once a turn for nothing,
  *  or for the budget the condition that dropped it named. */
 function pickUpOptions(actor: RulesetCombatant): RulesetCombatOption[] {
   const out: RulesetCombatOption[] = [];
@@ -2979,7 +2985,7 @@ function pickUpOptions(actor: RulesetCombatant): RulesetCombatOption[] {
   return out;
 }
 
-/** Averting the eyes from each holder of a gaze that may be averted (1.267), and looking at whoever
+/** Averting the eyes from each holder of a gaze that may be averted (1.268), and looking at whoever
  *  they keep them from again. Free, and as often as they like. */
 function avertOptions(
   definition: RulesetDefinition,
@@ -3016,7 +3022,7 @@ function avertOptions(
   return out;
 }
 
-/** The menu as it would be with no condition deciding the turn (1.263). */
+/** The menu as it would be with no condition deciding the turn (1.264). */
 export function rulesetUncompelledOptions(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -3031,13 +3037,13 @@ export function rulesetUncompelledOptions(
     label: "End turn",
     targets: { side: "self", count: 0 },
   };
-  // Away and still taking turns (1.312): only the way back, by what ends what keeps them away.
+  // Away and still taking turns (1.313): only the way back, by what ends what keeps them away.
   if (actor.away?.turns) return [...endingOptions(definition, combat, actor), endTurn];
   if (!rulesetCombatStanding(actor) || blocked(definition, combat, state, actor)) return [endTurn];
 
   const options: RulesetCombatOption[] = [];
   const economy = rulesetConditionEconomy(definition, combat, actor, state);
-  // Caught unaware (1.236): this first turn is only ended, unless it is shaken off by what shakes it.
+  // Caught unaware (1.237): this first turn is only ended, unless it is shaken off by what shakes it.
   if (actor.surprised) {
     for (const id of actor.surpriseOut ?? []) {
       const action = actor.actions.find((entry) => entry.id === id);
@@ -3074,11 +3080,11 @@ export function rulesetUncompelledOptions(
   }
   options.push(...pickUpOptions(actor));
   options.push(...avertOptions(definition, state, actor));
-  // Moving a lasting area its caster holds at a point (1.172): picked on the board as a walk is.
+  // Moving a lasting area its caster holds at a point (1.173): picked on the board as a walk is.
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;
     if (!move || (actor.budgets[move.budget] ?? 0) < 1) continue;
-    // Rammed into somebody, it has stopped for the turn (1.174).
+    // Rammed into somebody, it has stopped for the turn (1.175).
     if (zone.rammed === `${state.round}:${state.turn}`) continue;
     const cells = rulesetZoneMoveCells(state, zone, move.distance);
     if (cells.length === 0) continue;
@@ -3091,7 +3097,7 @@ export function rulesetUncompelledOptions(
       cells,
     });
   }
-  // Turning a line or cone its caster carries (1.181): picked on the board as the cell it now faces.
+  // Turning a line or cone its caster carries (1.182): picked on the board as the cell it now faces.
   for (const zone of actor.zones ?? []) {
     const turn = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.turn;
     if (!turn || (actor.budgets[turn.budget] ?? 0) < 1) continue;
@@ -3111,7 +3117,7 @@ export function rulesetUncompelledOptions(
     for (const condition of rulesetCombatConditions(definition, holder)) {
       const shake = combat.conditions?.find((entry) => entry.condition === condition)?.shakeOff;
       if (!shake || (actor.budgets[shake.budget] ?? 0) < 1) continue;
-      // Its holder tears free of it themselves where it says so (1.319): the Seed Hopper.
+      // Its holder tears free of it themselves where it says so (1.320): the Seed Hopper.
       if (holder.id === actor.id) {
         if (!shake.self) continue;
         const label = definition.sheet.live.conditions.find((entry) => entry.id === condition)?.label ?? condition;
@@ -3138,7 +3144,7 @@ export function rulesetUncompelledOptions(
       });
     }
   }
-  // Lighting a prop again (1.331): somebody beside it, while anywhere it lights is not lit so.
+  // Lighting a prop again (1.332): somebody beside it, while anywhere it lights is not lit so.
   for (const prop of state.board?.props ?? []) {
     const relight = prop.relight;
     if (!relight || prop.health <= 0 || (actor.budgets[relight.budget] ?? 0) < 1) continue;
@@ -3154,7 +3160,7 @@ export function rulesetUncompelledOptions(
       relights: { propId: prop.id, label: prop.label },
     });
   }
-  // A sphere (1.313): rolled by the one shut in it, picked up or put down by somebody next to it.
+  // A sphere (1.314): rolled by the one shut in it, picked up or put down by somebody next to it.
   if (positioned(state)) {
     const own = rulesetSealed(definition, actor, state);
     if (own?.rolls && (actor.budgets[own.rolls.budget] ?? 0) >= 1) {
@@ -3202,7 +3208,7 @@ export function rulesetUncompelledOptions(
   options.push(...endingOptions(definition, combat, actor));
   for (const action of combat.standard ?? []) {
     if ((actor.budgets[budget] ?? 0) < 1) break;
-    // Readying for real (1.287): one entry for each option it may ready, and what it waits for.
+    // Readying for real (1.288): one entry for each option it may ready, and what it waits for.
     if (action === "ready" && combat.readying) {
       options.push(...readyOptions(options, budget));
       continue;
@@ -3221,7 +3227,7 @@ export function rulesetUncompelledOptions(
   return options;
 }
 
-/** What a legendary move lends its maker to walk with (1.282): a share of its turn's allowance,
+/** What a legendary move lends its maker to walk with (1.283): a share of its turn's allowance,
  *  each way of moving alike, or a distance on every way it moves. Nothing for one held in place,
  *  unless nothing holds it. */
 export function rulesetLentMovement(
@@ -3234,7 +3240,7 @@ export function rulesetLentMovement(
   if (!combat) return { movementLeft: 0 };
   // Measured as nothing held it, for one nothing holds (Whirlwind of Sand).
   const loose = move.untouchable ? { ...actor, tracked: [], flags: { ...actor.flags } } : actor;
-  // One way of moving only (1.284): its share read off that speed, every other way at nothing.
+  // One way of moving only (1.285): its share read off that speed, every other way at nothing.
   if (move.speed) {
     const modes = rulesetModeAllowances(definition, combat, loose, state);
     const own =
@@ -3299,7 +3305,7 @@ export function rulesetWithMovement<T>(
   }
 }
 
-/** Where a legendary move may end (1.282), each with the path it walks: on a board only. */
+/** Where a legendary move may end (1.283), each with the path it walks: on a board only. */
 export function rulesetLegendaryMoveCells(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -3328,7 +3334,7 @@ export function rulesetSignatureOptions(
   const combat = definition.combat;
   const actor = rulesetCombatant(state, actorId);
   const points = actor?.signature?.points;
-  // Its lair's actions first (1.314), on the lair's own count, whosever turn has just ended.
+  // Its lair's actions first (1.315), on the lair's own count, whosever turn has just ended.
   const lair = rulesetLairOptions(definition, state, actorId);
   if (!combat || !actor || points === undefined) return lair;
   if (currentRulesetActor(state)?.id === actorId) return lair;
@@ -3337,7 +3343,7 @@ export function rulesetSignatureOptions(
   for (const action of actor.actions) {
     if (!action.signature || action.signature.cost > points) continue;
     if (!rulesetActionAvailable(actor, action, state, definition) || !rulesetSequenceCanHappen(actor, action)) continue;
-    // A cast (1.283) offers each spell its maker could cast on its own turn, aimed as it would be.
+    // A cast (1.284) offers each spell its maker could cast on its own turn, aimed as it would be.
     if (action.casting) {
       options.push(...rulesetSignatureCasts(definition, state, actor, action, points));
       continue;
@@ -3350,8 +3356,8 @@ export function rulesetSignatureOptions(
       ...(action.heal ? { heals: true } : {}),
       signature: { cost: action.signature.cost, points },
     };
-    // A move (1.282) offers where it may end, and is not offered with nowhere to go. One that
-    // follows what its action does (1.284) is offered all the same, and simply goes nowhere.
+    // A move (1.283) offers where it may end, and is not offered with nowhere to go. One that
+    // follows what its action does (1.285) is offered all the same, and simply goes nowhere.
     if (action.move) {
       const cells = rulesetLegendaryMoveCells(definition, state, actor, action);
       const only = rulesetMovesOnly(action);
@@ -3367,10 +3373,10 @@ export function rulesetSignatureOptions(
   return options;
 }
 
-/** Set while a lair's turn is lent (1.314), the only menu its lair actions are on. */
+/** Set while a lair's turn is lent (1.315), the only menu its lair actions are on. */
 let lairLent = false;
 
-/** The menu as a turn lent for a lair action shows it (1.314): its lair actions on it. */
+/** The menu as a turn lent for a lair action shows it (1.315): its lair actions on it. */
 export function rulesetLentLairTurn<T>(read: () => T): T {
   const was = lairLent;
   lairLent = true;
@@ -3382,7 +3388,7 @@ export function rulesetLentLairTurn<T>(read: () => T): T {
 }
 
 /**
- * The lair actions this combatant may take right now (Capability API 1.314): on its lair's count,
+ * The lair actions this combatant may take right now (Capability API 1.315): on its lair's count,
  * once a round, not the one it took the round before, each aimed as it would be on its own turn with the budget
  * it is taken with lent for it. None while it is down or cannot act.
  */
@@ -3397,7 +3403,7 @@ export function rulesetLairOptions(
   if (!combat || !actor?.lair || round === null) return [];
   // Down, it takes none; held from acting, its lent turn's menu offers none.
   if (!rulesetCombatStanding(actor)) return [];
-  // Not the one it took the round before; only the one it must take next, when one is (1.326).
+  // Not the one it took the round before; only the one it must take next, when one is (1.327).
   const last = actor.lair.last?.round === round - 1 ? actor.lair.last.id : undefined;
   const next = actor.lair.next;
   const wanted = next === undefined ? [] : typeof next === "string" ? [next] : next;
@@ -3418,11 +3424,11 @@ export function rulesetLairOptions(
   return options;
 }
 
-/** What a lair action's option id starts with (1.314), before the option it takes. */
+/** What a lair action's option id starts with (1.315), before the option it takes. */
 export const RULESET_LAIR_OPTION_PREFIX = "lair>";
 
 /**
- * The fight as its maker's own turn would show it, for a legendary cast (1.283): no window open,
+ * The fight as its maker's own turn would show it, for a legendary cast (1.284): no window open,
  * its turn, and one of the budget the cast is made with, whatever its own turn left.
  */
 export function rulesetBorrowedTurn(
@@ -3443,7 +3449,7 @@ export function rulesetBorrowedTurn(
 }
 
 /**
- * What the Ready action may ready (1.287): each option on the menu taken with the same budget (an
+ * What the Ready action may ready (1.288): each option on the menu taken with the same budget (an
  * attack, a spell, an item's use), and walking, each waiting for an opponent to come where it can
  * reach them or for one to use something.
  */
@@ -3471,17 +3477,17 @@ function readyOptions(menu: RulesetCombatOption[], budget: string): RulesetComba
   );
 }
 
-/** What a ready entry's id starts with (1.287): `ready:<option>@<comes|acts>`. */
+/** What a ready entry's id starts with (1.288): `ready:<option>@<comes|acts>`. */
 export const RULESET_READY_OPTION_PREFIX = "ready:";
 
-/** The id a readied option is taken with, in the window its moment opens (1.287). */
+/** The id a readied option is taken with, in the window its moment opens (1.288). */
 export const RULESET_READIED_OPTION = "readied";
 
-/** An action whose cost was paid already (1.287): a spell readied with concentration, now released.
+/** An action whose cost was paid already (1.288): a spell readied with concentration, now released.
  *  Set only around the step that releases it. */
 let freeUse: { actorId: string; actionId: string } | undefined;
 
-/** Runs `step` with this combatant's use of this action costing nothing off its sheet (1.287). */
+/** Runs `step` with this combatant's use of this action costing nothing off its sheet (1.288). */
 export function rulesetWithFreeUse<T>(actorId: string, actionId: string, step: () => T): T {
   const before = freeUse;
   freeUse = { actorId, actionId };
@@ -3492,13 +3498,13 @@ export function rulesetWithFreeUse<T>(actorId: string, actionId: string, step: (
   }
 }
 
-/** Whether this use is the one already paid for (1.287). */
+/** Whether this use is the one already paid for (1.288). */
 export function rulesetUseIsFree(actorId: string, actionId: string): boolean {
   return freeUse?.actorId === actorId && freeUse.actionId === actionId;
 }
 
 /**
- * The option a readied action is taken with (1.287), as its holder's own menu would show it were
+ * The option a readied action is taken with (1.288), as its holder's own menu would show it were
  * it their turn and its budget theirs: aimed, and paid with, as on a turn. A readied walk is a
  * walk of their whole speed, its own allowance kept.
  */
@@ -3534,8 +3540,8 @@ export function rulesetReadiedOption(
   return { ...option, id: RULESET_READIED_OPTION, budget: readying.budget, readied: true };
 }
 
-/** What its holder may spend the standard budget on to end a condition: a save (1.263), 5e's
- *  Irresistible Dance, or a check (1.312), Maze's way out. */
+/** What its holder may spend the standard budget on to end a condition: a save (1.264), 5e's
+ *  Irresistible Dance, or a check (1.313), Maze's way out. */
 function endingOptions(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -3570,8 +3576,8 @@ function endingOptions(
   return options;
 }
 
-/** Whether what its user concentrates on is the cast a repeat makes again (1.309), or one of the
- *  same casting's choices (1.312): Eyebite's three. */
+/** Whether what its user concentrates on is the cast a repeat makes again (1.310), or one of the
+ *  same casting's choices (1.313): Eyebite's three. */
 export function rulesetRepeatsHeld(
   actor: Pick<RulesetCombatant, "concentrating" | "actions">,
   again: NonNullable<RulesetCombatAction["again"]>,
@@ -3583,13 +3589,13 @@ export function rulesetRepeatsHeld(
   return actor.actions.find((one) => one.id === held)?.repeats?.group === again.group;
 }
 
-/** Whether an action of a combatant's is one of its spells (1.283): cast out of a catalog, never an
+/** Whether an action of a combatant's is one of its spells (1.284): cast out of a catalog, never an
  *  item's use, what a condition lends, or something bought with points. */
 export function rulesetIsSpell(action: RulesetCombatAction): boolean {
   return !!action.catalog && action.kind !== "item" && !action.whileHolds && !action.signature && !action.again;
 }
 
-/** Each spell a legendary cast offers (1.283): the option its maker's own turn would show for it,
+/** Each spell a legendary cast offers (1.284): the option its maker's own turn would show for it,
  *  bought with points instead of the budget, and only cantrips where it says so. */
 function rulesetSignatureCasts(
   definition: RulesetDefinition,
@@ -3667,7 +3673,7 @@ export function rulesetWindowOptions(
     ];
   }
 
-  // What it readied, now that it has happened (1.287).
+  // What it readied, now that it has happened (1.288).
   if (window.trigger.kind === "readied") {
     if (!rulesetCombatStanding(actor) || !combat.readying) return [];
     const effects = rulesetCombatEffects(definition, combat, actor, state);
@@ -3695,7 +3701,7 @@ export function rulesetWindowOptions(
     ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
     ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
   };
-  // A hit's maker answers it once with each thing they hold (1.240).
+  // A hit's maker answers it once with each thing they hold (1.241).
   const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
   return rulesetReactionsAt(definition, combat, state, actor, moment, source, cause)
     .filter((action) => !taken.includes(action.id))
@@ -3710,7 +3716,7 @@ export function rulesetWindowOptions(
     });
 }
 
-/** The item a hit was struck with (1.272), as a moment's cause carries it: none for a blow that is
+/** The item a hit was struck with (1.273), as a moment's cause carries it: none for a blow that is
  *  no item's. */
 export function rulesetHitItem(optionId: string): { item?: number } {
   const item = rulesetActionItemIndex({ id: optionId });
@@ -3777,7 +3783,7 @@ export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReact
  * turns out to be empty.
  */
 /** Whether one of a reaction's moments answers what caused it: its `against`, the kind of blow it
- *  names (1.117), and whether its holder has to see whoever caused it (1.117). */
+ *  names (1.118), and whether its holder has to see whoever caused it (1.118). */
 function momentAnswers(
   state: RulesetEncounterState,
   holder: RulesetCombatant,
@@ -3786,13 +3792,13 @@ function momentAnswers(
   cause: RulesetMomentCause,
 ): boolean {
   if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry, cause.action)) return false;
-  // Its holder's own hit, or somebody else's (1.240): never both.
+  // Its holder's own hit, or somebody else's (1.241): never both.
   if (moment.on === "hit" && (moment.by === "self") !== (sourceId === holder.id)) return false;
   if (moment.weapon && !cause.weapon) return false;
   if (moment.names && !(cause.attack !== undefined && rulesetAttackNamed(cause.attack, moment.names))) return false;
-  // Only a strike paid for from its budget (1.247): Open Hand Technique, on Flurry of Blows.
+  // Only a strike paid for from its budget (1.248): Open Hand Technique, on Flurry of Blows.
   if (moment.budget && cause.budget !== moment.budget) return false;
-  // Only a hit with its own item (1.272): charges spent on the staff that struck.
+  // Only a hit with its own item (1.273): charges spent on the staff that struck.
   if (moment.item !== undefined && cause.item !== moment.item) return false;
   if (moment.blow && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
@@ -3815,7 +3821,7 @@ function rulesetAgainstMatches(
   );
 }
 
-/** The creature an aimed or hit moment is about, including a nearby ally (1.130). */
+/** The creature an aimed or hit moment is about, including a nearby ally (1.131). */
 export function rulesetReactionTarget(
   state: RulesetEncounterState,
   holder: RulesetCombatant,
@@ -3827,7 +3833,7 @@ export function rulesetReactionTarget(
   if (moment === "turn-start" || moment === "falls" || moment === "used") return sourceId;
   return [action.reaction!, ...(action.reaction?.also ?? [])].flatMap((one) => {
     if (one.on !== moment || !momentAnswers(state, holder, sourceId, one, cause)) return [];
-    // Its holder's own blow is about whoever it hit (1.240).
+    // Its holder's own blow is about whoever it hit (1.241).
     if (one.by === "self") return (cause.targetIds ?? []).filter((id) => id !== holder.id);
     return (cause.targetIds ?? [holder.id]).filter((id) => {
       if (!one.for || one.for === "self") return id === holder.id;
@@ -3842,7 +3848,7 @@ export function rulesetReactionTarget(
   })[0];
 }
 
-/** Eligible fallers of this event, nearest first; other events never enter this choice (1.130). */
+/** Eligible fallers of this event, nearest first; other events never enter this choice (1.131). */
 export function rulesetFallTargets(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -3871,7 +3877,7 @@ export function rulesetReactionsAt(
    *  before this one may have taken them out, and nothing is offered that the rules would refuse. */
   sourceId: string,
   /** The catalog and entry behind what caused the moment, when there is one (a reaction that answers
-   *  only some answers nothing without them), and for a hit, the kind of blow (1.117). */
+   *  only some answers nothing without them), and for a hit, the kind of blow (1.118). */
   cause: RulesetMomentCause = {},
 ): RulesetCombatAction[] {
   if (!rulesetCombatStanding(actor)) return [];
@@ -3881,7 +3887,7 @@ export function rulesetReactionsAt(
     if (!action.reaction) return false;
     // Its own moment, or any it is also taken at, each read with its own `against`.
     const moments = [action.reaction, ...(action.reaction.also ?? [])];
-    // Choosing what one's own hit does is part of making it, not a reaction to it (1.240).
+    // Choosing what one's own hit does is part of making it, not a reaction to it (1.241).
     if (effects.has("cannot-react") && !moments.every((one) => one.by === "self")) return false;
     if (!moments.some((one) => one.on === moment && momentAnswers(state, actor, sourceId, one, cause))) return false;
     const target = rulesetReactionTarget(state, actor, action, moment, sourceId, cause);

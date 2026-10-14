@@ -1,5 +1,5 @@
 /**
- * What its own user holds (Capability API 1.306).
+ * What its own user holds (Capability API 1.307).
  *
  *   - A creature's own action may be held by its concentration: an imp's or a quasit's Invisibility
  *     ends when that concentration does.
@@ -301,7 +301,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creature actions held by concentration, conditions ended by using a named action, or uses that put conditions on their own user requires schemaVersion 2 and capabilityApi 1.306 or newer";
+      "A ruleset with creature actions held by concentration, conditions ended by using a named action, or uses that put conditions on their own user requires schemaVersion 2 and capabilityApi 1.307 or newer";
     const docWith = (entries: unknown[], holdsCreatures = false) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push(
@@ -319,16 +319,16 @@ try {
     const unconcentrated = structuredClone(plainQuasit) as Record<string, any>;
     delete unconcentrated.creature.actions[0].concentration;
     for (const doc of [docWith([sunbeam]), docWith([ward]), docWith([plainQuasit], true)]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(306) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(306) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(307) as never, doc), gate);
     }
     for (const doc of [JSON.parse(fiveEText), docWith([bolt, beam]), docWith([unconcentrated], true)]) {
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate, "nothing new, no gate");
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(306) as never, doc), gate, "nothing new, no gate");
     }
   }
 
   console.log(
-    "Self held: Sunbeam's mote on its caster held by its concentration, a quasit's Invisibility held by its own and ended by its Scare; refusals; gated at 1.306.",
+    "Self held: Sunbeam's mote on its caster held by its concentration, a quasit's Invisibility held by its own and ended by its Scare; refusals; gated at 1.307.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

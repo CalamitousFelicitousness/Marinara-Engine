@@ -1,5 +1,5 @@
 /**
- * Entries that change another of their holder's each time it is used (Capability API 1.301).
+ * Entries that change another of their holder's each time it is used (Capability API 1.302).
  *
  *   - `amends`, held on a sheet's list: `damageAdd` to the named entry's damage on a hit, its
  *     `range`, and a `push` on whoever it hits, offered without it too where `pushOptional`. They
@@ -229,7 +229,7 @@ try {
         };
         const declared = {
           schemaVersion: 2,
-          capabilityApi: { major: 1, minor: 301 },
+          capabilityApi: { major: 1, minor: 302 },
           builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
           id: "ruleset-amends",
           name: "Amends",
@@ -290,15 +290,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with entries that change another entry each time it is used requires schemaVersion 2 and capabilityApi 1.301 or newer";
+      "A ruleset with entries that change another entry each time it is used requires schemaVersion 2 and capabilityApi 1.302 or newer";
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.catalogs.push({ id: "invocations", label: "Invocations", feeds: ["features"], entries: [agonizing] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(300) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(301) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(301) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(302) as never, doc), gate);
   }
 
   console.log(
-    "Amends: Agonizing Blast, Eldritch Spear and Repelling Blast on eldritch blast, alone and stacked, the push offered or left off; refusals; gated at 1.301.",
+    "Amends: Agonizing Blast, Eldritch Spear and Repelling Blast on eldritch blast, alone and stacked, the push offered or left off; refusals; gated at 1.302.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -71,7 +71,7 @@ export interface InventoryItem {
   loaded?: number;
   /** What an item that holds charges has left, as a fight left it. Absent reads as full. */
   charges?: number;
-  /** An item with a switch turned on, as the player or a fight left it (1.169). Only ever one item. */
+  /** An item with a switch turned on, as the player or a fight left it (1.170). Only ever one item. */
   on?: true;
 }
 
@@ -113,7 +113,7 @@ interface GameInventoryProps {
   /** Called when the user puts an item on or takes it off, binds or unbinds it. Resolves to the stack
    *  it is in afterwards (one item of a larger stack is taken into its own). */
   onWearItem?: (stackId: string, wear: GameInventoryWear) => Promise<string | null> | string | null;
-  /** Called when the user turns an item with a switch on or off (1.169). Resolves to the stack's id. */
+  /** Called when the user turns an item with a switch on or off (1.170). Resolves to the stack's id. */
   onSwitchItem?: (stackId: string, on: boolean) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (stackId: string, itemName: string) => void;
@@ -132,7 +132,7 @@ interface GameInventoryProps {
   onSwapItems?: (firstId: string, secondId: string) => void | Promise<void>;
   /** Whether the player can interact (input phase) */
   canInteract?: boolean;
-  /** The ruleset's starting gear (Capability API 1.77): what each bag has taken, each character's
+  /** The ruleset's starting gear (Capability API 1.78): what each bag has taken, each character's
    *  sheet, the game's layers, whose bags it may go into (by bag key: the party members with a card),
    *  and how to take some. With it, a row offers the gear while a bag has some kind left. */
   startingGear?: {
@@ -1364,14 +1364,14 @@ interface InventorySlotProps {
   holderName?: string;
   /** The ruleset's word for bound, said of a bound stack. */
   bindingLabel?: string;
-  /** The icons it may be drawn with, best first (1.337); its first letter when the pack has none. */
+  /** The icons it may be drawn with, best first (1.338); its first letter when the pack has none. */
   icons?: ReadonlyArray<string | null>;
   selected: boolean;
   reorderEnabled: boolean;
   onClick: () => void;
 }
 
-/** The icons a stack may be drawn with, best first (1.337): its ruleset item's own, the one named by its
+/** The icons a stack may be drawn with, best first (1.338): its ruleset item's own, the one named by its
  *  entry, then the one named by its own name. */
 function stackIcons(stack: InventoryItem, itemBook: RulesetItemBook | undefined): Array<string | null> {
   const cut = stack.item?.indexOf("/") ?? -1;

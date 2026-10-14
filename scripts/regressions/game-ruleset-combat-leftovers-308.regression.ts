@@ -1,5 +1,5 @@
 /**
- * Maze, Expeditious Retreat, a casting's choices made again, and the hammer's +4 (Capability API 1.312).
+ * Maze, Expeditious Retreat, a casting's choices made again, and the hammer's +4 (Capability API 1.313).
  *
  *   - `dismisses.turns`: sent away, it still takes its turns, on which it may only try the way back;
  *     `checkEnds` is that way: a check of `combat.checks` against a number, which a creature that
@@ -412,6 +412,18 @@ try {
       undefined,
       "unbound with the gauntlets off",
     );
+    // A cursed hammer stays bound with its gauntlets off, as the player cannot unbind it by hand.
+    const cursedBook = {
+      ...book,
+      actor: "player" as const,
+      itemOf: (item: string) => {
+        const found = book.itemOf(item);
+        return found && item === "gear/hammer" ? { ...found, binds: { ...found.binds, cursed: true } } : found;
+      },
+    };
+    const cursedOff = wearGameInventoryStack(attuned.stacks, "gauntlets", "unequip", undefined, cursedBook);
+    assert.ok(cursedOff && "stacks" in cursedOff);
+    assert.equal(cursedOff.stacks.find((one) => one.id === "hammer")!.bound, true, "the curse holds");
     const unbelted = wearGameInventoryStack(attuned.stacks, "belt-storm", "unbind", undefined, book);
     assert.ok(unbelted && "stacks" in unbelted);
     assert.equal(unbelted.stacks.find((one) => one.id === "hammer")!.bound, undefined, "unbound with the belt unbound");
@@ -494,7 +506,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a creature sent away that still takes turns, a condition ended by a check, standard actions taken with a use, a casting's choices made again, an ability add capped, or an item bound only with others worn requires schemaVersion 2 and capabilityApi 1.312 or newer";
+      "A ruleset with a creature sent away that still takes turns, a condition ended by a check, standard actions taken with a use, a casting's choices made again, an ability add capped, or an item bound only with others worn requires schemaVersion 2 and capabilityApi 1.313 or newer";
     const docWith = (entries: unknown[]) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries });
@@ -535,8 +547,8 @@ try {
       itemDoc({ str: { add: 2, max: 20 } }),
       bindDoc({ needsWorn: [{ anyOf: ["gear/x"] }] }),
     ]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(311) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(312) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(312) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(313) as never, doc), gate);
     }
     for (const doc of [
       docWith([noTurns]),
@@ -544,12 +556,12 @@ try {
       itemDoc({ str: { add: 2 } }),
       bindDoc({ cursed: true }),
     ]) {
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(311) as never, doc), gate, "nothing new, no gate");
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(312) as never, doc), gate, "nothing new, no gate");
     }
   }
 
   console.log(
-    "Leftovers 308: Maze keeps its turns for an Intelligence check out (a minotaur's free), Expeditious Retreat Dashes on the cast and on bonus actions, Eyebite's other choice made again, the hammer's +4 only with belt and gauntlets; refusals; gated at 1.312.",
+    "Leftovers 308: Maze keeps its turns for an Intelligence check out (a minotaur's free), Expeditious Retreat Dashes on the cast and on bonus actions, Eyebite's other choice made again, the hammer's +4 only with belt and gauntlets; refusals; gated at 1.313.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

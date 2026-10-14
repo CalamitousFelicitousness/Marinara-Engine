@@ -128,6 +128,7 @@ import {
   formatSkillCheckResultSummary,
   unwrapConversationInstructions,
   findKnownModel,
+  isGeminiModel,
   isOpenAIGpt6AlwaysReasoningModel,
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -2076,7 +2077,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
       // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
       // tell the same turn. A continuation trips nothing, as it tells no walk.
-      // The Game Master's intro message (1.338), on the reply that opens the game: the Experience's when its
+      // The Game Master's intro message (1.339), on the reply that opens the game: the Experience's when its
       // creator locked it, else what the setup chose, else the Experience's own. A new session of a game
       // already under way opens with none.
       let gameIntroRead: Promise<GameIntro | null> | undefined;
@@ -4462,7 +4463,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           primaryProvider: agentChatProvider,
           provider: runtimeProvider,
         } = providerRuntime;
-        // A defined Game Master intro (1.338) is the game's first message exactly as set: streamed as written.
+        // A defined Game Master intro (1.339) is the game's first message exactly as set: streamed as written.
         const definedIntro = await gameIntroNow();
         const provider =
           definedIntro?.mode === "defined" ? fixedTextProvider(definedIntro.text, runtimeProvider) : runtimeProvider;
@@ -4485,6 +4486,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           stopSequences,
           effectiveMaxContext,
         } = providerRuntime);
+        // A defined intro is the whole reply as set: no prefill goes before it.
+        if (definedIntro?.mode === "defined") assistantPrefill = "";
 
         const chatConnectionMaxParallelJobs = Number(conn.maxParallelJobs) || 1;
         const chatConnectionKnownModel = findKnownModel(conn.provider as APIProvider, conn.model.trim());
@@ -5068,7 +5071,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // force, the scene just shown, and what it asks now.
           const promptTurnStory = await turnStory();
           const promptStoryNow = [
-            // A guided intro (1.338), on the reply that opens the game.
+            // A guided intro (1.339), on the reply that opens the game.
             gameIntroGuidanceText(await gameIntroNow()),
             promptTurnStory ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn) : "",
           ]
@@ -5201,7 +5204,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ]),
               )
             : undefined;
-          // A fake's facts are what it truly is, which only the Game Master reads (1.78).
+          // A fake's facts are what it truly is, which only the Game Master reads (1.79).
           const promptItemFacts = promptItemBook
             ? Object.fromEntries(
                 promptInventoryStacks.flatMap((stack) =>
@@ -6610,13 +6613,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         // Create the pipeline (exclude text rewrite agents — they run last,
         // after all other post-processing agents have produced their context).
-        const textRewriteAgents = resolvedAgents.filter(
+        const allTextRewriteAgents = resolvedAgents.filter(
           (a) => a.phase === "post_processing" && resolveAgentResultType(a) === "text_rewrite",
         );
+        // A defined intro (1.339) stays exactly as set: no agent rewrites it; its Game tags still run.
+        const textRewriteAgents = definedIntro?.mode === "defined" ? [] : allTextRewriteAgents;
         const textRewriteRunAgents = mergePairedBuiltInRewriteAgents(textRewriteAgents);
         const textRewritePendingState = getTextRewritePendingState(textRewriteAgents);
         const holdForTextRewrite = shouldHoldForTextRewrite(textRewriteAgents);
-        const textRewriteAgentIds = new Set(textRewriteAgents.map((a) => a.id));
+        const textRewriteAgentIds = new Set(allTextRewriteAgents.map((a) => a.id));
         const lorebookKeeperAgent = resolvedAgents.find((a) => a.type === "lorebook-keeper") ?? null;
         let pipelineAgents = resolvedAgents.filter(
           (a) =>
@@ -7415,7 +7420,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           followUpIteration,
           impersonate: input.impersonate,
-          isGoogleProvider,
+          // Gemini on OpenRouter, NanoGPT or custom also ends on the rewrite instruction. Ending on the AI's reply would
+          // continue that reply into the user's swipe (#7558).
+          isGoogleProvider: isGoogleProvider || isGeminiModel(conn.model),
           regenerateUserMessage,
         });
         if (tailMessages.assistantPrefillInjected) {
@@ -8290,7 +8297,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             providerMacroContext,
             historyMacroProfilesById,
           );
-          if (chatMode === "conversation" && conversationIsGroup && !input.impersonate) {
+          // The group reply format is for the characters' replies. Impersonation and a user-message rewrite write the
+          // user's message, and the rewrite instruction stays last.
+          if (
+            chatMode === "conversation" &&
+            conversationIsGroup &&
+            !input.impersonate &&
+            !tailMessages.googleUserRegenerationInjected
+          ) {
             const turnCharacterName =
               usesIndividualGroupGeneration && groupTurnPromptEnabled && speaksOnlyTargetCharacter && targetCharId
                 ? (charInfo.find((character) => character.id === targetCharId)?.name ?? null)
@@ -8912,17 +8926,32 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (rollRequestAbort?.signal.aborted)
                 result = { ...result, content: fullResponse.slice(roundResponseStart), toolCalls: [] };
 
+              // A tool call the model wrote as text was streamed before the provider recognised
+              // it, and the provider leaves that text out of the result (only the prose around it
+              // stays), as without streaming. Whenever this round's streamed text differs from what the
+              // provider returned (call first or last), take it back out of the reply and the client's
+              // view (#6951); the prose, if any, is written again just below.
+              if (
+                result.toolCalls.length &&
+                fullResponse.length > roundResponseStart &&
+                fullResponse.slice(roundResponseStart) !== (result.content ?? "")
+              ) {
+                fullResponse = fullResponse.slice(0, roundResponseStart);
+                // The earlier rounds can hold roleplay commands the stream filter hid, and the filter
+                // has already consumed this round's text: show the clean text and start it afresh.
+                const roleplayFiltered = chatMode === "roleplay" && !input.impersonate;
+                if (roleplayFiltered)
+                  roleplayCommandStreamFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
+                if (!holdForTextRewrite)
+                  sendSseEvent(reply, {
+                    type: "content_replace",
+                    data: roleplayFiltered ? parseRoleplayCommands(fullResponse).content : fullResponse,
+                  });
+              }
               // If provider doesn't support onToken (fell back to non-streaming),
               // write the content conventionally
               if (result.content && !fullResponse.endsWith(result.content)) {
                 await writeContentChunked(result.content);
-              }
-              // A tool call the model wrote as text was streamed before the provider recognised
-              // it, and the provider leaves that text out of the result, as without streaming.
-              // Take it back out of the reply and the client's view (#6951).
-              if (result.toolCalls.length && !result.content && fullResponse.length > roundResponseStart) {
-                fullResponse = fullResponse.slice(0, roundResponseStart);
-                if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: fullResponse });
               }
 
               // Gemini thought signatures reach this branch as providerMetadata rather than
@@ -9800,7 +9829,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           }
 
-          if (input.trimIncompleteModelOutput && !input.impersonate) {
+          // A defined intro was written, not cut off: it is kept whole.
+          if (input.trimIncompleteModelOutput && !input.impersonate && definedIntro?.mode !== "defined") {
             const beforeTrim = fullResponse;
             fullResponse = trimIncompleteModelEnding(fullResponse);
             if (fullResponse !== beforeTrim) {
@@ -9978,7 +10008,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 },
               });
             }
+            // A defined intro stays as set: its rolls are recorded, its text is not rewritten around them.
             if (
+              definedIntro?.mode !== "defined" &&
               shouldNarrateGameDiceOutcome(
                 chatMeta,
                 Boolean(rolled.resolved || rolled.untrained || generalRolls.rolled),
@@ -11945,6 +11977,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ? input.forCharacterId
               : ((chatMode === "conversation" ? availableGroupCharacters[0]?.id : characterIds[0]) ?? null);
           const sentMessages = [...finalMessages];
+          // A user-message rewrite instruction stays last. A guide ("do not include a reply from {{user}}") after it
+          // can turn the user's swipe into a character's reply.
+          const userRewrite = tailMessages.googleUserRegenerationInjected ? sentMessages.pop() : undefined;
 
           if (generationGuideInstruction) {
             sentMessages.push({ role: "system", content: generationGuideInstruction });
@@ -11986,6 +12021,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               sentMessages.push({ role: "system", content: charInstruction });
             }
           }
+          if (userRewrite) sentMessages.push(userRewrite);
 
           // A merged group generation may voice several characters unless a regen
           // target or a single explicit @mention pins it to exactly one speaker.

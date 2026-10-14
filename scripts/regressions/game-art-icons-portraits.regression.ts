@@ -1,5 +1,5 @@
 /**
- * Icon and portrait art slots (Capability API 1.337):
+ * Icon and portrait art slots (Capability API 1.338):
  *
  *   - A board pack of kind `icons` holds `ic_` tiles, one of kind `portraits` holds `pt_` busts with
  *     their expressions as `pt_<name>@<mood>`; other ids are left out and noted.
@@ -62,7 +62,7 @@ const pack = (kind: "icons" | "portraits", tiles: Record<string, unknown>) => ({
 });
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 333);
+  assert.ok(supportedCapabilityApi.minor >= 338);
 
   // ── The packs ──
   const iconsRead = parseBoardPack(
@@ -178,7 +178,7 @@ try {
 
   // ── The gate ──
   const gate =
-    "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.337 or newer";
+    "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.338 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -192,9 +192,15 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(336) as never, withIcons()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(337) as never, withIcons()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(336) as never, JSON.parse(fiveEText)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(337) as never, withIcons()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(338) as never, withIcons()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(337) as never, JSON.parse(fiveEText)), gate);
+  // An icon in a catalog file asks for 1.338 as well.
+  const iconFile = new Map([
+    ["catalogs/spells.json", { id: "spells", entries: [{ id: "cloud", icon: "ic_poison_cloud" }] }],
+  ]);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(337) as never, JSON.parse(fiveEText), iconFile), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(338) as never, JSON.parse(fiveEText), iconFile), gate);
 
   console.log("Art icons and portraits: icon and portrait packs, derived names, a ruleset's own icons, the gate.");
 } finally {

@@ -514,7 +514,7 @@ function supportsEngineVersion(entry: CapabilityCatalogPackage, engineVersion: s
 /** Whether any row of these entries names a column the ruleset keeps up to date. Read structurally
  *  rather than parsed: the install gate looks at documents nothing has validated yet, and a shape it
  *  does not recognise is not its problem to report. */
-/** An entry with a scaled row beside any other row of its list, told apart by name (1.91): an older
+/** An entry with a scaled row beside any other row of its list, told apart by name (1.92): an older
  *  Engine refused a scaled row that was not its entry's only one there, scaled or not. */
 function entriesCarrySeveralScaledRows(entries: unknown): boolean {
   return (
@@ -829,6 +829,34 @@ function plainRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
+/** Maps keyed by a ruleset's own ids (a sheet's `fields`, a row's `values`, a stat block's `checks`,
+ *  a worn item's `abilities`): what is under them is the ruleset's data, never a feature, so a column
+ *  or a score that happens to be called `magical`, `passive` or `hiding` is not read as one. */
+const ID_KEYED_MAPS = new Set([
+  "abilities",
+  "always",
+  "bonuses",
+  "byKind",
+  "checks",
+  "fields",
+  "filters",
+  "lists",
+  "options",
+  "saves",
+  "sets",
+  "skills",
+  "stats",
+  "valueLabels",
+  "values",
+]);
+
+/** What a feature scan reads further into: every value but an id-keyed map's. */
+function featureValues(record: Record<string, unknown>): unknown[] {
+  return Object.entries(record).flatMap(([key, value]) =>
+    ID_KEYED_MAPS.has(key) && plainRecord(value) ? [] : [value],
+  );
+}
+
 /** The 1.45 keys in the ruleset file itself: `levels` in the combat block, and a combat condition's
  *  `modifiers` or check effects. */
 function rulesetCarriesConditionNumbers145Keys(ruleset: { combat?: unknown } | undefined): boolean {
@@ -1084,10 +1112,10 @@ function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } |
 }
 
 const COVER_ISSUE =
-  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.73 or newer";
+  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.74 or newer";
 
 /** A save that ignores cover, on an entry's mechanics, a creature's action or an item's use, which is
- *  1.73: a new key on the strict save. */
+ *  1.74: a new key on the strict save. */
 function entriesCarryCoverlessSaves(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1150,24 +1178,24 @@ function rulesetCarriesMarketDay169(ruleset: { items?: unknown } | undefined): b
 }
 
 const HONESTY_ISSUE =
-  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.78 or newer";
+  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.79 or newer";
 
 const CRITICAL_RANGE_ISSUE =
-  "A ruleset whose attack roll reads a critical range off the sheet requires schemaVersion 2 and capabilityApi 1.80 or newer";
+  "A ruleset whose attack roll reads a critical range off the sheet requires schemaVersion 2 and capabilityApi 1.81 or newer";
 const MULTIPLY_ISSUE =
-  "A ruleset with a derived value that multiplies requires schemaVersion 2 and capabilityApi 1.81 or newer";
+  "A ruleset with a derived value that multiplies requires schemaVersion 2 and capabilityApi 1.82 or newer";
 const AMOUNT_ADD_ISSUE =
-  "A ruleset whose catalog entries add a sheet value to their amount requires schemaVersion 2 and capabilityApi 1.82 or newer";
+  "A ruleset whose catalog entries add a sheet value to their amount requires schemaVersion 2 and capabilityApi 1.83 or newer";
 
 const BUILDER_ISSUE =
-  "A ruleset with a guided builder, or catalog entries that grant through one, requires schemaVersion 2 and capabilityApi 1.85 or newer";
+  "A ruleset with a guided builder, or catalog entries that grant through one, requires schemaVersion 2 and capabilityApi 1.86 or newer";
 
-/** What a pick through the guided builder grants (1.85): `grants`, a new key on the strict entry. */
+/** What a pick through the guided builder grants (1.86): `grants`, a new key on the strict entry. */
 function entriesCarryGrants(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.grants !== undefined);
 }
 
-/** An item's to-hit that reads a bonus off its holder's sheet (1.94): `sheetBonus`, a new key on the
+/** An item's to-hit that reads a bonus off its holder's sheet (1.95): `sheetBonus`, a new key on the
  *  strict to-hit of a weapon's attack and of an item's use. */
 function entriesCarryToHitSheetBonus(entries: unknown): boolean {
   return (
@@ -1181,7 +1209,7 @@ function entriesCarryToHitSheetBonus(entries: unknown): boolean {
   );
 }
 
-/** A weapon's damage that reads a bonus off its holder's sheet (1.96): `sheetBonus` (and `oneHanded`),
+/** A weapon's damage that reads a bonus off its holder's sheet (1.97): `sheetBonus` (and `oneHanded`),
  *  new keys on the strict damage. */
 function entriesCarryDamageSheetBonus(entries: unknown): boolean {
   return (
@@ -1193,7 +1221,7 @@ function entriesCarryDamageSheetBonus(entries: unknown): boolean {
   );
 }
 
-/** A weapon's damage dice rerolled off the holder's sheet (1.97): `rerollUpTo`, a new key on the strict
+/** A weapon's damage dice rerolled off the holder's sheet (1.98): `rerollUpTo`, a new key on the strict
  *  damage. */
 function entriesCarryDamageReroll(entries: unknown): boolean {
   return (
@@ -1205,7 +1233,7 @@ function entriesCarryDamageReroll(entries: unknown): boolean {
   );
 }
 
-/** Harm that names what it carries past a resistance's `except` (1.100): `qualities` on an entry's
+/** Harm that names what it carries past a resistance's `except` (1.101): `qualities` on an entry's
  *  mechanics or on a creature action's damage, a new key on each strict object. */
 function entriesCarryBlowQualities(entries: unknown): boolean {
   return (
@@ -1223,7 +1251,7 @@ function entriesCarryBlowQualities(entries: unknown): boolean {
 }
 
 /** A creature action that deals another amount while something holds, or a creature that carries a
- *  shield (1.101): `alternatives` on the strict damage, `shield` on the strict creature. */
+ *  shield (1.102): `alternatives` on the strict damage, `shield` on the strict creature. */
 function entriesCarryDamageAlternatives(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1239,7 +1267,7 @@ function entriesCarryDamageAlternatives(entries: unknown): boolean {
   );
 }
 
-/** A creature's size, or a condition that names what escaping it is rolled against (1.102): `size` on
+/** A creature's size, or a condition that names what escaping it is rolled against (1.103): `size` on
  *  the strict creature, `escapeDc` on the strict applies of a creature action, an entry's mechanics
  *  or an item's use. */
 function entriesCarrySizes(entries: unknown): boolean {
@@ -1259,7 +1287,7 @@ function entriesCarrySizes(entries: unknown): boolean {
   );
 }
 
-/** A creature that moves other ways than walking (1.112): `speeds` and `hover` on the strict creature. */
+/** A creature that moves other ways than walking (1.113): `speeds` and `hover` on the strict creature. */
 function entriesCarryMoveModes(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1270,14 +1298,14 @@ function entriesCarryMoveModes(entries: unknown): boolean {
   );
 }
 
-/** An attack that leaves something to strike on later turns (1.121). */
+/** An attack that leaves something to strike on later turns (1.122). */
 function entriesCarrySummons(entries: unknown): boolean {
   return (
     Array.isArray(entries) && entries.some((entry) => plainRecord(plainRecord(entry)?.mechanics)?.summons !== undefined)
   );
 }
 
-/** A creature that casts catalog spells without slots (1.122). */
+/** A creature that casts catalog spells without slots (1.123). */
 function entriesCarryCreatureSpellcasting(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1285,7 +1313,7 @@ function entriesCarryCreatureSpellcasting(entries: unknown): boolean {
   );
 }
 
-/** A line with a width (1.127), on an entry or a creature action. */
+/** A line with a width (1.128), on an entry or a creature action. */
 function entriesCarryLineWidth(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1301,7 +1329,7 @@ function entriesCarryLineWidth(entries: unknown): boolean {
   );
 }
 
-/** An effect whose target needs a sense (1.126), on an entry or a creature action. */
+/** An effect whose target needs a sense (1.127), on an entry or a creature action. */
 function entriesCarrySenseNeeds(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1316,7 +1344,7 @@ function entriesCarrySenseNeeds(entries: unknown): boolean {
   );
 }
 
-/** A rider that needs an adjacent ally without disadvantage (1.125), on an entry or a creature. */
+/** A rider that needs an adjacent ally without disadvantage (1.126), on an entry or a creature. */
 function entriesCarryRiderNoDisadvantage(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1331,7 +1359,7 @@ function entriesCarryRiderNoDisadvantage(entries: unknown): boolean {
   );
 }
 
-/** A creature action that heals or reaches its own side (1.120): new keys on the strict action. */
+/** A creature action that heals or reaches its own side (1.121): new keys on the strict action. */
 function entriesCarryCreatureHealing(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -1348,7 +1376,7 @@ function entriesCarryCreatureHealing(entries: unknown): boolean {
   );
 }
 
-/** Anything that halves the health maximum (1.114): a new target of the strict modifier, wherever a
+/** Anything that halves the health maximum (1.115): a new target of the strict modifier, wherever a
  *  modifier sits (a level, a condition, an item's effect). */
 function carriesHealthMax(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
@@ -1358,7 +1386,7 @@ function carriesHealthMax(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHealthMax(one, depth + 1));
 }
 
-/** A reaction that stops only so high, or the check above it (1.115): new keys on the strict moment,
+/** A reaction that stops only so high, or the check above it (1.116): new keys on the strict moment,
  *  wherever a reaction sits (a catalog entry's mechanics, a creature's action). */
 function carriesCounterReach(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
@@ -1369,7 +1397,7 @@ function carriesCounterReach(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCounterReach(one, depth + 1));
 }
 
-/** A reaction that answers named entries, or is also taken at more moments (1.116): new keys on the
+/** A reaction that answers named entries, or is also taken at more moments (1.117): new keys on the
  *  strict moment and its `against`. */
 function carriesNamedAnswers(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
@@ -1380,7 +1408,7 @@ function carriesNamedAnswers(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesNamedAnswers(one, depth + 1));
 }
 
-/** Reactions for others, at turn start, on a save, or for several fallers (1.130). */
+/** Reactions for others, at turn start, on a save, or for several fallers (1.131). */
 function carriesReactionMoments(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some((one) => carriesReactionMoments(one, depth + 1));
@@ -1404,7 +1432,7 @@ function carriesReactionMoments(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesReactionMoments(one, depth + 1));
 }
 
-/** Mechanics offered only while the holder's sheet allows (1.165). */
+/** Mechanics offered only while the holder's sheet allows (1.166). */
 function carriesUsableWhen(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some((one) => carriesUsableWhen(one, depth + 1));
@@ -1413,7 +1441,7 @@ function carriesUsableWhen(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesUsableWhen(one, depth + 1));
 }
 
-/** A reaction that catches a fall, at its first moment or one it is also taken at (1.123). */
+/** A reaction that catches a fall, at its first moment or one it is also taken at (1.124). */
 function carriesFalls(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some((one) => carriesFalls(one, depth + 1));
@@ -1424,7 +1452,7 @@ function carriesFalls(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesFalls(one, depth + 1));
 }
 
-/** A reaction narrowed to one kind of blow, or to a source its holder sees (1.117): new keys on the
+/** A reaction narrowed to one kind of blow, or to a source its holder sees (1.118): new keys on the
  *  strict moment, at its first moment or one it is `also` taken at. */
 function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
@@ -1438,7 +1466,7 @@ function carriesBlowNarrowing(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesBlowNarrowing(one, depth + 1));
 }
 
-/** A catalog entry whose area stays, in catalog files too (1.171). */
+/** A catalog entry whose area stays, in catalog files too (1.172). */
 function carriesZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesZones(one, depth + 1));
@@ -1448,7 +1476,7 @@ function carriesZones(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZones(one, depth + 1));
 }
 
-/** A box or wall area, or a zone that blocks or has a side, in catalog files too (1.176). */
+/** A box or wall area, or a zone that blocks or has a side, in catalog files too (1.177). */
 function carriesWalls(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesWalls(one, depth + 1));
@@ -1464,7 +1492,7 @@ function carriesWalls(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWalls(one, depth + 1));
 }
 
-/** Components, and zones that work on whoever stands in them (1.178): the combat block's
+/** Components, and zones that work on whoever stands in them (1.179): the combat block's
  *  components, what an entry, a creature's action or a condition needs or stops, and a zone's
  *  `inside`, `forbids` or `wards`, in catalog files too. */
 function carriesZoneInside(value: unknown, depth = 0): boolean {
@@ -1486,7 +1514,7 @@ function carriesZoneInside(value: unknown, depth = 0): boolean {
 }
 
 /** What ends a condition when its holder attacks or casts, senses a condition or an item gives, a
- *  condition that gives away the unseen, and an item's use that casts (1.179), in catalog files too. */
+ *  condition that gives away the unseen, and an item's use that casts (1.180), in catalog files too. */
 function carriesSightExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSightExtras(one, depth + 1));
@@ -1505,7 +1533,7 @@ function carriesSightExtras(value: unknown, depth = 0): boolean {
 
 /** Wards by base level or raised by their cast's steps, saves that say what else they are against or
  *  who passes them outright, a creature's spell components said in place of the entries', and an
- *  item's utility use (1.180), in catalog files too. */
+ *  item's utility use (1.181), in catalog files too. */
 function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesWardsAndSaves(one, depth + 1));
@@ -1530,7 +1558,7 @@ function carriesWardsAndSaves(value: unknown, depth = 0): boolean {
 
 const MODIFIER_TARGETS = new Set<string>(RULESET_COMBAT_MODIFIER_TARGETS);
 
-/** A combat condition whose grant is melee only, or that moves tracks as it ends (1.238). */
+/** A combat condition whose grant is melee only, or that moves tracks as it ends (1.239). */
 function carriesFrenzy(ruleset: unknown): boolean {
   const conditions = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
   if (!Array.isArray(conditions)) return false;
@@ -1541,9 +1569,9 @@ function carriesFrenzy(ruleset: unknown): boolean {
 }
 
 /** Attack rows changed by what a sheet holds, strikes it grants, entries only after the attack action,
- *  or a condition's granted attacks narrowed by name or to after the attack action (1.241), in
+ *  or a condition's granted attacks narrowed by name or to after the attack action (1.242), in
  *  catalogs too. */
-/** An entry that changes how another is used (1.252), in catalogs too. */
+/** An entry that changes how another is used (1.253), in catalogs too. */
 function carriesMetamagic(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesMetamagic(one, depth + 1));
@@ -1555,7 +1583,7 @@ function carriesMetamagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesMetamagic(one, depth + 1));
 }
 
-/** Somebody's own ways of hiding and finding the hidden (1.291): a `hiding` that is not the
+/** Somebody's own ways of hiding and finding the hidden (1.292): a `hiding` that is not the
  *  fight's own (which names its checks). */
 function carriesHidingTraits(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -1564,26 +1592,25 @@ function carriesHidingTraits(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const hiding = plainRecord(record.hiding);
   if (hiding && hiding.stealth === undefined) return true;
-  return Object.values(record).some((one) => carriesHidingTraits(one, depth + 1));
+  return featureValues(record).some((one) => carriesHidingTraits(one, depth + 1));
 }
 
 /** An aura that grows, lingers or harms on its targets' turns, a holder who tears free, a hold with a
- *  most, or a creature that hangs on at 1 (1.319). */
+ *  most, or a creature that hangs on at 1 (1.320). */
 function carriesBossAsks(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBossAsks(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
-  // An aura's own `grows`, not a delayed blast's (1.182).
+  // An aura's own `grows`, not a delayed blast's (1.183).
   if ((record.grows !== undefined && record.side !== undefined) || record.lingers !== undefined) return true;
   if (record.heldAtMost !== undefined) return true;
   if (record.hangsOn !== undefined) return true;
   if (plainRecord(record.harms)?.on !== undefined || plainRecord(record.shakeOff)?.self !== undefined) return true;
-  return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
+  return featureValues(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
-/** A use only beside a prop, or a ground change whose occupants stay in it (1.331). */
-/** An item's use that gives its user more of the turn (1.333): the Time-Flour Loaf. */
+/** An item's use that gives its user more of the turn (1.334): the Time-Flour Loaf. */
 function carriesItemGives(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemGives(one, depth + 1));
@@ -1591,19 +1618,20 @@ function carriesItemGives(value: unknown, depth = 0): boolean {
   if (!record) return false;
   // A use's, or one of its `moreUses`' as the walk reaches each.
   if (plainRecord(record.use)?.gives !== undefined) return true;
-  return Object.values(record).some((one) => carriesItemGives(one, depth + 1));
+  return featureValues(record).some((one) => carriesItemGives(one, depth + 1));
 }
 
-/** A lasting area with a look of its own on a fight's board (1.332). */
+/** A lasting area with a look of its own on a fight's board (1.333). */
 function carriesBoardArt(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBoardArt(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (typeof plainRecord(record.zone)?.art === "string") return true;
-  return Object.values(record).some((one) => carriesBoardArt(one, depth + 1));
+  return featureValues(record).some((one) => carriesBoardArt(one, depth + 1));
 }
 
+/** A use only beside a prop, or a ground change whose occupants stay in it (1.332). */
 function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesNearUseOrFall(one, depth + 1));
@@ -1611,10 +1639,10 @@ function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.usableNear !== undefined) return true;
   if (plainRecord(record.ground)?.occupants !== undefined) return true;
-  return Object.values(record).some((one) => carriesNearUseOrFall(one, depth + 1));
+  return featureValues(record).some((one) => carriesNearUseOrFall(one, depth + 1));
 }
 
-/** Props and felling in a condition or a creature action (1.330): a condition held only near a
+/** Props and felling in a condition or a creature action (1.331): a condition held only near a
  *  prop, an aura that feeds, an area around props. */
 function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -1623,40 +1651,40 @@ function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.whileNearProp !== undefined || record.aroundProp !== undefined || typeof record.feeds === "number")
     return true;
-  return Object.values(record).some((one) => carriesPropsAndFeeding(one, depth + 1));
+  return featureValues(record).some((one) => carriesPropsAndFeeding(one, depth + 1));
 }
 
-/** A condition that moves the difficulty of the saves its holder calls for (1.327). */
+/** A condition that moves the difficulty of the saves its holder calls for (1.328). */
 function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSaveDifficulty(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.to === "save-difficulty") return true;
-  return Object.values(record).some((one) => carriesSaveDifficulty(one, depth + 1));
+  return featureValues(record).some((one) => carriesSaveDifficulty(one, depth + 1));
 }
 
-/** Whether a catalog entry or a condition names its icon (1.337). */
+/** Whether a catalog entry or a condition names its icon (1.338). */
 function carriesArtIcon(value: unknown, depth = 0): boolean {
   if (depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesArtIcon(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (typeof record.icon === "string" && record.icon.startsWith("ic_")) return true;
-  return Object.values(record).some((one) => carriesArtIcon(one, depth + 1));
+  return featureValues(record).some((one) => carriesArtIcon(one, depth + 1));
 }
 
-/** Whether anything names a list of lair actions for a broken concentration to pick from (1.335). */
+/** Whether anything names a list of lair actions for a broken concentration to pick from (1.336). */
 function carriesBrokenLairList(value: unknown, depth = 0): boolean {
-  if (depth > 8) return false;
+  if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBrokenLairList(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (Array.isArray(record.brokenNextLair)) return true;
-  return Object.values(record).some((one) => carriesBrokenLairList(one, depth + 1));
+  return featureValues(record).some((one) => carriesBrokenLairList(one, depth + 1));
 }
 
-/** Lair timing (1.326): a creature action only at whoever has acted this round, one whose broken
+/** Lair timing (1.327): a creature action only at whoever has acted this round, one whose broken
  *  concentration picks the next lair action, or a condition lasting until the next lair action. */
 function carriesLairTiming(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -1673,10 +1701,10 @@ function carriesLairTiming(value: unknown, depth = 0): boolean {
     })
   )
     return true;
-  return Object.values(record).some((one) => carriesLairTiming(one, depth + 1));
+  return featureValues(record).some((one) => carriesLairTiming(one, depth + 1));
 }
 
-/** A creature's action that draws whoever it lands on toward it (1.325). */
+/** A creature's action that draws whoever it lands on toward it (1.326). */
 function carriesDraws(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDraws(one, depth + 1));
@@ -1685,10 +1713,10 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   const creature = plainRecord(record.creature);
   if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.draws !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesDraws(one, depth + 1));
+  return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
-/** A creature's action that calls creatures into the fight (1.324). */
+/** A creature's action that calls creatures into the fight (1.325). */
 function carriesCalls(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCalls(one, depth + 1));
@@ -1697,11 +1725,11 @@ function carriesCalls(value: unknown, depth = 0): boolean {
   const creature = plainRecord(record.creature);
   if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.calls !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesCalls(one, depth + 1));
+  return featureValues(record).some((one) => carriesCalls(one, depth + 1));
 }
 
 /** A creature's action that leaves an area standing or changes the ground, or an area that lasts
- *  until the next lair action (1.323). */
+ *  until the next lair action (1.324). */
 function carriesCreatureZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCreatureZones(one, depth + 1));
@@ -1717,20 +1745,20 @@ function carriesCreatureZones(value: unknown, depth = 0): boolean {
     })
   )
     return true;
-  return Object.values(record).some((one) => carriesCreatureZones(one, depth + 1));
+  return featureValues(record).some((one) => carriesCreatureZones(one, depth + 1));
 }
 
-/** A blow that reaps what it fells on Held Ground (1.322): the Reaping Hook. */
+/** A blow that reaps what it fells on Held Ground (1.323): the Reaping Hook. */
 function carriesReaps(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesReaps(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.reaps !== undefined) return true;
-  return Object.values(record).some((one) => carriesReaps(one, depth + 1));
+  return featureValues(record).some((one) => carriesReaps(one, depth + 1));
 }
 
-/** An item's use taken as a reaction (1.321): Liesl's Coffin, the Straw Proxy. */
+/** An item's use taken as a reaction (1.322): Liesl's Coffin, the Straw Proxy. */
 function carriesItemReactions(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemReactions(one, depth + 1));
@@ -1739,67 +1767,67 @@ function carriesItemReactions(value: unknown, depth = 0): boolean {
   // A use's, or one of its `moreUses`' as the walk reaches each.
   const reaction = plainRecord(record.use)?.reaction;
   if (reaction !== undefined && reaction !== false) return true;
-  return Object.values(record).some((one) => carriesItemReactions(one, depth + 1));
+  return featureValues(record).some((one) => carriesItemReactions(one, depth + 1));
 }
 
 /** A light that sheds shade, something that gives the unseen away, or a creature light holds still
- *  (1.318). */
+ *  (1.319). */
 function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesShadeOrAlerts(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.shade !== undefined || record.alerts !== undefined || record.stillIn !== undefined) return true;
-  return Object.values(record).some((one) => carriesShadeOrAlerts(one, depth + 1));
+  return featureValues(record).some((one) => carriesShadeOrAlerts(one, depth + 1));
 }
 
-/** An entry or an item's use that clears growth (1.317). */
+/** An entry or an item's use that clears growth (1.318). */
 function carriesClears(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesClears(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.clears !== undefined) return true;
-  return Object.values(record).some((one) => carriesClears(one, depth + 1));
+  return featureValues(record).some((one) => carriesClears(one, depth + 1));
 }
 
-/** A creature's legendary resistances, and an item's use no bigger than it reaches (1.316). */
+/** A creature's legendary resistances, and an item's use no bigger than it reaches (1.317). */
 function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLegendaryResistance(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.legendaryResistance !== undefined) return true;
-  // An item's use no bigger than it reaches (1.316); an entry's own came with 1.313.
+  // An item's use no bigger than it reaches (1.317); an entry's own came with 1.314.
   const use = plainRecord(record.use);
   if (use?.targetsUpTo !== undefined) return true;
   if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.targetsUpTo !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesLegendaryResistance(one, depth + 1));
+  return featureValues(record).some((one) => carriesLegendaryResistance(one, depth + 1));
 }
 
-/** Lair actions and a lair's count (1.314). */
+/** Lair actions and a lair's count (1.315). */
 function carriesLair(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLair(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.lair !== undefined || record.lairInitiative !== undefined) return true;
-  return Object.values(record).some((one) => carriesLair(one, depth + 1));
+  return featureValues(record).some((one) => carriesLair(one, depth + 1));
 }
 
-/** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.313). */
+/** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.314). */
 function carriesSphere(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSphere(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.sealed !== undefined || record.targetsUpTo !== undefined) return true;
-  return Object.values(record).some((one) => carriesSphere(one, depth + 1));
+  return featureValues(record).some((one) => carriesSphere(one, depth + 1));
 }
 
 /** Maze, Expeditious Retreat's Dash, a casting's choices made again, an ability add on top of sets,
- *  and a binding that needs other items worn (1.312). */
+ *  and a binding that needs other items worn (1.313). */
 function carriesLeftovers308(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLeftovers308(one, depth + 1));
@@ -1818,10 +1846,10 @@ function carriesLeftovers308(value: unknown, depth = 0): boolean {
     })
   )
     return true;
-  return Object.values(record).some((one) => carriesLeftovers308(one, depth + 1));
+  return featureValues(record).some((one) => carriesLeftovers308(one, depth + 1));
 }
 
-/** A weapon mode whose hit claps around the one it hit (1.311). */
+/** A weapon mode whose hit claps around the one it hit (1.312). */
 function carriesThunderclap(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesThunderclap(one, depth + 1));
@@ -1829,11 +1857,11 @@ function carriesThunderclap(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (Array.isArray(record.modes) && record.modes.some((mode) => plainRecord(mode)?.aroundHit !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesThunderclap(one, depth + 1));
+  return featureValues(record).some((one) => carriesThunderclap(one, depth + 1));
 }
 
 /** An item use that puts conditions on its reader, creature actions that slay the dying, and a
- *  condition's rule that ends it on moving or acting (1.310). */
+ *  condition's rule that ends it on moving or acting (1.311). */
 function carriesLeftovers306(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLeftovers306(one, depth + 1));
@@ -1851,22 +1879,22 @@ function carriesLeftovers306(value: unknown, depth = 0): boolean {
   const conditions = plainRecord(record.combat)?.conditions;
   if (Array.isArray(conditions) && conditions.some((rule) => plainRecord(rule)?.endsWhenHolder !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesLeftovers306(one, depth + 1));
+  return featureValues(record).some((one) => carriesLeftovers306(one, depth + 1));
 }
 
 /** A concentration entry's effect made again, and a condition ended by distance from its putter
- *  (1.309). */
+ *  (1.310). */
 function carriesRepeats(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesRepeats(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.repeats)?.budget !== undefined || !!plainRecord(record.endsAway)) return true;
-  return Object.values(record).some((one) => carriesRepeats(one, depth + 1));
+  return featureValues(record).some((one) => carriesRepeats(one, depth + 1));
 }
 
 /** Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, and a weapon bound out
- *  of the fight (1.308). */
+ *  of the fight (1.309). */
 function carriesHidingNeeds(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesHidingNeeds(one, depth + 1));
@@ -1879,10 +1907,10 @@ function carriesHidingNeeds(value: unknown, depth = 0): boolean {
   )
     return true;
   if (plainRecord(record.conjures)?.boundIn !== undefined) return true;
-  return Object.values(record).some((one) => carriesHidingNeeds(one, depth + 1));
+  return featureValues(record).some((one) => carriesHidingNeeds(one, depth + 1));
 }
 
-/** An item's use whose targets grow with the sheet, or that takes the same target again (1.307). */
+/** An item's use whose targets grow with the sheet, or that takes the same target again (1.308). */
 function carriesItemBeams(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemBeams(one, depth + 1));
@@ -1898,11 +1926,11 @@ function carriesItemBeams(value: unknown, depth = 0): boolean {
     (beams(item.use) || (Array.isArray(item.moreUses) && item.moreUses.some((more) => beams(plainRecord(more)?.use))))
   )
     return true;
-  return Object.values(record).some((one) => carriesItemBeams(one, depth + 1));
+  return featureValues(record).some((one) => carriesItemBeams(one, depth + 1));
 }
 
 /** A creature's own action held by its concentration, ends on using a named action, and what a use
- *  puts on its own user (1.306). */
+ *  puts on its own user (1.307). */
 function carriesSelfHeld(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSelfHeld(one, depth + 1));
@@ -1913,10 +1941,10 @@ function carriesSelfHeld(value: unknown, depth = 0): boolean {
   // A creature's action is named and budgeted; a catalog entry's concentration sits in its mechanics.
   if (record.concentration !== undefined && typeof record.name === "string" && typeof record.budget === "string")
     return true;
-  return Object.values(record).some((one) => carriesSelfHeld(one, depth + 1));
+  return featureValues(record).some((one) => carriesSelfHeld(one, depth + 1));
 }
 
-/** Weapons put in hand, and amends that add typed damage or strikes (1.305). */
+/** Weapons put in hand, and amends that add typed damage or strikes (1.306). */
 function carriesConjures(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesConjures(one, depth + 1));
@@ -1926,30 +1954,30 @@ function carriesConjures(value: unknown, depth = 0): boolean {
   const amends = Array.isArray(record.amends) ? record.amends : [];
   if (amends.some((one) => plainRecord(one)?.damagePlus !== undefined || plainRecord(one)?.strikes !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesConjures(one, depth + 1));
+  return featureValues(record).some((one) => carriesConjures(one, depth + 1));
 }
 
-/** Targets that grow with the sheet, and the same target more than once (1.304). */
+/** Targets that grow with the sheet, and the same target more than once (1.305). */
 function carriesBeams(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBeams(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.targetsScale !== undefined || record.targetsRepeat !== undefined) return true;
-  return Object.values(record).some((one) => carriesBeams(one, depth + 1));
+  return featureValues(record).some((one) => carriesBeams(one, depth + 1));
 }
 
-/** Uses once a creature until a rest (1.303). */
+/** Uses once a creature until a rest (1.304). */
 function carriesOncePerTarget(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesOncePerTarget(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.oncePerTarget !== undefined) return true;
-  return Object.values(record).some((one) => carriesOncePerTarget(one, depth + 1));
+  return featureValues(record).some((one) => carriesOncePerTarget(one, depth + 1));
 }
 
-/** Uses only in some light, and conditions that moving or acting ends (1.302). */
+/** Uses only in some light, and conditions that moving or acting ends (1.303). */
 function carriesShadowUses(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesShadowUses(one, depth + 1));
@@ -1958,40 +1986,40 @@ function carriesShadowUses(value: unknown, depth = 0): boolean {
   if (record.usableIn !== undefined) return true;
   const ends = plainRecord(record.endsWhenHolder);
   if (ends && (ends.moves !== undefined || ends.acts !== undefined)) return true;
-  return Object.values(record).some((one) => carriesShadowUses(one, depth + 1));
+  return featureValues(record).some((one) => carriesShadowUses(one, depth + 1));
 }
 
-/** Entries that change another of their holder's each time it is used (1.301). */
+/** Entries that change another of their holder's each time it is used (1.302). */
 function carriesAmends(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAmends(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.amends !== undefined) return true;
-  return Object.values(record).some((one) => carriesAmends(one, depth + 1));
+  return featureValues(record).some((one) => carriesAmends(one, depth + 1));
 }
 
-/** Zones carried with somebody, and copies set down apart (1.300). */
+/** Zones carried with somebody, and copies set down apart (1.301). */
 function carriesHeldZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesHeldZones(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.carried === "own" || record.carried === "any" || record.copiesWithin !== undefined) return true;
-  return Object.values(record).some((one) => carriesHeldZones(one, depth + 1));
+  return featureValues(record).some((one) => carriesHeldZones(one, depth + 1));
 }
 
-/** What a higher cost adds only every so many steps, and on what a condition gives (1.299). */
+/** What a higher cost adds only every so many steps, and on what a condition gives (1.300). */
 function carriesStepsEvery(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesStepsEvery(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.perCostStepsEvery !== undefined) return true;
-  return Object.values(record).some((one) => carriesStepsEvery(one, depth + 1));
+  return featureValues(record).some((one) => carriesStepsEvery(one, depth + 1));
 }
 
-/** Darkness that puts out spell light, magical light, and Daylight's dispelling reach (1.298). */
+/** Darkness that puts out spell light, magical light, and Daylight's dispelling reach (1.299). */
 function carriesDarkAgainstLight(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDarkAgainstLight(one, depth + 1));
@@ -1999,20 +2027,20 @@ function carriesDarkAgainstLight(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.dispelsLight !== undefined || record.magical !== undefined) return true;
   if (plainRecord(record.dispelsDark)?.within !== undefined) return true;
-  return Object.values(record).some((one) => carriesDarkAgainstLight(one, depth + 1));
+  return featureValues(record).some((one) => carriesDarkAgainstLight(one, depth + 1));
 }
 
-/** A creature's light out under a condition, and light that is sunlight (1.297). */
+/** A creature's light out under a condition, and light that is sunlight (1.298). */
 function carriesSunAndHiddenLight(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSunAndHiddenLight(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.lightOutWhile !== undefined || record.sunlight !== undefined) return true;
-  return Object.values(record).some((one) => carriesSunAndHiddenLight(one, depth + 1));
+  return featureValues(record).some((one) => carriesSunAndHiddenLight(one, depth + 1));
 }
 
-/** Zones that shed light or end magical darkness, and light that shows the invisible (1.296). */
+/** Zones that shed light or end magical darkness, and light that shows the invisible (1.297). */
 function carriesLightZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLightZones(one, depth + 1));
@@ -2020,20 +2048,20 @@ function carriesLightZones(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.lights !== undefined || record.dispelsDark !== undefined || record.reveals !== undefined) return true;
   if (plainRecord(record.obscures)?.darkness !== undefined) return true;
-  return Object.values(record).some((one) => carriesLightZones(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightZones(one, depth + 1));
 }
 
-/** Lights switched by a creature's own actions, or dim while an item is off (1.295). */
+/** Lights switched by a creature's own actions, or dim while an item is off (1.296). */
 function carriesLightActions(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLightActions(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.sheds !== undefined || record.unlit !== undefined || record.offLight !== undefined) return true;
-  return Object.values(record).some((one) => carriesLightActions(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightActions(one, depth + 1));
 }
 
-/** A carried light with a name or a price to put out and light again (1.294). */
+/** A carried light with a name or a price to put out and light again (1.295). */
 function carriesLightSwitch(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLightSwitch(one, depth + 1));
@@ -2041,10 +2069,10 @@ function carriesLightSwitch(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const carried = plainRecord(plainRecord(record.darkness)?.carried);
   if (carried && (carried.label !== undefined || carried.budget !== undefined)) return true;
-  return Object.values(record).some((one) => carriesLightSwitch(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightSwitch(one, depth + 1));
 }
 
-/** The dark kept real, and light shed in it (1.293): `sight.darkness`, a `light` with its reach. */
+/** The dark kept real, and light shed in it (1.294): `sight.darkness`, a `light` with its reach. */
 function carriesDarkness(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDarkness(one, depth + 1));
@@ -2053,20 +2081,20 @@ function carriesDarkness(value: unknown, depth = 0): boolean {
   if (plainRecord(record.darkness)) return true;
   const light = plainRecord(record.light);
   if (light && (light.bright !== undefined || light.dim !== undefined)) return true;
-  return Object.values(record).some((one) => carriesDarkness(one, depth + 1));
+  return featureValues(record).some((one) => carriesDarkness(one, depth + 1));
 }
 
-/** A creature's own modes on attacks (1.292). */
+/** A creature's own modes on attacks (1.293). */
 function carriesAttackModes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAttackModes(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (record.attackModes !== undefined) return true;
-  return Object.values(record).some((one) => carriesAttackModes(one, depth + 1));
+  return featureValues(record).some((one) => carriesAttackModes(one, depth + 1));
 }
 
-/** A creature's own ways of hiding and looking (1.290): modes on its checks, a printed passive,
+/** A creature's own ways of hiding and looking (1.291): modes on its checks, a printed passive,
  *  standard actions with its own budget. */
 function carriesCreatureSeeking(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2079,10 +2107,10 @@ function carriesCreatureSeeking(value: unknown, depth = 0): boolean {
   // A creature action's permission; a catalog entry's names its budget inside it.
   const standard = plainRecord(record.standard);
   if (standard && standard.budget === undefined) return true;
-  return Object.values(record).some((one) => carriesCreatureSeeking(one, depth + 1));
+  return featureValues(record).some((one) => carriesCreatureSeeking(one, depth + 1));
 }
 
-/** Looking for the hidden, weighed (1.289): a passive's `passiveMode`, a change to checks to find
+/** Looking for the hidden, weighed (1.290): a passive's `passiveMode`, a change to checks to find
  *  somebody. */
 function carriesSeekingModes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2090,10 +2118,10 @@ function carriesSeekingModes(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.to === "checks-taken" || plainRecord(record.hiding)?.passiveMode !== undefined) return true;
-  return Object.values(record).some((one) => carriesSeekingModes(one, depth + 1));
+  return featureValues(record).some((one) => carriesSeekingModes(one, depth + 1));
 }
 
-/** A fog a wind disperses only after a while (1.288): `dispersed: { after }`. */
+/** A fog a wind disperses only after a while (1.289): `dispersed: { after }`. */
 function carriesSlowDispersal(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSlowDispersal(one, depth + 1));
@@ -2102,20 +2130,20 @@ function carriesSlowDispersal(value: unknown, depth = 0): boolean {
   for (const key of ["obscures", "smoke"]) {
     if (plainRecord(plainRecord(record[key])?.dispersed)) return true;
   }
-  return Object.values(record).some((one) => carriesSlowDispersal(one, depth + 1));
+  return featureValues(record).some((one) => carriesSlowDispersal(one, depth + 1));
 }
 
-/** Readying for real (1.287): the fight's `readying`. */
+/** Readying for real (1.288): the fight's `readying`. */
 function carriesReadying(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesReadying(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.readying)) return true;
-  return Object.values(record).some((one) => carriesReadying(one, depth + 1));
+  return featureValues(record).some((one) => carriesReadying(one, depth + 1));
 }
 
-/** Hiding for real (1.286): the fight's `hiding`, the Search standard action, a creature's Detect. */
+/** Hiding for real (1.287): the fight's `hiding`, the Search standard action, a creature's Detect. */
 function carriesHiding(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesHiding(one, depth + 1));
@@ -2126,10 +2154,10 @@ function carriesHiding(value: unknown, depth = 0): boolean {
     const list = record[key];
     if (Array.isArray(list) && list.includes("search")) return true;
   }
-  return Object.values(record).some((one) => carriesHiding(one, depth + 1));
+  return featureValues(record).some((one) => carriesHiding(one, depth + 1));
 }
 
-/** A fog only lightly obscuring, or one a strong wind blows away, or that wind (1.285): a Cape of the
+/** A fog only lightly obscuring, or one a strong wind blows away, or that wind (1.286): a Cape of the
  *  Mountebank's thin smoke, a Fog Cloud, a Gust of Wind. */
 function carriesLightOrWind(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2141,10 +2169,10 @@ function carriesLightOrWind(value: unknown, depth = 0): boolean {
     const fog = plainRecord(record[key]);
     if (fog && (fog.light !== undefined || fog.dispersed !== undefined)) return true;
   }
-  return Object.values(record).some((one) => carriesLightOrWind(one, depth + 1));
+  return featureValues(record).some((one) => carriesLightOrWind(one, depth + 1));
 }
 
-/** A legendary move that follows what its action does, or on one named speed (1.284): a dragon's Wing
+/** A legendary move that follows what its action does, or on one named speed (1.285): a dragon's Wing
  *  Attack, then its flight. */
 function carriesMoveAfter(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2162,10 +2190,10 @@ function carriesMoveAfter(value: unknown, depth = 0): boolean {
   ) {
     return true;
   }
-  return Object.values(record).some((one) => carriesMoveAfter(one, depth + 1));
+  return featureValues(record).some((one) => carriesMoveAfter(one, depth + 1));
 }
 
-/** A spell cast with points between turns (1.283): a sphinx's Cast a Spell, a lich's Cantrip. */
+/** A spell cast with points between turns (1.284): a sphinx's Cast a Spell, a lich's Cantrip. */
 function carriesLegendaryCast(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLegendaryCast(one, depth + 1));
@@ -2173,10 +2201,10 @@ function carriesLegendaryCast(value: unknown, depth = 0): boolean {
   if (!record) return false;
   // Always with its signature: a builder's `casting` column stamp is not one.
   if (plainRecord(record.casting) && plainRecord(record.signature)) return true;
-  return Object.values(record).some((one) => carriesLegendaryCast(one, depth + 1));
+  return featureValues(record).some((one) => carriesLegendaryCast(one, depth + 1));
 }
 
-/** A legendary move (1.282): a tarrasque's Move, a mummy lord's Whirlwind of Sand. A lasting area's
+/** A legendary move (1.283): a tarrasque's Move, a mummy lord's Whirlwind of Sand. A lasting area's
  *  own `move` always names its budget, so it is not one. */
 function carriesLegendaryMove(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2185,10 +2213,10 @@ function carriesLegendaryMove(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const move = plainRecord(record.move);
   if (move && move.budget === undefined) return true;
-  return Object.values(record).some((one) => carriesLegendaryMove(one, depth + 1));
+  return featureValues(record).some((one) => carriesLegendaryMove(one, depth + 1));
 }
 
-/** A burst centred on its user, through walls or not (1.281): Channel Negative Energy. */
+/** A burst centred on its user, through walls or not (1.282): Channel Negative Energy. */
 function carriesAround(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAround(one, depth + 1));
@@ -2196,30 +2224,30 @@ function carriesAround(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const area = plainRecord(record.area);
   if (area && (area.around !== undefined || area.throughWalls !== undefined)) return true;
-  return Object.values(record).some((one) => carriesAround(one, depth + 1));
+  return featureValues(record).some((one) => carriesAround(one, depth + 1));
 }
 
-/** A blow whose maker regains what it dealt (1.280): Psychic Drain, Vampiric Touch. */
+/** A blow whose maker regains what it dealt (1.281): Psychic Drain, Vampiric Touch. */
 function carriesDrain(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDrain(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.drain)) return true;
-  return Object.values(record).some((one) => carriesDrain(one, depth + 1));
+  return featureValues(record).some((one) => carriesDrain(one, depth + 1));
 }
 
-/** A teleport that strikes before or after it (1.279): a blink dog's bite. */
+/** A teleport that strikes before or after it (1.280): a blink dog's bite. */
 function carriesTeleportStrike(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesTeleportStrike(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.teleport)?.strike !== undefined) return true;
-  return Object.values(record).some((one) => carriesTeleportStrike(one, depth + 1));
+  return featureValues(record).some((one) => carriesTeleportStrike(one, depth + 1));
 }
 
-/** A teleport that leaves the fight, takes along only those its user sees, or leaves smoke (1.278). */
+/** A teleport that leaves the fight, takes along only those its user sees, or leaves smoke (1.279). */
 function carriesTeleportExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesTeleportExtras(one, depth + 1));
@@ -2228,10 +2256,10 @@ function carriesTeleportExtras(value: unknown, depth = 0): boolean {
   const teleport = plainRecord(record.teleport);
   if (teleport && (teleport.leaves !== undefined || teleport.carriesSeen !== undefined || teleport.smoke !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesTeleportExtras(one, depth + 1));
+  return featureValues(record).some((one) => carriesTeleportExtras(one, depth + 1));
 }
 
-/** What Calm Emotions needs (1.277): a save its user's side may fail, indifference to a whole side,
+/** What Calm Emotions needs (1.278): a save its user's side may fail, indifference to a whole side,
  *  and endings on being attacked, harmed by what a catalog casts, or a friend harmed in sight. */
 function carriesCalm(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2245,20 +2273,20 @@ function carriesCalm(value: unknown, depth = 0): boolean {
     record.endsWhen.some((one) => one === "attacked" || one === "ally-harmed-in-sight")
   )
     return true;
-  return Object.values(record).some((one) => carriesCalm(one, depth + 1));
+  return featureValues(record).some((one) => carriesCalm(one, depth + 1));
 }
 
-/** More than four conditions put on by one entry, item use or creature action (1.276). */
+/** More than four conditions put on by one entry, item use or creature action (1.277). */
 function carriesManyApplies(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesManyApplies(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (Array.isArray(record.applies) && record.applies.length > 4) return true;
-  return Object.values(record).some((one) => carriesManyApplies(one, depth + 1));
+  return featureValues(record).some((one) => carriesManyApplies(one, depth + 1));
 }
 
-/** A teleport (1.275), on a catalog entry, an item's use or a creature's action. */
+/** A teleport (1.276), on a catalog entry, an item's use or a creature's action. */
 function carriesTeleports(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesTeleports(one, depth + 1));
@@ -2266,10 +2294,10 @@ function carriesTeleports(value: unknown, depth = 0): boolean {
   if (!record) return false;
   const teleport = plainRecord(record.teleport);
   if (teleport && typeof teleport.distance === "number") return true;
-  return Object.values(record).some((one) => carriesTeleports(one, depth + 1));
+  return featureValues(record).some((one) => carriesTeleports(one, depth + 1));
 }
 
-/** A condition held off rather than ended (1.274): near its source as well as in sight, or held off
+/** A condition held off rather than ended (1.275): near its source as well as in sight, or held off
  *  by another condition. */
 function carriesHeldOff(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2278,10 +2306,10 @@ function carriesHeldOff(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (typeof record.condition === "string" && (record.orSourceWithin !== undefined || record.suppresses !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesHeldOff(one, depth + 1));
+  return featureValues(record).some((one) => carriesHeldOff(one, depth + 1));
 }
 
-/** What 1.273 reads off whoever put a condition on, and what Sympathy and a scroll's chosen kind
+/** What 1.274 reads off whoever put a condition on, and what Sympathy and a scroll's chosen kind
  *  need, in catalogs too: a value an applied condition is put on with, temporary points a condition
  *  gives each turn, an aura save against the applier's difficulty, a save on harm from the source,
  *  a walk kept within reach, and a kind named as an item is used. */
@@ -2296,31 +2324,31 @@ function carriesSourceNumbers(value: unknown, depth = 0): boolean {
   if (plainRecord(record.behavior)?.keepsIn !== undefined) return true;
   if (plainRecord(record.save)?.appliedDifficulty !== undefined) return true;
   if (plainRecord(record.use)?.kindChoice !== undefined) return true;
-  return Object.values(record).some((one) => carriesSourceNumbers(one, depth + 1));
+  return featureValues(record).some((one) => carriesSourceNumbers(one, depth + 1));
 }
 
-/** A weapon whose charges are spent on its hits (1.272), in catalogs too. */
+/** A weapon whose charges are spent on its hits (1.273), in catalogs too. */
 function carriesChargedHits(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesChargedHits(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.attack)?.spends !== undefined) return true;
-  return Object.values(record).some((one) => carriesChargedHits(one, depth + 1));
+  return featureValues(record).some((one) => carriesChargedHits(one, depth + 1));
 }
 
-/** A last charge's die that turns the item into another (1.271), in catalogs too. */
+/** A last charge's die that turns the item into another (1.272), in catalogs too. */
 function carriesBecomes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBecomes(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   if (plainRecord(record.breaksOn)?.becomes !== undefined) return true;
-  return Object.values(record).some((one) => carriesBecomes(one, depth + 1));
+  return featureValues(record).some((one) => carriesBecomes(one, depth + 1));
 }
 
 /** An item's first use named, a use adding a value off its holder's sheet, more charges pushing
- *  farther, and a last charge's die that gives charges back or breaks nothing (1.270), in catalogs
+ *  farther, and a last charge's die that gives charges back or breaks nothing (1.271), in catalogs
  *  too. */
 function carriesStaffExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2336,11 +2364,11 @@ function carriesStaffExtras(value: unknown, depth = 0): boolean {
   if (plainRecord(record.chargeStep)?.push !== undefined) return true;
   // A die with no `atMost` always has `regains`.
   if (plainRecord(record.breaksOn)?.regains !== undefined) return true;
-  return Object.values(record).some((one) => carriesStaffExtras(one, depth + 1));
+  return featureValues(record).some((one) => carriesStaffExtras(one, depth + 1));
 }
 
 /** A creature type chosen as a catalog entry is used, auras reaching only that kind or whoever sees
- *  their holder, and a save ending a condition only from far enough away (1.269), in catalogs too. */
+ *  their holder, and a save ending a condition only from far enough away (1.270), in catalogs too. */
 function carriesKindChoice(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesKindChoice(one, depth + 1));
@@ -2356,7 +2384,7 @@ function carriesKindChoice(value: unknown, depth = 0): boolean {
 
 /** More than 160 conditions, an aura save that keeps its aura off once what it put on ends, and an
  *  item's use whose save difficulty is read off its holder's sheet or that spends more charges for
- *  more (1.268), in catalogs too. */
+ *  more (1.269), in catalogs too. */
 function carriesStaffUses(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesStaffUses(one, depth + 1));
@@ -2369,7 +2397,7 @@ function carriesStaffUses(value: unknown, depth = 0): boolean {
 }
 
 /** Auras by what their target is or whoever put a condition on the holder, saves with a fail margin
- *  or averted eyes, and a save ending a condition leaning while its source is in sight (1.267). */
+ *  or averted eyes, and a save ending a condition leaning while its source is in sight (1.268). */
 function carriesGazes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesGazes(one, depth + 1));
@@ -2385,7 +2413,7 @@ function carriesGazes(value: unknown, depth = 0): boolean {
 }
 
 /** Senses any one of which serves, targets kept near each other, an area that grows with its cost, more
- *  uses on an item, and what a stat block holds (1.266), in catalogs too. */
+ *  uses on an item, and what a stat block holds (1.267), in catalogs too. */
 function carriesTargetingMore(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesTargetingMore(one, depth + 1));
@@ -2397,7 +2425,7 @@ function carriesTargetingMore(value: unknown, depth = 0): boolean {
 }
 
 /** A behavior that drops, keeps out or is freed when stuck; a save only out of sight; destroying by
- *  threat tier (1.265), in catalogs too. */
+ *  threat tier (1.266), in catalogs too. */
 function carriesBehaviorMore(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBehaviorMore(one, depth + 1));
@@ -2416,7 +2444,7 @@ function carriesBehaviorMore(value: unknown, depth = 0): boolean {
 }
 
 /** An aura that needs senses, harms at its holder's turn or asks for a save, or a save change
- *  narrowed to what is cast from a catalog (1.264). */
+ *  narrowed to what is cast from a catalog (1.265). */
 function carriesAuraTurns(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAuraTurns(one, depth + 1));
@@ -2432,7 +2460,7 @@ function carriesAuraTurns(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesAuraTurns(one, depth + 1));
 }
 
-/** A condition's behavior (1.263), or a save its holder spends their action on. */
+/** A condition's behavior (1.264), or a save its holder spends their action on. */
 function carriesBehavior(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesBehavior(one, depth + 1));
@@ -2444,7 +2472,7 @@ function carriesBehavior(value: unknown, depth = 0): boolean {
 }
 
 /** Auras on a combat condition, or conditions kept on through a fight by a catalog entry or a stat
- *  block (1.262). */
+ *  block (1.263). */
 function carriesAuras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAuras(one, depth + 1));
@@ -2455,7 +2483,7 @@ function carriesAuras(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesAuras(one, depth + 1));
 }
 
-/** Qualities on a stat block's action (1.261), in catalogs too: a name and a budget, where a
+/** Qualities on a stat block's action (1.262), in catalogs too: a name and a budget, where a
  *  catalog entry has a label. */
 function carriesActionQualities(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2469,7 +2497,7 @@ function carriesActionQualities(value: unknown, depth = 0): boolean {
 
 /** What damage brings on, an onset that turns into another, a cure only some level ends, a
  *  restoredWhenCured rest loss, a heal block for nonmagical heals, or ends on a stat block's action
- *  (1.260), in catalogs too. */
+ *  (1.261), in catalogs too. */
 function carriesDiseaseStages(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (typeof value === "string") return value === "cannot-heal-nonmagical";
@@ -2488,7 +2516,7 @@ function carriesDiseaseStages(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesDiseaseStages(one, depth + 1));
 }
 
-/** A combat condition that grows worse on a rest (1.259), in catalogs too. */
+/** A combat condition that grows worse on a rest (1.260), in catalogs too. */
 function carriesConditionRests(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesConditionRests(one, depth + 1));
@@ -2498,7 +2526,7 @@ function carriesConditionRests(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesConditionRests(one, depth + 1));
 }
 
-/** A rescue on an item's use (1.258), in catalogs too. */
+/** A rescue on an item's use (1.259), in catalogs too. */
 function carriesItemRescues(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemRescues(one, depth + 1));
@@ -2510,7 +2538,7 @@ function carriesItemRescues(value: unknown, depth = 0): boolean {
 }
 
 /** A combat condition's kinds, or a save that ends a condition counted to an end or to what it
- *  becomes (1.257), in catalogs too. */
+ *  becomes (1.258), in catalogs too. */
 function carriesDiseases(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDiseases(one, depth + 1));
@@ -2524,7 +2552,7 @@ function carriesDiseases(value: unknown, depth = 0): boolean {
 }
 
 /** Dice off an ability check or a damage roll, a rescue narrowed to some saves or spending a
- *  budget, or an item's use dealing half on a miss (1.256), in catalogs too. */
+ *  budget, or an item's use dealing half on a miss (1.257), in catalogs too. */
 function carriesRollAnswers(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesRollAnswers(one, depth + 1));
@@ -2541,7 +2569,7 @@ function carriesRollAnswers(value: unknown, depth = 0): boolean {
 }
 
 /** A d20 counted as a 20 or a die of the holder's own on a failed roll, an entry never on its own
- *  user, or conditions one of a kind at a time (1.255), in catalogs too. */
+ *  user, or conditions one of a kind at a time (1.256), in catalogs too. */
 function carriesOwnRescues(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesOwnRescues(one, depth + 1));
@@ -2555,7 +2583,7 @@ function carriesOwnRescues(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesOwnRescues(one, depth + 1));
 }
 
-/** A miss dealing half (1.254), or a condition put on harming more at a higher cost, in catalogs too. */
+/** A miss dealing half (1.255), or a condition put on harming more at a higher cost, in catalogs too. */
 function carriesAcidArrow(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAcidArrow(one, depth + 1));
@@ -2567,7 +2595,7 @@ function carriesAcidArrow(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesAcidArrow(one, depth + 1));
 }
 
-/** An entry giving back to a pool, past its maximum or not (1.251), in catalogs too. An item's
+/** An entry giving back to a pool, past its maximum or not (1.252), in catalogs too. An item's
  *  `use.restore` is older and is not this. */
 function carriesFontOfMagic(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2580,7 +2608,7 @@ function carriesFontOfMagic(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesFontOfMagic(one, depth + 1));
 }
 
-/** A heal its user chooses how many uses of to spend (1.250), in catalogs too. */
+/** A heal its user chooses how many uses of to spend (1.251), in catalogs too. */
 function carriesUsesChosen(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesUsesChosen(one, depth + 1));
@@ -2590,7 +2618,7 @@ function carriesUsesChosen(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesUsesChosen(one, depth + 1));
 }
 
-/** Dice off somebody else's roll that hit, or saves evaded (1.249), in catalogs too. */
+/** Dice off somebody else's roll that hit, or saves evaded (1.250), in catalogs too. */
 function carriesCuttingWords(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCuttingWords(one, depth + 1));
@@ -2600,7 +2628,7 @@ function carriesCuttingWords(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCuttingWords(one, depth + 1));
 }
 
-/** A change held back until a roll falls short, or an entry spent on a failed roll (1.248), in
+/** A change held back until a roll falls short, or an entry spent on a failed roll (1.249), in
  *  catalogs too. */
 function carriesRescue(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2612,7 +2640,7 @@ function carriesRescue(value: unknown, depth = 0): boolean {
 }
 
 /** A hit answered only when a strike paid for from a budget made it, or one of a group of answers to
- *  its holder's own hit (1.247), in catalogs too. */
+ *  its holder's own hit (1.248), in catalogs too. */
 function carriesOpenHand(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesOpenHand(one, depth + 1));
@@ -2624,7 +2652,7 @@ function carriesOpenHand(value: unknown, depth = 0): boolean {
 }
 
 /** A use offered only before its holder's first attack, a change to attacks narrowed to a kind of
- *  blow, or more dice on a critical (1.246), in catalogs too. */
+ *  blow, or more dice on a critical (1.247), in catalogs too. */
 function carriesReckless(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesReckless(one, depth + 1));
@@ -2635,7 +2663,7 @@ function carriesReckless(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesReckless(one, depth + 1));
 }
 
-/** What comes after the attack action, taken with held weapons matched by tags (1.245). */
+/** What comes after the attack action, taken with held weapons matched by tags (1.246). */
 function carriesAfterAttackItems(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAfterAttackItems(one, depth + 1));
@@ -2647,7 +2675,7 @@ function carriesAfterAttackItems(value: unknown, depth = 0): boolean {
 }
 
 /** A use spending several uses or dropping a failed save to 0, a reaction to a hit by named attacks,
- *  or a condition harming as it ends (1.244), in catalogs too. */
+ *  or a condition harming as it ends (1.245), in catalogs too. */
 function carriesQuiveringPalm(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesQuiveringPalm(one, depth + 1));
@@ -2662,7 +2690,7 @@ function carriesQuiveringPalm(value: unknown, depth = 0): boolean {
 }
 
 /** An entry's attack rule matching held weapons or kept only while wielding some, or a granted strike
- *  kept within bounds (1.243), in catalogs too. */
+ *  kept within bounds (1.244), in catalogs too. */
 function carriesWeaponMatch(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesWeaponMatch(one, depth + 1));
@@ -2692,7 +2720,7 @@ function carriesMartialArts(value: unknown, depth = 0): boolean {
 }
 
 /** A reaction to its holder's own hit or to a weapon's, a use added to that blow, or a cap on the
- *  steps a higher cost adds (1.240), in catalogs too. */
+ *  steps a higher cost adds (1.241), in catalogs too. */
 function carriesOwnHit(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesOwnHit(one, depth + 1));
@@ -2707,7 +2735,7 @@ function carriesOwnHit(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesOwnHit(one, depth + 1));
 }
 
-/** A use that throws its holder's initiative twice (1.239), in catalogs too. */
+/** A use that throws its holder's initiative twice (1.240), in catalogs too. */
 function carriesInitiativeMode(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesInitiativeMode(one, depth + 1));
@@ -2717,7 +2745,7 @@ function carriesInitiativeMode(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesInitiativeMode(one, depth + 1));
 }
 
-/** A use that spends another row's uses (1.238), in catalogs too. */
+/** A use that spends another row's uses (1.239), in catalogs too. */
 function carriesUsesOf(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesUsesOf(one, depth + 1));
@@ -2727,7 +2755,7 @@ function carriesUsesOf(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesUsesOf(one, depth + 1));
 }
 
-/** A use that gives a second turn in a fight's first round (1.237), in catalogs too. */
+/** A use that gives a second turn in a fight's first round (1.238), in catalogs too. */
 function carriesExtraTurn(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesExtraTurn(one, depth + 1));
@@ -2737,7 +2765,7 @@ function carriesExtraTurn(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesExtraTurn(one, depth + 1));
 }
 
-/** Never surprised, or surprise shaken off by a use (1.236), in catalogs too. */
+/** Never surprised, or surprise shaken off by a use (1.237), in catalogs too. */
 function carriesSurprise(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSurprise(one, depth + 1));
@@ -2748,7 +2776,7 @@ function carriesSurprise(value: unknown, depth = 0): boolean {
 }
 
 /** A use that ends the condition it came from, a cure only of what some creatures put on, or one
- *  that sends somebody out of the fight (1.235), in catalogs too. */
+ *  that sends somebody out of the fight (1.236), in catalogs too. */
 function carriesDismissals(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDismissals(one, depth + 1));
@@ -2759,7 +2787,7 @@ function carriesDismissals(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesDismissals(one, depth + 1));
 }
 
-/** Conditions that give their holder actions (1.235). */
+/** Conditions that give their holder actions (1.236). */
 function conditionsGiveActions(ruleset: unknown): boolean {
   const conditions = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
   return Array.isArray(conditions) && conditions.some((one) => plainRecord(one)?.actions !== undefined);
@@ -2767,7 +2795,7 @@ function conditionsGiveActions(ruleset: unknown): boolean {
 
 /** A lowered maximum with no save of its own, on the entry's failed save, of one damage type or
  *  healing its maker; damage that leaves at least some health; targets limited by what they hold
- *  (1.234), in catalogs too. */
+ *  (1.235), in catalogs too. */
 function carriesDrainsAndHolds(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDrainsAndHolds(one, depth + 1));
@@ -2788,7 +2816,7 @@ function carriesDrainsAndHolds(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesDrainsAndHolds(one, depth + 1));
 }
 
-/** A cure that does one of its cures (1.203), in catalogs too. */
+/** A cure that does one of its cures (1.204), in catalogs too. */
 function carriesCureOneOf(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCureOneOf(one, depth + 1));
@@ -2798,7 +2826,7 @@ function carriesCureOneOf(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCureOneOf(one, depth + 1));
 }
 
-/** A creature's blow that lowers the health maximum on a failed save (1.202), in catalogs too. */
+/** A creature's blow that lowers the health maximum on a failed save (1.203), in catalogs too. */
 function carriesReducesMax(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesReducesMax(one, depth + 1));
@@ -2808,7 +2836,7 @@ function carriesReducesMax(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesReducesMax(one, depth + 1));
 }
 
-/** A condition put on to end with another one put on with it (1.201), in catalogs too. */
+/** A condition put on to end with another one put on with it (1.202), in catalogs too. */
 function carriesLinkedConditions(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesLinkedConditions(one, depth + 1));
@@ -2819,7 +2847,7 @@ function carriesLinkedConditions(value: unknown, depth = 0): boolean {
 }
 
 /** Tracks an entry moves by levels, health it gives back from sealed, or a broken section's own
- *  step (1.200), in catalogs too. A creature's `tracks` is a record, not a list of moves. */
+ *  step (1.201), in catalogs too. A creature's `tracks` is a record, not a list of moves. */
 function carriesTrackMoves(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesTrackMoves(one, depth + 1));
@@ -2832,7 +2860,7 @@ function carriesTrackMoves(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesTrackMoves(one, depth + 1));
 }
 
-/** A wall in sections that are struck and broken (1.199), in catalogs too. */
+/** A wall in sections that are struck and broken (1.200), in catalogs too. */
 function carriesWallSections(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesWallSections(one, depth + 1));
@@ -2843,7 +2871,7 @@ function carriesWallSections(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWallSections(one, depth + 1));
 }
 
-/** An entry's health pool that passes over some of its targets (1.198), in catalogs too. */
+/** An entry's health pool that passes over some of its targets (1.199), in catalogs too. */
 function carriesHealthPoolSkips(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesHealthPoolSkips(one, depth + 1));
@@ -2854,7 +2882,7 @@ function carriesHealthPoolSkips(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHealthPoolSkips(one, depth + 1));
 }
 
-/** A zone whose triggers deal another damage type than it does as it appears (1.197), in catalogs too. */
+/** A zone whose triggers deal another damage type than it does as it appears (1.198), in catalogs too. */
 function carriesZoneDamageType(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesZoneDamageType(one, depth + 1));
@@ -2865,7 +2893,7 @@ function carriesZoneDamageType(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZoneDamageType(one, depth + 1));
 }
 
-/** A damage modifier that throws a blow's own dice more times over (1.196), wherever modifiers sit. */
+/** A damage modifier that throws a blow's own dice more times over (1.197), wherever modifiers sit. */
 function carriesDiceTimes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDiceTimes(one, depth + 1));
@@ -2876,7 +2904,7 @@ function carriesDiceTimes(value: unknown, depth = 0): boolean {
 }
 
 /** An entry whose mechanics share out a pool of health, stop at a health ceiling or kill outright
- *  (1.195), in catalog files too. */
+ *  (1.196), in catalog files too. */
 function carriesHealthTargeting(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesHealthTargeting(one, depth + 1));
@@ -2892,13 +2920,13 @@ function carriesHealthTargeting(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHealthTargeting(one, depth + 1));
 }
 
-/** A combat condition that makes its holder bigger or smaller (1.194). */
+/** A combat condition that makes its holder bigger or smaller (1.195). */
 function carriesSizeChanges(value: unknown): boolean {
   const conditions = plainRecord(plainRecord(value)?.combat)?.conditions;
   return Array.isArray(conditions) && conditions.some((entry) => plainRecord(entry)?.size !== undefined);
 }
 
-/** Sizes that fill more than one cell on a board (1.193). */
+/** Sizes that fill more than one cell on a board (1.194). */
 function carriesFootprints(value: unknown): boolean {
   const combat = plainRecord(plainRecord(value)?.combat);
   const order = plainRecord(combat?.sizes)?.order;
@@ -2906,7 +2934,7 @@ function carriesFootprints(value: unknown): boolean {
 }
 
 /** A contest rolled against a fixed number, offered on allies, the wounded or the dying, or one that
- *  stabilizes, and a weapon whose damage only a rest restores (1.192), in catalog files too. */
+ *  stabilizes, and a weapon whose damage only a rest restores (1.193), in catalog files too. */
 function carriesTreatmentsAndSeals(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesTreatmentsAndSeals(one, depth + 1));
@@ -2933,7 +2961,7 @@ function carriesTreatmentsAndSeals(value: unknown, depth = 0): boolean {
 }
 
 /** A weapon that ignores resistance, a slay that leaves conditions on a made save, or a weapon that
- *  hinders its wielder's others while a mark stands (1.191), in catalog files too. */
+ *  hinders its wielder's others while a mark stands (1.192), in catalog files too. */
 function carriesWeaponRiders(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesWeaponRiders(one, depth + 1));
@@ -2949,7 +2977,7 @@ function carriesWeaponRiders(value: unknown, depth = 0): boolean {
 }
 
 /** A condition that keeps heals off or keeps conditions off by who puts them on, a target floor on
- *  ability scores, or a save narrowed to named actions (1.190), in catalog files too. */
+ *  ability scores, or a save narrowed to named actions (1.191), in catalog files too. */
 function carriesHealWardsAndActionSaves(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesHealWardsAndActionSaves(one, depth + 1));
@@ -2962,7 +2990,7 @@ function carriesHealWardsAndActionSaves(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesHealWardsAndActionSaves(one, depth + 1));
 }
 
-/** A weapon mode with its own reach, clauses, bolt or charges (1.189), in catalog files too. */
+/** A weapon mode with its own reach, clauses, bolt or charges (1.190), in catalog files too. */
 function carriesModeExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesModeExtras(one, depth + 1));
@@ -2982,7 +3010,7 @@ function carriesModeExtras(value: unknown, depth = 0): boolean {
 }
 
 /** Conditions that harm each turn, stack or keep to one holder per source, weapons that mark a
- *  sworn enemy, and stat-block actions that name their ability (1.188), in catalog files too. */
+ *  sworn enemy, and stat-block actions that name their ability (1.189), in catalog files too. */
 function carriesMarksAndWounds(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesMarksAndWounds(one, depth + 1));
@@ -3015,7 +3043,7 @@ function carriesMarksAndWounds(value: unknown, depth = 0): boolean {
 }
 
 /** More than 80 conditions on the sheet, in a rest's list or in the fight, attacks narrowed by the
- *  ability they're made with, or checks narrowed by ability (1.187), in catalog files too. */
+ *  ability they're made with, or checks narrowed by ability (1.188), in catalog files too. */
 function carriesWideConditionsAndAbilityNarrowing(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesWideConditionsAndAbilityNarrowing(one, depth + 1));
@@ -3030,7 +3058,7 @@ function carriesWideConditionsAndAbilityNarrowing(value: unknown, depth = 0): bo
 }
 
 /** A weapon that hits harder by what it hits, slays, drains, adds only when thrown, or wounds once a
- *  turn or only some targets (1.186), in catalog files too: an item's `attack` is where they live. */
+ *  turn or only some targets (1.187), in catalog files too: an item's `attack` is where they live. */
 function carriesWeaponKinds(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesWeaponKinds(one, depth + 1));
@@ -3052,7 +3080,7 @@ function carriesWeaponKinds(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesWeaponKinds(one, depth + 1));
 }
 
-/** A creature's actions that recharge together, or that charge (1.185), in catalog files too. */
+/** A creature's actions that recharge together, or that charge (1.186), in catalog files too. */
 function carriesChargeAndGroups(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesChargeAndGroups(one, depth + 1));
@@ -3062,7 +3090,7 @@ function carriesChargeAndGroups(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesChargeAndGroups(one, depth + 1));
 }
 
-/** What a creature is, read further (1.184): saves rolled twice by it, damage at its most against it,
+/** What a creature is, read further (1.185): saves rolled twice by it, damage at its most against it,
  *  targets by ability score or condition immunity, and changes to attacks that roll twice, from or
  *  at somebody, or saves against what a kind of creature does. In catalog files too. */
 function carriesCreatureKinds(value: unknown, depth = 0): boolean {
@@ -3083,7 +3111,7 @@ function carriesCreatureKinds(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action that pushes, or an item's use whose line has a width, in catalog files too
- *  (1.183). */
+ *  (1.184). */
 function carriesCreaturePush(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCreaturePush(one, depth + 1));
@@ -3097,7 +3125,7 @@ function carriesCreaturePush(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCreaturePush(one, depth + 1));
 }
 
-/** A zone that goes off later or burns away, in catalog files too (1.182). */
+/** A zone that goes off later or burns away, in catalog files too (1.183). */
 function carriesDetonations(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDetonations(one, depth + 1));
@@ -3111,14 +3139,14 @@ function carriesDetonations(value: unknown, depth = 0): boolean {
 }
 
 /** A sense given as a number added to the holder's own, a push, a line or cone its caster carries or
- *  turns, or hard going only toward a caster, in catalog files too (1.181). */
+ *  turns, or hard going only toward a caster, in catalog files too (1.182). */
 function carriesPushAndTurn(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesPushAndTurn(one, depth + 1));
   const record = plainRecord(value);
   if (!record) return false;
   const senses = plainRecord(record.senses);
-  if (senses && Object.values(senses).some((one) => plainRecord(one) !== null)) return true;
+  if (senses && Object.values(senses).some((one) => plainRecord(one) !== undefined)) return true;
   for (const mechanics of [plainRecord(record.mechanics), plainRecord(record.use)]) {
     if (!mechanics) continue;
     if (mechanics.push !== undefined) return true;
@@ -3131,7 +3159,7 @@ function carriesPushAndTurn(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesPushAndTurn(one, depth + 1));
 }
 
-/** Senses and seeing (1.177): the combat block's senses or sight, a condition that hides, a zone
+/** Senses and seeing (1.178): the combat block's senses or sight, a condition that hides, a zone
  *  that obscures, an area set down several times, "a creature you can see", or a creature's senses,
  *  in catalog files too. */
 function carriesSight(value: unknown, depth = 0): boolean {
@@ -3154,7 +3182,7 @@ function carriesSight(value: unknown, depth = 0): boolean {
 }
 
 /** A catalog entry or item use that ends conditions, steadies the dying or brings back the dead, in
- *  catalog files too (1.175). */
+ *  catalog files too (1.176). */
 function carriesCures(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCures(one, depth + 1));
@@ -3170,7 +3198,7 @@ function carriesCures(value: unknown, depth = 0): boolean {
 }
 
 /** A zone moved to ram or hurting whom it holds, ground that costs several steps or halves speed, or
- *  a hold broken only by its escape DC and checks, in catalog files too (1.174). */
+ *  a hold broken only by its escape DC and checks, in catalog files too (1.175). */
 function carriesZoneGround(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesZoneGround(one, depth + 1));
@@ -3185,7 +3213,7 @@ function carriesZoneGround(value: unknown, depth = 0): boolean {
 }
 
 /** An escape against the applier's save, a zone that breaks concentration or ends at a damage cap,
- *  or an item use that concentrates or leaves a zone, in catalog files too (1.173). */
+ *  or an item use that concentrates or leaves a zone, in catalog files too (1.174). */
 function carriesZoneRules(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesZoneRules(one, depth + 1));
@@ -3201,7 +3229,7 @@ function carriesZoneRules(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesZoneRules(one, depth + 1));
 }
 
-/** A lasting area that moves, drifts, or makes its ground hard going, in catalog files too (1.172). */
+/** A lasting area that moves, drifts, or makes its ground hard going, in catalog files too (1.173). */
 function carriesMovingZones(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesMovingZones(one, depth + 1));
@@ -3213,7 +3241,7 @@ function carriesMovingZones(value: unknown, depth = 0): boolean {
 }
 
 /** A live pool that pays for another group, or a catalog entry whose targets grow with its cost,
- *  in catalog files too (1.170). */
+ *  in catalog files too (1.171). */
 function carriesCostLadder(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCostLadder(one, depth + 1));
@@ -3224,7 +3252,7 @@ function carriesCostLadder(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCostLadder(one, depth + 1));
 }
 
-/** An item's switch, or a weapon clause dealt while it is on, in catalog files too (1.169). */
+/** An item's switch, or a weapon clause dealt while it is on, in catalog files too (1.170). */
 function carriesItemToggles(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemToggles(one, depth + 1));
@@ -3236,7 +3264,7 @@ function carriesItemToggles(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesItemToggles(one, depth + 1));
 }
 
-/** A weapon item's extra damage, or a save on what its hit puts on, in catalog files too (1.168). */
+/** A weapon item's extra damage, or a save on what its hit puts on, in catalog files too (1.169). */
 function carriesItemAttackExtras(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesItemAttackExtras(one, depth + 1));
@@ -3252,7 +3280,7 @@ function carriesItemAttackExtras(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesItemAttackExtras(one, depth + 1));
 }
 
-/** Creature types, a creature's type or tags, or a target test, in catalog files too (1.167). */
+/** Creature types, a creature's type or tags, or a target test, in catalog files too (1.168). */
 function carriesCreatureTypes(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCreatureTypes(one, depth + 1));
@@ -3265,7 +3293,7 @@ function carriesCreatureTypes(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesCreatureTypes(one, depth + 1));
 }
 
-/** A condition an entry applies only while its applier's sheet allows, in catalog files too (1.166). */
+/** A condition an entry applies only while its applier's sheet allows, in catalog files too (1.167). */
 function carriesAppliesWhen(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAppliesWhen(one, depth + 1));
@@ -3275,7 +3303,7 @@ function carriesAppliesWhen(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesAppliesWhen(one, depth + 1));
 }
 
-/** Save modifiers narrowed by what is saved against, including item effects in catalog files (1.133). */
+/** Save modifiers narrowed by what is saved against, including item effects in catalog files (1.134). */
 function carriesSaveAgainst(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesSaveAgainst(one, depth + 1));
@@ -3286,7 +3314,7 @@ function carriesSaveAgainst(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesSaveAgainst(one, depth + 1));
 }
 
-/** A save rolled only when its holder takes damage (1.128), wherever an `applies` is written. */
+/** A save rolled only when its holder takes damage (1.129), wherever an `applies` is written. */
 function carriesDamageOnlySaves(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some((one) => carriesDamageOnlySaves(one, depth + 1));
@@ -3295,7 +3323,7 @@ function carriesDamageOnlySaves(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesDamageOnlySaves(one, depth + 1));
 }
 
-/** A condition's duration counted on its source's turns (1.118): `of`, a new key on the strict
+/** A condition's duration counted on its source's turns (1.119): `of`, a new key on the strict
  *  duration, wherever an `applies` is written. */
 function carriesSourceClock(value: unknown, depth = 0): boolean {
   if (depth > 40 || value === null || typeof value !== "object") return false;
@@ -3305,7 +3333,7 @@ function carriesSourceClock(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesSourceClock(one, depth + 1));
 }
 
-/** Creatures immune to a track rather than a condition (1.114): 5e's immunity to exhaustion. */
+/** Creatures immune to a track rather than a condition (1.115): 5e's immunity to exhaustion. */
 function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): boolean {
   return (
     tracks.size > 0 &&
@@ -3317,18 +3345,18 @@ function entriesImmuneToTracks(entries: unknown, tracks: ReadonlySet<string>): b
   );
 }
 
-/** Entries a builder step offers only while the sheet says so (1.98): `offeredWhen`, a new key on the
+/** Entries a builder step offers only while the sheet says so (1.99): `offeredWhen`, a new key on the
  *  strict entry. */
 function entriesCarryOfferedWhen(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.offeredWhen !== undefined);
 }
 
-/** Entries a builder step keeps one of (1.93): `exclusive`, a new key on the strict entry. */
+/** Entries a builder step keeps one of (1.94): `exclusive`, a new key on the strict entry. */
 function entriesCarryExclusive(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.exclusive !== undefined);
 }
 
-/** A skill or save choice that builds on training (1.104): `held`, a new key on the strict choice. */
+/** A skill or save choice that builds on training (1.105): `held`, a new key on the strict choice. */
 function entriesCarryHeldChoices(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -3339,7 +3367,7 @@ function entriesCarryHeldChoices(entries: unknown): boolean {
   );
 }
 
-/** A score choice with a cap (1.95): `upTo`, a new key on the strict choice. */
+/** A score choice with a cap (1.96): `upTo`, a new key on the strict choice. */
 function entriesCarryChoiceCaps(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -3350,7 +3378,7 @@ function entriesCarryChoiceCaps(entries: unknown): boolean {
   );
 }
 
-/** A score choice that may name one score twice (1.92): `repeat`, a new key on the strict choice. */
+/** A score choice that may name one score twice (1.93): `repeat`, a new key on the strict choice. */
 function entriesCarryRepeatChoices(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -3361,14 +3389,14 @@ function entriesCarryRepeatChoices(entries: unknown): boolean {
   );
 }
 
-/** Entries of another catalog to choose (1.90): `entries`, a new key on the strict grants. */
+/** Entries of another catalog to choose (1.91): `entries`, a new key on the strict grants. */
 function entriesCarryEntryChoices(entries: unknown): boolean {
   return (
     Array.isArray(entries) && entries.some((entry) => plainRecord(plainRecord(entry)?.grants)?.entries !== undefined)
   );
 }
 
-/** A sheet value added to a catalog entry's amount (1.82): `amountAdd`, a new key on strict mechanics. */
+/** A sheet value added to a catalog entry's amount (1.83): `amountAdd`, a new key on strict mechanics. */
 function entriesCarryAmountAdd(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -3376,7 +3404,7 @@ function entriesCarryAmountAdd(entries: unknown): boolean {
   );
 }
 
-/** Seller honesty's item keys (1.78): `risky` and `passesFor`, new keys on the strict item. */
+/** Seller honesty's item keys (1.79): `risky` and `passesFor`, new keys on the strict item. */
 function entriesCarryHonesty(entries: unknown): boolean {
   return (
     Array.isArray(entries) &&
@@ -3828,7 +3856,7 @@ export function getCapabilityPackageInstallIssue(
     const issue = rulesetFakeIssue(fake.ref, fake.item, itemsByRef.get(fake.item.passesFor!));
     if (issue) return `The fake "${fake.ref}" cannot pass for "${fake.item.passesFor}": ${issue}`;
   }
-  // What an item becomes on its last charge (1.271) is an item, in whichever file it is.
+  // What an item becomes on its last charge (1.272) is an item, in whichever file it is.
   for (const [ref, item] of itemsByRef) {
     const becomes = plainRecord(plainRecord(item.charges)?.breaksOn)?.becomes;
     if (typeof becomes === "string" && (becomes === ref || !itemsByRef.has(becomes))) {
@@ -4038,15 +4066,15 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
   if (!declaresApi(69) && (carriesMarketDay || rulesetCarriesMarketDay169(ruleset))) return MARKET_DAY_ISSUE;
-  // Cover by degrees, 1.73: new keys on the strict cover object and the strict save.
+  // Cover by degrees, 1.74: new keys on the strict cover object and the strict save.
   const cover = plainRecord(plainRecord(ruleset?.combat)?.cover);
   const graded = ["threeQuarters", "saves", "creatures"].some((key) => cover?.[key] !== undefined);
-  if (!declaresApi(73) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
-  // Height, 1.74 (combat C6b): a new key on the strict combat block.
-  if (!declaresApi(74) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
-    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.74 or newer";
+  if (!declaresApi(74) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
+  // Height, 1.75 (combat C6b): a new key on the strict combat block.
+  if (!declaresApi(75) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
+    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.75 or newer";
   }
-  // The action economy conditions change, 1.75 (combat C6d): new keys on the strict condition, and a
+  // The action economy conditions change, 1.76 (combat C6d): new keys on the strict condition, and a
   // budget of no count, which an older Engine refuses.
   const combatBlock = plainRecord(ruleset?.combat);
   const economy = Array.isArray(combatBlock?.conditions)
@@ -4058,51 +4086,51 @@ export function getCapabilityPackageInstallIssue(
     : false;
   const budgets = plainRecord(combatBlock?.economy)?.budgets;
   const emptyBudget = Array.isArray(budgets) && budgets.some((budget) => plainRecord(budget)?.count === 0);
-  if (!declaresApi(75) && (economy || emptyBudget)) {
-    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.75 or newer";
+  if (!declaresApi(76) && (economy || emptyBudget)) {
+    return "A ruleset whose conditions change the action economy, or with a budget of no count, requires schemaVersion 2 and capabilityApi 1.76 or newer";
   }
-  // Sheet migrations, 1.76 (C6e-0): a new key on the strict sheet.
-  if (!declaresApi(76) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
-    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.76 or newer";
+  // Sheet migrations, 1.77 (C6e-0): a new key on the strict sheet.
+  if (!declaresApi(77) && plainRecord(ruleset?.sheet)?.migrations !== undefined) {
+    return "A ruleset whose sheet says how older sheets read on it requires schemaVersion 2 and capabilityApi 1.77 or newer";
   }
-  // A rest that shares a pool group's fraction, 1.76 (C6e): a new key on the strict restore step.
+  // A rest that shares a pool group's fraction, 1.77 (C6e): a new key on the strict restore step.
   const sharedRest = Array.isArray(ruleset?.rests)
     ? ruleset.rests.some((rest) => {
         const restore = plainRecord(rest)?.restore;
         return Array.isArray(restore) && restore.some((step) => plainRecord(step)?.shared !== undefined);
       })
     : false;
-  if (!declaresApi(76) && sharedRest) {
-    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.76 or newer";
+  if (!declaresApi(77) && sharedRest) {
+    return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.77 or newer";
   }
-  // Starting gear, 1.77 (P1-6): a new key on the strict items block.
-  if (!declaresApi(77) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
-    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.77 or newer";
+  // Starting gear, 1.78 (P1-6): a new key on the strict items block.
+  if (!declaresApi(78) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
+    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.78 or newer";
   }
-  // Seller honesty, 1.78 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
+  // Seller honesty, 1.79 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
   const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
   const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
-  if (!declaresApi(78) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
-  // A critical range off the sheet, 1.80: a new key on the strict attack roll.
-  if (!declaresApi(80) && plainRecord(plainRecord(combatBlock)?.attackRoll)?.criticalFrom !== undefined) {
+  if (!declaresApi(79) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
+  // A critical range off the sheet, 1.81: a new key on the strict attack roll.
+  if (!declaresApi(81) && plainRecord(plainRecord(combatBlock)?.attackRoll)?.criticalFrom !== undefined) {
     return CRITICAL_RANGE_ISSUE;
   }
-  // A derived value that multiplies, 1.81: a new op.
+  // A derived value that multiplies, 1.82: a new op.
   const derivedValues = plainRecord(ruleset?.sheet)?.derived;
   if (
-    !declaresApi(81) &&
+    !declaresApi(82) &&
     Array.isArray(derivedValues) &&
     derivedValues.some((entry) => plainRecord(entry)?.op === "multiply")
   ) {
     return MULTIPLY_ISSUE;
   }
-  // A sheet value added to an amount, 1.82: a new key on strict mechanics, inline or in a catalog file.
-  if (!declaresApi(82) && carriesAmountAdd) return AMOUNT_ADD_ISSUE;
-  // More derived values than an older Engine reads, 1.83: it refused a sheet with more than 60.
-  if (!declaresApi(83) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_179) {
-    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_179} derived values requires schemaVersion 2 and capabilityApi 1.83 or newer`;
+  // A sheet value added to an amount, 1.83: a new key on strict mechanics, inline or in a catalog file.
+  if (!declaresApi(83) && carriesAmountAdd) return AMOUNT_ADD_ISSUE;
+  // More derived values than an older Engine reads, 1.84: it refused a sheet with more than 60.
+  if (!declaresApi(84) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_179) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_179} derived values requires schemaVersion 2 and capabilityApi 1.84 or newer`;
   }
-  // A coin's name for one, 1.88: a new key on the strict currency unit.
+  // A coin's name for one, 1.89: a new key on the strict currency unit.
   const currencies = plainRecord(ruleset?.items)?.currencies;
   const singular =
     Array.isArray(currencies) &&
@@ -4110,163 +4138,163 @@ export function getCapabilityPackageInstallIssue(
       const units = plainRecord(family)?.units;
       return Array.isArray(units) && units.some((unit) => plainRecord(unit)?.one !== undefined);
     });
-  // An item's to-hit read off its holder's sheet, 1.94: a new key on the strict to-hit.
-  if (!declaresApi(94) && carriesSheetBonus) {
-    return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.94 or newer";
+  // An item's to-hit read off its holder's sheet, 1.95: a new key on the strict to-hit.
+  if (!declaresApi(95) && carriesSheetBonus) {
+    return "A ruleset whose items add a bonus to hit read off their holder's sheet requires schemaVersion 2 and capabilityApi 1.95 or newer";
   }
-  // Fields shown by the sheet or held to a combined maximum, 1.106: new keys on the strict step.
+  // Fields shown by the sheet or held to a combined maximum, 1.107: new keys on the strict step.
   const fieldsSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
   if (
-    !declaresApi(106) &&
+    !declaresApi(107) &&
     Array.isArray(fieldsSteps) &&
     fieldsSteps.some((step) => {
       const fieldsStep = plainRecord(step);
       return fieldsStep?.kind === "fields" && (fieldsStep.shownWhen !== undefined || fieldsStep.total !== undefined);
     })
   ) {
-    return "A ruleset whose builder steps show fields only while the sheet allows, or hold fields to a total, requires schemaVersion 2 and capabilityApi 1.106 or newer";
+    return "A ruleset whose builder steps show fields only while the sheet allows, or hold fields to a total, requires schemaVersion 2 and capabilityApi 1.107 or newer";
   }
-  // Each class's spellcasting references and the builder rows that name it, 1.107.
+  // Each class's spellcasting references and the builder rows that name it, 1.108.
   const abilitySources = plainRecord(combatBlock)?.abilities;
   if (
-    !declaresApi(107) &&
+    !declaresApi(108) &&
     ((Array.isArray(fieldsSteps) && fieldsSteps.some((step) => plainRecord(step)?.stamp !== undefined)) ||
       (Array.isArray(abilitySources) && abilitySources.some((source) => plainRecord(source)?.byColumn !== undefined)))
   ) {
-    return "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.107 or newer";
+    return "A ruleset whose classes cast with their own spellcasting ability requires schemaVersion 2 and capabilityApi 1.108 or newer";
   }
-  // Starting gear held to the sheet, 1.108: a new key on the strict step.
+  // Starting gear held to the sheet, 1.109: a new key on the strict step.
   if (
-    !declaresApi(108) &&
+    !declaresApi(109) &&
     Array.isArray(fieldsSteps) &&
     fieldsSteps.some((step) => {
       const gearStep = plainRecord(step);
       return gearStep?.kind === "startingGear" && gearStep.strict !== undefined;
     })
   ) {
-    return "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.108 or newer";
+    return "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.109 or newer";
   }
-  // A skill or save choice among what is already trained, 1.104: a new key on the strict choice.
-  if (!declaresApi(104) && carriesHeldChoices) {
-    return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.104 or newer";
+  // A skill or save choice among what is already trained, 1.105: a new key on the strict choice.
+  if (!declaresApi(105) && carriesHeldChoices) {
+    return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.105 or newer";
   }
-  // A catalog entry a builder step offers only while the sheet says so, 1.98: a new key on the strict entry.
-  if (!declaresApi(98) && carriesOfferedWhen) {
-    return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.98 or newer";
+  // A catalog entry a builder step offers only while the sheet says so, 1.99: a new key on the strict entry.
+  if (!declaresApi(99) && carriesOfferedWhen) {
+    return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.99 or newer";
   }
-  // Ways of moving besides walking, 1.112: new keys on the strict creature and the strict economy.
+  // Ways of moving besides walking, 1.113: new keys on the strict creature and the strict economy.
   if (
-    !declaresApi(112) &&
+    !declaresApi(113) &&
     (carriesMoveModes || plainRecord(plainRecord(ruleset?.combat)?.economy)?.movementModes !== undefined)
   ) {
-    return "A ruleset whose combatants fly, swim, climb or burrow requires schemaVersion 2 and capabilityApi 1.112 or newer";
+    return "A ruleset whose combatants fly, swim, climb or burrow requires schemaVersion 2 and capabilityApi 1.113 or newer";
   }
-  // Levels that halve the health maximum or defeat, and immunity to a track, 1.114: a new modifier
+  // Levels that halve the health maximum or defeat, and immunity to a track, 1.115: a new modifier
   // target and level key, and a track where a condition was the only word an immunity knew.
   if (
-    !declaresApi(114) &&
+    !declaresApi(115) &&
     (carriesExhaustion ||
       carriesHealthMax(ruleset?.combat) ||
       (Array.isArray(plainRecord(ruleset?.combat)?.levels) &&
         (plainRecord(ruleset?.combat)!.levels as unknown[]).some((level) => plainRecord(level)?.defeats !== undefined)))
   ) {
-    return "A ruleset whose levels halve the health maximum or defeat, or whose creatures are immune to a track, requires schemaVersion 2 and capabilityApi 1.114 or newer";
+    return "A ruleset whose levels halve the health maximum or defeat, or whose creatures are immune to a track, requires schemaVersion 2 and capabilityApi 1.115 or newer";
   }
-  // Answers that stop only so high, and pools that say their level, 1.115.
+  // Answers that stop only so high, and pools that say their level, 1.116.
   if (
-    !declaresApi(115) &&
+    !declaresApi(116) &&
     (carriesCounterReachKeys ||
       ((plainRecord(plainRecord(ruleset?.sheet)?.live)?.pools as unknown[] | undefined) ?? []).some(
         (pool) => plainRecord(pool)?.level !== undefined,
       ))
   ) {
-    return "A ruleset whose answers stop only what was paid no higher than themselves, or whose pools say their level, requires schemaVersion 2 and capabilityApi 1.115 or newer";
+    return "A ruleset whose answers stop only what was paid no higher than themselves, or whose pools say their level, requires schemaVersion 2 and capabilityApi 1.116 or newer";
   }
   // Answers to named entries, answers at more than one moment, and conditions that keep an entry's
-  // harm off, 1.116.
+  // harm off, 1.117.
   if (
-    !declaresApi(116) &&
+    !declaresApi(117) &&
     (carriesNamedAnswerKeys ||
       ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
         (condition) => plainRecord(condition)?.noDamageFrom !== undefined,
       ))
   ) {
-    return "A ruleset whose answers name the entries they answer or more than one moment, or whose conditions keep an entry's harm off, requires schemaVersion 2 and capabilityApi 1.116 or newer";
+    return "A ruleset whose answers name the entries they answer or more than one moment, or whose conditions keep an entry's harm off, requires schemaVersion 2 and capabilityApi 1.117 or newer";
   }
-  // Answers to one kind of blow, or only to a source their holder sees, 1.117.
-  if (!declaresApi(117) && carriesBlowNarrowingKeys) {
-    return "A ruleset whose answers wait for one kind of blow, or for a source their holder sees, requires schemaVersion 2 and capabilityApi 1.117 or newer";
+  // Answers to one kind of blow, or only to a source their holder sees, 1.118.
+  if (!declaresApi(118) && carriesBlowNarrowingKeys) {
+    return "A ruleset whose answers wait for one kind of blow, or for a source their holder sees, requires schemaVersion 2 and capabilityApi 1.118 or newer";
   }
-  // Conditions that run on their source's clock, 1.118: in a catalog entry, a creature's action, a
+  // Conditions that run on their source's clock, 1.119: in a catalog entry, a creature's action, a
   // contest or what a condition leaves behind.
-  if (!declaresApi(118) && (carriesSourceClockKeys || carriesSourceClock(ruleset?.combat))) {
-    return "A ruleset whose conditions count their rounds on the turns of whoever put them on requires schemaVersion 2 and capabilityApi 1.118 or newer";
+  if (!declaresApi(119) && (carriesSourceClockKeys || carriesSourceClock(ruleset?.combat))) {
+    return "A ruleset whose conditions count their rounds on the turns of whoever put them on requires schemaVersion 2 and capabilityApi 1.119 or newer";
   }
-  // Conditions that hold what their holder uses over to the next turn, 1.119.
+  // Conditions that hold what their holder uses over to the next turn, 1.120.
   if (
-    !declaresApi(119) &&
+    !declaresApi(120) &&
     ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
       (condition) => plainRecord(condition)?.delays !== undefined,
     )
   ) {
-    return "A ruleset whose conditions hold what their holder uses over to the next turn requires schemaVersion 2 and capabilityApi 1.119 or newer";
+    return "A ruleset whose conditions hold what their holder uses over to the next turn requires schemaVersion 2 and capabilityApi 1.120 or newer";
   }
-  // Creatures that heal or point an action at their own side, 1.120.
-  if (!declaresApi(120) && carriesCreatureHealing) {
-    return "A ruleset whose creatures heal, or point an action at their own side, requires schemaVersion 2 and capabilityApi 1.120 or newer";
+  // Creatures that heal or point an action at their own side, 1.121.
+  if (!declaresApi(121) && carriesCreatureHealing) {
+    return "A ruleset whose creatures heal, or point an action at their own side, requires schemaVersion 2 and capabilityApi 1.121 or newer";
   }
-  // Spells that leave something to strike on later turns, 1.121.
-  if (!declaresApi(121) && carriesSummons) {
-    return "A ruleset whose spells leave something behind that strikes on later turns requires schemaVersion 2 and capabilityApi 1.121 or newer";
+  // Spells that leave something to strike on later turns, 1.122.
+  if (!declaresApi(122) && carriesSummons) {
+    return "A ruleset whose spells leave something behind that strikes on later turns requires schemaVersion 2 and capabilityApi 1.122 or newer";
   }
-  // Creatures that cast without slots, 1.122.
-  if (!declaresApi(122) && carriesCreatureSpellcasting) {
-    return "A ruleset whose creatures cast spells without slots requires schemaVersion 2 and capabilityApi 1.122 or newer";
+  // Creatures that cast without slots, 1.123.
+  if (!declaresApi(123) && carriesCreatureSpellcasting) {
+    return "A ruleset whose creatures cast spells without slots requires schemaVersion 2 and capabilityApi 1.123 or newer";
   }
-  // Reactions that catch a fall, and conditions that let their holder land safely, 1.123.
+  // Reactions that catch a fall, and conditions that let their holder land safely, 1.124.
   if (
-    !declaresApi(123) &&
+    !declaresApi(124) &&
     (carriesFallMoments ||
       ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
         (condition) => plainRecord(condition)?.fallsSafely !== undefined,
       ))
   ) {
-    return "A ruleset whose reactions catch a fall requires schemaVersion 2 and capabilityApi 1.123 or newer";
+    return "A ruleset whose reactions catch a fall requires schemaVersion 2 and capabilityApi 1.124 or newer";
   }
-  // Conditions that end on harm, a new save or an ally's action, 1.124.
+  // Conditions that end on harm, a new save or an ally's action, 1.125.
   if (
-    !declaresApi(124) &&
+    !declaresApi(125) &&
     ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some((condition) =>
       ["endsWhen", "saveWhenDamaged", "shakeOff"].some((key) => plainRecord(condition)?.[key] !== undefined),
     )
   ) {
-    return "A ruleset whose conditions end on harm, a new save or being shaken out requires schemaVersion 2 and capabilityApi 1.124 or newer";
+    return "A ruleset whose conditions end on harm, a new save or being shaken out requires schemaVersion 2 and capabilityApi 1.125 or newer";
   }
-  // Riders that need an adjacent ally without disadvantage, 1.125.
-  if (!declaresApi(125) && carriesRiderNoDisadvantage) {
-    return "A ruleset whose riders need an adjacent ally without disadvantage requires schemaVersion 2 and capabilityApi 1.125 or newer";
+  // Riders that need an adjacent ally without disadvantage, 1.126.
+  if (!declaresApi(126) && carriesRiderNoDisadvantage) {
+    return "A ruleset whose riders need an adjacent ally without disadvantage requires schemaVersion 2 and capabilityApi 1.126 or newer";
   }
-  // Effects that need a sense a condition takes away, 1.126.
+  // Effects that need a sense a condition takes away, 1.127.
   if (
-    !declaresApi(126) &&
+    !declaresApi(127) &&
     (carriesSenseNeeds ||
       ((plainRecord(ruleset?.combat)?.conditions as unknown[] | undefined) ?? []).some(
         (condition) => plainRecord(condition)?.lacks !== undefined,
       ))
   ) {
-    return "A ruleset whose effects need a sense a condition can take away requires schemaVersion 2 and capabilityApi 1.126 or newer";
+    return "A ruleset whose effects need a sense a condition can take away requires schemaVersion 2 and capabilityApi 1.127 or newer";
   }
-  // Lines wider than one cell, 1.127.
-  if (!declaresApi(127) && carriesLineWidth) {
-    return "A ruleset whose lines are wider than one cell requires schemaVersion 2 and capabilityApi 1.127 or newer";
+  // Lines wider than one cell, 1.128.
+  if (!declaresApi(128) && carriesLineWidth) {
+    return "A ruleset whose lines are wider than one cell requires schemaVersion 2 and capabilityApi 1.128 or newer";
   }
-  // Saves rolled only on damage, 1.128.
-  if (!declaresApi(128) && (carriesDamageOnlySaveKeys || carriesDamageOnlySaves(ruleset?.combat))) {
-    return "A ruleset whose saves are rolled only on damage requires schemaVersion 2 and capabilityApi 1.128 or newer";
+  // Saves rolled only on damage, 1.129.
+  if (!declaresApi(129) && (carriesDamageOnlySaveKeys || carriesDamageOnlySaves(ruleset?.combat))) {
+    return "A ruleset whose saves are rolled only on damage requires schemaVersion 2 and capabilityApi 1.129 or newer";
   }
-  // Builder stamps read from the offering parent pick, 1.129.
+  // Builder stamps read from the offering parent pick, 1.130.
   if (
-    !declaresApi(129) &&
+    !declaresApi(130) &&
     Array.isArray(fieldsSteps) &&
     fieldsSteps.some((step) =>
       Object.values(plainRecord(plainRecord(step)?.stamp) ?? {}).some(
@@ -4274,13 +4302,13 @@ export function getCapabilityPackageInstallIssue(
       ),
     )
   ) {
-    return "A ruleset whose builder stamps from the offering pick requires schemaVersion 2 and capabilityApi 1.129 or newer";
+    return "A ruleset whose builder stamps from the offering pick requires schemaVersion 2 and capabilityApi 1.130 or newer";
   }
-  // Reactions for others, at turn start, on a save, or for several fallers, 1.130.
-  if (!declaresApi(130) && (carriesReactionMomentKeys || carriesReactionMoments(ruleset?.combat))) {
-    return "A ruleset whose reactions answer for others, at a turn's start, on a save or for several fallers requires schemaVersion 2 and capabilityApi 1.130 or newer";
+  // Reactions for others, at turn start, on a save, or for several fallers, 1.131.
+  if (!declaresApi(131) && (carriesReactionMomentKeys || carriesReactionMoments(ruleset?.combat))) {
+    return "A ruleset whose reactions answer for others, at a turn's start, on a save or for several fallers requires schemaVersion 2 and capabilityApi 1.131 or newer";
   }
-  // Conditions, levels, sheet rows and item exceptions keep harm off, 1.131.
+  // Conditions, levels, sheet rows and item exceptions keep harm off, 1.132.
   const hideCombat = plainRecord(ruleset?.combat);
   const carriesTypedHides = ["conditions", "levels"].some((key) => {
     const entries = hideCombat?.[key];
@@ -4304,10 +4332,10 @@ export function getCapabilityPackageInstallIssue(
       ),
     ),
   );
-  if (!declaresApi(131) && (carriesTypedHides || hideCombat?.sheetHides !== undefined || carriesItemExceptions)) {
-    return "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.131 or newer";
+  if (!declaresApi(132) && (carriesTypedHides || hideCombat?.sheetHides !== undefined || carriesItemExceptions)) {
+    return "A ruleset whose conditions, levels, sheet or items with exceptions keep harm off requires schemaVersion 2 and capabilityApi 1.132 or newer";
   }
-  // Modifiers to damage dealt or taken, 1.132, including worn and carried items in catalog files.
+  // Modifiers to damage dealt or taken, 1.133, including worn and carried items in catalog files.
   const carriesDamageModifiers = (value: unknown): boolean => {
     if (Array.isArray(value)) return value.some(carriesDamageModifiers);
     const record = plainRecord(value);
@@ -4320,1076 +4348,1083 @@ export function getCapabilityPackageInstallIssue(
     return Object.values(record).some(carriesDamageModifiers);
   };
   if (
-    !declaresApi(132) &&
+    !declaresApi(133) &&
     (carriesDamageModifiers(ruleset) || [...(catalogDocuments?.values() ?? [])].some(carriesDamageModifiers))
   ) {
-    return "A ruleset whose modifiers change damage requires schemaVersion 2 and capabilityApi 1.132 or newer";
+    return "A ruleset whose modifiers change damage requires schemaVersion 2 and capabilityApi 1.133 or newer";
   }
-  // A sheet list with more than 12 columns, 1.164.
+  // A sheet list with more than 12 columns, 1.165.
   const sheetLists = plainRecord(ruleset?.sheet)?.lists;
   if (
-    !declaresApi(164) &&
+    !declaresApi(165) &&
     Array.isArray(sheetLists) &&
     sheetLists.some((list) => {
       const columns = plainRecord(list)?.columns;
       return Array.isArray(columns) && columns.length > 12;
     })
   ) {
-    return "A ruleset with a sheet list of more than 12 columns requires schemaVersion 2 and capabilityApi 1.164 or newer";
+    return "A ruleset with a sheet list of more than 12 columns requires schemaVersion 2 and capabilityApi 1.165 or newer";
   }
-  // Mechanics offered only while the holder's sheet allows, 1.165.
-  if (!declaresApi(165) && (carriesUsableWhenKeys || carriesUsableWhen(ruleset?.combat))) {
-    return "A ruleset whose abilities are usable only while the sheet allows requires schemaVersion 2 and capabilityApi 1.165 or newer";
+  // Mechanics offered only while the holder's sheet allows, 1.166.
+  if (!declaresApi(166) && (carriesUsableWhenKeys || carriesUsableWhen(ruleset?.combat))) {
+    return "A ruleset whose abilities are usable only while the sheet allows requires schemaVersion 2 and capabilityApi 1.166 or newer";
   }
-  // Save modifiers narrowed by conditions, damage or magic, 1.133.
+  // Save modifiers narrowed by conditions, damage or magic, 1.134.
   if (
-    !declaresApi(133) &&
+    !declaresApi(134) &&
     (carriesSaveAgainst(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveAgainst(document)))
   ) {
-    return "A ruleset whose save modifiers count against conditions, damage or magic requires schemaVersion 2 and capabilityApi 1.133 or newer";
+    return "A ruleset whose save modifiers count against conditions, damage or magic requires schemaVersion 2 and capabilityApi 1.134 or newer";
   }
-  // Conditions applied only while the applier's sheet allows, 1.166.
+  // Conditions applied only while the applier's sheet allows, 1.167.
   if (
-    !declaresApi(166) &&
+    !declaresApi(167) &&
     (carriesAppliesWhen(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesAppliesWhen(document)))
   ) {
-    return "A ruleset whose conditions are applied only while the applier's sheet allows requires schemaVersion 2 and capabilityApi 1.166 or newer";
+    return "A ruleset whose conditions are applied only while the applier's sheet allows requires schemaVersion 2 and capabilityApi 1.167 or newer";
   }
-  // Creature types and the target tests that read them, 1.167.
+  // Creature types and the target tests that read them, 1.168.
   if (
-    !declaresApi(167) &&
+    !declaresApi(168) &&
     (carriesCreatureTypes(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureTypes(document)))
   ) {
-    return "A ruleset with creature types or target tests requires schemaVersion 2 and capabilityApi 1.167 or newer";
+    return "A ruleset with creature types or target tests requires schemaVersion 2 and capabilityApi 1.168 or newer";
   }
-  // A weapon's extra damage and saves on what its hit puts on, 1.168.
+  // A weapon's extra damage and saves on what its hit puts on, 1.169.
   if (
-    !declaresApi(168) &&
+    !declaresApi(169) &&
     (carriesItemAttackExtras(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemAttackExtras(document)))
   ) {
-    return "A ruleset whose weapons deal extra damage or put on conditions a save resists requires schemaVersion 2 and capabilityApi 1.168 or newer";
+    return "A ruleset whose weapons deal extra damage or put on conditions a save resists requires schemaVersion 2 and capabilityApi 1.169 or newer";
   }
-  // An item's switch and the clauses dealt while it is on, 1.169.
+  // An item's switch and the clauses dealt while it is on, 1.170.
   if (
-    !declaresApi(169) &&
+    !declaresApi(170) &&
     (carriesItemToggles(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemToggles(document)))
   ) {
-    return "A ruleset whose items switch on and off requires schemaVersion 2 and capabilityApi 1.169 or newer";
+    return "A ruleset whose items switch on and off requires schemaVersion 2 and capabilityApi 1.170 or newer";
   }
-  // Pools that pay for other groups, and targets that grow with the cost, 1.170.
+  // Pools that pay for other groups, and targets that grow with the cost, 1.171.
   if (
-    !declaresApi(170) &&
+    !declaresApi(171) &&
     (carriesCostLadder(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCostLadder(document)))
   ) {
-    return "A ruleset whose pools pay for another group or whose targets grow with the cost requires schemaVersion 2 and capabilityApi 1.170 or newer";
+    return "A ruleset whose pools pay for another group or whose targets grow with the cost requires schemaVersion 2 and capabilityApi 1.171 or newer";
   }
-  // Areas that stay, 1.171.
-  if (
-    !declaresApi(171) &&
-    (carriesZones(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesZones(document)))
-  ) {
-    return "A ruleset with lasting zones requires schemaVersion 2 and capabilityApi 1.171 or newer";
-  }
-  // Areas that move, drift or make their ground hard going, 1.172.
+  // Areas that stay, 1.172.
   if (
     !declaresApi(172) &&
+    (carriesZones(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesZones(document)))
+  ) {
+    return "A ruleset with lasting zones requires schemaVersion 2 and capabilityApi 1.172 or newer";
+  }
+  // Areas that move, drift or make their ground hard going, 1.173.
+  if (
+    !declaresApi(173) &&
     (carriesMovingZones(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesMovingZones(document)))
   ) {
-    return "A ruleset with zones that move or change the ground requires schemaVersion 2 and capabilityApi 1.172 or newer";
+    return "A ruleset with zones that move or change the ground requires schemaVersion 2 and capabilityApi 1.173 or newer";
   }
   // Escapes against the applier's save, zones that shake concentration or stop at a damage cap, and
-  // items whose use concentrates or leaves a zone, 1.173.
+  // items whose use concentrates or leaves a zone, 1.174.
   if (
-    !declaresApi(173) &&
+    !declaresApi(174) &&
     (carriesZoneRules(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneRules(document)))
   ) {
-    return "A ruleset with save escapes, concentration-breaking or capped zones, or zones on item uses requires schemaVersion 2 and capabilityApi 1.173 or newer";
+    return "A ruleset with save escapes, concentration-breaking or capped zones, or zones on item uses requires schemaVersion 2 and capabilityApi 1.174 or newer";
   }
   // Zones that ram or hurt whom they hold, ground that costs several steps or halves speed, and
-  // holds broken only by their escape DC and checks, 1.174.
+  // holds broken only by their escape DC and checks, 1.175.
   if (
-    !declaresApi(174) &&
+    !declaresApi(175) &&
     (carriesZoneGround(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneGround(document)))
   ) {
-    return "A ruleset with zones that ram or hurt whom they hold, ground that costs more or halves speed, or holds broken only by their escape DC and checks requires schemaVersion 2 and capabilityApi 1.174 or newer";
+    return "A ruleset with zones that ram or hurt whom they hold, ground that costs more or halves speed, or holds broken only by their escape DC and checks requires schemaVersion 2 and capabilityApi 1.175 or newer";
   }
-  // Cures that end conditions, steady the dying or bring back the dead, 1.175.
-  if (
-    !declaresApi(175) &&
-    (carriesCures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCures(document)))
-  ) {
-    return "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.175 or newer";
-  }
-  // Square and cube areas, and walls that block or have a side, 1.176.
+  // Cures that end conditions, steady the dying or bring back the dead, 1.176.
   if (
     !declaresApi(176) &&
-    (carriesWalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalls(document)))
+    (carriesCures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCures(document)))
   ) {
-    return "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.176 or newer";
+    return "A ruleset with cures that end conditions, stabilize the dying or revive the dead requires schemaVersion 2 and capabilityApi 1.176 or newer";
   }
-  // Senses, obscuring zones, hiding conditions, seen-only targets and area copies, 1.177.
+  // Square and cube areas, and walls that block or have a side, 1.177.
   if (
     !declaresApi(177) &&
-    (carriesSight(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSight(document)))
+    (carriesWalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalls(document)))
   ) {
-    return "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.177 or newer";
+    return "A ruleset with box or wall areas, or walls that block or have a side, requires schemaVersion 2 and capabilityApi 1.177 or newer";
   }
-  // Components, and zones that work on whoever stands in them, stop components or ward, 1.178.
+  // Senses, obscuring zones, hiding conditions, seen-only targets and area copies, 1.178.
   if (
     !declaresApi(178) &&
+    (carriesSight(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSight(document)))
+  ) {
+    return "A ruleset with combat senses or sight, obscuring zones, hiding conditions, targets that must be seen or areas set down several times requires schemaVersion 2 and capabilityApi 1.178 or newer";
+  }
+  // Components, and zones that work on whoever stands in them, stop components or ward, 1.179.
+  if (
+    !declaresApi(179) &&
     (carriesZoneInside(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneInside(document)))
   ) {
-    return "A ruleset with combat components, or zones that work on whoever stands inside, stop components or ward off spells, requires schemaVersion 2 and capabilityApi 1.178 or newer";
+    return "A ruleset with combat components, or zones that work on whoever stands inside, stop components or ward off spells, requires schemaVersion 2 and capabilityApi 1.179 or newer";
   }
-  // Conditions that end when their holder attacks or casts, granted senses, giving away the unseen, 1.179.
+  // Conditions that end when their holder attacks or casts, granted senses, giving away the unseen, 1.180.
   if (
-    !declaresApi(179) &&
+    !declaresApi(180) &&
     (carriesSightExtras(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSightExtras(document)))
   ) {
-    return "A ruleset with conditions that end when their holder attacks or casts, senses given by conditions or items, conditions that give away the unseen, or item uses that cast, requires schemaVersion 2 and capabilityApi 1.179 or newer";
+    return "A ruleset with conditions that end when their holder attacks or casts, senses given by conditions or items, conditions that give away the unseen, or item uses that cast, requires schemaVersion 2 and capabilityApi 1.180 or newer";
   }
-  // Wards by base level or raised per step, save extras, creature spell components, utility uses, 1.180.
+  // Wards by base level or raised per step, save extras, creature spell components, utility uses, 1.181.
   if (
-    !declaresApi(180) &&
+    !declaresApi(181) &&
     (carriesWardsAndSaves(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWardsAndSaves(document)))
   ) {
-    return "A ruleset with wards by base level or raised by their cast, saves that say what else they are against or who passes them outright, creature spell components, or utility item uses, requires schemaVersion 2 and capabilityApi 1.180 or newer";
+    return "A ruleset with wards by base level or raised by their cast, saves that say what else they are against or who passes them outright, creature spell components, or utility item uses, requires schemaVersion 2 and capabilityApi 1.181 or newer";
   }
-  // Senses added to the holder's own, pushes, lines and cones carried and turned, 1.181.
+  // Senses added to the holder's own, pushes, lines and cones carried and turned, 1.182.
   if (
-    !declaresApi(181) &&
+    !declaresApi(182) &&
     (carriesPushAndTurn(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushAndTurn(document)))
   ) {
-    return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.181 or newer";
+    return "A ruleset with senses that add to the holder's own, actions that push, lines or cones that move with their caster and turn, or hard going only toward a caster, requires schemaVersion 2 and capabilityApi 1.182 or newer";
   }
-  // Creature zones and ground, and areas until the next lair action, 1.323.
+  // Creature zones and ground, and areas until the next lair action, 1.324.
   if (
-    !declaresApi(323) &&
+    !declaresApi(324) &&
     (carriesCreatureZones(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureZones(document)))
   ) {
-    return "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.323 or newer";
+    return "A ruleset with a creature action that leaves an area standing or changes the ground, or an area that lasts until the next lair action, requires schemaVersion 2 and capabilityApi 1.324 or newer";
   }
-  // Creatures called into the fight, 1.324.
-  if (
-    !declaresApi(324) &&
-    (carriesCalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls(document)))
-  ) {
-    return "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.324 or newer";
-  }
-  // Drawn toward a creature, 1.325.
+  // Creatures called into the fight, 1.325.
   if (
     !declaresApi(325) &&
+    (carriesCalls(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls(document)))
+  ) {
+    return "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.325 or newer";
+  }
+  // Drawn toward a creature, 1.326.
+  if (
+    !declaresApi(326) &&
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
-    return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.325 or newer";
+    return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
   }
-  // Icons named by a catalog entry or a condition, 1.337.
-  if (!declaresApi(337) && carriesArtIcon(ruleset)) {
-    return "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.337 or newer";
-  }
-  // Rest dice over several pools, 1.336.
+  // Icons named by a catalog entry or a condition, 1.338.
   if (
-    !declaresApi(336) &&
+    !declaresApi(338) &&
+    (carriesArtIcon(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesArtIcon(document)))
+  ) {
+    return "A ruleset with an icon on a catalog entry or a condition requires schemaVersion 2 and capabilityApi 1.338 or newer";
+  }
+  // Rest dice over several pools, 1.337.
+  if (
+    !declaresApi(337) &&
     Array.isArray(plainRecord(ruleset)?.rests) &&
     (plainRecord(ruleset)!.rests as unknown[]).some((rest) => Array.isArray(plainRecord(rest)?.dice))
   ) {
-    return "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.336 or newer";
+    return "A ruleset with a rest that spends dice from several pools requires schemaVersion 2 and capabilityApi 1.337 or newer";
   }
-  // A broken concentration that picks one of a list of lair actions, 1.335.
-  if (!declaresApi(335) && carriesBrokenLairList(ruleset)) {
-    return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.335 or newer";
-  }
-  // Dice a rest spends to heal, 1.334.
+  // A broken concentration that picks one of a list of lair actions, 1.336.
   if (
-    !declaresApi(334) &&
+    !declaresApi(336) &&
+    (carriesBrokenLairList(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBrokenLairList(document)))
+  ) {
+    return "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.336 or newer";
+  }
+  // Dice a rest spends to heal, 1.335.
+  if (
+    !declaresApi(335) &&
     Array.isArray(plainRecord(ruleset)?.rests) &&
     (plainRecord(ruleset)!.rests as unknown[]).some((rest) => plainRecord(rest)?.dice !== undefined)
   ) {
-    return "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.334 or newer";
+    return "A ruleset with a rest that spends dice to heal requires schemaVersion 2 and capabilityApi 1.335 or newer";
   }
-  // An item use that gives more of the turn, 1.333.
+  // An item use that gives more of the turn, 1.334.
   if (
-    !declaresApi(333) &&
+    !declaresApi(334) &&
     (carriesItemGives(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemGives(document)))
   ) {
-    return "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.333 or newer";
+    return "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.334 or newer";
   }
-  // A lasting area with its own art on the board, 1.332.
+  // A lasting area with its own art on the board, 1.333.
   if (
-    !declaresApi(332) &&
+    !declaresApi(333) &&
     (carriesBoardArt(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBoardArt(document)))
   ) {
-    return "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.332 or newer";
+    return "A ruleset with a lasting area drawn with its own art on a fight's board requires schemaVersion 2 and capabilityApi 1.333 or newer";
   }
-  // A use only beside a prop, or occupants that stay, 1.331.
+  // A use only beside a prop, or occupants that stay, 1.332.
   if (
-    !declaresApi(331) &&
+    !declaresApi(332) &&
     (carriesNearUseOrFall(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesNearUseOrFall(document)))
   ) {
-    return "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.331 or newer";
+    return "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.332 or newer";
   }
-  // Near a prop, around props, an aura that feeds, 1.330.
+  // Near a prop, around props, an aura that feeds, 1.331.
   if (
-    !declaresApi(330) &&
+    !declaresApi(331) &&
     (carriesPropsAndFeeding(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesPropsAndFeeding(document)))
   ) {
-    return "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.330 or newer";
+    return "A ruleset with a condition held only near a prop, an area around props, or an aura that feeds on the felled requires schemaVersion 2 and capabilityApi 1.331 or newer";
   }
-  // Save difficulty moved by a condition, 1.327.
+  // Save difficulty moved by a condition, 1.328.
   if (
-    !declaresApi(327) &&
+    !declaresApi(328) &&
     (carriesSaveDifficulty(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveDifficulty(document)))
   ) {
-    return "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.327 or newer";
+    return "A ruleset with a condition that moves the difficulty of the saves its holder calls for requires schemaVersion 2 and capabilityApi 1.328 or newer";
   }
-  // Lair timing, 1.326.
+  // Lair timing, 1.327.
   if (
-    !declaresApi(326) &&
+    !declaresApi(327) &&
     (carriesLairTiming(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLairTiming(document)))
   ) {
-    return "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.326 or newer";
+    return "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.327 or newer";
   }
-  // Blows that reap, 1.322.
+  // Blows that reap, 1.323.
   if (
-    !declaresApi(322) &&
+    !declaresApi(323) &&
     (carriesReaps(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesReaps(document)))
   ) {
-    return "A ruleset with a blow that reaps requires schemaVersion 2 and capabilityApi 1.322 or newer";
+    return "A ruleset with a blow that reaps requires schemaVersion 2 and capabilityApi 1.323 or newer";
   }
-  // Item uses taken as reactions, 1.321.
+  // Item uses taken as reactions, 1.322.
   if (
-    !declaresApi(321) &&
+    !declaresApi(322) &&
     (carriesItemReactions(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemReactions(document)))
   ) {
-    return "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.321 or newer";
+    return "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.322 or newer";
   }
-  // Growing auras, holds with a most, tearing free and hanging on, 1.319.
+  // Growing auras, holds with a most, tearing free and hanging on, 1.320.
   if (
-    !declaresApi(319) &&
+    !declaresApi(320) &&
     (carriesBossAsks(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBossAsks(document)))
   ) {
-    return "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.319 or newer";
+    return "A ruleset with an aura that grows, lingers or harms on its targets' turns, a hold with a most, tearing free or hanging on requires schemaVersion 2 and capabilityApi 1.320 or newer";
   }
-  // Shade and chimes, 1.318.
+  // Shade and chimes, 1.319.
   if (
-    !declaresApi(318) &&
+    !declaresApi(319) &&
     (carriesShadeOrAlerts(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesShadeOrAlerts(document)))
   ) {
-    return "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.318 or newer";
+    return "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.319 or newer";
   }
-  // Clearing growth, 1.317.
+  // Clearing growth, 1.318.
   if (
-    !declaresApi(317) &&
+    !declaresApi(318) &&
     (carriesClears(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesClears(document)))
   ) {
-    return "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.317 or newer";
+    return "A ruleset with an entry or an item use that clears growth requires schemaVersion 2 and capabilityApi 1.318 or newer";
   }
-  // Legendary Resistance, 1.316.
+  // Legendary Resistance, 1.317.
   if (
-    !declaresApi(316) &&
+    !declaresApi(317) &&
     (carriesLegendaryResistance(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryResistance(document)))
   ) {
-    return "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.316 or newer";
+    return "A ruleset with a creature's legendary resistances or an item use's targetsUpTo requires schemaVersion 2 and capabilityApi 1.317 or newer";
   }
-  // Lair actions, 1.314.
+  // Lair actions, 1.315.
   if (
-    !declaresApi(314) &&
+    !declaresApi(315) &&
     (carriesLair(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesLair(document)))
   ) {
-    return "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.314 or newer";
+    return "A ruleset with a creature's lair actions requires schemaVersion 2 and capabilityApi 1.315 or newer";
   }
-  // Resilient Sphere, 1.313.
+  // Resilient Sphere, 1.314.
   if (
-    !declaresApi(313) &&
+    !declaresApi(314) &&
     (carriesSphere(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSphere(document)))
   ) {
-    return "A ruleset with a condition that shuts its holder away from everybody else, or an entry aimed only at creatures up to a size, requires schemaVersion 2 and capabilityApi 1.313 or newer";
+    return "A ruleset with a condition that shuts its holder away from everybody else, or an entry aimed only at creatures up to a size, requires schemaVersion 2 and capabilityApi 1.314 or newer";
   }
-  // Maze, Expeditious Retreat, Eyebite's choices again, and the hammer's +4, 1.312.
+  // Maze, Expeditious Retreat, Eyebite's choices again, and the hammer's +4, 1.313.
   if (
-    !declaresApi(312) &&
+    !declaresApi(313) &&
     (carriesLeftovers308(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLeftovers308(document)))
   ) {
-    return "A ruleset with a creature sent away that still takes turns, a condition ended by a check, standard actions taken with a use, a casting's choices made again, an ability add capped, or an item bound only with others worn requires schemaVersion 2 and capabilityApi 1.312 or newer";
+    return "A ruleset with a creature sent away that still takes turns, a condition ended by a check, standard actions taken with a use, a casting's choices made again, an ability add capped, or an item bound only with others worn requires schemaVersion 2 and capabilityApi 1.313 or newer";
   }
-  // A hammer's thunderclap, 1.311.
+  // A hammer's thunderclap, 1.312.
   if (
-    !declaresApi(311) &&
+    !declaresApi(312) &&
     (carriesThunderclap(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesThunderclap(document)))
   ) {
-    return "A ruleset with a weapon mode whose hit claps around the one it hit requires schemaVersion 2 and capabilityApi 1.311 or newer";
+    return "A ruleset with a weapon mode whose hit claps around the one it hit requires schemaVersion 2 and capabilityApi 1.312 or newer";
   }
-  // Scroll motes, Consume Life and camouflage that wears off, 1.310.
+  // Scroll motes, Consume Life and camouflage that wears off, 1.311.
   if (
-    !declaresApi(310) &&
+    !declaresApi(311) &&
     (carriesLeftovers306(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLeftovers306(document)))
   ) {
-    return "A ruleset with an item use that puts conditions on its reader, creature actions that slay the dying, or conditions a rule ends when their holder moves or acts requires schemaVersion 2 and capabilityApi 1.310 or newer";
+    return "A ruleset with an item use that puts conditions on its reader, creature actions that slay the dying, or conditions a rule ends when their holder moves or acts requires schemaVersion 2 and capabilityApi 1.311 or newer";
   }
-  // Repeats of a concentration entry, and conditions that end at a distance, 1.309.
+  // Repeats of a concentration entry, and conditions that end at a distance, 1.310.
   if (
-    !declaresApi(309) &&
+    !declaresApi(310) &&
     (carriesRepeats(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesRepeats(document)))
   ) {
-    return "A ruleset with an entry made again while its user concentrates on it, or a condition that ends at a distance from whoever put it on, requires schemaVersion 2 and capabilityApi 1.309 or newer";
+    return "A ruleset with an entry made again while its user concentrates on it, or a condition that ends at a distance from whoever put it on, requires schemaVersion 2 and capabilityApi 1.310 or newer";
   }
-  // Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, a ritual-bound weapon, 1.308.
+  // Hide in Plain Sight's needs, Feral Senses, surprise from a hidden start, a ritual-bound weapon, 1.309.
   if (
-    !declaresApi(308) &&
+    !declaresApi(309) &&
     (carriesHidingNeeds(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesHidingNeeds(document)))
   ) {
-    return "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.308 or newer";
+    return "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.309 or newer";
   }
-  // Beams and darts on an item's use, 1.307.
+  // Beams and darts on an item's use, 1.308.
   if (
-    !declaresApi(307) &&
+    !declaresApi(308) &&
     (carriesItemBeams(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemBeams(document)))
   ) {
-    return "A ruleset with an item use whose targets grow with the sheet, or that takes the same target more than once, requires schemaVersion 2 and capabilityApi 1.307 or newer";
+    return "A ruleset with an item use whose targets grow with the sheet, or that takes the same target more than once, requires schemaVersion 2 and capabilityApi 1.308 or newer";
   }
-  // Creature concentration, ending on a named action, and conditions on a use's own user, 1.306.
+  // Creature concentration, ending on a named action, and conditions on a use's own user, 1.307.
   if (
-    !declaresApi(306) &&
+    !declaresApi(307) &&
     (carriesSelfHeld(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSelfHeld(document)))
   ) {
-    return "A ruleset with creature actions held by concentration, conditions ended by using a named action, or uses that put conditions on their own user requires schemaVersion 2 and capabilityApi 1.306 or newer";
+    return "A ruleset with creature actions held by concentration, conditions ended by using a named action, or uses that put conditions on their own user requires schemaVersion 2 and capabilityApi 1.307 or newer";
   }
-  // Weapons put in hand, and amends that add typed damage or strikes, 1.305.
+  // Weapons put in hand, and amends that add typed damage or strikes, 1.306.
   if (
-    !declaresApi(305) &&
+    !declaresApi(306) &&
     (carriesConjures(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesConjures(document)))
   ) {
-    return "A ruleset with weapons put in hand, or amends that add damage of a type or strikes, requires schemaVersion 2 and capabilityApi 1.305 or newer";
+    return "A ruleset with weapons put in hand, or amends that add damage of a type or strikes, requires schemaVersion 2 and capabilityApi 1.306 or newer";
   }
-  // Targets that grow with the sheet, or the same target again, 1.304.
+  // Targets that grow with the sheet, or the same target again, 1.305.
   if (
-    !declaresApi(304) &&
+    !declaresApi(305) &&
     (carriesBeams(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBeams(document)))
   ) {
-    return "A ruleset with targets that grow with the sheet, or the same target more than once, requires schemaVersion 2 and capabilityApi 1.304 or newer";
+    return "A ruleset with targets that grow with the sheet, or the same target more than once, requires schemaVersion 2 and capabilityApi 1.305 or newer";
   }
-  // Uses once a creature until a rest, 1.303.
+  // Uses once a creature until a rest, 1.304.
   if (
-    !declaresApi(303) &&
+    !declaresApi(304) &&
     (carriesOncePerTarget(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesOncePerTarget(document)))
   ) {
-    return "A ruleset with uses once a creature until a rest requires schemaVersion 2 and capabilityApi 1.303 or newer";
+    return "A ruleset with uses once a creature until a rest requires schemaVersion 2 and capabilityApi 1.304 or newer";
   }
-  // Uses only in some light, and endings on moving or acting, 1.302.
+  // Uses only in some light, and endings on moving or acting, 1.303.
   if (
-    !declaresApi(302) &&
+    !declaresApi(303) &&
     (carriesShadowUses(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesShadowUses(document)))
   ) {
-    return "A ruleset with uses only in some light, or conditions that moving or acting ends, requires schemaVersion 2 and capabilityApi 1.302 or newer";
+    return "A ruleset with uses only in some light, or conditions that moving or acting ends, requires schemaVersion 2 and capabilityApi 1.303 or newer";
   }
-  // What changes another entry each time it is used, 1.301.
+  // What changes another entry each time it is used, 1.302.
   if (
-    !declaresApi(301) &&
+    !declaresApi(302) &&
     (carriesAmends(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesAmends(document)))
   ) {
-    return "A ruleset with entries that change another entry each time it is used requires schemaVersion 2 and capabilityApi 1.301 or newer";
+    return "A ruleset with entries that change another entry each time it is used requires schemaVersion 2 and capabilityApi 1.302 or newer";
   }
-  // Zones carried with somebody, and copies set down apart, 1.300.
+  // Zones carried with somebody, and copies set down apart, 1.301.
   if (
-    !declaresApi(300) &&
+    !declaresApi(301) &&
     (carriesHeldZones(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeldZones(document)))
   ) {
-    return "A ruleset with zones carried with somebody, or copies set down apart, requires schemaVersion 2 and capabilityApi 1.300 or newer";
+    return "A ruleset with zones carried with somebody, or copies set down apart, requires schemaVersion 2 and capabilityApi 1.301 or newer";
   }
-  // A higher cost's more only every so many steps, 1.299.
+  // A higher cost's more only every so many steps, 1.300.
   if (
-    !declaresApi(299) &&
+    !declaresApi(300) &&
     (carriesStepsEvery(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesStepsEvery(document)))
   ) {
-    return "A ruleset with what a higher cost adds only every so many steps requires schemaVersion 2 and capabilityApi 1.299 or newer";
+    return "A ruleset with what a higher cost adds only every so many steps requires schemaVersion 2 and capabilityApi 1.300 or newer";
   }
-  // Darkness against spell light, magical light, and a dispelling reach, 1.298.
+  // Darkness against spell light, magical light, and a dispelling reach, 1.299.
   if (
-    !declaresApi(298) &&
+    !declaresApi(299) &&
     (carriesDarkAgainstLight(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesDarkAgainstLight(document)))
   ) {
-    return "A ruleset with darkness that puts out spell light, magical light, or a dispelling reach, requires schemaVersion 2 and capabilityApi 1.298 or newer";
+    return "A ruleset with darkness that puts out spell light, magical light, or a dispelling reach, requires schemaVersion 2 and capabilityApi 1.299 or newer";
   }
-  // A creature's light out under a condition, and sunlight, 1.297.
+  // A creature's light out under a condition, and sunlight, 1.298.
   if (
-    !declaresApi(297) &&
+    !declaresApi(298) &&
     (carriesSunAndHiddenLight(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSunAndHiddenLight(document)))
   ) {
-    return "A ruleset with creatures whose light goes out under a condition, or light that is sunlight, requires schemaVersion 2 and capabilityApi 1.297 or newer";
+    return "A ruleset with creatures whose light goes out under a condition, or light that is sunlight, requires schemaVersion 2 and capabilityApi 1.298 or newer";
   }
-  // Zones that shed light or end magical darkness, 1.296.
+  // Zones that shed light or end magical darkness, 1.297.
   if (
-    !declaresApi(296) &&
+    !declaresApi(297) &&
     (carriesLightZones(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLightZones(document)))
   ) {
-    return "A ruleset with zones that shed light or end magical darkness, or light that shows the invisible, requires schemaVersion 2 and capabilityApi 1.296 or newer";
+    return "A ruleset with zones that shed light or end magical darkness, or light that shows the invisible, requires schemaVersion 2 and capabilityApi 1.297 or newer";
   }
-  // Lights switched by creatures, and items' light while off, 1.295.
+  // Lights switched by creatures, and items' light while off, 1.296.
   if (
-    !declaresApi(295) &&
+    !declaresApi(296) &&
     (carriesLightActions(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLightActions(document)))
   ) {
-    return "A ruleset with creatures that light or put out their own light, or items that shed light while switched off, requires schemaVersion 2 and capabilityApi 1.295 or newer";
+    return "A ruleset with creatures that light or put out their own light, or items that shed light while switched off, requires schemaVersion 2 and capabilityApi 1.296 or newer";
   }
-  // A carried light's switch, 1.294.
-  if (!declaresApi(294) && carriesLightSwitch(ruleset)) {
-    return "A ruleset whose carried light has a name or a price to put out and light again requires schemaVersion 2 and capabilityApi 1.294 or newer";
+  // A carried light's switch, 1.295.
+  if (!declaresApi(295) && carriesLightSwitch(ruleset)) {
+    return "A ruleset whose carried light has a name or a price to put out and light again requires schemaVersion 2 and capabilityApi 1.295 or newer";
   }
-  // The dark, and light, 1.293.
+  // The dark, and light, 1.294.
   if (
-    !declaresApi(293) &&
+    !declaresApi(294) &&
     (carriesDarkness(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDarkness(document)))
   ) {
-    return "A ruleset whose fights are kept dark, or with things that shed light, requires schemaVersion 2 and capabilityApi 1.293 or newer";
+    return "A ruleset whose fights are kept dark, or with things that shed light, requires schemaVersion 2 and capabilityApi 1.294 or newer";
   }
-  // A creature's own modes on attacks, 1.292.
+  // A creature's own modes on attacks, 1.293.
   if (
-    !declaresApi(292) &&
+    !declaresApi(293) &&
     (carriesAttackModes(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesAttackModes(document)))
   ) {
-    return "A ruleset with creatures whose attacks are rolled twice where they stand requires schemaVersion 2 and capabilityApi 1.292 or newer";
+    return "A ruleset with creatures whose attacks are rolled twice where they stand requires schemaVersion 2 and capabilityApi 1.293 or newer";
   }
-  // Somebody's own ways of hiding and finding, 1.291.
+  // Somebody's own ways of hiding and finding, 1.292.
   if (
-    !declaresApi(291) &&
+    !declaresApi(292) &&
     (carriesHidingTraits(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesHidingTraits(document)))
   ) {
-    return "A ruleset with somebody's own ways of hiding or of finding the hidden requires schemaVersion 2 and capabilityApi 1.291 or newer";
+    return "A ruleset with somebody's own ways of hiding or of finding the hidden requires schemaVersion 2 and capabilityApi 1.292 or newer";
   }
-  // A creature's own ways of hiding and looking, 1.290.
+  // A creature's own ways of hiding and looking, 1.291.
   if (
-    !declaresApi(290) &&
+    !declaresApi(291) &&
     (carriesCreatureSeeking(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureSeeking(document)))
   ) {
-    return "A ruleset with a creature that has its own modes on checks, a printed passive Perception, or standard actions with its own budget requires schemaVersion 2 and capabilityApi 1.290 or newer";
+    return "A ruleset with a creature that has its own modes on checks, a printed passive Perception, or standard actions with its own budget requires schemaVersion 2 and capabilityApi 1.291 or newer";
   }
-  // Looking for the hidden, weighed, 1.289.
+  // Looking for the hidden, weighed, 1.290.
   if (
-    !declaresApi(289) &&
+    !declaresApi(290) &&
     (carriesSeekingModes(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSeekingModes(document)))
   ) {
-    return "A ruleset with a passive Perception that reads advantage, or a change to checks made to find somebody, requires schemaVersion 2 and capabilityApi 1.289 or newer";
+    return "A ruleset with a passive Perception that reads advantage, or a change to checks made to find somebody, requires schemaVersion 2 and capabilityApi 1.290 or newer";
   }
-  // A fog dispersed after a while, 1.288.
+  // A fog dispersed after a while, 1.289.
   if (
-    !declaresApi(288) &&
+    !declaresApi(289) &&
     (carriesSlowDispersal(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSlowDispersal(document)))
   ) {
-    return "A ruleset with a fog a wind disperses only after a while requires schemaVersion 2 and capabilityApi 1.288 or newer";
+    return "A ruleset with a fog a wind disperses only after a while requires schemaVersion 2 and capabilityApi 1.289 or newer";
   }
-  // Readying, 1.287.
+  // Readying, 1.288.
   if (
-    !declaresApi(287) &&
+    !declaresApi(288) &&
     (carriesReadying(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesReadying(document)))
   ) {
-    return "A ruleset that readies for real requires schemaVersion 2 and capabilityApi 1.287 or newer";
+    return "A ruleset that readies for real requires schemaVersion 2 and capabilityApi 1.288 or newer";
   }
-  // Hiding, Search and Detect, 1.286.
+  // Hiding, Search and Detect, 1.287.
   if (
-    !declaresApi(286) &&
+    !declaresApi(287) &&
     (carriesHiding(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesHiding(document)))
   ) {
-    return "A ruleset that hides for real, searches, or has a creature that detects requires schemaVersion 2 and capabilityApi 1.286 or newer";
+    return "A ruleset that hides for real, searches, or has a creature that detects requires schemaVersion 2 and capabilityApi 1.287 or newer";
   }
-  // A light fog, a fog the wind blows away, and that wind, 1.285.
+  // A light fog, a fog the wind blows away, and that wind, 1.286.
   if (
-    !declaresApi(285) &&
+    !declaresApi(286) &&
     (carriesLightOrWind(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLightOrWind(document)))
   ) {
-    return "A ruleset with a lightly obscuring fog, or a fog or wind that blows it away, requires schemaVersion 2 and capabilityApi 1.285 or newer";
+    return "A ruleset with a lightly obscuring fog, or a fog or wind that blows it away, requires schemaVersion 2 and capabilityApi 1.286 or newer";
   }
-  // A legendary move after what its action does, or on one speed, 1.284.
+  // A legendary move after what its action does, or on one speed, 1.285.
   if (
-    !declaresApi(284) &&
+    !declaresApi(285) &&
     (carriesMoveAfter(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesMoveAfter(document)))
   ) {
-    return "A ruleset with a legendary move after its action or on one speed requires schemaVersion 2 and capabilityApi 1.284 or newer";
+    return "A ruleset with a legendary move after its action or on one speed requires schemaVersion 2 and capabilityApi 1.285 or newer";
   }
-  // A spell cast with points, 1.283.
+  // A spell cast with points, 1.284.
   if (
-    !declaresApi(283) &&
+    !declaresApi(284) &&
     (carriesLegendaryCast(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryCast(document)))
   ) {
-    return "A ruleset with a legendary cast requires schemaVersion 2 and capabilityApi 1.283 or newer";
+    return "A ruleset with a legendary cast requires schemaVersion 2 and capabilityApi 1.284 or newer";
   }
-  // A legendary move, 1.282.
+  // A legendary move, 1.283.
   if (
-    !declaresApi(282) &&
+    !declaresApi(283) &&
     (carriesLegendaryMove(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLegendaryMove(document)))
   ) {
-    return "A ruleset with a legendary move requires schemaVersion 2 and capabilityApi 1.282 or newer";
+    return "A ruleset with a legendary move requires schemaVersion 2 and capabilityApi 1.283 or newer";
   }
-  // A burst centred on its user, 1.281.
+  // A burst centred on its user, 1.282.
   if (
-    !declaresApi(281) &&
+    !declaresApi(282) &&
     (carriesAround(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesAround(document)))
   ) {
-    return "A ruleset with a burst centred on its user requires schemaVersion 2 and capabilityApi 1.281 or newer";
+    return "A ruleset with a burst centred on its user requires schemaVersion 2 and capabilityApi 1.282 or newer";
   }
-  // A blow whose maker regains what it dealt, 1.280.
+  // A blow whose maker regains what it dealt, 1.281.
   if (
-    !declaresApi(280) &&
+    !declaresApi(281) &&
     (carriesDrain(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDrain(document)))
   ) {
-    return "A ruleset with a blow whose maker regains the damage it dealt requires schemaVersion 2 and capabilityApi 1.280 or newer";
+    return "A ruleset with a blow whose maker regains the damage it dealt requires schemaVersion 2 and capabilityApi 1.281 or newer";
   }
-  // A teleport with a strike before or after it, 1.279.
+  // A teleport with a strike before or after it, 1.280.
   if (
-    !declaresApi(279) &&
+    !declaresApi(280) &&
     (carriesTeleportStrike(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleportStrike(document)))
   ) {
-    return "A ruleset with a creature's teleport that strikes before or after it requires schemaVersion 2 and capabilityApi 1.279 or newer";
+    return "A ruleset with a creature's teleport that strikes before or after it requires schemaVersion 2 and capabilityApi 1.280 or newer";
   }
-  // Teleports out of the fight, seen passengers and smoke, 1.278.
+  // Teleports out of the fight, seen passengers and smoke, 1.279.
   if (
-    !declaresApi(278) &&
+    !declaresApi(279) &&
     (carriesTeleportExtras(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleportExtras(document)))
   ) {
-    return "A ruleset with a teleport that leaves the fight, takes along only those its user sees, or leaves smoke behind requires schemaVersion 2 and capabilityApi 1.278 or newer";
+    return "A ruleset with a teleport that leaves the fight, takes along only those its user sees, or leaves smoke behind requires schemaVersion 2 and capabilityApi 1.279 or newer";
   }
-  // Calm Emotions, 1.277.
+  // Calm Emotions, 1.278.
   if (
-    !declaresApi(277) &&
+    !declaresApi(278) &&
     (carriesCalm(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalm(document)))
   ) {
-    return "A ruleset with a save its user's side may fail, a condition that keeps its holder off a whole side, or one that ends on an attack, on harm from a catalog or on a friend harmed in sight requires schemaVersion 2 and capabilityApi 1.277 or newer";
+    return "A ruleset with a save its user's side may fail, a condition that keeps its holder off a whole side, or one that ends on an attack, on harm from a catalog or on a friend harmed in sight requires schemaVersion 2 and capabilityApi 1.278 or newer";
   }
-  // Five or six conditions put on at once, 1.276.
+  // Five or six conditions put on at once, 1.277.
   if (
-    !declaresApi(276) &&
+    !declaresApi(277) &&
     (carriesManyApplies(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesManyApplies(document)))
   ) {
-    return "A ruleset with a spell, an item or a creature action that puts on more than four conditions requires schemaVersion 2 and capabilityApi 1.276 or newer";
+    return "A ruleset with a spell, an item or a creature action that puts on more than four conditions requires schemaVersion 2 and capabilityApi 1.277 or newer";
   }
-  // Teleports, 1.275.
+  // Teleports, 1.276.
   if (
-    !declaresApi(275) &&
+    !declaresApi(276) &&
     (carriesTeleports(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleports(document)))
   ) {
-    return "A ruleset with a spell, an item or a creature that teleports requires schemaVersion 2 and capabilityApi 1.275 or newer";
+    return "A ruleset with a spell, an item or a creature that teleports requires schemaVersion 2 and capabilityApi 1.276 or newer";
   }
-  // A condition held off near its source or by another condition, 1.274.
-  if (!declaresApi(274) && carriesHeldOff(ruleset)) {
-    return "A ruleset with a condition that holds while its source is near as well as in sight, or one condition that holds others off, requires schemaVersion 2 and capabilityApi 1.274 or newer";
+  // A condition held off near its source or by another condition, 1.275.
+  if (!declaresApi(275) && carriesHeldOff(ruleset)) {
+    return "A ruleset with a condition that holds while its source is near as well as in sight, or one condition that holds others off, requires schemaVersion 2 and capabilityApi 1.275 or newer";
   }
-  // Numbers fixed off a condition's applier, Sympathy's reach and save, a scroll's chosen kind, 1.273.
+  // Numbers fixed off a condition's applier, Sympathy's reach and save, a scroll's chosen kind, 1.274.
   if (
-    !declaresApi(273) &&
+    !declaresApi(274) &&
     (carriesSourceNumbers(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSourceNumbers(document)))
   ) {
-    return "A ruleset with a condition put on with a value off its applier, temporary points a condition gives each turn, an aura save against its applier's difficulty, a save on harm from a condition's source, a walk kept within reach, or a kind chosen as an item is used, requires schemaVersion 2 and capabilityApi 1.273 or newer";
+    return "A ruleset with a condition put on with a value off its applier, temporary points a condition gives each turn, an aura save against its applier's difficulty, a save on harm from a condition's source, a walk kept within reach, or a kind chosen as an item is used, requires schemaVersion 2 and capabilityApi 1.274 or newer";
   }
-  // A weapon's charges spent on its hits, 1.272.
+  // A weapon's charges spent on its hits, 1.273.
   if (
-    !declaresApi(272) &&
+    !declaresApi(273) &&
     (carriesChargedHits(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesChargedHits(document)))
   ) {
-    return "A ruleset with a weapon whose charges are spent on its hits requires schemaVersion 2 and capabilityApi 1.272 or newer";
+    return "A ruleset with a weapon whose charges are spent on its hits requires schemaVersion 2 and capabilityApi 1.273 or newer";
   }
-  // An item that becomes another on its last charge, 1.271.
+  // An item that becomes another on its last charge, 1.272.
   if (
-    !declaresApi(271) &&
+    !declaresApi(272) &&
     (carriesBecomes(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBecomes(document)))
   ) {
-    return "A ruleset with an item that becomes another when its last charge is spent requires schemaVersion 2 and capabilityApi 1.271 or newer";
+    return "A ruleset with an item that becomes another when its last charge is spent requires schemaVersion 2 and capabilityApi 1.272 or newer";
   }
-  // An item's first use named, a use plus its holder's value, pushes a charge, charges back, 1.270.
+  // An item's first use named, a use plus its holder's value, pushes a charge, charges back, 1.271.
   if (
-    !declaresApi(270) &&
+    !declaresApi(271) &&
     (carriesStaffExtras(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesStaffExtras(document)))
   ) {
-    return "A ruleset with an item whose first use is named, an item use adding a value off its holder's sheet, more charges that push farther, or a last charge's die that gives charges back, requires schemaVersion 2 and capabilityApi 1.270 or newer";
+    return "A ruleset with an item whose first use is named, an item use adding a value off its holder's sheet, more charges that push farther, or a last charge's die that gives charges back, requires schemaVersion 2 and capabilityApi 1.271 or newer";
   }
-  // A creature type chosen as it is used, auras by that kind or by sight, saves from far away, 1.269.
+  // A creature type chosen as it is used, auras by that kind or by sight, saves from far away, 1.270.
   if (
-    !declaresApi(269) &&
+    !declaresApi(270) &&
     (carriesKindChoice(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesKindChoice(document)))
   ) {
-    return "A ruleset with a catalog entry whose creature type is chosen as it is used, an aura reaching only that kind or whoever sees its holder, or a save that ends a condition only from far enough away, requires schemaVersion 2 and capabilityApi 1.269 or newer";
+    return "A ruleset with a catalog entry whose creature type is chosen as it is used, an aura reaching only that kind or whoever sees its holder, or a save that ends a condition only from far enough away, requires schemaVersion 2 and capabilityApi 1.270 or newer";
   }
-  // Dropping, keeping out, a turn freed when stuck, saves out of sight, destroying by tier, 1.265.
-  // Item uses read off the holder's sheet, and more charges spent for more, 1.268.
+  // Dropping, keeping out, a turn freed when stuck, saves out of sight, destroying by tier, 1.266.
+  // Item uses read off the holder's sheet, and more charges spent for more, 1.269.
   if (
-    !declaresApi(268) &&
+    !declaresApi(269) &&
     (carriesStaffUses(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesStaffUses(document)))
   ) {
-    return "A ruleset with more than 160 conditions, an aura save whose holder's aura stays off once what it put on ends, an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.268 or newer";
+    return "A ruleset with more than 160 conditions, an aura save whose holder's aura stays off once what it put on ends, an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.269 or newer";
   }
   // Auras by target kind or on whoever holds its holder, gaze margins and averting, saves leaning in
-  // sight, 1.267.
+  // sight, 1.268.
   if (
-    !declaresApi(267) &&
+    !declaresApi(268) &&
     (carriesGazes(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesGazes(document)))
   ) {
-    return "A ruleset with auras reaching only some kinds of creature or whoever holds its holder, an aura save worse when failed by enough or one whose holder's eyes can be averted, or a save rolled leaning while its source is in sight, requires schemaVersion 2 and capabilityApi 1.267 or newer";
+    return "A ruleset with auras reaching only some kinds of creature or whoever holds its holder, an aura save worse when failed by enough or one whose holder's eyes can be averted, or a save rolled leaning while its source is in sight, requires schemaVersion 2 and capabilityApi 1.268 or newer";
   }
   // Senses any one of which serves, targets near each other, areas growing with cost, more item
-  // uses, and a stat block's held things, 1.266.
+  // uses, and a stat block's held things, 1.267.
   if (
-    !declaresApi(266) &&
+    !declaresApi(267) &&
     (carriesTargetingMore(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesTargetingMore(document)))
   ) {
-    return "A ruleset with senses any one of which serves, targets kept near each other, an area that grows with its cost, more uses on an item, or things a stat block holds, requires schemaVersion 2 and capabilityApi 1.266 or newer";
+    return "A ruleset with senses any one of which serves, targets kept near each other, an area that grows with its cost, more uses on an item, or things a stat block holds, requires schemaVersion 2 and capabilityApi 1.267 or newer";
   }
   if (
-    !declaresApi(265) &&
+    !declaresApi(266) &&
     (carriesBehaviorMore(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesBehaviorMore(document)))
   ) {
-    return "A ruleset with a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun stuck, a save rolled only out of sight, or a condition that destroys by threat tier, requires schemaVersion 2 and capabilityApi 1.265 or newer";
+    return "A ruleset with a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun stuck, a save rolled only out of sight, or a condition that destroys by threat tier, requires schemaVersion 2 and capabilityApi 1.266 or newer";
   }
-  // Auras heard, harming or asking saves; save changes against what a catalog casts, 1.264.
+  // Auras heard, harming or asking saves; save changes against what a catalog casts, 1.265.
   if (
-    !declaresApi(264) &&
+    !declaresApi(265) &&
     (carriesAuraTurns(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesAuraTurns(document)))
   ) {
-    return "A ruleset with auras that need senses, harm as their holder's turn starts or ask for a save, or saves changed against what a catalog casts, requires schemaVersion 2 and capabilityApi 1.264 or newer";
+    return "A ruleset with auras that need senses, harm as their holder's turn starts or ask for a save, or saves changed against what a catalog casts, requires schemaVersion 2 and capabilityApi 1.265 or newer";
   }
-  // What a condition makes its holder do with their turn, and saves spent an action on, 1.263.
+  // What a condition makes its holder do with their turn, and saves spent an action on, 1.264.
   if (
-    !declaresApi(263) &&
+    !declaresApi(264) &&
     (carriesBehavior(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesBehavior(document)))
   ) {
-    return "A ruleset with a condition that decides its holder's turn, or a save spent an action on, requires schemaVersion 2 and capabilityApi 1.263 or newer";
+    return "A ruleset with a condition that decides its holder's turn, or a save spent an action on, requires schemaVersion 2 and capabilityApi 1.264 or newer";
   }
-  // Auras, and conditions kept on through a fight, 1.262.
+  // Auras, and conditions kept on through a fight, 1.263.
   if (
-    !declaresApi(262) &&
+    !declaresApi(263) &&
     (carriesAuras(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesAuras(document)))
   ) {
-    return "A ruleset with auras on a condition, or conditions kept on through a fight, requires schemaVersion 2 and capabilityApi 1.262 or newer";
+    return "A ruleset with auras on a condition, or conditions kept on through a fight, requires schemaVersion 2 and capabilityApi 1.263 or newer";
   }
-  // Qualities on a stat block's action, 1.261.
+  // Qualities on a stat block's action, 1.262.
   if (
-    !declaresApi(261) &&
+    !declaresApi(262) &&
     (carriesActionQualities(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesActionQualities(document)))
   ) {
-    return "A ruleset with qualities on a creature's action requires schemaVersion 2 and capabilityApi 1.261 or newer";
+    return "A ruleset with qualities on a creature's action requires schemaVersion 2 and capabilityApi 1.262 or newer";
   }
   // Disease stages: onDamaged, expires, curedOnlyBy, restoredWhenCured, nonmagical heal block,
-  // ends on a stat block's action, 1.260.
+  // ends on a stat block's action, 1.261.
   if (
-    !declaresApi(260) &&
+    !declaresApi(261) &&
     (carriesDiseaseStages(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesDiseaseStages(document)))
   ) {
-    return "A ruleset with conditions brought on by damage, onsets that turn into another, cures only some level ends, rest losses a cure gives back, heals only magic gets through, or cures on a creature's action requires schemaVersion 2 and capabilityApi 1.260 or newer";
+    return "A ruleset with conditions brought on by damage, onsets that turn into another, cures only some level ends, rest losses a cure gives back, heals only magic gets through, or cures on a creature's action requires schemaVersion 2 and capabilityApi 1.261 or newer";
   }
-  // A condition that lowers a maximum on a rest, 1.259.
+  // A condition that lowers a maximum on a rest, 1.260.
   if (
-    !declaresApi(259) &&
+    !declaresApi(260) &&
     (carriesConditionRests(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesConditionRests(document)))
   ) {
-    return "A ruleset with conditions that lower a maximum on a rest requires schemaVersion 2 and capabilityApi 1.259 or newer";
+    return "A ruleset with conditions that lower a maximum on a rest requires schemaVersion 2 and capabilityApi 1.260 or newer";
   }
-  // A rescue on an item's use, 1.258.
+  // A rescue on an item's use, 1.259.
   if (
-    !declaresApi(258) &&
+    !declaresApi(259) &&
     (carriesItemRescues(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemRescues(document)))
   ) {
-    return "A ruleset with rescues on an item's use requires schemaVersion 2 and capabilityApi 1.258 or newer";
+    return "A ruleset with rescues on an item's use requires schemaVersion 2 and capabilityApi 1.259 or newer";
   }
-  // Condition kinds and counted saves, 1.257.
+  // Condition kinds and counted saves, 1.258.
   if (
-    !declaresApi(257) &&
+    !declaresApi(258) &&
     (carriesDiseases(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDiseases(document)))
   ) {
-    return "A ruleset with condition kinds, or saves counted to end a condition or to worsen it, requires schemaVersion 2 and capabilityApi 1.257 or newer";
+    return "A ruleset with condition kinds, or saves counted to end a condition or to worsen it, requires schemaVersion 2 and capabilityApi 1.258 or newer";
   }
-  // Dice off checks and damage, narrowed or budgeted rescues, an item's half on a miss, 1.256.
+  // Dice off checks and damage, narrowed or budgeted rescues, an item's half on a miss, 1.257.
   if (
-    !declaresApi(256) &&
+    !declaresApi(257) &&
     (carriesRollAnswers(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesRollAnswers(document)))
   ) {
-    return "A ruleset with answers taking dice off checks or damage, rescues narrowed to some saves or spending a budget, or item uses dealing half on a miss, requires schemaVersion 2 and capabilityApi 1.256 or newer";
+    return "A ruleset with answers taking dice off checks or damage, rescues narrowed to some saves or spending a budget, or item uses dealing half on a miss, requires schemaVersion 2 and capabilityApi 1.257 or newer";
   }
-  // Rescues of a holder's own, entries never on their user, conditions one at a time, 1.255.
+  // Rescues of a holder's own, entries never on their user, conditions one at a time, 1.256.
   if (
-    !declaresApi(255) &&
+    !declaresApi(256) &&
     (carriesOwnRescues(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesOwnRescues(document)))
   ) {
-    return "A ruleset with rescues counting a d20 as 20 or adding a holder's own die, entries never on their user, or conditions one of a kind at a time, requires schemaVersion 2 and capabilityApi 1.255 or newer";
+    return "A ruleset with rescues counting a d20 as 20 or adding a holder's own die, entries never on their user, or conditions one of a kind at a time, requires schemaVersion 2 and capabilityApi 1.256 or newer";
   }
-  // A miss dealing half, or a condition harming more at a higher cost, 1.254.
+  // A miss dealing half, or a condition harming more at a higher cost, 1.255.
   if (
-    !declaresApi(254) &&
+    !declaresApi(255) &&
     (carriesAcidArrow(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesAcidArrow(document)))
   ) {
-    return "A ruleset with entries dealing half on a miss, or conditions harming more at a higher cost, requires schemaVersion 2 and capabilityApi 1.254 or newer";
+    return "A ruleset with entries dealing half on a miss, or conditions harming more at a higher cost, requires schemaVersion 2 and capabilityApi 1.255 or newer";
   }
-  // An entry changing how another is used, 1.252.
+  // An entry changing how another is used, 1.253.
   if (
-    !declaresApi(252) &&
+    !declaresApi(253) &&
     (carriesMetamagic(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesMetamagic(document)))
   ) {
-    return "A ruleset with entries that change how another is used requires schemaVersion 2 and capabilityApi 1.252 or newer";
+    return "A ruleset with entries that change how another is used requires schemaVersion 2 and capabilityApi 1.253 or newer";
   }
-  // An entry giving back to a pool, a slot past its maximum, 1.251.
+  // An entry giving back to a pool, a slot past its maximum, 1.252.
   if (
-    !declaresApi(251) &&
+    !declaresApi(252) &&
     (carriesFontOfMagic(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesFontOfMagic(document)))
   ) {
-    return "A ruleset with entries that give back to a pool, or past its maximum, requires schemaVersion 2 and capabilityApi 1.251 or newer";
+    return "A ruleset with entries that give back to a pool, or past its maximum, requires schemaVersion 2 and capabilityApi 1.252 or newer";
   }
-  // A heal spending as many uses as its user chooses, 1.250.
+  // A heal spending as many uses as its user chooses, 1.251.
   if (
-    !declaresApi(250) &&
+    !declaresApi(251) &&
     (carriesUsesChosen(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesUsesChosen(document)))
   ) {
-    return "A ruleset with heals that spend as many uses as their user chooses requires schemaVersion 2 and capabilityApi 1.250 or newer";
+    return "A ruleset with heals that spend as many uses as their user chooses requires schemaVersion 2 and capabilityApi 1.251 or newer";
   }
-  // Dice off a roll that hit, a half save evaded, 1.249.
+  // Dice off a roll that hit, a half save evaded, 1.250.
   if (
-    !declaresApi(249) &&
+    !declaresApi(250) &&
     (carriesCuttingWords(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCuttingWords(document)))
   ) {
-    return "A ruleset with answers that take dice off a roll that hit, or saves evaded, requires schemaVersion 2 and capabilityApi 1.249 or newer";
+    return "A ruleset with answers that take dice off a roll that hit, or saves evaded, requires schemaVersion 2 and capabilityApi 1.250 or newer";
   }
-  // A die added once a roll falls short, a failed roll rolled again or turned, 1.248.
+  // A die added once a roll falls short, a failed roll rolled again or turned, 1.249.
   if (
-    !declaresApi(248) &&
+    !declaresApi(249) &&
     (carriesRescue(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesRescue(document)))
   ) {
-    return "A ruleset with changes held back until a roll falls short, or entries spent on a failed roll, requires schemaVersion 2 and capabilityApi 1.248 or newer";
+    return "A ruleset with changes held back until a roll falls short, or entries spent on a failed roll, requires schemaVersion 2 and capabilityApi 1.249 or newer";
   }
-  // A hit answered for a strike from one budget, one answer of a group per hit, 1.247.
+  // A hit answered for a strike from one budget, one answer of a group per hit, 1.248.
   if (
-    !declaresApi(247) &&
+    !declaresApi(248) &&
     (carriesOpenHand(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesOpenHand(document)))
   ) {
-    return "A ruleset with answers to a hit by a strike from one budget, or one answer of a group per hit, requires schemaVersion 2 and capabilityApi 1.247 or newer";
+    return "A ruleset with answers to a hit by a strike from one budget, or one answer of a group per hit, requires schemaVersion 2 and capabilityApi 1.248 or newer";
   }
-  // Before the first attack, attacks narrowed to a kind of blow, more dice on a critical, 1.246.
+  // Before the first attack, attacks narrowed to a kind of blow, more dice on a critical, 1.247.
   if (
-    !declaresApi(246) &&
+    !declaresApi(247) &&
     (carriesReckless(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesReckless(document)))
   ) {
-    return "A ruleset with uses offered only before the holder's first attack, changes to attacks narrowed to a kind of blow, or more dice on a critical requires schemaVersion 2 and capabilityApi 1.246 or newer";
+    return "A ruleset with uses offered only before the holder's first attack, changes to attacks narrowed to a kind of blow, or more dice on a critical requires schemaVersion 2 and capabilityApi 1.247 or newer";
   }
-  // The attack action taken with a held weapon matched by tags, 1.245.
+  // The attack action taken with a held weapon matched by tags, 1.246.
   if (
-    !declaresApi(245) &&
+    !declaresApi(246) &&
     (carriesAfterAttackItems(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesAfterAttackItems(document)))
   ) {
-    return "A ruleset with entries or grants that come after the attack action taken with weapons matched by tags requires schemaVersion 2 and capabilityApi 1.245 or newer";
+    return "A ruleset with entries or grants that come after the attack action taken with weapons matched by tags requires schemaVersion 2 and capabilityApi 1.246 or newer";
   }
-  // Several uses at once, a failed save to 0, hits by named attacks, harm as a condition ends, 1.244.
+  // Several uses at once, a failed save to 0, hits by named attacks, harm as a condition ends, 1.245.
   if (
-    !declaresApi(244) &&
+    !declaresApi(245) &&
     (carriesQuiveringPalm(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesQuiveringPalm(document)))
   ) {
-    return "A ruleset with uses that spend several uses at once or drop a target that fails its save to 0, reactions to hits by named attacks, or conditions that harm as they end, requires schemaVersion 2 and capabilityApi 1.244 or newer";
+    return "A ruleset with uses that spend several uses at once or drop a target that fails its save to 0, reactions to hits by named attacks, or conditions that harm as they end, requires schemaVersion 2 and capabilityApi 1.245 or newer";
   }
-  // Held weapons matched by name or tags, what is wielded, rows every sheet has, 1.243.
+  // Held weapons matched by name or tags, what is wielded, rows every sheet has, 1.244.
   if (
-    !declaresApi(243) &&
+    !declaresApi(244) &&
     ((plainRecord(plainRecord(ruleset)?.combat)?.attacks as unknown[] | undefined)?.some?.(
       (source) => plainRecord(source)?.always !== undefined,
     ) ||
       carriesWeaponMatch(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWeaponMatch(document)))
   ) {
-    return "A ruleset with attack lists that give every sheet a row, entries that change held weapons' attacks, or rules kept only while wielding certain weapons or granted strikes kept within bounds, requires schemaVersion 2 and capabilityApi 1.243 or newer";
+    return "A ruleset with attack lists that give every sheet a row, entries that change held weapons' attacks, or rules kept only while wielding certain weapons or granted strikes kept within bounds, requires schemaVersion 2 and capabilityApi 1.244 or newer";
   }
-  // Attack rows, granted strikes and the attack action, 1.241.
+  // Attack rows, granted strikes and the attack action, 1.242.
   if (
-    !declaresApi(241) &&
+    !declaresApi(242) &&
     (carriesMartialArts(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesMartialArts(document)))
   ) {
-    return "A ruleset with entries that change attack rows, grant strikes or come only after the attack action, or granted attacks narrowed by name or to after it, requires schemaVersion 2 and capabilityApi 1.241 or newer";
+    return "A ruleset with entries that change attack rows, grant strikes or come only after the attack action, or granted attacks narrowed by name or to after it, requires schemaVersion 2 and capabilityApi 1.242 or newer";
   }
-  // Answers to one's own hit, added to it, and capped higher costs, 1.240.
+  // Answers to one's own hit, added to it, and capped higher costs, 1.241.
   if (
-    !declaresApi(240) &&
+    !declaresApi(241) &&
     (carriesOwnHit(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesOwnHit(document)))
   ) {
-    return "A ruleset with reactions to their holder's own hit or to a weapon's, uses added to that blow, or a most for a higher cost's steps, requires schemaVersion 2 and capabilityApi 1.240 or newer";
+    return "A ruleset with reactions to their holder's own hit or to a weapon's, uses added to that blow, or a most for a higher cost's steps, requires schemaVersion 2 and capabilityApi 1.241 or newer";
   }
-  // Initiative thrown twice, 1.239.
+  // Initiative thrown twice, 1.240.
   if (
-    !declaresApi(239) &&
+    !declaresApi(240) &&
     (plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.initiative)?.checkAbility !== undefined ||
       carriesInitiativeMode(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesInitiativeMode(document)))
   ) {
-    return "A ruleset whose initiative is a check made with an ability, or with uses that throw initiative twice, requires schemaVersion 2 and capabilityApi 1.239 or newer";
+    return "A ruleset whose initiative is a check made with an ability, or with uses that throw initiative twice, requires schemaVersion 2 and capabilityApi 1.240 or newer";
   }
-  // A grant held to melee strikes, tracks moved as a condition ends, 1.238.
+  // A grant held to melee strikes, tracks moved as a condition ends, 1.239.
   if (
-    !declaresApi(238) &&
+    !declaresApi(239) &&
     (carriesFrenzy(ruleset) ||
       carriesUsesOf(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesUsesOf(document)))
   ) {
-    return "A ruleset with conditions whose granted attacks are melee only or that move a track as they end, or uses that spend another row's, requires schemaVersion 2 and capabilityApi 1.238 or newer";
+    return "A ruleset with conditions whose granted attacks are melee only or that move a track as they end, or uses that spend another row's, requires schemaVersion 2 and capabilityApi 1.239 or newer";
   }
-  // A second turn in the first round, 1.237.
+  // A second turn in the first round, 1.238.
   if (
-    !declaresApi(237) &&
+    !declaresApi(238) &&
     (carriesExtraTurn(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesExtraTurn(document)))
   ) {
-    return "A ruleset with uses that give a second turn in a fight's first round requires schemaVersion 2 and capabilityApi 1.237 or newer";
+    return "A ruleset with uses that give a second turn in a fight's first round requires schemaVersion 2 and capabilityApi 1.238 or newer";
   }
-  // Conditions that keep surprise off, uses that shake it off, 1.236.
+  // Conditions that keep surprise off, uses that shake it off, 1.237.
   if (
-    !declaresApi(236) &&
+    !declaresApi(237) &&
     (carriesSurprise(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesSurprise(document)))
   ) {
-    return "A ruleset with conditions that keep surprise off or uses that shake it off requires schemaVersion 2 and capabilityApi 1.236 or newer";
+    return "A ruleset with conditions that keep surprise off or uses that shake it off requires schemaVersion 2 and capabilityApi 1.237 or newer";
   }
-  // Actions a condition gives, uses that end it, cures by who put it on, sending away, 1.235.
+  // Actions a condition gives, uses that end it, cures by who put it on, sending away, 1.236.
   if (
-    !declaresApi(235) &&
+    !declaresApi(236) &&
     (conditionsGiveActions(ruleset) ||
       carriesDismissals(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesDismissals(document)))
   ) {
-    return "A ruleset with conditions that give actions, uses that end a condition, cures of only what some creatures put on, or uses that send somebody out of the fight, requires schemaVersion 2 and capabilityApi 1.235 or newer";
+    return "A ruleset with conditions that give actions, uses that end a condition, cures of only what some creatures put on, or uses that send somebody out of the fight, requires schemaVersion 2 and capabilityApi 1.236 or newer";
   }
-  // Lowered maximums without a save of their own, damage that leaves some health, targets by what they hold, 1.234.
+  // Lowered maximums without a save of their own, damage that leaves some health, targets by what they hold, 1.235.
   if (
-    !declaresApi(234) &&
+    !declaresApi(235) &&
     (carriesDrainsAndHolds(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesDrainsAndHolds(document)))
   ) {
-    return "A ruleset with lowered health maximums that need no save of their own, damage that leaves some health, or actions whose targets must hold a condition, requires schemaVersion 2 and capabilityApi 1.234 or newer";
+    return "A ruleset with lowered health maximums that need no save of their own, damage that leaves some health, or actions whose targets must hold a condition, requires schemaVersion 2 and capabilityApi 1.235 or newer";
   }
-  // A cure that does one of its cures, 1.203.
+  // A cure that does one of its cures, 1.204.
   if (
-    !declaresApi(203) &&
+    !declaresApi(204) &&
     (carriesCureOneOf(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCureOneOf(document)))
   ) {
-    return "A ruleset with cures that do one of their cures requires schemaVersion 2 and capabilityApi 1.203 or newer";
+    return "A ruleset with cures that do one of their cures requires schemaVersion 2 and capabilityApi 1.204 or newer";
   }
-  // Blows that lower the health maximum, 1.202.
+  // Blows that lower the health maximum, 1.203.
   if (
-    !declaresApi(202) &&
+    !declaresApi(203) &&
     (carriesReducesMax(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesReducesMax(document)))
   ) {
-    return "A ruleset with creature actions that lower the health maximum on a failed save requires schemaVersion 2 and capabilityApi 1.202 or newer";
+    return "A ruleset with creature actions that lower the health maximum on a failed save requires schemaVersion 2 and capabilityApi 1.203 or newer";
   }
-  // Conditions that end with another put on with them, 1.201.
+  // Conditions that end with another put on with them, 1.202.
   if (
-    !declaresApi(201) &&
+    !declaresApi(202) &&
     (carriesLinkedConditions(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesLinkedConditions(document)))
   ) {
-    return "A ruleset with conditions that end with another condition put on with them requires schemaVersion 2 and capabilityApi 1.201 or newer";
+    return "A ruleset with conditions that end with another condition put on with them requires schemaVersion 2 and capabilityApi 1.202 or newer";
   }
-  // Tracks moved, sealed health given back, a broken section's step, 1.200.
+  // Tracks moved, sealed health given back, a broken section's step, 1.201.
   if (
-    !declaresApi(200) &&
+    !declaresApi(201) &&
     (carriesTrackMoves(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesTrackMoves(document)))
   ) {
-    return "A ruleset with entries that move live tracks by levels or give back sealed health, or broken wall sections with their own cost step, requires schemaVersion 2 and capabilityApi 1.200 or newer";
+    return "A ruleset with entries that move live tracks by levels or give back sealed health, or broken wall sections with their own cost step, requires schemaVersion 2 and capabilityApi 1.201 or newer";
   }
-  // Walls in sections, 1.199.
+  // Walls in sections, 1.200.
   if (
-    !declaresApi(199) &&
+    !declaresApi(200) &&
     (carriesWallSections(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWallSections(document)))
   ) {
-    return "A ruleset with walls in sections that are struck and broken requires schemaVersion 2 and capabilityApi 1.199 or newer";
+    return "A ruleset with walls in sections that are struck and broken requires schemaVersion 2 and capabilityApi 1.200 or newer";
   }
-  // A health pool passing over some, 1.198.
+  // A health pool passing over some, 1.199.
   if (
-    !declaresApi(198) &&
+    !declaresApi(199) &&
     (carriesHealthPoolSkips(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealthPoolSkips(document)))
   ) {
-    return "A ruleset with health pools that pass over some of their targets requires schemaVersion 2 and capabilityApi 1.198 or newer";
+    return "A ruleset with health pools that pass over some of their targets requires schemaVersion 2 and capabilityApi 1.199 or newer";
   }
-  // A zone's own damage type at its triggers, 1.197.
+  // A zone's own damage type at its triggers, 1.198.
   if (
-    !declaresApi(197) &&
+    !declaresApi(198) &&
     (carriesZoneDamageType(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneDamageType(document)))
   ) {
-    return "A ruleset with zones that deal another damage type at their triggers requires schemaVersion 2 and capabilityApi 1.197 or newer";
+    return "A ruleset with zones that deal another damage type at their triggers requires schemaVersion 2 and capabilityApi 1.198 or newer";
   }
-  // A blow's own dice thrown more times over, 1.196.
+  // A blow's own dice thrown more times over, 1.197.
   if (
-    !declaresApi(196) &&
+    !declaresApi(197) &&
     (carriesDiceTimes(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesDiceTimes(document)))
   ) {
-    return "A ruleset with damage modifiers that throw a blow's own dice more times over requires schemaVersion 2 and capabilityApi 1.196 or newer";
+    return "A ruleset with damage modifiers that throw a blow's own dice more times over requires schemaVersion 2 and capabilityApi 1.197 or newer";
   }
-  // Health pools, health ceilings and killing outright, 1.195.
+  // Health pools, health ceilings and killing outright, 1.196.
   if (
-    !declaresApi(195) &&
+    !declaresApi(196) &&
     (carriesHealthTargeting(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealthTargeting(document)))
   ) {
-    return "A ruleset with entries that share out a pool of health, affect only those at or below some health, or kill outright requires schemaVersion 2 and capabilityApi 1.195 or newer";
+    return "A ruleset with entries that share out a pool of health, affect only those at or below some health, or kill outright requires schemaVersion 2 and capabilityApi 1.196 or newer";
   }
-  // Conditions that make their holder bigger or smaller, 1.194.
-  if (!declaresApi(194) && carriesSizeChanges(ruleset)) {
-    return "A ruleset with conditions that change size requires schemaVersion 2 and capabilityApi 1.194 or newer";
+  // Conditions that make their holder bigger or smaller, 1.195.
+  if (!declaresApi(195) && carriesSizeChanges(ruleset)) {
+    return "A ruleset with conditions that change size requires schemaVersion 2 and capabilityApi 1.195 or newer";
   }
-  // Creatures that fill more than one cell, 1.193.
-  if (!declaresApi(193) && carriesFootprints(ruleset)) {
-    return "A ruleset with sizes that fill more than one cell requires schemaVersion 2 and capabilityApi 1.193 or newer";
+  // Creatures that fill more than one cell, 1.194.
+  if (!declaresApi(194) && carriesFootprints(ruleset)) {
+    return "A ruleset with sizes that fill more than one cell requires schemaVersion 2 and capabilityApi 1.194 or newer";
   }
-  // Contests against a fixed number, on allies, the wounded or the dying, and rest-only wounds, 1.192.
+  // Contests against a fixed number, on allies, the wounded or the dying, and rest-only wounds, 1.193.
   if (
-    !declaresApi(192) &&
+    !declaresApi(193) &&
     (carriesTreatmentsAndSeals(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesTreatmentsAndSeals(document)))
   ) {
-    return "A ruleset with contests rolled against a fixed number, taken on allies, the wounded or the dying, contests that stabilize, or weapons whose damage only a rest restores requires schemaVersion 2 and capabilityApi 1.192 or newer";
+    return "A ruleset with contests rolled against a fixed number, taken on allies, the wounded or the dying, contests that stabilize, or weapons whose damage only a rest restores requires schemaVersion 2 and capabilityApi 1.193 or newer";
   }
-  // Weapons through resistance, slays that frighten instead, an oathbow's other weapons, 1.191.
+  // Weapons through resistance, slays that frighten instead, an oathbow's other weapons, 1.192.
   if (
-    !declaresApi(191) &&
+    !declaresApi(192) &&
     (carriesWeaponRiders(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWeaponRiders(document)))
   ) {
-    return "A ruleset with weapons that ignore resistance, slays that frighten on a made save, or weapons that hinder their wielder's others while a mark stands requires schemaVersion 2 and capabilityApi 1.191 or newer";
+    return "A ruleset with weapons that ignore resistance, slays that frighten on a made save, or weapons that hinder their wielder's others while a mark stands requires schemaVersion 2 and capabilityApi 1.192 or newer";
   }
-  // Heals kept off, conditions kept off by source, ability floors and saves against actions, 1.190.
+  // Heals kept off, conditions kept off by source, ability floors and saves against actions, 1.191.
   if (
-    !declaresApi(190) &&
+    !declaresApi(191) &&
     (carriesHealWardsAndActionSaves(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealWardsAndActionSaves(document)))
   ) {
-    return "A ruleset with conditions that keep heals off or keep conditions off by who puts them on, targets that need an ability score of at least some number, or saves against named actions requires schemaVersion 2 and capabilityApi 1.190 or newer";
+    return "A ruleset with conditions that keep heals off or keep conditions off by who puts them on, targets that need an ability score of at least some number, or saves against named actions requires schemaVersion 2 and capabilityApi 1.191 or newer";
   }
-  // Weapon modes with their own reach, clauses, bolt or charges, 1.189.
+  // Weapon modes with their own reach, clauses, bolt or charges, 1.190.
   if (
-    !declaresApi(189) &&
+    !declaresApi(190) &&
     (carriesModeExtras(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesModeExtras(document)))
   ) {
-    return "A ruleset with weapon modes that reach their own distance, add damage, send a bolt along the way, or spend charges requires schemaVersion 2 and capabilityApi 1.189 or newer";
+    return "A ruleset with weapon modes that reach their own distance, add damage, send a bolt along the way, or spend charges requires schemaVersion 2 and capabilityApi 1.190 or newer";
   }
-  // Wounds that stack and harm, sworn enemies, and creature actions by ability, 1.188.
+  // Wounds that stack and harm, sworn enemies, and creature actions by ability, 1.189.
   if (
-    !declaresApi(188) &&
+    !declaresApi(189) &&
     (carriesMarksAndWounds(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesMarksAndWounds(document)))
   ) {
-    return "A ruleset with conditions that harm each turn, stack or keep to one holder per source, weapons that mark a sworn enemy, or creature actions that name their ability requires schemaVersion 2 and capabilityApi 1.188 or newer";
+    return "A ruleset with conditions that harm each turn, stack or keep to one holder per source, weapons that mark a sworn enemy, or creature actions that name their ability requires schemaVersion 2 and capabilityApi 1.189 or newer";
   }
-  // More conditions, attacks and checks narrowed by ability, 1.187.
+  // More conditions, attacks and checks narrowed by ability, 1.188.
   if (
-    !declaresApi(187) &&
+    !declaresApi(188) &&
     (carriesWideConditionsAndAbilityNarrowing(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWideConditionsAndAbilityNarrowing(document)))
   ) {
-    return "A ruleset with more than 80 conditions, attacks narrowed by the ability they're made with, or checks narrowed by ability requires schemaVersion 2 and capabilityApi 1.187 or newer";
+    return "A ruleset with more than 80 conditions, attacks narrowed by the ability they're made with, or checks narrowed by ability requires schemaVersion 2 and capabilityApi 1.188 or newer";
   }
-  // Weapons by what they hit, slaying, draining, thrown extras and once-a-turn wounds, 1.186.
+  // Weapons by what they hit, slaying, draining, thrown extras and once-a-turn wounds, 1.187.
   if (
-    !declaresApi(186) &&
+    !declaresApi(187) &&
     (carriesWeaponKinds(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesWeaponKinds(document)))
   ) {
-    return "A ruleset with weapons that hit harder by what they hit, slay, drain, add only when thrown, or wound once a turn requires schemaVersion 2 and capabilityApi 1.186 or newer";
+    return "A ruleset with weapons that hit harder by what they hit, slay, drain, add only when thrown, or wound once a turn requires schemaVersion 2 and capabilityApi 1.187 or newer";
   }
-  // Creature actions that recharge together or charge, 1.185.
+  // Creature actions that recharge together or charge, 1.186.
   if (
-    !declaresApi(185) &&
+    !declaresApi(186) &&
     (carriesChargeAndGroups(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesChargeAndGroups(document)))
   ) {
-    return "A ruleset with creature actions that recharge together or charge requires schemaVersion 2 and capabilityApi 1.185 or newer";
+    return "A ruleset with creature actions that recharge together or charge requires schemaVersion 2 and capabilityApi 1.186 or newer";
   }
-  // Creature kinds read further, 1.184.
+  // Creature kinds read further, 1.185.
   if (
-    !declaresApi(184) &&
+    !declaresApi(185) &&
     (carriesCreatureKinds(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureKinds(document)))
   ) {
-    return "A ruleset with saves or damage that change by what the target is, targets limited by ability scores or condition immunities, or changes to attacks that roll twice by who is attacking whom, requires schemaVersion 2 and capabilityApi 1.184 or newer";
+    return "A ruleset with saves or damage that change by what the target is, targets limited by ability scores or condition immunities, or changes to attacks that roll twice by who is attacking whom, requires schemaVersion 2 and capabilityApi 1.185 or newer";
   }
-  // Creature actions that push, item uses with a line's width, 1.183.
+  // Creature actions that push, item uses with a line's width, 1.184.
   if (
-    !declaresApi(183) &&
+    !declaresApi(184) &&
     (carriesCreaturePush(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreaturePush(document)))
   ) {
-    return "A ruleset with creature actions that push or item uses whose line has a width requires schemaVersion 2 and capabilityApi 1.183 or newer";
+    return "A ruleset with creature actions that push or item uses whose line has a width requires schemaVersion 2 and capabilityApi 1.184 or newer";
   }
-  // Zones that go off later or burn away, 1.182.
+  // Zones that go off later or burn away, 1.183.
   if (
-    !declaresApi(182) &&
+    !declaresApi(183) &&
     (carriesDetonations(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesDetonations(document)))
   ) {
-    return "A ruleset with zones that go off later or burn away requires schemaVersion 2 and capabilityApi 1.182 or newer";
+    return "A ruleset with zones that go off later or burn away requires schemaVersion 2 and capabilityApi 1.183 or newer";
   }
   if (carriesCreatureSpellcasting) {
     // The references can only be checked once the catalog files are beside their headers.
@@ -5405,8 +5440,8 @@ export function getCapabilityPackageInstallIssue(
     const parsed = parseRulesetDefinition(complete);
     if (!parsed.ok) return parsed.issues.slice(0, 5).join("; ");
   }
-  // Sizes and escape DCs, 1.102: new keys on the strict combat block, contest, creature and applies.
-  if (!declaresApi(102)) {
+  // Sizes and escape DCs, 1.103: new keys on the strict combat block, contest, creature and applies.
+  if (!declaresApi(103)) {
     const combat = plainRecord(ruleset?.combat);
     const contests = combat?.contests;
     if (
@@ -5414,47 +5449,47 @@ export function getCapabilityPackageInstallIssue(
       combat?.sizes !== undefined ||
       (Array.isArray(contests) && contests.some((contest) => plainRecord(contest)?.maxSizeAbove !== undefined))
     ) {
-      return "A ruleset whose combatants have sizes or whose holds name an escape DC requires schemaVersion 2 and capabilityApi 1.102 or newer";
+      return "A ruleset whose combatants have sizes or whose holds name an escape DC requires schemaVersion 2 and capabilityApi 1.103 or newer";
     }
   }
-  // A creature attack that deals another amount with both hands or when bloodied, 1.101: new keys on the
+  // A creature attack that deals another amount with both hands or when bloodied, 1.102: new keys on the
   // strict creature damage and the strict creature.
-  if (!declaresApi(101) && carriesDamageAlternatives) {
-    return "A ruleset whose creature attacks deal another amount two-handed or when hurt requires schemaVersion 2 and capabilityApi 1.101 or newer";
+  if (!declaresApi(102) && carriesDamageAlternatives) {
+    return "A ruleset whose creature attacks deal another amount two-handed or when hurt requires schemaVersion 2 and capabilityApi 1.102 or newer";
   }
-  // Harm that carries qualities past a resistance's exception, 1.100: a new key on the strict mechanics
+  // Harm that carries qualities past a resistance's exception, 1.101: a new key on the strict mechanics
   // and the strict creature damage.
-  if (!declaresApi(100) && carriesBlowQualities) {
-    return "A ruleset whose spells or creature attacks carry qualities past a resistance (magical) requires schemaVersion 2 and capabilityApi 1.100 or newer";
+  if (!declaresApi(101) && carriesBlowQualities) {
+    return "A ruleset whose spells or creature attacks carry qualities past a resistance (magical) requires schemaVersion 2 and capabilityApi 1.101 or newer";
   }
-  // A weapon's damage dice rerolled off the holder's sheet, 1.97: a new key on the strict damage.
-  if (!declaresApi(97) && carriesDamageReroll) {
-    return "A ruleset whose weapons reroll low damage dice requires schemaVersion 2 and capabilityApi 1.97 or newer";
+  // A weapon's damage dice rerolled off the holder's sheet, 1.98: a new key on the strict damage.
+  if (!declaresApi(98) && carriesDamageReroll) {
+    return "A ruleset whose weapons reroll low damage dice requires schemaVersion 2 and capabilityApi 1.98 or newer";
   }
-  // A weapon's damage off the holder's sheet, and an off hand kept full by the sheet, 1.96: new keys
+  // A weapon's damage off the holder's sheet, and an off hand kept full by the sheet, 1.97: new keys
   // on the strict damage and the strict combat.offHand.
   const fullWhen = plainRecord(plainRecord(plainRecord(ruleset?.combat)?.offHand))?.fullWhen;
-  if (!declaresApi(96) && (carriesDamageSheetBonus || fullWhen !== undefined)) {
-    return "A ruleset whose weapons add damage off the sheet, or whose off hand reads the sheet, requires schemaVersion 2 and capabilityApi 1.96 or newer";
+  if (!declaresApi(97) && (carriesDamageSheetBonus || fullWhen !== undefined)) {
+    return "A ruleset whose weapons add damage off the sheet, or whose off hand reads the sheet, requires schemaVersion 2 and capabilityApi 1.97 or newer";
   }
-  // A score choice with a cap, 1.95: a new key on the strict choice.
-  if (!declaresApi(95) && carriesChoiceCaps) {
-    return "A ruleset whose catalog entry offers a score choice with a cap requires schemaVersion 2 and capabilityApi 1.95 or newer";
+  // A score choice with a cap, 1.96: a new key on the strict choice.
+  if (!declaresApi(96) && carriesChoiceCaps) {
+    return "A ruleset whose catalog entry offers a score choice with a cap requires schemaVersion 2 and capabilityApi 1.96 or newer";
   }
-  // Entries a builder step keeps one of, 1.93: a new key on the strict entry.
-  if (!declaresApi(93) && carriesExclusive) {
-    return "A ruleset whose catalog entries are exclusive of each other requires schemaVersion 2 and capabilityApi 1.93 or newer";
+  // Entries a builder step keeps one of, 1.94: a new key on the strict entry.
+  if (!declaresApi(94) && carriesExclusive) {
+    return "A ruleset whose catalog entries are exclusive of each other requires schemaVersion 2 and capabilityApi 1.94 or newer";
   }
-  // A score choice that may name one score twice, 1.92: a new key on the strict choice.
-  if (!declaresApi(92) && carriesRepeatChoices) {
-    return "A ruleset whose catalog entry offers a score choice that repeats requires schemaVersion 2 and capabilityApi 1.92 or newer";
+  // A score choice that may name one score twice, 1.93: a new key on the strict choice.
+  if (!declaresApi(93) && carriesRepeatChoices) {
+    return "A ruleset whose catalog entry offers a score choice that repeats requires schemaVersion 2 and capabilityApi 1.93 or newer";
   }
-  // Several scaled rows for one list in one entry, told apart by name, 1.91: an older Engine refused it.
-  if (!declaresApi(91) && carriesSeveralScaled) {
-    return "A ruleset whose catalog entry scales a row beside others of its list requires schemaVersion 2 and capabilityApi 1.91 or newer";
+  // Several scaled rows for one list in one entry, told apart by name, 1.92: an older Engine refused it.
+  if (!declaresApi(92) && carriesSeveralScaled) {
+    return "A ruleset whose catalog entry scales a row beside others of its list requires schemaVersion 2 and capabilityApi 1.92 or newer";
   }
   const countSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
-  // Bigger catalog steps and bounded manual base scores, 1.109: an older Engine refused either.
+  // Bigger catalog steps and bounded manual base scores, 1.110: an older Engine refused either.
   const biggerOrBounded =
     Array.isArray(countSteps) &&
     countSteps.some((value) => {
@@ -5465,37 +5500,37 @@ export function getCapabilityPackageInstallIssue(
         (step?.kind === "abilities" && plainRecord(plainRecord(step.methods)?.manual) !== undefined)
       );
     });
-  if (!declaresApi(109) && biggerOrBounded) {
-    return "A ruleset whose builder catalog step asks for or takes more than 20 entries, or bounds manual scores, requires schemaVersion 2 and capabilityApi 1.109 or newer";
+  if (!declaresApi(110) && biggerOrBounded) {
+    return "A ruleset whose builder catalog step asks for or takes more than 20 entries, or bounds manual scores, requires schemaVersion 2 and capabilityApi 1.110 or newer";
   }
-  // More derived values again, 1.110: an older Engine refused a sheet with more than 240.
-  if (!declaresApi(110) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1106) {
-    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_1106} derived values requires schemaVersion 2 and capabilityApi 1.110 or newer`;
+  // More derived values again, 1.111: an older Engine refused a sheet with more than 240.
+  if (!declaresApi(111) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1106) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_1106} derived values requires schemaVersion 2 and capabilityApi 1.111 or newer`;
   }
-  // More builder steps, 1.111: an older Engine refused a builder with more than 16.
-  if (!declaresApi(111) && Array.isArray(countSteps) && countSteps.length > RULESET_BUILDER_STEPS_MAX_BEFORE_1107) {
-    return `A ruleset with more than ${RULESET_BUILDER_STEPS_MAX_BEFORE_1107} builder steps requires schemaVersion 2 and capabilityApi 1.111 or newer`;
+  // More builder steps, 1.112: an older Engine refused a builder with more than 16.
+  if (!declaresApi(112) && Array.isArray(countSteps) && countSteps.length > RULESET_BUILDER_STEPS_MAX_BEFORE_1107) {
+    return `A ruleset with more than ${RULESET_BUILDER_STEPS_MAX_BEFORE_1107} builder steps requires schemaVersion 2 and capabilityApi 1.112 or newer`;
   }
-  // Entries of a catalog to choose, 1.90: a new key on the strict grants and a new step kind.
+  // Entries of a catalog to choose, 1.91: a new key on the strict grants and a new step kind.
   const choosing =
     carriesEntryChoices ||
     (Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.kind === "choices"));
-  if (!declaresApi(90) && choosing) {
-    return "A ruleset whose builder offers catalog entries to choose requires schemaVersion 2 and capabilityApi 1.90 or newer";
+  if (!declaresApi(91) && choosing) {
+    return "A ruleset whose builder offers catalog entries to choose requires schemaVersion 2 and capabilityApi 1.91 or newer";
   }
-  // A catalog step's count read off the sheet, 1.89: a new key on the strict step.
+  // A catalog step's count read off the sheet, 1.90: a new key on the strict step.
   const counted = Array.isArray(countSteps) && countSteps.some((step) => plainRecord(step)?.countFrom !== undefined);
-  if (!declaresApi(89) && counted) {
-    return "A ruleset whose builder reads a step's count off the sheet requires schemaVersion 2 and capabilityApi 1.89 or newer";
+  if (!declaresApi(90) && counted) {
+    return "A ruleset whose builder reads a step's count off the sheet requires schemaVersion 2 and capabilityApi 1.90 or newer";
   }
-  if (!declaresApi(88) && singular) {
-    return "A ruleset whose coins name one of themselves requires schemaVersion 2 and capabilityApi 1.88 or newer";
+  if (!declaresApi(89) && singular) {
+    return "A ruleset whose coins name one of themselves requires schemaVersion 2 and capabilityApi 1.89 or newer";
   }
-  // More derived values again, 1.87: an older Engine refused a sheet with more than 120.
-  if (!declaresApi(87) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_183) {
-    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_183} derived values requires schemaVersion 2 and capabilityApi 1.87 or newer`;
+  // More derived values again, 1.88: an older Engine refused a sheet with more than 120.
+  if (!declaresApi(88) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_183) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_183} derived values requires schemaVersion 2 and capabilityApi 1.88 or newer`;
   }
-  // A list column a player fills by rolling, 1.84: a new key on the strict column.
+  // A list column a player fills by rolling, 1.85: a new key on the strict column.
   const lists = plainRecord(ruleset?.sheet)?.lists;
   const rolled =
     Array.isArray(lists) &&
@@ -5503,22 +5538,22 @@ export function getCapabilityPackageInstallIssue(
       const columns = plainRecord(list)?.columns;
       return Array.isArray(columns) && columns.some((column) => plainRecord(column)?.roll !== undefined);
     });
-  if (!declaresApi(84) && rolled) {
-    return "A ruleset with a list column filled by a roll requires schemaVersion 2 and capabilityApi 1.84 or newer";
+  if (!declaresApi(85) && rolled) {
+    return "A ruleset with a list column filled by a roll requires schemaVersion 2 and capabilityApi 1.85 or newer";
   }
-  // The guided builder, 1.85: a new key on the strict sheet, and `grants` on the strict entry.
+  // The guided builder, 1.86: a new key on the strict sheet, and `grants` on the strict entry.
   // A catalog of rows that feeds no list holds only entries that grant, which `grants` already gates.
-  if (!declaresApi(85) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants)) {
+  if (!declaresApi(86) && (plainRecord(ruleset?.sheet)?.builder !== undefined || carriesGrants)) {
     return BUILDER_ISSUE;
   }
-  // A builder step's starting method and a catalog step's limit by a sheet value, 1.86: new keys on the
+  // A builder step's starting method and a catalog step's limit by a sheet value, 1.87: new keys on the
   // strict steps.
   const builderSteps = plainRecord(plainRecord(ruleset?.sheet)?.builder)?.steps;
   const safer =
     Array.isArray(builderSteps) &&
     builderSteps.some((step) => plainRecord(step)?.default !== undefined || plainRecord(step)?.upTo !== undefined);
-  if (!declaresApi(86) && safer) {
-    return "A ruleset whose builder starts on a method or limits a step by a sheet value requires schemaVersion 2 and capabilityApi 1.86 or newer";
+  if (!declaresApi(87) && safer) {
+    return "A ruleset whose builder starts on a method or limits a step by a sheet value requires schemaVersion 2 and capabilityApi 1.87 or newer";
   }
   return null;
 }

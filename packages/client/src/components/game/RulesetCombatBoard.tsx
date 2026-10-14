@@ -170,7 +170,7 @@ export function RulesetCombatBoard({
       onChoose(step.option.id, [], step.payWith, { to: { x: cell.x, y: cell.y } }, step.style, step.mode);
       return;
     }
-    // A wall set down waits for the way it runs, and any square turns it (1.176).
+    // A wall set down waits for the way it runs, and any square turns it (1.177).
     if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
       const taken = rulesetAimTake(step.option, step.lay, cell);
       if ("lay" in taken) {
@@ -178,14 +178,14 @@ export function RulesetCombatBoard({
         return;
       }
       // Who it spares and who it heightens are picked in the menu first, where there is a pick
-      // (1.253, 1.254).
+      // (1.254, 1.255).
       const picks = rulesetPicksStep(view, step, [], taken.send);
       if (picks) {
         setStep(picks);
         return;
       }
       setStep(null);
-      // Who goes along on a teleport (1.275), picked in the menu while it is aimed.
+      // Who goes along on a teleport (1.276), picked in the menu while it is aimed.
       const carries = step.option.teleport ? step.targets : [];
       onChoose(
         step.option.id,
@@ -199,7 +199,7 @@ export function RulesetCombatBoard({
       );
       return;
     }
-    // A wall's section the attack may strike (1.199): sent at once, as one target is.
+    // A wall's section the attack may strike (1.200): sent at once, as one target is.
     if (step.stage === "target" && cell.strikable) {
       setStep(null);
       onChoose(
@@ -260,7 +260,7 @@ export function RulesetCombatBoard({
   const palette = TERRAIN_PALETTES[environment ?? "default"] ?? TERRAIN_PALETTES.default;
   const tintAlpha = environment && TERRAIN_PALETTES[environment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
   const sprites = useMemo(() => new Map(units.map((unit) => [unit.id, unit.sprite])), [units]);
-  // Board art (1.332): the pack the board names, else its environment's, and the props pack. Without
+  // Board art (1.333): the pack the board names, else its environment's, and the props pack. Without
   // one, every square is drawn as before.
   const boardArt = useBoardArt(grid.pack, grid.scene ?? grid.environment ?? environment);
   const cellArt = useMemo(
@@ -393,7 +393,7 @@ export function RulesetCombatBoard({
                   style={{ backgroundColor: palette[cell.terrain] + TILE_ALPHA, boxShadow: tileShadow(cell.terrain) }}
                 >
                   {art?.ground ? (
-                    // The pack's ground (1.332), then its edge blocks over it, a quarter of a corner each.
+                    // The pack's ground (1.333), then its edge blocks over it, a quarter of a corner each.
                     <>
                       <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ground)} />
                       {art.edges.map(({ quarter, slice }) => (
@@ -503,7 +503,7 @@ export function RulesetCombatBoard({
                         "pointer-events-none absolute inset-0",
                         !art?.light && cell.light === "dark" && "bg-black/60",
                         !art?.light && cell.light === "dim" && "bg-black/30",
-                        !art?.light && cell.light === "sunlight" && "bg-yellow-200/20",
+                        !art?.light && cell.light === "sunlight" && "bg-white/20",
                       )}
                       style={art?.light ? boardSliceStyle(art.light) : undefined}
                       title={t(RULESET_BOARD_LIGHT_KEYS[cell.light])}
@@ -513,7 +513,7 @@ export function RulesetCombatBoard({
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0",
-                        !art?.fog && (cell.fog === "heavy" ? "bg-slate-200/50" : "bg-slate-200/25"),
+                        !art?.fog && (cell.fog === "heavy" ? "bg-white/50" : "bg-white/25"),
                       )}
                       style={art?.fog ? boardSliceStyle(art.fog) : undefined}
                       title={t(RULESET_BOARD_FOG_KEYS[cell.fog])}
@@ -522,7 +522,7 @@ export function RulesetCombatBoard({
                   {art?.ice && (
                     <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ice)} />
                   )}
-                  {/* A lasting area (1.171): tinted, with its name in the tooltip of the square. */}
+                  {/* A lasting area (1.172): tinted, with its name in the tooltip of the square. */}
                   {cell.zones &&
                     (art?.zones.length ? (
                       art.zones.map((slice, n) => (
@@ -535,28 +535,28 @@ export function RulesetCombatBoard({
                       ))
                     ) : (
                       <span
-                        className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"
+                        className="pointer-events-none absolute inset-0 bg-[var(--accent)]/20 ring-1 ring-inset ring-[var(--accent)]/40"
                         title={cell.zones.join(", ")}
                       />
                     ))}
-                  {/* A wall's section (1.199): how much it has left, and a ring while it may be struck. */}
+                  {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-sky-100">
+                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.section.health}
                     </span>
                   )}
-                  {/* Growth (1.317): a green tangle over the square. */}
+                  {/* Growth (1.318): a tangle over the square, in the theme's primary colour until art draws it. */}
                   {cell.growth && (
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0",
-                        !art?.growth && "bg-emerald-700/40 ring-1 ring-inset ring-emerald-400/40",
+                        !art?.growth && "bg-[var(--primary)]/30 ring-1 ring-inset ring-[var(--primary)]/40",
                       )}
                       style={art?.growth ? boardSliceStyle(art.growth) : undefined}
                       title={t("game.combat.ruleset.board.growth")}
                     />
                   )}
-                  {/* A prop (1.315): drawn as a crate standing in the square, its health in the corner;
+                  {/* A prop (1.316): drawn as a crate standing in the square, its health in the corner;
                       broken, as its rubble. */}
                   {cell.prop && (
                     <span
@@ -567,8 +567,8 @@ export function RulesetCombatBoard({
                           : cn(
                               "inset-[18%] rounded-[2px] border",
                               cell.prop.health > 0
-                                ? "border-amber-900/80 bg-amber-700/70"
-                                : "border-dashed border-amber-900/50 bg-transparent",
+                                ? "border-[var(--foreground)]/60 bg-[var(--muted)]/80"
+                                : "border-dashed border-[var(--foreground)]/40 bg-transparent",
                             ),
                       )}
                       style={art?.prop ? boardSliceStyle(art.prop) : undefined}
@@ -584,7 +584,7 @@ export function RulesetCombatBoard({
                     />
                   )}
                   {cell.prop && cell.prop.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-amber-100">
+                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.prop.health}
                     </span>
                   )}
@@ -614,7 +614,7 @@ export function RulesetCombatBoard({
               board has exactly one focusable thing per square and the arrow keys mean one thing. */}
           {cells.map((cell) => {
             const combatant = cell.occupant;
-            // Drawn once, from its top-left cell, across every cell it fills (1.193).
+            // Drawn once, from its top-left cell, across every cell it fills (1.194).
             if (!combatant || !cell.anchor) return null;
             const span = Math.max(1, combatant.span ?? 1);
             const key = rulesetCellKey(cell);
@@ -685,9 +685,9 @@ export function RulesetCombatBoard({
                   {(combatant.defeated || combatant.down) && (
                     <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
                   )}
-                  {/* Caught unaware (1.236): marked until their first turn is over. */}
+                  {/* Caught unaware (1.237): marked until their first turn is over. */}
                   {combatant.surprised && !combatant.defeated && !combatant.down && (
-                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-amber-400 drop-shadow" />
+                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
                   )}
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the

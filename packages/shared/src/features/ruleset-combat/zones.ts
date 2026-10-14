@@ -1,5 +1,5 @@
 /**
- * Lasting areas (Capability API 1.171): what a zone covers now, and whom it may catch.
+ * Lasting areas (Capability API 1.172): what a zone covers now, and whom it may catch.
  *
  * A zone held at a point keeps the cells it was cast on. One held by its caster is a burst worked
  * out around them wherever they stand, so it goes where they go. Nothing here changes the fight;
@@ -23,7 +23,7 @@ import type {
   RulesetReachableCell,
 } from "./types.js";
 
-// Worked out beside the walking they slow (1.172), and said here too, where a zone is read.
+// Worked out beside the walking they slow (1.173), and said here too, where a zone is read.
 export { rulesetZoneCatches, rulesetZoneCells, rulesetZoneMiddles } from "./grid.js";
 
 /** Every zone standing, with whose it is. */
@@ -43,7 +43,7 @@ export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: Rule
   return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);
 }
 
-/** Whether a zone's cells hold any cell somebody fills (1.193). */
+/** Whether a zone's cells hold any cell somebody fills (1.194). */
 export function rulesetZoneHoldsOne(cells: readonly RulesetCombatCell[], combatant: RulesetCombatant): boolean {
   return rulesetFootprint(combatant).some((cell) => rulesetZoneHolds(cells, cell));
 }
@@ -61,7 +61,7 @@ export function rulesetZoneOccupants(
     .map((one) => one.id);
 }
 
-/** Who stands on a wall's chosen side now (1.176), among those it may catch. */
+/** Who stands on a wall's chosen side now (1.177), among those it may catch. */
 export function rulesetZoneSideOccupants(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
@@ -76,7 +76,7 @@ export function rulesetZoneSideOccupants(
 }
 
 /**
- * The cells standing walls close (1.176), written onto the board's grid where moving and seeing read
+ * The cells standing walls close (1.177), written onto the board's grid where moving and seeing read
  * them, and taken off again as each wall ends. Worked out afresh from every standing zone, so a wall
  * that ended however it ended closes nothing any more.
  */
@@ -88,7 +88,7 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
     const blocks = action.zone?.blocks;
     if (!blocks || zone.anchor !== "point") continue;
     const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
-    // A broken section closes nothing (1.199).
+    // A broken section closes nothing (1.200).
     const broken = new Set(
       (zone.sections ?? [])
         .filter((section) => section.health <= 0)
@@ -100,7 +100,7 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
       walls[key] = (walls[key] ?? 0) | bits;
     }
   }
-  // A prop closes its cells while it stands (1.315).
+  // A prop closes its cells while it stands (1.316).
   for (const prop of rulesetStandingProps(state)) {
     const bits = (prop.blocks?.move ? 1 : 0) | (prop.blocks?.sight ? 2 : 0);
     if (!bits) continue;
@@ -121,7 +121,7 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   cells: RulesetCombatCell[];
   side?: RulesetCombatCell[];
   sections?: Array<{ cells: RulesetCombatCell[]; health: number; max: number }>;
-  /** How it looks (1.332): a `bz_` tile of the board's pack. */
+  /** How it looks (1.333): a `bz_` tile of the board's pack. */
   art?: string;
 }> {
   return rulesetStandingZones(state).map(({ caster, zone, action }) => ({
@@ -131,7 +131,7 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
     ...(action.zone?.art ? { art: action.zone.art } : {}),
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
     ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
-    // Each section and what it has left (1.199).
+    // Each section and what it has left (1.200).
     ...(zone.sections?.length && action.zone?.sections
       ? {
           sections: zone.sections.map((section) => ({
@@ -144,12 +144,12 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   }));
 }
 
-/** What still stands on the board that may be broken (1.315). */
+/** What still stands on the board that may be broken (1.316). */
 export function rulesetStandingProps(state: RulesetEncounterState): RulesetBoardProp[] {
   return (state.board?.props ?? []).filter((prop) => prop.health > 0);
 }
 
-/** The standing sections of walls that may be struck (1.199), each with its zone. */
+/** The standing sections of walls that may be struck (1.200), each with its zone. */
 export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   caster: RulesetCombatant;
   zone: RulesetCombatZone;
@@ -165,7 +165,7 @@ export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   );
 }
 
-/** Where a zone may be moved to (1.172): any cell of the board within its `move` distance of where
+/** Where a zone may be moved to (1.173): any cell of the board within its `move` distance of where
  *  it is centred, its own cell aside. Priced as the distance, so a board draws it as a walk. */
 export function rulesetZoneMoveCells(
   state: RulesetEncounterState,
@@ -184,7 +184,7 @@ export function rulesetZoneMoveCells(
   return cells;
 }
 
-/** The ways a line or cone its caster carries may be turned to face (1.181): toward any cell next
+/** The ways a line or cone its caster carries may be turned to face (1.182): toward any cell next
  *  to them on the board but the one it faces now, each a step away. */
 export function rulesetZoneTurnCells(
   state: RulesetEncounterState,
@@ -207,7 +207,7 @@ export function rulesetZoneTurnCells(
   return cells;
 }
 
-/** Where a drifting zone goes next (1.172): `distance` cells straight away from its caster, stopping
+/** Where a drifting zone goes next (1.173): `distance` cells straight away from its caster, stopping
  *  at the board's edge. A zone centred on its caster's own cell has no "away" and stays. */
 export function rulesetZoneDriftCell(
   state: RulesetEncounterState,

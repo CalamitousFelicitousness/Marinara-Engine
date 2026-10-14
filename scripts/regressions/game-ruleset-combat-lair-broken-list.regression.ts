@@ -1,5 +1,5 @@
 /**
- * A broken concentration that picks one of a list of lair actions (Capability API 1.335).
+ * A broken concentration that picks one of a list of lair actions (Capability API 1.336).
  *
  *   - `brokenNextLair` may be a list: broken, the lair's next action is one of those and no other,
  *     whoever runs the creature picking (Father Ivo's Litany of Keeping, the shelves leaning north or
@@ -41,7 +41,7 @@ const { commandRulesetCombatDirector, createRulesetFight, rulesetDirectorStage, 
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 331);
+  assert.ok(supportedCapabilityApi.minor >= 336);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -287,7 +287,7 @@ try {
       false,
     );
     const gate =
-      "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.335 or newer";
+      "A ruleset with a broken concentration that picks one of a list of lair actions requires schemaVersion 2 and capabilityApi 1.336 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -301,10 +301,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(334) as never, withIvo()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(335) as never, withIvo()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(335) as never, withIvo()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(336) as never, withIvo()), gate);
     const single = withIvo((actions) => void (actions[3] = { ...litany, brokenNextLair: "shelves_lean_south" }));
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(334) as never, single), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(335) as never, single), gate);
+    // In a catalog file too, however deep its creature sits.
+    const listed = { brokenNextLair: ["shelves_lean_north", "shelves_lean_south"] };
+    const deep = { wrap: { wrap: { wrap: { wrap: { wrap: { wrap: { creature: { actions: [listed] } } } } } } } };
+    const filed = new Map([["catalogs/creatures.json", { id: "creatures", entries: [{ id: "ivo", ...deep }] }]]);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(335) as never, single, filed), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(336) as never, single, filed), gate);
   }
 
   console.log(

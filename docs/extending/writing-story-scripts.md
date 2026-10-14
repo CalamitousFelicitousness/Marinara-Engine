@@ -168,7 +168,7 @@ events together are kept to 16,000 characters.
 
 ### The intro message
 
-`intro` (Capability API 1.338) sets how the game opens, the same choice the GM setup offers any game:
+`intro` (Capability API 1.339) sets how the game opens, the same choice the GM setup offers any game:
 
 ```json
 "intro": { "mode": "defined", "text": "The leaves have not fallen in Hollowmere for nine years.", "locked": true }

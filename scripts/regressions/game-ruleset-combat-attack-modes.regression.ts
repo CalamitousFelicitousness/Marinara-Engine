@@ -1,9 +1,9 @@
 /**
- * A creature's own attack rolls rolled twice where it stands (Capability API 1.292).
+ * A creature's own attack rolls rolled twice where it stands (Capability API 1.293).
  *
  *   - `attackModes`: 5e's Sunlight Sensitivity, disadvantage on its attacks while it can see and
  *     stands in sunlight; a mode can also hold only in other light or on some terrain.
- *   - A catalog creature's block carries `attackModes`, and the `hiding` 1.291 gave it.
+ *   - A catalog creature's block carries `attackModes`, and the `hiding` 1.292 gave it.
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -91,7 +91,7 @@ try {
 
   // ── Read off the bestiary ──
   assert.deepEqual(blockOf("kobold").attackModes, [sunlight]);
-  assert.deepEqual(blockOf("cube").hiding, { starts: 15 }, "1.291's hiding reaches the block");
+  assert.deepEqual(blockOf("cube").hiding, { starts: 15 }, "1.292's hiding reaches the block");
 
   const hero = rulesetSheetBuildSchema.parse({
     abilities: { str: 10, dex: 14, con: 12, int: 10, wis: 10, cha: 10 },
@@ -181,16 +181,16 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creatures whose attacks are rolled twice where they stand requires schemaVersion 2 and capabilityApi 1.292 or newer";
+      "A ruleset with creatures whose attacks are rolled twice where they stand requires schemaVersion 2 and capabilityApi 1.293 or newer";
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures").entries.push(kobold);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(291) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(292) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(291) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(292) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(293) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(292) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Attack modes: a kobold's Sunlight Sensitivity only in sunlight and while it sees, a mode on terrain, read off the bestiary with 1.291's hiding; refusals; gated at 1.292.",
+    "Attack modes: a kobold's Sunlight Sensitivity only in sunlight and while it sees, a mode on terrain, read off the bestiary with 1.292's hiding; refusals; gated at 1.293.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

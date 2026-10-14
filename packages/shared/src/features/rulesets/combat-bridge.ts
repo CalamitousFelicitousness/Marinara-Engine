@@ -81,7 +81,7 @@ export function rulesetSheetBuildsByName(
     const name = typeof card?.name === "string" ? card.name.trim() : "";
     const key = name ? normalizeCharacterLookupName(name) : "";
     if (!key) continue;
-    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.76).
+    // Read on this version's layout, migrated where the ruleset says how (Capability API 1.77).
     const envelope = readRulesetSheetEnvelope(definition, card.rulesetSheet);
     if (!envelope) continue;
     // Setup keeps ONE sheet per normalized name and lets the persona's win a name it shares with a
@@ -250,7 +250,7 @@ function powerFromAmount(amount: RulesetCatalogMechanics["amount"]): number {
 function areaRadius(area: NonNullable<RulesetCatalogMechanics["area"]>, perCell: number): number {
   const cells = inCells(area.size, perCell);
   if (area.shape === "line" || area.shape === "wall") return 1;
-  // A box reaches half its side from its middle (1.176).
+  // A box reaches half its side from its middle (1.177).
   return area.shape === "cone" || area.shape === "box" ? Math.max(1, Math.round(cells / 2)) : cells;
 }
 

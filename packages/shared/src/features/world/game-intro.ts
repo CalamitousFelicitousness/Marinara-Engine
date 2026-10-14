@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// The Game Master's intro message (Capability API 1.338): how a game opens, set in the game's setup and,
+// The Game Master's intro message (Capability API 1.339): how a game opens, set in the game's setup and,
 // for an Experience, by its creator. A defined intro IS the Game Master's first message, exactly as set;
 // a guided one only shapes the first message the Game Master writes. A creator may lock theirs, so a
 // player cannot set an intro that breaks the Experience; one left unlocked the player may change or clear.
@@ -11,9 +11,9 @@ export const GAME_INTRO_TEXT_MAX = 8000;
 
 const introText = z
   .string()
-  .trim()
-  .min(1)
   .max(GAME_INTRO_TEXT_MAX)
+  // Kept exactly as written: a defined intro is the first message, leading and trailing spaces included.
+  .refine((value) => value.trim().length > 0, { message: "An intro cannot be blank" })
   .refine((value) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(value), {
     message: "An intro cannot contain control characters",
   })

@@ -63,6 +63,7 @@ import {
   hasDeferredRelocationConditionals,
   normalizeGameStoryboardKeyframeCount,
   parseDeferredConditionalPayload,
+  attachConditionalLineBreaks,
   resolveDeferredCharacterMacros,
   resolveCharacterScopedMacros,
   selectConditionalPayloadBranch,
@@ -769,7 +770,7 @@ import {
   TEXT_REWRITE_PENDING_MESSAGE,
 } from "../../packages/server/src/services/generation/prose-guardian-settings.js";
 import type { DB } from "../../packages/server/src/db/connection.js";
-import { passThroughLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
+import { passThroughLeaf, sanitizePromptLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
 import { wrapContent } from "../../packages/server/src/services/prompt/format-engine.js";
 import {
   escapeStandaloneGameNarrationAngleLines,
@@ -861,7 +862,10 @@ import {
   extractDialogueUtterances,
   resolveTTSVoiceForSpeaker,
 } from "../../packages/client/src/lib/tts-dialogue.js";
-import { resolveCharacterAdvancedPromptIds } from "../../packages/server/src/services/prompt/macro-context.js";
+import {
+  resolveCharacterAdvancedPromptIds,
+  resolveChatSummaryMacros,
+} from "../../packages/server/src/services/prompt/macro-context.js";
 import {
   illustratorPromptRequestsRenderedText,
   illustratorPromptTemplateOwnsComposition,
@@ -10408,6 +10412,147 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
+    // Mari, 2026-10-14: a section for a character who is not replying is replaced with nothing, not an empty line.
+    name: "Chat Summary sections for someone who is not replying leave no empty line",
+    async run() {
+      const ctx = (char: string): MacroContext => ({ user: "Mari", char, characters: [char], variables: {} });
+      const section = (name: string, text: string) => `{{#if char == "${name}"}}\n${text}\n{{/if}}`;
+      const summary = `Shared opening.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\n${section("Tighnari", "Tighnari found the herb.")}\n\nShared closing.`;
+      const tighnari = "Shared opening.\n\nTighnari found the herb.\n\nShared closing.";
+      const nobody = "Shared opening.\n\nShared closing.";
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Tighnari")), tighnari, "one responder");
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Maukie")), nobody, "a responder with no section");
+      // Individual replies in a Roleplay group defer the sections until each responder is known.
+      const deferred = resolveChatSummaryMacros(summary, ctx("Narrator"), { deferCharacterMacros: "all" });
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Tighnari" }), tighnari, "deferred, a reader");
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Maukie" }), nobody, "deferred, not a reader");
+      // A merged reply reads the summary for everyone present and marks who knows what.
+      assert.equal(
+        resolveChatSummaryMacros(summary, ctx("Narrator"), undefined, [{ name: "Tighnari" }, { name: "Maukie" }]),
+        "Shared opening.\n\n[Known only to Tighnari: Tighnari found the herb.]\n\nShared closing.",
+        "merged readers",
+      );
+
+      // Every reading agrees: now, or deferred and filled in for the responder.
+      const read = (template: string, who: string) => {
+        const now = resolveChatSummaryMacros(template, ctx(who), { trimResult: false });
+        const later = resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(template, ctx("Narrator"), { deferCharacterMacros: "all", trimResult: false }),
+          { name: who },
+        );
+        assert.equal(later, now, `${who} reads ${JSON.stringify(template)} the same now and deferred`);
+        return now;
+      };
+      const elseChain = `A\n{{#if char == "Cyno"}}\nc\n{{else if char == "Tighnari"}}\nt\n{{else}}\no\n{{/if}}\nB`;
+      const nested = `A\n\n{{#if char == "Cyno" || char == "Tighnari"}}\nBoth know.\n${section("Tighnari", "Tighnari more.")}\n{{/if}}\n\nB`;
+      const list = `List:\n  {{#if char == "Cyno"}}- c{{/if}}\n  {{#if char == "Tighnari"}}- t{{/if}}\n  {{#if char == "Cyno"}}\n  - standalone\n  {{/if}}\nEnd`;
+      const cases: Array<[string, Record<string, string>]> = [
+        [summary, { Cyno: "Shared opening.\n\nCyno alone saw the ruins.\n\nShared closing.", Maukie: nobody }],
+        // Sections written inline on lines of their own.
+        [
+          `A\n{{#if char == "Cyno"}}x{{/if}}\n{{#if char == "Tighnari"}}y{{/if}}\nB`,
+          { Tighnari: "A\ny\nB", Maukie: "A\nB" },
+        ],
+        // Tags on lines of their own, in a paragraph that goes on after a blank line.
+        [`A\n${section("Cyno", "x")}\n\nB`, { Cyno: "A\nx\n\nB", Maukie: "A\n\nB" }],
+        // Hidden at the start and at the end of the text, where deferred sections are filled in after the trim.
+        [
+          `${section("Cyno", "x")}\n\nMiddle.\n\n${section("Tighnari", "y")}`,
+          { Cyno: "x\n\nMiddle.", Tighnari: "Middle.\n\ny", Maukie: "Middle." },
+        ],
+        [elseChain, { Cyno: "A\nc\nB", Tighnari: "A\nt\nB", Maukie: "A\no\nB" }],
+        [`A\n{{#if char == "Cyno"}}{{else}}Not Cyno.{{/if}}\nB`, { Cyno: "A\nB", Maukie: "A\nNot Cyno.\nB" }],
+        [nested, { Cyno: "A\n\nBoth know.\n\nB", Tighnari: "A\n\nBoth know.\nTighnari more.\n\nB", Maukie: "A\n\nB" }],
+        [list, { Cyno: "List:\n  - c\n  - standalone\nEnd", Tighnari: "List:\n  - t\nEnd" }],
+        // A section that starts with a blank line keeps it.
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, { Cyno: "P\n\n\nx\n\nQ", Maukie: "P\n\nQ" }],
+        // A section at the top of another that is not a paragraph keeps the blank line written after it.
+        [
+          `A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "Tighnari note.")}\n\nShared by both.\n{{/if}}\nB`,
+          { Cyno: "A\n\nShared by both.\nB", Tighnari: "A\nTighnari note.\n\nShared by both.\nB", Maukie: "A\nB" },
+        ],
+        // A section that is all another one holds goes with that one's line break.
+        [`A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "t")}\n{{/if}}\nB`, { Cyno: "A\nB" }],
+        [
+          `A\n{{#if char == "Cyno"}}\nx\n{{#if char == "Tighnari"}}\nt\n{{else}}\n\no\n{{/if}}\n{{/if}}\nB`,
+          { Cyno: "A\nx\n\no\nB", Maukie: "A\nB" },
+        ],
+        // A comment line reads the same now and deferred.
+        [`A\n\n${section("Cyno", "c")}\n{{// note}}\n\nB`, { Cyno: "A\n\nc\n\n\nB", Maukie: "A\n\n\nB" }],
+        // A group block keeps its `[` and `]` lines, and the sections around and in it lose their lines too.
+        [
+          `A\n\n${section("Cyno", "c")}\n\n[\n{{char}}:\n${section("Cyno", "g")}\n]\nB`,
+          { Cyno: "A\n\nc\n\n[\nCyno:\ng\n]\nB", Maukie: "A\n\n[\nMaukie:\n]\nB" },
+        ],
+        // A section sharing its line with other text stays as written.
+        [`A {{#if char == "Cyno"}}x{{/if}} B\nC`, { Cyno: "A x B\nC", Maukie: "A  B\nC" }],
+      ];
+      for (const [template, expected] of cases) {
+        for (const [who, text] of Object.entries(expected))
+          assert.equal(read(template, who), text, `${who}: ${template}`);
+        const attached = attachConditionalLineBreaks(template);
+        assert.equal(attachConditionalLineBreaks(attached), attached, `rewriting is idempotent: ${template}`);
+      }
+      assert.equal(attachConditionalLineBreaks(cases.at(-1)![0]), cases.at(-1)![0], "a shared line is untouched");
+      // A section that renders reads exactly as before when nothing around it is hidden.
+      for (const [template, who] of [
+        [`A\n${section("Cyno", "x")}\n\nB`, "Cyno"],
+        [`Shared.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\nEnd.`, "Cyno"],
+        [`A\n  {{#if char == "Cyno"}}\n  x\n  {{/if}}\nB`, "Cyno"],
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, "Cyno"],
+        ...["Cyno", "Tighnari", "Maukie"].map((who) => [elseChain, who]),
+        [nested, "Tighnari"],
+      ])
+        assert.equal(read(template!, who!), resolveMacros(template!, ctx(who!), { trimResult: false }), template);
+      const merged = (template: string) =>
+        resolveChatSummaryMacros(template, ctx("Narrator"), undefined, [{ name: "Cyno" }, { name: "Maukie" }]);
+      assert.equal(
+        merged(elseChain),
+        "A\n[Known only to Cyno: c]\n[Known only to Maukie: o]\nB",
+        "each reader's version of a section keeps its own line",
+      );
+      assert.equal(
+        merged(`T\n{{#if char == "Cyno"}}c{{else}}o{{/if}}`),
+        "T\n[Known only to Cyno: c]\n[Known only to Maukie: o]",
+        "at the end of the text too",
+      );
+      assert.equal(
+        merged(`T\n\n  {{#if char == "Cyno"}}\n  s\n  {{else}}\n  o\n  {{/if}}`),
+        "T\n\n  [Known only to Cyno: s]\n\n  [Known only to Maukie: o]",
+        "an indented section keeps its indent once",
+      );
+      // Windows line endings read as the same lines.
+      const windows = summary.replace(/\n/gu, "\r\n");
+      assert.equal(resolveChatSummaryMacros(windows, ctx("Tighnari")), tighnari, "Windows line endings");
+      assert.equal(
+        resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(windows, ctx("Narrator"), { deferCharacterMacros: "all" }),
+          { name: "Maukie" },
+        ),
+        nobody,
+        "Windows line endings, deferred",
+      );
+      // Filled in after the wrapper, the line after a section still starts its own line: Markdown escapes a
+      // heading there and XML indents it, whether the section shows or not.
+      const rules = `Shared.\n${section("Cyno", "Cyno saw the ruins.")}\n# Rules\nObey.`;
+      const wrapped = (format: "markdown" | "xml", who: string) =>
+        resolveDeferredCharacterMacros(
+          wrapContent(
+            sanitizePromptLeaf(
+              resolveChatSummaryMacros(rules, ctx("Narrator"), { deferCharacterMacros: "all" }),
+              format,
+            ),
+            "Chat Summary",
+            format,
+          ),
+          { name: who },
+        );
+      assert.equal(wrapped("markdown", "Cyno"), "## Chat Summary\nShared.\nCyno saw the ruins.\n\\# Rules\nObey.");
+      assert.equal(wrapped("markdown", "Maukie"), "## Chat Summary\nShared.\n\\# Rules\nObey.");
+      assert.equal(wrapped("xml", "Maukie"), "<chat_summary>\n    Shared.\n    # Rules\n    Obey.\n</chat_summary>");
+    },
+  },
+  {
     name: "lorebook markers preserve authored angle-bracket markup",
     async run() {
       const lorebookScanResult = {
@@ -13345,19 +13490,25 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "staged",
       );
       // ── Loop wiring pins: the pure function is only half the contract ────
-      const agentSourceForPins = readFileSync(
-        new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
-        "utf8",
+      const agentSourceForPins = (
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
+          "utf8",
+        ) +
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-round-review.ts", import.meta.url),
+          "utf8",
+        )
       ).replace(/\s+/gu, " ");
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(action, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(action, args.commandResultsForContinuity, { auditFrom: state.claimAuditWatermark, hadPassedClaimAudit: state.hadPassedClaimAudit, })",
         ),
         "the loop audits against the live watermark, never from zero",
       );
       assert.ok(
         agentSourceForPins.includes(
-          "if (claimAudit.advanceWatermark) { claimAuditWatermark = commandResultsForContinuity.length; hadPassedClaimAudit = true; }",
+          "if (claimAudit.advanceWatermark) { state.claimAuditWatermark = args.commandResultsForContinuity.length; state.hadPassedClaimAudit = true; }",
         ),
         "a passing audit consumes its evidence and arms the summary allowance",
       );
@@ -13367,7 +13518,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: reviewState.claimAuditWatermark, hadPassedClaimAudit: reviewState.hadPassedClaimAudit, })",
         ),
         "the command-limit audit shares the run's scope state",
       );

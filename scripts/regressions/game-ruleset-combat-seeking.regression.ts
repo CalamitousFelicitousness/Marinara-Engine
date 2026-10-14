@@ -1,5 +1,5 @@
 /**
- * Looking for the hidden, weighed (Capability API 1.289).
+ * Looking for the hidden, weighed (Capability API 1.290).
  *
  *   - A check of the fight's read off a skill (`skillMod`) counts as that skill's check, so what is
  *     narrowed to the skill counts on Hide and Search: Stealth in heavy armor, Pass without Trace.
@@ -262,7 +262,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a passive Perception that reads advantage, or a change to checks made to find somebody, requires schemaVersion 2 and capabilityApi 1.289 or newer";
+      "A ruleset with a passive Perception that reads advantage, or a change to checks made to find somebody, requires schemaVersion 2 and capabilityApi 1.290 or newer";
     const cloakOnly = fiveE(() => {}, false);
     const passiveOnly = fiveE((doc) => {
       doc.combat.conditions = doc.combat.conditions.filter(
@@ -270,13 +270,13 @@ try {
       );
     });
     for (const doc of [cloakOnly, passiveOnly]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(288) as never, doc), gate);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(289) as never, doc), null);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(289) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(290) as never, doc), null);
     }
   }
 
   console.log(
-    "Seeking: Stealth and Perception read what is narrowed to their skills; a passive gains or loses passiveMode for advantage or disadvantage; a Cloak of Elvenkind puts disadvantage on looking for its wearer, a Search throwing apart for them; refusals; gated at 1.289.",
+    "Seeking: Stealth and Perception read what is narrowed to their skills; a passive gains or loses passiveMode for advantage or disadvantage; a Cloak of Elvenkind puts disadvantage on looking for its wearer, a Search throwing apart for them; refusals; gated at 1.290.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

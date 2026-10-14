@@ -908,6 +908,63 @@ try {
   const sharedView = (await groupRecall(["maukie", "pantalone", "narrator"])).chatSummary!;
   assert.match(sharedView, /\[Known only to Pantalone: PANTALONE_ONLY_NOTE\]/u);
   assert.doesNotMatch(sharedView, /LEFT_CHAT_NOTE|CONST_NARRATOR/u);
+  // A section on lines of its own for someone else leaves no empty line, in every reading (Mari, 2026-10-14).
+  const linesNote = createChatSummaryEntry({
+    content:
+      'LINES_OPEN\n\n{{#if char == "Maukie"}}\n{{char}} kept LINES_MAUKIE.\n{{/if}}\n\n{{#if char == "Pantalone"}}\nLINES_PANTALONE\n{{/if}}\n\nLINES_CLOSE',
+    enabled: true,
+    messageIds: groupSource.slice(4, 6).map((message) => message.id),
+  });
+  await chats.patchMetadata(group.id, { summaryEntries: [...groupEntries, linesNote] });
+  const linesOf = async (audience: string[]) => {
+    const view = (await groupRecall(audience)).chatSummary!;
+    return view.slice(view.lastIndexOf("LINES_OPEN"));
+  };
+  assert.equal(
+    await linesOf(["maukie", "pantalone", "narrator"]),
+    "LINES_OPEN\n\n[Known only to Maukie: Maukie kept LINES_MAUKIE.]\n\n[Known only to Pantalone: LINES_PANTALONE]\n\nLINES_CLOSE",
+    "a merged reply marks each section on its own lines",
+  );
+  await chats.patchMetadata(group.id, { groupChatMode: "individual" });
+  assert.equal(await linesOf(["maukie"]), "LINES_OPEN\n\nMaukie kept LINES_MAUKIE.\n\nLINES_CLOSE");
+  assert.equal(await linesOf(["pantalone"]), "LINES_OPEN\n\nLINES_PANTALONE\n\nLINES_CLOSE");
+  assert.equal(await linesOf(["aaa-newcomer"]), "LINES_OPEN\n\nLINES_CLOSE", "a reader with no section");
+  assert.equal(
+    await linesOf(["narrator"]),
+    "LINES_OPEN\n\nMaukie kept LINES_MAUKIE.\n\nLINES_PANTALONE\n\nLINES_CLOSE",
+    "the narrator reads every section",
+  );
+  // A summary that ends with a section no reader gets, or is only sections, still meets the next one with a
+  // single blank line in a merged reply.
+  const trailNotes = [
+    'TRAIL_OPEN {{user}}.\n\n{{#if char == "Cyno"}}\nTRAIL_HIDDEN\n{{/if}}',
+    '{{#if char == "Maukie"}}\nTRAIL_MAUKIE\n{{/if}}\n{{#if char == "Cyno"}}\nTRAIL_HIDDEN\n{{/if}}',
+    "TRAIL_NEXT",
+  ].map((content, index) =>
+    createChatSummaryEntry({ content, enabled: true, messageIds: [groupSource[3 + index]!.id] }),
+  );
+  await chats.patchMetadata(group.id, { groupChatMode: "merged", summaryEntries: [...groupEntries, ...trailNotes] });
+  const trailView = (await groupRecall(["maukie", "pantalone", "narrator"])).chatSummary!;
+  assert.match(
+    trailView,
+    /\nTRAIL_OPEN [^\n]+\.\n\nMessages #5–#5; [^\n]+\n\[Known only to Maukie: TRAIL_MAUKIE\]\n\nMessages #6–#6; [^\n]+\nTRAIL_NEXT/u,
+  );
+  assert.doesNotMatch(trailView, /TRAIL_HIDDEN/u);
+  // A paragraph of back-to-back sections that all hide leaves one blank line, as the Chat Summary does.
+  const backToBack = createChatSummaryEntry({
+    content:
+      'BACK_OPEN\n\n{{#if char == "Cyno"}}\nBACK_HIDDEN\n{{/if}}\n{{#if char == "Nahida"}}\nBACK_HIDDEN\n{{/if}}\n\nBACK_CLOSE',
+    enabled: true,
+    messageIds: groupSource.slice(4, 6).map((message) => message.id),
+  });
+  await chats.patchMetadata(group.id, { summaryEntries: [...groupEntries, backToBack] });
+  const backOf = async (audience: string[]) => {
+    const view = (await groupRecall(audience)).chatSummary!;
+    return view.slice(view.lastIndexOf("BACK_OPEN"));
+  };
+  assert.equal(await backOf(["maukie", "pantalone", "narrator"]), "BACK_OPEN\n\nBACK_CLOSE", "merged readers");
+  await chats.patchMetadata(group.id, { groupChatMode: "individual" });
+  assert.equal(await backOf(["maukie"]), "BACK_OPEN\n\nBACK_CLOSE", "a single reader");
   await chats.patchMetadata(group.id, { groupChatMode: "individual", summaryEntries: [...groupEntries, narratorNote] });
   // A story date keeps the header only for characters who read part of that range, never for a newcomer.
   await chats.updateMessageContent(groupSource[2]!.id, `Date: June 12\n${groupSource[2]!.content}`);

@@ -2724,6 +2724,188 @@ export function markReaderVersions(
     .join("");
 }
 
+/**
+ * A line next to the text being rewritten: text, blank, the end of the whole summary (whose trailing space is
+ * trimmed), or text that carries on past the edge, on the same line.
+ */
+type SectionNeighbour = "text" | "blank" | "end" | "mid";
+
+const onlySpacesAndTabs = (text: string) => /^[ \t]*$/u.test(text);
+
+/** Whether `text` has a line break at `from`, after any spaces and tabs. */
+function startsWithLineBreak(text: string, from = 0): boolean {
+  while (text[from] === " " || text[from] === "\t") from++;
+  return text[from] === "\n";
+}
+
+/** Whether `text` ends with a line break, then only spaces and tabs. */
+function endsWithLineBreak(text: string): boolean {
+  const lastBreak = text.lastIndexOf("\n");
+  return lastBreak >= 0 && onlySpacesAndTabs(text.slice(lastBreak + 1));
+}
+
+/**
+ * Let each `{{#if}}` section that fills whole lines of a summary carry its own line breaks, so a section that
+ * renders nothing leaves no empty line however the summary is read: evaluated now, deferred per character,
+ * split per reader by `scopeCharacterSummary`, or flattened for the narrator. A section that renders reads as
+ * before. A section after a line of text leads with the line break before it, so the line after it keeps its
+ * own start; one that is a paragraph of its own also takes the blank lines before it, so a hidden one leaves
+ * one separator. A section with nothing but sections before it ends with the line break after it instead, and
+ * the blank lines after it when it starts a paragraph. Sections nested in a branch are rewritten with the line
+ * breaks that branch carries. Sections that share a line with other text stay as written, and so do a group
+ * block's `[` and `]` lines. Line endings become `\n` and comments go first, as reading drops them anyway.
+ * ponytail: a paragraph made only of several sections keeps one extra blank line when all of them hide, until
+ * the request, Peek Prompt and Advanced Memory collapse runs of blank lines into one. A summary made only of
+ * sections can keep a line break at its end in Individual mode. There, a section with no text before it also
+ * carries the next line's start inside its deferred token, so the Markdown heading guard and the XML indent
+ * miss that line. Each needs a separator that knows its neighbours if it matters.
+ */
+export function attachConditionalLineBreaks(input: string): string {
+  const lines = stripMacroComments(input.replace(/\r\n?/gu, "\n")).split("\n");
+  const rewritten: string[] = [];
+  for (let from = 0; from < lines.length;) {
+    let to = from;
+    while (to < lines.length && !["[", "]"].includes(lines[to]!.trim())) to++;
+    if (to > from)
+      rewritten.push(
+        attachSectionLineBreaks(
+          lines.slice(from, to).join("\n"),
+          from ? "text" : "blank",
+          to < lines.length ? "text" : "end",
+          0,
+        ),
+      );
+    if (to < lines.length) rewritten.push(lines[to]!);
+    from = to + 1;
+  }
+  return rewritten.join("\n");
+}
+
+function attachSectionLineBreaks(
+  input: string,
+  before: SectionNeighbour,
+  after: SectionNeighbour,
+  depth: number,
+): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  // Where the line holding `at` starts, and whether the line [from, to) reads as text.
+  const lineFrom = (at: number) => (at > 0 ? input.lastIndexOf("\n", at - 1) + 1 : 0);
+  const kindOf = (from: number, to: number): "text" | "blank" =>
+    (from === 0 && before === "mid") ||
+    (to === input.length && after === "mid") ||
+    !onlySpacesAndTabs(input.slice(from, to))
+      ? "text"
+      : "blank";
+  const textStart = input.length - input.trimStart().length;
+  const textEnd = input.trimEnd().length;
+  let result = "";
+  let cursor = 0;
+  let afterSection = 0; // where the text after the last section starts in `result`
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) break;
+    const { branches } = block;
+    // The tag before each branch, then {{/if}}.
+    const tags = [start.start, ...branches.map((branch) => branch.contentEnd)].map((from, index) =>
+      input.slice(from, branches[index]?.contentStart ?? block.endEnd),
+    );
+    const contents = branches.map((branch) => input.slice(branch.contentStart, branch.contentEnd));
+    const lineStart = lineFrom(start.start);
+    let lineEnd = block.endEnd;
+    while (input[lineEnd] === " " || input[lineEnd] === "\t") lineEnd++;
+    const indent = input.slice(lineStart, start.start);
+    const wholeLine =
+      onlySpacesAndTabs(indent) &&
+      (lineStart > 0 || before !== "mid") &&
+      (lineEnd === input.length ? after !== "mid" : input[lineEnd] === "\n");
+    // A section leads with the line break before it when a line of text precedes it, else it ends with the
+    // one after it, unless that only leads to the end of the summary.
+    const leads = wholeLine && lineStart > cursor && (before === "mid" || textStart < lineStart);
+    const trails = wholeLine && !leads && input[lineEnd] === "\n" && (after !== "end" || lineEnd < textEnd);
+    // A section with no line break to take stays as written, as one alone between a group block's brackets,
+    // which reading trims (#3435); at the end of the summary its branches still end their line, so a merged
+    // reply puts each version on a line of its own, and the final trim drops the last one.
+    if (!wholeLine || (!leads && !trails && after !== "end")) {
+      result += input.slice(cursor, start.start);
+      contents.forEach(
+        (content, index) => (result += tags[index] + attachSectionLineBreaks(content, "mid", "mid", depth + 1)),
+      );
+      result += tags.at(-1);
+      cursor = block.endEnd;
+      afterSection = result.length;
+      continue;
+    }
+    const nextLineEnd = input.indexOf("\n", lineEnd + 1);
+    const previous = lineStart === 0 ? before : kindOf(lineFrom(lineStart - 1), lineStart - 1);
+    const next =
+      lineEnd === input.length ? after : kindOf(lineEnd + 1, nextLineEnd === -1 ? input.length : nextLineEnd);
+    const firstBreak = input.indexOf("\n", start.end);
+    // Each branch's own lines, without the section's line breaks. Text on the {{#if}}'s line keeps its indent.
+    const lines = contents.map((content, index) => {
+      const onTagLine =
+        (firstBreak === -1 || firstBreak >= branches[index]!.contentStart) && !startsWithLineBreak(content);
+      let text = startsWithLineBreak(content) ? content.slice(content.indexOf("\n") + 1) : content;
+      if (endsWithLineBreak(text)) text = text.slice(0, text.lastIndexOf("\n"));
+      return !text.trim() ? "" : onTagLine ? indent + text : text;
+    });
+    // The section's lines with the line breaks it takes along: [from, to). Sections inside a branch are
+    // rewritten with those line breaks, so one that fills the branch takes them along when it hides.
+    let from = lineStart;
+    let to = lineEnd;
+    let texts: string[];
+    if (leads) {
+      from = lineStart - 1;
+      // A paragraph of its own also takes the blank lines before it, back to the last line of text.
+      if (previous === "blank" && next !== "text")
+        for (let at = from; ;) {
+          const blankStart = lineFrom(at);
+          if (kindOf(blankStart, at) === "text") {
+            from = at;
+            break;
+          }
+          if (blankStart === 0 || blankStart - 1 < cursor) break;
+          at = blankStart - 1;
+        }
+      texts = lines.map(
+        (text) => text && attachSectionLineBreaks(input.slice(from, lineStart) + text, "mid", next, depth + 1),
+      );
+    } else if (trails) {
+      to = lineEnd + 1;
+      // A section that starts a paragraph also takes the blank lines after it.
+      if (previous === "blank")
+        for (let blankEnd = input.indexOf("\n", to); blankEnd !== -1; blankEnd = input.indexOf("\n", to)) {
+          if (!onlySpacesAndTabs(input.slice(to, blankEnd))) break;
+          to = blankEnd + 1;
+        }
+      // The branch's last, empty line carries on into the line after the section.
+      const toLineEnd = input.indexOf("\n", to);
+      const carriesOn =
+        to === input.length
+          ? after
+          : kindOf(to, toLineEnd === -1 ? input.length : toLineEnd) === "text"
+            ? "mid"
+            : "blank";
+      texts = lines.map(
+        (text) => text && attachSectionLineBreaks(text + input.slice(lineEnd, to), previous, carriesOn, depth + 1),
+      );
+    } else texts = lines.map((text) => text && attachSectionLineBreaks(`${text}\n`, previous, "blank", depth + 1));
+    result += input.slice(cursor, from);
+    // `{{noop}}` keeps the section off a line of its own, so reading it does not trim a line break it carries,
+    // also where a merged reply reads the section apart from the text before it.
+    const lead = result.slice(afterSection);
+    if (onlySpacesAndTabs(lead.slice(lead.lastIndexOf("\n") + 1))) result += "{{noop}}";
+    if (startsWithLineBreak(texts[0]!)) texts[0] = `{{noop}}${texts[0]}`;
+    result += texts.map((text, index) => tags[index] + text).join("") + tags.at(-1);
+    cursor = to;
+    let rest = cursor;
+    while (input[rest] === " " || input[rest] === "\t") rest++;
+    if (endsWithLineBreak(texts.at(-1)!) && (rest === input.length || input[rest] === "\n")) result += "{{noop}}";
+    afterSection = result.length;
+  }
+  return result + input.slice(cursor);
+}
+
 function splitTopLevelDoubleColon(input: string): string[] {
   const parts: string[] = [];
   let current = "";

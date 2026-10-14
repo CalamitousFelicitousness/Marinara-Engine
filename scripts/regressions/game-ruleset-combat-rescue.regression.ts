@@ -1,5 +1,5 @@
 /**
- * Rescues after the roll (Capability API 1.248).
+ * Rescues after the roll (Capability API 1.249).
  *
  *   - A change's `rescue`: held back from the roll, added only when the holder's own attack, save or
  *     check falls short by no more than its most, and its condition is then spent: Bardic
@@ -350,7 +350,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with changes held back until a roll falls short, or entries spent on a failed roll, requires schemaVersion 2 and capabilityApi 1.248 or newer";
+      "A ruleset with changes held back until a roll falls short, or entries spent on a failed roll, requires schemaVersion 2 and capabilityApi 1.249 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -360,15 +360,15 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(247, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(248, document), gate);
+      assert.equal(issue(248, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(249, document), gate);
     }
-    assert.notEqual(issue(247, without), gate);
-    assert.equal(issue(247, without, new Map([["heroic.json", { entries: [luck] }]])), gate);
+    assert.notEqual(issue(248, without), gate);
+    assert.equal(issue(248, without, new Map([["heroic.json", { entries: [luck] }]])), gate);
   }
 
   console.log(
-    "Ruleset rescue: Bardic Inspiration's die is added after the roll only when it can turn it, Indomitable rolls a failed save again and Stroke of Luck turns a miss into a hit; gated at 1.248.",
+    "Ruleset rescue: Bardic Inspiration's die is added after the roll only when it can turn it, Indomitable rolls a failed save again and Stroke of Luck turns a miss into a hit; gated at 1.249.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

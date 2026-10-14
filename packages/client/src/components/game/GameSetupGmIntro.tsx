@@ -1,21 +1,38 @@
 // ──────────────────────────────────────────────
-// Game: the Game Master's intro message (Capability API 1.338), part of the GM setup. Defined is the
+// Game: the Game Master's intro message (Capability API 1.339), part of the GM setup. Defined is the
 // game's first message exactly as written; guided only shapes the one the Game Master writes. An
 // Experience may set its own: locked, it is shown and cannot be changed; unlocked, it starts the field.
 // ──────────────────────────────────────────────
 import { Lock } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { GAME_INTRO_TEXT_MAX, type GameIntro, type GameIntroChoice } from "@marinara-engine/shared";
+import {
+  GAME_INTRO_TEXT_MAX,
+  gameIntroChoiceSchema,
+  type GameIntro,
+  type GameIntroChoice,
+} from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { GAME_SETUP_FIELD_LABEL, GAME_SETUP_INPUT_CLASS } from "./game-setup-classes";
 
 const MODES = ["none", "defined", "guided"] as const;
 
-/** What the setup sends: the choice, or nothing when it is the Experience's own (or none, with none). */
+/** What the setup sends: the choice, or nothing when it is the Experience's own (or none, with none).
+ *  A defined intro is sent exactly as written; blank is none. */
 export function gameIntroForSetup(choice: GameIntroChoice | null): GameIntroChoice | undefined {
   if (!choice) return undefined;
   if (choice.mode === "none") return choice;
-  return choice.text.trim() ? { mode: choice.mode, text: choice.text.trim() } : { mode: "none" };
+  if (!choice.text.trim()) return { mode: "none" };
+  return { mode: choice.mode, text: choice.mode === "defined" ? choice.text : choice.text.trim() };
+}
+
+/** Why the setup's intro cannot be sent, as its message's key, or null when it can: the same check the
+ *  server makes, so the warning, Start and the setup's download agree. */
+export function gameIntroProblem(choice: GameIntroChoice | null): "noBraces" | "noBrackets" | "invalid" | null {
+  const sent = gameIntroForSetup(choice);
+  if (!sent || sent.mode === "none" || gameIntroChoiceSchema.safeParse(sent).success) return null;
+  if (/\{\{|\}\}/.test(sent.text)) return "noBraces";
+  if (sent.mode === "guided" && /[[\]]/.test(sent.text)) return "noBrackets";
+  return "invalid";
 }
 
 export function GameSetupGmIntro({
@@ -33,7 +50,7 @@ export function GameSetupGmIntro({
   const locked = experience?.locked === true;
   const shown: GameIntroChoice = locked ? experience! : (value ?? experience ?? { mode: "none" });
   const text = shown.mode === "none" ? "" : shown.text;
-  const bracketed = shown.mode === "guided" && /[[\]]/.test(text);
+  const problem = locked ? null : gameIntroProblem(shown);
   return (
     <div>
       <label className={GAME_SETUP_FIELD_LABEL}>{t("game.intro.title")}</label>
@@ -78,10 +95,10 @@ export function GameSetupGmIntro({
       <p
         className={cn(
           "mt-1 text-[0.575rem]",
-          bracketed ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]",
+          problem ? "text-[var(--marinara-app-accent-static)]" : "text-[var(--muted-foreground)]",
         )}
       >
-        {bracketed ? t("game.intro.noBrackets") : t(`game.intro.help.${shown.mode}`)}
+        {problem ? t(`game.intro.${problem}`) : t(`game.intro.help.${shown.mode}`)}
       </p>
     </div>
   );

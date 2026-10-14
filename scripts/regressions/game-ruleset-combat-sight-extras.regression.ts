@@ -1,5 +1,5 @@
 /**
- * More of seeing (Capability API 1.179).
+ * More of seeing (Capability API 1.180).
  *
  *   - An applied condition's `endsWhenHolder`: it comes off once its holder has attacked, or cast
  *     from a catalog it names (Invisibility); an item's `use.casts` counts as casting (a scroll). The
@@ -59,7 +59,7 @@ try {
     edit(doc);
     return doc;
   };
-  // The 5e example with senses (as 1.177's test has them), items, and three conditions of spells:
+  // The 5e example with senses (as 1.178's test has them), items, and three conditions of spells:
   // the Darkvision spell, True Seeing and Faerie Fire's outline.
   const sighted = (doc: Record<string, any>) => {
     doc.items = { categories: [{ id: "gear", label: "Gear" }] };
@@ -508,7 +508,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions that end when their holder attacks or casts, senses given by conditions or items, conditions that give away the unseen, or item uses that cast, requires schemaVersion 2 and capabilityApi 1.179 or newer";
+      "A ruleset with conditions that end when their holder attacks or casts, senses given by conditions or items, conditions that give away the unseen, or item uses that cast, requires schemaVersion 2 and capabilityApi 1.180 or newer";
     const docs: Array<[string, Record<string, any>]> = [
       [
         "endsWhenHolder",
@@ -542,10 +542,10 @@ try {
       ],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(178) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(179) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(179) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(180) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(178) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(179) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

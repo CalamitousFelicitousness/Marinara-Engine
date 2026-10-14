@@ -1,5 +1,5 @@
 /**
- * An item's use taken as a reaction (Capability API 1.321).
+ * An item's use taken as a reaction (Capability API 1.322).
  *
  *   - Liesl's Coffin: once a day, as a creature within 5 feet of its bearer is hit, +5 AC on them until
  *     the start of the bearer's next turn, against that hit too.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 317);
+  assert.ok(supportedCapabilityApi.minor >= 322);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -173,7 +173,8 @@ try {
     warded.state.turn = 0;
     d20 = 18;
     const next = act(warded.state, { actorId: "foe", optionId: "claw", targetIds: ["ally"] });
-    assert.equal(of(next.events, "attack").at(-1)?.hit ?? true, true);
+    assert.notEqual(of(next.events, "attack").at(-1)?.outcome, "miss", "an 18 hits the ally, unwarded");
+    assert.ok(of(next.events, "attack").length > 0);
     assert.ok(
       !next.state.window ||
         !rulesetWindowOptions(definition, next.state, "bard").some((one) => one.label.includes("Coffin")),
@@ -289,7 +290,7 @@ try {
         refusedTrue.issues.join("; "),
       );
     const message =
-      "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.321 or newer";
+      "A ruleset with an item use taken as a reaction requires schemaVersion 2 and capabilityApi 1.322 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -306,16 +307,16 @@ try {
     const at = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc);
     parsed(withItem(coffinUse));
-    assert.equal(at(320, withItem(coffinUse)), message);
-    assert.notEqual(at(321, withItem(coffinUse)), message);
-    assert.notEqual(at(320, withItem({ ...coffinUse, reaction: false })), message, "false is no reaction");
-    assert.notEqual(at(320, withItem(loafUse)), message);
+    assert.equal(at(321, withItem(coffinUse)), message);
+    assert.notEqual(at(322, withItem(coffinUse)), message);
+    assert.notEqual(at(321, withItem({ ...coffinUse, reaction: false })), message, "false is no reaction");
+    assert.notEqual(at(321, withItem(loafUse)), message);
     const more = withItem({ kind: "buff", budget: "bonus", targets: "self", charges: 1, applies: loafUse.applies });
     more.catalogs.find((catalog: { holds?: string }) => catalog.holds === "items").entries.at(-1).item.moreUses = [
       { label: "Ward", use: coffinUse },
     ];
     parsed(more);
-    assert.equal(at(320, more), message);
+    assert.equal(at(321, more), message);
   }
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

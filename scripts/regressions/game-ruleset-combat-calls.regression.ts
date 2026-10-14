@@ -1,5 +1,5 @@
 /**
- * Creatures called into a fight (Capability API 1.324).
+ * Creatures called into a fight (Capability API 1.325).
  *
  *   - `calls` on a creature's action: Jars Burst calls two hounds beside the Owed on its own turn;
  *     they are on its side, named one by one, set down where there is room, and take their turns
@@ -40,7 +40,7 @@ const { rulesetController } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 320);
+  assert.ok(supportedCapabilityApi.minor >= 325);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -200,7 +200,7 @@ try {
     const round2 = end(late.state).state;
     assert.equal(round2.round, 2);
     assert.equal(round2.order[round2.turn], "ada");
-    // A turn put in after Bo's (the Hourglass's, 1.319) stays after Bo's.
+    // A turn put in after Bo's (the Hourglass's, 1.320) stays after Bo's.
     const put = fight();
     put.order = ["ada", "owed", "bo", "ada"];
     put.interjected = 3;
@@ -342,7 +342,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.324 or newer";
+      "A ruleset with a creature action that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.325 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -360,9 +360,9 @@ try {
     caller.catalogs
       .find((catalog: { holds?: string }) => catalog.holds === "creatures")
       .entries[0].creature.actions.push(structuredClone(jars));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(323) as never, caller), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(324) as never, caller), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(323) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(324) as never, caller), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(325) as never, caller), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(324) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

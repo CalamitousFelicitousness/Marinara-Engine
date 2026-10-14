@@ -300,6 +300,14 @@ for (const raw of WORLD_STARTER_KITS) {
     resources,
   );
   assert.equal(current.config.worldSnapshot, undefined, "this generator's world is made from its recipe");
+  // An existing game takes no world from a setup file, so it takes none of the world's parts either.
+  const existing = resolveGameSetupImport(parseGameSetupShareFileJson(setupText({ worldSnapshot: older })), {
+    ...resources,
+    isNewGame: false,
+  });
+  for (const field of ["worldKit", "world", "story", "worldSnapshot"] as const) {
+    assert.equal(existing.config[field], undefined, `an existing game takes no ${field} from a setup file`);
+  }
 }
 
 // ── Two worlds of one recipe keep their own present: one read from its snapshot, one made now ──
@@ -479,6 +487,25 @@ try {
   assert.equal(asMade.world.world.startId, live.world.startId);
   assert.equal(asMade.town.settlementId, settlement.id, "the party is in its town");
   assert.ok(asMade.people.length > 0);
+  // A chat file of this generator's world is made from its recipe on import, as its edits are saved later:
+  // a snapshot changed by hand in the file never becomes the game's world.
+  {
+    const file = await app.inject({ method: "GET", url: `/api/chats/${chatId}/export?format=jsonl` });
+    assert.equal(file.statusCode, 200, file.body);
+    const lines = file.body.split("\n");
+    const header = JSON.parse(lines[0]!);
+    const sent = header.chat_metadata.marinara_metadata.gameWorldSnapshot;
+    assert.equal(sent?.generatorVersion, WORLD_GENERATOR_VERSION, "the file carries this generator's snapshot");
+    sent.world.places.find((place: { id: string }) => place.id === settlement.id).name = "Forgedton";
+    lines[0] = JSON.stringify(header);
+    const forged = (await importSTChat(lines.join("\n"), db)) as { chatId?: string; chat?: { id: string } };
+    const forgedId = (forged.chatId ?? forged.chat?.id)!;
+    assert.ok(forgedId, JSON.stringify(forged));
+    await chats.update(forgedId, { mode: "game" });
+    assert.deepEqual((await get(forgedId, "world")).world, asMade.world, "made from its recipe, edits and all");
+    assert.equal((await snapshots.get(forgedId))?.world?.places.find((p) => p.id === settlement.id)?.name, "Newbridge");
+    await chats.remove(forgedId);
+  }
 
   // The recipe changed under it, and the generator moved on (as after an update).
   await chats.patchMetadata(chatId, {

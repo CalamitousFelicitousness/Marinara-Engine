@@ -1,5 +1,5 @@
 /**
- * Lair timing (Capability API 1.326).
+ * Lair timing (Capability API 1.327).
  *
  *   - `actedOnly` on a creature's action: only somebody who has taken their turn this round may be
  *     picked (the Hour Bell); before the fight's very first turn, nobody has.
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 322);
+  assert.ok(supportedCapabilityApi.minor >= 327);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -281,7 +281,7 @@ try {
       actions[2] = loose;
     }, /held by its concentration/);
     const gate =
-      "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.326 or newer";
+      "A ruleset with a creature action only at whoever has acted this round, a broken concentration that picks the next lair action, or a condition lasting until the next lair action requires schemaVersion 2 and capabilityApi 1.327 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -312,10 +312,10 @@ try {
       }),
       withIvo(),
     ]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(325) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(326) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(326) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(327) as never, doc), gate);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(325) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(326) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

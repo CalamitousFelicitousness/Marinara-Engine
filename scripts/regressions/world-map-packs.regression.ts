@@ -176,7 +176,7 @@ const installed = [
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
     { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
     undefined,
-    79,
+    80,
   ),
   // Whole as a PNG, but its pixels do not decode: refused where the Engine decodes sheets.
   install(
@@ -189,14 +189,37 @@ const installed = [
     },
     { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
     undefined,
-    79,
+    80,
   ),
   install(
     "oldimagetiles",
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
     { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
     undefined,
-    78,
+    79,
+  ),
+  // A story's intro message is Capability API 1.339: a pack declaring 1.338 may not carry one.
+  ...[338, 339].map((minor) =>
+    install(
+      `intro${minor}`,
+      {
+        "kit.worldkit.json": text(worldKitFile(kit)),
+        "upriver.world.json": text(
+          worldFile(
+            "Upriver",
+            kit,
+            { ...worldOf(9), edits },
+            {
+              ...story,
+              intro: { mode: "defined", text: "The river is high.", locked: true },
+            },
+          ),
+        ),
+      },
+      { kit: "kit.worldkit.json", worlds: ["upriver.world.json"] },
+      undefined,
+      minor,
+    ),
   ),
   install(
     "badtiles",
@@ -288,6 +311,11 @@ try {
     oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.80/.test(oldImageTiles.reason),
     JSON.stringify(oldImageTiles),
   );
+  const early = await readMapPack("intro338");
+  assert.ok(early && !early.ok && /needs Capability API 1\.339/.test(early.reason), JSON.stringify(early));
+  const intro = await readMapPack("intro339");
+  assert.ok(intro?.ok, JSON.stringify(intro));
+  assert.equal(intro.pack.worlds[0]?.story?.intro?.text, "The river is high.");
   assert.equal(await readMapPack("plain"), null, "an Experience without a pack");
   assert.equal(await readMapPack("nowhere"), null, "not installed");
 

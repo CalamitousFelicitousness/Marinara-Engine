@@ -243,7 +243,7 @@ export interface GameSetupConfig {
   /** Classic Game Mode or the Overworld RPG (see `GameStyle`), stored as `chat.metadata.gameStyle`.
    *  Absent in setups made before the choice: read as Overworld with a world, Classic without. */
   gameStyle?: GameStyle;
-  /** The Game Master's intro message (Capability API 1.338), stored as `chat.metadata.gameIntro`: defined
+  /** The Game Master's intro message (Capability API 1.339), stored as `chat.metadata.gameIntro`: defined
    *  (the first message, exactly) or guided, or `{ mode: "none" }`. Absent is the Experience's own. An
    *  Experience's locked intro wins over it. */
   gameIntro?: import("../features/world/game-intro.js").GameIntroChoice;

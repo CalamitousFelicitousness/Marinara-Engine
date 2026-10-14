@@ -1,5 +1,5 @@
 /**
- * Shade, a board's light rule, and chimes (Capability API 1.318).
+ * Shade, a board's light rule, and chimes (Capability API 1.319).
  *
  *   - A light with `shade` sheds dim light as far as it reaches, and makes bright light and sunlight
  *     there dim: the showcase's Lantern of Dusk. Only a magical one shades magical darkness.
@@ -7,7 +7,7 @@
  *     move and its conditions go on; shade keeps it off; `spares` keeps it off its own creatures.
  *   - A creature's `stillIn`: it does not move while in one of those lights, Lantern-Shy.
  *   - `alerts`: whoever moves hidden near an opponent holding it is given away, the Wind-Chime.
- *   - A cell's own light (1.317) is read by sight too: a dark cell on a bright board hides.
+ *   - A cell's own light (1.318) is read by sight too: a dark cell on a bright board hides.
  *   - Painted on a battlefield, the rule reaches the fight; the install gate.
  */
 import assert from "node:assert/strict";
@@ -51,7 +51,7 @@ const { createRulesetFight } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 314);
+  assert.ok(supportedCapabilityApi.minor >= 319);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -288,7 +288,7 @@ try {
     // The dark is safe.
     const dusk = nextRound(fight({ light: "dim", lightRule: { applies: ["sunstruck"] } }));
     assert.equal(of(dusk.events, "lightRule").length, 0);
-    // Its save (1.320): made, nothing this time; a straw hat's advantage, against what it says it is
+    // Its save (1.321): made, nothing this time; a straw hat's advantage, against what it says it is
     // against. Exhaustion two at a time, but 3 at most.
     const hat = gear("Straw hat", {
       modifiers: [{ to: "saves", mode: "advantage", against: { conditions: ["sunstruck"] } }],
@@ -475,7 +475,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.318 or newer";
+      "A ruleset with a light that sheds shade, something that alerts or a creature held still by light requires schemaVersion 2 and capabilityApi 1.319 or newer";
     const chimed = fiveE((doc) => {
       doc.combat.conditions = doc.combat.conditions.filter(
         (entry: { condition: string }) => entry.condition !== "dusky",
@@ -490,11 +490,11 @@ try {
       creatures.entries[0].creature.stillIn = ["bright"];
     });
     for (const doc of [fiveE(), chimed, shy]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(317) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(318) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(318) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(319) as never, doc), gate);
     }
     const plain = JSON.parse(fiveEText);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(317) as never, plain), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(318) as never, plain), gate, "the plain 5e example");
   }
 
   // ── Painted on a battlefield, and through the director ──

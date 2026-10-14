@@ -1,5 +1,5 @@
 /**
- * Readying for real (Capability API 1.287).
+ * Readying for real (Capability API 1.288).
  *
  *   - `combat.readying`: the Ready action offers each option taken with its budget (and a walk),
  *     waiting for an opponent to come where it reaches them (`comes`) or for one to act (`acts`).
@@ -407,14 +407,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset that readies for real requires schemaVersion 2 and capabilityApi 1.287 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(286) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(287) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(286) as never, JSON.parse(fiveEText)), gate);
+    const gate = "A ruleset that readies for real requires schemaVersion 2 and capabilityApi 1.288 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(287) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(288) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(287) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Ready: each option of the action's budget or a walk, readied for an opponent coming in reach or acting; taken with the reaction in a window, a walk going on after; a pass keeps it; a spell paid as readied and held by concentration, lost with it, spent if it never goes off; refusals; gated at 1.287.",
+    "Ready: each option of the action's budget or a walk, readied for an opponent coming in reach or acting; taken with the reaction in a window, a walk going on after; a pass keeps it; a spell paid as readied and held by concentration, lost with it, spent if it never goes off; refusals; gated at 1.288.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

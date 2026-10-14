@@ -1,5 +1,5 @@
 /**
- * Staffs cast with their holder's numbers (Capability API 1.268).
+ * Staffs cast with their holder's numbers (Capability API 1.269).
  *
  *   - `sheetDifficulty`: a staff's spell saved against at its holder's spell save DC, and its attack
  *     rolled with their spell attack bonus (`toHit.sheetBonus`, already there).
@@ -267,7 +267,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with more than 160 conditions, an aura save whose holder's aura stays off once what it put on ends, an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.268 or newer";
+      "A ruleset with more than 160 conditions, an aura save whose holder's aura stays off once what it put on ends, an item use whose save difficulty is read off its holder's sheet, or one that spends more charges for more, requires schemaVersion 2 and capabilityApi 1.269 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const gear = (use: Record<string, unknown>) =>
@@ -280,18 +280,18 @@ try {
         }),
       );
     const { sheetDifficulty: _sd, chargeStep: _cs, ...bare } = fireball;
-    assert.notEqual(issue(267, gear({ ...bare, saveDifficulty: 14 })), gate, "nothing of 1.268");
+    assert.notEqual(issue(268, gear({ ...bare, saveDifficulty: 14 })), gate, "nothing of 1.269");
     for (const [name, use] of [
       ["sheetDifficulty", { ...bare, sheetDifficulty: { derived: "spell_save_dc" } }],
       ["chargeStep", { ...bare, saveDifficulty: 14, chargeStep: { max: 3, amount: { dice: "1d6" } } }],
     ] as const) {
       const doc = gear(use);
       parsed(doc);
-      assert.equal(issue(267, doc), gate, name);
-      assert.notEqual(issue(268, doc), gate, name);
+      assert.equal(issue(268, doc), gate, name);
+      assert.notEqual(issue(269, doc), gate, name);
     }
     assert.equal(
-      issue(267, gear({ ...bare, saveDifficulty: 14 }), new Map([["extra.json", { use: { chargeStep: { max: 1 } } }]])),
+      issue(268, gear({ ...bare, saveDifficulty: 14 }), new Map([["extra.json", { use: { chargeStep: { max: 1 } } }]])),
       gate,
     );
     // More than 160 conditions (320 now), and an aura save immune once what it put on ends.
@@ -301,10 +301,10 @@ try {
           doc.sheet.live.conditions.push({ id: `extra_${index}`, label: `Extra ${index}` });
         }
       });
-    assert.notEqual(issue(267, many(160)), gate, "160 fit before");
+    assert.notEqual(issue(268, many(160)), gate, "160 fit before");
     parsed(many(161));
-    assert.equal(issue(267, many(161)), gate, "161 conditions");
-    assert.notEqual(issue(268, many(161)), gate);
+    assert.equal(issue(268, many(161)), gate, "161 conditions");
+    assert.notEqual(issue(269, many(161)), gate);
     const immune = document((doc) => {
       doc.sheet.live.conditions.push({ id: "horrific", label: "Horrific Appearance" });
       doc.combat.conditions.push({
@@ -325,12 +325,12 @@ try {
       });
     });
     parsed(immune);
-    assert.equal(issue(267, immune), gate, "immuneWhenEnds");
-    assert.notEqual(issue(268, immune), gate);
+    assert.equal(issue(268, immune), gate, "immuneWhenEnds");
+    assert.notEqual(issue(269, immune), gate);
   }
 
   console.log(
-    "Ruleset staffs: a staff's spells save against the holder's spell save DC and hit with their spell attack bonus; more charges add a die or a target each, offered only as far as the staff holds; gated at 1.268.",
+    "Ruleset staffs: a staff's spells save against the holder's spell save DC and hit with their spell attack bonus; more charges add a die or a target each, offered only as far as the staff holds; gated at 1.269.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

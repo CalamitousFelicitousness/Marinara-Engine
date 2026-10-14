@@ -1,5 +1,5 @@
 /**
- * A creature's light hidden under a condition, and light that is sunlight (Capability API 1.297).
+ * A creature's light hidden under a condition, and light that is sunlight (Capability API 1.298).
  *
  *   - A creature's `lightOutWhile`: its own light sheds nothing while one of those conditions is on
  *     it, and comes back when it ends: a will-o'-wisp invisible, its light with it.
@@ -238,20 +238,20 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with creatures whose light goes out under a condition, or light that is sunlight, requires schemaVersion 2 and capabilityApi 1.297 or newer";
+      "A ruleset with creatures whose light goes out under a condition, or light that is sunlight, requires schemaVersion 2 and capabilityApi 1.298 or newer";
     for (const thing of [
       creature("a", { lightOutWhile: ["invisible"] }),
       creature("b", { light: { bright: 1, dim: 1, sunlight: true } }),
     ]) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures").entries.push(thing);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(296) as never, doc), gate, thing.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(297) as never, doc), gate, thing.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(297) as never, doc), gate, thing.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(298) as never, doc), gate, thing.id);
     }
   }
 
   console.log(
-    "Sun and hidden light: a will-o'-wisp's light hidden while it is invisible and back after, a sun blade's sunlight over dark and bright boards; refusals; gated at 1.297.",
+    "Sun and hidden light: a will-o'-wisp's light hidden while it is invisible and back after, a sun blade's sunlight over dark and bright boards; refusals; gated at 1.298.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

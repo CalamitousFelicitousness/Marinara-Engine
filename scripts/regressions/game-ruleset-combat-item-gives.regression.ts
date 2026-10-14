@@ -1,5 +1,5 @@
 /**
- * An item's use that hands its user more of the turn (Capability API 1.333): `gives` on an item use, as
+ * An item's use that hands its user more of the turn (Capability API 1.334): `gives` on an item use, as
  * a catalog entry's (Action Surge). The Time-Flour Loaf, eaten for a bonus action, gives one more action
  * now; capped where it lands, so nothing is saved up. The install gate.
  */
@@ -29,7 +29,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 329);
+  assert.ok(supportedCapabilityApi.minor >= 334);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -108,7 +108,7 @@ try {
   // ── Refused, and the gate ──
   assert.equal(parseRulesetDefinition(document({ ...loafUse, gives: [{ budget: "action", count: 0 }] })).ok, false);
   const gate =
-    "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.333 or newer";
+    "A ruleset with an item use that gives its user more of the turn requires schemaVersion 2 and capabilityApi 1.334 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -122,10 +122,10 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(332) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(333) as never, document()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(333) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(334) as never, document()), gate);
   const { gives: _gives, ...plain } = loafUse;
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(332) as never, document(plain)), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(333) as never, document(plain)), gate);
 
   console.log("Item gives: the Time-Flour Loaf, eaten for a bonus action, gives one more action now.");
 } finally {

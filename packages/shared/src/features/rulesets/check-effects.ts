@@ -27,17 +27,17 @@ import {
 
 type RulesetEffectModifier = NonNullable<RulesetCombatCondition["modifiers"]>[number];
 
-/** What a save is rolled against (1.133). Missing context matches no narrowed modifier. */
+/** What a save is rolled against (1.134). Missing context matches no narrowed modifier. */
 export interface RulesetSaveAgainst {
   conditions?: readonly string[];
   damage?: readonly string[];
   magic?: boolean;
-  /** What the creature the save is against is (1.184): its type and tags. */
+  /** What the creature the save is against is (1.185): its type and tags. */
   from?: { type?: string; tags: readonly string[] };
-  /** What the action the save is against is known by (1.190): its id, its name and its shared
+  /** What the action the save is against is known by (1.191): its id, its name and its shared
    *  recharge group. */
   action?: readonly string[];
-  /** The catalog the entry it is against came from, or the one an item's use casts from (1.264). */
+  /** The catalog the entry it is against came from, or the one an item's use casts from (1.265). */
   catalog?: string;
 }
 
@@ -48,12 +48,12 @@ export function rulesetSaveAgainstMatches(
 ): boolean {
   if (!against) return true;
   if (!source) return false;
-  // Named actions narrow everything else it says (1.190): one of them, and then the rest as usual.
+  // Named actions narrow everything else it says (1.191): one of them, and then the rest as usual.
   if (against.actions) {
     const known = (source.action ?? []).map((name) => name.trim().toLowerCase());
     if (!against.actions.some((name) => known.includes(name.trim().toLowerCase()))) return false;
   }
-  // As do the catalogs it is cast from (1.264): a spell, and then whoever cast it.
+  // As do the catalogs it is cast from (1.265): a spell, and then whoever cast it.
   if (against.casts && !(source.catalog !== undefined && against.casts.includes(source.catalog))) return false;
   if ((against.actions || against.casts) && !against.conditions && !against.damage && !against.magic && !against.from) {
     return true;
@@ -80,16 +80,16 @@ export interface RulesetCheckSource {
   failsSaves?: readonly string[];
   saves?: readonly string[];
   skills?: readonly string[];
-  /** What this source keeps off its holder in a fight (Capability API 1.131). A check reads none. */
+  /** What this source keeps off its holder in a fight (Capability API 1.132). A check reads none. */
   resist?: readonly RulesetCreatureHideEntry[];
   vulnerable?: readonly string[];
   immune?: readonly RulesetCreatureHideEntry[];
   conditionImmunities?: readonly string[];
-  /** How far it lets its holder sense with each of the fight's senses (Capability API 1.179). */
+  /** How far it lets its holder sense with each of the fight's senses (Capability API 1.180). */
   senses?: Readonly<Record<string, number | { add: number }>>;
-  /** The light it sheds for its holder (Capability API 1.293). */
+  /** The light it sheds for its holder (Capability API 1.294). */
   light?: Readonly<{ bright: number; dim: number }>;
-  /** How near it gives away whoever moves unseen (Capability API 1.318). */
+  /** How near it gives away whoever moves unseen (Capability API 1.319). */
   alerts?: number;
 }
 
@@ -139,7 +139,7 @@ export function rulesetCheckSources(
   ];
 }
 
-/** A sheet row's typed hides (Capability API 1.131), read afresh so removing the row removes them.
+/** A sheet row's typed hides (Capability API 1.132), read afresh so removing the row removes them.
  *  Unknown damage words and condition ids are ignored; a ruleset with no damage types allows words. */
 export function rulesetSheetHideSources(definition: RulesetDefinition, build: RulesetSheetBuild): RulesetCheckSource[] {
   const sources: RulesetCheckSource[] = [];
@@ -153,10 +153,12 @@ export function rulesetSheetHideSources(definition: RulesetDefinition, build: Ru
       if (typeof value !== "string") continue;
       const hide: RulesetCheckSource = { name: list?.label ?? source.list };
       for (const word of value.split(",")) {
-        const [type, ...except] = word
-          .trim()
-          .toLowerCase()
-          .split(/\s+except\s+/);
+        // "fire except magical silvered": words, so a long run of spaces costs no regex backtracking.
+        const words = word.trim().toLowerCase().split(/\s+/);
+        const cuts = words.flatMap((one, at) => (one === "except" && at > 0 && at < words.length - 1 ? [at] : []));
+        const cut = cuts[0] ?? words.length;
+        const type = words.slice(0, cut).join(" ");
+        const except = words.slice(cut + 1).filter((_, at) => !cuts.includes(at + cut + 1));
         if (!type) continue;
         if (source.kind === "conditionImmunities") {
           if (!conditions.includes(type) || except.length) continue;
@@ -166,7 +168,7 @@ export function rulesetSheetHideSources(definition: RulesetDefinition, build: Ru
           if (source.kind === "vulnerable") {
             if (!except.length) hide.vulnerable = [...(hide.vulnerable ?? []), type];
           } else {
-            const entry = except.length ? { type, except: except.join(" ").split(/\s+/) } : type;
+            const entry = except.length ? { type, except } : type;
             hide[source.kind] = [...(hide[source.kind] ?? []), entry];
           }
         }
@@ -194,7 +196,7 @@ export function rulesetItemSources(
   const seen = new Set<unknown>();
   for (const held of items ?? []) {
     const name = held.name ?? held.item.category;
-    // A fake does what it truly does (1.78), under the name it is shown by.
+    // A fake does what it truly does (1.79), under the name it is shown by.
     const does = rulesetHeldItemDoes(held);
     const effect = held.worn ? does.worn : does.carried;
     if (effect && !seen.has(effect)) {
@@ -240,7 +242,7 @@ export function rulesetCheckEffects(
   };
   const save = target?.type === "save" ? target.id : undefined;
   const skill = target?.type === "skill" ? target.id : undefined;
-  // The ability a check is made with (1.187): a raw ability check's own, or a skill's as it is rolled.
+  // The ability a check is made with (1.188): a raw ability check's own, or a skill's as it is rolled.
   const ability =
     target?.type === "ability"
       ? target.id
@@ -355,7 +357,7 @@ export function rulesetItemGateCheck(
   };
 }
 
-/** Typed defenses, in the same words on the sheet, battle status and Game Master prompt (1.131). */
+/** Typed defenses, in the same words on the sheet, battle status and Game Master prompt (1.132). */
 export function rulesetHideLines(
   definition: RulesetDefinition,
   sources: readonly Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">[],

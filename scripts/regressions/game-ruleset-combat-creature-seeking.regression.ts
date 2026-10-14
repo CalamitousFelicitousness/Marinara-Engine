@@ -1,5 +1,5 @@
 /**
- * A creature's own ways of hiding and looking (Capability API 1.290).
+ * A creature's own ways of hiding and looking (Capability API 1.291).
  *
  *   - A creature action's `standard`: standard actions with that action's own budget (Nimble
  *     Escape), with `while: "obscured"` only in a fog or in dim light or darkness (Shadow Stealth).
@@ -302,7 +302,7 @@ try {
     assert.equal(rulesetBoardLightFor("dusk", undefined), "dim");
     assert.equal(rulesetBoardLightFor("Morning", "plains"), "sunlight");
     assert.equal(rulesetBoardLightFor("noon", "castle"), undefined, "indoors, its own lamps");
-    // A cave is dark at any hour (1.293).
+    // A cave is dark at any hour (1.294).
     assert.equal(rulesetBoardLightFor("noon", "cave"), "dark");
     assert.equal(rulesetBoardLightFor(null, "dungeon"), "dark");
     assert.equal(rulesetBoardLightFor(null, "plains"), undefined);
@@ -364,21 +364,21 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a creature that has its own modes on checks, a printed passive Perception, or standard actions with its own budget requires schemaVersion 2 and capabilityApi 1.290 or newer";
+      "A ruleset with a creature that has its own modes on checks, a printed passive Perception, or standard actions with its own budget requires schemaVersion 2 and capabilityApi 1.291 or newer";
     const only = (beast: unknown) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures").entries.push(beast);
       return doc;
     };
     for (const beast of [goblin, hawk, bear]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(289) as never, only(beast)), gate, beast.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(290) as never, only(beast)), gate, beast.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(290) as never, only(beast)), gate, beast.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(291) as never, only(beast)), gate, beast.id);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(289) as never, only(creature("plain", {}))), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(290) as never, only(creature("plain", {}))), gate);
   }
 
   console.log(
-    "Creature seeking: Nimble Escape and Shadow Stealth hide with the bonus action, the latter only out of the light; keen sight, sunlight sensitivity and camouflage roll twice where they hold; a printed passive; the light off the scene's time; refusals; gated at 1.290.",
+    "Creature seeking: Nimble Escape and Shadow Stealth hide with the bonus action, the latter only out of the light; keen sight, sunlight sensitivity and camouflage roll twice where they hold; a printed passive; the light off the scene's time; refusals; gated at 1.291.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

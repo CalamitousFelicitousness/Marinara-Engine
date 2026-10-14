@@ -1,5 +1,5 @@
 /**
- * Resilient Sphere (Capability API 1.313).
+ * Resilient Sphere (Capability API 1.314).
  *
  *   - A condition's `sealed`: nobody else aims at its holder or catches them in an area, nothing from
  *     anybody else harms, heals or puts a condition on them (auras included), nothing of theirs reaches
@@ -229,7 +229,7 @@ try {
     assert.ok(targetsOf(state, "mage", "Bolt").includes("giant"), "the size limit is the sphere's own");
     giant.size = "large";
     assert.ok(targetsOf(state, "mage", "Resilient Sphere").includes("giant"), "Large still fits");
-    // A scroll of it holds to the same size (1.316).
+    // A scroll of it holds to the same size (1.317).
     const scroll = (upTo?: string): RulesetSheetItem => ({
       name: "Sphere Scroll",
       quantity: 1,
@@ -564,7 +564,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a condition that shuts its holder away from everybody else, or an entry aimed only at creatures up to a size, requires schemaVersion 2 and capabilityApi 1.313 or newer";
+      "A ruleset with a condition that shuts its holder away from everybody else, or an entry aimed only at creatures up to a size, requires schemaVersion 2 and capabilityApi 1.314 or newer";
     const onlySize = document((doc) => {
       delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "sphered").sealed;
     });
@@ -576,14 +576,14 @@ try {
       delete doc.catalogs.at(-1).entries[0].mechanics.targetsUpTo;
     });
     for (const doc of [document(), onlySize, onlySeal]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(312) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(313) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(313) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(314) as never, doc), gate);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(312) as never, neither), gate, "nothing new, no gate");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(313) as never, neither), gate, "nothing new, no gate");
   }
 
   console.log(
-    "Sphere: nothing reaches in or out (aim, areas, auras, harm, opportunity strikes), rolled at half speed, carried by whoever picks it up, broken by Disintegrate with its concentration; Large or smaller; refusals; gated at 1.313.",
+    "Sphere: nothing reaches in or out (aim, areas, auras, harm, opportunity strikes), rolled at half speed, carried by whoever picks it up, broken by Disintegrate with its concentration; Large or smaller; refusals; gated at 1.314.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

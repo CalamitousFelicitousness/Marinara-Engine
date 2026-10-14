@@ -333,6 +333,7 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationQuality: input.imageGenerationQuality ?? "auto",
         videoGenerationSource: input.videoGenerationSource ?? null,
         videoService: input.videoService ?? null,
+        videoPromptInstructions: input.videoPromptInstructions ?? null,
         audioSource: input.audioSource ?? null,
         decisionSource: input.decisionSource ?? null,
         credentialsFromConnectionId: input.provider === "decision" ? (input.credentialsFromConnectionId ?? null) : null,
@@ -565,6 +566,9 @@ export function createConnectionsStorage(db: DB) {
       if (data.videoService !== undefined) {
         updateFields.videoService = data.videoService;
       }
+      if (data.videoPromptInstructions !== undefined) {
+        updateFields.videoPromptInstructions = data.videoPromptInstructions;
+      }
       if (data.audioSource !== undefined) {
         updateFields.audioSource = data.audioSource;
       }
@@ -734,6 +738,7 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationQuality: source.imageGenerationQuality,
         videoGenerationSource: source.videoGenerationSource,
         videoService: source.videoService,
+        videoPromptInstructions: source.videoPromptInstructions,
         audioSource: source.audioSource,
         decisionSource: source.decisionSource,
         credentialsFromConnectionId: source.credentialsFromConnectionId,

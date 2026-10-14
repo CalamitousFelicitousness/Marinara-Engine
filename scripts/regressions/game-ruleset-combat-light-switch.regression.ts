@@ -1,5 +1,5 @@
 /**
- * Putting out and lighting again (Capability API 1.294).
+ * Putting out and lighting again (Capability API 1.295).
  *
  *   - `combat.sight.darkness.carried` is a switch on the menu of whoever carries it, named by its
  *     `label`: for nothing once a turn, or on its `budget`.
@@ -280,21 +280,21 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose carried light has a name or a price to put out and light again requires schemaVersion 2 and capabilityApi 1.294 or newer";
+      "A ruleset whose carried light has a name or a price to put out and light again requires schemaVersion 2 and capabilityApi 1.295 or newer";
     const named = JSON.parse(fiveEText) as Record<string, any>;
     named.combat.sight = { darkness: { seeIn: ["darkvision"], carried: { bright: 20, dim: 20, label: "Torch" } } };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(293) as never, named), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(294) as never, named), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(294) as never, named), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(295) as never, named), gate);
     const priced = JSON.parse(fiveEText) as Record<string, any>;
     priced.combat.sight = { darkness: { seeIn: ["darkvision"], carried: { bright: 20, dim: 20, budget: "bonus" } } };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(293) as never, priced), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(294) as never, priced), gate);
     const plain = JSON.parse(fiveEText) as Record<string, any>;
     plain.combat.sight = { darkness: { seeIn: ["darkvision"], carried: { bright: 20, dim: 20 } } };
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(293) as never, plain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(294) as never, plain), gate);
   }
 
   console.log(
-    "Light switch: a torch put out and lit again for nothing once a turn or on a budget, unseen in the dark and found when lit, none for whoever sees in the dark, a lantern lit only while on; refusals; gated at 1.294.",
+    "Light switch: a torch put out and lit again for nothing once a turn or on a budget, unseen in the dark and found when lit, none for whoever sees in the dark, a lantern lit only while on; refusals; gated at 1.295.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

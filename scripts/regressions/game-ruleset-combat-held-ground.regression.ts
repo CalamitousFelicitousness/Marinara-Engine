@@ -1,5 +1,5 @@
 /**
- * Held Ground (Capability API 1.322), the showcase's region rule for death.
+ * Held Ground (Capability API 1.323), the showcase's region rule for death.
  *
  *   - Whoever reaches no health on it is felled: an opponent is out of the fight, a character lies
  *     stable and never dying, takes the ground's condition and a mark of Owing, and can be healed up.
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 318);
+  assert.ok(supportedCapabilityApi.minor >= 323);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -255,7 +255,7 @@ try {
 
   // ── The install gate ──
   {
-    const gate = "A ruleset with a blow that reaps requires schemaVersion 2 and capabilityApi 1.322 or newer";
+    const gate = "A ruleset with a blow that reaps requires schemaVersion 2 and capabilityApi 1.323 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -277,12 +277,12 @@ try {
     const reading = parsed(reaper);
     const entry = reading.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries![0]!;
     assert.equal(rulesetCreatureBlock(reading, entry)?.actions[0]?.reaps, true, "read off the bestiary");
-    assert.equal(getCapabilityPackageInstallIssue(manifest(321) as never, reaper), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(322) as never, reaper), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(321) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(322) as never, reaper), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(323) as never, reaper), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(322) as never, document()), gate);
   }
 
-  // ── Let go mid-fight (1.329): the felled die, the marks come due ──
+  // ── Let go mid-fight (1.330): the felled die, the marks come due ──
   {
     assert.ok(supportedCapabilityApi.minor >= 325);
     const marked = (state: RulesetEncounterState, id: string, marks: number) => {

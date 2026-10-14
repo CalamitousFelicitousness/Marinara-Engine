@@ -33,9 +33,9 @@ export interface RulesetBoardCell {
   solid: boolean;
   /** How high the cell stands (combat C6b), 0 on level ground. */
   height: number;
-  /** Who is standing here, defeated or not: on every cell they fill (1.193). */
+  /** Who is standing here, defeated or not: on every cell they fill (1.194). */
   occupant?: DirectedRulesetCombatant;
-  /** The cell their token is drawn from, the top-left one they fill (1.193). */
+  /** The cell their token is drawn from, the top-left one they fill (1.194). */
   anchor?: true;
   /** Set while a walk is being chosen: what ending here costs of the allowance, in cells, and the
    *  ids of the standing enemies the path would be struck at by. */
@@ -44,29 +44,29 @@ export interface RulesetBoardCell {
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
   aim?: { targetIds: string[]; teleport?: true };
-  /** A cell the shape being laid has already been set down on (1.176, 1.177). */
+  /** A cell the shape being laid has already been set down on (1.177, 1.178). */
   laid?: true;
-  /** The labels of the lasting areas covering it (1.171), first cast first. */
+  /** The labels of the lasting areas covering it (1.172), first cast first. */
   zones?: string[];
-  /** Their looks in the board's pack (1.332), first cast first, for those that have one. */
+  /** Their looks in the board's pack (1.333), first cast first, for those that have one. */
   zoneArt?: string[];
-  /** A wall's section standing here (1.199): whose wall, and what it has left of what; 0 is broken. */
+  /** A wall's section standing here (1.200): whose wall, and what it has left of what; 0 is broken. */
   section?: { wall: string; health: number; max: number };
-  /** Growth here (1.317): hard going, lightly obscuring. */
+  /** Growth here (1.318): hard going, lightly obscuring. */
   growth?: true;
-  /** The season on this cell (1.317), when it has one of its own. */
+  /** The season on this cell (1.318), when it has one of its own. */
   season?: string;
-  /** A prop standing here (1.315): what it is, and what it has left of what; 0 is broken. */
+  /** A prop standing here (1.316): what it is, and what it has left of what; 0 is broken. */
   prop?: {
     label: string;
     health: number;
     max: number;
-    /** Its sprite (1.332), and where this cell sits in the box its cells fill, from its top-left. */
+    /** Its sprite (1.333), and where this cell sits in the box its cells fill, from its top-left. */
     art?: string;
     dx: number;
     dy: number;
   };
-  /** Set while a target is being chosen and the attack may strike the section here (1.199). */
+  /** Set while a target is being chosen and the attack may strike the section here (1.200). */
   strikable?: true;
   /** The light here when it is not bright: sunlight, dim light or darkness. */
   light?: "sunlight" | "dim" | "dark";
@@ -91,7 +91,7 @@ export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cel
  *  Every shape does, one with nowhere to land included: the server refuses a shape sent with no
  *  cell, so the step opens and says nobody would be caught instead of sending a choice that fails. */
 export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
-  // A teleport is aimed at where it goes (1.275).
+  // A teleport is aimed at where it goes (1.276).
   return !!option.area || (option.teleport?.cells.length ?? 0) > 0;
 }
 
@@ -100,7 +100,7 @@ export function rulesetOptionHasAim(option: DirectedRulesetOption): boolean {
   return (option.aim?.length ?? 0) > 0;
 }
 
-/** What an aimed shape sends: where it lands, and how it is laid (1.176, 1.177). */
+/** What an aimed shape sends: where it lands, and how it is laid (1.177, 1.178). */
 export interface RulesetAimChoice {
   at: RulesetCombatCell;
   toward?: RulesetCombatCell;
@@ -114,7 +114,7 @@ export interface RulesetAimChoice {
 export type RulesetCellChoice = {
   to?: RulesetCombatCell;
   wall?: RulesetCombatCell;
-  /** Who goes along on a teleport (1.275). */
+  /** Who goes along on a teleport (1.276). */
   carries?: string[];
 } & Partial<RulesetAimChoice>;
 
@@ -137,7 +137,7 @@ export function rulesetAimSoFar(lay: RulesetAimLay | undefined): RulesetAimChoic
 /**
  * Picking a cell while a shape is aimed. Most shapes are sent there and then. A wall is set down on
  * the first cell and turned by the second, which is the cell it runs toward (the first again lays
- * it across its maker's line); a ring is sent at once. A shape set down several times (1.177) takes
+ * it across its maker's line); a ring is sent at once. A shape set down several times (1.178) takes
  * one cell for each copy, and is sent with the last one it may have.
  */
 export function rulesetAimTake(
@@ -164,7 +164,7 @@ export function rulesetAimTake(
 }
 
 /** Whether taking this option asks the player to pick a cell to walk to: a walk, or a legendary
- *  move (1.282). Getting back up spends movement and goes nowhere, so it is sent straight off the
+ *  move (1.283). Getting back up spends movement and goes nowhere, so it is sent straight off the
  *  menu. */
 export function rulesetOptionNeedsCell(option: DirectedRulesetOption): boolean {
   return (option.kind === "move" || !!option.signature) && (option.cells?.length ?? 0) > 0;
@@ -183,9 +183,9 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const standing = new Map<string, DirectedRulesetCombatant>();
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
-    // Sent away (1.235): not on the board at all.
+    // Sent away (1.236): not on the board at all.
     if (combatant.away) continue;
-    // Every cell they fill (1.193).
+    // Every cell they fill (1.194).
     const span = Math.max(1, combatant.span ?? 1);
     for (let dy = 0; dy < span; dy++) {
       for (let dx = 0; dx < span; dx++) {
@@ -202,7 +202,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const aims = new Map<string, { targetIds: string[]; teleport?: true }>();
   const laid = new Set<string>();
   if (step?.stage === "aim") {
-    // A teleport's cells are where it may go (1.275), not what it would catch.
+    // A teleport's cells are where it may go (1.276), not what it would catch.
     const teleport = step.option.teleport ? { teleport: true as const } : {};
     for (const entry of step.option.aim ?? []) {
       aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds], ...teleport });
@@ -238,7 +238,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
       if (zone.art) zoneArt.set(key, [...(zoneArt.get(key) ?? []), zone.art]);
     }
-    // A wall's side (1.176) is drawn as the zone's too: walking there is caught as it says.
+    // A wall's side (1.177) is drawn as the zone's too: walking there is caught as it says.
     for (const cell of zone.side ?? []) {
       const key = rulesetCellKey(cell);
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
@@ -257,7 +257,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         x,
         y,
         terrain,
-        // A standing wall that blocks movement is as solid as rock while it stands (1.176).
+        // A standing wall that blocks movement is as solid as rock while it stands (1.177).
         solid: TERRAIN_DATA[terrain]?.impassable === true || ((grid.walls?.[key] ?? 0) & 1) === 1,
         height: grid.elevation?.[y]?.[x] ?? 0,
         ...(occupant ? { occupant } : {}),

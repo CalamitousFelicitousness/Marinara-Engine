@@ -105,7 +105,7 @@ import {
   type WorldDraft,
 } from "./GameSetupWorldChooser";
 import { GameSetupStyleChooser } from "./GameSetupStyleChooser";
-import { GameSetupGmIntro, gameIntroForSetup } from "./GameSetupGmIntro";
+import { GameSetupGmIntro, gameIntroForSetup, gameIntroProblem } from "./GameSetupGmIntro";
 import {
   GAME_SETUP_FIELD_LABEL,
   GAME_SETUP_GHOST_BUTTON_CLASS,
@@ -625,7 +625,7 @@ export function GameSetupWizard({
   const [gmBossControl, setGmBossControl] = useState(true);
   const [tacticalBattlefieldSize, setTacticalBattlefieldSize] = useState<"auto" | TacticalBattlefieldSize>("auto");
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
-  // The GM intro message (1.338): null follows the Experience's own.
+  // The GM intro message (1.339): null follows the Experience's own.
   const [gameIntro, setGameIntro] = useState<GameIntroChoice | null>(null);
   const [gmCharacterId, setGmCharacterId] = useState<string | null>(null);
   const [partyCharacterIds, setPartyCharacterIds] = useState<string[]>(() =>
@@ -1182,11 +1182,14 @@ export function GameSetupWizard({
   const spatialMapTargetLocationCountValid =
     normalizeSpatialMapTargetLocationCount(spatialMapTargetLocationCountInput) !== null;
   // A kit or a world that does not hold together is never quietly left out of a downloaded setup.
+  // An intro the server would refuse (1.339): fixed before the game starts or its setup is saved.
+  const introProblem = gameIntroProblem(gameIntro);
   const setupDownloadBlocked =
-    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok);
+    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok) || !!introProblem;
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
+    !introProblem &&
     !mapPackUnreadable &&
     !mapPackPending &&
     !(checkedWorldKit && !checkedWorldKit.ok) &&
@@ -1198,25 +1201,30 @@ export function GameSetupWizard({
     ? localizeUi("multiplayer.game.missingPersona")
     : experienceSeedInvalid
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
-      : mapPackUnreadable
-        ? localizeUi("game.mapPack.fixBeforeStart")
-        : mapPackPending
-          ? localizeUi("game.mapPack.loading")
-          : checkedWorldKit && !checkedWorldKit.ok
-            ? localizeUi("game.worldKit.setup.fixBeforeStart")
-            : checkedWorld && !checkedWorld.ok
-              ? localizeUi("game.world.setup.fixBeforeStart")
-              : activeLorebookEntryIds.length && !eligibleEntries
-                ? localizeUi(
-                    entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
-                  )
-                : !gmConnectionId
-                  ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-                  : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-                    ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                        value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-                      })
-                    : null;
+      : introProblem
+        ? localizeUi(`game.intro.${introProblem}`)
+        : mapPackUnreadable
+          ? localizeUi("game.mapPack.fixBeforeStart")
+          : mapPackPending
+            ? localizeUi("game.mapPack.loading")
+            : checkedWorldKit && !checkedWorldKit.ok
+              ? localizeUi("game.worldKit.setup.fixBeforeStart")
+              : checkedWorld && !checkedWorld.ok
+                ? localizeUi("game.world.setup.fixBeforeStart")
+                : activeLorebookEntryIds.length && !eligibleEntries
+                  ? localizeUi(
+                      entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+                    )
+                  : !gmConnectionId
+                    ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+                    : !spatialMapTargetLocationCountValid &&
+                        enableAgents &&
+                        hierarchicalMapsInstalled &&
+                        draftSpatialMap
+                      ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                          value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                        })
+                      : null;
   const normalizedLanguage = normalizeGameLanguage(language);
   // What the model writes a setting kit or a world's brief for: the World step's own choices.
   const worldWriteRequest = gmConnectionId
@@ -2486,7 +2494,7 @@ export function GameSetupWizard({
                       </div>
                     </div>
 
-                    {/* The GM intro message (1.338) */}
+                    {/* The GM intro message (1.339) */}
                     <GameSetupGmIntro
                       value={gameIntro}
                       onChange={setGameIntro}

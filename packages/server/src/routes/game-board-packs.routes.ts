@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// Routes: board packs (fight-board art slots, Capability API 1.332)
+// Routes: board packs (fight-board art slots, Capability API 1.333)
 //
 // The art fights' boards are drawn with, made in Pixelforge or imported from a file, filed under
 // `local/<id>` as creature packs are. A board reads the pack it names, else the library's pack for its
 // environment, else the Engine's built-in `board/<environment>` (shipped in src/assets/board-packs, when
 // there is one), else none and today's drawing; its props also read the library's props pack, else the
-// built-in `board/props`. Icons (1.337) and portraits (1.337) are packs of their own kind, read the same
+// built-in `board/props`. Icons (1.338) and portraits (1.338) are packs of their own kind, read the same
 // way: the library's `icons` or `portraits` pack, else the built-in one. Saving, importing and removing are administrative acts behind
 // `requirePrivilegedAccess`.
 // ──────────────────────────────────────────────
@@ -37,10 +37,14 @@ const SAVE_BODY_LIMIT = BOARD_PACK_MAX_BYTES + 16_384;
 /** A share file sent as text. */
 const IMPORT_BODY_LIMIT = BOARD_PACK_MAX_BYTES * 2 + 16_384;
 
+/** Where a saved pack is filed: under `local/` by its own name, whatever namespace it came with
+ *  (`board/forest` edited in the maker is filed as `local/forest`), as a pack's id has one at most. */
 const localId = (id: string) => {
-  const filed = id.startsWith(LOCAL) ? id : `${LOCAL}${id}`;
+  const filed = `${LOCAL}${id.slice(id.indexOf("/") + 1)}`;
   return filed.length <= 80 ? filed : null;
 };
+/** The pack a removal names: an id without a namespace is a library one, as it was filed. */
+const removalId = (id: string) => (id.includes("/") ? id : `${LOCAL}${id}`);
 const packIdSchema = z.string().min(1).max(80);
 
 /** A stored row read back as a pack, under the id it is filed by. */
@@ -75,10 +79,24 @@ export async function gameBoardPacksRoutes(app: FastifyInstance) {
     if (row) return packOf(row);
     return id.startsWith("board/") ? builtIn(id.slice("board/".length)) : null;
   };
+  /** Stored packs as read, by row, so /for and /art do not read every pack again on each call. A pack
+   *  removed and saved again may come back under the same row id, so its hash is checked too. */
+  const read = new Map<string, { sha256: string; pack: BoardPack | null }>();
+  const cachedPackOf = (row: GameBoardPackRow) => {
+    const known = read.get(row.id);
+    if (known && known.sha256 === row.sha256) return known.pack;
+    const pack = packOf(row);
+    read.set(row.id, { sha256: row.sha256, pack });
+    return pack;
+  };
   /** The library's pack for an environment (or props), the first by name, else the built-in one. */
   const forEnvironment = async (environment: string): Promise<BoardPack | null> => {
-    for (const row of await store.latest()) {
-      const pack = packOf(row);
+    const rows = await store.latest();
+    // Drop what a removed or replaced version left behind.
+    const live = new Set(rows.map((row) => row.id));
+    for (const id of read.keys()) if (!live.has(id)) read.delete(id);
+    for (const row of rows) {
+      const pack = cachedPackOf(row);
       if (pack?.environment === environment) return pack;
     }
     return byId(environment === "props" ? BOARD_PROPS_PACK_ID : boardBuiltInPackId(environment));
@@ -118,8 +136,8 @@ export async function gameBoardPacksRoutes(app: FastifyInstance) {
     return { board, props };
   });
 
-  // ── GET /api/game-tile-packs/boards/art?kind=icons|portraits ── the game's icons (1.337) or portraits
-  // (1.337): the library's pack of that kind, else the built-in `board/<kind>`; none draws as today.
+  // ── GET /api/game-tile-packs/boards/art?kind=icons|portraits ── the game's icons (1.338) or portraits
+  // (1.338): the library's pack of that kind, else the built-in `board/<kind>`; none draws as today.
   app.get("/art", async (req) => {
     const { kind } = z.object({ kind: z.enum(ART_PACK_KINDS) }).parse(req.query);
     return { pack: await forEnvironment(kind) };
@@ -161,7 +179,7 @@ export async function gameBoardPacksRoutes(app: FastifyInstance) {
   app.delete("/", async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Board pack removal" })) return;
     const { id } = z.object({ id: packIdSchema }).parse(req.query);
-    const removed = await store.removeAll(id);
+    const removed = await store.removeAll(removalId(id));
     if (!removed) return reply.status(404).send({ error: "No such board pack." });
     return { removed };
   });

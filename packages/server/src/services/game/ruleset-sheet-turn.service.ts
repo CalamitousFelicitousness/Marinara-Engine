@@ -31,6 +31,7 @@ import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
+import { rollDieSecurely } from "./dice-rng.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
 import { loadRulesetRegistry, resolveGameRuleset, type ResolvedGameRuleset } from "./ruleset-registry.service.js";
 
@@ -138,7 +139,7 @@ export async function loadGameRulesetSheetContext(
   const persona = roomHostIdentity() ?? (personaId ? await createCharactersStorage(db).getPersona(personaId) : null);
   const playerName = persona?.name?.trim() || null;
   const built = sheetCommandCards(pinned.definition, cards);
-  // What each one carries, where the ruleset reads items (1.336): a rest's dice read Pell's Teapot.
+  // What each one carries, where the ruleset reads items (1.337): a rest's dice read Pell's Teapot.
   const stacks = normalizeGameInventoryStacks(meta.gameInventory);
   if (rulesetReadsItems(pinned.definition) && stacks.some((stack) => stack.item)) {
     // Imported here: the inventory service reads this module's cards.
@@ -231,8 +232,8 @@ export function applyGameRulesetSheetTurn(
       ...context,
       live: baseLive ?? {},
       catalogs,
-      // A rest that brings on what a condition does with it (1.259) rolls real dice.
-      roll: (sides) => 1 + Math.floor(Math.random() * sides),
+      // A rest that brings on what a condition does with it (1.260) rolls real dice.
+      roll: rollDieSecurely,
     });
     for (const outcome of applied.outcomes) {
       if (!outcome.ok) logger.warn("[game/sheet] Refused for %s: %s (%s)", outcome.who, outcome.reason, outcome.tag);

@@ -1,5 +1,5 @@
 /**
- * The Game Master's intro message (Capability API 1.338), part of the GM setup:
+ * The Game Master's intro message (Capability API 1.339), part of the GM setup:
  *
  *   - Defined: the game's first message is exactly the text set, written by no model.
  *   - Guided: the Game Master writes the first message, told the guidance; only on the opening reply.

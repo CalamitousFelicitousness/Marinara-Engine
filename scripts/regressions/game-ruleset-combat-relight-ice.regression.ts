@@ -1,5 +1,5 @@
 /**
- * Relighting, falling through ice, and a use only beside a prop (Capability API 1.331).
+ * Relighting, falling through ice, and a use only beside a prop (Capability API 1.332).
  *
  *   - A board prop's `relight {light, squares, budget?}`: somebody beside it may spend the budget to
  *     light every cell within `squares` of it again, offered only while one of them is not so lit.
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 327);
+  assert.ok(supportedCapabilityApi.minor >= 332);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -184,7 +184,34 @@ try {
         doc.catalogs.find((one: { id: string }) => one.id === "hymns").entries[0].mechanics.usableNear.prop = "p7";
       }),
     );
-    assert.ok(byId.ok !== false);
+    // By its id: a Wheel under another label is still p7.
+    const sungById = createRulesetEncounter({
+      definition: byId,
+      seed: 1,
+      roller: roll,
+      combatants: [
+        {
+          id: "ada",
+          name: "Ada",
+          side: "party",
+          build,
+          live: {},
+          catalogs: { hymns: byId.catalogs!.find((one) => one.id === "hymns")!.entries! },
+        },
+        { id: "foe", name: "Foe", side: "enemy", block: block() },
+      ],
+      board: {
+        grid: { width: 16, height: 10, tiles: Array.from({ length: 10 }, () => Array(16).fill("plains")) },
+        placements: { ada: { x: 7, y: 5 }, foe: { x: 14, y: 8 } },
+        props: [{ ...wheel, label: "The Old Wheel" }] as never,
+      },
+    });
+    sungById.order = ["ada", "foe"];
+    sungById.turn = 0;
+    assert.ok(
+      rulesetCombatOptions(byId, sungById, "ada").some((one) => one.label === "Sing a Verse"),
+      "by its id, whatever its label",
+    );
     const broken = fight({ x: 7, y: 5 }, [wheel]);
     broken.board!.props![0]!.health = 0;
     assert.ok(!verse(broken), "the Wheel broken");
@@ -205,7 +232,7 @@ try {
         bad.issues.join("; "),
       );
     const gate =
-      "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.331 or newer";
+      "A ruleset with a use only beside a prop, or a change to the ground that leaves whoever stands there in it, requires schemaVersion 2 and capabilityApi 1.332 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -219,9 +246,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(330) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(331) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(330) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(331) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(332) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(331) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(

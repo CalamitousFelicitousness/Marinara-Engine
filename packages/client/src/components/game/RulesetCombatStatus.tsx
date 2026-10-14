@@ -18,7 +18,7 @@ import { rulesetDistanceText } from "../../lib/ruleset-combat-board";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { cn } from "../../lib/utils";
 
-/** The ruleset's own words for what a combatant is (1.167): "Fiend (devil)". */
+/** The ruleset's own words for what a combatant is (1.168): "Fiend (devil)". */
 function kindLine(kind: { type?: string; tags?: string[] }): string {
   const tags = (kind.tags ?? []).join(", ");
   if (!kind.type) return tags;
@@ -61,7 +61,7 @@ export function RulesetCombatStatus({
     if (box) box.scrollTop = box.scrollHeight;
   }, [newest]);
   const byId = new Map(view.combatants.map((combatant) => [combatant.id, combatant]));
-  // One who takes two turns this round (1.237) is listed once.
+  // One who takes two turns this round (1.238) is listed once.
   const order = [...new Set(view.order)].flatMap((id) => {
     const combatant = byId.get(id);
     return combatant ? [combatant] : [];
@@ -268,7 +268,7 @@ export function RulesetCombatStatus({
           </ol>
         </details>
 
-        {/* The areas spells left standing (1.171), each with whose it is and how long it has. */}
+        {/* The areas spells left standing (1.172), each with whose it is and how long it has. */}
         {view.zones && view.zones.length > 0 && (
           <ul aria-label={t("game.combat.ruleset.status.zones")} className="space-y-0.5 text-xs">
             {view.zones.map((zone) => (

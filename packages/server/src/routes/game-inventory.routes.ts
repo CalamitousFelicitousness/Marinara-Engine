@@ -84,7 +84,7 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
     };
   });
 
-  // Starting gear (Capability API 1.77): a ruleset's gear into one character's bag, once for each kind
+  // Starting gear (Capability API 1.78): a ruleset's gear into one character's bag, once for each kind
   // of gear unless the player asks again, all of it or none of it.
   app.post("/starting-gear", async (req, reply) => {
     const parsed = startingGearRequestSchema.safeParse(req.body);

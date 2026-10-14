@@ -1,5 +1,5 @@
 /**
- * Whom a health pool passes over (Capability API 1.198).
+ * Whom a health pool passes over (Capability API 1.199).
  *
  *   - `mechanics.healthPoolSkips.conditions`: whoever holds one is left alone and uses none of the
  *     pool (5e's Sleep, ignoring the unconscious).
@@ -67,7 +67,7 @@ try {
     healthPoolSkips: { conditions: ["unconscious"], unseeing: true },
     applies: [{ condition: "blinded", duration: { rounds: 1 } }],
   });
-  // The same with no skips, as 1.195 has it.
+  // The same with no skips, as 1.196 has it.
   const plain = spell("plain", "Plain", { applies: [{ condition: "unconscious", duration: { rounds: 10 } }] });
   const spells = [sleep, spray, plain];
   // The 5e example where blinded takes the eyes away, so a blinded creature sees nobody.
@@ -229,18 +229,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with health pools that pass over some of their targets requires schemaVersion 2 and capabilityApi 1.198 or newer";
+      "A ruleset with health pools that pass over some of their targets requires schemaVersion 2 and capabilityApi 1.199 or newer";
     const withSleep = fiveE();
-    assert.equal(getCapabilityPackageInstallIssue(manifest(197) as never, withSleep), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(198) as never, withSleep), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(198) as never, withSleep), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(199) as never, withSleep), gate);
     const without = JSON.parse(fiveEText);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(197) as never, without), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(198) as never, without), gate);
     const files = new Map([["spells.json", { entries: [sleep] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(197) as never, without, files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(198) as never, without, files as never), gate);
   }
 
   console.log(
-    "Ruleset health pool skips: Sleep passes over the unconscious, Color Spray also whoever can't see its caster; gated at 1.198.",
+    "Ruleset health pool skips: Sleep passes over the unconscious, Color Spray also whoever can't see its caster; gated at 1.199.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

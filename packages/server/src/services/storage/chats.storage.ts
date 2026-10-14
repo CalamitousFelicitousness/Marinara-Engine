@@ -1021,25 +1021,34 @@ export function createChatsStorage(db: DB) {
     targets: string[] = [],
   ): Promise<T> {
     const keys = new Set([...ids, ...targets]);
+    const advancementChats = new Set<string>();
     // Keep bulk deletion bounded to two scoped reads per pass, including chats with no commands.
     const readTargetIds = async () => {
       const [owners, swipes] = await Promise.all([
-        db.select({ extra: messages.extra }).from(messages).where(inArray(messages.id, ids)),
+        db.select({ extra: messages.extra, chatId: messages.chatId }).from(messages).where(inArray(messages.id, ids)),
         db.select({ extra: messageSwipes.extra }).from(messageSwipes).where(inArray(messageSwipes.messageId, ids)),
       ]);
+      if ([...owners, ...swipes].some((row) => parseExtraRecord(row.extra).rulesetAdvancement)) {
+        for (const owner of owners) advancementChats.add(owner.chatId);
+      }
       return [...owners, ...swipes].flatMap((row) => receipts(row.extra).map((receipt) => receipt.targetMessageId));
     };
     for (const targetId of await readTargetIds()) keys.add(targetId);
     let retry = false;
-    const result = await withPatchQueues(messageExtraPatchQueues, [...keys], async () => {
-      for (const targetId of await readTargetIds()) {
-        if (!keys.has(targetId)) {
-          keys.add(targetId);
-          retry = true;
+    const metadataKeys = [...advancementChats];
+    // Advancement follows metadata -> message queues -> transaction, like a player sheet edit.
+    const result = await withPatchQueues(metadataPatchQueues, metadataKeys, () =>
+      withPatchQueues(messageExtraPatchQueues, [...keys], async () => {
+        for (const targetId of await readTargetIds()) {
+          if (!keys.has(targetId)) {
+            keys.add(targetId);
+            retry = true;
+          }
         }
-      }
-      return retry ? undefined : db.transaction(() => operation(keys));
-    });
+        if ([...advancementChats].some((id) => !metadataKeys.includes(id))) retry = true;
+        return retry ? undefined : db.transaction(() => operation(keys));
+      }),
+    );
     // A queued commit may have added a receipt after the first read. Reacquire all keys together.
     return retry ? withInterruptionQueue(ids, operation, [...keys]) : (result as T);
   }
@@ -1114,9 +1123,18 @@ export function createChatsStorage(db: DB) {
     return active ? readMessage(target.id) : null;
   }
 
-  async function reconcileEffects(owner: MessageRow | null, restore: boolean, locked: Set<string>) {
+  async function reconcileEffects(
+    owner: MessageRow | null,
+    restore: boolean,
+    locked: Set<string>,
+    excluded?: ReadonlySet<string>,
+  ) {
     const changed: MessageRow[] = [];
     if (!owner) return changed;
+    if (parseExtraRecord(owner.extra).rulesetAdvancement) {
+      const { reconcileGameRulesetAdvancement } = await import("../game/ruleset-sheet-turn.service.js");
+      await reconcileGameRulesetAdvancement(db, owner, restore, excluded);
+    }
     for (const receipt of receipts(owner.extra)) {
       if (receipt.restored) continue;
       try {
@@ -2862,8 +2880,9 @@ export function createChatsStorage(db: DB) {
       swipeIndex: number,
       partial: Record<string, unknown>,
       expectedContent?: string,
+      opts: { messageQueueHeld?: boolean } = {},
     ) {
-      return withPatchQueue(messageExtraPatchQueues, id, async () => {
+      const apply = async () => {
         const msg = await this.getMessage(id);
         if (!msg) return null;
         const swipes = await this.getSwipes(id);
@@ -2892,7 +2911,8 @@ export function createChatsStorage(db: DB) {
         }
 
         return this.getMessage(id);
-      });
+      };
+      return opts.messageQueueHeld ? apply() : withPatchQueue(messageExtraPatchQueues, id, apply);
     },
 
     /** Atomically claim a marker in one swipe's extra data. */
@@ -3350,10 +3370,17 @@ export function createChatsStorage(db: DB) {
             // are captured and a failed delete cannot leave a second copy in the trash.
             await beforeDelete?.(existingRows);
             // Undo newest effects first when a whole interrupted exchange is removed.
+            const excludedAdvancementMessages = new Set<string>();
             for (const row of existingRows
-              .filter((row) => receipts(row.extra).some((receipt) => !receipt.restored))
-              .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)))
-              await reconcileEffects(await readMessage(row.id), true, locked);
+              .filter(
+                (row) =>
+                  parseExtraRecord(row.extra).rulesetAdvancement ||
+                  receipts(row.extra).some((receipt) => !receipt.restored),
+              )
+              .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))) {
+              await reconcileEffects(await readMessage(row.id), true, locked, excludedAdvancementMessages);
+              excludedAdvancementMessages.add(row.id);
+            }
             await deleteGameStateForMessages(
               existingRows.map((row) => row.id),
               existingRows.map((row) => row.chatId),

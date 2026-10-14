@@ -49,6 +49,19 @@ function requireAnyOf(node, keys) {
   node.allOf = [...(node.allOf ?? []), { anyOf: keys.map((key) => ({ required: [key] })) }];
 }
 
+// Allocation steps use a priority multiset or a budget on every group, never both.
+function requireAllocationBudget(node) {
+  if (Array.isArray(node)) return node.forEach(requireAllocationBudget);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(requireAllocationBudget);
+  if (node.properties?.kind?.const === "allocate" && node.properties.groups) {
+    node.oneOf = [
+      { required: ["priorities"], properties: { groups: { items: { not: { required: ["budget"] } } } } },
+      { not: { required: ["priorities"] }, properties: { groups: { items: { required: ["budget"] } } } },
+    ];
+  }
+}
+
 // A catalog carries its entries inline or names a package asset, never both. The zod schema says
 // so in a refinement, which a JSON Schema generator cannot see, so the editor is told here.
 function requireOneCatalogSource(node) {
@@ -738,6 +751,12 @@ function boundSpellcastingRecords(node) {
 }
 
 const schema = zodToJsonSchema(rulesetDefinitionSchema, { $refStrategy: "none", target: "jsonSchema7" });
+// Zod refinements are not emitted, but JSON Schema can express unique clock sizes directly.
+schema.properties.clocks.properties.sizes.uniqueItems = true;
+schema.properties.party.anyOf = [
+  { required: ["fields"], properties: { fields: { minItems: 1 } } },
+  { required: ["pools"], properties: { pools: { minItems: 1 } } },
+];
 boundSpellcastingRecords(schema);
 requireLevelsWithKinds(schema);
 requireSpendBuysSomething(schema);
@@ -747,6 +766,7 @@ spendOnlyOnAPool(schema);
 requireMechanicsPairs(schema);
 brokenSectionRules(schema);
 requireOneCatalogSource(schema);
+requireAllocationBudget(schema);
 requireOneEntryContent(schema);
 requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);

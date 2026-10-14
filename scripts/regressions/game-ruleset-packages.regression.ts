@@ -24,7 +24,12 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseRulesetCatalogFile, parseRulesetDefinition } from "../../packages/shared/src/index.js";
+import {
+  parseRulesetCatalogFile,
+  parseRulesetDefinition,
+  RULESET_CATALOG_MAX_BYTES,
+  RULESET_MAX_BYTES,
+} from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-packages-"));
 process.env.DATA_DIR = dataDir;
@@ -188,10 +193,13 @@ try {
     }
     // Every file is capped by its kind before a byte of it is decoded.
     assert.match(
-      refusal(withDocument(`catalogs/${firstCatalog.id}.json`, Buffer.alloc(1024 * 1024 + 1, 0x20))),
-      /over its 1048576-byte limit/,
+      refusal(withDocument(`catalogs/${firstCatalog.id}.json`, Buffer.alloc(RULESET_CATALOG_MAX_BYTES + 1, 0x20))),
+      new RegExp(`over its ${RULESET_CATALOG_MAX_BYTES}-byte limit`),
     );
-    assert.match(refusal(withDocument("ruleset.json", Buffer.alloc(256 * 1024 + 1, 0x20))), /over its \d+-byte limit/);
+    assert.match(
+      refusal(withDocument("ruleset.json", Buffer.alloc(RULESET_MAX_BYTES + 1, 0x20))),
+      new RegExp(`over its ${RULESET_MAX_BYTES}-byte limit`),
+    );
     assert.match(refusal(withDocument("ruleset.json", Buffer.from([0xff, 0xfe, 0x00]))), /not UTF-8/);
     // The manifest is its own key, held to its size and its shape before anything reads it.
     assert.match(

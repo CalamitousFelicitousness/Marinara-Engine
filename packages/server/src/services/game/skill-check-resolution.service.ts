@@ -1,3 +1,4 @@
+import { rulesetAdvancementTurnStart } from "./ruleset-sheet-turn.service.js";
 import { currentRoomGeneration, roomHostIdentity } from "../multiplayer/generation-policy.js";
 // ──────────────────────────────────────────────
 // Service: Skill Check Resolution (chat-scoped)
@@ -29,6 +30,12 @@ import {
   matchRulesetCheckTarget,
   parseDiceNotation,
   readRulesetWoundPenalty,
+  rollAgainstCheck,
+  rulesetCheckOverride,
+  rulesetDefinitionForCheck,
+  rollDiceHighestCheck,
+  rollSymbolPoolCheck,
+  rulesetSymbolPoolRatings,
   rollDicePoolCheck,
   resolveRulesetValueRef,
   RULESET_POOL_MAX_DICE,
@@ -57,10 +64,15 @@ import {
   rulesetCheckEffects,
   rulesetCheckRollMode,
   rulesetCheckSources,
+  rulesetContextualCheck,
+  rulesetContextualItems,
   rollRulesetCheckModifiers,
+  type RulesetCheckSource,
+  type RulesetContextualItem,
   type RulesetCheckEffects,
   type RulesetCheckTarget,
   type RulesetSheetItem,
+  rulesetCheckStance,
 } from "@marinara-engine/shared";
 import { loadGameInventoryItemBook } from "./game-inventory.service.js";
 import type { DB } from "../../db/connection.js";
@@ -183,11 +195,21 @@ export interface SkillCheckRequest {
   threshold?: number;
   /** `bonus=`: dice a pool check adds or takes, where the ruleset declares situational dice. */
   bonusDice?: number;
+  /** `dark=`: dark dice a keep-the-highest check adds (1.138), where the ruleset has them. */
+  darkDice?: number;
+  /** Difficulty dice upgraded to challenge dice (1.141). */
+  upgrades?: number;
+  /** Independent setback dice and optional own-pool upgrades (1.150). */
+  setback?: number;
+  upgradeOwn?: number;
   /** `spend=`: what the player said they were spending on this check, where the ruleset offers
    *  such a purchase. The Engine decides what it costs and what it buys. */
   spend?: { pool: string; amount: number };
   /** `use=`: a catalog entry the character has, whose `mechanics.check` changes this roll. */
   useEntry?: string;
+  /** `apply=`: rows or entries the character has that the Game Master says apply to this roll
+   *  (Capability API 1.156). Only those that do change it, and owning one is not enough. */
+  apply?: string[];
 }
 
 function parsePlayerStats(raw: unknown, chatId: string): Record<string, unknown> | null {
@@ -299,6 +321,7 @@ export async function loadSkillCheckModifierContext(
    * `POST /game/skill-check` endpoint.
    */
   turnStartLive?: RulesetLiveStates | null,
+  regenerateMessageId?: string | null,
 ): Promise<SkillCheckModifierContext> {
   const stateStore = createGameStateStorage(db);
   const snapshot = await stateStore.getLatest(chatId);
@@ -317,7 +340,12 @@ export async function loadSkillCheckModifierContext(
   // never seeded today), because the chat is also where a pinned ruleset lives.
   const chats = createChatsStorage(db);
   const chat = await chats.getById(chatId);
-  const meta = chat ? parseChatMetadata(chat.metadata, chatId) : {};
+  const meta = await rulesetAdvancementTurnStart(
+    db,
+    chatId,
+    chat ? parseChatMetadata(chat.metadata, chatId) : {},
+    regenerateMessageId,
+  );
   const cards = Array.isArray(meta.gameCharacterCards)
     ? (meta.gameCharacterCards as Array<Record<string, unknown>>)
     : [];
@@ -687,6 +715,18 @@ export function rulesetCheckPenaltyFor(ruleset: SkillCheckRulesetContext, who?: 
   return (key ? ruleset.penalties.get(key) : undefined) ?? 0;
 }
 
+/** What a check name means on the roller's own sheet: a skill, save or ability the ruleset declares, or
+ *  one of the roller's list rows that is a check of its own (1.161). */
+export function rulesetCheckTargetFor(
+  ruleset: SkillCheckRulesetContext,
+  skill: string,
+  who?: string,
+  withAbility?: string,
+): RulesetCheckTarget | null {
+  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  return matchRulesetCheckTarget(ruleset.definition, skill, withAbility, key ? ruleset.builds.get(key) : undefined);
+}
+
 /** The sheet modifier a ruleset game applies for `who` (or the player) on the named check. Under
  *  `dice-pool` this is not a modifier but the size of the pool; the caller's kind decides. */
 export function rulesetCheckModifierFor(
@@ -695,7 +735,7 @@ export function rulesetCheckModifierFor(
   who?: string,
   withAbility?: string,
 ): number {
-  const target = matchRulesetCheckTarget(ruleset.definition, skill, withAbility);
+  const target = rulesetCheckTargetFor(ruleset, skill, who, withAbility);
   if (who) {
     // A name that matches nobody (or two cards at once) is a stranger: no modifier at all.
     const named = ruleset.sheets.get(normalizeCharacterLookupName(who));
@@ -715,7 +755,7 @@ export function rulesetCheckAdjustFor(
 ): number {
   const { definition } = ruleset;
   if (!definition.resolution.adjust?.length) return 0;
-  const target = matchRulesetCheckTarget(definition, skill, withAbility);
+  const target = rulesetCheckTargetFor(ruleset, skill, who, withAbility);
   if (who) {
     const key = normalizeCharacterLookupName(who);
     const evaluated = ruleset.sheets.get(key);
@@ -728,6 +768,21 @@ export function rulesetCheckAdjustFor(
   return rulesetCheckAdjust(definition, build, evaluated, target);
 }
 
+/** A value off `who`'s sheet (or the player's), worked out the way every other value on it is. A
+ *  stranger has no sheet, so undefined. */
+export function rulesetCheckValueFor(
+  ruleset: SkillCheckRulesetContext,
+  ref: RulesetValueRef,
+  who?: string,
+): number | undefined {
+  const { definition } = ruleset;
+  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const evaluated = (key ? ruleset.sheets.get(key) : undefined) ?? (who ? undefined : ruleset.blank);
+  if (!evaluated) return undefined;
+  const build = (key ? ruleset.builds.get(key) : undefined) ?? defaultRulesetSheetBuild(definition);
+  return resolveRulesetValueRef(definition, build, ref, evaluated);
+}
+
 /** What `who`'s (or the player's) active conditions, reached levels and worn or carried items do to
  *  this check. A stranger has no sheet and a player with no card no conditions or bag, so neither has
  *  anything. */
@@ -735,12 +790,26 @@ export function rulesetCheckEffectsFor(
   ruleset: SkillCheckRulesetContext,
   target: RulesetCheckTarget | null,
   who?: string,
+  applied: readonly RulesetCheckSource[] = [],
 ): RulesetCheckEffects {
   const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
   const build = key ? ruleset.builds.get(key) : undefined;
   if (!key || !build) return { modifiers: [], advantage: [], disadvantage: [], fails: [] };
   const sources = rulesetCheckSources(ruleset.definition, build, ruleset.live[key], ruleset.items.get(key));
-  return rulesetCheckEffects(sources, target);
+  return rulesetCheckEffects([...sources, ...applied], target);
+}
+
+/** What the Game Master's `apply=` names mean for this roller and this check (1.156). */
+export function rulesetContextualFor(
+  ruleset: SkillCheckRulesetContext,
+  target: RulesetCheckTarget | null,
+  request: Pick<SkillCheckRequest, "apply" | "who">,
+): RulesetContextualItem[] {
+  if (!request.apply?.length) return [];
+  const key = request.who ? normalizeCharacterLookupName(request.who) : ruleset.playerKey;
+  const build = key ? ruleset.builds.get(key) : undefined;
+  if (!key || !build) return [];
+  return rulesetContextualItems(ruleset.definition, build, ruleset.catalogs, request.apply, target);
 }
 
 /** Whether a check is thrown twice once what changes it is counted: the Game Master's `mode=` and the
@@ -748,8 +817,9 @@ export function rulesetCheckEffectsFor(
 export function rulesetCheckThrowsTwice(ruleset: SkillCheckRulesetContext, request: SkillCheckRequest): boolean {
   const resolution = ruleset.definition.resolution;
   if (resolution.kind !== "dice-sum" || !resolution.advantage) return false;
-  const target = matchRulesetCheckTarget(ruleset.definition, request.skill, request.withAbility);
-  return rulesetCheckRollMode(request, rulesetCheckEffectsFor(ruleset, target, request.who)) !== "normal";
+  const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility);
+  const applied = rulesetContextualFor(ruleset, target, request).map((item) => item.source);
+  return rulesetCheckRollMode(request, rulesetCheckEffectsFor(ruleset, target, request.who, applied)) !== "normal";
 }
 
 /** The untrained rule a check falls under: null for an ability check, for a trained skill or save,
@@ -759,8 +829,8 @@ export function rulesetUntrainedFor(
   request: SkillCheckRequest,
 ): RulesetUntrained | null {
   const { definition } = ruleset;
-  const target = matchRulesetCheckTarget(definition, request.skill, request.withAbility);
-  if (!target || target.type === "ability") return null;
+  const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility);
+  if (!target || target.type === "ability" || target.row) return null;
   const sheet = request.who
     ? ruleset.sheets.get(normalizeCharacterLookupName(request.who))
     : ((ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank);
@@ -806,9 +876,16 @@ function resolveRulesetSkillCheck(
    *  every path that does not persist, which then rolls exactly as it would have with no spend. */
   onSpend?: (key: string, live: RulesetLiveState) => void,
 ): SkillCheckResult {
-  const { definition } = ruleset;
+  const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility);
+  // A check the ruleset rolls its own way (1.140): its dice and rules come from the override, its
+  // sheet math from the ruleset, and `when` reads the roller's own sheet.
+  const override = rulesetCheckOverride(
+    ruleset.definition,
+    target,
+    (ref) => (rulesetCheckValueFor(ruleset, ref, request.who) ?? 0) !== 0,
+  );
+  const definition = rulesetDefinitionForCheck(ruleset.definition, override);
   const resolution = definition.resolution;
-  const target = matchRulesetCheckTarget(definition, request.skill, request.withAbility);
   // An ability nobody on this sheet answers to is ignored rather than refused, so the check still
   // happens with the skill's own ability. Said once, here, where the ruleset is actually in hand.
   // On an ability check it is also ignored wherever the ruleset does not add two abilities together.
@@ -839,7 +916,23 @@ function resolveRulesetSkillCheck(
   // Every caller reads the ask against the ladder before it gets here, so this is a check nobody
   // could have rolled: thrown, so the turn saves it as the ask it still is.
   if (askedDc === undefined) throw new SkillCheckDifficultyError(request.skill);
-  const modifier = rulesetCheckModifierFor(ruleset, request.skill, request.who, request.withAbility);
+  let modifier = rulesetCheckModifierFor(ruleset, request.skill, request.who, request.withAbility);
+  const rollerKey = request.who ? normalizeCharacterLookupName(request.who) : ruleset.playerKey;
+  const rollerSheet =
+    (rollerKey ? ruleset.sheets.get(rollerKey) : undefined) ?? (request.who ? undefined : ruleset.blank);
+  const symbolRatings =
+    resolution.kind === "symbol-pool" && rollerSheet
+      ? rulesetSymbolPoolRatings(definition, rollerSheet, target)
+      : { ability: 0, rank: 0, bonusDice: 0 };
+  const purchaseBase =
+    resolution.kind === "symbol-pool"
+      ? Math.min(
+          resolution.pool.max,
+          resolution.pool.build === "sum"
+            ? Math.max(0, symbolRatings.ability) + Math.max(0, symbolRatings.rank)
+            : Math.max(0, symbolRatings.ability, symbolRatings.rank),
+        )
+      : modifier;
   // What the roller's wounds cost this check. It is applied the way the kind understands a number:
   // `dice-sum` adds it to the roll, `dice-pool` takes that many dice off the pool and the roller's
   // own clamp holds it at `pool.min`. Both go through the same `modifier` input, so there is one
@@ -850,7 +943,13 @@ function resolveRulesetSkillCheck(
   const adjust = rulesetCheckAdjustFor(ruleset, request.skill, request.who, request.withAbility);
   // And what the character's conditions and worn or carried items do to it (#6832): a number, a lean
   // one way or the other, or a save failed without a roll.
-  const effects = rulesetCheckEffectsFor(ruleset, target, request.who);
+  const contextualAsked = rulesetContextualFor(ruleset, target, request);
+  let effects = rulesetCheckEffectsFor(
+    ruleset,
+    target,
+    request.who,
+    contextualAsked.map((item) => item.source),
+  );
   const isSave = target?.type === "save";
   const who = request.who ? { who: request.who } : {};
   if (isSave && effects.fails.length > 0) {
@@ -869,9 +968,21 @@ function resolveRulesetSkillCheck(
       criticalFailure: false,
       rollMode: "normal",
       resolution: pool ? "successes" : "sum",
-      dice: pool ? `0d${resolution.die.sides}` : `0d${resolution.dice.sides}`,
+      dice:
+        resolution.kind === "dice-sum" || resolution.kind === "roll-against"
+          ? `0d${resolution.dice.sides}`
+          : resolution.kind === "symbol-pool"
+            ? `0d${Math.max(...resolution.dice.map((die) => die.faces.length))}`
+            : `0d${resolution.die.sides}`,
+      ...(resolution.kind === "symbol-pool" ? { symbols: {}, thrown: [], symbolFaces: [], symbolLabels: {} } : {}),
+      ...(resolution.kind === "roll-against" ? { against: resolution.against } : {}),
+      ...(resolution.kind === "dice-highest" ? { highest: resolution.keep } : {}),
       automatic: true,
       from: effects.fails,
+      // The worst band, where the ruleset has bands: a save failed without a roll failed outright.
+      ...(resolution.outcomes
+        ? { outcome: resolution.outcomes.tiers[resolution.outcomes.tiers.length - 1]!.label }
+        : {}),
       ...who,
     };
   }
@@ -889,8 +1000,61 @@ function resolveRulesetSkillCheck(
     ? null
     : request.useEntry?.trim()
       ? planRulesetEntryCheck(ruleset, request.useEntry, request.spend, request.who)
-      : planRulesetCheckPurchase(ruleset, request.spend, request.who, modifier);
+      : planRulesetCheckPurchase(ruleset, request.spend, request.who, purchaseBase);
   if (purchase) onSpend!(purchase.key, purchase.live);
+  // What the applied rows and entries cost (1.156), paid after any purchase and from what it left.
+  // One that cannot be paid, or has nobody to persist the payment, applies nothing.
+  const contextual: RulesetContextualItem[] = [];
+  {
+    const key = request.who ? normalizeCharacterLookupName(request.who) : ruleset.playerKey;
+    const build = key ? ruleset.builds.get(key) : undefined;
+    let live = key ? (purchase?.key === key ? purchase.live : ruleset.live[key]) : undefined;
+    let paid = false;
+    for (const item of contextualAsked) {
+      if (!item.cost?.length) {
+        contextual.push(item);
+        continue;
+      }
+      if (!onSpend || !key || !build) continue;
+      let next = live ?? {};
+      let ok = true;
+      for (const cost of item.cost) {
+        // A pool pays or refuses; a track (1.218) is marked as far as it goes.
+        const applied = applyRulesetSheetOp(
+          definition,
+          build,
+          next,
+          "track" in cost
+            ? { op: "track", track: cost.track, by: cost.by }
+            : { op: "spend", pool: cost.pool, amount: cost.amount },
+        );
+        if (!applied.ok) {
+          ok = false;
+          break;
+        }
+        next = applied.live;
+      }
+      if (!ok) continue;
+      live = next;
+      paid = true;
+      contextual.push(item);
+    }
+    if (paid && key && live) onSpend!(key, live);
+    if (contextual.length !== contextualAsked.length)
+      effects = rulesetCheckEffectsFor(
+        ruleset,
+        target,
+        request.who,
+        contextual.map((item) => item.source),
+      );
+  }
+  const contextualCheck = rulesetContextualCheck(contextual);
+  // The best rating in place of the asked one (1.217), on a skill check: never lower than it.
+  if (contextualCheck?.best && target?.type === "skill")
+    modifier = Math.max(
+      modifier,
+      ...definition.sheet.skills.map((skill) => rulesetCheckModifierFor(ruleset, skill.id, request.who)),
+    );
   // A standing re-throw the Game Master named. It costs nothing, so it needs no persisting caller;
   // beside one that was bought, the wider of the two is the one thrown.
   const standing = rulesetStandingReroll(definition, request.reroll);
@@ -898,7 +1062,32 @@ function resolveRulesetSkillCheck(
     logger.debug("[game/skill-check] No re-throw named %s in ruleset %s; ignoring it", request.reroll, definition.id);
   }
   const reroll = widerReroll(purchase?.bought.reroll, standing);
-  const bought = purchase || reroll ? { ...(purchase?.bought ?? {}), ...(reroll ? { reroll } : {}) } : undefined;
+  const lowest = (a: number | undefined, b: number | undefined) =>
+    a === undefined ? b : b === undefined ? a : Math.min(a, b);
+  const bought =
+    purchase || reroll || contextualCheck
+      ? {
+          ...(purchase?.bought ?? {}),
+          ...(reroll ? { reroll } : {}),
+          ...(contextualCheck
+            ? {
+                ...(contextualCheck.dice || purchase?.bought.dice
+                  ? { dice: (purchase?.bought.dice ?? 0) + (contextualCheck.dice ?? 0) }
+                  : {}),
+                ...(contextualCheck.successes || purchase?.bought.successes
+                  ? { successes: (purchase?.bought.successes ?? 0) + (contextualCheck.successes ?? 0) }
+                  : {}),
+                ...(lowest(purchase?.bought.double, contextualCheck.double) !== undefined
+                  ? { double: lowest(purchase?.bought.double, contextualCheck.double) }
+                  : {}),
+                ...(lowest(purchase?.bought.explode, contextualCheck.explode) !== undefined
+                  ? { explode: lowest(purchase?.bought.explode, contextualCheck.explode) }
+                  : {}),
+                ...(contextualCheck.cancel === false ? { cancel: false as const } : {}),
+              }
+            : {}),
+        }
+      : undefined;
   // What the record may say about `with=`: the ability's own label, and only when the swap
   // happened. An ability check has no other ability to swap in, and an unknown name was ignored.
   // On an ability check it is the second ability added, which is only ever set where the ruleset adds two.
@@ -924,6 +1113,8 @@ function resolveRulesetSkillCheck(
     ...new Set([
       ...effects.modifiers.map((entry) => entry.from),
       ...(leans ? [...effects.advantage, ...effects.disadvantage] : []),
+      // What the Game Master applied and the roll took (1.156), said even where it only moved dice.
+      ...contextual.filter((item) => item.check).map((item) => item.name),
     ]),
   ];
   const effected = {
@@ -937,6 +1128,12 @@ function resolveRulesetSkillCheck(
     // the sighted pool's own bound is applied before any ruleset is loaded, so this is the only
     // place that knows what this ruleset's ceiling is.
     const dc = Math.min(rulesetPoolMaxSuccesses(resolution), Math.max(1, Math.round(askedDc)));
+    // The target read off the roller's sheet, and the stance the check's skill is in (1.137).
+    const sheetTarget = resolution.target.from
+      ? rulesetCheckValueFor(ruleset, resolution.target.from, request.who)
+      : undefined;
+    // A row check takes its list's stance (1.212).
+    const stance = target?.type === "skill" ? rulesetCheckStance(ruleset.definition, target.id) : undefined;
     // The per-die target the ladder means, where the Game Master did not set one: the named step's,
     // or else the one step that needs exactly this many successes. A ladder step that names no
     // target leaves the ruleset's default.
@@ -961,6 +1158,8 @@ function resolveRulesetSkillCheck(
         bonusDice: request.bonusDice,
         explode: request.explode,
         double: request.double,
+        ...(sheetTarget !== undefined ? { sheetTarget } : {}),
+        ...(stance ? { stance: stance.count } : {}),
         ...(bought ? { bought } : {}),
       },
       rollDie,
@@ -981,12 +1180,106 @@ function resolveRulesetSkillCheck(
       explodeFrom: rolled.explodeFrom !== resolution.explode?.from ? rolled.explodeFrom : undefined,
       doubleFrom: rolled.doubleFrom !== resolution.double?.from ? rolled.doubleFrom : undefined,
       complication: rolled.complication || undefined,
+      exact: rolled.exact || undefined,
+      exactLabel: rolled.exact && resolution.exact ? resolution.exact.label : undefined,
       // Named only when it was the standing one that was thrown, and it actually threw something.
       reroll: standing && reroll === standing && rolled.rerolled > 0 ? standing.id : undefined,
       ...applied,
       ...effected,
       ...who,
     };
+  }
+
+  if (resolution.kind === "roll-against") {
+    // Against the sheet's number (1.139): the sheet's number, with wounds, adjustments and what the
+    // character's conditions and items add, is the target. A named step may divide it, and `dc` moves
+    // it after that; `bonus=` is tens dice where the ruleset has them.
+    const divide = step && "divide" in step ? step.divide : undefined;
+    const rolled = rollAgainstCheck(
+      definition,
+      {
+        modifier: modifier + penalty + adjust + boost,
+        dc: Math.max(-1000, Math.min(1000, Math.round(askedDc))),
+        ...(divide ? { divide } : {}),
+        isSave,
+        tens: request.bonusDice,
+      },
+      rollDie,
+    );
+    const { target: aimed, against, tens, ...roll } = rolled;
+    return {
+      skill: request.skill,
+      // The record's difficulty is the number the roll was read against, which is what a reader needs.
+      dc: aimed,
+      modifier: 0,
+      resolution: "sum",
+      ...roll,
+      against,
+      ...(tens ? { tens } : {}),
+      ...applied,
+      ...effected,
+      ...who,
+    };
+  }
+
+  if (resolution.kind === "dice-highest") {
+    // Keep the highest (1.138). The DC is what the kept dice must reach, so it is held to what they
+    // can show; the sheet's number, its wounds and what it adjusts are the number of dice.
+    const dc = Math.min(resolution.keep * resolution.die.sides, Math.max(1, Math.round(askedDc)));
+    const rolled = rollDiceHighestCheck(
+      definition,
+      {
+        modifier: modifier + penalty + adjust + boost,
+        dc,
+        isSave,
+        bonusDice: request.bonusDice,
+        dark: request.darkDice,
+        ...(purchase?.bought.dice ? { bought: { dice: purchase.bought.dice } } : {}),
+      },
+      rollDie,
+    );
+    const { dark, darkHighest, zero, bonusDice, ...roll } = rolled;
+    return {
+      skill: request.skill,
+      dc,
+      // The sheet's number bought the dice; nothing is added to the kept die.
+      modifier: 0,
+      resolution: "sum",
+      ...roll,
+      highest: resolution.keep,
+      ...(resolution.dark?.outcome === "light" ? { darkOutcome: "light" as const } : {}),
+      ...(zero ? { zeroDice: true } : {}),
+      ...(bonusDice ? { bonusDice } : {}),
+      ...(dark > 0
+        ? {
+            dark,
+            ...(resolution.dark ? { darkLabel: resolution.dark.label } : {}),
+            ...(darkHighest ? { darkHighest } : {}),
+          }
+        : {}),
+      ...applied,
+      ...effected,
+      ...who,
+    };
+  }
+
+  if (resolution.kind === "symbol-pool") {
+    const dc = Math.min(resolution.difficulty.max, Math.max(0, Math.round(askedDc)));
+    const rolled = rollSymbolPoolCheck(
+      definition,
+      {
+        ...symbolRatings,
+        difficulty: dc,
+        upgrades: request.upgrades,
+        setback: request.setback,
+        upgradeOwn: request.upgradeOwn,
+        isSave,
+        bonusDice: symbolRatings.bonusDice + penalty + adjust + boost + (request.bonusDice ?? 0),
+        ...(purchase?.bought.dice ? { bought: { dice: purchase.bought.dice } } : {}),
+      },
+      rollDie,
+    );
+    return { skill: request.skill, dc, modifier: 0, resolution: "sum", ...rolled, ...applied, ...effected, ...who };
   }
 
   const { sides, count } = resolution.dice;
@@ -1003,7 +1296,10 @@ function resolveRulesetSkillCheck(
       isSave,
       advantage: mode === "advantage",
       disadvantage: mode === "disadvantage",
-      preRolled: sides === 20 && count === 1 ? request.preRolledD20 : undefined,
+      preRolled:
+        sides === 20 && count === 1 && !resolution.dice.faces && !resolution.openEnded
+          ? request.preRolledD20
+          : undefined,
     },
     rollDie,
   );
@@ -1026,7 +1322,7 @@ function isRulesetRollableSkillCheckTag(tag: SkillCheckTag, definition: RulesetD
   // a `dice=` or `resolution=` the model wrote from habit describes nothing the Engine has to
   // honour, and `mode=` names an advantage this kind does not have. All three are ignored, which
   // is safe here and nowhere else: the Engine is not guessing at the rules, it has them.
-  if (definition.resolution.kind === "dice-pool") return true;
+  if (definition.resolution.kind !== "dice-sum") return true;
   // Refused on purpose, exactly as `isEngineRollableSkillCheckTag` refuses it: a tag that declares
   // both modes names no roll, and the guide promises a check is never rolled with both at once.
   if (tag.advantage && tag.disadvantage) return false;
@@ -1046,14 +1342,21 @@ function rulesetVouchesFor(ruleset: SkillCheckRulesetContext, tag: SkillCheckTag
   // A pool is never vouched for. Its numbers are auditable, but a handful of dice has so many
   // consistent outcomes that an audit constrains nothing: the model could pick eight favourable
   // faces and count them correctly. So a pool check is always the Engine's own roll.
-  if (resolution.kind === "dice-pool") return false;
+  // Nor keep-the-highest dice (1.138), for the same reason.
+  if (resolution.kind !== "dice-sum") return false;
+  // A ruleset with outcome bands is never vouched for either: the band a total lands in is the
+  // Engine's to read, and a record that names none is not one it wrote.
+  if (resolution.outcomes) return false;
+  // Nor one whose faces are worth other numbers, roll on, or mark a face: the record a Game Master
+  // writes cannot be audited against those (1.136).
+  if (resolution.dice.faces || resolution.openEnded || resolution.unmodified) return false;
   const result = tag.resolvedResult;
   if (!result || result.resolution !== "sum") return false;
   // A check the character's conditions or items change is always the Engine's own: the Game Master
   // cannot have counted what it is not shown, and a bonus in dice has no one right number.
   const changed = rulesetCheckEffectsFor(
     ruleset,
-    matchRulesetCheckTarget(ruleset.definition, tag.skill, tag.withAbility),
+    rulesetCheckTargetFor(ruleset, tag.skill, tag.who, tag.withAbility),
     tag.who,
   );
   if (changed.modifiers.length || changed.advantage.length || changed.disadvantage.length || changed.fails.length) {
@@ -1082,7 +1385,7 @@ function rulesetVouchesFor(ruleset: SkillCheckRulesetContext, tag: SkillCheckTag
     rulesetCheckAdjustFor(ruleset, tag.skill, tag.who, tag.withAbility);
   if (result.modifier !== expected) return false;
   if (result.usedRoll + result.modifier !== result.total) return false;
-  const target = matchRulesetCheckTarget(ruleset.definition, tag.skill);
+  const target = rulesetCheckTargetFor(ruleset, tag.skill, tag.who);
   const policy = target?.type === "save" ? resolution.naturals.save : resolution.naturals.check;
   const single = count === 1;
   const autoSuccess = single && result.usedRoll === sides && (policy === "both" || policy === "max-only");
@@ -1161,6 +1464,9 @@ export function isResolvableSkillCheckRequest(request: SkillCheckRequest, defini
   if (resolution?.kind === "dice-pool") {
     return Number.isInteger(dc) && dc >= 1 && dc <= rulesetPoolMaxSuccesses(resolution);
   }
+  // A roll against the sheet's number takes `dc` as a move of that number (1.139), either way.
+  if (resolution?.kind === "symbol-pool") return Number.isInteger(dc) && dc >= 0 && dc <= resolution.difficulty.max;
+  if (resolution?.kind === "roll-against") return Number.isInteger(dc) && dc >= -100 && dc <= 100;
   // A ruleset's own difficulty ladder may reach past the Engine's d20 bounds in either direction.
   const ladder = resolution?.difficultyLadder.map((step) => step.dc) ?? [];
   const min = Math.min(SKILL_CHECK_MIN_DC, ...ladder);
@@ -1321,6 +1627,10 @@ export async function resolveSkillCheckTagsInContent(
       ...(tag.who ? { who: tag.who } : {}),
       ...(tag.withAbility ? { with: tag.withAbility } : {}),
       ...(tag.bonusDice != null ? { bonus: tag.bonusDice } : {}),
+      ...(tag.darkDice != null ? { dark: tag.darkDice } : {}),
+      ...(tag.upgrades != null ? { upgrade: tag.upgrades } : {}),
+      ...(tag.setback != null ? { setback: tag.setback } : {}),
+      ...(tag.upgradeOwn != null ? { upgradeOwn: tag.upgradeOwn } : {}),
       ...(tag.difficulty ? { difficulty: tag.difficulty } : {}),
       ...(tag.explode != null ? { explode: tag.explode } : {}),
       ...(tag.double != null ? { double: tag.double } : {}),
@@ -1347,8 +1657,13 @@ export async function resolveSkillCheckTagsInContent(
         withAbility: tag.withAbility,
         threshold: tag.threshold,
         bonusDice: tag.bonusDice,
+        ...(tag.darkDice != null ? { darkDice: tag.darkDice } : {}),
+        ...(tag.upgrades != null ? { upgrades: tag.upgrades } : {}),
+        ...(tag.setback != null ? { setback: tag.setback } : {}),
+        ...(tag.upgradeOwn != null ? { upgradeOwn: tag.upgradeOwn } : {}),
         ...(tag.spend ? { spend: tag.spend } : {}),
         ...(tag.useEntry ? { useEntry: tag.useEntry } : {}),
+        ...(tag.apply?.length ? { apply: tag.apply } : {}),
       },
       definition,
     );
@@ -1498,7 +1813,11 @@ export async function resolveSkillCheckTagsInContent(
       }
       // A check that names an entry needs the ruleset's catalogs, and nothing else on this path
       // does, so they are fetched here and only here. A failure costs the effect, never the turn.
-      if (loadedContext.ruleset && options.loadCatalogs && deferred.some((entry) => entry.tag.useEntry)) {
+      if (
+        loadedContext.ruleset &&
+        options.loadCatalogs &&
+        deferred.some((entry) => entry.tag.useEntry || entry.tag.apply?.length)
+      ) {
         try {
           loadedContext.ruleset.catalogs = await options.loadCatalogs();
         } catch (err) {
@@ -1764,6 +2083,10 @@ export function boundPoolCheckRequest(tag: SkillCheckTag): SkillCheckRequest | n
     withAbility: tag.withAbility,
     threshold: tag.threshold,
     bonusDice: tag.bonusDice,
+    ...(tag.darkDice != null ? { darkDice: tag.darkDice } : {}),
+    ...(tag.upgrades != null ? { upgrades: tag.upgrades } : {}),
+    ...(tag.setback != null ? { setback: tag.setback } : {}),
+    ...(tag.upgradeOwn != null ? { upgradeOwn: tag.upgradeOwn } : {}),
     // The step a difficulty was named by still sets a pool's target, and the faces a check moved
     // are the same ask, so whichever path rolls it rolls what the tag asked for.
     ...(tag.difficulty ? { difficulty: tag.difficulty } : {}),

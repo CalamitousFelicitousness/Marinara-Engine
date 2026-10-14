@@ -11,6 +11,7 @@ import {
   gameInventoryBagKey,
   gameInventoryBearerStatus,
   resolveRulesetStartingGear,
+  rulesetStartingGearCoinCount,
   rulesetStartingGearCoins,
   rulesetBuilderStartingGearOptions,
   rulesetStartingGearFits,
@@ -137,6 +138,7 @@ export function StartingGearPicker({
             selection,
             layerOptions,
             step ? { step, build, freeEdit } : undefined,
+            { build },
           )
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,8 +164,21 @@ export function StartingGearPicker({
     if (line.item) return counted(book.itemOf(line.item)?.name ?? line.item, line.count);
     if (line.coins) {
       // In the coin the game pays it in; coins a layer takes out are named as left out instead.
-      const paid = rulesetStartingGearCoins(definition, line, layerOptions);
-      return paid ? `${paid.count} ${paid.label}` : "";
+      // Coins rolled or read off the sheet (1.157) are said as such: the amount comes when taken.
+      const amount = rulesetStartingGearCoinCount(definition, line, { build });
+      const paid = rulesetStartingGearCoins(
+        definition,
+        { coins: line.coins, count: Math.max(1, amount?.count ?? line.count) },
+        layerOptions,
+      );
+      if (!paid) return "";
+      if (line.roll)
+        return t("game.ruleset.startingGear.rolledCoins", { dice: amount?.rolled ?? line.roll, coin: paid.label });
+      if (line.countFrom)
+        return amount
+          ? `${amount.count} ${paid.label}`
+          : t("game.ruleset.startingGear.sheetCoins", { coin: paid.label });
+      return `${paid.count} ${paid.label}`;
     }
     if (line.name) return counted(line.name, line.count);
     return "";

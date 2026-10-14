@@ -13,7 +13,9 @@ import {
   GM_VERB_TABLE_ASSET_PATH,
   GM_VERB_TABLE_MAX_BYTES,
   RULESET_ASSET_PATH,
+  RULESET_CATALOG_EARLIER_MAX_BYTES,
   RULESET_CATALOG_MAX_BYTES,
+  RULESET_EARLIER_MAX_BYTES,
   RULESET_MAX_BYTES,
   rulesetCatalogAssetPath,
   isRulesetCatalogAssetPath,
@@ -36,6 +38,7 @@ import {
   RULESET_DERIVED_MAX_BEFORE_179,
   RULESET_DERIVED_MAX_BEFORE_183,
   RULESET_DERIVED_MAX_BEFORE_1106,
+  RULESET_FIELDS_MAX_BEFORE_1203,
   RULESET_BUILDER_STEPS_MAX_BEFORE_1107,
   RULESET_COMBAT_MODIFIER_TARGETS,
   type RulesetCatalogItem,
@@ -760,6 +763,401 @@ const MOVED_POOL_RULES_ISSUE =
 
 const SHEET_READS_ISSUE =
   "A ruleset whose values read a live track or pool or add up a list, whose skills or saves carry a cap, or that hides on anything but one value requires schemaVersion 2 and capabilityApi 1.39 or newer";
+
+/** Rating grants can also arrive in catalog assets (Capability API 1.152). */
+function entriesCarryBuilderRatings147(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) && entries.some((entry) => plainRecord(plainRecord(entry)?.grants)?.ratings !== undefined)
+  );
+}
+
+/** The 1.151 builder keys in their step and grant positions, including catalog files. */
+function carriesBuilderChoices146(value: unknown, grants = false): boolean {
+  const record = plainRecord(value);
+  if (!record) return false;
+  const choices = (value: unknown, ability = false) =>
+    Array.isArray(value) &&
+    value.some((value) => {
+      const choice = plainRecord(value);
+      return (
+        choice &&
+        ([
+          "id",
+          "countFrom",
+          "max",
+          "excludeChoices",
+          "tier",
+          "only",
+          "onDuplicate",
+          "quotas",
+          "distinctBy",
+          "quotaBelow",
+        ].some((key) => choice[key] !== undefined) ||
+          (ability && choice.from !== undefined))
+      );
+    });
+  if (grants)
+    return (
+      choices(plainRecord(record.abilities)?.choose, true) ||
+      choices(plainRecord(record.trained)?.choose) ||
+      choices(plainRecord(record.entries)?.choose)
+    );
+  const steps = plainRecord(plainRecord(record.sheet)?.builder)?.steps;
+  return (
+    Array.isArray(steps) &&
+    steps.some((value) => {
+      const step = plainRecord(value);
+      return (
+        step &&
+        (["when", "requiredWhen", "quotas", "distinctBy", "quotaBelow"].some((key) => step[key] !== undefined) ||
+          choices(step.choose))
+      );
+    })
+  );
+}
+
+/** The 1.155 builder keys: offer eligibility, sheet-read bounds and discrete ratings, a named
+ *  replacement pool on a training choice (a step's or a catalog grant's), and creation rules. */
+function carriesBuilderLegality150(value: unknown, grants = false): boolean {
+  const record = plainRecord(value);
+  if (!record) return false;
+  const replaces = (value: unknown) =>
+    Array.isArray(value) && value.some((choice) => plainRecord(choice)?.replacementFrom !== undefined);
+  if (grants) return replaces(plainRecord(record.trained)?.choose);
+  const builder = plainRecord(plainRecord(record.sheet)?.builder);
+  if (builder?.constraints !== undefined) return true;
+  return (
+    Array.isArray(builder?.steps) &&
+    builder.steps.some((value) => {
+      const step = plainRecord(value);
+      return (
+        !!step &&
+        (replaces(step.choose) ||
+          (Array.isArray(step.offers) &&
+            step.offers.some((offer) => {
+              const record = plainRecord(offer);
+              return (
+                !!record && ["when", "minFrom", "maxFrom", "allowedRatings"].some((key) => record[key] !== undefined)
+              );
+            })))
+      );
+    })
+  );
+}
+
+/** The 1.156 keys: a worked-out score, a list whose rows apply to a roll, and an entry's effect that
+ *  applies only when named on one. */
+function carriesContextual151(ruleset: unknown): boolean {
+  const sheet = plainRecord(plainRecord(ruleset)?.sheet);
+  const has = (value: unknown, key: string) =>
+    Array.isArray(value) && value.some((entry) => plainRecord(entry)?.[key] !== undefined);
+  return has(sheet?.abilities, "value") || has(sheet?.lists, "contextual");
+}
+
+/** The 1.157 keys: starting coins rolled or read off the holder's sheet. */
+function carriesStartingCoins152(ruleset: unknown): boolean {
+  const gear = plainRecord(plainRecord(ruleset)?.items)?.startingGear;
+  const lineCarries = (line: unknown) => {
+    const record = plainRecord(line);
+    return !!record && (record.roll !== undefined || record.countFrom !== undefined || record.times !== undefined);
+  };
+  return (
+    Array.isArray(gear) &&
+    gear.some((entry) => {
+      const record = plainRecord(entry);
+      const lines = Array.isArray(record?.lines) ? record.lines : [];
+      const options = (Array.isArray(record?.choices) ? record.choices : []).flatMap((choice) => {
+        const list = plainRecord(choice)?.options;
+        return Array.isArray(list) ? list.flatMap((option) => plainRecord(option)?.lines ?? []) : [];
+      });
+      return [...lines, ...(options as unknown[])].some(lineCarries);
+    })
+  );
+}
+
+/** The 1.158 keys: an initialize step, and a pool or track that starts at a value read off the sheet. */
+function carriesStartingValues153(ruleset: unknown): boolean {
+  const sheet = plainRecord(plainRecord(ruleset)?.sheet);
+  const live = plainRecord(sheet?.live);
+  const starts = (value: unknown) =>
+    Array.isArray(value) && value.some((entry) => plainRecord(entry)?.startFrom !== undefined);
+  const steps = plainRecord(sheet?.builder)?.steps;
+  return (
+    starts(live?.pools) ||
+    starts(live?.tracks) ||
+    (Array.isArray(steps) && steps.some((step) => plainRecord(step)?.kind === "initialize"))
+  );
+}
+
+/** The 1.159 keys: picks or rows paid out of a builder pool, and rows copied from a catalog. */
+function carriesPricedChoices154(ruleset: unknown): boolean {
+  const steps = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.builder)?.steps;
+  return (
+    Array.isArray(steps) &&
+    steps.some((step) => {
+      const record = plainRecord(step);
+      return (
+        (record?.kind === "catalog" || record?.kind === "rows") &&
+        (record.pool !== undefined || record.cost !== undefined || record.from !== undefined)
+      );
+    })
+  );
+}
+
+/** The 1.160 keys: creation profiles, and steps that read the sheet as earlier steps make it. */
+function carriesProfiles155(ruleset: unknown): boolean {
+  const builder = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.builder);
+  return (
+    builder?.profiles !== undefined ||
+    (Array.isArray(builder?.steps) && builder.steps.some((step) => plainRecord(step)?.reads !== undefined))
+  );
+}
+
+/** The 1.161 key: a list whose rows are checks of their own. */
+function carriesRowChecks156(ruleset: unknown): boolean {
+  const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
+  return Array.isArray(lists) && lists.some((list) => plainRecord(list)?.checks !== undefined);
+}
+
+/** The 1.162 keys: scores rolled in order with their own dice, and roll steps. */
+function carriesCreationRolls157(ruleset: unknown): boolean {
+  const steps = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.builder)?.steps;
+  return (
+    Array.isArray(steps) &&
+    steps.some((step) => {
+      const record = plainRecord(step);
+      return (
+        record?.kind === "roll" || plainRecord(record?.methods)?.rolls !== undefined || record?.default === "rolls"
+      );
+    })
+  );
+}
+
+/** The 1.163 keys: a shared sheet set up through a builder, with lists, or with fields read off the
+ *  party's characters. */
+function carriesPartyCreation158(ruleset: unknown): boolean {
+  const party = plainRecord(plainRecord(ruleset)?.party);
+  return !!party && (party.builder !== undefined || party.lists !== undefined || party.fromMembers !== undefined);
+}
+
+/** The 1.164 keys: spend offers raised and lowered from one start, owned levels, and trades. */
+function carriesTrades159(ruleset: unknown): boolean {
+  const record = plainRecord(ruleset);
+  const builders = [plainRecord(record?.sheet)?.builder, plainRecord(record?.party)?.builder];
+  return builders.some((builder) => {
+    const steps = plainRecord(builder)?.steps;
+    return (
+      Array.isArray(steps) &&
+      steps.some((step) => {
+        const offers = plainRecord(step)?.offers;
+        return (
+          Array.isArray(offers) &&
+          offers.some((offer) => {
+            const each = plainRecord(offer);
+            return each?.direction !== undefined || each?.effect !== undefined || each?.exchange !== undefined;
+          })
+        );
+      })
+    );
+  });
+}
+
+/** The 1.205 keys: a list sum that counts rows or reads only rows whose cell equals a value. */
+function carriesRowCounts200(ruleset: unknown, depth = 0): boolean {
+  if (depth > 40 || !ruleset || typeof ruleset !== "object") return false;
+  if (Array.isArray(ruleset)) return ruleset.some((each) => carriesRowCounts200(each, depth + 1));
+  const record = ruleset as Record<string, unknown>;
+  const sum = plainRecord(record.listSum);
+  if (sum && (sum.where !== undefined || sum.count !== undefined)) return true;
+  return Object.values(record).some((each) => carriesRowCounts200(each, depth + 1));
+}
+
+/** The 1.206 keys: row prices scaled, offset or overridden by a derived value the row names. */
+function carriesRowPrices201(ruleset: unknown): boolean {
+  const record = plainRecord(ruleset);
+  return [plainRecord(record?.sheet)?.builder, plainRecord(record?.party)?.builder].some((builder) => {
+    const steps = plainRecord(builder)?.steps;
+    return (
+      Array.isArray(steps) &&
+      steps.some((step) => {
+        const cost = plainRecord(plainRecord(step)?.cost);
+        return (
+          plainRecord(step)?.kind === "rows" &&
+          !!cost &&
+          (cost.times !== undefined || cost.add !== undefined || cost.overrides !== undefined)
+        );
+      })
+    );
+  });
+}
+
+/** The 1.207 key: a spend offer whose price is not supplied yet. */
+function carriesUnpriced202(ruleset: unknown): boolean {
+  const record = plainRecord(ruleset);
+  return [plainRecord(record?.sheet)?.builder, plainRecord(record?.party)?.builder].some((builder) => {
+    const steps = plainRecord(builder)?.steps;
+    return (
+      Array.isArray(steps) &&
+      steps.some((step) => {
+        const offers = plainRecord(step)?.offers;
+        return (
+          Array.isArray(offers) &&
+          offers.some((offer) => {
+            const each = plainRecord(offer);
+            const costs = [
+              each?.cost,
+              ...(Array.isArray(each?.overrides) ? each.overrides.map((o) => plainRecord(o)?.cost) : []),
+            ];
+            return costs.some((cost) => plainRecord(cost)?.unpriced !== undefined);
+          })
+        );
+      })
+    );
+  });
+}
+
+/** The 1.208 ceiling: more than 160 sheet fields. */
+function carriesManyFields203(ruleset: unknown): boolean {
+  const fields = plainRecord(plainRecord(ruleset)?.sheet)?.fields;
+  return Array.isArray(fields) && fields.length > RULESET_FIELDS_MAX_BEFORE_1203;
+}
+
+function carriesRollAbilities204(ruleset: unknown): boolean {
+  const record = plainRecord(ruleset);
+  return [plainRecord(record?.sheet)?.builder, plainRecord(record?.party)?.builder].some((builder) => {
+    const steps = plainRecord(builder)?.steps;
+    return (
+      Array.isArray(steps) &&
+      steps.some((step) => {
+        const rolls = plainRecord(step)?.rolls;
+        return Array.isArray(rolls) && rolls.some((roll) => plainRecord(roll)?.ability !== undefined);
+      })
+    );
+  });
+}
+
+function carriesWorkedColumns205(ruleset: unknown): boolean {
+  const record = plainRecord(ruleset);
+  return [plainRecord(record?.sheet), plainRecord(record?.party)?.sheet].some((sheet) => {
+    const lists = plainRecord(sheet)?.lists;
+    return (
+      Array.isArray(lists) &&
+      lists.some((list) => {
+        const columns = plainRecord(list)?.columns;
+        return Array.isArray(columns) && columns.some((column) => plainRecord(column)?.sum !== undefined);
+      })
+    );
+  });
+}
+
+function carriesPartialBoosts206(ruleset: unknown, depth = 0): boolean {
+  if (depth > 40 || !ruleset || typeof ruleset !== "object") return false;
+  if (Array.isArray(ruleset)) return ruleset.some((each) => carriesPartialBoosts206(each, depth + 1));
+  const record = ruleset as Record<string, unknown>;
+  const choose = plainRecord(record.abilities)?.choose;
+  if (Array.isArray(choose) && choose.some((choice) => plainRecord(choice)?.partialFrom !== undefined)) return true;
+  return Object.values(record).some((each) => carriesPartialBoosts206(each, depth + 1));
+}
+
+function carriesRowStances207(ruleset: unknown): boolean {
+  const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
+  return (
+    Array.isArray(lists) &&
+    lists.some((list) => {
+      const checks = plainRecord(list)?.checks;
+      return Array.isArray(checks) && checks.some((check) => plainRecord(check)?.stance !== undefined);
+    })
+  );
+}
+
+function carriesAbilitySpecialties208(ruleset: unknown): boolean {
+  const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
+  return (
+    Array.isArray(lists) && lists.some((list) => plainRecord(plainRecord(list)?.contextual)?.abilities !== undefined)
+  );
+}
+
+function carriesNoCancel209(ruleset: unknown, depth = 0): boolean {
+  if (depth > 40 || !ruleset || typeof ruleset !== "object") return false;
+  if (Array.isArray(ruleset)) return ruleset.some((each) => carriesNoCancel209(each, depth + 1));
+  const record = ruleset as Record<string, unknown>;
+  if (plainRecord(plainRecord(record.contextual)?.check)?.cancel === false) return true;
+  return Object.values(record).some((each) => carriesNoCancel209(each, depth + 1));
+}
+
+function carriesItemAccess210(ruleset: unknown, depth = 0): boolean {
+  if (depth > 40 || !ruleset || typeof ruleset !== "object") return false;
+  if (Array.isArray(ruleset)) return ruleset.some((each) => carriesItemAccess210(each, depth + 1));
+  const record = ruleset as Record<string, unknown>;
+  if (plainRecord(record.grants)?.itemAccess !== undefined) return true;
+  return Object.values(record).some((each) => carriesItemAccess210(each, depth + 1));
+}
+
+function carriesRowDots211(ruleset: unknown): boolean {
+  const record = plainRecord(ruleset);
+  return [plainRecord(record?.sheet)?.builder, plainRecord(record?.party)?.builder].some((builder) => {
+    const steps = plainRecord(builder)?.steps;
+    return (
+      Array.isArray(steps) &&
+      steps.some((step) => {
+        const each = plainRecord(step);
+        const groups = each?.groups;
+        const overrides = plainRecord(each?.cost)?.overrides;
+        return (
+          (Array.isArray(groups) && groups.some((group) => plainRecord(group)?.rows !== undefined)) ||
+          (Array.isArray(overrides) && overrides.some((override) => plainRecord(override)?.times !== undefined))
+        );
+      })
+    );
+  });
+}
+
+function carriesBestRating212(ruleset: unknown, depth = 0): boolean {
+  if (depth > 40 || !ruleset || typeof ruleset !== "object") return false;
+  if (Array.isArray(ruleset)) return ruleset.some((each) => carriesBestRating212(each, depth + 1));
+  const record = ruleset as Record<string, unknown>;
+  if (plainRecord(plainRecord(record.contextual)?.check)?.best !== undefined) return true;
+  return Object.values(record).some((each) => carriesBestRating212(each, depth + 1));
+}
+
+function carriesTrackCosts213(ruleset: unknown, depth = 0): boolean {
+  if (depth > 40 || !ruleset || typeof ruleset !== "object") return false;
+  if (Array.isArray(ruleset)) return ruleset.some((each) => carriesTrackCosts213(each, depth + 1));
+  const record = ruleset as Record<string, unknown>;
+  const contextual = plainRecord(record.contextual);
+  // A list row that costs anything, or an entry cost that marks a track.
+  if (contextual?.cost !== undefined && Array.isArray(record.columns)) return true;
+  const cost = contextual?.cost;
+  if (Array.isArray(cost) && cost.some((each) => plainRecord(each)?.track !== undefined)) return true;
+  return Object.values(record).some((each) => carriesTrackCosts213(each, depth + 1));
+}
+
+/** The 1.219 ceiling: an advancement list over 24 fields (up to 64). */
+/** The 1.220 key: a catalog borrowed from another installed ruleset. */
+function carriesBorrowedCatalog215(ruleset: unknown): boolean {
+  const catalogs = plainRecord(ruleset)?.catalogs;
+  return Array.isArray(catalogs) && catalogs.some((catalog) => plainRecord(catalog)?.from !== undefined);
+}
+
+function carriesLongAdvancement214(ruleset: unknown): boolean {
+  const fields = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.advancement)?.fields;
+  return Array.isArray(fields) && fields.length > 24;
+}
+
+function entriesCarryContextual151(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(entry)?.mechanics)?.contextual !== undefined)
+  );
+}
+
+function entriesCarryBuilderLegality150(entries: unknown): boolean {
+  return Array.isArray(entries) && entries.some((entry) => carriesBuilderLegality150(plainRecord(entry)?.grants, true));
+}
+
+function entriesCarryBuilderChoices146(entries: unknown): boolean {
+  return Array.isArray(entries) && entries.some((entry) => carriesBuilderChoices146(plainRecord(entry)?.grants, true));
+}
 
 /** The 1.39 keys a value reference or a `hideWhen` may carry, anywhere in a document. Their names
  *  are camelCase, which no sheet id can be, so walking the whole document finds exactly them rather
@@ -3589,6 +3987,8 @@ export function getCapabilityPackageInstallIssue(
   const ruleset =
     rulesetDocument && typeof rulesetDocument === "object"
       ? (rulesetDocument as {
+          clocks?: unknown;
+          party?: unknown;
           catalogs?: unknown;
           items?: unknown;
           battle?: unknown;
@@ -3596,6 +3996,7 @@ export function getCapabilityPackageInstallIssue(
           resolution?: unknown;
           layers?: unknown;
           gm?: unknown;
+          gmReference?: unknown;
           sheet?: unknown;
           rests?: unknown;
         })
@@ -3614,6 +4015,13 @@ export function getCapabilityPackageInstallIssue(
   let carriesSeveralScaled = false;
   let carriesRepeatChoices = false;
   let carriesChoiceCaps = false;
+  let carriesBuilderChoices = carriesBuilderChoices146(ruleset);
+  let carriesBuilderLegality = carriesBuilderLegality150(ruleset);
+  let carriesContextual = carriesContextual151(ruleset);
+  const ratingBuilder = plainRecord(plainRecord(ruleset?.sheet)?.builder);
+  let carriesBuilderRatings =
+    ratingBuilder?.ratingTiers !== undefined ||
+    (Array.isArray(ratingBuilder?.steps) && ratingBuilder.steps.some((step) => plainRecord(step)?.kind === "allocate"));
   let carriesDamageSheetBonus = false;
   let carriesDamageReroll = false;
   let carriesOfferedWhen = false;
@@ -3749,6 +4157,10 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySeveralScaledRows(header.entries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(header.entries)) carriesRepeatChoices = true;
       if (entriesCarryChoiceCaps(header.entries)) carriesChoiceCaps = true;
+      if (entriesCarryBuilderChoices146(header.entries)) carriesBuilderChoices = true;
+      if (entriesCarryBuilderLegality150(header.entries)) carriesBuilderLegality = true;
+      if (entriesCarryContextual151(header.entries)) carriesContextual = true;
+      if (entriesCarryBuilderRatings147(header.entries)) carriesBuilderRatings = true;
       if (entriesCarryDamageSheetBonus(header.entries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(header.entries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(header.entries)) carriesOfferedWhen = true;
@@ -3824,6 +4236,8 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarrySeveralScaledRows(fileEntries)) carriesSeveralScaled = true;
       if (entriesCarryRepeatChoices(fileEntries)) carriesRepeatChoices = true;
       if (entriesCarryChoiceCaps(fileEntries)) carriesChoiceCaps = true;
+      if (entriesCarryBuilderChoices146(fileEntries)) carriesBuilderChoices = true;
+      if (entriesCarryBuilderRatings147(fileEntries)) carriesBuilderRatings = true;
       if (entriesCarryDamageSheetBonus(fileEntries)) carriesDamageSheetBonus = true;
       if (entriesCarryDamageReroll(fileEntries)) carriesDamageReroll = true;
       if (entriesCarryOfferedWhen(fileEntries)) carriesOfferedWhen = true;
@@ -4175,12 +4589,203 @@ export function getCapabilityPackageInstallIssue(
     return "A ruleset whose builder holds starting gear to the sheet requires schemaVersion 2 and capabilityApi 1.109 or newer";
   }
   // A skill or save choice among what is already trained, 1.105: a new key on the strict choice.
-  if (!declaresApi(105) && carriesHeldChoices) {
+  if (
+    !declaresApi(105) &&
+    (carriesHeldChoices ||
+      (Array.isArray(fieldsSteps) &&
+        fieldsSteps.some((step) => {
+          const trained = plainRecord(step);
+          return (
+            trained?.kind === "trained" &&
+            Array.isArray(trained.choose) &&
+            trained.choose.some((choice) => plainRecord(choice)?.held !== undefined)
+          );
+        })))
+  ) {
     return "A ruleset whose skill or save choices build on training already held requires schemaVersion 2 and capabilityApi 1.105 or newer";
   }
   // A catalog entry a builder step offers only while the sheet says so, 1.99: a new key on the strict entry.
   if (!declaresApi(99) && carriesOfferedWhen) {
     return "A ruleset whose catalog entries are offered only while the sheet allows requires schemaVersion 2 and capabilityApi 1.99 or newer";
+  }
+  // Valued faces, open-ended rolls and unmodified faces on a summed check, 1.136.
+  if (
+    !declaresApi(136) &&
+    (plainRecord(plainRecord(ruleset?.resolution)?.dice)?.faces !== undefined ||
+      plainRecord(ruleset?.resolution)?.openEnded !== undefined ||
+      plainRecord(ruleset?.resolution)?.unmodified !== undefined)
+  ) {
+    return "A ruleset whose dice have valued faces, roll open-ended or mark unmodified faces requires schemaVersion 2 and capabilityApi 1.136 or newer";
+  }
+  // A pool target read off the sheet, stances and exact faces, 1.137: new keys on the strict resolution.
+  if (
+    !declaresApi(137) &&
+    (plainRecord(ruleset?.resolution)?.stances !== undefined ||
+      plainRecord(ruleset?.resolution)?.exact !== undefined ||
+      plainRecord(plainRecord(ruleset?.resolution)?.target)?.from !== undefined)
+  ) {
+    return "A ruleset whose pool reads its target off the sheet, counts by stance or flags exact faces requires schemaVersion 2 and capabilityApi 1.137 or newer";
+  }
+  // A keep-the-highest resolution kind, 1.138: a new kind in the strict union.
+  if (!declaresApi(138) && plainRecord(ruleset?.resolution)?.kind === "dice-highest") {
+    return "A ruleset that reads the highest die requires schemaVersion 2 and capabilityApi 1.138 or newer";
+  }
+  // A roll-against resolution kind, 1.139: a new kind in the strict union.
+  if (!declaresApi(139) && plainRecord(ruleset?.resolution)?.kind === "roll-against") {
+    return "A ruleset that rolls against the sheet's number requires schemaVersion 2 and capabilityApi 1.139 or newer";
+  }
+  // Narrative symbol dice, 1.141: a new kind in the strict union.
+  if (!declaresApi(141) && plainRecord(ruleset?.resolution)?.kind === "symbol-pool") {
+    return "A ruleset that rolls narrative symbols requires schemaVersion 2 and capabilityApi 1.141 or newer";
+  }
+  if (!declaresApi(143) && ruleset?.clocks !== undefined) {
+    return "A ruleset with progress clocks requires schemaVersion 2 and capabilityApi 1.143 or newer";
+  }
+  if (!declaresApi(144) && ruleset?.party !== undefined) {
+    return "A ruleset with a party sheet requires schemaVersion 2 and capabilityApi 1.144 or newer";
+  }
+  // Permanent sheet advancement, 1.142: a new key on the strict sheet.
+  if (!declaresApi(142) && plainRecord(ruleset?.sheet)?.advancement !== undefined) {
+    return "A ruleset that allows permanent sheet advancement requires schemaVersion 2 and capabilityApi 1.142 or newer";
+  }
+  // Full GM rules reference, 1.145: a new key on the strict ruleset.
+  if (!declaresApi(145) && ruleset?.gmReference !== undefined) {
+    return "A ruleset with a full GM rules reference requires schemaVersion 2 and capabilityApi 1.145 or newer";
+  }
+  // Minimum damage dice, 1.146: the combat block or a weapon, inline or in a catalog file.
+  if (
+    !declaresApi(146) &&
+    (plainRecord(plainRecord(ruleset?.combat)?.damage)?.minimum !== undefined ||
+      [...itemsByRef.values()].some((item) => plainRecord(plainRecord(item.attack)?.damage)?.minimum !== undefined))
+  ) {
+    return "A ruleset with minimum damage dice requires schemaVersion 2 and capabilityApi 1.146 or newer";
+  }
+  // One hit that costs the target a turn, 1.147.
+  if (!declaresApi(147) && plainRecord(ruleset?.combat)?.daze !== undefined) {
+    return "A ruleset whose hits daze requires schemaVersion 2 and capabilityApi 1.147 or newer";
+  }
+  // Only the remap key is new: the wound kind mapping itself predates 1.148.
+  if (!declaresApi(148) && plainRecord(plainRecord(ruleset?.combat)?.damageKinds)?.remap !== undefined) {
+    return "A ruleset whose targets remap damage kinds requires schemaVersion 2 and capabilityApi 1.148 or newer";
+  }
+  // Dice follow-ups, 1.149/1.150: strict keys, including per-check overrides.
+  const diceResolution = plainRecord(ruleset?.resolution);
+  const diceOverrides = diceResolution?.overrides;
+  const diceSettings = [
+    diceResolution,
+    ...(Array.isArray(diceOverrides) ? diceOverrides.map((entry) => plainRecord(plainRecord(entry)?.set)) : []),
+  ];
+  if (!declaresApi(149) && diceSettings.some((setting) => plainRecord(setting?.dark)?.outcome !== undefined)) {
+    return "A ruleset that chooses which dice decide the outcome requires schemaVersion 2 and capabilityApi 1.149 or newer";
+  }
+  if (!declaresApi(150) && diceSettings.some((setting) => setting?.allowOwnUpgrade !== undefined)) {
+    return "A ruleset that declares own dice upgrades requires schemaVersion 2 and capabilityApi 1.150 or newer";
+  }
+  if (
+    !declaresApi(153) &&
+    (ratingBuilder?.pools !== undefined ||
+      (Array.isArray(ratingBuilder?.steps) && ratingBuilder.steps.some((step) => plainRecord(step)?.kind === "spend")))
+  ) {
+    return "A ruleset with shared builder pools or priced purchases requires schemaVersion 2 and capabilityApi 1.153 or newer";
+  }
+  if (
+    !declaresApi(154) &&
+    Array.isArray(ratingBuilder?.steps) &&
+    ratingBuilder.steps.some((step) => plainRecord(step)?.kind === "rows")
+  ) {
+    return "A ruleset with guided named rows requires schemaVersion 2 and capabilityApi 1.154 or newer";
+  }
+  if (!declaresApi(220) && carriesBorrowedCatalog215(ruleset)) {
+    return "A ruleset with a catalog borrowed from another ruleset requires schemaVersion 2 and capabilityApi 1.220 or newer";
+  }
+  if (!declaresApi(219) && carriesLongAdvancement214(ruleset)) {
+    return "A ruleset whose advancement allows more than 24 fields requires schemaVersion 2 and capabilityApi 1.219 or newer";
+  }
+  if (!declaresApi(218) && carriesTrackCosts213(ruleset)) {
+    return "A roll effect that costs a list row or marks a track requires schemaVersion 2 and capabilityApi 1.218 or newer";
+  }
+  if (!declaresApi(217) && carriesBestRating212(ruleset)) {
+    return "A roll effect that takes the best rating requires schemaVersion 2 and capabilityApi 1.217 or newer";
+  }
+  if (!declaresApi(216) && carriesRowDots211(ruleset)) {
+    return "Row dots funded at creation requires schemaVersion 2 and capabilityApi 1.216 or newer";
+  }
+  if (!declaresApi(215) && carriesItemAccess210(ruleset)) {
+    return "A pick that opens items without carrying them requires schemaVersion 2 and capabilityApi 1.215 or newer";
+  }
+  if (!declaresApi(214) && carriesNoCancel209(ruleset)) {
+    return "A roll effect that switches off cancelling requires schemaVersion 2 and capabilityApi 1.214 or newer";
+  }
+  if (!declaresApi(213) && carriesAbilitySpecialties208(ruleset)) {
+    return "A row applied by an ability requires schemaVersion 2 and capabilityApi 1.213 or newer";
+  }
+  if (!declaresApi(212) && carriesRowStances207(ruleset)) {
+    return "A row check in a stance requires schemaVersion 2 and capabilityApi 1.212 or newer";
+  }
+  if (!declaresApi(211) && carriesPartialBoosts206(ruleset)) {
+    return "A score choice with partial increases requires schemaVersion 2 and capabilityApi 1.211 or newer";
+  }
+  if (!declaresApi(210) && carriesWorkedColumns205(ruleset)) {
+    return "A list column worked out from other columns requires schemaVersion 2 and capabilityApi 1.210 or newer";
+  }
+  if (!declaresApi(209) && carriesRollAbilities204(ruleset)) {
+    return "A creation roll written to an ability requires schemaVersion 2 and capabilityApi 1.209 or newer";
+  }
+  if (!declaresApi(208) && carriesManyFields203(ruleset)) {
+    return "A ruleset with more than 160 fields requires schemaVersion 2 and capabilityApi 1.208 or newer";
+  }
+  if (!declaresApi(207) && carriesUnpriced202(ruleset)) {
+    return "A ruleset with unpriced spend offers requires schemaVersion 2 and capabilityApi 1.207 or newer";
+  }
+  if (!declaresApi(206) && carriesRowPrices201(ruleset)) {
+    return "A ruleset with row prices scaled, offset or overridden requires schemaVersion 2 and capabilityApi 1.206 or newer";
+  }
+  if (!declaresApi(205) && carriesRowCounts200(ruleset)) {
+    return "A ruleset with list sums that count rows or match a cell requires schemaVersion 2 and capabilityApi 1.205 or newer";
+  }
+  if (!declaresApi(164) && carriesTrades159(ruleset)) {
+    return "A ruleset with two-way, owned or traded purchases requires schemaVersion 2 and capabilityApi 1.164 or newer";
+  }
+  if (!declaresApi(163) && carriesPartyCreation158(ruleset)) {
+    return "A ruleset with shared party creation requires schemaVersion 2 and capabilityApi 1.163 or newer";
+  }
+  if (!declaresApi(162) && carriesCreationRolls157(ruleset)) {
+    return "A ruleset with creation rolls kept with their dice requires schemaVersion 2 and capabilityApi 1.162 or newer";
+  }
+  if (!declaresApi(161) && carriesRowChecks156(ruleset)) {
+    return "A ruleset with list rows that are checks of their own requires schemaVersion 2 and capabilityApi 1.161 or newer";
+  }
+  if (!declaresApi(160) && carriesProfiles155(ruleset)) {
+    return "A ruleset with creation profiles or steps that read earlier phases requires schemaVersion 2 and capabilityApi 1.160 or newer";
+  }
+  if (!declaresApi(159) && carriesPricedChoices154(ruleset)) {
+    return "A ruleset with priced builder picks or rows requires schemaVersion 2 and capabilityApi 1.159 or newer";
+  }
+  if (!declaresApi(158) && carriesStartingValues153(ruleset)) {
+    return "A ruleset with starting values set once or read off the sheet requires schemaVersion 2 and capabilityApi 1.158 or newer";
+  }
+  if (!declaresApi(157) && carriesStartingCoins152(ruleset)) {
+    return "A ruleset with starting coins rolled or read off the sheet requires schemaVersion 2 and capabilityApi 1.157 or newer";
+  }
+  if (!declaresApi(156) && carriesContextual) {
+    return "A ruleset with worked-out scores or effects applied to one roll by name requires schemaVersion 2 and capabilityApi 1.156 or newer";
+  }
+  if (!declaresApi(155) && carriesBuilderLegality) {
+    return "A ruleset with conditional builder offers, sheet-read bounds, discrete ratings, replacement pools or creation rules requires schemaVersion 2 and capabilityApi 1.155 or newer";
+  }
+  if (!declaresApi(152) && carriesBuilderRatings) {
+    return "A ruleset with rating allocation stages, tier maps or rating grants requires schemaVersion 2 and capabilityApi 1.152 or newer";
+  }
+  if (!declaresApi(151) && carriesBuilderChoices) {
+    return "A ruleset with counted builder choices, quotas, exclusions or conditional steps requires schemaVersion 2 and capabilityApi 1.151 or newer";
+  }
+  // Checks that roll their own way, 1.140: a new key on the strict resolution.
+  if (!declaresApi(140) && plainRecord(ruleset?.resolution)?.overrides !== undefined) {
+    return "A ruleset whose checks roll their own way requires schemaVersion 2 and capabilityApi 1.140 or newer";
+  }
+  // Outcome bands on a check, 1.135: a new key on the strict resolution.
+  if (!declaresApi(135) && plainRecord(ruleset?.resolution)?.outcomes !== undefined) {
+    return "A ruleset whose checks land in outcome bands requires schemaVersion 2 and capabilityApi 1.135 or newer";
   }
   // Ways of moving besides walking, 1.113: new keys on the strict creature and the strict economy.
   if (
@@ -4524,6 +5129,18 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
+  if (
+    !declaresApi(340) &&
+    declaresRuleset &&
+    (manifest.files ?? []).some((file) => {
+      const path = tryNormalizeArchivePath(file.path);
+      if (path === RULESET_ASSET_PATH) return file.bytes > RULESET_EARLIER_MAX_BYTES;
+      return !!path && isRulesetCatalogAssetPath(path) && file.bytes > RULESET_CATALOG_EARLIER_MAX_BYTES;
+    })
+  ) {
+    return "A ruleset package whose ruleset.json is over 256 KB or whose catalog file is over 1 MB requires schemaVersion 2 and capabilityApi 1.340 or newer";
   }
   // Icons named by a catalog entry or a condition, 1.338.
   if (

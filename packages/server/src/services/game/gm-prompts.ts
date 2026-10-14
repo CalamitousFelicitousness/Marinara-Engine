@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 
 import type {
+  RulesetClocks,
   GameActiveState,
   GameCampaignPlan,
   GameMap,
@@ -157,6 +158,8 @@ export interface GmPromptContext {
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
   gameSystemPrompt?: string | null;
   gameSpecialInstructions?: string | null;
+  /** The game's resolved ruleset, for its stable GM rules reference. */
+  ruleset?: import("@marinara-engine/shared").RulesetDefinition;
   /** The game's setting kit (worldgen W0): the world's own words and the kinds of change it
    *  allows. Fixed for the game, so it sits in the cached system prompt. */
   worldKit?: WorldKit | null;
@@ -695,6 +698,15 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
 
   sections.push(wrapGameInstructions(normalizePromptText(ctx.gameSystemPrompt) || DEFAULT_GAME_SYSTEM_PROMPT));
 
+  if (ctx.ruleset?.gmReference) {
+    sections.push(
+      `<ruleset_gm_reference>`,
+      `Game Master rules reference`,
+      ctx.ruleset.gmReference,
+      `</ruleset_gm_reference>`,
+    );
+  }
+
   // ── Rating Guidelines ──
   if (ctx.rating === "nsfw") {
     sections.push(
@@ -883,8 +895,12 @@ function describeSheetValue(
   }
   if (ref.listSum !== undefined) {
     const list = sheet.lists.find((entry) => entry.id === ref.listSum!.list);
+    const where = ref.listSum.where
+      ? ` whose ${list?.columns.find((entry) => entry.id === ref.listSum!.where!.column)?.label ?? ref.listSum.where.column} is ${String(ref.listSum.where.equals)}`
+      : "";
+    if (ref.listSum.count) return `how many rows of the sheet's ${list?.label ?? ref.listSum.list}${where} there are`;
     const column = list?.columns.find((entry) => entry.id === ref.listSum!.column)?.label ?? ref.listSum.column;
-    return `the ${column} of the sheet's ${list?.label ?? ref.listSum.list} added up`;
+    return `the ${column} of the sheet's ${list?.label ?? ref.listSum.list}${where} added up`;
   }
   return "a number on the sheet";
 }
@@ -892,6 +908,29 @@ function describeSheetValue(
 /** The ruleset's own check line, in place of the built-in one. Everything in it is the ruleset's
  *  validated, prompt-safe text; the Engine adds only the tag shape and the ladder. */
 function renderRulesetSkillCheckLine(
+  ruleset: import("@marinara-engine/shared").RulesetDefinition,
+  playerDiceRollSubmitted: boolean,
+  oneRequestDice: boolean,
+): string {
+  const line = renderRulesetKindCheckLine(ruleset, playerDiceRollSubmitted, oneRequestDice);
+  // Checks that roll their own way (1.140), named so the Game Master asks for them like any other.
+  const overrides = ruleset.resolution.overrides ?? [];
+  if (overrides.length === 0) return line;
+  const nameOf = (list: { id: string; label: string }[], id: string) =>
+    list.find((entry) => entry.id === id)?.label ?? id;
+  const said = overrides.map((override) => {
+    const names = [
+      ...(override.skills ?? []).map((id) => nameOf(ruleset.sheet.skills, id)),
+      ...(override.saves ?? []).map((id) => nameOf(ruleset.sheet.saves, id)),
+      ...(override.abilities ?? []).map((id) => nameOf(ruleset.sheet.abilities, id)),
+    ].join(", ");
+    const when = override.when ? ` for a character whose ${describeSheetValue(ruleset, override.when)} is not 0` : "";
+    return `${override.label} (${names}${when})${override.text ? `: ${override.text}` : ""}`;
+  });
+  return `${line} These checks roll their own way, and the engine rolls them so: ${said.join("; ")}.`;
+}
+
+function renderRulesetKindCheckLine(
   ruleset: import("@marinara-engine/shared").RulesetDefinition,
   playerDiceRollSubmitted: boolean,
   oneRequestDice: boolean,
@@ -918,7 +957,7 @@ function renderRulesetSkillCheckLine(
       : rule === "harder"
         ? "one step harder"
         : typeof rule === "object"
-          ? `${rule.by > 0 ? "+" : ""}${rule.by}${resolution.kind === "dice-pool" ? (Math.abs(rule.by) === 1 ? " die" : " dice") : ""}`
+          ? `${rule.by > 0 ? "+" : ""}${rule.by}${resolution.kind !== "dice-sum" ? (Math.abs(rule.by) === 1 ? " die" : " dice") : ""}`
           : "";
   const untrainedItems = [
     ...ruleset.sheet.sections.flatMap((section) =>
@@ -957,6 +996,20 @@ function renderRulesetSkillCheckLine(
           }.`,
         ]
       : [];
+  // Rows and entries the Game Master applies to one roll by name (1.156), taught only where the
+  // ruleset has some, with the lists they are written in.
+  const contextualLists = ruleset.sheet.lists.filter((list) => list.contextual).map((list) => list.label);
+  const contextualEntries = (ruleset.catalogs ?? []).some(
+    (catalog) =>
+      catalog.holds === "rows" &&
+      (catalog.asset || catalog.from || (catalog.entries ?? []).some((entry) => entry.mechanics?.contextual)),
+  );
+  if (contextualLists.length > 0 || contextualEntries)
+    effectsClause.push(
+      `When something a character has${
+        contextualLists.length ? ` (${contextualLists.join(", ")})` : ""
+      } applies to this particular roll, add apply="Its name" to that check, several separated by ";". Name only what the situation makes apply: having it is not enough. The engine works out what it does and what it costs.`,
+    );
   const untrainedClause =
     untrainedItems.length > 0
       ? [
@@ -967,6 +1020,33 @@ function renderRulesetSkillCheckLine(
           }`,
         ]
       : [];
+
+  // The ruleset's outcome bands (1.135), taught in its own words: the engine names the band on the
+  // record, and the Game Master narrates it rather than a bare success or failure.
+  const outcomesClause = (unit: string): string[] => {
+    const outcomes = resolution.outcomes;
+    if (!outcomes) return [];
+    const measured = outcomes.by === "total" ? unit : `${unit} past the dc`;
+    const bands = outcomes.tiers
+      .map((tier) => {
+        const at = tier.on
+          ? `on a ${tier.on.replace("-", " ")}`
+          : tier.atLeast === undefined
+            ? "below that"
+            : outcomes.by === "fraction"
+              ? tier.atLeast === 1
+                ? "at most the target"
+                : `at most the target divided by ${tier.atLeast}`
+              : `${tier.atLeast} or more ${measured}`;
+        return `${tier.label} (${at}, ${tier.success ? "success" : "failure"}${tier.text ? `: ${tier.text}` : ""})`;
+      })
+      .join("; ");
+    return [
+      `The engine marks each check outcome="..." with the band it landed in: ${bands}.${
+        outcomes.naturals === "shift" ? " The die's highest face moves the band one better, its lowest one worse." : ""
+      } Narrate the band, not just success or failure.`,
+    ];
+  };
 
   if (resolution.kind === "dice-pool") {
     const { target, situationalDice, difficultyLadder, die, explode, double, botch, pool } = resolution;
@@ -1000,7 +1080,30 @@ function renderRulesetSkillCheckLine(
       whoClause,
       // Both are offered only where this ruleset declares them, so the prompt never teaches an
       // attribute the resolver would then ignore.
-      ...(target.min < target.max
+      // The target off each character's sheet, stances and the exact face (1.137).
+      ...(target.from
+        ? [
+            `Each character's per-die target is ${describeSheetValue(ruleset, target.from)}; threshold does not change it.`,
+          ]
+        : []),
+      ...(resolution.stances ?? []).map((stance) => {
+        const names = [
+          ...stance.skills.map((id) => ruleset.sheet.skills.find((skill) => skill.id === id)?.label ?? id),
+          // Rows whose checks are in it (1.212).
+          ...ruleset.sheet.lists.flatMap((list) =>
+            (list.checks ?? [])
+              .filter((check) => check.stance === stance.id)
+              .map((check) => `every ${list.label} row${check.label ? ` (${check.label})` : ""}`),
+          ),
+        ].join(", ");
+        return `${stance.label} checks (${names}) count dice ${stance.count} the target.`;
+      }),
+      ...(resolution.exact
+        ? [
+            `A die showing exactly the target is ${resolution.exact.label}${resolution.exact.counts ? " and counts as a success" : ""}; the engine marks exact="N"${resolution.exact.text ? `: ${resolution.exact.text}` : "."}`,
+          ]
+        : []),
+      ...(target.min < target.max && !target.from
         ? [
             `Add threshold="N" to move the per-die target, from ${target.min} to ${target.max}; without it the target is ${target.default}.`,
           ]
@@ -1045,7 +1148,7 @@ function renderRulesetSkillCheckLine(
       ...((ruleset.catalogs ?? []).some(
         (catalog) =>
           catalog.holds === "rows" &&
-          (catalog.asset || (catalog.entries ?? []).some((entry) => entry.mechanics?.check)),
+          (catalog.asset || catalog.from || (catalog.entries ?? []).some((entry) => entry.mechanics?.check)),
       )
         ? [
             `When a character uses something from their sheet to change a roll, add use="Its name" to that same check. Do not write a separate sheet command for it: the engine pays for it and applies it on the same roll.`,
@@ -1067,14 +1170,199 @@ function renderRulesetSkillCheckLine(
             `A check the engine marks complication="true" kept its result, but something went wrong alongside it: narrate both.`,
           ]
         : []),
+      ...outcomesClause("successes"),
       `Do NOT write rolls, modifier, total or result: the engine rolls the pool from the character sheet and counts the successes.`,
       ...branchClause,
     ].join(" ");
   }
 
-  const { dice, advantage, difficultyLadder } = resolution;
+  if (resolution.kind === "symbol-pool") {
+    const name = (id: string) => resolution.symbols.find((symbol) => symbol.id === id)?.label ?? id;
+    const die = (id: string) => resolution.dice.find((entry) => entry.id === id)?.label ?? id;
+    return [
+      `- [skill_check: skill="Name" dc="N"] - ${ruleset.gm.checkGuidance}`,
+      resolution.pool.build === "larger-upgraded"
+        ? `The engine throws the larger of the character's ability and skill rank in ${die(resolution.pool.die)} dice${resolution.pool.upgrade ? `, upgrading the smaller number to ${die(resolution.pool.upgrade)}` : ""}.`
+        : `The engine adds the character's ability and skill rank in ${die(resolution.pool.die)} dice.`,
+      `dc is the number of ${die(resolution.difficulty.die)} difficulty dice, from 0 to ${resolution.difficulty.max}.`,
+      `Difficulty: ${resolution.difficultyLadder.map((step) => `${step.label} ${step.dc}`).join(", ")}.`,
+      difficultyClause,
+      whoClause,
+      ...(resolution.difficulty.upgrade
+        ? [
+            `Add upgrade="N" to turn that many difficulty dice into ${die(resolution.difficulty.upgrade)} dice, never more than dc.`,
+          ]
+        : []),
+      ...(resolution.allowOwnUpgrade && resolution.pool.upgrade
+        ? [
+            `Add upgradeOwn="N" to upgrade N more character dice to ${die(resolution.pool.upgrade)}; once all are upgraded, each extra upgrade adds one upgraded die, within pool.max (${resolution.pool.max}).`,
+          ]
+        : []),
+      ...(resolution.boost
+        ? [`Add bonus="+N" for up to ${resolution.boost.max} ${die(resolution.boost.die)} boost dice.`]
+        : []),
+      ...(resolution.setback
+        ? [
+            `Add setback="N" independently of bonus="+N" to roll boost and setback dice together. A negative bonus="-N" also adds setback dice; their combined count is limited to ${resolution.setback.max} ${die(resolution.setback.die)} setback dice.`,
+          ]
+        : []),
+      ...resolution.symbols.map((symbol) =>
+        [
+          `${symbol.label}${symbol.counts ? ` also counts as ${name(symbol.counts)}, before cancellation` : ""}${symbol.cancels ? ` cancels ${name(symbol.cancels)} one for one` : ""}.`,
+          symbol.text ?? "",
+        ]
+          .join(" ")
+          .trim(),
+      ),
+      `The check needs ${resolution.success.needed} net ${name(resolution.success.symbol)} to succeed.`,
+      ...(resolution.criticalSuccess
+        ? [`Any ${name(resolution.criticalSuccess)} marks critical success, even on a failed check.`]
+        : []),
+      ...(resolution.criticalFailure
+        ? [
+            `Any ${name(resolution.criticalFailure)} marks critical failure, even on a successful check; both critical symbols may remain.`,
+          ]
+        : []),
+      ...(resolution.spend ?? []).map(
+        (spend) =>
+          `Add spend="${spend.pool}:N" when the player spends: every ${spend.amount} points buys ${spend.dice} extra character dice within pool.max. Do not also write a sheet command for it.`,
+      ),
+      ...withClause,
+      ...untrainedClause,
+      ...effectsClause,
+      ...outcomesClause(
+        resolution.outcomes?.by === "margin" ? "net successes minus those needed plus one" : "net successes",
+      ),
+      `Read symbols="..." as the net symbols; narrate advantages and threats as well as success, triumph and despair. Do NOT write rolls, symbols, modifier, total or result: the engine throws the dice and cancels their symbols.`,
+      ...branchClause,
+    ].join(" ");
+  }
+
+  if (resolution.kind === "roll-against") {
+    // Against the sheet's number (1.139): the Game Master names a step or moves the number; the engine
+    // reads the roll against it and writes the number it read against as dc.
+    const { dice, against, difficultyLadder, tens, criticalSuccess, criticalFailure } = resolution;
+    const way = against === "at-most" ? "at or under" : "at or over";
+    const steps = difficultyLadder
+      .map((step) => {
+        const divide = "divide" in step ? step.divide : undefined;
+        const parts = [
+          divide ? `the number divided by ${divide}` : "",
+          step.dc !== 0 ? `${step.dc > 0 ? "+" : ""}${step.dc}` : "",
+        ].filter(Boolean);
+        return `${step.label} (${parts.join(", then ") || "the number as it is"})`;
+      })
+      .join(", ");
+    const criticalWords = (rules: typeof criticalSuccess) =>
+      (rules ?? [])
+        .map((rule) => {
+          const faces =
+            rule.pastTarget !== undefined
+              ? `${rule.pastTarget} or more past the number`
+              : rule.from === rule.to
+                ? `${rule.from}`
+                : rule.to === undefined
+                  ? `${rule.from} or more`
+                  : rule.from === undefined
+                    ? `${rule.to} or less`
+                    : `${rule.from}-${rule.to}`;
+          const when = rule.whenTarget
+            ? ` when the number is${rule.whenTarget.atLeast !== undefined ? ` ${rule.whenTarget.atLeast} or more` : ""}${
+                rule.whenTarget.below !== undefined ? ` below ${rule.whenTarget.below}` : ""
+              }`
+            : "";
+          return `${faces}${when}`;
+        })
+        .join("; ");
+    return [
+      `- [skill_check: skill="Name" difficulty="Step"] - ${ruleset.gm.checkGuidance}`,
+      `The engine rolls ${dice.count}d${dice.sides} and succeeds ${way} the character's number from the sheet. Steps: ${steps}.`,
+      `Name the step with difficulty=; dc="N" moves the number by N (for a hard or easy situation), and dc="0" leaves it. The record's dc is the number the roll was read against.`,
+      whoClause,
+      ...(criticalSuccess ? [`Critical success: ${criticalWords(criticalSuccess)}.`] : []),
+      ...(criticalFailure ? [`Critical failure: ${criticalWords(criticalFailure)}.`] : []),
+      ...(tens
+        ? [
+            `Add bonus="+N" for bonus dice or bonus="-N" for penalty dice, up to ${tens.max}: each throws another tens die and keeps the best, or the worst.`,
+          ]
+        : []),
+      ...withClause,
+      ...untrainedClause,
+      ...effectsClause,
+      ...outcomesClause("points"),
+      `Do NOT write rolls, modifier, total or result: the engine rolls against the character sheet.`,
+      ...branchClause,
+    ].join(" ");
+  }
+
+  if (resolution.kind === "dice-highest") {
+    // Keep the highest (1.138): the sheet's number is how many dice, and the kept die is the result.
+    const { die, keep, zeroDice, critical, dark, situationalDice, difficultyLadder } = resolution;
+    const kept = keep === 1 ? "the highest die" : `the ${keep} highest dice added`;
+    return [
+      `- [skill_check: skill="Name" dc="N"] - ${ruleset.gm.checkGuidance}`,
+      `The engine throws as many d${die.sides} as the character's rating and reads ${kept}; dc is what that must reach.`,
+      `Difficulty: ${difficultyLadder.map((step) => `${step.label} ${step.dc}`).join(", ")}.`,
+      difficultyClause,
+      whoClause,
+      ...(dark?.outcome === "light"
+        ? [
+            "Only light dice decide the kept total, outcome bands and criticals; the no-dice rule below applies when there are no light dice, even with dark dice.",
+          ]
+        : []),
+      zeroDice === "lowest-of-two"
+        ? `With no dice, the engine throws two and keeps the lower, and the record says zeroDice="true".`
+        : dark?.outcome === "light"
+          ? `With no light dice, the check fails without a light roll; dark dice are still thrown.`
+          : `With no dice, the check fails without a roll.`,
+      ...(critical
+        ? [
+            `${critical.count} or more dice showing ${critical.face === undefined || critical.face === die.sides ? die.sides : `${critical.face} or more`} is a critical success.`,
+          ]
+        : []),
+      ...(dark
+        ? [
+            `Add dark="N" to throw up to ${dark.max} ${dark.label} dice with the check; ${dark.outcome === "light" ? "they are recorded but do not count toward the outcome" : "they count like the rest"}, and the engine marks darkHighest="true" when a ${dark.label} die strictly beats every light die${dark.text ? `: ${dark.text}` : "."}`,
+          ]
+        : []),
+      ...(situationalDice
+        ? [
+            `Add bonus="+N" or bonus="-N" to add or take dice for this check, from ${situationalDice.min} to ${situationalDice.max}.`,
+          ]
+        : []),
+      ...(resolution.spend ?? []).map((spend) => {
+        const pool = ruleset.sheet.live.pools.find((entry) => entry.id === spend.pool);
+        return `When the player spends to change a roll, add spend="${spend.pool}:N" to that same check: every ${spend.amount} ${pool?.label ?? spend.pool} buys ${spend.dice} extra ${spend.dice === 1 ? "die" : "dice"}. Do not also write a sheet command for it.`;
+      }),
+      ...withClause,
+      ...untrainedClause,
+      ...effectsClause,
+      ...outcomesClause(resolution.outcomes?.by === "margin" ? "points" : "on the kept dice"),
+      `Do NOT write rolls, modifier, total or result: the engine throws the dice from the character sheet and reads them.`,
+      ...branchClause,
+    ].join(" ");
+  }
+
+  const { dice, advantage, difficultyLadder, openEnded } = resolution;
   const ladder = difficultyLadder.map((step) => `${step.label} ${step.dc}`).join(", ");
-  const playerDie = playerDiceRollSubmitted && dice.count === 1 && dice.sides === 20;
+  // The player's own die stands in only for a plain d20, never for faces worth other numbers or a
+  // die that rolls on (1.136).
+  const playerDie = playerDiceRollSubmitted && dice.count === 1 && dice.sides === 20 && !dice.faces && !openEnded;
+  // What the engine rolls, said the way the ruleset's dice really are (1.136).
+  const rolledWords = [
+    `${dice.count}d${dice.sides}`,
+    dice.faces
+      ? ` whose faces are worth ${dice.faces.map((worth) => (worth > 0 ? `+${worth}` : `${worth}`)).join(", ")}`
+      : "",
+    openEnded
+      ? ` open-ended (${[
+          openEnded.high !== undefined ? `${openEnded.high} or more rolls again and adds` : "",
+          openEnded.low !== undefined ? `${openEnded.low} or less rolls again and takes it away` : "",
+        ]
+          .filter(Boolean)
+          .join(", ")})`
+      : "",
+  ].join("");
   return [
     `- [skill_check: skill="Name" dc="N"${playerDie ? ` rolls="the player's d20 result"` : ""}] - ${ruleset.gm.checkGuidance}`,
     `Difficulty: ${ladder}.`,
@@ -1084,9 +1372,15 @@ function renderRulesetSkillCheckLine(
     ...withClause,
     ...untrainedClause,
     ...effectsClause,
+    ...outcomesClause("points"),
+    ...(resolution.unmodified
+      ? [
+          `A check the engine marks unmodified="N" rolled that face before anything was added or rolled again (${resolution.unmodified.join(", ")}): apply what the rules say about it.`,
+        ]
+      : []),
     playerDie
       ? `Use the player's exact die. Do NOT write modifier, total or result: the engine applies the character sheet.`
-      : `Do NOT write rolls, modifier, total or result: the engine rolls ${dice.count}d${dice.sides} and applies the character sheet.`,
+      : `Do NOT write rolls, modifier, total or result: the engine rolls ${rolledWords} and applies the character sheet.`,
     ...branchClause,
   ].join(" ");
 }
@@ -1192,6 +1486,46 @@ function renderRulesetSheetSection(
             .join(", ")}.`,
         ]
       : []),
+    ...(ruleset.sheet.advancement
+      ? [
+          `Permanent advancement: [sheet: op="advance" field="Field" by="250"] adds to a number; to="1200" sets it. Text fields use to="text". Negative by lowers a value. Bounds are enforced; a refused change did not happen.`,
+          `Allowed advancement fields: ${names(ruleset.sheet.fields.filter((field) => ruleset.sheet.advancement!.fields?.includes(field.id))) || "none"}.`,
+          ...(ruleset.sheet.advancement.abilities
+            ? [
+                `[sheet: op="advance" ability="Ability" by="1"] or to="16" changes an ability within its bounds. Allowed abilities: ${names(ruleset.sheet.abilities)}.`,
+              ]
+            : []),
+          ...(ruleset.sheet.advancement.skills
+            ? [
+                `[sheet: op="advance" skill="Skill" tier="Tier"] sets training. Allowed skills: ${names(ruleset.sheet.skills)}.`,
+              ]
+            : []),
+          ...(ruleset.sheet.advancement.saves
+            ? [
+                `[sheet: op="advance" save="Save" tier="Tier"] sets training. Allowed saves: ${names(ruleset.sheet.saves)}.`,
+              ]
+            : []),
+          ...(ruleset.sheet.advancement.skills || ruleset.sheet.advancement.saves
+            ? [
+                `Advancement tiers: ${ruleset.resolution.proficiencyTiers.map((tier) => `${tier.label} (${tier.id})`).join(", ")}.`,
+              ]
+            : []),
+          ...(ruleset.sheet.advancement.text ? [ruleset.sheet.advancement.text] : []),
+        ]
+      : []),
+    ...(ruleset.party
+      ? [
+          `PARTY SHEET: ${ruleset.party.label}. Use sheet="party" instead of who to address this one shared sheet. who="party" still means every character.`,
+          `- [sheet: sheet="party" op="spend" pool="Pool" amount="2"] or op="restore" changes a shared pool.`,
+          ...(ruleset.party.advancement?.fields?.length
+            ? [
+                `- [sheet: sheet="party" op="advance" field="Field" by="2"] or to="value" changes a permanent party field. Allowed fields: ${names(ruleset.party.fields.filter((field) => ruleset.party!.advancement!.fields!.includes(field.id)))}. Number bounds and text limits are enforced.`,
+              ]
+            : []),
+          ...(ruleset.party.advancement?.text ? [ruleset.party.advancement.text] : []),
+          ...(ruleset.party.text ? [ruleset.party.text] : []),
+        ]
+      : []),
     ...(ruleset.gm.sheetGuidance ? [ruleset.gm.sheetGuidance] : []),
     ``,
     // The sheets are data, and part of that data is free text (names, notes the model wrote with
@@ -1256,6 +1590,7 @@ export function buildGmFormatReminder(
      *  turn. They live in this late reminder and never in the system prompt, because live state
      *  changes every turn and the system prompt is what a provider caches. Only read with `ruleset`. */
     rulesetSheetBlocks?: string[];
+    rulesetClocks?: RulesetClocks;
     /** Built-in systems an installed experience replaces with its own. Undeclared systems stay built-in. */
     experienceProvidedSystems?: { inventory?: boolean };
     /** Rendered COMMANDS lines for the verbs an installed experience declares (#5798). They belong
@@ -1678,6 +2013,22 @@ export function buildGmFormatReminder(
   }
 
   if (ctx.ruleset) lines.push(...renderRulesetSheetSection(ctx.ruleset, ctx.rulesetSheetBlocks ?? []));
+  if (ctx.ruleset?.clocks) {
+    lines.push(
+      "",
+      "PROGRESS CLOCKS (shared by the party/scene):",
+      `Create: [clock: name="Alarm raised" size="${ctx.ruleset.clocks.sizes[0]}"]. Allowed sizes: ${ctx.ruleset.clocks.sizes.join(", ")}; at most ${ctx.ruleset.clocks.max} clocks at once. Existing names are refused (case-insensitive).`,
+      `Tick: [clock: name="Alarm raised" tick="2"]. Negative ticks remove segments; fill is bounded to 0..size. A full clock is done and stays visible until cleared.`,
+      `Clear: [clock: name="Alarm raised" clear]. Commands apply in reply order. Only the Engine writes now/result/reason; a refused command did not happen.`,
+      ...(ctx.ruleset.clocks.text ? [ctx.ruleset.clocks.text] : []),
+      "Open clocks:",
+      ...(ctx.rulesetClocks?.length
+        ? ctx.rulesetClocks.map(
+            (clock) => `${clock.name}: ${clock.filled}/${clock.size}${clock.filled === clock.size ? " (done)" : ""}`,
+          )
+        : ["None."]),
+    );
+  }
 
   // The installed experience's own verbs, last in the block so the built-ins keep their order. Each
   // line already arrives fully rendered from the verb runtime; nothing here inspects or reformats it.

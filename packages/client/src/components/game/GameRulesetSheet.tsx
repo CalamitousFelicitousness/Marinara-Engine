@@ -13,10 +13,13 @@ import { useMemo, useState } from "react";
 import { Minus, Pencil, Plus } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   rulesetConditionIcons,
   rulesetItemEffectFacts,
   applyRulesetSheetOp,
+  rulesetPartyDefinition,
+  readRulesetPartySheet,
   readResolvedSheetCommandTags,
   rulesetSheetStamp,
   defaultRulesetSheetBuild,
@@ -39,6 +42,7 @@ import {
 import { ArtIcon } from "./ArtIcon";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
+import { ApiError, api } from "../../lib/api-client";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
@@ -57,6 +61,7 @@ const chipClass =
  *  Engine does not know (a newer one's, a hand-edited transcript) falls back to a generic line
  *  rather than showing the player a bare code. */
 const SHEET_REFUSAL_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  "unknown-sheet": "game.ruleset.sheet.refusal.unknownSheet",
   "unknown-pool": "game.ruleset.sheet.refusal.unknownPool",
   "ambiguous-pool": "game.ruleset.sheet.refusal.ambiguousPool",
   insufficient: "game.ruleset.sheet.refusal.insufficient",
@@ -89,7 +94,10 @@ export function describeRefusedSheetCommands(content: string, t: TFunction): str
   const list = refused
     .map((entry) =>
       t("game.ruleset.sheet.refusal.entry", {
-        who: entry.who || t("game.ruleset.sheet.refusal.someone"),
+        who:
+          entry.sheet === "party"
+            ? t("game.ruleset.party.title")
+            : entry.who || t("game.ruleset.sheet.refusal.someone"),
         reason: t(SHEET_REFUSAL_KEYS[entry.reason ?? ""] ?? "game.ruleset.sheet.refusal.other"),
       }),
     )
@@ -301,6 +309,10 @@ export interface GameRulesetSheetProps {
   onLiveChange: (next: RulesetLiveState) => void;
   onEnvelopeSave: (next: RulesetSheetEnvelope) => Promise<void> | void;
   readOnly?: boolean;
+  /** The sheet can be edited, but its live state is played elsewhere (the party's shared sheet). */
+  buildOnly?: boolean;
+  /** A note shown above the editor while a draft is open. */
+  draftNotice?: string | null;
   /** What the character holds, which a value reading their items (`itemStat`) shows. */
   items?: ReadonlyArray<RulesetSheetItem>;
   /** A rest taken by the game rather than here: the sheet and what the character carries change
@@ -317,10 +329,13 @@ export function GameRulesetSheet({
   live,
   onLiveChange,
   onEnvelopeSave,
-  readOnly = false,
+  readOnly: locked = false,
+  buildOnly = false,
+  draftNotice,
   items,
   onRest,
 }: GameRulesetSheetProps) {
+  const readOnly = locked || buildOnly;
   const { t: localizeUi } = useUiTranslation();
   const [draft, setDraft] = useState<RulesetSheetEnvelope | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -437,7 +452,7 @@ export function GameRulesetSheet({
               : definition.name}
           </p>
         </div>
-        {!readOnly && !draft && (
+        {!locked && !draft && (
           <button
             type="button"
             onClick={startEditing}
@@ -451,6 +466,14 @@ export function GameRulesetSheet({
 
       {draft ? (
         <div className="space-y-3">
+          {draftNotice && (
+            <p
+              role="alert"
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[0.6875rem] text-[var(--foreground)]"
+            >
+              {draftNotice}
+            </p>
+          )}
           <RulesetSheetEditor
             definition={definition}
             layerOptions={layerOptions}
@@ -809,5 +832,88 @@ export function GameRulesetSheet({
         </>
       )}
     </div>
+  );
+}
+
+/** The shared sheet sits beside the party portraits. A ruleset that sets the party up through a
+ *  guided builder (1.163) lets any player edit it, saved on the revision it was opened at: a save
+ *  opened before someone else's landed is refused, the draft stays open, and saving again replaces theirs. */
+export function GameRulesetPartySheet({
+  definition,
+  stored,
+  live,
+  chatId,
+  revision,
+  memberBuilds,
+  onSaved,
+}: {
+  definition: RulesetDefinition;
+  stored: unknown;
+  live: RulesetLiveState | undefined;
+  chatId?: string | null;
+  revision?: number;
+  /** The party's characters' builds, which the fields read off them follow. */
+  memberBuilds?: readonly RulesetSheetBuild[];
+  onSaved?: (saved: { revision: number; sheet: unknown }) => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const [conflict, setConflict] = useState(false);
+  const party = useMemo(() => rulesetPartyDefinition(definition), [definition]);
+  const envelope = useMemo(
+    () => readRulesetPartySheet(definition, stored, memberBuilds),
+    [definition, stored, memberBuilds],
+  );
+  if (!party || !definition.party) return null;
+  const editable = Boolean(chatId && onSaved && (definition.party.builder || definition.party.lists?.length));
+  const save = async (sheet: RulesetSheetEnvelope) => {
+    try {
+      const saved = await api.post<{ revision: number; sheet: unknown }>("/game-rulesets/party-sheet", {
+        chatId,
+        sheet,
+        revision: revision ?? 0,
+      });
+      setConflict(false);
+      onSaved?.(saved);
+    } catch (error) {
+      const body =
+        error instanceof ApiError ? (error.payload as { reason?: string; revision?: number; sheet?: unknown }) : null;
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        body?.reason === "stale" &&
+        typeof body.revision === "number"
+      ) {
+        // Theirs is shown as saved; this draft stays open, and saving it again replaces theirs.
+        setConflict(true);
+        onSaved?.({ revision: body.revision, sheet: body.sheet ?? null });
+      } else {
+        toast.error(error instanceof Error ? error.message : localizeUi("game.ruleset.party.saveFailed"));
+      }
+      throw error;
+    }
+  };
+  return (
+    <details className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+      <summary className="cursor-pointer break-words text-xs font-semibold text-[var(--foreground)]">
+        {definition.party.label}
+      </summary>
+      <div className="mt-3 max-h-80 overflow-y-auto">
+        {envelope ? (
+          <GameRulesetSheet
+            definition={party}
+            cardName={definition.party.label}
+            envelope={envelope}
+            live={live}
+            readOnly={!editable}
+            buildOnly={editable}
+            draftNotice={conflict ? localizeUi("game.ruleset.party.conflict") : null}
+            onLiveChange={() => undefined}
+            onEnvelopeSave={save}
+          />
+        ) : (
+          <p className="text-xs text-[var(--muted-foreground)]">{localizeUi("game.ruleset.party.unreadable")}</p>
+        )}
+      </div>
+    </details>
   );
 }

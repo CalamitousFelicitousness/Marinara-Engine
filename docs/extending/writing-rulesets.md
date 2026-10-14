@@ -6,14 +6,18 @@ A ruleset is one JSON file. It is data, not code. Nothing in it runs, so importi
 
 ## Read this first: what a ruleset can and cannot do
 
-A ruleset can only fill in the blanks of a mechanic the Engine already knows. Today the Engine knows two ways to resolve a check, and your file picks one with `resolution.kind`:
+A ruleset can only fill in the blanks of a mechanic the Engine already knows. Today the Engine knows five ways to resolve a check, and your file picks one with `resolution.kind`:
 
 - **`dice-sum`**: roll some dice, add numbers from the sheet, and meet or beat a difficulty. That covers d20 systems, 2d6 plus stat systems, and many others.
 - **`dice-pool`**: throw the character's own number of dice and count the ones that reach a target. That covers systems where a rating is a handful of dice rather than a bonus.
 
-Both are described in full under [Resolution kinds](#resolution-kinds).
+- **`dice-highest`**: throw a pool and read its highest die, or add its highest few. That covers Blades in the Dark and Trophy Dark.
+- **`roll-against`**: roll at or under (or over) the sheet's number. That covers percentile skills and GURPS checks.
+- **`symbol-pool`**: build and upgrade narrative dice, then cancel opposing symbols. That covers Genesys checks.
 
-A mechanic that does not fit either shape cannot be written in a ruleset file. Taking the highest die of a pool, roll-under percentile checks, symbol dice, and opposed pools are examples. Each of those needs a new resolution kind inside the Engine, which is a code contribution with tests, not a JSON file. If your system needs one, open a feature request on the Engine repository and describe the mechanic with a few worked rolls. Those worked rolls become the tests.
+All five are described in full under [Resolution kinds](#resolution-kinds).
+
+A mechanic that does not fit these shapes cannot be written in a ruleset file. Opposed pools are one example. Each of those needs a new resolution kind inside the Engine, which is a code contribution with tests, not a JSON file. If your system needs one, open a feature request on the Engine repository and describe the mechanic with a few worked rolls. Those worked rolls become the tests.
 
 Game Mode can resolve a fight using Marinara's own combat or your ruleset's rules. An optional `battle` block lends Marinara's combat the numbers on your character sheets: see [Battles](#battles-lending-the-sheet-to-marinaras-combat). An optional `combat` block instead defines how the ruleset resolves the fight: see [Combat](#combat-a-fight-your-own-rules-resolve). The Engine plays those rules today. The game's Combat Preference selects the Classic presentation or, when the ruleset defines distance, a Tactical battlefield.
 
@@ -55,19 +59,19 @@ You may add a `"$comment": "..."` line to any object in the file to leave yourse
 | `combat`        | Optional. How a fight is resolved by your own rules, and what the battle screen then plays.       |
 | `layers`        | Optional. Variants of your ruleset a player turns on when a game is created.                      |
 
-The file may be up to 256 KB. Text that ends up in a prompt (names, labels, Game Master text) cannot contain line breaks, square brackets, or double curly braces.
+The file may be up to 512 KB (256 KB before Capability API 1.340). Text that ends up in a prompt (names, labels, Game Master text) cannot contain line breaks, square brackets, or double curly braces.
 
 Ids inside the sheet (abilities, skills, fields, pools, and so on) are lowercase letters, digits, and underscores, starting with a letter, such as `grit_max`.
 
 ### Resolution kinds
 
-`resolution.kind` picks how a check is rolled. Both kinds read the same character sheet and share three keys, so the parts of the file below `resolution` do not change when you switch:
+`resolution.kind` picks how a check is rolled. Every kind reads the same character sheet and share three keys, so the parts of the file below `resolution` do not change when you switch:
 
 - `abilityModifier`: how a score on the sheet becomes a number. `identity` means the score is the number. `floorHalfMinusTen` is the 5e rule. `stepTable` lets you list your own thresholds as `[[score, number], ...]`.
 - `proficiencyTiers`: the training levels a skill or save can have. The first one is what an unlisted skill gets. A tier adds `flat`, or `multiplier` times a proficiency bonus, or both. If your system has a proficiency bonus, name where it comes from with `"proficiency": { "bonus": { "derived": "proficiency_bonus" } }`.
 - `proficiency`: optional, and only needed by a tier that multiplies.
 
-What the resulting number means is the kind's business: `dice-sum` adds it to the roll, `dice-pool` throws that many dice.
+What the resulting number means is the kind's business: `dice-sum` adds it to the roll, `dice-pool` and `dice-highest` throw that many dice. `symbol-pool` keeps ability and training separate to build and upgrade narrative dice.
 
 #### `dice-sum`: add the dice up
 
@@ -91,6 +95,9 @@ What the resulting number means is the kind's business: `dice-sum` adds it to th
 - `dice`: how many dice and how many sides. The total is what gets compared to the difficulty.
 - `advantage`: whether the Game Master may ask for the dice to be rolled twice and one roll kept.
 - `naturals`: what the highest and lowest face of a single die do for checks and for saves: `none`, `both`, `max-only`, or `min-only`. Leave it out for pure arithmetic. It needs a single die, so a 2d6 system has to use `none`.
+- `dice.faces`: what each face is worth, lowest face first, where the faces are not their own numbers (Capability API 1.136). Fate's four Fudge dice are `{ "count": 4, "sides": 3, "faces": [-1, 0, 1] }`: the card shows −, blank and + and adds them up, and the odds are exactly Fate's. Give one value per face.
+- `openEnded`: a single die that rolls on (1.136). A face at or above `high` is rolled again and added, and again while the new die shows `high` or more; a face at or below `low` is rolled again and taken away, and that roll chains on `high` the same way. Rolemaster's open-ended percentile roll is `{ "high": 96, "low": 5 }` on one d100. One roll throws at most 20 dice. Natural faces, and the bands' shift, read the first die.
+- `unmodified`: faces of a single die the record marks when the first die shows them (1.136), so tables that treat "an unmodified 66" apart can be applied: `[66, 100]`. The record says `unmodified="66"`, the card says it, and the Game Master is told to apply what the rules say about it.
 - `difficultyLadder`: the difficulties the Game Master is told to pick from. `dc` is the number the total must reach. The Game Master may name a step instead of writing its number, as `difficulty="Hard"`, and the Engine reads the number off the step.
 
 #### `dice-pool`: throw the dice and count them
@@ -134,9 +141,13 @@ The sheet's number is the **size of the pool**, not a bonus on top of it. A rati
 - `reroll`: optional. Re-throws the system grants without anybody paying for them, up to six, each with an `id` the Game Master names on a check with `reroll=`. Faces at or below `upTo` are thrown again: `"once"`, and the new face stands whatever it is, or `"until"` they show more. `upTo` runs from 1 to one below the die's sides, since a re-throw of every face would never stop, and an `until` stops anyway after a hundred re-throws on one check. None is thrown unless the check names it. One check throws one re-throw: where a spend or an entry the character used bought one too, the one that reaches more faces is thrown, and `until` over `once` where they reach the same.
 - `difficultyLadder`: `successes` is how many the check needs. A step may also name a `target`, but only where the target is adjustable and only inside its range. That target is what a check at that step counts with: when the Game Master names the step with `difficulty=`, or writes a `dc=` exactly one step needs. Where several steps need the same number of successes, `dc=` alone cannot say which was meant, so the target stays the default; name the step.
 
+- `target.from`: optional. Reads each character's target off their sheet, as Lasers & Feelings' Number, which a character picks once (any value reference: an ability, a field, a derived value). It is held to `min`..`max`, and `threshold=` does not move it, because the number is the character's own; a threshold an entry the character used bought still does. The record's `threshold=` says what was used.
+- `stances`: optional. Up to six, each with an `id`, a `label`, `count` (`"below"` or `"above"`) and the `skills` it covers. A check on one of those skills counts the dice **under** the target, or **over** it, instead of at or above it: Lasers & Feelings is a Lasers stance counting below and a Feelings stance counting above, with each skill in one of them. A skill may be in one stance only. Stances leave out `explode`, `double`, `cancel` and `botch`, which are read against "at or above".
+- `exact`: optional. A die showing exactly the target: `label` names it (`"LASER FEELINGS"`), `text` may say what it does at the table, and it counts as one success unless `counts` is `false`. The record carries `exact="N"`, the number of such dice, and the dice card shows it beside the result, so the Game Master can give the player the insight it buys.
+
 `cancel` and `botch` faces must be below the lowest target, and every face any of these rules names has to be a face the die actually has. A rule that could never fire is refused at import rather than found in play.
 
-A pool ruleset is Capability API 1.24 for a packaged ruleset; a `min` on `explode` or `double`, `pool.abilityPlusAbility` and `botch.rule` are 1.37; `reroll` is 1.38. A community ruleset you import is validated by the Engine that reads it, so it needs nothing.
+A pool ruleset is Capability API 1.24 for a packaged ruleset; a `min` on `explode` or `double`, `pool.abilityPlusAbility` and `botch.rule` are 1.37; `reroll` is 1.38; `target.from`, `stances` and `exact` are 1.137. A community ruleset you import is validated by the Engine that reads it, so it needs nothing.
 
 #### What the Game Master may write on a pool check
 
@@ -157,18 +168,188 @@ A pool ruleset is Capability API 1.24 for a packaged ruleset; a `min` on `explod
 
 Each one is held to what your file declares: a value outside the range is pulled back to the nearest end, and an attribute your ruleset does not offer is ignored rather than refusing the check. The saved record then shows what the roll really used: the difficulty and the threshold as numbers, the bonus dice after your limits, `with=` only when that ability was swapped in or added, a face only when the check moved it, `reroll=` only when the re-throw it names was the one thrown and threw something, and `complication="true"` when a `halfOrMore` botch went wrong alongside a result. The Engine always throws the dice itself. A pool result the model wrote is replaced, `mode="advantage"` is ignored because the kind has no advantage, and a die the player rolled before the turn does not apply.
 
+#### `dice-highest`: throw the dice and read the highest
+
+Blades in the Dark and Trophy Dark throw a handful of d6 and read only the highest one. Capability API 1.138.
+
+```json
+"resolution": {
+  "kind": "dice-highest",
+  "die": { "sides": 6 },
+  "abilityModifier": { "op": "identity" },
+  "proficiencyTiers": [{ "id": "rating_0", "label": "0" }, { "id": "rating_1", "label": "1", "flat": 1 }],
+  "pool": { "min": 0, "max": 6 },
+  "zeroDice": "lowest-of-two",
+  "critical": { "count": 2 },
+  "situationalDice": { "min": -1, "max": 2 },
+  "difficultyLadder": [{ "label": "Partial", "dc": 4 }, { "label": "Full", "dc": 6 }],
+  "outcomes": {
+    "by": "total",
+    "tiers": [
+      { "id": "critical", "label": "Critical", "on": "critical-success", "success": true },
+      { "id": "full", "label": "Full success", "atLeast": 6, "success": true },
+      { "id": "partial", "label": "Partial success", "atLeast": 4, "success": true, "text": "You do it, with a consequence." },
+      { "id": "bad", "label": "Bad outcome" }
+    ]
+  }
+}
+```
+
+- The sheet's number is how many dice, as on a pool, held to `pool` (at most 20). Wounds, `adjust`, conditions and items add or take dice.
+- `keep`: optional, 1 to 3, default 1. How many of the highest dice are added up: 1 is Blades, 2 is Trophy Dark's fights.
+- `zeroDice`: what a character with no dice does. `"lowest-of-two"` (the default) throws two and keeps the lower, and can never be a critical; `"fail"` fails without a roll.
+- `critical`: optional. `count` dice showing the top face (or `face` and above) is a critical success: Blades' two sixes.
+- `dark`: optional, Trophy Dark's dark dice. `label`, `max` (1 to 10) and `text`. The Game Master adds them to one check with `dark="N"`. `outcome` is `"all"` by default: they are read with the rest. With `"outcome": "light"` (Capability API **1.149**), only light dice decide the kept dice, total, outcome bands and criticals. No light dice applies `zeroDice` to the light side: throw two light dice and keep the lower, or fail while still throwing the dark dice. Dark dice are always thrown and recorded last; `darkHighest="true"` means a dark die strictly beat every light die (including fallback light dice; with none thrown, any dark die wins). What that costs (Ruin) is the Game Master's to apply. Declaring `dark.outcome`, including `"all"`, requires capabilityApi 1.149.
+- `situationalDice`: optional, the dice the Game Master may add or take with `bonus=` (assist, push).
+- `spend` may buy dice only.
+- `difficultyLadder`: steps with `dc`, the number the kept dice must reach. `dc=` on a check is that number, from 1 to `keep` times the die's sides.
+- `outcomes` read `by: "total"` from the kept dice, and an `on: "critical-success"` band catches the critical.
+
+The record keeps the summed shape (`resolution="sum"`, `modifier="0"`, the kept dice as the total) and adds `highest="1"`, with `zeroDice="true"` and `dark="N"` where they apply; the dark dice are the last ones in `rolls`. A light-only outcome also records `darkOutcome="light"`, so the card highlights only kept light dice, including after reload. A ruleset of this kind has no fight of its own, so `combat` is refused beside it.
+
+#### `roll-against`: roll at most (or at least) the sheet's number
+
+Call of Cthulhu, GURPS and an old-school thief's percentages roll against a number on the sheet instead of adding to the dice. Capability API 1.139.
+
+```json
+"resolution": {
+  "kind": "roll-against",
+  "dice": { "count": 1, "sides": 100 },
+  "abilityModifier": { "op": "identity" },
+  "proficiencyTiers": [{ "id": "base", "label": "Base" }],
+  "against": "at-most",
+  "criticalSuccess": [{ "from": 1, "to": 1 }],
+  "criticalFailure": [{ "from": 100, "to": 100 }, { "from": 96, "whenTarget": { "below": 50 } }],
+  "tens": { "max": 2 },
+  "difficultyLadder": [
+    { "label": "Regular", "dc": 0 },
+    { "label": "Hard", "dc": 0, "divide": 2 },
+    { "label": "Extreme", "dc": 0, "divide": 5 }
+  ],
+  "outcomes": {
+    "by": "fraction",
+    "tiers": [
+      { "id": "critical", "label": "Critical", "on": "critical-success", "success": true },
+      { "id": "extreme", "label": "Extreme success", "atLeast": 5, "success": true },
+      { "id": "hard", "label": "Hard success", "atLeast": 2, "success": true },
+      { "id": "regular", "label": "Regular success", "atLeast": 1, "success": true },
+      { "id": "fail", "label": "Failure" },
+      { "id": "fumble", "label": "Fumble", "on": "critical-failure" }
+    ]
+  }
+}
+```
+
+- The sheet's number for the check is the target. A skill's percentage is the sheet's per-skill bonus (`bonusRange` goes to 100), with no ability and no tier bonus; a GURPS skill is its attribute plus that bonus.
+- `dice`: what is rolled and added, 1d100 by default (3d6 for GURPS, 1d20 for a saving throw).
+- `against`: `"at-most"` (the default) succeeds at or under the target, `"at-least"` at or over it.
+- `difficultyLadder`: each step's `dc` moves the target, and `divide` (2 to 10) divides the sheet's number first. The Game Master names a step with `difficulty=`; a `dc=` on the tag moves the number, from -100 to 100. The record's `dc` is the number the roll was read against, and the record says `against="at-most"`.
+- `criticalSuccess` and `criticalFailure`: up to six rules each. A rule names faces (`from`, `to`, either may be left open) or, for a failure, `pastTarget`, a roll that far or farther on the failing side. `whenTarget` (`atLeast`, `below`) limits a rule to some targets: GURPS' 5 is a critical success only at 15 or more. A critical success always succeeds and a critical failure always fails.
+- `tens`: optional, on a single d100 only. `bonus="+N"` throws N more tens dice and keeps the best roll, `bonus="-N"` the worst, up to `max`.
+- `outcomes` may read `by: "fraction"` on an `at-most` roll: each band's `atLeast` divides the target, and a roll at or under that share lands in the band. The `margin` (how far under the target) and `total` measures work too.
+
+#### `symbol-pool`: throw narrative dice and read the symbols
+
+Genesys builds a pool from a characteristic and a skill rank, then adds opposing dice. Faces carry success, advantage, triumph, failure, threat and despair instead of numbers. Capability API 1.141.
+
+```json
+"resolution": {
+  "kind": "symbol-pool",
+  "abilityModifier": { "op": "identity" },
+  "proficiencyTiers": [
+    { "id": "untrained", "label": "Untrained", "flat": 0 },
+    { "id": "rank_one", "label": "Rank 1", "flat": 1 }
+  ],
+  "symbols": [
+    { "id": "s", "label": "Success" },
+    { "id": "f", "label": "Failure", "cancels": "s" },
+    { "id": "a", "label": "Advantage" },
+    { "id": "h", "label": "Threat", "cancels": "a" },
+    { "id": "t", "label": "Triumph", "counts": "s" },
+    { "id": "d", "label": "Despair", "counts": "f" }
+  ],
+  "dice": [
+    { "id": "ability", "label": "Ability", "faces": [[], ["s"], ["s"], ["s", "s"], ["a"], ["a"], ["s", "a"], ["a", "a"]] },
+    { "id": "proficiency", "label": "Proficiency", "faces": [[], ["s"], ["s"], ["s", "s"], ["s", "s"], ["a"], ["s", "a"], ["s", "a"], ["s", "a"], ["a", "a"], ["a", "a"], ["t"]] },
+    { "id": "difficulty", "label": "Difficulty", "faces": [[], ["f"], ["f", "f"], ["h"], ["h"], ["h"], ["h", "h"], ["f", "h"]] },
+    { "id": "challenge", "label": "Challenge", "faces": [[], ["f"], ["f"], ["f", "f"], ["f", "f"], ["h"], ["h"], ["f", "h"], ["f", "h"], ["h", "h"], ["h", "h"], ["d"]] },
+    { "id": "boost", "label": "Boost", "faces": [[], [], ["s"], ["s", "a"], ["a", "a"], ["a"]] },
+    { "id": "setback", "label": "Setback", "faces": [[], [], ["f"], ["f"], ["h"], ["h"]] }
+  ],
+  "success": { "symbol": "s", "needed": 1 },
+  "pool": { "die": "ability", "upgrade": "proficiency", "max": 6 },
+  "difficulty": { "die": "difficulty", "upgrade": "challenge", "max": 5 },
+  "boost": { "die": "boost", "max": 3 },
+  "setback": { "die": "setback", "max": 3 },
+  "criticalSuccess": "t",
+  "criticalFailure": "d",
+  "difficultyLadder": [{ "label": "Easy", "dc": 1 }, { "label": "Average", "dc": 2 }, { "label": "Hard", "dc": 3 }]
+}
+```
+
+- `symbols`: 2 to 10 named symbols. `counts` also adds one of another symbol before cancellation: a triumph adds a success and remains a triumph. It names a symbol without its own `counts`; chains and self-references are refused. `cancels` pairs two symbols one for one, with at most one partner for each. The reverse declaration is optional. `text` explains a symbol to the Game Master.
+- `dice`: 2 to 8 named dice, each with 2 to 20 faces. Faces are arrays of up to three symbol ids; `[]` is blank and repeated ids count twice. All references must exist.
+- `pool`: `larger-upgraded` (the default) throws the larger of ability and rank, upgrading the smaller number when `upgrade` is declared. `sum` adds the two and upgrades none. `max` defaults to 6 and cannot exceed 12. The ability uses `abilityModifier`, so use `identity` for Genesys characteristics. Rank comes from the skill or save's proficiency tier; a raw ability check has rank zero. `with=` swaps the characteristic as on other checks. Sheet bonuses, wounds, adjustments and effects add boost or setback dice through the signed bonus below.
+- `difficulty`: `dc=` counts opposing dice from 0 through `max` (default 5, ceiling 12). `difficulty=` names a ladder step instead. `upgrade="N"` replaces that many opposing dice with the upgrade die, limited to the number actually thrown. It never adds dice beyond the difficulty.
+- `boost` and `setback`: optional dice added by `bonus="+N"` and `bonus="-N"`, respectively, up to each `max` (default 3, ceiling 6). Signed adjustments combine before this limit is applied. Capability API **1.150** also accepts `setback="N"` independently: `bonus="2" setback="1"` throws both sides. A negative bonus adds to `setback`, with the combined setback count held to `setback.max`; boost dice stay bounded by `boost.max`.
+- `allowOwnUpgrade`: optional, false when absent. With `true`, `upgradeOwn="N"` upgrades N more character dice to `pool.upgrade` (which must be declared), after sheet upgrades and purchased dice. When all existing dice are upgraded, each extra upgrade adds one upgraded die, still bounded by `pool.max`. This also works with `pool.build: "sum"`. Declaring this key, even as `false`, requires capabilityApi **1.150**. Attribute names use camel case, like `zeroDice`; `upgradeOwn` affects the roller and `upgrade` still affects only difficulty dice. Both `setback` and `upgradeOwn` take nonnegative integers and are ignored outside symbol pools; `upgradeOwn` is ignored unless enabled.
+- `success`: needs this many of its symbol after cancellation, one by default. Critical success and failure mark any occurrence of their named symbol, even if its added success or failure cancels. Both markers may occur together, and neither changes whether the net successes passed the check.
+- `outcomes` can read the net success count (`total`) or `net successes - needed + 1` (`margin`). Bands still decide success in their usual way; the original critical symbols remain marked. `spend` buys only extra base character dice within `pool.max`. Combat is left out, as for `dice-highest`.
+- The record keeps `resolution="sum"`, with `symbols="2s 1a 1t"`, `thrown=` identifying each die, and `rolls=` holding its 1-based face. Encoded `symbolDetails` preserves labels, face symbols and both critical markers. `setback` records the independent setback dice actually added after the shared setback limit, and `upgradeOwn` records additional upgrades actually applied; ignored or zero additions are omitted. The card and summary name the net symbols, including an empty result, rather than adding face numbers. Overrides can change this kind's rules, but cannot replace `symbols` or `dice`.
+
 #### What is out of scope, and why
 
-Each of these needs its own resolution kind, because none of them can be expressed by counting dice against a target:
+These mechanics still need their own resolution kind:
 
-- **Take the highest die** (as in Blades in the Dark) needs a partial-success tier that a check result does not have.
-- **Stance pools compared to a stat** (as in Lasers and Feelings) decide "over or under" per check, which is a different comparison.
-- **Symbol dice** (as in Genesys) do not produce numbers at all.
 - **Opposed pools** resolve two characters at once; a check has one roller.
-- **Roll-under and open-ended percentile** compare in the other direction.
 - **Sum pools with a wild die** (as in OpenD6) add the dice up and treat one of them specially.
 
 Both of the things this kind used to leave out are modelled now, and Spending to change a roll below says how. A rule of the system itself, "spend a point for a success" or "spend a point to throw the failures again", is `resolution.spend`. A re-throw the system grants for free when the situation calls for it is `resolution.reroll`, above. One that belongs to something a character picked is `mechanics.check` on a catalog entry, bought with that entry's own cost.
+
+### Outcome bands: more than success or failure
+
+Many systems read a check as one of several results rather than a bare pass or fail: Pathfinder's four degrees of success, a "barely" that succeeds at a cost, Call of Cthulhu's hard and extreme successes, Fate's "success with style". `resolution.outcomes` names those bands, and the Engine says on every check which one it landed in (Capability API 1.135). It works with every resolution kind.
+
+```json
+"outcomes": {
+  "by": "margin",
+  "naturals": "shift",
+  "tiers": [
+    { "id": "critical_success", "label": "Critical success", "atLeast": 10, "success": true, "critical": true },
+    { "id": "success", "label": "Success", "atLeast": 0, "success": true },
+    { "id": "failure", "label": "Failure", "atLeast": -9 },
+    { "id": "critical_failure", "label": "Critical failure", "critical": true }
+  ]
+}
+```
+
+- `by`: what the bands are read from. `"margin"` (the default) is how far the result is past what the check needed: a summed total minus its difficulty, or a pool's net successes minus the successes it needed. `"total"` is the result itself: the summed total, or the net successes, whatever the difficulty was.
+- `tiers`: two to eight bands, **best first**. `atLeast` is the lowest number that lands in a band; each band's is lower than the one before it, and the last band has none, because it catches everything below. `success` says whether the band is a success, and `critical` marks it as a critical one of its kind (a critical success when `success` is true, a critical failure when it is not). At least one band must succeed and at least one must fail. `text` is an optional line, up to 200 characters, telling the Game Master what the band means at the table ("You do it, but the Game Master adds a complication").
+- `on`: `"critical-success"` or `"critical-failure"` makes a band the one a critical lands in, whatever the number says, and nothing else ever lands there. It has no `atLeast`, a band on a critical success is a success and one on a critical failure is not, and there is at most one of each. Blades in the Dark's "two sixes" is a band on a critical success above the band for a single six; the other bands, the ones read from the number, follow the rules above among themselves.
+- `naturals: "shift"`: the highest face of a single die moves the result one band better, and its lowest face one band worse, never past the ends. It needs one die, and it replaces `resolution.naturals`, so set both of those to `none` beside it.
+
+The band decides the outcome: success and the two criticals come from it, never from the bare comparison. Where a summed ruleset's `naturals` make a face an automatic success or failure, that face lands in the band on that critical, or else in the best or the worst band, and stays a critical. A pool's botch does the same at the bottom, and a pool with bands leaves `exceptional` out, because the bands already say what a critical success is.
+
+A pool read `by: "total"` is how a system whose difficulty is fixed says its results: Lasers & Feelings' "1 success: you barely manage it, 2: you do it well, 3: critical success" is three bands at 3, 2 and 1 successes and a miss below.
+
+The record names the band with `outcome="Critical success"`, the dice card shows it in place of the plain word, and the Game Master is taught the bands and their `text` and told to narrate the band. A packaged ruleset that declares bands needs Capability API 1.135.
+
+### Checks that roll their own way
+
+Some games roll most checks one way and a few another: an old-school game rolls a d20 under an ability score, but a thief's skills on a d100 and Open Doors on a d6. `resolution.overrides` names those checks and the resolution keys they roll with instead. Capability API 1.140.
+
+```json
+"overrides": [
+  { "id": "thief", "label": "Thief skills", "skills": ["open_locks", "pick_pockets"], "set": { "dice": { "count": 1, "sides": 100 } } },
+  { "id": "x_in_6", "label": "X-in-6", "skills": ["open_doors", "listen"], "set": { "dice": { "count": 1, "sides": 6 } } },
+  { "id": "favored", "label": "Favored", "skills": ["athletics"], "when": { "field": "favored_athletics" }, "set": { "cancel": null } }
+]
+```
+
+- Each override names `skills`, `saves` or `abilities` (one or more of the three), a `label`, and optional `text` for the Game Master.
+- `set` holds resolution keys of the ruleset's own kind, which replace the ruleset's for those checks. `null` takes a key away: exwod's 1s that do not cancel on a favored ability is `"cancel": null`. The kind, the sheet math (`abilityModifier`, `proficiency`, `proficiencyTiers`, `penaltyFrom`, `spend`, `adjust`) and the `difficultyLadder` cannot be changed. A symbol pool also locks its `symbols` and `dice`. The resolution an override makes is checked like the ruleset's own, so a face it names has to be on its dice.
+- `when`: optional. A value off the roller's sheet; the override applies only where it is not 0, such as a 0-or-1 number field for a favored ability. Without it, the override always applies.
+- The first override that names the check and whose `when` holds is the one used. A check appears in at most one override without `when`.
 
 ### Spending to change a roll
 
@@ -181,7 +362,7 @@ Some systems let a player pay for a roll they are about to make: a point of will
 - `pool` is one of your `live.pools`. It cannot be a pool that starts empty, because there would be nothing in it to spend when play begins.
 - `amount` is what ONE purchase costs. `successes`, `dice` and `reroll` are what it buys, and a purchase has to buy at least one of them. Successes are added after the dice are counted, and after any cancelling, because nobody rolled them. Dice are thrown with the pool, inside the pool's own range. A `reroll` is `{ "upTo": 6, "mode": "once" }`, read the way `resolution.reroll` is, and is bought once however many purchases the check makes: a die thrown again twice is still one re-throw.
 - `perCheck` is how many purchases one check may make, so the most a check can buy is `amount * perCheck` points' worth. That cap is what stops a full pool buying an unlosable roll. It is a number from 1 to 10, a value off the sheet in the same form a derived value reads (`{ "abilityScore": "nerve" }`, `{ "derived": "focus" }`), or `"pool"`: as many as the check has dice, meaning the sheet's number for it before wounds, bonus dice or modifiers. A value off the sheet is read for whoever rolls, rounded down and held between 0 and 100, and a character whose limit comes to 0 buys nothing and pays nothing.
-- Only a `dice-pool` ruleset can have one: a summed roll has no successes to add and no pool to add dice to, so a `dice-sum` ruleset that declares `spend` is refused at import.
+- A `dice-pool` ruleset can buy successes, dice or re-throws. `dice-highest` and `symbol-pool` buy only dice. The other kinds cannot declare `spend`.
 - Up to four entries, and two may not name the same pool, or a check could not say which of them it meant.
 - A spend that buys a `reroll`, a `perCheck` that is not a number, and more than two entries are Capability API 1.38 for a packaged ruleset.
 
@@ -432,6 +613,147 @@ A rest is a list of restore steps and things to clear. Each step names one targe
 - `worldGuidance` is optional and is read once, when the world is generated, so the setting the Game Master invents suits your rules: no gunpowder, magic is rare, the dead walk. It never reaches a turn.
 - `sheetSummary` chooses which fields, derived values, and list rows the Game Master sees for each character. The Engine always shows ability modifiers, trained skills and saves, and live values. Keep the rest short, because it is sent on every turn. A summary list's `nameColumn` may be a text or an enum column (an enum shows its value's label), and `columns` names up to three more of the row's own columns to print after the name, so the block reads `Gear: Crowbar 1d6` rather than names alone. A boolean column prints its label when it is set. Both are Capability API 1.37 for a packaged ruleset.
 - You do not need to teach the sheet command in `sheetGuidance`. The Engine teaches every command itself, with the names your file declares, and when your ruleset has a wound track it adds the `op="damage"` command for marking it and lists its levels and kinds of harm. When it has live states, it adds the `op="state"` command and lists the values each may take.
+
+### Full GM rules reference (Capability API 1.145)
+
+The optional **top-level** `gmReference` holds the ruleset's full rules reference for the Game Master,
+up to 16,000 characters. Put extended adjudication rules here and keep the short check and resource
+instructions in `gm.checkGuidance` and `gm.sheetGuidance`. Those fields, and `gm.worldGuidance`, still
+have their 1,500-character limits; layer guidance keeps its existing limits too.
+
+```json
+"gmReference": "When a journey crosses hostile country, judge supplies, shelter and exposure before the next leg. A failed navigation check costs time rather than silently moving the party to its destination."
+```
+
+The reference appears under **Game Master rules reference** in the
+stable system prompt, once per request. It is never copied into the per-turn reminder. Like other
+prompt-safe text, it must be one line, without control characters, square brackets or macro braces
+(`{{` and `}}`). When the request still exceeds the context limit after the usual history and reply
+budget adjustments, the reference is shortened with a marked cut before core instructions are cut.
+Leave it unset to keep the existing prompts. A package using it must declare manifest
+`schemaVersion: 2` and `capabilityApi: { "major": 1, "minor": 145 }` or newer.
+
+## Party and scene progress clocks (`clocks`)
+
+Capability API **1.143** adds an optional top-level `clocks` object. Omit it to keep
+clock commands disabled. The object is strict: only these three keys are accepted.
+
+```json
+"clocks": {
+  "sizes": [4, 6, 8],
+  "max": 8,
+  "text": "Create clocks for looming threats and long projects. Tick them when the fiction advances."
+}
+```
+
+`sizes` allows one to six unique integer segment counts, each from 2 to 12; it defaults
+to `[4, 6, 8]`. `max` is the maximum number of clocks kept at once, from 1 to 12, and
+defaults to 8. Optional `text` is one prompt-safe line of up to 400 characters explaining
+when the GM should make and tick clocks. An empty object enables the defaults.
+
+Clocks belong to the party/scene, not to a character. The GM reminder lists their names
+and fill every turn and teaches these commands:
+
+- `[clock: name="Alarm raised" size="6"]` creates an empty clock. A disallowed size,
+  an existing name (case-insensitive), or reaching `max` refuses creation.
+- `[clock: name="Alarm raised" tick="2"]` adds segments. Negative ticks remove them;
+  fill is bounded to `0..size`. A full clock is done, remains visible, and counts toward
+  `max` until cleared. A negative tick can reopen it.
+- `[clock: name="Alarm raised" clear]` removes the named clock.
+
+Names are single lines of 1–100 characters with no double quotes, square brackets, control
+characters or macro braces. Each tag requests exactly one action. Commands apply in
+reply order, so a clock can be created and ticked in the same reply. The Engine rewrites
+each tag with `result="ok" now="4/6"` (or `now="cleared"`), or with
+`result="refused" reason="..."`. Model-supplied outcome attributes are discarded.
+Unknown clocks and malformed requests are refused; at most 40 commands apply per reply.
+
+Game Mode shows a segmented circle, name and fill beside the party status. Tags stay
+in the saved reply as receipts and are hidden from narration. Clocks are stored in each
+game-state snapshot as `rulesetClocks`; missing data means no clocks. Regenerating starts
+from the preceding snapshot, continuing starts from the current one, and selecting or
+removing swipes/messages restores clocks with the rest of that snapshot.
+
+## Party sheet: a crew, ship or shared Story Points
+
+Capability API **1.144** adds an optional top-level `party`, beside `sheet`. It holds one shared
+sheet per game, such as a Blades crew, a Lasers & Feelings ship, or Genesys Story Points:
+
+```json
+"party": {
+  "label": "Crew",
+  "fields": [
+    { "id": "heat", "label": "Heat", "type": "number", "min": 0, "max": 9, "default": 0 },
+    { "id": "vault", "label": "Vault capacity", "type": "number", "min": 0, "max": 16, "default": 8 },
+    { "id": "upgrades", "label": "Upgrades", "type": "text", "maxLength": 400 }
+  ],
+  "pools": [{ "id": "coin", "label": "Coin", "max": { "field": "vault" }, "start": "empty" }],
+  "advancement": { "fields": ["heat", "vault", "upgrades"], "text": "Record heat after a score." },
+  "text": "Coin belongs to the crew."
+}
+```
+
+`fields` uses the same field schema as `sheet.fields`; `pools` uses `sheet.live.pools`, including
+`start`, `group`, `hideWhen` and `allowTemp`. At least one field or pool is required, and their ids
+must be unique within the party sheet. Character and party ids may coincide. Party sheets have no
+sections, lists, abilities, derived values or character-sheet migrations in this minor. A pool's
+`max` reads a constant or a numeric party field. Character formulas cannot read party values, and
+party formulas cannot read character values. `hideWhen` also names party fields only.
+
+`advancement.fields` names number, text or longtext fields the GM may change permanently.
+`advancement.text` and `text` each take one prompt-safe line of at most 400 characters.
+Optional `summary` reuses `gm.sheetSummary`: its `fields` select party fields; `derived` and `lists`
+must be empty. Without a summary, all visible party fields are shown. Pools always appear.
+
+```text
+[sheet: sheet="party" op="restore" pool="coin" amount="3"]
+[sheet: sheet="party" op="spend" pool="coin" amount="2"]
+[sheet: sheet="party" op="advance" field="heat" by="2"]
+[sheet: sheet="party" op="advance" field="upgrades" to="Hidden vault"]
+```
+
+`sheet="party"` selects the shared sheet; leave `who` out. Existing `who="party"` still applies to
+every **character** and never changes the shared sheet. This minor permits `spend`, `restore` and
+field `advance` on the party sheet. Unknown sheets, unsupported operations, insufficient pools,
+undeclared advancement and invalid values are refused and rewritten with the Engine's result.
+Party pools follow the same current/maximum arithmetic and defaults as character pools.
+
+The GM receives the party label, fields and pools beside the character sheet blocks each turn.
+Game Mode offers a collapsible read-only party sheet beside the character portraits, using the
+same sheet presentation. Permanent values live once in chat metadata (`gamePartySheet`), beside
+`gameCharacterCards`, and share advancement receipts. Live pools use the reserved `$party` entry
+of `rulesetLive`; normalized character names cannot collide with it. Regenerate starts before
+the reply, and swipe selection or deletion restores both permanent and live values through the
+existing history. Rulesets without `party` keep their existing behavior.
+
+**Shared party creation (Capability API 1.163).** A party sheet may carry `lists` (up to 12, written
+as the character sheet's lists), a guided `builder` of its own, and `fromMembers`: up to 8 party
+number fields read off the party's characters, each `{ "field", "count": true }` (how many
+characters there are) or `{ "field", "sum": "<character number field>" }` (what theirs add up to,
+such as Totem dots). Member fields are worked out from the characters as they stand whenever the
+shared sheet is read, so a character joining or leaving changes them at once. With lists, the
+party `summary.lists` may name them.
+
+The builder is written exactly as a character's (pools, steps, priced rows, spend offers,
+profiles) and is held to the same rules against the party's own fields and lists. Its catalog and
+row-copy steps may read the ruleset's catalogs that feed party lists. In Game Mode any player opens
+the shared sheet's Edit, which offers the guided setup, and saves it for the whole party. Each save
+names the revision it was opened on (`gamePartySheetRevision` in chat metadata, raised by every save
+and by the story's own changes): a save opened before someone else's landed is refused, the newer sheet is shown,
+and the player's draft stays open, so saving again is their choice to replace it.
+
+```json
+"party": {
+  "label": "The Crew",
+  "fields": [
+    { "id": "tier", "label": "Tier", "type": "number", "min": 0, "max": 4, "default": 0 },
+    { "id": "size", "label": "Crew size", "type": "number", "min": 0, "max": 12, "default": 0 }
+  ],
+  "lists": [{ "id": "upgrades", "label": "Upgrades", "columns": [{ "id": "name", "label": "Name", "type": "text" }] }],
+  "builder": { "steps": [{ "id": "upgrades", "label": "Upgrades", "kind": "rows", "list": "upgrades" }] },
+  "fromMembers": [{ "field": "size", "count": true }]
+}
+```
 
 ## Catalogs: ready-made entries for the sheet's lists
 
@@ -899,6 +1221,55 @@ The vocabulary is closed, so a key or a value that is not in the list above is r
 
 `cost` is also what the Game Master's `use` command pays, outside battle, which is the next section.
 
+### Sheet commands: permanent advancement (Capability API 1.142)
+
+A ruleset may opt into changes to the permanent build with `sheet.advancement`:
+
+```json
+"advancement": {
+  "fields": ["xp", "level", "humanity", "discipline"],
+  "abilities": true,
+  "skills": true,
+  "saves": true,
+  "text": "Award XP at the end of a session; change other values only when earned."
+}
+```
+
+Only include field ids your sheet declares as number or text (`text` or `longtext`), at most 24.
+The booleans allow all abilities, skills or saves respectively; omitted or false means no permission.
+An empty permission set, unknown field, unsupported field type or unknown key is refused on import.
+`text` is optional guidance of at most 400 prompt-safe characters. Without `advancement`, the existing
+commands behave as before and every `advance` request is refused.
+
+```
+[sheet: op="advance" field="xp" by="250" who="party"]
+[sheet: op="advance" field="xp" to="1200"]
+[sheet: op="advance" field="humanity" by="-1"]
+[sheet: op="advance" field="discipline" to="Auspex"]
+[sheet: op="advance" ability="str" by="1"]
+[sheet: op="advance" ability="str" to="16"]
+[sheet: op="advance" skill="stealth" tier="expert"]
+[sheet: op="advance" save="will" tier="trained"]
+```
+
+Name exactly one target. Fields and abilities take exactly one of `by` or `to`; text takes only `to`.
+Names and tiers match ids or labels, ignoring case. Skills and saves accept any tier declared in
+`resolution.proficiencyTiers`. Number fields honor `integer`, `min` and `max`; abilities honor their
+integer bounds; text honors `maxLength`. An invalid value is refused with a `bad-amount` reason that
+states the bound, never silently clamped. Disabled advancement, disallowed targets, unknown names and
+unknown tiers are also refused. The rewritten tag carries `result` and the new value in `now`.
+Omit `who` for the player, or use `who="party"` for every unambiguous party card; partial refusals name
+which cards could not advance.
+
+The Engine saves the build on the game's card through the same metadata storage as a player edit,
+keeping its sheet version and recomputing derived values from the new build. Library cards are not
+changed. Like live commands, an alternate swipe or regenerated reply starts before the outgoing
+reply's changes. Each reply records its ending build, including replies with no advancement. Selecting a swipe
+restores its snapshot; deleting the latest reply reveals the preceding snapshot. Deleting an older
+reply leaves a later snapshot in force until that later reply is removed. A continuation updates the
+same reply's snapshot. Undo changes only values still matching the recorded result, so
+later player edits survive and unrelated edits do not prevent an XP award from being undone.
+
 ### The `use` command: letting the Game Master spend a price you wrote
 
 While it narrates, the Game Master keeps each sheet up to date with `[sheet: ...]` commands: `spend`,
@@ -974,9 +1345,9 @@ The path is always `catalogs/<the catalog's id>.json`. The file itself looks lik
 { "schemaVersion": 1, "catalog": "knacks", "entries": [] }
 ```
 
-Separate catalog files come in a package: one published through the official catalog, or a ruleset package file you import yourself (see [Sharing your ruleset](#sharing-your-ruleset)). The package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27, and a catalog of items needs 1.49. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 256 KB limit on the whole ruleset file. That is room for a few hundred short entries.
+Separate catalog files come in a package: one published through the official catalog, or a ruleset package file you import yourself (see [Sharing your ruleset](#sharing-your-ruleset)). The package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27, and a catalog of items needs 1.49. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 512 KB limit on the whole ruleset file. That is room for a few hundred short entries.
 
-The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and 1 MB for one catalog file.
+The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and 2 MB for one catalog file. A package whose `ruleset.json` is over 256 KB, or with a catalog file over 1 MB, needs Capability API 1.340, which raised both limits.
 
 ### The guided builder: making a character in steps
 
@@ -1020,6 +1391,7 @@ Up to 24 steps, each `{ id, label, kind, ... }`; a package with more than 16 dec
 
 - `fields`: a short form of named fields. Its badge counts the ones still empty, except those listed in `optional` (a subclass chosen at a later level). `shownWhen: { "field_id": { "field": "level" } }` (Capability API 1.107) shows and counts a named field of the step only while its value reference reads above 0 on the sheet as it stands; hidden fields keep their values. `total: { "fields": ["level_bard", "level_other"], "max": 20 }` (1.107) holds at least two number fields of the step to a combined maximum (an integer from 1 to 1000), lowering each input's maximum by the others' current values without going below its own minimum, and adds one to the badge if the total is over the limit; **Next** still works.
 - `abilities`: the scores (`abilities`, all of them when left out), set by any of `methods`: `pointBuy` (a `budget` no more than buying every score to the top costs, and the cost of every score from the lowest, where every score starts, up one at a time; a score typed by hand starts from the nearest score on the table), `standardArray` (one value to each score), `roll` (`count` dice of `sides`, keeping the highest `keep`, thrown by the Engine's own dice, one roll per score, then handed out like an array) and `manual`. `manual: true` keeps the existing score bounds; `manual: { min, max }` (Capability API 1.110) clamps typed base scores before grants to those integer bounds, with min at least -100, max at most 1000 and min at most max, while each ability's own bounds still hold the total. `default` (1.87) is the method a character the builder starts from a blank sheet begins on (and keeps, even if the ruleset's default later changes), so a beginner sees point buy, say, until they choose another; a described character never takes it, and its scores stay as they are until the player chooses a method after describing; **Manual entry** stays the typed edit within its bounds, and **All fields** is always there. What the picks add goes on top: the step shows base, bonus, total and modifier. One abilities step at most.
+- `allocate` (Capability API 1.152): staged dots with priority allotments or group budgets, described below.
 - `trained`: the skill and save choices the picks offer, and the step's own `choose: [{ "what": "skills", "count": 2, "from": [...] }]` (any of them when `from` is left out).
 - `startingGear`: lists the ruleset's starting gear. Gear is taken in a game, from the inventory, as always.
 - `choices` (Capability API 1.91): `catalog` names a catalog of rows, and the step is where the entries the picks grant from it are chosen (`grants.entries`, below), such as a language of your choice.
@@ -1049,6 +1421,626 @@ What a pick gives is its entry's `grants`, read only by the builder:
 - A pick also writes the entry's `rows`, once. An entry may carry `grants` and no `rows` at all (a class whose features come from another catalog), and a catalog whose entries all just grant needs no `feeds`; the catalog picker never offers such entries.
 
 Unpicking takes back what a pick gave, and only that: its increases (as far as a score's bounds let them go up), its training, its field values and its rows. What the sheet already had of the player's own (a skill trained by hand, a row added from the catalog picker) stays theirs, and an edit made in **All fields** stays until the builder's own answer for that value changes. An entry picked at two steps on one catalog grants once, and one a game's layers hide still counts for what it gave. A field a pick `sets` is written only while it is still blank, or while the builder already answers for it, so a level typed in by hand is never written over; a value the builder answers for and the player changes in its own fields step stays the builder's, and goes when a later pick no longer asks for it. The player's choices are kept beside the sheet, so a step can be reopened later.
+
+**Staged rating allocation (Capability API 1.152).** An `allocate` step buys one dot per
+point, with its own budget and creation caps. It does not change the single `abilities` step's
+method or saved answers. Use separate steps for attributes, Virtues and later freebies:
+
+```json
+{
+  "id": "attributes",
+  "label": "Attributes",
+  "kind": "allocate",
+  "priorities": [7, 5, 3],
+  "annotations": true,
+  "groups": [
+    {
+      "id": "physical",
+      "label": "Physical",
+      "targets": [{ "ability": "strength" }, { "ability": "dexterity" }, { "ability": "stamina" }],
+      "base": 1,
+      "min": 1,
+      "max": 5
+    },
+    {
+      "id": "social",
+      "label": "Social",
+      "targets": [{ "ability": "charisma" }, { "ability": "manipulation" }, { "ability": "appearance" }],
+      "base": 1,
+      "min": 1,
+      "max": 5
+    },
+    {
+      "id": "mental",
+      "label": "Mental",
+      "targets": [{ "ability": "perception" }, { "ability": "intelligence" }, { "ability": "wits" }],
+      "base": 1,
+      "min": 1,
+      "max": 5
+    }
+  ]
+}
+```
+
+There are 1–12 groups, each with a stable `id`, `label` and 1–120 targets. Targets are distinct
+within the whole step. A target names exactly one existing `{ ability }`, numeric `{ field }`,
+`{ skill }`, `{ save }`, or `{ bonus }`; a bonus is the numeric `build.bonuses` entry for an
+existing skill or save. Groups use exactly one budget mode: `priorities` has one nonnegative
+integer allotment per group (duplicates allowed), or **every** group declares `budget: Ref`.
+Priority slots are assigned explicitly, and assigning an occupied slot swaps the groups. The
+array order names primary, secondary, tertiary, then numbered priorities; put larger allotments
+first if those names should follow size. Budgets are at most 1,200,000 points.
+
+`base` is optional; `min` and `max` are required. Each accepts an integer or non-live `Ref`,
+such as `{ "derived": "archetype_floor" }`. Ratings must resolve to whole numbers from 0 to
+10,000 and fit the target's storage bounds or tier map. The first base replaces a blank target's
+default, keeping existing method scores and grants; a later base is a floor on prior stages.
+Without a base the stage starts at the existing rating. Equal min/max fixes the creation score:
+`base: 0, min: 0, max: 0` expresses fixed Appearance. Minimums do not buy dots automatically.
+Budgets and bounds can use the existing derived operators, but cannot read targets changed by
+this or a later step, even through derived values. Conditions on free grants also cannot read
+ratings in an allocation group they can change, including connected groups in other stages.
+Formula prices are not supported: every paid
+increment costs one point. An unresolved or invalid source is shown as **not configured**.
+
+Skill and save targets need `sheet.builder.ratingTiers`, separately for each target:
+
+```json
+"ratingTiers": [
+  { "target": { "skill": "athletics" }, "tiers": ["none", "trained", "expert"] },
+  { "target": { "save": "will" }, "tiers": ["none", "trained"] }
+]
+```
+
+The array index is the numeric rating. Maps have 1–12 existing, increasing offered tier IDs,
+starting at the ruleset's untrained tier; they are never inferred from tier bonuses. Different
+targets may use different maps. Put targets with different creation caps in separate groups.
+
+Catalog `grants.ratings` supplies free dots, before **all** paid stages:
+
+```json
+"ratings": [
+  { "target": { "skill": "athletics" }, "add": 1 },
+  { "target": { "save": "will" }, "set": 1 }
+]
+```
+
+Each grant has either a positive `add` or a nonnegative `set`, never both. All `set` grants are
+floors: the highest wins, then all adds stack, stopping at the target's storage limit. Two free
+rank adds therefore reach rank two, without charging the paid budget. Existing training and
+field/ability grants compose before these rating grants. Entry choices still only write rows;
+they never apply the chosen entry's grants recursively.
+
+The UI shows base/prior, free, bought and total ratings, the creation range and the remaining
+budget. Plus is disabled at a cap, without a budget, or while invalid purchases or manual
+overrides need attention. Underspending, impossible minima and overrides get badges; Back and
+Next remain available. Reassigning a priority retains the group's saved increments. An
+overspent group becomes inactive as a whole; a purchase above its target's cap becomes inactive
+for that target. Reduce or clear those answers to repair them, or restore the earlier allotment
+to reactivate them. Later stages can exceed earlier creation caps. **All fields** remains the
+free edit, with overrides shown explicitly rather than clamped to creation rules.
+
+Saved `builder.allocations[stepId]` holds priority slot indices by group ID, paid `bought`
+increments and optional `notes` by stable `kind/id` target keys (for example `ability/strength`).
+`annotations: true` offers up to 1,000 characters per target for heritage explanations or
+specialties; the builder does not judge that text. Applied increments are owned separately by
+stage. Reopening never re-awards grants or refills resources, and describing an existing sheet
+records the choices without rewriting it, including when describing ends. Unpicking recomputes
+the free ratings and paid stages while preserving manual differences.
+
+**Shared budgets and priced purchases (Capability API 1.153).** Declare up to 12 creation pools in
+`sheet.builder.pools`. Several `spend` steps may use one pool; separate pools keep occupation and
+personal-interest points independent. Budgets are non-live value references, including existing
+`sum`, `scale`, `multiply`, `min`, `max`, `stepTable`, `enumTable`, and `listSum` calculations.
+Their resolved value must be finite and between 0 and 100,000. A missing source is “not configured.”
+
+```json
+{
+  "pools": [
+    { "id": "occupation", "label": "Occupation", "budget": { "derived": "occupation_points" }, "creditLimit": 0 },
+    { "id": "interest", "label": "Personal interest", "budget": { "derived": "interest_points" } }
+  ],
+  "steps": [
+    {
+      "id": "occupation_skills",
+      "label": "Occupation skills",
+      "kind": "spend",
+      "pool": "occupation",
+      "offers": [
+        {
+          "id": "accounting",
+          "label": "Accounting",
+          "target": { "field": "accounting_value" },
+          "cost": { "flat": 1 },
+          "min": 5,
+          "max": 99
+        }
+      ]
+    }
+  ]
+}
+```
+
+Each step has up to 120 offers with stable `id` and `label`. Targets use the same exact-one
+`ability`, numeric `field`, mapped `skill`/`save`, or `bonus` contract as allocation stages.
+List-row purchases are reserved for the row-identity feature (F4); this API does not identify rows
+by array position. Bounds must fit the target's storage bounds. Starting ratings and free grants
+are preserved, never charged again: a Background with two free dots and five paid dots has seven.
+
+A cost is exactly one of:
+
+- `{ "flat": 1 }`: one point per rating increment.
+- `{ "perRank": 5 }`: five times the next rank, so raising 2 to 3 costs 15.
+- `{ "table": [[5, 0], [5.25, 5], [5.5, 12]] }`: cumulative prices at increasing ratings.
+  The next purchase moves to the adjacent rating and costs the difference (5, then 7 here).
+  Fractional ratings require a non-integer numeric field; tables include both offer bounds.
+
+Optional `overrides: [{ "when": { "derived": "career_affinity" }, "cost": { "perRank": 2 } }]`
+contains at most 12 entries. The first positive condition wins. Conditions read the sheet before
+purchases; no match uses the base price. Budgets and conditions cannot read purchased targets,
+including through derived values, or depend on later choices. Free grants and allocation stages
+are applied before priced purchases.
+
+Prices have positive margins except explicitly declared credits. For a flaw whose rating increases,
+use `"credit": true, "cost": { "flat": -1 }`. For a reduction from a declared baseline, use
+`"credit": true, "baseline": 10, "min": 6, "max": 10, "cost": { "flat": 1 }`:
+a purchase lowers 10 to 9 and records a one-point credit. The starting value must match the baseline.
+A credit target has only one offer across the builder, preventing buy/credit cycles.
+
+Pools default to zero credit. Set `creditLimit` to the maximum total credit and optionally add up to
+12 `caps: [{ "filter": "flaw", "maxCredit": 2 }]`. Filters name offer `tags: ["flaw"]`,
+so flaw and disadvantage credits can have separate caps. Caps count gross credits, independent
+of positive spending. Distinct quirk counts remain choice/row constraints.
+
+**Counted rows and rows that match (Capability API 1.205).** A `listSum` may carry `where:
+{ "column", "equals" }` to read only the rows whose cell equals a value (an empty cell reads its
+column's default), and `count: true` in place of `column` to count the rows instead of adding up a
+column. Genesys's talent pyramid is two derived counts and a creation rule:
+
+```json
+{
+  "id": "tier2",
+  "label": "Tier 2 talents",
+  "op": "sum",
+  "of": [{ "listSum": { "list": "talents", "count": true, "where": { "column": "tier", "equals": 2 } } }]
+}
+```
+
+with a rule whose `value` reads `tier2` and whose `max` reads tier 1's count less one.
+
+**Row prices worked out per row (Capability API 1.206).** A rows step's object `cost` may scale its
+`column` by `times` and add `add`, so `{ "column": "tier", "times": 5 }` prices a Genesys talent at
+5 XP a tier; `add` alone is a fixed price written as an object. `overrides` (up to 4) gives a price
+used instead when a derived value named by a prefix and the row's own cell reads above 0 on the
+sheet: `{ "add": 5, "overrides": [{ "derived": { "prefix": "affinity_", "cell": "ability" }, "cost": 4 }] }`
+prices an Exalted Charm at 4 Bonus Points when `affinity_<its Ability>` is above 0. An enum cell must
+have a derived value for every value it can hold.
+
+**Unpriced offers (Capability API 1.207).** A spend offer's `cost` (or an override's) may be
+`{ "unpriced": true }` while the source has not supplied the price: the offer shows with a note,
+holds the pool up for nothing, and is never bought. A purchase saved under a price that later
+becomes unpriced goes inactive and is kept for repair.
+
+**More fields (Capability API 1.208).** A sheet may declare up to 240 fields; before 1.208 the
+ceiling is 160. Rolemaster's skill ranks, category ranks, potentials and totals need the room.
+
+**Rolls written to an ability (Capability API 1.209).** A `roll` step's roll may name `ability`
+instead of `field` (exactly one of the two). The result is held to the ability's own bounds. With
+`gain`, the check is rolled against the score and only a result above it adds the gain, which the
+builder then keeps as an increase: rolling or buying the score again keeps the improvement on top.
+Without `gain`, the result is written like a score typed in, kept until the builder's own answer for
+that score changes. A worked-out ability can't be rolled, and each ability is rolled at most once
+per step.
+
+**Worked-out list columns (Capability API 1.210).** A number column may name `sum`: up to six other
+number columns of the same row, added up (an empty cell reads its column's default) and held to the
+column's `min` and `max`. The cell is shown read-only, filled in on every read of a stored sheet, and
+read by sums, row checks and everything else like a typed cell. A worked-out column is not rolled and
+never adds up another worked-out column. A CoC specialty's rating is
+`"sum": ["base", "occupation", "interest"]`.
+
+**Partial score increases (Capability API 1.211).** A grant's `abilities.choose` may name
+`partialFrom`. A score already at or above that mark when the choice comes gets a partial increase,
+and two partials give `amount` once. Choices count in the order the builder makes them, after every
+whole increase, so Pathfinder 2e's later boosts read `"amount": 1, "partialFrom": 4`: a +4 modifier
+takes two boosts to reach +5. It combines with `upTo`.
+
+**Row checks in a stance (Capability API 1.212).** A list's `checks[]` entry may name `stance`, one
+of the dice pool's `resolution.stances`. Every row's check is then in that stance, as a skill the
+stance lists is: Stewpot's pursuits count dice the STILLNESS way. The Game Master's reminder names
+the rows with the stance's skills.
+
+**Ability specialties (Capability API 1.213).** A list's `contextual` may set `"abilities": true`.
+Its `skill` cell may then name an ability (by id, label or short form) as well as a skill, and the
+row applies to any check rolled with that ability: a raw ability check, a skill whose own ability it
+is, or a skill `with=` swaps to it. A World of Darkness attribute specialty, "Strength: lifting", is a
+row named "lifting" whose skill cell reads "Strength".
+
+**Cancelling switched off (Capability API 1.214).** A contextual `check` (on a list's `contextual`
+or an entry's `mechanics.contextual`) may set `"cancel": false`. On a roll it is applied to, faces
+at or below `resolution.cancel.upTo` take no successes away; a botch still reads them. The ruleset
+must have a `resolution.cancel` to switch off.
+
+**Items open without carrying them (Capability API 1.215).** A catalog entry's `grants.itemAccess`
+lists up to 48 of the ruleset's items (`<catalog>/<entry>`, never a service). Picking the entry in
+the guided builder opens them to the character: the sheet and the Game Master's sheet block list
+them as not carried, and nothing goes in the bag. The Game Master adds one to the inventory when it
+is taken, as a Blades character declares load at the start of a score.
+
+**Row dots at creation (Capability API 1.216).** An `allocate` group may name `rows`, up to four
+`{list, column}` pairs: the dots in that number column across the list's rows count against the
+group's budget beside its targets. The rows are edited on the list; a group with more row dots than
+its budget waits on the player. A rows step's cost override may give `times`, a per-unit rate for the
+cost column, in place of a flat `cost`. Exalted's Craft rows put "dots" against the 28 Ability dots
+and price "bought" dots at `times: 2`, overridden to `times: 1` where `affinity_<ability>` is set; a
+worked-out rating column (1.210) adds the two.
+
+**The best rating (Capability API 1.217).** A contextual `check` may set `"best": true`: a skill
+check it is applied to rolls the character's best skill rating when that is higher than the asked
+one. A `dice-highest` ruleset may use a contextual check that does only this; every other check
+effect still needs a dice pool. Blades' Rook's Gambit is a special-ability row with
+`"check": {"best": true}`, applied by name.
+
+**Costs that mark a track (Capability API 1.218).** A contextual `cost` entry may be
+`{"track": "<id>", "by": N}` as well as `{"pool", "amount"}`: applying the row or entry marks that
+plain live track by N, as far as its bounds let it (a wound track is not marked this way). A list's
+`contextual` may carry a `cost` too. Blades' Rook's Gambit is a row with `"check": {"best": true}`
+and `"cost": [{"track": "stress", "by": 2}]`. Names applied by `apply=` read curly and straight
+apostrophes and quotes alike.
+
+**Borrowed catalogs (Capability API 1.220).** A catalog may borrow another installed ruleset's catalog instead of carrying its own: `{ "id": "creatures", "label": "Creatures", "holds": "creatures", "from": { "ruleset": "5e-2014", "catalog": "creatures" } }`. The lender is found by its id, bare or under a community namespace, and its entries are read against the borrowing ruleset, so an entry that names something the borrower does not declare (a condition, a threat tier, a sense) is left out and logged while the rest come through. `entries` beside `from` add to the borrowed ones, or replace one of the same id; they are checked as the ruleset is read, so the header names any `filters` they carry (a header with none takes the lender's). A borrowed creature written as a sheet uses the lender's ids; `from.sheet` says how they read in the borrower: `fields` maps a field to another id (or `null` to leave it out), `values` maps a field's values, and `tiers` maps proficiency tiers (a creature's, and those any entry grants or asks for), as in `"sheet": { "fields": { "ac": "ac_typed", "size": null }, "values": { "hp_method": { "by_hand": "manual" } }, "tiers": { "proficient": "trained" } }`. Any borrowed entry, items included, can take two more: `refs` reads a lender's derived value as one of the borrower's values (`"refs": { "prof_martial_weapons": { "field": "martial_weapons" }, "armor_speed_strength": { "abilityScore": "str" } }`), and `slots` puts an item's slot under the borrower's name (`"slots": { "body": "armor" }`). A catalog cannot borrow from its own ruleset or from a catalog that borrows in turn. A borrowed creature's art is matched as the lender's (`5e-2014/creatures/<id>` in a creature pack). References into a borrowed catalog, such as a creature's spells, are checked when the catalog is read, not when the ruleset is.
+
+**Longer advancement lists (Capability API 1.219).** `sheet.advancement.fields` takes up to 64 fields (was 24), so a game where a level raises many fields, such as slots for every spell level and proficiency lists, can let the GM raise all of them. A list over 24 fields needs 1.219.
+
+**Two-way, owned and traded purchases (Capability API 1.164).** `"direction": "both"` lets one offer
+raise and lower its rating from where it starts (its `baseline`, when declared, must match the sheet):
+each step up costs the curve's price and each step down past the start earns it back as credit, held
+to the pool's `creditLimit` and caps. The ledger only ever runs one way, so lowering a rating that was
+bought takes the last purchase back at the price it was paid, and raising a lowered one pays its credit
+back; buying and lowering never makes credit. Such a target has one offer across the builder. GURPS
+ST is `{ "target": { "ability": "st" }, "direction": "both", "baseline": 10, "min": 7, "max": 14,
+"cost": { "flat": 10 } }`; a table cost prices fractional steps such as Basic Speed.
+`"direction": "increase"` and `"decrease"` name a one-way offer outright (`"decrease"` is the
+reduction above, with its baseline and credit).
+
+`"effect": "ownership"` prices an offer on its own ladder, from its `baseline` (or `min`) up, and the
+sheet keeps the higher of its own value and the level bought: a one-point GURPS familiarity is paid
+for and listed even when a default is already better, and refunding it costs the sheet nothing.
+
+`"exchange": { "from": <rating>, "units": 2, "gain": 1, "floor": 9 }` makes an offer a closed creation
+trade: each purchase lowers `from` by `units` and raises the target by `gain` (default 1), never taking
+`from` under `floor` or the target past `max`. It costs the pool nothing, so it leaves `cost` out. Traded
+points are never traded on: once a trade has raised a rating, no other trade lowers it, and once one
+has lowered a rating, no other trade raises it. Trades a class cannot take (`when`) may name the same
+ratings the other way round. A refund puts both ratings back. OSE's prime-requisite trade is one offer per score lowered:
+
+```json
+{
+  "id": "wis_to_int",
+  "label": "Lower Wisdom to raise Intelligence",
+  "target": { "ability": "int" },
+  "exchange": { "from": { "ability": "wis" }, "units": 2, "floor": 9 },
+  "min": 3,
+  "max": 18
+}
+```
+
+The builder stores signed paid deltas and their original prices under stable step/offer IDs, with
+at most 1,000 purchase lines per offer. Refund removes the latest line and reverses exactly its
+contribution and recorded price, including removing a credit. It never refunds a free rating.
+No live XP, inventory, currency, or party resources are spent.
+
+Changing career, free grants, or budget sources retains the ledger. Invalid purchases are inactive;
+the pool shows its original spending, negative remaining points when overspent, and the proposed
+new price. Shared targets also suspend dependent purchases in other pools. **Reprice saved purchases**
+explicitly accepts a legal new price for the pool; otherwise refund lines to repair it. No purchase
+is silently deleted or sold. Unspent points are informational. Back/Next stay available, and
+**All fields** preserves visible manual overrides within schema bounds. Describing an existing
+character and reopening saved choices never awards dots again.
+
+**Named rows (Capability API 1.154).** A `rows` step lets the player add, edit and remove their own
+rows on one of the sheet's lists while building: retainers, contacts, rituals and their ingredients,
+or anything else a catalog does not list.
+
+```json
+{
+  "id": "retainers",
+  "label": "Retainers",
+  "kind": "rows",
+  "list": "retainers",
+  "columns": ["name", "role", "loyalty"],
+  "required": ["name"],
+  "min": 1,
+  "max": 4,
+  "defaults": { "role": "Hireling" }
+}
+```
+
+`columns` is the subset of the list's columns the step edits (all of them when left out). `required`
+names the columns a row must fill to count. The badge counts the whole rows still missing below
+`min` (0 to 20), plus every row with an empty required cell, so a half-written ingredient stays
+unresolved. `max` stops **Add a row** and never exceeds the list's `maxItems`. A new row starts
+from the columns' own defaults, then `defaults`, which must fit each column.
+
+The step edits the list where each row sits, so two retainers with the same name stay two rows, and
+removing one keeps the other. Rows a catalog pick wrote are shown read-only with an "Added by a pick"
+note and come and go with the pick. **All fields** edits every row as before.
+
+**Conditional offers, sheet-read bounds and creation rules (Capability API 1.155).** A spend offer
+may also carry:
+
+- `when: Ref`: offered only while it reads above 0 on the sheet before purchases, such as an
+  occupation's own skills or a Background a tribe may take. An offer never bought leaves the pool as
+  it is; saved purchases on an offer the character can no longer take stay, inactive, for repair.
+- `minFrom: Ref` and `maxFrom: Ref`: a floor and a ceiling read off the sheet, held inside `min` and
+  `max`. Credit Rating takes its occupation's range; Dodge stops at DEX. A rating below the floor is
+  bought up to it in one purchase.
+- `allowedRatings: number[]`: the only ratings a purchase may end on, such as a Merit sold at 1, 3
+  or 5 dots. Each purchase goes straight to the next allowed rating at the curve's price.
+
+Like budgets and overrides, these may not read a purchased target. A training choice with
+`onDuplicate: "replace"` may name `replacementFrom`, the skills (or saves) a duplicate may be
+replaced with, in place of every one the sheet has; it holds for what is shown, saved and applied.
+
+`sheet.builder.constraints` holds up to 40 creation rules. Each names the `step` whose badge carries
+it and the `label` shown there while it fails, an optional `when: Ref`, and exactly one of:
+
+- `value: Ref` with `min` and/or `max` (each a number or a Ref).
+- `rows: { list, filter?, sum? }` with `min` and/or `max`: the count of the list's rows, or the total
+  of the number column `sum`, over the rows `filter` keeps (`{ column, equals?, below?, above? }`).
+- `distinct: { list, column }`: no two rows share a filled-in value (ignoring case and spaces).
+- `approved: fieldId`: a boolean field that must be on, such as a Storyteller's approval.
+
+```json
+{
+  "constraints": [
+    {
+      "id": "disadvantage_cap",
+      "label": "Disadvantages give at most 50 points.",
+      "step": "traits",
+      "rows": { "list": "traits", "filter": { "column": "cost", "below": 0 }, "sum": "cost" },
+      "min": -50
+    }
+  ]
+}
+```
+
+A failed rule never blocks Back, Next or **All fields**.
+
+**Worked-out scores and effects applied to one roll (Capability API 1.156).** An ability may carry
+`value: Ref[]` (1 to 8): its score is those added up, held to its `min` and `max`, and shown
+read-only. A Blades attribute is the sum of its marked actions; GURPS Perception is
+`[{ "abilityScore": "iq" }, { "field": "perception_bought" }]`, and skills that roll with it follow
+what was bought. Derived values, caps and skills may read a worked-out score, but none may read
+another, even through a derived value. The builder never sets one, and anything stored for it is
+ignored.
+
+A list may declare `contextual` so its rows apply to a roll when the Game Master names them:
+
+```json
+{
+  "id": "stunts",
+  "label": "Stunts",
+  "maxItems": 10,
+  "columns": [
+    { "id": "name", "label": "Name", "type": "text", "maxLength": 80 },
+    { "id": "skill", "label": "Skill", "type": "text", "maxLength": 40 },
+    { "id": "bonus", "label": "Bonus", "type": "number", "min": -5, "max": 5, "default": 2 }
+  ],
+  "contextual": { "name": "name", "skill": "skill", "bonus": "bonus" }
+}
+```
+
+`name` is the column the Game Master names a row by. `skill` (optional) holds the skill a row applies
+to, by id or label; an empty cell applies to any check. `bonus` (a number column) and `dice` (a dice
+column) add to the check, as dice on a pool ruleset. `to: "saves"` applies rows to saves instead.
+On a pool ruleset `check: { dice?, successes?, double?, explode? }` gives every applied row the
+same effect on the pool, such as a specialty whose 10s explode.
+
+A catalog entry may carry `mechanics.contextual` with `effects` (`own-checks-advantage` and the
+other check and save effects), `modifiers` to `checks` or `saves`, narrowing `skills` and `saves`,
+a pool `check` effect, and `cost: [{ "pool": "...", "amount": 1 }]`, paid once on the roll it is
+applied to. The Game Master writes `apply="Strong Back; Quick Eye"` (up to four names) on a check.
+Only names that apply to that check change it: a row for another skill, a name two rows share, and
+a cost the pool cannot cover change nothing. Owning a row never changes a roll by itself. The record
+lists what applied in `from`.
+
+**Rolled and sheet-read starting coins (Capability API 1.157).** A starting-gear coin line may carry
+`roll` (dice such as `"2d6"`) or `countFrom` (a Ref read off the holder's sheet) in place of
+`count`, never both, and `times` (1 to 10000) multiplies either:
+
+```json
+{ "coins": "gold", "roll": "5d4", "times": 10 }
+```
+
+The picker shows the dice ("5d4 gold, rolled when taken"). The roll happens once, when the group or
+holder takes the package, so reopening the picker cannot roll it again. `countFrom` reads the
+holder's own sheet, such as a Credit Rating field; a holder without a sheet is refused, and an
+amount of 0 adds nothing. Item lines keep their fixed `count`.
+
+**Starting values set once (Capability API 1.158).** A builder step of `kind: "initialize"` writes
+starting values when the player confirms them, and never again on its own:
+
+```json
+{
+  "id": "start",
+  "label": "Starting values",
+  "kind": "initialize",
+  "writes": [
+    { "field": "san_start", "value": { "abilityScore": "pow" } },
+    { "field": "xp", "remaining": "creation" }
+  ]
+}
+```
+
+Each write names a sheet field and either a `value` (a fixed value, or a Ref for a number field) or
+`remaining`, what a builder pool has left unspent. The step shows each field now and what it will be
+set to; its badge waits until the player sets them. The values written are saved with the builder,
+so reopening it, importing the character or changing POW later never writes them again. When the
+sheet has changed since, the step shows what setting again would replace, and only the player's
+**Set again** does it. A character being described as it already is is never written to.
+
+A live pool may declare `startFrom: Ref` to start at a value read off the sheet instead of full or
+empty, held to 0 and its maximum, and a plain track may declare `startFrom` in place of `default`.
+Pointed at a field an initialize step wrote, SAN starts at the POW it was set from and stays where
+play leaves it: a stored live value always wins over where the pool starts.
+
+**Priced picks and rows (Capability API 1.159).** A catalog step or a rows step may name a builder
+`pool` and a `cost`, so what the player picks or writes is paid out of the same pool as the spend
+steps. A catalog step's cost is a number or `{ "filter": "tier" }`, the entry's own number filter. A
+rows step's cost is a number or `{ "column": "cost" }`, read off each row; a negative price is a
+credit, held to the pool's `creditLimit`, so a flaw funds traits. A rows step may also name `from`, a
+catalog of rows that feeds its list: the player adds a copy of an entry's row as often as they like,
+and each copy is their own row, priced and removed on its own:
+
+```json
+{
+  "id": "charms",
+  "label": "Charms",
+  "kind": "rows",
+  "list": "charms",
+  "pool": "bonus",
+  "cost": { "column": "cost" },
+  "from": "charm_book"
+}
+```
+
+A pick the pool cannot pay for is not offered. Priced picks and rows are paid first and are never
+sold for the player: when taking a flaw away overspends the pool, the spend steps' purchases stop
+applying until the player repairs it, and each priced step's badge counts the repair. A total a
+column may not pass (Rite levels) is a creation rule (1.155) with `rows.sum` and `max`.
+
+**Creation profiles and earlier phases (Capability API 1.160).** `sheet.builder.profiles` (up to 16)
+lets a character type, career or package bring its own steps and budgets:
+
+```json
+"profiles": [
+  { "id": "dragon", "label": "Dragon-Blooded", "when": { "field": "dragon" },
+    "steps": ["aspect_gifts"], "budgets": { "bonus": { "const": 15 } } },
+  { "id": "lunar", "label": "Lunar", "when": { "field": "lunar" },
+    "steps": ["moon_gifts"], "budgets": { "bonus": { "const": 18 } } }
+]
+```
+
+The first profile whose `when` reads above 0 is the character's, and the builder says which. A step
+any profile lists is shown only while a profile that lists it is the character's; its answers are
+kept while it is hidden and grant nothing. A profile's `budgets` replace those pools' own, so
+switching type never keeps the other type's budget: purchases it no longer covers stop applying
+until the player repairs them.
+
+A catalog step or an initialize step may declare `reads: { "before": "step_id" }`. Its entries'
+`offeredWhen` and its `upTo` (or the initialize step's values) then read the sheet as the steps
+before that step make it: everything later steps picked, granted or bought is taken back, and what
+the player typed in is kept. A multiclass step reads ability scores before this level's
+improvement; a Humanity snapshot reads the Virtues before freebies, however the player went back and
+forth between the steps.
+
+**Rows that are checks of their own (Capability API 1.161).** A list may declare up to four `checks`,
+so each row the player writes is a check the Game Master can call for by its name:
+
+```json
+"checks": [{ "id": "science", "name": "name", "rating": "rating", "ability": "edu" }]
+```
+
+`name` is the text column a row is called by and `rating` the number column that is its rating;
+`ability` (optional) is added the way a skill's ability is. Science (Physics) and Science (Biology)
+are two rows and two checks, each with its own rating. Two checks on one list are two stances backed
+by one rating, each with a `label` the Game Master says after the row's name: "Fire stew (bold)" and
+"Fire stew (careful)". The sheet's own skills, saves and abilities are matched first. A name two
+rows share is no check at all until one is renamed, and a deleted row's check is gone with it. The
+Game Master's sheet block lists every row check with its number, and `with=` works as on a skill.
+A rows step priced by the rating column (1.159) buys the ratings out of the creation pool.
+
+**Creation rolls kept with their dice (Capability API 1.162).** Creation dice are
+`{ "count", "sides", "keep"?, "add"?, "multiplier"? }`: the highest `keep` faces, plus `add`, times
+`multiplier`, so CoC's `(2d6+6) x 5` is `{ "count": 2, "sides": 6, "add": 6, "multiplier": 5 }`.
+
+An abilities step's `methods.rolls` rolls every score in order, each with its own group's dice,
+and never lets a roll move to another score (method `"rolls"`):
+
+```json
+"rolls": [
+  { "abilities": ["str", "con", "dex", "app", "pow"], "dice": { "count": 3, "sides": 6, "multiplier": 5 } },
+  { "abilities": ["siz", "int", "edu"], "dice": { "count": 2, "sides": 6, "add": 6, "multiplier": 5 } }
+]
+```
+
+A step of `kind: "roll"` lists up to 12 `rolls`, each written to a number `field`: Luck, hit points,
+starting money. `best` (2 or 3) rolls that many times and keeps the best; `floor` (a number or a
+Ref) is the least the result may be, such as 1 hit point or a potential never below its stat;
+`gain` makes it an improvement check instead, rolled against the field and adding `gain` only when
+the roll is above it, as CoC's EDU improvement does. Every roll is kept with its faces and shown
+with them. A roll already made stands; reopening the builder never rolls again, and only a step
+with `retry: true` offers to. A character being described is never rolled for.
+
+**Counted choices and creation constraints (Capability API 1.151).** Every step may carry `when: Ref`
+(show and apply it only while the non-live sheet value is above zero) and `requiredWhen: Ref` (count
+unfinished choices in its badge only while above zero). Hidden steps keep their saved answers. Next
+and Back remain available even with incomplete or invalid choices; All fields remains the free edit.
+
+Catalog steps can declare up to 12 `quotas`, each using one of the catalog's typed filters:
+
+```json
+{
+  "id": "ratings",
+  "label": "Skill ratings",
+  "kind": "catalog",
+  "catalog": "ratings",
+  "min": 10,
+  "max": 10,
+  "distinctBy": "skill",
+  "quotas": [
+    { "filter": "rating", "value": 4, "min": 1, "max": 1 },
+    { "filter": "rating", "value": 3, "min": 2, "max": 2 },
+    { "filter": "rating", "value": 2, "min": 3, "max": 3 },
+    { "filter": "rating", "value": 1, "min": 4, "max": 4 }
+  ]
+}
+```
+
+This is a Fate-style pyramid when the catalog offers each skill at each rating. Entries declare their
+training grants with explicit proficiency tier IDs; numeric filter values never invent a tier mapping.
+A quota has `0 <= min <= max <=` the step's maximum. Minimums affect the badge; maximums disable
+further matching picks. `distinctBy` names an existing filter: picks cannot share its value (or any tag
+for a tags filter), and an entry missing that filter cannot count. Otherwise distinctness is by entry ID.
+`quotaBelow: { "filter": "tier" }` requires strictly more active picks at tier n−1 than at tier n for
+positive integer tiers above 1. Tier 1 is the base. Removing a supporting pick makes excess higher
+picks inactive, taking back their grants while retaining their answers for repair.
+
+The `abilities.choose`, `trained.choose`, trained step `choose`, and `entries.choose` slots accept:
+
+- `id`: a stable sheet ID. New slots should use it; saved answers then survive reordering. Old slots
+  without IDs keep their positional keys. IDs are unique across all choices offered by a source step.
+- `countFrom: Ref`, with an explicit `max` (1–20, at most 6 for abilities). `count` remains the fixed
+  count when `countFrom` is absent. A dynamic count is floored and bounded between zero and `max`.
+  It reads existing derived operators, never executable expressions.
+- `excludeChoices: ["background/restricted"]`: IDs of earlier choices of the same kind, written as
+  `source_step/choice_id`. These exclude the earlier choice's active answers, including replacements.
+  References must be verifiable in the definition or the same catalog file. Inline earlier grant
+  choices or explicit trained steps can therefore feed a later catalog file; references into another
+  external catalog file are refused. Choice IDs across alternative entries of one step must also be unique.
+
+Ability choices additionally accept `from`, intersected with the sheet's abilities and `except`.
+For distinct PF2e boosts, a `restricted` choice can offer `["str", "dex"]`, followed by a `free_boost`
+choice excluding `background/restricted`. Entry choices accept the same `quotas`, `distinctBy`, and
+`quotaBelow` as catalog steps, bounded by `max` or `count`; they still write rows without applying the
+chosen entries' own grants.
+
+Training choices additionally accept `tier` (an offered tier above untrained, overriding the grant's
+or builder's tier), `only: "any" | "trained" | "untrained"`, and `onDuplicate: "replace"`. Eligibility
+reads manual training and earlier active grants, excluding the builder's own previous writes. A selected
+skill already trained by those sources opens a separate replacement slot among untrained skills of the
+same kind, retaining the original answer. Replacements honor the choice's exclusions and tier. Their
+saved key is the original slot's key plus `/replacement`. A Human's non-career ranks can exclude an
+earlier career choice and use `only: "untrained"`; changing the career retains invalid later answers.
+
+Conditions and new slot counts may only read values changed by earlier steps, preventing self-enabling
+or cyclic grants. A slot count cannot read sheet values when a later external catalog file could change
+them; move its source step earlier or keep that catalog inline. A condition can use an existing derived `enumTable` to make a subrace step required
+for only one ancestry. `requiredWhen` affects badges only and may read any valid non-live value.
+New constrained choices remain unresolved when eligible content is missing, with a “not configured”
+explanation. They never silently lower their required count to the available content. Manual sheet
+edits and described characters keep the builder's existing ownership rules.
 
 A character made without the builder (a sheet that is not blank and has no builder choices yet) opens **described**: picks record what the character already is (its race's increases are taken as already in its scores) and change nothing on the sheet, until the player chooses **Done: let picks change the sheet**. From then on, changing a pick takes back what the described one gave.
 
@@ -2331,6 +3323,87 @@ no tears at all, may spend one point of Resolve a turn, and throw initiative aga
 **Declaring in reverse order is not built.** Some systems have everybody declare their action before
 anybody acts, slowest first. In a fight where each combatant picks one action when their turn comes,
 declaring first changes nothing any rule reads, so there is nothing for a key to say.
+
+### Minimum damage dice (Capability API 1.146)
+
+A pool fight can keep dice even against heavy soak, as Exalted's **Overwhelming** does:
+
+```json
+"damage": { "minimum": { "derived": "overwhelming" } }
+```
+
+This is `combat.damage.minimum`, a value reference read from the **attacker's** current sheet.
+After static soak takes dice off the first damage pool of a hit, the pool is raised to at least
+this number. It is whole dice, rounded down and bounded by zero and `resolution.pool.max`, not
+automatic successes: every surviving die may fail. Rolled soak still takes successes off after
+the damage throw; it does not reduce a dice pool, so the minimum does not protect successes from
+it. Resistance and immunity still apply. Initiative-spending blows ignore the minimum, just as
+they ignore weapon damage and soak; initiative-taking blows use it.
+
+A weapon may override the common minimum with `item.attack.damage.minimum`. It accepts the same
+value references on its holder, or `{ "stat": "overwhelming" }` for one of the item's own numeric
+stats. A declared zero overrides the common minimum too. This differs from the existing weapon
+`floor`, which guarantees an amount of damage after soak. Extra damage clauses and riders do not
+receive another minimum. The fight record and log show the resolved minimum beside the dice.
+Both the combat key and the weapon key require **Capability API 1.146** in a package, including
+weapons in external catalog files.
+
+### A hit that dazes (Capability API 1.147)
+
+```json
+"daze": {
+  "over": { "abilityScore": "stamina" },
+  "measure": "damage",
+  "condition": "dazed",
+  "text": "The blow leaves them reeling until their next turn passes."
+}
+```
+
+`combat.daze` is for pool fights. `over` reads the **target's** current sheet, immediately before
+the hit. One hit must deal **strictly more** damage than that number, after soak, saves and
+resistance. Its damage clauses count together; separate hits never accumulate towards daze.
+On a track that marks per blow, a damaging hit counts as one level. A blow that takes initiative
+rather than health cannot daze. `measure` is currently only `"damage"`.
+
+The target skips exactly their next turn. Further dazing hits before that turn do not stack extra
+skips. The skipped turn still advances condition clocks and other turn bookkeeping, including
+round changes and rerolled initiative. A save/reload of the fight preserves the pending skip.
+`condition`, when present, names a declared sheet condition. The fight marks it until the skipped
+turn passes, or the fight ends. A condition already present is left in place; condition immunity
+prevents the mark but does not prevent the skip. `text` is optional narration, not another effect.
+The log and the Game Master's fight context record the hit and the skip. The key requires
+**Capability API 1.147**.
+
+### The target chooses the wound kind (Capability API 1.148)
+
+Add `remap` to the existing `combat.damageKinds` mapping; keep its `default`, `byType` and `marks`:
+
+```json
+"damageKinds": {
+  "default": "bashing",
+  "byType": { "bullet": "lethal", "fire": "aggravated" },
+  "marks": "per-point",
+  "remap": [
+    { "when": { "field": "vampire" }, "from": "lethal", "to": "bashing", "tags": ["firearm"] }
+  ]
+}
+```
+
+A pool fight first chooses the attack's kind using its ordinary mapping, then reads each remap's
+`when` on the **target**. A nonzero number enables the rule. `from` and `to` must both be kinds on
+the health wound track. The first matching rule wins; remaps do not chain. At most 12 may be given.
+With `tags`, at least one must match the attack: a weapon already carries `item.tags`, and catalog
+mechanics and creature damage already carry `qualities`. These names come from `items.tags`.
+Without `tags`, any attack of that kind may match. No new attack-tag field is needed.
+
+The resulting kind decides both **soak** and the wound marks. Thus a firearm's lethal hit can become
+bashing against a vampire and use bashing soak; the same firearm against someone else, or a blade
+against that vampire, keeps its ordinary kind. The attack's original damage _type_ is unchanged
+for resistance and immunity. Each damage clause uses its own kind and the attack's tags. The fight
+record and log show the original and remapped kinds, and the damage forecast reads the same rule.
+A plain creature without a sheet can satisfy a constant reference, but cannot supply sheet values
+for these rules; give it a creature sheet for that. Only the new `remap` key requires **Capability
+API 1.148**; older damage-kind mappings keep their existing compatibility.
 
 ### Initiative that attacks move
 
@@ -3649,7 +4722,7 @@ Adding things needs nothing more. When a new layout moves a value somewhere else
 }
 ```
 
-The manifest lists `ruleset.json` and each `catalogs/<id>.json` in `contributions.assets.paths` and in `files`, with each one's size and sha256. A ruleset editor such as Pixelforge makes one. **Import agents** → **Game Mode ruleset** takes the file and shows the same review as for a ruleset file, with each catalog and its number of entries. Nothing in it is compressed, so it never holds more than its own size. It is read as data and never installed as a package: it is refused, with the reason, if it holds anything else (another key, any other file, a document that is not strict base64 or not UTF-8 text), if its manifest is more than a ruleset's (any code, permissions or other contributions), if a file is not the one the manifest lists, if a `$comment` is longer than 2,000 characters or `$schema` names anything but the Engine's own schema, or if the ruleset or a catalog does not read. It is filed as `local/<its id>` like a ruleset file, at most 24 MB, with at most 12 catalog files of 1 MB each. A version is its ruleset and its catalogs together, so a changed catalog needs a higher `version` too. Ruleset packages are not accepted as zips.
+The manifest lists `ruleset.json` and each `catalogs/<id>.json` in `contributions.assets.paths` and in `files`, with each one's size and sha256. A ruleset editor such as Pixelforge makes one. **Import agents** → **Game Mode ruleset** takes the file and shows the same review as for a ruleset file, with each catalog and its number of entries. Nothing in it is compressed, so it never holds more than its own size. It is read as data and never installed as a package: it is refused, with the reason, if it holds anything else (another key, any other file, a document that is not strict base64 or not UTF-8 text), if its manifest is more than a ruleset's (any code, permissions or other contributions), if a file is not the one the manifest lists, if a `$comment` is longer than 2,000 characters or `$schema` names anything but the Engine's own schema, or if the ruleset or a catalog does not read. It is filed as `local/<its id>` like a ruleset file, at most 24 MB, with at most 12 catalog files of 2 MB each. A version is its ruleset and its catalogs together, so a changed catalog needs a higher `version` too. Ruleset packages are not accepted as zips.
 
 **From a GitHub repository.** If you keep your work in a public GitHub repository, put each ruleset in a `rulesets` folder at the top of the repository, one file per ruleset:
 

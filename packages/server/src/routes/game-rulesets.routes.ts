@@ -32,6 +32,7 @@ import {
   type RulesetDefinition,
 } from "@marinara-engine/shared";
 import { getMonorepoRoot } from "../config/runtime-config.js";
+import { saveGamePartySheet } from "../services/game/game-party-sheet.service.js";
 import { logger } from "../lib/logger.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { GAME_RULESETS_RATE_LIMIT } from "../middleware/rate-limit.js";
@@ -83,7 +84,13 @@ function issueObjects(lines: readonly string[]): Array<{ path: string; message: 
 
 /** The least capability API a package of this ruleset needs, by the install's own gates; null when no
  *  API this Engine knows is enough. So an editor writes a manifest the catalog's packages would pass. */
-function leastCapabilityApi(document: unknown, definition: RulesetDefinition, catalogs: Record<string, string>) {
+function leastCapabilityApi(
+  document: unknown,
+  definition: RulesetDefinition,
+  catalogs: Record<string, string>,
+  /** The ruleset's own text, whose size a package of it declares (a larger one needs 1.340). */
+  rulesetText: string,
+) {
   const paths = [
     "ruleset.json",
     ...(definition.catalogs ?? []).flatMap((catalog) => (catalog.asset ? [catalog.asset] : [])),
@@ -100,6 +107,11 @@ function leastCapabilityApi(document: unknown, definition: RulesetDefinition, ca
       }
     }),
   );
+  const bytesOf = (path: string) => {
+    if (path === "ruleset.json") return Buffer.byteLength(rulesetText);
+    const text = catalogs[path.replace(/^catalogs\/|\.json$/gu, "")];
+    return text === undefined ? 1 : Buffer.byteLength(text);
+  };
   for (let minor = 0; minor <= supportedCapabilityApi.minor; minor++) {
     const manifest = {
       schemaVersion: 2,
@@ -111,7 +123,7 @@ function leastCapabilityApi(document: unknown, definition: RulesetDefinition, ca
       kind: ["ruleset"],
       entrypoints: {},
       contributions: { assets: { paths } },
-      files: paths.map((path) => ({ path, sha256: "0".repeat(64), bytes: 1 })),
+      files: paths.map((path) => ({ path, sha256: "0".repeat(64), bytes: bytesOf(path) })),
       permissions: [],
       restartRequired: false,
       capabilityApi: { major: supportedCapabilityApi.major, minor },
@@ -157,7 +169,29 @@ function pinnedRulesetVersion(metadata: unknown): number | null {
  *  the request here refuses an oversized body before it is buffered and parsed. */
 const IMPORT_BODY_LIMIT = RULESET_MAX_BYTES * 6 + 16_384;
 
+const partySheetRequestSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    sheet: z.unknown(),
+    revision: z.number().int().min(0).max(1_000_000_000),
+  })
+  .strict();
+
 export async function gameRulesetsRoutes(app: FastifyInstance) {
+  // The party's shared sheet (1.163), saved on the revision it was opened at.
+  app.post("/party-sheet", async (req, reply) => {
+    const parsed = partySheetRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid party sheet", issues: parsed.error.issues.slice(0, 10) });
+    }
+    const saved = await saveGamePartySheet(app.db, { ...parsed.data, sheet: parsed.data.sheet });
+    if (!saved.ok) {
+      const { ok: _ok, status, ...refused } = saved;
+      return reply.status(status).send(refused);
+    }
+    return { revision: saved.revision, sheet: saved.sheet };
+  });
+
   app.post("/import", { bodyLimit: IMPORT_BODY_LIMIT }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset import" })) return;
     if (!(await getCustomAgentImportPolicy(app.db)).enabled) {
@@ -291,7 +325,7 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
         return {
           ok: true,
           issues: [],
-          capabilityApi: leastCapabilityApi(JSON.parse(read.ruleset), read.definition, read.catalogs),
+          capabilityApi: leastCapabilityApi(JSON.parse(read.ruleset), read.definition, read.catalogs, read.ruleset),
           ruleset: read.ruleset,
           catalogs: read.catalogs,
         };
@@ -306,7 +340,11 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
       }
       const parsed = parseRulesetDefinition(document);
       if (!parsed.ok) return { ok: false, issues: issueObjects(parsed.issues), capabilityApi: null };
-      return { ok: true, issues: [], capabilityApi: leastCapabilityApi(document, parsed.definition, {}) };
+      return {
+        ok: true,
+        issues: [],
+        capabilityApi: leastCapabilityApi(document, parsed.definition, {}, body.data.definition),
+      };
     },
   );
 

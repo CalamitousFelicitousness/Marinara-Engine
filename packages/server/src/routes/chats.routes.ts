@@ -122,6 +122,7 @@ import { DECISION_SETTINGS_KEYS } from "../services/decision/decision-default.js
 import {
   createGameStateStorage,
   parseStoredRulesetLive,
+  parseStoredRulesetClocks,
   type GameStateVisibleAnchor,
 } from "../services/storage/game-state.storage.js";
 import {
@@ -3005,6 +3006,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       fieldLocks: parseTrackerFieldLocks(row.fieldLocks),
       hiddenTrackerFields: parseTrackerHiddenFields(row.hiddenTrackerFields),
       rulesetLive: parseStoredRulesetLive(row.rulesetLive),
+      rulesetClocks: parseStoredRulesetClocks(row.rulesetClocks),
       committed: (row.committed as any) === 1,
       createdAt: row.createdAt,
     };
@@ -3111,6 +3113,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       fieldLocks,
       hiddenTrackerFields,
       rulesetLive: parseStoredRulesetLive(row.rulesetLive),
+      rulesetClocks: parseStoredRulesetClocks(row.rulesetClocks),
       createdAt: row.createdAt,
     };
   });
@@ -3282,7 +3285,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!updated) return reply.status(404).send({ error: "No game state found" });
     // The row stores live sheet state as JSON text; callers get the same object the GET returns.
     return projectGameSnapshotLocation(
-      { ...updated, rulesetLive: parseStoredRulesetLive(updated.rulesetLive) },
+      {
+        ...updated,
+        rulesetLive: parseStoredRulesetLive(updated.rulesetLive),
+        rulesetClocks: parseStoredRulesetClocks(updated.rulesetClocks),
+      },
       ownerSpatialProjection,
     );
   });
@@ -5356,6 +5363,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               // A branch is a new chat, so there is no row to inherit from: without this a branched
               // game would start with every pool full again.
               rulesetLive: parseStoredRulesetLive(snapshot.rulesetLive),
+              rulesetClocks: parseStoredRulesetClocks(snapshot.rulesetClocks),
               committed: (snapshot.committed as any) === 1,
             } as any,
             overrides,

@@ -5,8 +5,14 @@
 // rewritten with the outcome. A refusal is kept in the reply on purpose — the narration has to be
 // able to see that the spell was never cast.
 
-import type { RulesetCatalogEntriesById, RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
-import type { RulesetSheetItem } from "./sheet-math.js";
+import {
+  RULESET_PARTY_KEY,
+  rulesetPartyDefinition,
+  type RulesetCatalogEntriesById,
+  type RulesetDefinition,
+  type RulesetSheetBuild,
+} from "../../schemas/ruleset.schema.js";
+import { defaultRulesetSheetBuild, type RulesetSheetItem } from "./sheet-math.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
   createSheetCommandTagRegex,
@@ -36,9 +42,13 @@ export interface SheetCommandCard {
 
 export interface SheetCommandContext {
   definition: RulesetDefinition;
+  /** Null means a stored party sheet could not be read. */
+  partyBuild?: RulesetSheetBuild | null;
   cards: SheetCommandCard[];
   /** The player's own card, which a command that names nobody applies to. */
   playerName: string | null;
+  /** Re-evaluate a saved reply after its permanent build write failed. */
+  advancementRefusal?: "save-failed";
   live: RulesetLiveStates;
   /** The entries of the catalogs the party's rows point at, which the `use` command needs to know
    *  what an ability costs. Absent, every `use` is refused as naming nothing the Engine knows. */
@@ -76,9 +86,17 @@ export function applySheetCommandTags(
   live: RulesetLiveStates;
   changed: boolean;
   outcomes: SheetCommandOutcome[];
+  builds: Record<string, RulesetSheetBuild>;
   /** Each rest a character took, by card name: what a rest does to the items they carry follows it. */
   rests: Array<{ who: string; rest: string }>;
 } {
+  const builds: Record<string, RulesetSheetBuild> = {};
+  const partyDefinition = rulesetPartyDefinition(ctx.definition);
+  let partyBuild =
+    ctx.partyBuild === null
+      ? null
+      : (ctx.partyBuild ?? (partyDefinition ? defaultRulesetSheetBuild(partyDefinition) : null));
+  const cards = ctx.cards.map((card) => ({ ...card }));
   const live: RulesetLiveStates = { ...ctx.live };
   const outcomes: SheetCommandOutcome[] = [];
   const rests: Array<{ who: string; rest: string }> = [];
@@ -86,7 +104,7 @@ export function applySheetCommandTags(
   let seen = 0;
 
   const byName = new Map<string, SheetCommandCard[]>();
-  for (const card of ctx.cards) {
+  for (const card of cards) {
     const key = normalizeCharacterLookupName(card.name);
     const group = byName.get(key);
     if (group) group.push(card);
@@ -169,11 +187,18 @@ export function applySheetCommandTags(
   const applyTo = (card: SheetCommandCard, op: RulesetSheetOp): RulesetSheetOpResult => {
     const key = normalizeCharacterLookupName(card.name);
     try {
+      if (op.op === "advance" && ctx.advancementRefusal) return { ok: false, reason: ctx.advancementRefusal };
       if (op.op === "use") return useOn(card, key, op);
       // Dice spent on a rest (1.335) take the party's best extra die (Song of Rest), whoever has it.
       const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
       const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
-      if (result.ok) store(key, result.live);
+      if (result.ok) {
+        store(key, result.live);
+        if (result.build) {
+          card.build = result.build;
+          builds[key] = result.build;
+        }
+      }
       if (result.ok && op.op === "rest") rests.push({ who: card.name, rest: op.rest });
       return result;
     } catch {
@@ -188,7 +213,10 @@ export function applySheetCommandTags(
     // Once the target is known the tag says so, even where the Game Master left it implied: the
     // saved reply is the record, and "who did this happen to" is the first thing it has to answer.
     const record = (who: string, outcome: SheetCommandTagOutcome, named?: string): string => {
-      const tag = serializeSheetCommandTag({ op: parsed.op, who: named ?? parsed.who, raw: body }, outcome);
+      const tag = serializeSheetCommandTag(
+        { op: parsed.op, sheet: parsed.sheet, who: named ?? parsed.who, raw: body },
+        outcome,
+      );
       outcomes.push({
         who,
         ok: outcome.ok,
@@ -199,9 +227,26 @@ export function applySheetCommandTags(
     };
 
     seen += 1;
-    const named = parsed.who ?? ctx.playerName ?? "";
+    const named = parsed.sheet === "party" ? "party" : (parsed.who ?? ctx.playerName ?? "");
     if (seen > MAX_SHEET_COMMANDS) return record(named, { ok: false, reason: "too-many" });
     if (!parsed.op) return record(named, { ok: false, reason: "malformed" });
+
+    if (parsed.sheet !== undefined) {
+      if (parsed.sheet !== "party" || !partyDefinition || !partyBuild)
+        return record("party", { ok: false, reason: "unknown-sheet" });
+      if (parsed.who !== undefined) return record("party", { ok: false, reason: "malformed" });
+      const op = parsed.op;
+      if (op.op !== "spend" && op.op !== "restore" && !(op.op === "advance" && "field" in op))
+        return record("party", { ok: false, reason: "not-allowed" });
+      if (op.op === "advance" && ctx.advancementRefusal)
+        return record("party", { ok: false, reason: ctx.advancementRefusal });
+      const result = applyRulesetSheetOp(partyDefinition, partyBuild, live[RULESET_PARTY_KEY], op);
+      if (result.ok) {
+        store(RULESET_PARTY_KEY, result.live);
+        if (result.build) builds[RULESET_PARTY_KEY] = partyBuild = result.build;
+      }
+      return record("party", result);
+    }
 
     const targets = findTargets(parsed.who);
     if ("refusal" in targets) return record(named, { ok: false, reason: targets.refusal });
@@ -234,5 +279,5 @@ export function applySheetCommandTags(
     );
   });
 
-  return { content: rewritten, live, changed, outcomes, rests };
+  return { content: rewritten, live, changed, outcomes, rests, builds };
 }

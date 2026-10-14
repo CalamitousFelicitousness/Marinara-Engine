@@ -22,6 +22,7 @@ import {
   readRulesetBuilderState,
   applyRulesetBuilder,
   rulesetBuilderCatalogIds,
+  rulesetBuilderUsesChoiceConstraints,
   type RulesetBuilderState,
   type DiceRollResult,
   type RulesetCatalogEntriesById,
@@ -31,6 +32,8 @@ import {
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
   type RulesetSheetItem,
+  rulesetItemAccess,
+  workOutRulesetListRow,
 } from "@marinara-engine/shared";
 import { RulesetCatalogPicker } from "./RulesetCatalogPicker";
 import { RulesetSheetBuilder } from "./RulesetSheetBuilder";
@@ -277,7 +280,7 @@ export function RulesetSheetEditor({
   const [pickerId, setPickerId] = useState<string | null>(null);
   // Which list's Refresh review is open.
   const [refreshListId, setRefreshListId] = useState<string | null>(null);
-  const catalogs = definition.catalogs ?? [];
+  const catalogs = useMemo(() => definition.catalogs ?? [], [definition.catalogs]);
   const openPicker = catalogs.find((catalog) => catalog.id === pickerId);
 
   // The catalogs this sheet's own rows point at, and only those: a build with no picked rows fetches
@@ -332,14 +335,9 @@ export function RulesetSheetEditor({
     });
   };
 
-  // A builder whose steps are limited by a sheet value (`upTo`, 1.87) is applied again on an edit here,
-  // so lowering a level takes back at once what a pick above it gave. Its catalogs share the Guided
-  // view's cache; while they load, an edit waits for the builder's next change as before.
-  const builderLimits = sheet.builder?.steps.some((step) => step.kind === "catalog" && step.upTo) ?? false;
-  const builderCatalogIds = useMemo(
-    () => (builderLimits ? rulesetBuilderCatalogIds(definition) : []),
-    [builderLimits, definition],
-  );
+  // Reapply sheet-dependent builder limits on edits here (`upTo`, 1.87, and choices, 1.151).
+  // Catalogs share the Guided view's cache; new choice constraints also catch up when they load.
+  const builderCatalogIds = useMemo(() => rulesetBuilderCatalogIds(definition), [definition]);
   const combineBuilderCatalogs = useCallback(
     (results: readonly { data: RulesetCatalogPayload | undefined }[]) => {
       const loaded: RulesetCatalogEntriesById = {};
@@ -355,6 +353,22 @@ export function RulesetSheetEditor({
     queries: builderCatalogIds.map((catalogId) => rulesetCatalogQuery(definition.id, catalogId, definition.version)),
     combine: combineBuilderCatalogs,
   });
+
+  // Items the picks open without carrying them (1.215), named by their entries where the file has them.
+  const itemAccess = useMemo(
+    () =>
+      rulesetItemAccess(definition, envelope, builderCatalogs.catalogs, build).map((ref) => {
+        const [catalogId, entryId] = ref.split("/") as [string, string];
+        const entry = catalogs
+          .find((catalog) => catalog.id === catalogId)
+          ?.entries?.find((each) => each.id === entryId);
+        return entry?.label ?? entryId.replace(/-/g, " ");
+      }),
+    [definition, envelope, builderCatalogs.catalogs, build, catalogs],
+  );
+  const choiceConstraints = rulesetBuilderUsesChoiceConstraints(definition, builderCatalogs.catalogs);
+  const builderLimits =
+    choiceConstraints || (sheet.builder?.steps.some((step) => step.kind === "catalog" && step.upTo) ?? false);
 
   const commit = (patch: Partial<RulesetSheetBuild>) => {
     editedRef.current = true;
@@ -383,11 +397,26 @@ export function RulesetSheetEditor({
   // `commit`, and the recompute is a no-op once it has run, since it returns the same build.
   useEffect(() => {
     if (!editedRef.current) return;
-    const next = recomputeScaledRows(definition, build, loadedCatalogs);
-    if (next === build) return;
-    onChange({ ...envelope, v: rulesetSheetStamp(definition, envelope), build: next });
+    const state = readRulesetBuilderState(envelope);
+    const applied =
+      choiceConstraints && state.applied && !state.describing && builderCatalogs.ready
+        ? applyRulesetBuilder(definition, build, state, builderCatalogs.catalogs)
+        : undefined;
+    const next = recomputeScaledRows(definition, applied?.build ?? build, loadedCatalogs);
+    if (
+      applied
+        ? JSON.stringify(next) === JSON.stringify(build) && JSON.stringify(applied.state) === JSON.stringify(state)
+        : next === build
+    )
+      return;
+    onChange({
+      ...envelope,
+      v: rulesetSheetStamp(definition, envelope),
+      build: next,
+      ...(applied ? { builder: applied.state } : {}),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadedCatalogs]);
+  }, [loadedCatalogs, builderCatalogs, choiceConstraints]);
 
   // The guided builder (1.86), beside the full form when the ruleset declares one. Its choices ride in
   // the envelope next to the build, so a step can be reopened.
@@ -473,7 +502,14 @@ export function RulesetSheetEditor({
   // never a column and never rendered, and editing or deleting a picked row needs nothing special.
   const updateRow = (listId: string, rows: ListRow[], index: number, columnId: string, value: Scalar) =>
     commit({
-      lists: { ...build.lists, [listId]: rows.map((row, i) => (i === index ? { ...row, [columnId]: value } : row)) },
+      lists: {
+        ...build.lists,
+        [listId]: rows.map((row, i) => {
+          if (i !== index) return row;
+          const list = definition.sheet.lists.find((each) => each.id === listId);
+          return list ? workOutRulesetListRow(list, { ...row, [columnId]: value }) : { ...row, [columnId]: value };
+        }),
+      },
     });
 
   const tabs = sheet.builder ? (
@@ -548,19 +584,30 @@ export function RulesetSheetEditor({
                     <span className={`${labelClass} max-w-full truncate`} title={ability.label}>
                       {ability.short ?? ability.label}
                     </span>
-                    <DraftNumberInput
-                      value={evaluated.abilityScores[ability.id] ?? ability.default}
-                      onCommit={(next) =>
-                        commit({
-                          abilities: { ...build.abilities, [ability.id]: clamp(next, ability.min, ability.max) },
-                        })
-                      }
-                      min={ability.min}
-                      max={ability.max}
-                      integer
-                      ariaLabel={ability.label}
-                      className={`${inputClass} text-center`}
-                    />
+                    {ability.value ? (
+                      // Worked out from the sheet (1.156): shown, never typed over.
+                      <span
+                        className={`${inputClass} text-center tabular-nums`}
+                        aria-label={ability.label}
+                        title={t("ui.rulesets.sheet.workedOut")}
+                      >
+                        {evaluated.abilityScores[ability.id] ?? ability.default}
+                      </span>
+                    ) : (
+                      <DraftNumberInput
+                        value={evaluated.abilityScores[ability.id] ?? ability.default}
+                        onCommit={(next) =>
+                          commit({
+                            abilities: { ...build.abilities, [ability.id]: clamp(next, ability.min, ability.max) },
+                          })
+                        }
+                        min={ability.min}
+                        max={ability.max}
+                        integer
+                        ariaLabel={ability.label}
+                        className={`${inputClass} text-center`}
+                      />
+                    )}
                     <span className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
                       {rulesetCheckValueText(definition, evaluated.abilityMods[ability.id] ?? 0, t)}
                     </span>
@@ -569,6 +616,12 @@ export function RulesetSheetEditor({
               </div>
             )}
           />
+        )}
+
+        {itemAccess.length > 0 && (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            {t("ui.rulesets.sheet.itemAccess", { items: itemAccess.join(", ") })}
+          </p>
         )}
 
         {sectionGroups.map(({ section, fields, derived, lists }) => (
@@ -687,7 +740,10 @@ export function RulesetSheetEditor({
                           {list.columns.map((column) => {
                             // A cell the ruleset keeps follows this character's own numbers, so it is
                             // shown where it always was and simply does not take edits.
-                            const setByRuleset = locked?.get(index)?.includes(column.id) ?? false;
+                            // A worked-out cell (1.210) is the sum of its row's other columns.
+                            const setByRuleset =
+                              (locked?.get(index)?.includes(column.id) ?? false) ||
+                              (column.type === "number" && !!column.sum);
                             const hintId = setByRuleset ? `${hintBaseId}-${list.id}-${index}-${column.id}` : undefined;
                             return (
                               <label

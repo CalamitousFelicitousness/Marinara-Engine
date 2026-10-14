@@ -137,38 +137,55 @@ test("a Game turn stores its macros resolved, and the log and the model read tha
     await personasHeld;
     await route.continue();
   };
-  await withGameChat(page, request, holdPersonas, async ({ chatId, prompts, storedTurns }) => {
-    await sendTurn(page, "I shout {{random::red::green}}, I am {{user}} with {{getvar::gold}} gold.");
-    releasePersonas();
+  const lorebookResponse = await request.post("/api/lorebooks", { data: { name: "Game Turn Signs" } });
+  expect(lorebookResponse.ok(), await lorebookResponse.text()).toBeTruthy();
+  const lorebook = (await lorebookResponse.json()) as { id: string };
+  try {
+    const entry = await request.post(`/api/lorebooks/${lorebook.id}/entries`, {
+      data: { name: "Gate", content: "Open to {{user}} at {{random::dawn::dusk}}" },
+    });
+    expect(entry.ok(), await entry.text()).toBeTruthy();
+    await withGameChat(page, request, holdPersonas, async ({ chatId, prompts, storedTurns }) => {
+      await sendTurn(page, "I shout {{random::red::green}}, I am {{user}} with {{getvar::gold}} gold.");
+      releasePersonas();
 
-    // A Game turn reads the chat's variables, as the server did when it filled the raw turn in.
-    await expect
-      .poll(storedTurns)
-      .toEqual([expect.stringMatching(/^I shout (red|green), I am Pat Persona with 12 gold\.$/u)]);
-    const [turn] = await storedTurns();
-    await expect.poll(() => prompts.length).toBeGreaterThan(0);
-    expect(prompts[0]!.some((content) => content.includes(turn!))).toBe(true);
-    expect(prompts[0]!.join("\n")).not.toContain("{{random");
+      // A Game turn reads the chat's variables, as the server did when it filled the raw turn in.
+      await expect
+        .poll(storedTurns)
+        .toEqual([expect.stringMatching(/^I shout (red|green), I am Pat Persona with 12 gold\.$/u)]);
+      const [turn] = await storedTurns();
+      await expect.poll(() => prompts.length).toBeGreaterThan(0);
+      expect(prompts[0]!.some((content) => content.includes(turn!))).toBe(true);
+      expect(prompts[0]!.join("\n")).not.toContain("{{random");
 
-    const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
-    await expect(narration).toContainText(/The gate creaks open\.|I shout/u);
-    await page.getByRole("button", { name: "Logs", exact: true }).click();
-    const logs = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Session Logs" }) });
-    await expect(logs).toContainText(turn!);
-    await logs.getByRole("button", { name: "Close logs", exact: true }).click();
-    await expect(logs).toHaveCount(0);
+      const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
+      await expect(narration).toContainText(/The gate creaks open\.|I shout/u);
+      await page.getByRole("button", { name: "Logs", exact: true }).click();
+      const logs = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Session Logs" }) });
+      await expect(logs).toContainText(turn!);
+      await logs.getByRole("button", { name: "Close logs", exact: true }).click();
+      await expect(logs).toHaveCount(0);
 
-    // A turn that writes a chat variable stays raw, so the server still applies the write.
-    await sendTurn(page, "{{setvar::met::yes}}I wave.");
-    await expect.poll(storedTurns).toEqual([turn, "{{setvar::met::yes}}I wave."]);
-    await expect
-      .poll(async () => {
-        const saved = (await (await request.get(`/api/chats/${chatId}`)).json()) as { metadata?: unknown };
-        const meta = typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
-        return (meta as { macroVariables?: Record<string, string> } | undefined)?.macroVariables;
-      })
-      .toEqual({ gold: "12", met: "yes" });
-  });
+      // A turn that writes a chat variable stays raw, so the server still applies the write.
+      await sendTurn(page, "{{setvar::met::yes}}I wave.");
+      await expect.poll(storedTurns).toEqual([turn, "{{setvar::met::yes}}I wave."]);
+      await expect
+        .poll(async () => {
+          const saved = (await (await request.get(`/api/chats/${chatId}`)).json()) as { metadata?: unknown };
+          const meta = typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
+          return (meta as { macroVariables?: Record<string, string> } | undefined)?.macroVariables;
+        })
+        .toEqual({ gold: "12", met: "yes" });
+
+      // A lorebook include goes in when the turn is sent, and its macros are filled in with the rest (#7607).
+      await sendTurn(page, "I read the sign: {{include::Game Turn Signs::Gate}}");
+      await expect
+        .poll(async () => (await storedTurns()).at(-1))
+        .toMatch(/^I read the sign: Open to Pat Persona at (dawn|dusk)$/u);
+    });
+  } finally {
+    await request.delete(`/api/lorebooks/${lorebook.id}`);
+  }
 });
 
 // With no persona list to read, filling the turn in would store "User"; the server knows the persona.

@@ -135,7 +135,7 @@ import {
   useUploadPersonaAvatar,
   type SpriteInfo,
 } from "../../hooks/use-characters";
-import { createInputMacroResolverForChat, VARIABLE_WRITE_MACRO_RE } from "../../lib/chat-macros";
+import { createInputMacroResolverForChat, expandMessageIncludes, VARIABLE_WRITE_MACRO_RE } from "../../lib/chat-macros";
 import { parseChatMetadata } from "../../lib/chat-display";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api, ApiError, getJsonRepairRequest, type JsonRepairRequest } from "../../lib/api-client";
@@ -7072,9 +7072,15 @@ function GameSurfaceComponent({
         const personas = queryClient.getQueryData<Persona[]>(characterKeys.personas);
         // A list that failed to load leaves the turn raw for the server to fill in, as before, not with "User".
         if (characters && personas) {
-          userMessage = createInputMacroResolverForChat(submittingChat, characters, personas, userMessage, {
-            ...parseChatMetadata(submittingChat?.metadata).macroVariables,
-          })(userMessage);
+          // Lorebook includes go in first, as a Roleplay or Conversation send puts them in (#7607). Only a turn
+          // that uses {{include::…}} waits for the server here.
+          const withIncludes = await expandMessageIncludes(userMessage, submittingChat?.id);
+          // An included entry that changes a chat variable leaves the turn raw too.
+          if (!VARIABLE_WRITE_MACRO_RE.test(withIncludes)) {
+            userMessage = createInputMacroResolverForChat(submittingChat, characters, personas, userMessage, {
+              ...parseChatMetadata(submittingChat?.metadata).macroVariables,
+            })(withIncludes);
+          }
         }
       }
       return await generate({

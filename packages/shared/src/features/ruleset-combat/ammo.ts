@@ -83,7 +83,7 @@ export function rulesetItemChargesLeft(actor: RulesetCombatant, charges: { max: 
   );
 }
 
-/** Whether one of the fighter's items is switched on (1.169): as this fight left it, else as its stack
+/** Whether one of the fighter's items is switched on (1.170): as this fight left it, else as its stack
  *  kept it. Off unless something turned it on. */
 export function rulesetItemOn(actor: RulesetCombatant, item: number): boolean {
   return actor.on?.[item] ?? actor.sheet?.items?.[item]?.on === true;
@@ -301,7 +301,7 @@ export interface RulesetFightItemChange {
   broke?: true;
   /** It became another item when its last charge was spent (1.272): that item, and its name. */
   becomes?: { ref: string; name: string };
-  /** A fake's true name (1.78): what a use of it is written as. */
+  /** A fake's true name (1.79): what a use of it is written as. */
   truly?: string;
   /** Its switch as the fight left it, when the fight turned it (1.170). */
   on?: boolean;

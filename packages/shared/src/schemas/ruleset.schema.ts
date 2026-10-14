@@ -1431,7 +1431,7 @@ const conditionEndHarmSchema: z.ZodType<RulesetConditionEndHarm, z.ZodTypeDef, u
     message: "What it harms with names dice, a flat amount, or both",
   });
 
-/** The senses that see through an obscuring zone or past a condition that hides (1.177). */
+/** The senses that see through an obscuring zone or past a condition that hides (1.178). */
 export interface RulesetSeenThrough {
   pierced?: string[];
   /** Only lightly obscured (1.286): it hides nobody, and only makes looking into it harder. */
@@ -1706,7 +1706,7 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       })
       .strict()
       .optional(),
-    /** It moves `distance` straight away from its caster as each of their turns starts (1.172):
+    /** It moves `distance` straight away from its caster as each of their turns starts (1.173):
      *  5e's Cloudkill. */
     drift: z
       .object({ distance: z.number().finite().gt(0) })
@@ -1763,7 +1763,7 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  entry's own (Capability API 1.198); as it appears it deals the entry's own. 5e's Wall of
      *  Thorns: piercing to whoever it appears around, slashing to whoever moves into it. */
     damageType: promptSafeText(40).optional(),
-    /** Nobody sees into it, out of it or through it (Capability API 1.177) but with one of the senses
+    /** Nobody sees into it, out of it or through it (Capability API 1.178) but with one of the senses
      *  `pierced` names, within that sense's range: 5e's Fog Cloud and Darkness (pierced by nothing
      *  but blindsight and truesight), or a plain darkness darkvision sees through. */
     obscures: seenThroughSchema.optional(),
@@ -1819,7 +1819,7 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  with its `save` at the entry's own difficulty. 5e's Wall of Ice: 10-foot panels, AC 12, 30 hit
      *  points, vulnerable to fire, leaving frigid air that deals 5d6 cold on a Constitution save. */
     sections: zoneSectionsSchema.optional(),
-    /** A wall's one side, chosen as it is cast (1.176): the cells within `distance` of it on that
+    /** A wall's one side, chosen as it is cast (1.177): the cells within `distance` of it on that
      *  side catch as `triggers` say, beside the wall's own. 5e's Wall of Fire, 10 ft, turn-end. */
     side: z
       .object({
@@ -1864,7 +1864,7 @@ const rulesetReactionAgainstSchema = z
  *  Unarmed Strike and the monk weapons. */
 const attackNamesSchema = z.array(promptSafeText(80)).min(1).max(30);
 
-/** What else narrows a moment (Capability API 1.117): `blow` answers only a hit struck in reach
+/** What else narrows a moment (Capability API 1.118): `blow` answers only a hit struck in reach
  *  (`melee`) or from afar (`ranged`), and `seesSource` only while its holder sees whoever caused it.
  *  5e's Parry is both. `by: "self"` (Capability API 1.241) answers its holder's OWN attack hitting,
  *  aimed at whoever it hit, and `weapon` only a weapon's blow: 5e's Divine Smite and Stunning Strike. */
@@ -2370,7 +2370,7 @@ const saveExtrasShape = {
   /** Its user's own side may choose to fail it (Capability API 1.278), and do: they fail without
    *  rolling, as a friend lets a spell in. 5e's Calm Emotions. */
   alliesMayFail: z.literal(true).optional(),
-  /** What else the save counts as being against (Capability API 1.180), for a save modifier's
+  /** What else the save counts as being against (Capability API 1.181), for a save modifier's
    *  `against`: 5e's Stinking Cloud is a save against poison, which a dwarf has advantage on. */
   against: z
     .object({
@@ -3220,17 +3220,17 @@ const catalogMechanicsObject = z
         message: '"lowersRoll" rolls "dice" or one "die" sized by a value: one of them',
       })
       .optional(),
-    /** How many more targets one step of a higher cost lets a use take (Capability API 1.170), up
+    /** How many more targets one step of a higher cost lets a use take (Capability API 1.171), up
      *  to 20 in all: 5e's Hold Person, one more creature for each slot level above 2nd. */
     targetsPerCostStep: z.number().int().min(1).max(10).optional(),
     /** What using this entry does to a CHECK the character is about to make, rather than to a
      *  fight. A charm that lets a roll be re-thrown, or that simply hands out successes. Only a
      *  pool ruleset can honour any of it, and the cross-checks say so at import. */
     check: catalogCheckSchema.optional(),
-    /** What an attack leaves behind to strike on later turns (Capability API 1.121). Distances
+    /** What an attack leaves behind to strike on later turns (Capability API 1.122). Distances
      *  are in the catalog's unit; without a reach it touches the next cell. */
     summons: catalogSummonsSchema.optional(),
-    /** An area that stays (Capability API 1.171): it lasts `rounds` of its caster's turns, or until
+    /** An area that stays (Capability API 1.172): it lasts `rounds` of its caster's turns, or until
      *  the concentration that holds it ends, and does the entry's own effect again to a creature at
      *  each of its `triggers`, once a turn whatever it was: moving into it (`enter`), or starting or
      *  ending a turn in it. `anchor: "caster"` keeps a burst centred on its caster as they move (5e's
@@ -3375,7 +3375,7 @@ const catalogMechanicsObject = z
           .strict() as z.ZodType<{ while: string; gone?: RulesetTargetIs; turns?: true }, z.ZodTypeDef, unknown>,
       ])
       .optional(),
-    /** Whoever it lands on who is dying stops rolling, stable (1.175): 5e's Spare the Dying. */
+    /** Whoever it lands on who is dying stops rolling, stable (1.176): 5e's Spare the Dying. */
     stabilizes: z.literal(true).optional(),
     /** Moves the sheet's live tracks of whoever it lands on and does not save against by `by` levels
      *  (Capability API 1.201), held to each track's own bounds: down for a cure, as 5e's Greater
@@ -3404,7 +3404,7 @@ const catalogMechanicsObject = z
     leavesAtLeast: z.number().int().min(1).max(100000).optional(),
     /** Offered only on a target that holds one of these (Capability API 1.235). */
     targetHolds: targetHoldsSchema.optional(),
-    /** Brings back whoever died no more than `withinRounds` rounds ago, with `health` (1.175): 5e's
+    /** Brings back whoever died no more than `withinRounds` rounds ago, with `health` (1.176): 5e's
      *  Revivify, within 10 rounds with 1 hit point. It is pointed only at them. */
     revives: z
       .object({ withinRounds: z.number().int().min(1).max(1000), health: z.object(catalogAmountShape).strict() })
@@ -3592,7 +3592,7 @@ const catalogMechanicsObject = z
   })
   .strict();
 
-/** What is wrong with a zone, wherever it is carried: a catalog entry, or an item's use (1.173). */
+/** What is wrong with a zone, wherever it is carried: a catalog entry, or an item's use (1.174). */
 /** How many sides dice text like "12d6" or "1d6+2" rolls. */
 function diceSides(dice: string): number {
   return Number(/d(\d+)/.exec(dice)?.[1] ?? 0);
@@ -4217,7 +4217,7 @@ const creatureActionSchema = z
     needs: combatSensesSchema.optional(),
     /** Any one of `needs` is enough (Capability API 1.267): Turn Undead's "can see or hear you". */
     needsAny: z.literal(true).optional(),
-    /** Only a creature its maker can see may be picked (Capability API 1.177): 5e's "a creature you
+    /** Only a creature its maker can see may be picked (Capability API 1.178): 5e's "a creature you
      *  can see within range". Who sees whom is the fight's `sight`, obscuring zones and senses. */
     seen: z.literal(true).optional(),
     /** What using it needs, by the ids of `combat.components` (Capability API 1.179): a 5e spell's
@@ -4236,7 +4236,7 @@ const creatureActionSchema = z
     /** The conditions it ends on each target (Capability API 1.261), as a catalog entry's `ends`
      *  does, a kind for any of it: a deva's and a unicorn's Healing Touch. */
     ends: catalogEndsSchema.optional(),
-    /** Who it may be pointed at, relative to the creature (Capability API 1.120). Without it, the
+    /** Who it may be pointed at, relative to the creature (Capability API 1.121). Without it, the
      *  other side, as before. */
     targets: z.enum(["ally", "any"]).optional(),
     save: creatureSaveSchema.optional(),
@@ -5908,7 +5908,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     rider: true,
   })
   .extend({
-    /** `utility` (Capability API 1.180) is a use that only leaves an area standing: a scroll of Fog
+    /** `utility` (Capability API 1.181) is a use that only leaves an area standing: a scroll of Fog
      *  Cloud, Darkness or Silence; or one that teleports (1.276): a cape's Dimension Door. */
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility"]),
     // A wall's thickness and a ring are a wand's or a scroll's too (1.177), and a line's width
@@ -6690,7 +6690,7 @@ const modifierAgainstSchema: z.ZodType<RulesetModifierAgainst, z.ZodTypeDef, unk
 const combatModifierSchema = z
   .object({
     to: z.enum(RULESET_COMBAT_MODIFIER_TARGETS),
-    /** Damage dealt or taken on an attack hit (Capability API 1.132): narrowed to its kind,
+    /** Damage dealt or taken on an attack hit (Capability API 1.133): narrowed to its kind,
      *  reach or ability, typed on its own, and, on the target, only from the applying source. Since
      *  Capability API 1.247 `attacks` and `blow` narrow a change to attacks too: 5e's Reckless
      *  Attack, advantage on melee weapon attacks with Strength. */
@@ -6900,7 +6900,7 @@ const combatLevelSchema = z
     /** Saves among these, against something that deals half on a success, take nothing on a
      *  success and half on a failure (Capability API 1.250): 5e's Evasion, on Dexterity saves. */
     evasion: z.array(sheetId).min(1).max(12).optional(),
-    /** Reaching it takes the holder out of the fight for good (Capability API 1.114): 5e's sixth
+    /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
   })
@@ -6982,7 +6982,7 @@ export interface RulesetCombatDarkness {
   pierced?: string[];
   carried?: RulesetLightRadius & { label?: string; budget?: string };
 }
-/** What seeing does in a fight (1.177). */
+/** What seeing does in a fight (1.178). */
 export interface RulesetCombatSight {
   unseenAttacks?: true;
   eyes?: string;
@@ -7366,7 +7366,7 @@ const combatConditionSchema = z
     /** Saves among these, against something that deals half on a success, take nothing on a
      *  success and half on a failure (Capability API 1.250): 5e's Evasion, on Dexterity saves. */
     evasion: z.array(sheetId).min(1).max(12).optional(),
-    /** Senses its holder does not have while it lasts (Capability API 1.126). */
+    /** Senses its holder does not have while it lasts (Capability API 1.127). */
     lacks: combatSensesSchema.optional(),
     /** Nobody sees its holder while it lasts (Capability API 1.178) but with one of the senses
      *  `pierced` names, within its range: 5e's invisible, which blindsight and truesight see. */
@@ -7374,13 +7374,13 @@ const combatConditionSchema = z
     /** Nothing needing these components is used while it holds (Capability API 1.179): gagged. */
     forbids: forbidsSchema.optional(),
     /** How far its holder senses with each of `combat.senses` while it holds, in the ruleset's
-     *  distance (Capability API 1.179): 5e's Darkvision spell, True Seeing's truesight. Their own
+     *  distance (Capability API 1.180): 5e's Darkvision spell, True Seeing's truesight. Their own
      *  reach stands where it is longer; `{ "add": N }` (1.182) adds to it. */
     senses: senseRangesSchema.optional(),
     /** The light its holder sheds while it holds (Capability API 1.294): 5e's Light cantrip, a lit
      *  torch. Read where `combat.sight.darkness` makes the dark real. */
     light: lightRadiusSchema.optional(),
-    /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.179):
+    /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.180):
      *  5e's Faerie Fire, under which the invisible are outlined. */
     cancelsUnseen: z.literal(true).optional(),
     effects: z.array(combatConditionEffectSchema).max(12).default([]),
@@ -7410,7 +7410,7 @@ const combatConditionSchema = z
     suppresses: uniqueIds(12).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
-    /** What ends this condition (Capability API 1.124): any damage, or harm from whoever applied
+    /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied
      *  it or their side. Source-side harm finishes resolving before the condition ends. Or
      *  (Capability API 1.278) an attack roll at its holder, from anybody, or harm to one of its
      *  holder's friends that its holder sees: 5e's Calm Emotions. Those too wait for the step. */
@@ -7424,7 +7424,7 @@ const combatConditionSchema = z
      *  a scroll's spell and a standing zone's included: 5e's Calm Emotions, harmed by a spell. It
      *  waits for the step, as source-side harm does. */
     endsWhenHarmedFrom: uniqueIds(8).optional(),
-    /** Damage above zero repeats the applies' saveEnds with its stored DC (Capability API 1.124).
+    /** Damage above zero repeats the applies' saveEnds with its stored DC (Capability API 1.125).
      *  A holder with no saveEnds or DC has nothing to roll. */
     saveWhenDamaged: z.literal(true).optional(),
     /** Another combatant on the holder's side can spend this budget on their turn to end it
@@ -7466,7 +7466,7 @@ const combatConditionSchema = z
     /** Its holder is never surprised (Capability API 1.237): 5e's Foresight. Read as the fight
      *  begins. */
     cannotBeSurprised: z.literal(true).optional(),
-    /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.123):
+    /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.124):
      *  5e's Feather Fall. */
     fallsSafely: z.literal(true).optional(),
     /**
@@ -11645,7 +11645,7 @@ function escapeDcIssues(
   if (applies.checkEnds && !definition.combat?.checks?.some((one) => one.id === applies.checkEnds!.check)) {
     add([...at, "checkEnds", "check"], `Unknown contest check "${applies.checkEnds.check}"`);
   }
-  // What ends it when its holder casts (1.179) is cast from the ruleset's own catalogs.
+  // What ends it when its holder casts (1.180) is cast from the ruleset's own catalogs.
   castsIssues(definition, applies.endsWhenHolder?.casts, [...at, "endsWhenHolder", "casts"], add);
   // The checks that may break it (1.175) are contest checks, and only mean something with an escape DC.
   applies.escapeChecks?.forEach((check, index) => {

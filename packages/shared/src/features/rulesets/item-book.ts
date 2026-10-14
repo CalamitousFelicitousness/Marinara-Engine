@@ -244,7 +244,7 @@ export interface RulesetItemAttackFact {
     more?: { max: number; amount: string };
     onHit?: Array<{ condition: string; rounds?: number; save?: { save: string; difficulty: number } }>;
   }>;
-  /** More damage on each hit (1.168): its amount, type, whom it reaches by the labels of the types
+  /** More damage on each hit (1.169): its amount, type, whom it reaches by the labels of the types
    *  and tags it names, whether only a critical hit carries it, and its own save. */
   plus?: Array<{
     amount: string;

@@ -22,7 +22,7 @@ import type {
   RulesetReachableCell,
 } from "./types.js";
 
-// Worked out beside the walking they slow (1.172), and said here too, where a zone is read.
+// Worked out beside the walking they slow (1.173), and said here too, where a zone is read.
 export { rulesetZoneCatches, rulesetZoneCells, rulesetZoneMiddles } from "./grid.js";
 
 /** Every zone standing, with whose it is. */
@@ -147,7 +147,7 @@ export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   );
 }
 
-/** Where a zone may be moved to (1.172): any cell of the board within its `move` distance of where
+/** Where a zone may be moved to (1.173): any cell of the board within its `move` distance of where
  *  it is centred, its own cell aside. Priced as the distance, so a board draws it as a walk. */
 export function rulesetZoneMoveCells(
   state: RulesetEncounterState,
@@ -189,7 +189,7 @@ export function rulesetZoneTurnCells(
   return cells;
 }
 
-/** Where a drifting zone goes next (1.172): `distance` cells straight away from its caster, stopping
+/** Where a drifting zone goes next (1.173): `distance` cells straight away from its caster, stopping
  *  at the board's edge. A zone centred on its caster's own cell has no "away" and stays. */
 export function rulesetZoneDriftCell(
   state: RulesetEncounterState,

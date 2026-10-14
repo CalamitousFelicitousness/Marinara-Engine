@@ -134,7 +134,7 @@ export interface GameInventoryRulesetItem {
       becomes?: string;
     };
   };
-  /** It has a switch (Capability API 1.169): what turning it on does, in the ruleset's words. */
+  /** It has a switch (Capability API 1.170): what turning it on does, in the ruleset's words. */
   toggle?: { label: string };
 }
 

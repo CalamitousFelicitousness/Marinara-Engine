@@ -353,7 +353,7 @@ function begin(
       syncHiding(ctx);
       // What was readied for an opponent using something, asked about now (1.288).
       readiedActs(ctx);
-      // The cells standing walls close, as the zones now standing say (1.176).
+      // The cells standing walls close, as the zones now standing say (1.177).
       rulesetSyncZoneWalls(next);
       // Grown or shrunk as the conditions now held say (1.195).
       for (const change of rulesetSyncSizes(definition, next)) ctx.events.push({ type: "resized", ...change });
@@ -1840,7 +1840,7 @@ function letFall(
   ctx.events.push({ type: "letFall", actorId: holder.id, condition, labels: things.map((thing) => thing.label) });
 }
 
-/** A newly gained immunity ends a condition already on its holder (Capability API 1.131). */
+/** A newly gained immunity ends a condition already on its holder (Capability API 1.132). */
 function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   // One its holder's own condition holds off is suspended, not cured (1.278): a fright already on
   // when a rage that is immune to it begins comes back when the rage ends.
@@ -2643,7 +2643,7 @@ function placeZone(
   const at = resume.at;
   // From the cell its maker fills nearest where it was aimed (1.194).
   const from = rulesetNearestCell(actor, at ?? null);
-  // A wall (1.176): its cells run the way it was aimed, and its side is the one chosen.
+  // A wall (1.177): its cells run the way it was aimed, and its side is the one chosen.
   const wall =
     grid && at && from && action.area?.shape === "wall"
       ? rulesetWallShape(
@@ -2797,7 +2797,7 @@ function zoneStrike(
     : region === "side"
       ? (action?.zone?.side?.triggers ?? [])
       : zone.triggers;
-  // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.174).
+  // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.175).
   if ((trigger !== "ram" && !triggers.includes(trigger)) || !rulesetCombatStanding(target)) return;
   if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
   const stamp = turnStamp(ctx);
@@ -2914,7 +2914,7 @@ function brokenStrike(
   if (action.zone?.damageCap !== undefined) zoneDealt(ctx, caster, zone, action.zone.damageCap, from);
 }
 
-/** A storm that shakes concentration (1.173): whoever it catches while concentrating rolls the
+/** A storm that shakes concentration (1.174): whoever it catches while concentrating rolls the
  *  ruleset's concentration save against the entry's own save difficulty, before what it does. */
 function zoneShakes(ctx: RulesetCombatContext, action: RulesetCombatAction, target: RulesetCombatant): void {
   const difficulty = action.save?.difficulty ?? action.saveDifficulty;
@@ -3041,7 +3041,7 @@ function turnZone(
   }
 }
 
-/** Every zone of this caster's that drifts, moving as their turn starts (1.172). */
+/** Every zone of this caster's that drifts, moving as their turn starts (1.173). */
 function driftZones(ctx: RulesetCombatContext, caster: RulesetCombatant): void {
   for (const zone of [...(caster.zones ?? [])]) {
     const drift = caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.drift;
@@ -3376,7 +3376,7 @@ function whyNotOffered(
     }
     return "unreachable";
   }
-  // Moving a zone (1.172): none to move, or nothing left to move it with.
+  // Moving a zone (1.173): none to move, or nothing left to move it with.
   if (optionId.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
     const actionId = optionId.slice(RULESET_ZONE_OPTION_PREFIX.length);
     const move = actor.actions.find((entry) => entry.id === actionId)?.zone?.move;
@@ -4354,7 +4354,7 @@ function boltAlong(
   }
 }
 
-/** Whether a condition on this actor holds what they just used over to their next turn (1.119): an
+/** Whether a condition on this actor holds what they just used over to their next turn (1.120): an
  *  action out of one of its catalogs, paid with its budget, and a die at or above its number. Said
  *  either way, so the log shows the roll. */
 function delayRoll(
@@ -5995,10 +5995,10 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
         return;
       }
     }
-    // A flier that came onto ground as high as it flew, or higher, is standing on it (1.113), and
+    // A flier that came onto ground as high as it flew, or higher, is standing on it (1.114), and
     // goes on from there as anybody on the ground does.
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
-    // Into a zone, or a zone carried onto somebody (1.171), and ground that hurts to cross (1.172).
+    // Into a zone, or a zone carried onto somebody (1.172), and ground that hurts to cross (1.173).
     // Nothing harms one that nothing can (1.283).
     if (!legendary?.untouchable) {
       zonesEntered(ctx, actor, before);
@@ -6886,7 +6886,7 @@ function resolveAction(
   }
   // Gone once the rest is done (1.276).
   if (!result && action.teleport && ctx.teleport) teleport(ctx, actor, action);
-  // Finished, rather than held for an answer to one of its rolls (1.179).
+  // Finished, rather than held for an answer to one of its rolls (1.180).
   if (!result) holderActed(ctx, actor, action, before);
   if (!result && action.endsCondition) endOwnCondition(ctx, actor, action.endsCondition);
   return result;
@@ -7604,9 +7604,9 @@ function resolveActionBody(
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   const reaches = (target: RulesetCombatant) =>
     rulesetTargetHasSenses(ctx.definition, ctx.state, target, action.needs, action.needsAny) &&
-    // Behind a ward this does not get through (1.178), at the level it was paid at.
+    // Behind a ward this does not get through (1.179), at the level it was paid at.
     !rulesetWarded(ctx.definition, ctx.state, actor, action, target, payWith) &&
-    // An area or a list catches only who the action may take, by what they are (1.167).
+    // An area or a list catches only who the action may take, by what they are (1.168).
     rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes);
   const spared = sparedByHealth(ctx, actor, action, targets.filter(reaches), extra);
   for (const target of targets) {
@@ -7917,7 +7917,7 @@ function resolveActionBody(
     };
     let saved = false;
     if (action.save && (careful.has(target.id) || savesOutright(ctx, target, action.save))) {
-      // Nothing to roll (1.180): immune to what it is, or not the kind of creature it works on.
+      // Nothing to roll (1.181): immune to what it is, or not the kind of creature it works on.
       ctx.events.push({
         type: "save",
         actorId: target.id,
@@ -8160,8 +8160,8 @@ function resolveActionBody(
         pool: first.pool,
       });
       (action.damage.plus ?? []).forEach((clause) => {
-        // Dealt only to a target that is what it names (1.167), and a save-for-half blow is never a
-        // critical one (1.168).
+        // Dealt only to a target that is what it names (1.168), and a save-for-half blow is never a
+        // critical one (1.169).
         if (!clauseReaches(ctx, actor, target, action, clause) || clause.onCritical) return;
         if (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) return;
         const own = clause.save
@@ -8208,8 +8208,8 @@ function resolveActionBody(
       });
       (action.damage.plus ?? []).forEach((clause, index) => {
         if (!clauseReaches(ctx, actor, target, action, clause)) return;
-        // Only a critical hit carries a clause that says so (1.168), and only an item switched on one
-        // dealt while it is (1.169).
+        // Only a critical hit carries a clause that says so (1.169), and only an item switched on one
+        // dealt while it is (1.170).
         if (clause.onCritical && !critical) return;
         if (clause.whileOn !== undefined && !rulesetItemOn(actor, clause.whileOn)) return;
         // A clause with a save of its own asks the TARGET for it, whatever the action already asked.
@@ -8383,7 +8383,7 @@ function resolveActionBody(
       // Only on a target that is what it names, and once a turn where it says so (1.187).
       if (!rulesetTargetIs(ctx.definition, target, entry.targetIs)) continue;
       if (entry.oncePerTurn && !spendOncePerTurn(ctx, actor, key)) continue;
-      // A save against it keeps it off (1.168), and it is a save against that condition.
+      // A save against it keeps it off (1.169), and it is a save against that condition.
       if (
         entry.save &&
         rollSave(ctx, target, entry.save.save, entry.save.difficulty, actor.id, undefined, {

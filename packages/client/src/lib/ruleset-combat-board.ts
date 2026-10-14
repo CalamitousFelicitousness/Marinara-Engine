@@ -44,7 +44,7 @@ export interface RulesetBoardCell {
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
   aim?: { targetIds: string[]; teleport?: true };
-  /** A cell the shape being laid has already been set down on (1.176, 1.177). */
+  /** A cell the shape being laid has already been set down on (1.177, 1.178). */
   laid?: true;
   /** The labels of the lasting areas covering it (1.172), first cast first. */
   zones?: string[];

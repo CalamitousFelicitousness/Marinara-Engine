@@ -1163,7 +1163,7 @@ function rulesetCandidatesFrom(
       if (turned) candidates.push(turned);
       continue;
     }
-    // Moving a lasting area (1.172) is weighed from where the actor stands, by whom it would catch.
+    // Moving a lasting area (1.173) is weighed from where the actor stands, by whom it would catch.
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
       const moved = standing ? null : zoneMoveCandidate(encounter, actor, option, price);
       if (moved) candidates.push(moved);

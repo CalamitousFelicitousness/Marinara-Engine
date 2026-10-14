@@ -6135,7 +6135,7 @@ export function parseRoomGameConfig(value: unknown): GameSetupConfig {
   }
   const { worldSnapshot, ...config } = gameSetupConfigSchema.parse(value);
   if (config.gameExperienceId) throw new Error("Package Game Experiences are unavailable in shared rooms.");
-  const styleIssue = classicGameWorldIssue({ ...config, worldSnapshot });
+  const styleIssue = gameStyleWorldIssue({ ...config, worldSnapshot });
   if (styleIssue) throw new Error(styleIssue);
   // A world another generator made comes with its snapshot (W11), checked whole here as at creation.
   if (worldSnapshot == null) return config;
@@ -6177,13 +6177,21 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
 
 /** Why a setup cannot be made as it asks: a Classic game is the Game Mode without a world, so it takes
  *  no setting kit, world, snapshot or story. Null when it holds together. */
-function classicGameWorldIssue(config: {
+/** What a setup's chosen style refuses: a Classic game takes no kit, world or story, and an Overworld RPG
+ *  game made with the choice needs its kit (or the snapshot's) and its world. A setup that names no style
+ *  (one made before the choice) is read as before. */
+function gameStyleWorldIssue(config: {
   gameStyle?: GameStyle;
   worldKit?: unknown;
   world?: unknown;
   worldSnapshot?: unknown;
   story?: unknown;
 }): string | null {
+  if (config.gameStyle === "overworld") {
+    return config.world == null || (config.worldKit == null && config.worldSnapshot == null)
+      ? "An Overworld RPG game needs a setting kit and a world: choose Classic for a game without one."
+      : null;
+  }
   if (config.gameStyle !== "classic") return null;
   return config.worldKit != null || config.world != null || config.worldSnapshot != null || config.story != null
     ? "A Classic game has no setting kit or world: choose the Overworld RPG for one."
@@ -6888,7 +6896,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
     // A world (worldgen W1) is made in its kit's words, by this Engine's generator, or kept as another
     // generator made it (W11); with its story (W10). The same checks as a world added to an older game.
-    const styleIssue = classicGameWorldIssue(parsedCreateGameInput.setupConfig);
+    const styleIssue = gameStyleWorldIssue(parsedCreateGameInput.setupConfig);
     if (styleIssue) return rejectGenerationOutput(reply, 400, { error: styleIssue, code: "world_invalid" });
     const newWorld = readNewGameWorld(parsedCreateGameInput.setupConfig);
     if (!newWorld.ok) return rejectGenerationOutput(reply, 400, { error: newWorld.error, code: newWorld.code });

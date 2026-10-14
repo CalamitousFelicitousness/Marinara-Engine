@@ -740,11 +740,15 @@ try {
     assert.deepEqual((await app.inject({ method: "GET", url: "/api/game/overworld" })).json(), { enabled: true });
     const made = await create({ ...baseConfig, worldKit: fantasy, world: storedWorld });
     assert.equal(made.statusCode, 200, made.body);
+    const chosen = await create({ ...baseConfig, gameStyle: "overworld", worldKit: fantasy, world: storedWorld });
+    assert.equal(chosen.statusCode, 200, `an Overworld game with its kit and world: ${chosen.body}`);
     const meta = JSON.parse(made.json().sessionChat.metadata);
     assert.equal(meta.gameWorld.seed, 20261001);
     assert.ok(gameWorldFromMetadata(meta), "the stored world reads back");
     for (const [config, code] of [
       [{ ...baseConfig, world: storedWorld }, "a world without a kit"],
+      [{ ...baseConfig, gameStyle: "overworld" }, "an Overworld game without a kit or world"],
+      [{ ...baseConfig, gameStyle: "overworld", worldKit: fantasy }, "an Overworld game without a world"],
       [{ ...baseConfig, worldKit: fantasy, world: { ...storedWorld, generatorVersion: 99 } }, "another generator"],
     ] as const) {
       const refused = await create(config);

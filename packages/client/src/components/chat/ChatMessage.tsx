@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { cn, copyToClipboard, getAvatarCropStyle, isLegacyAvatarCrop } from "../../lib/utils";
 import {
   hasSpeakerTag,
+  messageAttachmentKey,
   normalizeAvatarCrop,
   getRoleplayWhispers,
   getRoleplayCommandContentOffset,
@@ -104,7 +105,7 @@ import { useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
 import { parseChatMetadata } from "../../lib/chat-display";
 import { useTranslate } from "../../hooks/use-translate";
-import { api } from "../../lib/api-client";
+import { api, ApiError } from "../../lib/api-client";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ttsService } from "../../lib/tts-service";
 import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
@@ -2502,6 +2503,8 @@ export const ChatMessage = memo(function ChatMessage({
   const handleRemoveAttachment = useCallback(
     async (index: number) => {
       const current = (extra.attachments as any[]) ?? [];
+      if (!current[index]) return;
+      const key = messageAttachmentKey(current[index]);
       const updated = current.filter((_: any, i: number) => i !== index);
       // Optimistic: update the infinite query cache immediately so the image disappears
       const msgKey = chatKeys.messages(message.chatId);
@@ -2518,10 +2521,21 @@ export const ChatMessage = memo(function ChatMessage({
           ),
         };
       });
-      await api.patch(`/chats/${message.chatId}/messages/${message.id}/extra`, { attachments: updated });
-      qc.invalidateQueries({ queryKey: msgKey });
+      try {
+        await api.delete(`/chats/${message.chatId}/messages/${message.id}/attachments/${key}`);
+      } catch (error) {
+        toast.error(
+          localizeUi(
+            error instanceof ApiError && error.status === 409
+              ? "chat.message.attachments.removeBusy"
+              : "chat.message.attachments.removeFailed",
+          ),
+        );
+      } finally {
+        qc.invalidateQueries({ queryKey: msgKey });
+      }
     },
-    [extra.attachments, message.chatId, message.id, qc],
+    [extra.attachments, localizeUi, message.chatId, message.id, qc],
   );
 
   // Model name display

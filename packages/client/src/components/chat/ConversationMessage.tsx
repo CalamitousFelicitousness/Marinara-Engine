@@ -11,6 +11,7 @@ import { Phone, PhoneIncoming, PhoneOff, Trash2 } from "lucide-react";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import {
   formatTextQuotes,
+  messageAttachmentKey,
   normalizeTextForMatch,
   parseGroupedSpeakerSegments,
   type Message,
@@ -23,7 +24,7 @@ import { normalizeAvatarCrop, readMultiSwipePendingMarker } from "@marinara-engi
 import { resolveMessageMacros } from "../../lib/chat-macros";
 import { useTranslate } from "../../hooks/use-translate";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
-import { api } from "../../lib/api-client";
+import { api, ApiError } from "../../lib/api-client";
 import { chatKeys } from "../../hooks/use-chats";
 import { useChatGalleryFilenameIndex } from "../../hooks/use-characters";
 import type { CharacterMap, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
@@ -454,6 +455,8 @@ export const ConversationMessage = memo(function ConversationMessage({
   const handleRemoveAttachment = useCallback(
     async (index: number) => {
       const current = (extra.attachments as any[]) ?? [];
+      if (!current[index]) return;
+      const key = messageAttachmentKey(current[index]);
       const updated = current.filter((_: any, i: number) => i !== index);
       const msgKey = chatKeys.messages(message.chatId);
       const previous = qc.getQueryData<InfiniteData<Message[]>>(msgKey);
@@ -471,11 +474,15 @@ export const ConversationMessage = memo(function ConversationMessage({
         };
       });
       try {
-        await api.patch(`/chats/${message.chatId}/messages/${message.id}/extra`, { attachments: updated });
+        await api.delete(`/chats/${message.chatId}/messages/${message.id}/attachments/${key}`);
       } catch (err) {
         qc.setQueryData(msgKey, previous);
         toast.error(
-          err instanceof Error ? err.message : localizeUi("ui.chat.conversationmessage.failedToRemoveAttachment"),
+          err instanceof ApiError && err.status === 409
+            ? localizeUi("chat.message.attachments.removeBusy")
+            : err instanceof Error
+              ? err.message
+              : localizeUi("ui.chat.conversationmessage.failedToRemoveAttachment"),
         );
       } finally {
         await qc.invalidateQueries({ queryKey: msgKey });

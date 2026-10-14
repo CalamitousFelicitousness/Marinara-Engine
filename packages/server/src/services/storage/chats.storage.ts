@@ -50,6 +50,7 @@ import {
   TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   normalizeTranslatorSettings,
   getChatWindowDefaultSettingsKey,
+  messageAttachmentKey,
   parseChatWindowDefault,
   type CreateChatInput,
   type CreateMessageInput,
@@ -3217,6 +3218,36 @@ export function createChatsStorage(db: DB) {
           .where(and(eq(messages.id, id), eq(messages.activeSwipeIndex, swipeIndex)));
         const next = await this.getMessage(id);
         return next && (next.activeSwipeIndex ?? 0) === swipeIndex ? next : null;
+      });
+    },
+
+    /** Remove the first attachment whose messageAttachmentKey is `key` from the active swipe and the message mirror. */
+    async removeActiveSwipeAttachment(id: string, key: string) {
+      return withPatchQueue(messageExtraPatchQueues, id, async () => {
+        const msg = await this.getMessage(id);
+        if (!msg) return null;
+        const withoutAttachment = (extra: Record<string, unknown>) => {
+          const attachments: unknown[] = Array.isArray(extra.attachments) ? extra.attachments : [];
+          const index = attachments.findIndex(
+            (entry) => !!entry && typeof entry === "object" && messageAttachmentKey(entry) === key,
+          );
+          return index < 0 ? null : { ...extra, attachments: attachments.filter((_, i) => i !== index) };
+        };
+        const messageExtra = withoutAttachment(parseExtraRecord(msg.extra));
+        if (messageExtra)
+          await db
+            .update(messages)
+            .set({ extra: JSON.stringify(messageExtra) })
+            .where(eq(messages.id, id));
+        const swipes = await this.getSwipes(id);
+        const activeSwipe = swipes.find((s: any) => s.index === (msg.activeSwipeIndex ?? 0));
+        const swipeExtra = activeSwipe ? withoutAttachment(parseExtraRecord(activeSwipe.extra)) : null;
+        if (activeSwipe && swipeExtra)
+          await db
+            .update(messageSwipes)
+            .set({ extra: JSON.stringify(swipeExtra) })
+            .where(and(eq(messageSwipes.messageId, id), eq(messageSwipes.id, activeSwipe.id)));
+        return this.getMessage(id);
       });
     },
 

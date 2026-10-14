@@ -52,7 +52,7 @@ try {
   const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
   const { describeAttachmentsForNonUserTurn } =
     await import("../../packages/server/src/services/generation/prompt-attachments.js");
-  const { characterDataSchema } = await import("../../packages/shared/src/index.ts");
+  const { characterDataSchema, messageAttachmentKey } = await import("../../packages/shared/src/index.ts");
 
   const photo = { type: "image/png", data: "data:image/png;base64,iVBORw0KGgo=", filename: "a.png", name: "a.png" };
   const notes = { type: "text/plain", data: "data:text/plain;base64,aGk=", filename: "n.txt", name: "n.txt" };
@@ -136,6 +136,54 @@ try {
   app.activeGenerations.delete("attach-chat");
   assert.equal(duringGeneration.statusCode, 409);
   assert.equal(JSON.parse((await storage.getMessage(message.id))!.extra).attachments.length, 5);
+
+  // Removal takes one attachment out of the active swipe by its key, wherever it sits.
+  const removeUrl = (attachment: object, chatId = "attach-chat") =>
+    `/api/chats/${chatId}/messages/${message.id}/attachments/${messageAttachmentKey(attachment)}`;
+  const messageAttachments = async () => JSON.parse((await storage.getMessage(message.id))!.extra).attachments;
+  const activeSwipeAttachments = async () =>
+    JSON.parse(
+      (await storage.getSwipes(message.id)).find((swipe: { index: number }) => swipe.index === 1)!.extra ?? "{}",
+    ).attachments;
+  const removed = await app.inject({ method: "DELETE", url: removeUrl(notes) });
+  assert.equal(removed.statusCode, 200, removed.body);
+  assert.deepEqual(
+    JSON.parse(removed.json().extra).attachments.map(
+      (entry: { name?: string; url?: string }) => entry.name ?? entry.url,
+    ),
+    (await activeSwipeAttachments()).map((entry: { name?: string; url?: string }) => entry.name ?? entry.url),
+  );
+  assert.equal((await messageAttachments()).length, 4);
+  assert(!(await messageAttachments()).some((entry: { name?: string }) => entry.name === notes.name));
+  const inactiveSwipe = (await storage.getSwipes(message.id)).find((swipe: { index: number }) => swipe.index === 0)!;
+  assert.equal(JSON.parse(inactiveSwipe.extra ?? "{}").attachments, undefined, "an inactive swipe is untouched");
+
+  const repeated = await app.inject({ method: "DELETE", url: removeUrl(notes) });
+  assert.equal(repeated.statusCode, 200);
+  assert.equal((await messageAttachments()).length, 4, "a key with no match changes nothing");
+
+  // An illustration saved after the client last read the message survives a removal the client sends.
+  const unseenIllustration = { type: "image", url: "/api/gallery/file/unseen.png" };
+  await storage.appendSwipeAttachment(message.id, 1, unseenIllustration);
+  await storage.appendMessageAttachmentForActiveSwipe(message.id, 1, unseenIllustration);
+  assert.equal((await app.inject({ method: "DELETE", url: removeUrl(photo) })).statusCode, 200);
+  const afterUnseen = await messageAttachments();
+  assert(afterUnseen.some((entry: { url?: string }) => entry.url === unseenIllustration.url));
+  assert(!afterUnseen.some((entry: { name?: string }) => entry.name === photo.name));
+  assert.deepEqual(await activeSwipeAttachments(), afterUnseen);
+
+  // Identical attachments are interchangeable; one removal takes one of them.
+  await app.inject({ method: "POST", url, payload: { attachments: [pdf] } });
+  await app.inject({ method: "DELETE", url: removeUrl(pdf) });
+  assert.equal((await messageAttachments()).filter((entry: { name?: string }) => entry.name === pdf.name).length, 1);
+
+  const removeWrongChat = await app.inject({ method: "DELETE", url: removeUrl(pdf, "other-chat") });
+  assert.equal(removeWrongChat.statusCode, 404);
+  app.activeGenerations.set("attach-chat", {});
+  const removeDuringGeneration = await app.inject({ method: "DELETE", url: removeUrl(pdf) });
+  app.activeGenerations.delete("attach-chat");
+  assert.equal(removeDuringGeneration.statusCode, 409);
+  assert.equal((await messageAttachments()).filter((entry: { name?: string }) => entry.name === pdf.name).length, 1);
 
   // Native image and file parts reach the provider only on user turns, in generation and dry run alike.
   await new Promise<void>((done) => provider.listen(0, "127.0.0.1", done));
@@ -223,4 +271,4 @@ try {
   rmSync(dataDir, { recursive: true, force: true });
 }
 
-process.stdout.write("Message attachment append regression passed.\n");
+process.stdout.write("Message attachments regression passed.\n");

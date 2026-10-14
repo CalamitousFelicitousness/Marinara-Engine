@@ -2606,6 +2606,22 @@ export async function chatsRoutes(app: FastifyInstance) {
     },
   );
 
+  // Remove one attachment from the active swipe by its messageAttachmentKey; a key with no match changes nothing.
+  app.delete<{ Params: { chatId: string; messageId: string; key: string } }>(
+    "/:chatId/messages/:messageId/attachments/:key",
+    async (req, reply) => {
+      const message = await storage.getMessage(req.params.messageId);
+      if (!message || message.chatId !== req.params.chatId)
+        return reply.status(404).send({ error: "Message not found" });
+      const active = (app as unknown as { activeGenerations?: Map<string, unknown> }).activeGenerations;
+      if (active?.has(req.params.chatId))
+        return reply
+          .status(409)
+          .send({ error: "Wait for the current generation to finish before removing attachments." });
+      return storage.removeActiveSwipeAttachment(message.id, req.params.key);
+    },
+  );
+
   // Update message extra (partial merge) — also syncs to the active swipe
   app.patch<{ Params: { chatId: string; messageId: string }; Querystring: { swipeIndex?: string } }>(
     "/:chatId/messages/:messageId/extra",

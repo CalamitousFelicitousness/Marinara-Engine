@@ -94,6 +94,7 @@ import {
   DEFAULT_MARI_PERMISSIONS_MODE,
   MARI_PERMISSIONS_MODE_LABELS,
   MARI_PERMISSIONS_MODES,
+  messageAttachmentKey,
   type MariPermissionsMode,
 } from "@marinara-engine/shared";
 import { formatGenerationParameterError } from "../../lib/generation-parameter-errors";
@@ -5276,8 +5277,9 @@ export function HomeProfessorMariChat({
         const message = messagesRef.current.find((item) => item.id === messageId);
         if (!message) return;
         const currentAttachments = getProfessorMariAttachments(message);
+        const target = currentAttachments[attachmentIndex];
+        if (!target) return;
         const updated = currentAttachments.filter((_, index) => index !== attachmentIndex);
-        if (updated.length === currentAttachments.length) return;
         messageLoadAbortRef.current?.abort();
         setMessages((current) =>
           current.map((item) => {
@@ -5286,7 +5288,7 @@ export function HomeProfessorMariChat({
             return { ...item, extra: { ...extra, attachments: updated } };
           }),
         );
-        await api.patch(`/chats/${chatId}/messages/${messageId}/extra`, { attachments: updated });
+        await api.delete(`/chats/${chatId}/messages/${messageId}/attachments/${messageAttachmentKey(target)}`);
       } catch (error) {
         console.error("[Professor Mari] Failed to remove attachment", error);
         await loadMessages(chatId).catch(() => undefined);

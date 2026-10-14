@@ -2929,12 +2929,20 @@ by `prepareImageAttachment`). Those rules lived as identical copies in `ChatInpu
 Optimistic and streaming placeholders have no server row and do not show the button.
 
 `POST /chats/:chatId/messages/:messageId/attachments` appends to the active swipe through
-`appendSwipeAttachment` and `appendMessageAttachmentForActiveSwipe`, the path illustrations use.
-Attachment removal sends the whole array to `/extra`, which would drop an illustration appended
-after the client last read the message; each append here re-reads the row inside the patch queue.
-The route accepts only `data:` URLs and returns 409 while the chat is generating, because a
-user-message regeneration writes back the attachment list it read when it started
-(`resolveUserRegenerationPersistentAttachments`).
+`appendSwipeAttachment` and `appendMessageAttachmentForActiveSwipe`, the path illustrations use;
+each append re-reads the row inside the patch queue. The route accepts only `data:` URLs.
+
+Removal is `DELETE /chats/:chatId/messages/:messageId/attachments/:key`, where the key is the
+shared `messageAttachmentKey` (FNV-1a of the attachment's type and content). In the same queue,
+`removeActiveSwipeAttachment` drops the first match from the active swipe and the message mirror,
+and a key with no match changes nothing. The remove buttons in `ChatMessage.tsx`,
+`ConversationMessage.tsx` and `HomeProfessorMariChat.tsx` all call it. Upstream PATCHed the
+client's copy of the array to `/extra`, which dropped any attachment saved after the client last
+read the message; Professor Mari's copy also left out every attachment without a `data:` URL.
+
+Both routes return 409 while the chat is generating, because generation writes back the
+attachment lists it read when it started (image caption caching, and
+`resolveUserRegenerationPersistentAttachments` for a user-message regeneration).
 
 Native image and PDF inputs travel only on user turns, in real generation and in the dry run.
 OpenAI Chat Completions accepts only text and refusal parts on an assistant message, so an image
@@ -2946,12 +2954,15 @@ readable text files still reach the model as text. This also applies to assistan
 before the change, which compatible backends used to receive natively. Upstream's dry run had no
 photo note at all.
 
-Patches to upstream files: `chats.routes.ts`, `generate.routes.ts`, `generate/dry-run-route.ts`,
-`generate/generate-route-utils.ts`, `prompt-attachments.ts`, `ChatMessage.tsx`,
-`ConversationMessageActions.tsx`, `ChatInput.tsx`, `ConversationInput.tsx`, `use-chats.ts`, and
-`en.json` (3 keys). Covered by `scripts/regressions/message-attachment-append.regression.ts`,
-which also reads the Anthropic request bodies from both `/generate` and `/generate/dryRun` and
-fails on either route when its user-turn gate is removed.
+Patches to upstream files: `chats.routes.ts`, `chats.storage.ts`, `generate.routes.ts`,
+`generate/dry-run-route.ts`, `generate/generate-route-utils.ts`, `prompt-attachments.ts`,
+`ChatMessage.tsx`, `ConversationMessage.tsx`, `ConversationMessageActions.tsx`,
+`HomeProfessorMariChat.tsx`, `ChatInput.tsx`, `ConversationInput.tsx`, `use-chats.ts`,
+`packages/shared/src/index.ts`, and `en.json` (5 keys). Covered by
+`scripts/regressions/message-attachments.regression.ts`, which also reads the Anthropic request
+bodies from both `/generate` and `/generate/dryRun` and fails on either route when its user-turn
+gate is removed. `e2e/message-attachment-remove.e2e.ts` removes a file in Conversation and
+Roleplay after the server saved another one the page has not fetched.
 
 ### Validation skill
 

@@ -1,7 +1,8 @@
 // VRM setup on the 3D Avatars agent page (lane: 3D): import a `.vrm` (and an optional `.vrma`), show the
-// author's terms from the file, and check or change which expression shows each face and mouth shape.
+// author's terms from the file, and check or change which expression shows each face and mouth shape. Next to
+// the import, "Get a 3D model" links the guide and copies a prompt from the owner's look.
 import { useId, useRef, useState, type ReactNode } from "react";
-import { ExternalLink, Info, Loader2, Trash2, Upload } from "lucide-react";
+import { BookOpen, Copy, ExternalLink, Info, Loader2, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -9,12 +10,17 @@ import {
   type AvatarExpressionBindingSource,
   type AvatarExpressionMap,
   type AvatarExpressionSlot,
+  type AvatarOwnerRef,
   type VrmAvatarData,
   type VrmModelMeta,
 } from "@marinara-engine/shared";
 import { useAvatarModelActions } from "../../../../hooks/use-avatar-models";
+import { useCharacter, usePersona } from "../../../../hooks/use-characters";
 import { showConfirmDialog } from "../../../../lib/app-dialogs";
+import { copyToClipboard } from "../../../../lib/utils";
+import { useUIStore } from "../../../../stores/ui.store";
 import type { AvatarKindSetupPanelProps } from "../../contract";
+import { vrmModelPrompt } from "./vrm-model-prompt";
 
 /** Plain words for the values VRM 1.0 and 0.x files use in their terms; anything else shows as written. */
 const TERM_KEYS: ReadonlyMap<string, string> = new Map([
@@ -219,6 +225,42 @@ function ExpressionBindings({
   );
 }
 
+/** Ways to get a model: the guide in docs/agents/avatars.md and a prompt from the owner's look. */
+function GetModelSection({ owner }: { owner: AvatarOwnerRef }) {
+  const { t } = useTranslation();
+  const character = useCharacter(owner.ownerType === "character" ? owner.ownerId : null);
+  const persona = usePersona(owner.ownerType === "persona" ? owner.ownerId : null);
+  const card = owner.ownerType === "character" ? character.data : persona.data;
+  const copyPrompt = async () => {
+    if (!card) return;
+    if (await copyToClipboard(vrmModelPrompt(owner, card))) toast.success(t("avatars.vrm.getModel.copied"));
+    else toast.error(t("avatars.vrm.getModel.copyFailed"));
+  };
+  return (
+    <Section title={t("avatars.vrm.getModel.title")} description={t("avatars.vrm.getModel.description")}>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          // The guide's heading, which the docs viewer finds and scrolls to.
+          onClick={() =>
+            useUIStore
+              .getState()
+              .openModal("docs-viewer", { initialDoc: "agents/avatars.md", initialSearchTerm: "Get a 3D model" })
+          }
+          className={BUTTON_CLASS}
+        >
+          <BookOpen size="0.75rem" />
+          {t("avatars.vrm.getModel.guide")}
+        </button>
+        <button type="button" disabled={!card} onClick={() => void copyPrompt()} className={BUTTON_CLASS}>
+          <Copy size="0.75rem" />
+          {t("avatars.vrm.getModel.copyPrompt")}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -292,18 +334,21 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
 
   if (!data) {
     return (
-      <Section title={t("avatars.vrm.title")} description={t("avatars.vrm.description")}>
-        <div className="flex flex-wrap gap-2">
-          <FileButton
-            accept=".vrm"
-            label={t("avatars.vrm.import")}
-            busy={importFile.isPending}
-            disabled={busy}
-            onFile={importVrmFile}
-          />
-        </div>
-        {warningList}
-      </Section>
+      <div className="min-w-0 max-w-full space-y-3">
+        <Section title={t("avatars.vrm.title")} description={t("avatars.vrm.description")}>
+          <div className="flex flex-wrap gap-2">
+            <FileButton
+              accept=".vrm"
+              label={t("avatars.vrm.import")}
+              busy={importFile.isPending}
+              disabled={busy}
+              onFile={importVrmFile}
+            />
+          </div>
+          {warningList}
+        </Section>
+        <GetModelSection owner={owner} />
+      </div>
     );
   }
 
@@ -342,6 +387,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
         </div>
         {warningList}
       </Section>
+      <GetModelSection owner={owner} />
 
       {data.expressionNames ? (
         <Section title={t("avatars.vrm.expressions.title")} description={t("avatars.vrm.expressions.description")}>

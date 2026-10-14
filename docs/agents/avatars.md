@@ -89,6 +89,22 @@ Some files can't be used, and the import says why:
 
 There is no size limit beyond the app's usual upload limit, but large models take longer to load, especially on phones.
 
+## Get a 3D model
+
+If the character or persona has no VRM model yet, make one with VRoid Studio. It's a free app from pixiv for Windows, macOS and iPad, and models you make in it are yours to use. Its models come with the six faces, the five mouth shapes and blinking, so faces and lip sync work right away.
+
+On the **3D Avatars** page, pick the character or persona. Under **Get a 3D model**, **Read the guide** opens this section and **Copy prompt** copies a description of the character.
+
+1. Download [VRoid Studio](https://vroid.com/en/studio) and install it.
+2. Optionally, make a picture to work from: select **Copy prompt** and paste it into an image generator. VRoid Studio has no box for a prompt, so the picture is only something to look at while you build.
+3. In VRoid Studio, create a new model. Pick the hair, face, eyes, body and outfit closest to the character, then change their shapes and colours until they match.
+4. Export the model as VRM. VRM 1.0 and VRM 0.0 both work. Fill in the model's details and terms when VRoid Studio asks.
+5. Open **3D Avatars** in **Agents**, pick the character or persona, and select **Import VRM** under **VRM model**. Under **Faces and mouth shapes**, every face, mouth shape and blink of a VRoid Studio model is already filled in.
+
+**What the prompt is for.** It describes the character for tools that make a picture or a 3D model from text: a full-body anime-style character standing in a T-pose, seen from the front on a plain background, with its look. The look is the character's image appearance override when that is on, and otherwise its appearance or, without one, its description. The prompt has the name and look only: nothing else from the card and nothing from your chats. It's in English; change it as you like before you use it.
+
+**What moves.** The face follows the reply and the mouth moves with the text or the voice when the model has expressions for them. A VRM from another tool may have fewer or none, and **Faces and mouth shapes** shows which it has. Some websites say they make a VRM with face expressions from a picture or a description, but none could be confirmed when this guide was written (October 2026), so this guide doesn't recommend one.
+
 ## How faces and mouths follow the reply
 
 Avatars react on their own; there is nothing to set up for this part.

@@ -274,6 +274,8 @@ export function rulesetCombatEventLine(
   names: RulesetCombatNames,
   t: TFunction,
 ): string | null {
+  const key = (name: string, params: Record<string, unknown> = {}) =>
+    t(`game.combat.ruleset.event.${name}`, params) as string;
   // Those a search looked for with a throw of their own (1.290): a Cloak of Elvenkind's wearer.
   const searchApart = (apart: RulesetSearchApart[] | undefined) =>
     (apart ?? [])
@@ -285,8 +287,6 @@ export function rulesetCombatEventLine(
           })}`,
       )
       .join("");
-  const key = (name: string, params: Record<string, unknown> = {}) =>
-    t(`game.combat.ruleset.event.${name}`, params) as string;
   switch (event.type) {
     case "initiative":
       return key("initiative", {
@@ -496,16 +496,7 @@ export function rulesetCombatEventLine(
       // it: the whole handful, or the better or worse of two.
       const side = (roll: (typeof event)["attacker"]) => ({
         check: names.check(roll.check),
-        roll: roll.pool
-          ? rulesetPoolRollText({ ...roll, pool: roll.pool }, t, bonusNamer(names, t))
-          : rulesetRollText(
-              {
-                ...roll,
-                kept: roll.total - roll.modifier - (roll.bonuses ?? []).reduce((sum, bonus) => sum + bonus.value, 0),
-              },
-              t,
-              bonusNamer(names, t),
-            ),
+        roll: checkRollText(roll, names, t),
       });
       const attacker = side(event.attacker);
       // Breaking free of a hold that names its escape DC: a roll against that number, nobody else's.

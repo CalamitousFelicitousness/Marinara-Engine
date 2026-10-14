@@ -208,6 +208,15 @@ try {
     ]);
     // A later step writes nothing more for it.
     assert.deepEqual(rulesetFightItemChanges(done.state, done.state), []);
+    // A later step that changes it names the stack by what it became, which the stack now holds.
+    const later = structuredClone(done.state);
+    who(later, "hero").on = { 0: true };
+    const after = rulesetFightItemChanges(done.state, later);
+    assert.deepEqual(
+      after.map((one) => one.stack.ref),
+      ["gear/quarterstaff"],
+    );
+    assert.ok(applyRulesetFightItemChanges(written.stacks, after), "applied to the quarterstaff's stack");
     // Any other face, it holds, empty.
     const state2 = fight();
     faces = { 20: [5, 15] };

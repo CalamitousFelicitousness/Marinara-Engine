@@ -91,7 +91,7 @@ There is no size limit beyond the app's usual upload limit, but large models tak
 
 ## Get a 3D model
 
-If the character or persona has no VRM model yet, make one with VRoid Studio. It's a free app from pixiv for Windows, macOS and iPad, and models you make in it are yours to use. Its models come with the six faces, the five mouth shapes and blinking, so faces and lip sync work right away.
+If the character or persona has no VRM model yet, make one with VRoid Studio. It's a free app from pixiv for Windows, macOS and iPad, and models you make in it are yours to use. A few of its built-in items and any textures you buy have their own terms, so check those first. Its models come with the six faces, the five mouth shapes and blinking, so faces and lip sync work right away.
 
 On the **3D Avatars** page, pick the character or persona. Under **Get a 3D model**, **Read the guide** opens this section and **Copy prompt** copies a description of their look.
 

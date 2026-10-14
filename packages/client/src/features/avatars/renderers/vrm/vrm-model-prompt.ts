@@ -19,8 +19,9 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+/** Trimmed, so a blank field falls through to the next one. */
 function text(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value.trim() : "";
 }
 
 /** One line of plain text: no control characters or line breaks, at most `maxChars`. */

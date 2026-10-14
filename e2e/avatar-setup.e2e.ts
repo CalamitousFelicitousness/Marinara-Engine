@@ -323,6 +323,8 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
 }, info) => {
   const LOOK = "long silver hair in a braid, red eyes, black hoodie with gold zips, slim build, round glasses.";
   const PERSONA_LOOK = "Short black bob, green eyes, yellow raincoat over a grey dress.";
+  const OVERRIDE_LOOK = "1girl, twin tails, pastel pink hair, blue eyes, sailor uniform";
+  const OVERRIDDEN = "Plain appearance that the Image Appearance Override replaces.";
   // Card fields other than the look, and chat text, must never reach a prompt meant for an outside tool.
   const PRIVATE = ["DESCRIPTION-SECRET", "PERSONALITY-SECRET", "SCENARIO-SECRET", "GREETING-SECRET", "CHAT-SECRET"];
   const characterResponse = await request.post("/api/characters", {
@@ -343,12 +345,24 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
   const personaResponse = await request.post("/api/characters/personas", {
     data: {
       name: "Guide persona",
+      // A blank appearance counts as none.
+      appearance: "   ",
       description: `${PERSONA_LOOK} Often seen with {{char}}.`,
       personality: "PERSONALITY-SECRET",
     },
   });
   expect(personaResponse.ok(), await personaResponse.text()).toBeTruthy();
   const persona = (await personaResponse.json()) as { id: string };
+  const overridePersonaResponse = await request.post("/api/characters/personas", {
+    data: {
+      name: "Override persona",
+      appearance: OVERRIDDEN,
+      imageAppearanceEnabled: true,
+      imageAppearance: OVERRIDE_LOOK,
+    },
+  });
+  expect(overridePersonaResponse.ok(), await overridePersonaResponse.text()).toBeTruthy();
+  const overridePersona = (await overridePersonaResponse.json()) as { id: string };
   const chatResponse = await request.post("/api/chats", {
     data: { name: "Model guide chat", mode: "roleplay", characterIds: [character.id] },
   });
@@ -405,7 +419,7 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
     for (const secret of PRIVATE) expect(prompt, secret).not.toContain(secret);
     await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Prompt copied." })).toBeVisible();
 
-    // ── A persona without an appearance uses its description ──
+    // ── A persona with a blank appearance uses its description ──
     await setup.getByLabel("Character or persona").selectOption(`persona:${persona.id}`);
     await guide.getByRole("button", { name: "Copy prompt", exact: true }).click();
     await expect.poll(copied).toContain("Guide persona");
@@ -413,6 +427,14 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
     expect(personaPrompt).toContain(PERSONA_LOOK);
     expect(personaPrompt).not.toContain("{{");
     for (const secret of PRIVATE) expect(personaPrompt, secret).not.toContain(secret);
+
+    // ── An Image Appearance Override that is on replaces the appearance ──
+    await setup.getByLabel("Character or persona").selectOption(`persona:${overridePersona.id}`);
+    await guide.getByRole("button", { name: "Copy prompt", exact: true }).click();
+    await expect.poll(copied).toContain("Override persona");
+    const overridePrompt = await copied();
+    expect(overridePrompt).toContain(OVERRIDE_LOOK);
+    expect(overridePrompt).not.toContain(OVERRIDDEN);
 
     // ── Read the guide opens the docs at the section ──
     const docRequest = page.waitForRequest((req) => {
@@ -430,6 +452,7 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
     await request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
     await request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined);
+    await request.delete(`/api/characters/personas/${overridePersona.id}`).catch(() => undefined);
   }
 });
 

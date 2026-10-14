@@ -126,7 +126,15 @@ import { isVisibleGameMessage } from "../../lib/chat-message-visibility";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import { useGenerateSpatialMapDraft, useSpatialContext } from "../../hooks/use-spatial-context";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { spriteKeys, useUploadAvatar, useUploadPersonaAvatar, type SpriteInfo } from "../../hooks/use-characters";
+import {
+  characterKeys,
+  ensureCharacterAndPersonaLists,
+  spriteKeys,
+  useUploadAvatar,
+  useUploadPersonaAvatar,
+  type SpriteInfo,
+} from "../../hooks/use-characters";
+import { createInputMacroResolverForChat } from "../../lib/chat-macros";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api, ApiError, getJsonRepairRequest, type JsonRepairRequest } from "../../lib/api-client";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
@@ -200,7 +208,7 @@ import type {
   GenerateSpatialMapDraftResponse,
   PendingSpatialTransition,
 } from "@marinara-engine/shared";
-import type { AvatarCrop, SceneSegmentEffect } from "@marinara-engine/shared";
+import type { AvatarCrop, Persona, SceneSegmentEffect } from "@marinara-engine/shared";
 import {
   PROFESSOR_MARI_ID,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
@@ -7034,15 +7042,32 @@ function GameSurfaceComponent({
       pendingSpatialTransition?: PendingSpatialTransition,
     ) => {
       if ((chatMeta.gameSessionStatus as string) === "concluded") return false;
+      let userMessage = formatTextQuotes(message, quoteFormat);
+      // A turn is stored with its macros filled in, as a Roleplay or Conversation send is (#7585), so the Game
+      // log and the model read the same {{random}} pick. Macros only: a turn skips user-input regex and
+      // translation, as it always has, and carries engine tags ([choice: …], [dice: …]) those could rewrite.
+      if (userMessage.includes("{{")) {
+        // Waits only while a list is still loading after the page opens, so a turn otherwise stays
+        // synchronous up to the generation (see handleSendGameTurn).
+        if (!queryClient.getQueryData(characterKeys.list()) || !queryClient.getQueryData(characterKeys.personas)) {
+          await ensureCharacterAndPersonaLists(queryClient);
+        }
+        userMessage = createInputMacroResolverForChat(
+          useChatStore.getState().activeChat,
+          queryClient.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
+          queryClient.getQueryData<Persona[]>(characterKeys.personas),
+          userMessage,
+        )(userMessage);
+      }
       return await generate({
         chatId: activeChatId,
         connectionId: null,
-        userMessage: formatTextQuotes(message, quoteFormat),
+        userMessage,
         ...(attachments?.length ? { attachments } : {}),
         ...(pendingSpatialTransition ? { pendingSpatialTransition } : {}),
       });
     },
-    [activeChatId, chatMeta.gameSessionStatus, generate, quoteFormat],
+    [activeChatId, chatMeta.gameSessionStatus, generate, queryClient, quoteFormat],
   );
 
   // Background seam: the experience pushes a background and we render it behind the narration, so it

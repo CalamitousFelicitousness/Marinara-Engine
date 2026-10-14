@@ -6,7 +6,8 @@
 // as sprite generation), using the 2D agent's `avatar-pngtuber-eyes-closed` / `avatar-pngtuber-mouth-open`
 // templates. Generating returns drafts and stores nothing, so the avatar stays as it was until the user
 // keeps a picture; saving stores the kept pictures as PNGTuber layers through services/avatars/storage.ts,
-// merged into the stored setup inside its per-owner queue.
+// merged into the stored setup inside its per-owner queue. Pictures are drawn from the sprite's cut-out
+// (services/avatars/cutouts.ts) and take its outline, so every stored picture has no background.
 // The final prompt is logged with logDebugOverride (debugMode / DEBUG_AGENTS) before it reaches the provider.
 import { createHash } from "node:crypto";
 import {
@@ -31,9 +32,11 @@ import type { DB } from "../../../db/connection.js";
 import { isAllowedImageBuffer } from "../../../utils/security.js";
 import { resolveReviewedImagePromptSubmission } from "../../image/image-prompt-review.js";
 import { getSharp } from "../../image/sharp-runtime.js";
+import { avatarSpriteCutout } from "../cutouts.js";
 import { readAvatarConfig, readAvatarFile, updateAvatarConfig, writeAvatarFiles } from "../storage.js";
 import {
   AvatarGenerationError,
+  applyAvatarSourceOutline,
   avatarGenerationDebug,
   avatarImageRequestSize,
   compileAvatarImagePrompt,
@@ -334,7 +337,7 @@ export async function generatePngtuberVariants(
   request: PngtuberVariantsGenerateRequest,
   options: AvatarGenerationOptions = {},
 ): Promise<PngtuberVariantsDraftResponse> {
-  return withAvatarGenerationJob(request.owner, "pngtuber", async () => {
+  const job = async (signal: AbortSignal) => {
     const labels = await requestedLabels(request);
     if (!labels.length) throw new AvatarGenerationError(400, "Add a sprite first, then make variants from it.");
     const [owner, agent, image] = await Promise.all([
@@ -347,9 +350,9 @@ export async function generatePngtuberVariants(
     const response: PngtuberVariantsDraftResponse = { drafts: [], failed: [] };
     for (const label of labels) {
       pngtuberLayerKey(label); // refuse a label that can't be stored before paying for a picture
-      const source = await readAvatarSourceSprite(request.owner.ownerId, label);
+      const source = await spriteCutout(request.owner, await readAvatarSourceSprite(request.owner.ownerId, label));
       for (const variant of request.variants) {
-        if (options.signal?.aborted) throw options.signal.reason ?? new Error("Cancelled");
+        if (signal.aborted) throw signal.reason ?? new Error("Cancelled");
         try {
           const prompt = await avatarVariantPrompt(
             db,
@@ -363,7 +366,7 @@ export async function generatePngtuberVariants(
             image,
             ...prompt,
             source,
-            signal: options.signal,
+            signal,
             debug,
             logLabel: `pngtuber ${label} ${variant}`,
           });
@@ -376,7 +379,7 @@ export async function generatePngtuberVariants(
             sourceHash: source.hash,
           });
         } catch (error) {
-          if (options.signal?.aborted || error instanceof AvatarGenerationError) throw error;
+          if (signal.aborted || error instanceof AvatarGenerationError) throw error;
           response.failed.push({ label, variant, error: plainErrorText(error, "The picture could not be made.") });
         }
       }
@@ -385,7 +388,21 @@ export async function generatePngtuberVariants(
       throw new AvatarGenerationError(502, response.failed[0]!.error);
     }
     return response;
-  });
+  };
+  return withAvatarGenerationJob(request.owner, "pngtuber", job, options.signal);
+}
+
+/** The sprite's cut-out (avatarSpriteCutout), with a failure as a plain refusal. */
+export async function spriteCutout(owner: AvatarOwnerRef, sprite: AvatarSourceSprite): Promise<AvatarSourceSprite> {
+  try {
+    return await avatarSpriteCutout(owner, sprite);
+  } catch (error) {
+    throw new AvatarGenerationError(
+      500,
+      `The background of the sprite "${sprite.label}" couldn't be removed: ${plainErrorText(error, "unknown error")}`,
+      { cause: error },
+    );
+  }
 }
 
 function decodeDataUrl(value: string): Buffer {
@@ -412,10 +429,11 @@ async function keptPicturePng(image: string, source: AvatarSourceSprite): Promis
   return data;
 }
 
-/** Stores the kept pictures as PNGTuber layers and returns the saved setup. The sprite each picture was
- *  made from is copied next to it, so the base and its variants always line up; a sprite replaced since its
- *  pictures were made is refused. The files are written first and the setup is merged inside the owner's
- *  queue, so a change saved meanwhile (another tab, an import) is kept, not overwritten.
+/** Stores the kept pictures as PNGTuber layers and returns the saved setup. The cut-out of the sprite each
+ *  picture was made from is copied next to it and every picture takes its outline, so the base and its
+ *  variants always line up without a background; a sprite replaced since its pictures were made is refused.
+ *  The files are written first and the setup is merged inside the owner's queue, so a change saved
+ *  meanwhile (another tab, an import) is kept, not overwritten.
  *  ponytail: pictures of a replaced imported set stay on disk until the next PNGTuber import or removal
  *  tidies the folder; storage has no queued "tidy" call for generation to use. */
 export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest): Promise<AvatarGenerationResponse> {
@@ -432,7 +450,10 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
       if (!family.includes(entry.label)) {
         throw new AvatarGenerationError(400, `"${entry.label}" isn't one of the PNGTuber avatar's sprites.`);
       }
-      const source = await readAvatarSourceSprite(request.owner.ownerId, entry.label);
+      const source = await spriteCutout(
+        request.owner,
+        await readAvatarSourceSprite(request.owner.ownerId, entry.label),
+      );
       set = { key, label: entry.label, source, variants: [], keepOthers: false, sameBase: false };
       sets.set(key, set);
     }
@@ -442,7 +463,11 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
         `The sprite "${entry.label}" changed after its pictures were made. Make them again.`,
       );
     }
-    files.set(pngtuberVariantFilePath(key, entry.variant), await keptPicturePng(entry.image, set.source));
+    const kept = await keptPicturePng(entry.image, set.source);
+    files.set(
+      pngtuberVariantFilePath(key, entry.variant),
+      set.source.transparent ? await applyAvatarSourceOutline(kept, set.source) : kept,
+    );
     if (!set.variants.includes(entry.variant)) set.variants.push(entry.variant);
   }
   for (const set of sets.values()) {

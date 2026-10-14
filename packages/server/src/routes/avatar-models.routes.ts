@@ -10,6 +10,8 @@
 //   DELETE /:ownerType/:ownerId/kinds/:kind         removes one kind → AvatarConfig | null
 //   POST   /:ownerType/:ownerId/import              multipart `file` (+ optional `kind`) → AvatarImportResult
 //   GET    /:ownerType/:ownerId/files/:kind/:name   a stored file, with a checked content type
+//   GET    /:ownerType/:ownerId/sprite-cutouts/:label   the owner's sprite as avatars show it, without a
+//                                                      background (services/avatars/cutouts.ts)
 // Bodies are validated with the schemas in packages/shared/src/schemas/avatars.schema.ts; imports go
 // through services/avatars/formats/registry.ts and add no size limit below the global upload cap.
 import { open, realpath, type FileHandle } from "node:fs/promises";
@@ -30,6 +32,7 @@ import {
   type AvatarOwnerRef,
 } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
+import { avatarSpriteDisplayFile } from "../services/avatars/cutouts.js";
 import { AVATAR_FORMAT_IMPORTERS, findAvatarImporter } from "../services/avatars/formats/registry.js";
 import {
   AVATAR_IMPORT_MAX_BYTES,
@@ -58,6 +61,8 @@ const routeOptions = { config: { rateLimit: AVATAR_MODELS_RATE_LIMIT } };
 const IMPORT_HEAD_BYTES = 64 * 1024;
 /** Model files keep their name when re-imported, so the browser revalidates instead of caching forever. */
 const MODEL_CACHE_CONTROL = "private, no-cache";
+/** A sprite's cut-out URL carries the sprite's version (`?v=`), so one answer stays right for that URL. */
+const SPRITE_CUTOUT_CACHE_CONTROL = "private, max-age=31536000, immutable";
 const MODEL_MAGIC: Readonly<Record<Exclude<AvatarKind, "pngtuber">, { mimeType: string; magic: readonly Buffer[] }>> = {
   // A ZIP archive: a local file header, or the end record of an empty archive.
   "mesh-avatar": { mimeType: "application/zip", magic: [Buffer.from("PK\x03\x04"), Buffer.from("PK\x05\x06")] },
@@ -267,6 +272,26 @@ export async function avatarModelsRoutes(app: FastifyInstance) {
       return reply.status(500).send({ error: "This file couldn't be imported." });
     }
   });
+
+  app.get<{ Params: OwnerParams & { label: string } }>(
+    "/:ownerType/:ownerId/sprite-cutouts/:label",
+    routeOptions,
+    async (req, reply) => {
+      const owner = parseOwner(req.params);
+      const { label } = req.params;
+      if (!owner || !label || label.length > 255 || /[\\/]/u.test(label)) {
+        return reply.status(400).send({ error: "Invalid path" });
+      }
+      const shown = await avatarSpriteDisplayFile(owner, label);
+      const image = shown ? await validateImageAssetFile(shown.file, shown.name) : null;
+      if (!shown || !image) return reply.status(404).send({ error: "Not found" });
+      return sendValidatedMediaFile(reply, image, {
+        method: req.method,
+        rangeHeader: req.headers.range,
+        cacheControl: shown.final ? SPRITE_CUTOUT_CACHE_CONTROL : MODEL_CACHE_CONTROL,
+      });
+    },
+  );
 
   app.get<{ Params: OwnerParams & { kind: string; name: string } }>(
     "/:ownerType/:ownerId/files/:kind/:name",

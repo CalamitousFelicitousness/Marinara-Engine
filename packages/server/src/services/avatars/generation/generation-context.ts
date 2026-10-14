@@ -170,8 +170,8 @@ export function listAvatarSourceSprites(ownerId: string, { all = false } = {}): 
     .sort((a, b) => a.localeCompare(b));
 }
 
-/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
-export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
+/** Path of the owner's raster sprite with this exact label, or null. */
+export function findAvatarSpriteFile(ownerId: string, label: string): string | null {
   const dir = assertInsideDir(SPRITES_ROOT, join(SPRITES_ROOT, ownerId));
   const filename = existsSync(dir)
     ? readdirSync(dir).find(
@@ -179,8 +179,11 @@ export async function readAvatarSourceSprite(ownerId: string, label: string): Pr
           SPRITE_SOURCE_EXTENSIONS.has(extname(name).toLowerCase()) && name.slice(0, -extname(name).length) === label,
       )
     : undefined;
-  if (!filename) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
-  const bytes = await readFile(assertInsideDir(dir, join(dir, filename)));
+  return filename ? assertInsideDir(dir, join(dir, filename)) : null;
+}
+
+/** Decodes a sprite file to PNG, first frame for animated sprites. */
+export async function decodeAvatarSourceSprite(label: string, bytes: Buffer): Promise<AvatarSourceSprite> {
   if (!isAllowedImageBuffer(bytes)) {
     throw new AvatarGenerationError(422, `The sprite "${label}" is not a picture the image model can read.`);
   }
@@ -195,6 +198,13 @@ export async function readAvatarSourceSprite(ownerId: string, label: string): Pr
     transparent: !stats.isOpaque,
     hash: createHash("sha256").update(bytes).digest("hex"),
   };
+}
+
+/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
+export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
+  const file = findAvatarSpriteFile(ownerId, label);
+  if (!file) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
+  return decodeAvatarSourceSprite(label, await readFile(file));
 }
 
 // ── The 2D Avatars agent: templates and connection ──
@@ -423,7 +433,7 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
 
 /** Cuts the sprite's place back out of a drawn picture (`canvas` is the size it was asked for; a picture
  *  of another size is read in proportion), scales it to the sprite's exact size, and gives it the
- *  sprite's outline when the sprite is a cut-out and the picture is not. */
+ *  sprite's outline when the sprite is a cut-out (applyAvatarSourceOutline). */
 export async function fitAvatarImageToSource(
   drawn: Buffer,
   source: AvatarSourceSprite,
@@ -449,11 +459,23 @@ export async function fitAvatarImageToSource(
     .ensureAlpha()
     .png()
     .toBuffer();
-  if (!source.transparent || !(await sharp(fitted).stats()).isOpaque) return fitted;
+  return source.transparent ? applyAvatarSourceOutline(fitted, source) : fitted;
+}
+
+/** A picture drawn from a cut-out sprite, with exactly the sprite's outline: the picture is laid over the
+ *  sprite (so a see-through spot the model left shows the sprite) and takes the sprite's alpha, so a blink
+ *  or talk picture never shows a background, a halo or another edge than the face it swaps with. */
+export async function applyAvatarSourceOutline(picture: Buffer, source: AvatarSourceSprite): Promise<Buffer> {
+  const sharp = await getSharp();
   const size = { width: source.width, height: source.height };
   const alpha = await sharp(source.png).ensureAlpha().extractChannel(3).raw().toBuffer();
-  // Two steps: sharp removes alpha after joining channels, so one pipeline would drop the joined one.
-  const rgb = await sharp(fitted).removeAlpha().raw().toBuffer();
+  const layered = await sharp(source.png)
+    .ensureAlpha()
+    .composite([{ input: picture }])
+    .png()
+    .toBuffer();
+  // Separate steps: sharp removes alpha after compositing and joining channels, whatever the call order.
+  const rgb = await sharp(layered).removeAlpha().raw().toBuffer();
   return sharp(rgb, { raw: { ...size, channels: 3 } })
     .joinChannel(alpha, { raw: { ...size, channels: 1 } })
     .png()
@@ -462,22 +484,53 @@ export async function fitAvatarImageToSource(
 
 // ── One job per avatar ──
 
-const runningJobs = new Set<string>();
+/** The running job of each avatar and kind, by `ownerType:ownerId:kind`. */
+const runningJobs = new Map<string, AbortController>();
 
-/** Runs `job` unless the same avatar job is already running, so a double click starts nothing twice. */
+function avatarJobKey(owner: AvatarOwnerRef, kind: string): string {
+  return `${owner.ownerType}:${owner.ownerId}:${kind}`;
+}
+
+/** Stops a running job: its provider requests are aborted through its signal, and the avatar is free for a
+ *  new job at once, even while the old one is still unwinding (it stores nothing, so it can't clash). */
+function stopAvatarJob(key: string, controller: AbortController, reason: unknown) {
+  if (runningJobs.get(key) === controller) runningJobs.delete(key);
+  controller.abort(reason);
+}
+
+/** Runs `job` unless the same avatar job is already running, so a double click starts nothing twice. The
+ *  job's signal is aborted by `signal` (the request's connection closing) and by cancelAvatarGenerationJob
+ *  (the Cancel button), whichever comes first. */
 export async function withAvatarGenerationJob<T>(
   owner: AvatarOwnerRef,
   kind: string,
-  job: () => Promise<T>,
+  job: (signal: AbortSignal) => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
-  const key = `${owner.ownerType}:${owner.ownerId}:${kind}`;
+  const key = avatarJobKey(owner, kind);
   if (runningJobs.has(key)) {
     throw new AvatarGenerationError(409, "This avatar is already being made. Wait for it to finish, or cancel it.");
   }
-  runningJobs.add(key);
+  const controller = new AbortController();
+  const onAbort = () => stopAvatarJob(key, controller, signal?.reason);
+  runningJobs.set(key, controller);
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    return await job();
+    return await job(controller.signal);
   } finally {
-    runningJobs.delete(key);
+    signal?.removeEventListener("abort", onAbort);
+    if (runningJobs.get(key) === controller) runningJobs.delete(key);
   }
+}
+
+/** Cancels the avatar's running job of this kind. False when none is running. The Cancel button calls this
+ *  as well as closing its request, since a proxy between the browser and the server can keep the server's
+ *  side of a closed request open. */
+export function cancelAvatarGenerationJob(owner: AvatarOwnerRef, kind: string): boolean {
+  const key = avatarJobKey(owner, kind);
+  const controller = runningJobs.get(key);
+  if (!controller) return false;
+  stopAvatarJob(key, controller, new DOMException("The request was cancelled.", "AbortError"));
+  return true;
 }

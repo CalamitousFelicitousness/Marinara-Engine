@@ -57,7 +57,7 @@ import {
   resolveChatSummaryTemperatureOptions,
 } from "./chat-summary/connection-resolution.js";
 import { resolveBaseUrl } from "./generation/connection-base-url.js";
-import { describeEmptyModelResponse } from "./generation/empty-response-reason.js";
+import { describeEmptyModelResponse, replyUnfinished } from "./generation/empty-response-reason.js";
 import { parseRoleplayUserCommands, roleplayWhisperOnlyMessageIds } from "./generation/roleplay-commands.js";
 import {
   parseChatSummaryResult,
@@ -1403,7 +1403,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     );
     abortIfNeeded(options.signal);
     if (result.finishReason === "length") throw new Error(errors.length);
-    if (result.finishReason !== "stop" || result.toolCalls?.length) throw new Error(errors.incomplete);
+    if (replyUnfinished(result.finishReason) || result.toolCalls?.length) throw new Error(errors.incomplete);
     return tryParseJsonRecord(
       normalizeGemma4Delimiters(extractLeadingThinkingBlocks(result.content ?? "").content).replace(
         /^```(?:json)?\s*|\s*```$/gu,
@@ -1928,7 +1928,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             throw new Error(
               "The summary model reached its output limit before completing the summary. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then resume preparation.",
             );
-          if (result.finishReason !== "stop" || result.toolCalls?.length)
+          if (replyUnfinished(result.finishReason) || result.toolCalls?.length)
             throw new Error(
               "The summary model did not complete its summary. Resume processing to retry unfinished work.",
             );
@@ -2745,7 +2745,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           throw new Error(
             "The scene helper reached its output limit before completing its decision. Raise Chat Summary's Maximum output size or lower Reasoning Effort, then retry.",
           );
-        if (result.finishReason !== "stop" || result.toolCalls?.length)
+        if (replyUnfinished(result.finishReason) || result.toolCalls?.length)
           throw new Error("The scene helper did not complete its scene decision; retry preparation");
         const parsed = tryParseJsonRecord(
           normalizeGemma4Delimiters(extractLeadingThinkingBlocks(result.content ?? "").content).replace(

@@ -22,10 +22,16 @@ const TONE_ACCENT: Record<Tone, string> = {
   "critical-failure": "oklch(0.60 0.22 20)",
 };
 
-function resultLabel(result: SkillCheckResult): string {
+function resultLabel(result: SkillCheckResult, localizeUi: (key: string) => string): string {
   // The ruleset's own band, in its own words (1.135); the tone below still says success or failure.
   if (result.outcome) return result.outcome.toUpperCase();
-  if (result.symbols) return result.success ? "SUCCESS" : "FAILURE";
+  if (result.symbols) {
+    return localizeUi(
+      result.success
+        ? "ui.dice.animatedskillcheckresult.symbolSuccess"
+        : "ui.dice.animatedskillcheckresult.symbolFailure",
+    );
+  }
   if (result.criticalSuccess) return "CRITICAL SUCCESS";
   if (result.criticalFailure) return "CRITICAL FAILURE";
   return result.success ? "SUCCESS" : "FAILURE";
@@ -39,7 +45,7 @@ export function AnimatedSkillCheckResult({
   className,
 }: AnimatedSkillCheckResultProps) {
   const { t: localizeUi } = useUiTranslation();
-  const label = resultLabel(result);
+  const label = resultLabel(result, localizeUi);
   const tone = result.symbols
     ? result.success
       ? "success"

@@ -9183,6 +9183,8 @@
   "ui.dice.animatedskillcheckresult.rolledValue1": "Rolled {{value1}}",
   "ui.dice.animatedskillcheckresult.successesNeeded_one": "{{count}} success, needed {{needed}}",
   "ui.dice.animatedskillcheckresult.successesNeeded_other": "{{count}} successes, needed {{needed}}",
+  "ui.dice.animatedskillcheckresult.symbolFailure": "FAILURE",
+  "ui.dice.animatedskillcheckresult.symbolSuccess": "SUCCESS",
   "ui.dice.animatedskillcheckresult.unmodified": "Unmodified {{face}}",
   "ui.dice.animatedskillcheckresult.usingValue1": "Using {{value1}}",
   "ui.dice.animatedskillcheckresult.woundPenalty": "Wounds: {{penalty}} to this roll",

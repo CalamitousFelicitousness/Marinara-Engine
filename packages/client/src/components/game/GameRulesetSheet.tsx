@@ -469,7 +469,7 @@ export function GameRulesetSheet({
           {draftNotice && (
             <p
               role="alert"
-              className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[0.6875rem] text-[var(--foreground)]"
+              className="rounded-lg border border-[var(--marinara-app-accent-static)] bg-[var(--secondary)] p-2 text-[0.6875rem] text-[var(--foreground)]"
             >
               {draftNotice}
             </p>

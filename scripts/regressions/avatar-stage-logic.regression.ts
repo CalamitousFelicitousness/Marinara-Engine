@@ -229,13 +229,25 @@ assert.equal(applyAvatarFeatures(talking, allOn, true).state, "talking", "but st
 // ── PNGTuber pictures ──
 const owner = { ownerType: "persona" as const, ownerId: "p1" };
 const sprites = [
-  { expression: "full_happy", url: "/api/sprites/p1/file/full_happy.png" },
-  { expression: "Happy", url: "/api/sprites/p1/file/Happy.png" },
+  { expression: "full_happy", url: "/api/sprites/p1/file/full_happy.png?v=1" },
+  { expression: "Happy", url: "/api/sprites/p1/file/Happy.png?v=2" },
+  { expression: "Mad face", url: "/api/sprites/p1/file/Mad%20face.webp?v=3" },
+  { expression: "shy", url: "/api/sprites/p1/file/shy.svg?v=4" },
 ];
 assert.equal(
   resolveAvatarImage(owner, { updatedAt: "2026-10-13T00:00:00.000Z" }, sprites, { source: "sprite", label: "happy" }),
-  "/api/sprites/p1/file/Happy.png",
-  "an expression sprite wins over a full-body one",
+  "/api/avatar-models/persona/p1/sprite-cutouts/Happy?v=2",
+  "an expression sprite wins over a full-body one, shown as its cut-out of that sprite version",
+);
+assert.equal(
+  resolveAvatarImage(owner, { updatedAt: "x" }, sprites, { source: "sprite", label: "mad_face" }),
+  "/api/avatar-models/persona/p1/sprite-cutouts/Mad%20face?v=3",
+  "the cut-out is asked for by the sprite's own name",
+);
+assert.equal(
+  resolveAvatarImage(owner, { updatedAt: "x" }, sprites, { source: "sprite", label: "shy" }),
+  "/api/sprites/p1/file/shy.svg?v=4",
+  "an SVG sprite can't be cut out, so it shows as it is",
 );
 assert.equal(resolveAvatarImage(owner, { updatedAt: "x" }, sprites, { source: "sprite", label: "sad" }), null);
 assert.equal(

@@ -13,19 +13,18 @@ import { delimiter, dirname, extname, isAbsolute, join, relative, resolve } from
 import { fileURLToPath } from "url";
 import { promisify } from "util";
 import { DATA_DIR } from "../utils/data-dir.js";
-import {
-  getBackgroundRemoverStatus,
-  tryRemoveBackgroundWithBackgroundRemover,
-} from "../services/image/background-remover.service.js";
+import { getBackgroundRemoverStatus } from "../services/image/background-remover.service.js";
 import {
   applySpriteBackgroundInstruction,
-  removeUniformSpriteBackgroundPng,
+  removeSpriteBackgroundPng,
   selectSpriteChromaMatte,
   spriteBackgroundContract,
+  type SpriteCleanupEngine,
+  type UsedSpriteCleanupEngine,
   type SpriteChromaMatte,
 } from "../services/image/sprite-background.service.js";
 import { pixelizeImage, PixelizeInputError } from "../services/image/pixelize.service.js";
-import { clampByte, clampUnit, getSharp, type RgbColor } from "../services/image/sharp-runtime.js";
+import { getSharp } from "../services/image/sharp-runtime.js";
 import { logger } from "../lib/logger.js";
 import { SPRITE_RENAME_RATE_LIMIT } from "../middleware/rate-limit.js";
 
@@ -127,9 +126,6 @@ const ANIMATED_EXPRESSION_ASPECT_RATIO = "9:16" as const;
 const ANIMATED_EXPRESSION_GIF_WIDTH = 512;
 const ANIMATED_EXPRESSION_GIF_FPS = 12;
 const ANIMATED_EXPRESSION_FFMPEG_TIMEOUT_MS = Number(process.env.SPRITE_ANIMATED_FFMPEG_TIMEOUT_MS ?? 180_000);
-
-type SpriteCleanupEngine = "auto" | "backgroundremover" | "builtin";
-type UsedSpriteCleanupEngine = "backgroundremover" | "builtin";
 
 interface SpriteCleanupBackupEntry {
   expression: string;
@@ -718,196 +714,6 @@ function buildFullBodyExpressionSheetPrompt({
   ]
     .filter((part): part is string => Boolean(part))
     .join(" ");
-}
-
-function rgbLuma(color: RgbColor): number {
-  return color.red * 0.2126 + color.green * 0.7152 + color.blue * 0.0722;
-}
-
-function rgbSpread(color: RgbColor): number {
-  return Math.max(color.red, color.green, color.blue) - Math.min(color.red, color.green, color.blue);
-}
-
-async function softenBackgroundRemoverMask(
-  originalInput: Buffer,
-  aiOutput: Buffer,
-  cleanupStrength = 35,
-): Promise<Buffer> {
-  const strength = Math.max(0, Math.min(100, cleanupStrength));
-  if (strength >= 99) return aiOutput;
-
-  const sharp = await getSharp();
-  const original = await sharp(originalInput).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  if (!original.info.width || !original.info.height) return aiOutput;
-
-  const width = original.info.width;
-  const height = original.info.height;
-  const pixelCount = width * height;
-  const originalRgba = Buffer.from(original.data);
-  const originalChannels = original.info.channels;
-  const ai = await sharp(aiOutput)
-    .ensureAlpha()
-    .resize(width, height, { fit: "fill" })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const outputRgba = Buffer.from(ai.data);
-  const outputChannels = ai.info.channels;
-  const transparentAlpha = 16 + ((100 - strength) / 100) * 18;
-  const backgroundMask = new Uint8Array(pixelCount);
-  const queue = new Int32Array(pixelCount);
-  let queueStart = 0;
-  let queueEnd = 0;
-
-  const originalOffset = (pixelIndex: number) => pixelIndex * originalChannels;
-  const outputOffset = (pixelIndex: number) => pixelIndex * outputChannels;
-  const outputAlpha = (pixelIndex: number) => outputRgba[outputOffset(pixelIndex) + 3] ?? 255;
-  const isOutputTransparent = (pixelIndex: number) => outputAlpha(pixelIndex) <= transparentAlpha;
-
-  const markBackground = (pixelIndex: number) => {
-    if (backgroundMask[pixelIndex] || !isOutputTransparent(pixelIndex)) return;
-    backgroundMask[pixelIndex] = 1;
-    queue[queueEnd++] = pixelIndex;
-  };
-
-  for (let xPos = 0; xPos < width; xPos++) {
-    markBackground(xPos);
-    markBackground((height - 1) * width + xPos);
-  }
-  for (let yPos = 0; yPos < height; yPos++) {
-    markBackground(yPos * width);
-    markBackground(yPos * width + width - 1);
-  }
-
-  while (queueStart < queueEnd) {
-    const pixelIndex = queue[queueStart++]!;
-    const xPos = pixelIndex % width;
-    const yPos = Math.floor(pixelIndex / width);
-    if (xPos > 0) markBackground(pixelIndex - 1);
-    if (xPos < width - 1) markBackground(pixelIndex + 1);
-    if (yPos > 0) markBackground(pixelIndex - width);
-    if (yPos < height - 1) markBackground(pixelIndex + width);
-  }
-
-  const hasForegroundNeighbor = (pixelIndex: number): boolean => {
-    const xPos = pixelIndex % width;
-    const yPos = Math.floor(pixelIndex / width);
-    for (let yOffset = -2; yOffset <= 2; yOffset++) {
-      const sampleY = yPos + yOffset;
-      if (sampleY < 0 || sampleY >= height) continue;
-      for (let xOffset = -2; xOffset <= 2; xOffset++) {
-        if (xOffset === 0 && yOffset === 0) continue;
-        const sampleX = xPos + xOffset;
-        if (sampleX < 0 || sampleX >= width) continue;
-        if (outputAlpha(sampleY * width + sampleX) >= 168) return true;
-      }
-    }
-    return false;
-  };
-
-  const hasOriginalDetailNeighbor = (pixelIndex: number): boolean => {
-    const xPos = pixelIndex % width;
-    const yPos = Math.floor(pixelIndex / width);
-    for (let yOffset = -2; yOffset <= 2; yOffset++) {
-      const sampleY = yPos + yOffset;
-      if (sampleY < 0 || sampleY >= height) continue;
-      for (let xOffset = -2; xOffset <= 2; xOffset++) {
-        const sampleX = xPos + xOffset;
-        if (sampleX < 0 || sampleX >= width) continue;
-        const offset = originalOffset(sampleY * width + sampleX);
-        const alpha = originalRgba[offset + 3] ?? 255;
-        if (alpha <= 8) continue;
-        const color = {
-          red: originalRgba[offset] ?? 255,
-          green: originalRgba[offset + 1] ?? 255,
-          blue: originalRgba[offset + 2] ?? 255,
-        };
-        if (rgbLuma(color) < 166 || rgbSpread(color) > 42) return true;
-      }
-    }
-    return false;
-  };
-
-  const restorePixel = (pixelIndex: number, restoreWeight: number) => {
-    const originalPixelOffset = originalOffset(pixelIndex);
-    const outputPixelOffset = outputOffset(pixelIndex);
-    const originalAlpha = originalRgba[originalPixelOffset + 3] ?? 255;
-    const currentAlpha = outputRgba[outputPixelOffset + 3] ?? 255;
-    const weight = clampUnit(restoreWeight);
-    if (weight <= 0 || currentAlpha >= originalAlpha) return;
-
-    outputRgba[outputPixelOffset] = clampByte(
-      (outputRgba[outputPixelOffset] ?? 0) * (1 - weight) + (originalRgba[originalPixelOffset] ?? 0) * weight,
-    );
-    outputRgba[outputPixelOffset + 1] = clampByte(
-      (outputRgba[outputPixelOffset + 1] ?? 0) * (1 - weight) + (originalRgba[originalPixelOffset + 1] ?? 0) * weight,
-    );
-    outputRgba[outputPixelOffset + 2] = clampByte(
-      (outputRgba[outputPixelOffset + 2] ?? 0) * (1 - weight) + (originalRgba[originalPixelOffset + 2] ?? 0) * weight,
-    );
-    outputRgba[outputPixelOffset + 3] = clampByte(
-      Math.max(currentAlpha, currentAlpha * (1 - weight) + originalAlpha * weight),
-    );
-  };
-
-  const enclosedRestoreWeight = clampUnit((105 - strength) / 70);
-  const edgeRestoreWeight = clampUnit((62 - strength) / 85) * 0.55;
-
-  for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++) {
-    if (!isOutputTransparent(pixelIndex)) continue;
-
-    if (!backgroundMask[pixelIndex]) {
-      restorePixel(pixelIndex, enclosedRestoreWeight);
-      continue;
-    }
-
-    if (edgeRestoreWeight > 0 && hasForegroundNeighbor(pixelIndex) && hasOriginalDetailNeighbor(pixelIndex)) {
-      restorePixel(pixelIndex, edgeRestoreWeight);
-    }
-  }
-
-  return sharp(outputRgba, {
-    raw: {
-      width,
-      height,
-      channels: 4,
-    },
-  })
-    .png()
-    .toBuffer();
-}
-
-async function removeSpriteBackgroundPng(
-  input: Buffer,
-  cleanupStrength = 35,
-  engine: SpriteCleanupEngine = "auto",
-): Promise<{ buffer: Buffer; engine: UsedSpriteCleanupEngine }> {
-  const configuredEngine = engine === "auto" ? getBackgroundRemoverStatus().engine : engine;
-  if (configuredEngine === "backgroundremover") {
-    const aiOutput = await tryRemoveBackgroundWithBackgroundRemover(input, {
-      required: true,
-    });
-    if (aiOutput) {
-      return {
-        buffer: await softenBackgroundRemoverMask(input, aiOutput, cleanupStrength),
-        engine: "backgroundremover",
-      };
-    }
-  }
-
-  const matteOutput = await removeUniformSpriteBackgroundPng(input, cleanupStrength);
-  if (configuredEngine === "builtin" || matteOutput.alreadyTransparent || matteOutput.confidence >= 0.62) {
-    return { buffer: matteOutput.buffer, engine: "builtin" };
-  }
-
-  const aiOutput = await tryRemoveBackgroundWithBackgroundRemover(input, { required: false });
-  if (aiOutput) {
-    return {
-      buffer: await softenBackgroundRemoverMask(input, aiOutput, cleanupStrength),
-      engine: "backgroundremover",
-    };
-  }
-
-  return { buffer: matteOutput.buffer, engine: "builtin" };
 }
 
 function looksLikeBase64(input: string): boolean {

@@ -69,6 +69,25 @@ function isAbort(error: unknown): boolean {
   return !!error && typeof error === "object" && "name" in error && error.name === "AbortError";
 }
 
+interface RunningJob {
+  controller: AbortController;
+  owner: AvatarOwnerRef;
+}
+
+/** The last Cancel's request to the server. A new start waits for it, so a cancel that arrives late never
+ *  stops the job started after it. */
+let pendingCancel: Promise<unknown> = Promise.resolve();
+
+/** Stops a running job: closes its request and asks the server to stop it too, since a proxy between the
+ *  browser and the server can keep the server's side of a closed request going. */
+function stopJob(job: RunningJob | null, kind: "pngtuber" | "mesh-avatar") {
+  if (!job || job.controller.signal.aborted) return;
+  job.controller.abort();
+  pendingCancel = api.post(`${PREFIX}/cancel`, { owner: job.owner, kind }).catch((error: unknown) => {
+    console.warn("[avatars] Cancel request failed", error);
+  });
+}
+
 /** Runs one async action at a time: a second call while one runs (a fast double click) does nothing.
  *  A failure is shown as a toast. */
 export function useOneAtATime() {
@@ -110,18 +129,19 @@ export function previewVariantPrompts(
 }
 
 /** Makes blink and talk pictures one at a time, so each can be checked, kept or tried again, and Cancel
- *  stops the picture being made. A second start while one runs does nothing. Pictures already made stay:
- *  a new start makes only the missing ones, and a failed try keeps the picture it was replacing. */
+ *  stops the picture being made, on the server too, and drops the ones not started. A second start while one
+ *  runs does nothing. Pictures already made stay: a new start makes only the missing ones, and a failed or
+ *  cancelled try keeps the picture it was replacing. */
 export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const [items, setItems] = useState<VariantJobItem[]>([]);
   const [running, setRunning] = useState(false);
   const runningRef = useRef(false);
-  const controllerRef = useRef<AbortController | null>(null);
+  const jobRef = useRef<RunningJob | null>(null);
 
-  useEffect(() => () => controllerRef.current?.abort(), []);
+  useEffect(() => () => stopJob(jobRef.current, "pngtuber"), []);
   // Another owner's pictures never belong to this one.
   useEffect(() => {
-    controllerRef.current?.abort();
+    stopJob(jobRef.current, "pngtuber");
     setItems([]);
   }, [owner.ownerType, owner.ownerId]);
 
@@ -135,8 +155,9 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
       runningRef.current = true;
       setRunning(true);
       const controller = new AbortController();
-      controllerRef.current = controller;
+      jobRef.current = { controller, owner };
       try {
+        await pendingCancel;
         for (const item of queue) {
           if (controller.signal.aborted) break;
           update(item.id, { status: "running", error: undefined });
@@ -170,7 +191,7 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
           }
         }
       } finally {
-        if (controllerRef.current === controller) controllerRef.current = null;
+        if (jobRef.current?.controller === controller) jobRef.current = null;
         runningRef.current = false;
         setRunning(false);
       }
@@ -202,7 +223,20 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
     [items, run],
   );
 
-  const cancel = useCallback(() => controllerRef.current?.abort(), []);
+  const cancel = useCallback(() => {
+    if (!jobRef.current) return;
+    stopJob(jobRef.current, "pngtuber");
+    // Back to idle: only pictures already made stay (a picture being redone keeps its last version).
+    setItems((current) =>
+      current.flatMap((item) =>
+        item.status === "waiting" || item.status === "running"
+          ? item.draft
+            ? [{ ...item, status: "done" as const }]
+            : []
+          : [item],
+      ),
+    );
+  }, []);
   const setKept = useCallback((id: string, kept: boolean) => update(id, { kept }), [update]);
   const keepAll = useCallback(
     () => setItems((current) => current.map((item) => (item.draft ? { ...item, kept: true } : item))),
@@ -222,11 +256,11 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const runningRef = useRef(false);
-  const controllerRef = useRef<AbortController | null>(null);
+  const jobRef = useRef<RunningJob | null>(null);
 
-  useEffect(() => () => controllerRef.current?.abort(), []);
+  useEffect(() => () => stopJob(jobRef.current, "mesh-avatar"), []);
   useEffect(() => {
-    controllerRef.current?.abort();
+    stopJob(jobRef.current, "mesh-avatar");
     setDraft(null);
     setError(null);
   }, [owner.ownerType, owner.ownerId]);
@@ -238,8 +272,10 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
       setRunning(true);
       setError(null);
       const controller = new AbortController();
-      controllerRef.current = controller;
+      jobRef.current = { controller, owner };
       try {
+        await pendingCancel;
+        controller.signal.throwIfAborted();
         const result = await api.post<MeshRigDraft>(
           `${PREFIX}/mesh-rig`,
           { owner, ...body, debugMode: useUIStore.getState().debugMode },
@@ -249,7 +285,7 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
       } catch (caught) {
         if (!controller.signal.aborted && !isAbort(caught)) setError(errorMessage(caught));
       } finally {
-        if (controllerRef.current === controller) controllerRef.current = null;
+        if (jobRef.current?.controller === controller) jobRef.current = null;
         runningRef.current = false;
         setRunning(false);
       }
@@ -257,7 +293,7 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
     [owner],
   );
 
-  const cancel = useCallback(() => controllerRef.current?.abort(), []);
+  const cancel = useCallback(() => stopJob(jobRef.current, "mesh-avatar"), []);
   const discard = useCallback(() => setDraft(null), []);
   return { draft, running, error, start, cancel, discard };
 }

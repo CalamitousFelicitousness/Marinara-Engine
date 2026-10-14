@@ -35,6 +35,7 @@ import {
   shouldExecuteQuickPostAsCommand,
   getSlashCompletions,
   getSlashCommandUsage,
+  withComposerReplyAndAttachments,
   type ConversationGameSlashContribution,
   type SlashCommand,
   type SlashCommandContext,
@@ -1105,7 +1106,10 @@ export function ConversationInput({
       setMentionQuery(null);
       setMentionCompletions([]);
       try {
-        const result = await matched.command.execute(matched.args, slashCtx);
+        const result = await matched.command.execute(
+          matched.args,
+          withComposerReplyAndAttachments(slashCtx, { replyTo: replyDraft, attachments: submittedInput.attachments }),
+        );
         if (result.feedback) {
           setFeedback(result.feedback);
         }

@@ -46,9 +46,10 @@ A character or persona with expression sprites already has a PNGTuber avatar: it
 - **Talking and blinking pictures.** Add sprites named after a face with `_talk` for the open mouth and `_blink` for closed eyes, for example `happy_talk` and `happy_blink`, and `happy_blink_talk` for both. `_talking`, `_speak`, `_mouth_open`, `_blinking` and `_eyes_closed` work too. A face without them still hops while it talks.
 - **Face for each feeling.** Choose which face shows for Neutral, Happy, Angry, Sad, Relaxed and Surprised. **Resting face** uses the Neutral face. When the Expression Engine or the Game Master picks a sprite you have, that exact face shows.
 - **Movement.** **Hop while talking** and **Hop height** set the PNGTuber-style bounce. **Time between blinks** is the average; each blink comes a little sooner or later, so it never looks mechanical. With reduced motion turned on in your device, the avatar does not hop or breathe, but its face and mouth still change.
+- **No backgrounds.** A sprite drawn on a background shows without it. Marinara Engine removes the background the same way it does for generated sprites. A plain one-color background is removed by the built-in cleaner. A busier one uses the AI background remover when it is installed. If the remover is missing or fails, the built-in cleaner is used, and Marinara Engine tries the remover again later. This happens the first time a face shows, and the result is kept with the avatar. Your sprite file is not changed. Sprites with a transparent background, SVG sprites and animated sprites show as they are. So do all sprites on servers that can't process images (some Android installs).
 - **Use my sprites** saves the sprites as the avatar's faces. Choosing a face or changing the movement saves it too. **Update from sprites** picks up sprites you added later and keeps the faces you chose for each feeling. After an import, choose **Remove** to go back to your sprites.
 
-**Import PNGTuber Plus save** reads an avatar saved by [PNGTuber Plus](https://github.com/kaiakairos/PNGTuber-Plus) (a `.save` file). Each costume becomes one face, and its talking and blinking layers become the talking and blinking pictures. Costumes are matched to feelings by the names of the pictures they show, such as `angry eyes.png`. Choose a face for any feeling the names did not cover. Some things do not come across:
+**Import PNGTuber Plus save** reads an avatar saved by [PNGTuber Plus](https://github.com/kaiakairos/PNGTuber-Plus) (a `.save` file). Each costume becomes one face, and its talking and blinking layers become the talking and blinking pictures. A costume drawn on a background of its own comes in as a cut-out. Costumes are matched to feelings by the names of the pictures they show, such as `angry eyes.png`. Choose a face for any feeling the names did not cover. Some things do not come across:
 
 - Wobble, drag, rotation and stretch are not imported; the avatar shows each layer at rest.
 - Animated layers show only their first frame.
@@ -90,6 +91,22 @@ Some files can't be used, and the import says why:
 - **Incomplete models.** A model whose skeleton is missing bones VRM needs or points to parts that aren't in the file, or that points to files outside itself, is refused.
 
 There is no size limit beyond the app's usual upload limit, but large models take longer to load, especially on phones.
+
+## Get a 3D model
+
+If the character or persona has no VRM model yet, make one with VRoid Studio. It's a free app from pixiv for Windows, macOS and iPad, and models you make in it are yours to use. A few of its built-in items and any textures you buy have their own terms, so check those first. Its models come with the six faces, the five mouth shapes and blinking, so faces and lip sync work right away.
+
+On the **3D Avatars** page, pick the character or persona. Under **Get a 3D model**, **Read the guide** opens this section and **Copy prompt** copies a description of their look.
+
+1. Download [VRoid Studio](https://vroid.com/en/studio) and install it.
+2. Optionally, make a picture to work from: select **Copy prompt** and paste it into an image generator. VRoid Studio has no box for a prompt, so the picture is only something to look at while you build.
+3. In VRoid Studio, create a new model. Pick the hair, face, eyes, body and outfit closest to the character, then change their shapes and colours until they match.
+4. Export the model as VRM. VRM 1.0 and VRM 0.0 both work. Fill in the model's details and terms when VRoid Studio asks.
+5. Open **3D Avatars** in **Agents**, pick the character or persona, and select **Import VRM** under **VRM model**. Under **Faces and mouth shapes**, every face, mouth shape and blink of a VRoid Studio model is already filled in.
+
+**What the prompt is for.** It describes the character for tools that make a picture or a 3D model from text: a full-body anime-style character standing in a T-pose, seen from the front on a plain background, with its look. The look comes from the **Appearance** field, from the **Image Appearance Override** tags instead when those are on, or from the description when there is no appearance. The prompt has the name and look only: nothing else from the card and nothing from your chats. It's in English; change it as you like before you use it.
+
+**What moves.** The face follows the reply and the mouth moves with the text or the voice when the model has expressions for them. A VRM from another tool may have fewer or none, and **Faces and mouth shapes** shows which it has. Some websites say they make a VRM with face expressions from a picture or a description, but none could be confirmed when this guide was written (October 2026), so this guide doesn't recommend one.
 
 ## How faces and mouths follow the reply
 
@@ -137,8 +154,8 @@ On the **2D Avatars** page in the Agent editor, choose a character or persona, t
 
 1. Pick one or more sprites, then choose **Eyes closed**, **Mouth open** or both. When the character or persona has portrait sprites, only those are offered, because the avatar never mixes portrait and full-body faces.
 2. Check the **Image connection** (your default image connection is picked for you) and select **Make pictures**. Every picture is one image request. With **Expose media prompts before sending** on (Settings), you see and can edit each prompt first.
-3. The new pictures appear one at a time. Select **Keep** on the ones that look right and **Try again** on the others. **Cancel** stops the picture being made. Pictures you already have stay when you make more: **Make pictures** only makes the missing ones, and if **Try again** fails, the old picture stays. To redo a kept picture, select **Kept** to let it go first.
-4. Select **Save kept pictures**. They become the PNGTuber avatar's blink and talk pictures for those expressions, next to a copy of the sprite they were drawn from so they always line up. If the avatar was still showing your sprites as they are, it keeps all of them and gains the new pictures. If you replace a sprite before saving, make its pictures again.
+3. The new pictures appear one at a time. Select **Keep** on the ones that look right and **Try again** on the others. **Cancel** stops the picture being made, on the server too, and drops the pictures that weren't made yet. Pictures you already have stay when you make more: **Make pictures** only makes the missing ones, and if **Try again** fails, the old picture stays. To redo a kept picture, select **Kept** to let it go first.
+4. Select **Save kept pictures**. They become the PNGTuber avatar's blink and talk pictures for those expressions, next to a copy of the sprite they were drawn from. All of them are drawn without the sprite's background (see **No backgrounds** above) and have exactly its outline, so they always line up. If the avatar was still showing your sprites as they are, it keeps all of them and gains the new pictures. If you replace a sprite before saving, make its pictures again.
 
 Image models that edit pictures work best, because they get your sprite as a reference. Your sprite is sent at the size and shape the model accepts and cut back out of the result, so a model that keeps the picture in place gives pictures that line up. If a picture changes more than the eyes or mouth, the avatar jumps when it blinks or talks; try that one again.
 
@@ -146,10 +163,12 @@ Image models that edit pictures work best, because they get your sprite as a ref
 
 1. Pick one sprite. The full-body neutral sprite is picked for you when the character has one, otherwise the neutral sprite; you can choose another. A front-facing full-body or bust sprite works best.
 2. Choose the **Chat connection that can see pictures**. **The agent's connection** uses the connection set on the 2D Avatars page, then your default agent connection. Its model must accept pictures.
-3. Select **Make mesh avatar**. The chat model finds the face, and Marinara Engine builds the avatar from your sprite. **Cancel** stops it.
+3. Select **Make mesh avatar**. The chat model finds the face, and Marinara Engine builds the avatar from your sprite without its background. **Cancel** stops it.
 4. Check the preview: the outlines should sit on the eyes, brows and mouth. Select **Save as mesh avatar**, or **Discard** and try another sprite or model.
 
 A generated mesh avatar moves its head, eyes, brows and mouth, and blinks and talks with its own eyelids and mouth. Its hair moves with the head; hands, single hair strands and hanging accessories are not rigged. When the face fills most of a large sprite, the avatar is built from a smaller copy so making it stays quick.
+
+Blink and talk pictures, imported costumes and mesh avatars saved by an older version of Marinara Engine keep their background until you make or import them again. For a face whose sprite has a background, saving a new blink or talk picture drops that face's older pictures, because they would still show the background. Make those again too.
 
 Your sprite is sent to the image connection for blink and talk pictures (and to that connection's fallback image connection if it fails and one is set), and to the chat connection for a mesh avatar. The prompts come with the 2D Avatars agent. With **Expose media prompts before sending** on, you can read and change each picture's prompt before it is sent. With debug mode on, every prompt is written to the server log.
 

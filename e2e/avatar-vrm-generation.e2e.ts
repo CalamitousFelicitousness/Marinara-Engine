@@ -2,17 +2,20 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
-// 3D Avatars → Get a 3D model → Make 3D model (Tripo, with the user's own key). Tripo is never called: the
-// balance and the model run are answered here, the way the server streams them. The full-body neutral sprite
-// is picked for the user, the balance and the cost show before starting, each step shows with the credits
-// used, errors are plain, Cancel stops the run and says Tripo may still charge for the step it was on, and the
-// result is labelled body only and kept through the normal VRM import, after which setup shows the model as
-// body only instead of the face picker. Connections has a Tripo provider with its key link and Test.
+// 3D Avatars → Get a 3D model → Make 3D model (Tripo, with the user's own key). The Tripo API key is pasted,
+// saved and removed on that page through the real server, which only ever says whether a key is saved. Tripo is
+// never called: the balance and the model run are answered here, the way the server streams them. The
+// full-body neutral sprite is picked for the user, the balance and the cost show before starting, each step
+// shows with the credits used, errors are plain, Cancel stops the run and says Tripo may still charge for the
+// step it was on, and the result is labelled body only and kept through the normal VRM import, after which
+// setup shows the model as body only instead of the face picker. Connections no longer offers Tripo.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
 const FIRST_LOAD_TIMEOUT_MS = 30_000;
 const TRIPO_KEYS_URL = "https://developers.tripo3d.ai/en/keys";
+const TRIPO_KEY_ROUTE = "/api/avatar-generation/tripo-key";
+const TEST_KEY = "tsk_e2e_never_shown";
 
 const PACKAGE = {
   id: "3d-avatars",
@@ -162,12 +165,7 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
   const characterResponse = await request.post("/api/characters", { data: { data: { name: "Tripo fixture" } } });
   expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
   const character = (await characterResponse.json()) as { id: string };
-  const connectionResponse = await request.post("/api/connections", {
-    data: { name: "My Tripo", provider: "tripo", apiKey: "tsk_e2e_never_shown" },
-  });
-  expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
-  const connection = (await connectionResponse.json()) as { id: string; apiKeyEncrypted: string };
-  expect(connection.apiKeyEncrypted, "the key never comes back to the browser").toBe("••••••••");
+  expect((await request.delete(TRIPO_KEY_ROUTE)).ok(), "start without a saved key").toBeTruthy();
 
   try {
     await preparePage(page, character.id);
@@ -186,6 +184,37 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     const maker = setup.locator("[data-vrm-model-maker]");
     await expect(maker).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
     await expect(setup.getByRole("heading", { name: "Get a 3D model", exact: true })).toBeVisible();
+
+    // No key yet: only the key field, with a link to Tripo's key page.
+    const keyField = maker.locator("[data-tripo-key]");
+    const keyInput = keyField.getByLabel("Tripo API key", { exact: true });
+    await expect(keyInput).toHaveAttribute("type", "password");
+    await expect(keyField.getByText("Paste your Tripo API key to make 3D models.")).toBeVisible();
+    const getKey = keyField.getByRole("link", { name: "Get a key" });
+    await expect(getKey).toHaveAttribute("href", TRIPO_KEYS_URL);
+    await expect(getKey).toHaveAttribute("target", "_blank");
+    await expect(getKey).toHaveAttribute("rel", /noopener/u);
+    await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toHaveCount(0);
+    await expect(maker.getByRole("button", { name: "Make 3D model", exact: true })).toHaveCount(0);
+    await maker.screenshot({ path: info.outputPath("tripo-key-empty.png"), animations: "disabled" });
+
+    // Saving sends the trimmed key once; the server only ever answers whether a key is saved.
+    const saveKey = keyField.getByRole("button", { name: "Save", exact: true });
+    await expect(saveKey).toBeDisabled();
+    await keyInput.fill(`  ${TEST_KEY}  `);
+    const keySaved = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === TRIPO_KEY_ROUTE && response.request().method() === "PUT",
+    );
+    await saveKey.click();
+    const savedResponse = await keySaved;
+    expect(savedResponse.request().postDataJSON()).toEqual({ apiKey: TEST_KEY });
+    expect(await savedResponse.text()).toBe('{"saved":true}');
+    await expect(page.getByText("Tripo API key saved.")).toBeVisible();
+    await expect(keyInput).toHaveValue("");
+    await expect(keyField.getByText("Your key is saved. Paste a new one to replace it.")).toBeVisible();
+    await expect(keyField.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+    const status = await request.get(TRIPO_KEY_ROUTE);
+    expect(await status.text(), "the key never comes back").toBe('{"saved":true}');
 
     // The full-body neutral sprite is picked, talk pictures are never offered, and the cost shows first.
     const sprites = maker.getByRole("group", { name: "Sprite to use", exact: true }).getByRole("button");
@@ -224,8 +253,8 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     expect(sent[0]).toMatchObject({
       owner: { ownerType: "character", ownerId: character.id },
       sourceLabel: "full_neutral",
-      connectionId: connection.id,
     });
+    expect(sent[0], "the request names no connection").not.toHaveProperty("connectionId");
 
     // A stream that closes before the model is done or failed says so, with the credits it had used.
     runs.push((route) => route.fulfill(stream([progress("redraw", "running", 0), progress("redraw", "done", 5, 100)])));
@@ -327,9 +356,20 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
     expect(saved.kinds.vrm.expressionNames).toEqual([]);
     expect(saved.kinds.vrm.meta.title).toBe("Tripo fixture");
     await setup.screenshot({ path: info.outputPath("vrm-model-saved.png"), animations: "disabled" });
+
+    // Remove takes the key away, and with it the way to start a model.
+    const keyRemoved = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === TRIPO_KEY_ROUTE && response.request().method() === "DELETE",
+    );
+    await keyField.getByRole("button", { name: "Remove", exact: true }).click();
+    await keyRemoved;
+    await expect(page.getByText("Tripo API key removed.")).toBeVisible();
+    await expect(keyField.getByText("Paste your Tripo API key to make 3D models.")).toBeVisible();
+    await expect(maker.getByRole("button", { name: "Make 3D model", exact: true })).toHaveCount(0);
+    expect(await (await request.get(TRIPO_KEY_ROUTE)).json()).toEqual({ saved: false });
   } finally {
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
-    await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
+    await request.delete(TRIPO_KEY_ROUTE).catch(() => undefined);
   }
 });
 
@@ -337,11 +377,8 @@ test("Make 3D model waits until the Tripo balance covers a model", async ({ page
   const characterResponse = await request.post("/api/characters", { data: { data: { name: "Poor fixture" } } });
   expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
   const character = (await characterResponse.json()) as { id: string };
-  const connectionResponse = await request.post("/api/connections", {
-    data: { name: "Poor Tripo", provider: "tripo", apiKey: "tsk_e2e_never_shown" },
-  });
-  expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
-  const connection = (await connectionResponse.json()) as { id: string };
+  const keyResponse = await request.put(TRIPO_KEY_ROUTE, { data: { apiKey: TEST_KEY } });
+  expect(keyResponse.ok(), await keyResponse.text()).toBeTruthy();
   try {
     await preparePage(page, character.id, 40);
     let started = false;
@@ -361,49 +398,29 @@ test("Make 3D model waits until the Tripo balance covers a model", async ({ page
     expect(started).toBe(false);
   } finally {
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
-    await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
+    await request.delete(TRIPO_KEY_ROUTE).catch(() => undefined);
   }
 });
 
-test("Connections has a Tripo provider with its key page and a credits Test", async ({ page, request }, info) => {
-  const response = await request.post("/api/connections", {
-    data: { name: "Tripo test", provider: "tripo", apiKey: "tsk_e2e_never_shown" },
+test("Connections no longer offers Tripo", async ({ page, request }) => {
+  const refused = await request.post("/api/connections", {
+    data: { name: "Tripo test", provider: "tripo", apiKey: TEST_KEY },
   });
-  expect(response.ok(), await response.text()).toBeTruthy();
-  const connection = (await response.json()) as { id: string };
-  try {
-    await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
-    await page.route(`**/api/connections/${connection.id}/test`, (route) =>
-      route.fulfill({
-        json: { success: true, message: "Connected. Your Tripo account has 710 credits.", latencyMs: 12 },
-      }),
-    );
-    await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false });
-    await page.addInitScript((appVersion) => {
-      localStorage.setItem("marinara:whats-new:seen-version", appVersion);
-      localStorage.removeItem("marinara-active-chat-id");
-    }, APP_VERSION);
-    await page.goto("/");
-    await page.evaluate(async (id) => {
-      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-      useUIStore.getState().openConnectionDetail(id);
-    }, connection.id);
-    const editor = page.locator(".mari-editor-shell");
-    await expect(editor).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
-    await expect(editor.getByRole("button", { name: "Tripo", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(
-      editor.getByText(
-        "Tripo makes 3D models from full-body sprites for 3D Avatars, using your own Tripo key and credits.",
-      ),
-    ).toBeVisible();
-    await expect(editor.getByRole("link", { name: "Get your Tripo API key" })).toHaveAttribute("href", TRIPO_KEYS_URL);
-    // The key goes to Tripo's own address only, and there is no model to pick.
-    await expect(editor.getByText("Base URL", { exact: true })).toHaveCount(0);
-    await expect(editor.getByText("Model", { exact: true })).toHaveCount(0);
-    await editor.getByRole("button", { name: "Test Connection", exact: true }).click();
-    await expect(editor.getByText("Connected. Your Tripo account has 710 credits.")).toBeVisible();
-    await page.screenshot({ path: info.outputPath("tripo-connection.png"), animations: "disabled" });
-  } finally {
-    await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
-  }
+  expect(refused.status(), "the server refuses a Tripo connection").toBe(400);
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false });
+  await page.addInitScript((appVersion) => {
+    localStorage.setItem("marinara:whats-new:seen-version", appVersion);
+    localStorage.removeItem("marinara-active-chat-id");
+  }, APP_VERSION);
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+    useUIStore.getState().openModal("create-connection");
+  });
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "OpenAI", exact: true })).toBeVisible({
+    timeout: FIRST_LOAD_TIMEOUT_MS,
+  });
+  await expect(dialog.getByRole("button", { name: "Tripo", exact: true })).toHaveCount(0);
 });

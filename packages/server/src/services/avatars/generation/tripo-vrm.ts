@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Avatar generation: a VRM model from one sprite through Tripo (lane: 3D generation)
 // ──────────────────────────────────────────────
-// With the user's own Tripo connection: the sprite (its background cleaned off when it has one) is
+// With the user's own Tripo API key (tripo-key.ts): the sprite (its background cleaned off when it has one) is
 // redrawn standing in a T-pose (image-to-image, template t_pose, 5 credits), made into a textured 3D model
 // (image-to-model, 30 credits) and given a Mixamo skeleton (rig, 25 credits), then glb-to-vrm.ts turns it into
 // a VRM 1.0 model: about 60 credits ($0.60) and 3 minutes. The rig check (free) only stops a model Tripo can't
@@ -23,7 +23,6 @@ import type { DB } from "../../../db/connection.js";
 import { logDebugOverride, logger } from "../../../lib/logger.js";
 import { isAllowedImageBuffer } from "../../../utils/security.js";
 import { getSharp } from "../../image/sharp-runtime.js";
-import { createConnectionsStorage } from "../../storage/connections.storage.js";
 import { avatarCutout } from "../cutouts.js";
 import { buildVrmImport, vrmImporter } from "../formats/vrm.js";
 import {
@@ -42,6 +41,7 @@ import {
   type TripoClient,
   type TripoFetch,
 } from "./tripo-client.js";
+import { readTripoApiKey } from "./tripo-key.js";
 
 /** Tripo needs no more than this: its T-pose picture comes back 1024 pixels square. */
 const UPLOAD_MAX_SIDE = 2048;
@@ -72,16 +72,11 @@ export interface VrmModelOptions {
   wait?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
-/** A Tripo connection with its key, or a plain refusal. */
-async function tripoConnection(db: DB, connectionId: string) {
-  const conn = await createConnectionsStorage(db).getWithKey(connectionId);
-  if (!conn || conn.provider !== "tripo") {
-    throw new AvatarGenerationError(400, "Choose a Tripo connection. Add one in Connections with your Tripo API key.");
-  }
-  if (!conn.apiKey?.trim()) {
-    throw new AvatarGenerationError(400, "This Tripo connection has no API key. Add your key in Connections.");
-  }
-  return conn;
+/** The saved Tripo API key, or a plain refusal. */
+async function tripoApiKey(db: DB): Promise<string> {
+  const apiKey = await readTripoApiKey(db);
+  if (!apiKey) throw new AvatarGenerationError(400, "Add your Tripo API key on the 3D Avatars page first.");
+  return apiKey;
 }
 
 /** The HTTP status a Tripo problem is answered with. */
@@ -109,16 +104,15 @@ function asGenerationError(error: unknown): unknown {
   return error;
 }
 
-/** The account's credits through a Tripo connection (Connections' Test and the 3D Avatars setup). */
+/** The account's credits with the saved key, for the 3D Avatars setup. */
 export async function tripoBalance(
   db: DB,
-  connectionId: string,
   options: Pick<VrmModelOptions, "fetch" | "signal"> & { debugMode?: boolean } = {},
 ) {
-  const conn = await tripoConnection(db, connectionId);
+  const apiKey = await tripoApiKey(db);
   try {
     const client = createTripoClient({
-      apiKey: conn.apiKey,
+      apiKey,
       fetch: options.fetch,
       signal: options.signal,
       debug: avatarGenerationDebug(options.debugMode),
@@ -279,13 +273,10 @@ export async function generateVrmModel(
       options.onProgress?.({ step, status, progress, creditsUsed });
     };
     try {
-      const [conn, owner] = await Promise.all([
-        tripoConnection(db, request.connectionId),
-        readAvatarOwnerInfo(db, request.owner),
-      ]);
+      const [apiKey, owner] = await Promise.all([tripoApiKey(db), readAvatarOwnerInfo(db, request.owner)]);
       const image = await tripoSourceImage(request.owner.ownerId, request.sourceLabel);
       const client = createTripoClient({
-        apiKey: conn.apiKey,
+        apiKey,
         signal,
         debug,
         fetch: options.fetch,

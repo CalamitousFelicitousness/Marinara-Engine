@@ -1841,7 +1841,7 @@ test("Advanced Memory offers automatic message visibility only in individual gro
   }
 });
 
-test("Character recollections switch saves for its chat and recollections are edited inside their scene", async ({
+test("Character recollections switch saves for its chat and recollections are edited and deleted inside their scene", async ({
   page,
   request,
 }, info) => {
@@ -2027,6 +2027,37 @@ test("Character recollections switch saves for its chat and recollections are ed
     await expect.poll(async () => (await dottore())?.embeddingStatus).not.toBe("stale");
     await expect(review.getByText("Manually edited", { exact: true })).toBeVisible();
     await expect(reviewSave).toBeDisabled();
+
+    // Delete asks first, and Cancel keeps the recollection.
+    const content = async () => {
+      const record = await dottore();
+      return [record?.content, record?.manualOverride];
+    };
+    const deleteButton = review.getByRole("button", { name: "Delete Dottore's recollection", exact: true });
+    await deleteButton.click();
+    const deleteDialog = page.getByRole("dialog", { name: "Delete Dottore's recollection", exact: true });
+    await expect(deleteDialog).toContainText("It won't be used or written again, but you can write a new one here.");
+    await captureThemes(page, info, "character-recollections-delete-confirm", deleteDialog);
+    await deleteDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(deleteDialog).toHaveCount(0);
+    expect(await content()).toEqual(["I wrote the promise in blue ink so I could never pretend I forgot it.", true]);
+    // Deleted, it leaves an empty field to write a new one in, and nothing writes it again by itself.
+    await deleteButton.click();
+    await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.poll(content).toEqual(["", true]);
+    const reviewText = review.getByRole("textbox", { name: "Dottore's recollection", exact: true });
+    await expect(reviewText).toHaveValue("");
+    await expect(
+      review.getByText("Deleted. It won't be written again, but you can write one here.", { exact: true }),
+    ).toBeVisible();
+    await expect(deleteButton).toHaveCount(0);
+    await expect(reviewSave).toBeDisabled();
+    await captureThemes(page, info, "character-recollections-deleted", review);
+    await reviewText.fill("I keep the blue notebook closed now.");
+    await reviewSave.click();
+    await expect.poll(content).toEqual(["I keep the blue notebook closed now.", true]);
+    await expect(review.getByText("Manually edited", { exact: true })).toBeVisible();
+    await expect(deleteButton).toBeVisible();
   } finally {
     await fixture.cleanup();
   }

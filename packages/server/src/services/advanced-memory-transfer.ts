@@ -15,7 +15,7 @@ const transferRecordSchema = z.object({
   record: z.object({
     id: z.string().min(1),
     sceneId: z.string().min(1),
-    kind: z.enum(["scene", "continuity", "temporary", "excerpt"]),
+    kind: z.enum(["scene", "continuity", "temporary", "excerpt", "recollection"]),
     status: z.enum(["open", "closed"]),
     startMessageId: z.string().min(1),
     endMessageId: z.string().min(1),

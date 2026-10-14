@@ -1050,11 +1050,13 @@ function resolveRulesetSkillCheck(
   }
   const contextualCheck = rulesetContextualCheck(contextual);
   // The best rating in place of the asked one (1.217), on a skill check: never lower than it.
-  if (contextualCheck?.best && target?.type === "skill")
-    modifier = Math.max(
-      modifier,
-      ...definition.sheet.skills.map((skill) => rulesetCheckModifierFor(ruleset, skill.id, request.who)),
-    );
+  // Every skill the roller has counts, their row checks (1.161) among them.
+  if (contextualCheck?.best && target?.type === "skill") {
+    const roller = request.who
+      ? ruleset.sheets.get(normalizeCharacterLookupName(request.who))
+      : ((ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank);
+    if (roller) modifier = Math.max(modifier, ...Object.values(roller.skillMods));
+  }
   // A standing re-throw the Game Master named. It costs nothing, so it needs no persisting caller;
   // beside one that was bought, the wider of the two is the one thrown.
   const standing = rulesetStandingReroll(definition, request.reroll);

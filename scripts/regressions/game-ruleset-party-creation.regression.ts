@@ -17,6 +17,7 @@ import {
 } from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-party-creation-"));
+const previousEnv = { DATA_DIR: process.env.DATA_DIR, FILE_STORAGE_DIR: process.env.FILE_STORAGE_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 
@@ -270,5 +271,9 @@ try {
 } finally {
   await app.close();
   await closeDB();
+  for (const [key, value] of Object.entries(previousEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

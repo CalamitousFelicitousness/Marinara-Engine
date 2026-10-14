@@ -22,7 +22,7 @@ import { logger } from "../../lib/logger.js";
 import { capabilityPackageManager } from "../capability-packages/package-manager.service.js";
 import { getDB } from "../../db/connection.js";
 import { createGameRulesetsStorage } from "../storage/game-rulesets.storage.js";
-import { readRulesetRegistry } from "./ruleset-registry.service.js";
+import { readRulesetRegistry, type RulesetRegistry } from "./ruleset-registry.service.js";
 
 /** One catalog's entries, or the author's own issue lines for a file the Engine will not read. */
 export type RulesetCatalogEntriesResult =
@@ -41,8 +41,9 @@ export async function openRulesetCatalog(
   packageId: string | null,
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
+  registry?: RulesetRegistry,
 ): Promise<OpenedRulesetCatalog> {
-  if (catalog.from) return openBorrowedCatalog(definition, catalog, catalog.from);
+  if (catalog.from) return openBorrowedCatalog(definition, catalog, catalog.from, registry);
   if (catalog.entries) return { kind: "inline", entries: catalog.entries };
   if (!catalog.asset) return { kind: "unusable", issues: ["(root): this catalog holds no entries"] };
   // A package ships its catalog files; of the imported rulesets, only one from a package file has them,
@@ -87,12 +88,16 @@ async function openBorrowedCatalog(
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
   from: NonNullable<RulesetCatalogHeader["from"]>,
+  known?: RulesetRegistry,
 ): Promise<OpenedRulesetCatalog> {
-  let registry;
-  try {
-    registry = await readRulesetRegistry();
-  } catch {
-    return { kind: "unusable", issues: ["(root): the installed rulesets could not be read"] };
+  // A caller that has just read the installed rulesets passes them on rather than reading them again.
+  let registry = known;
+  if (!registry) {
+    try {
+      registry = await readRulesetRegistry();
+    } catch {
+      return { kind: "unusable", issues: ["(root): the installed rulesets could not be read"] };
+    }
   }
   const notHere = (why: string) => ({ kind: "unusable" as const, issues: [`from: ${why}`] });
   // A short id names a ruleset only when one installed ruleset ends with it.
@@ -186,8 +191,9 @@ export async function loadRulesetCatalogEntries(
   packageId: string | null,
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
+  registry?: RulesetRegistry,
 ): Promise<RulesetCatalogEntriesResult> {
-  const opened = await openRulesetCatalog(packageId, definition, catalog);
+  const opened = await openRulesetCatalog(packageId, definition, catalog, registry);
   if (opened.kind === "inline") return { ok: true, entries: opened.entries };
   if (opened.kind === "asset") return opened.read();
   return {

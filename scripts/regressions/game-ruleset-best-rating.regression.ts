@@ -53,6 +53,16 @@ try {
       columns: [{ id: "name", label: "Name", type: "text", maxLength: 80 }],
       contextual: { name: "name", check: { best: true } },
     });
+    document.sheet.lists.push({
+      id: "lores",
+      label: "Lores",
+      maxItems: 4,
+      columns: [
+        { id: "name", label: "Lore", type: "text", maxLength: 60 },
+        { id: "rating", label: "Rating", type: "number", min: 0, max: 6, default: 0 },
+      ],
+      checks: [{ id: "lore", name: "name", rating: "rating", ability: "brawn" }],
+    });
     edit?.(document);
     return document;
   };
@@ -85,8 +95,26 @@ try {
   assert.equal(dice({ skill: "Sneak", apply: ["Rook's Gambit"] }), scrap);
   assert.equal(dice({ skill: "Scrap", apply: ["Rook's Gambit"] }), scrap);
 
+  // A row check (1.161) is one of the character's ratings too, and here it is the best.
+  const lorist: RulesetSheetBuild = { ...build, lists: { ...build.lists, lores: [{ name: "Old Roads", rating: 5 }] } };
+  const loristCards = [{ name: "Wren", rulesetSheet: { v: definition.sheet.version, build: lorist } }];
+  const loristContext = { ...context, ruleset: buildSkillCheckRulesetContext(definition, loristCards, loristCards[0]) };
+  const loristDice = (request: Record<string, unknown>) =>
+    resolveSkillCheckWithContext(loristContext as any, { dc: 4, ...request } as any).rolls.length;
+  const roads = loristDice({ skill: "Old Roads" });
+  assert.ok(roads > scrap, "the lore outrates Scrap");
+  assert.equal(loristDice({ skill: "Sneak", apply: ["Rook's Gambit"] }), roads);
+
   // ── The schema ──
-  const refused = parseRulesetDefinition(doc((d) => (d.sheet.lists.at(-1).contextual.check = { best: true, dice: 1 })));
+  const refused = parseRulesetDefinition(
+    doc(
+      (d) =>
+        (d.sheet.lists.find((list: { id: string }) => list.id === "abilities").contextual.check = {
+          best: true,
+          dice: 1,
+        }),
+    ),
+  );
   assert.ok(!refused.ok && refused.issues.some((issue) => /no pool for a check effect to change/.test(issue)));
 
   // ── The gate ──

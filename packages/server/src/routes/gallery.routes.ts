@@ -1221,17 +1221,17 @@ export async function galleryRoutes(app: FastifyInstance) {
       logger.info("[gallery/generate-scene-video] saved video %s for chat %s", row.id, input.chatId);
       const video = serializeSceneVideo(row);
       // Shown inline under the newest reply, chosen now rather than before generating: the user may have sent
-      // or swiped a message meanwhile. Game Mode keeps its clips in the gallery only. The video stays in the
-      // gallery either way.
-      const anchor = chatMode === "game" ? null : resolveChatVideoAnchor(await chats.listMessages(input.chatId));
+      // or swiped a message meanwhile. Game Mode keeps its clips in the gallery only. The video is saved by now,
+      // so a failure to find or update the reply still reports success, with no messageId.
       let messageId: string | null = null;
-      if (anchor) {
-        try {
+      try {
+        const anchor = chatMode === "game" ? null : resolveChatVideoAnchor(await chats.listMessages(input.chatId));
+        if (anchor) {
           await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video));
           messageId = anchor.messageId;
-        } catch (attachErr) {
-          logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", row.id);
         }
+      } catch (attachErr) {
+        logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", row.id);
       }
       return { video, messageId };
     } catch (err) {

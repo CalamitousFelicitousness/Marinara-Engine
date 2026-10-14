@@ -5329,6 +5329,8 @@
   "ui.agents.agenteditor.scanDepth": "Scan Depth",
   "ui.agents.agenteditor.seconds": "seconds",
   "ui.agents.agenteditor.secretPlot": "Secret Plot",
+  "ui.agents.agenteditor.secretPlotPrompt": "Secret Plot Prompt",
+  "ui.agents.agenteditor.secretPlotPromptHelp": "Instructions for writing and updating the hidden arc. The built-in prompt is used until you copy it to edit. Keep the JSON reply format at the end, or the arc can't be read.",
   "ui.agents.agenteditor.selectALorebook": "Select a lorebook",
   "ui.agents.agenteditor.selected": "selected",
   "ui.agents.agenteditor.selectedCustomMusicFolder": "Selected custom music folder.",

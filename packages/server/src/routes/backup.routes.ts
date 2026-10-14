@@ -620,13 +620,15 @@ function resolveProfileExportFilePath(dataDir: string, filePath: unknown) {
 
 function redactAgentSecrets(agent: any) {
   const SECRET_KEY_RE = /token|secret|password|api[_-]?key/i;
+  // Narrative Director's Secret Plot settings (secretPlotEnabled, secretPlotPromptTemplate, ...) are not credentials.
+  const isSecretKey = (key: string) => !/^secretPlot/i.test(key) && SECRET_KEY_RE.test(key);
 
   const redactSettings = (settings: unknown): unknown => {
     if (Array.isArray(settings)) return settings.map(redactSettings);
     if (!settings || typeof settings !== "object") return settings;
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(settings)) {
-      if (SECRET_KEY_RE.test(key)) {
+      if (isSecretKey(key)) {
         out[key] = null;
       } else if (value && typeof value === "object") {
         out[key] = redactSettings(value);

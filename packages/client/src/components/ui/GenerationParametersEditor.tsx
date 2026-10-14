@@ -8,6 +8,7 @@ import {
   reasoningEffortChoices,
   relevantGenerationParameters,
   verbosityChoices,
+  type GenerationParameterChoice,
   type GenerationParameterKey,
   type GenerationParameterSendKey,
   type GenerationParameterSendMap,
@@ -22,6 +23,7 @@ import { MacroTextarea, type MacroTextareaProps } from "./MacroTextarea";
 import { HelpTooltip } from "./HelpTooltip";
 import { parseGenerationParameterDraft } from "../../lib/generation-parameter-draft";
 import { parseCustomParametersDraft } from "../../lib/generation-custom-parameters";
+import { generationLevelLabel } from "../../lib/generation-level-label";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { useCustomGenerationParameters } from "../../hooks/use-custom-generation-parameters";
 
@@ -282,6 +284,16 @@ export function GenerationParametersFields({
       source: localizeUi(`generationParameters.source.${entry.source}`),
     });
   };
+  const levelLabel = (level: string) => generationLevelLabel(level, localizeUi);
+  // Levels read "Low", "High"; the saved and sent values stay as they are.
+  const effectiveLevelHint = (key: "reasoningEffort" | "verbosity") => {
+    const entry = effectiveParameters?.[key];
+    return effectiveHint(key, entry?.enabled && typeof entry.value === "string" ? levelLabel(entry.value) : undefined);
+  };
+  const choiceTitle = (choice: GenerationParameterChoice<unknown>) =>
+    choice.providerDefault
+      ? localizeUi("generationParameters.providerDefaultLevel", { level: levelLabel(choice.providerDefault) })
+      : choice.description;
   const effectiveLine = (key: string, displayValue?: string) =>
     effectiveParameters?.[key] ? (
       <p className="mt-1 break-words text-[0.625rem] text-[var(--muted-foreground)]" data-effective-parameter={key}>
@@ -579,7 +591,7 @@ export function GenerationParametersFields({
                   ? "generationParameters.reasoningEffort.codexHelp"
                   : "ui.ui.generationparametersfields.howMuchReasoningWorkTheProviderShouldSpendBefore",
               )}
-              effective={effectiveHint("reasoningEffort")}
+              effective={effectiveLevelHint("reasoningEffort")}
               sendEnabled={isSendEnabled("reasoningEffort")}
               onSendChange={(enabled) => setSend("reasoningEffort", enabled)}
             />
@@ -588,7 +600,7 @@ export function GenerationParametersFields({
                 <button
                   key={choice.value ?? "none"}
                   type="button"
-                  title={choice.description}
+                  title={choiceTitle(choice)}
                   onClick={() => set("reasoningEffort", choice.value)}
                   aria-pressed={value.reasoningEffort === choice.value}
                   className={cn(
@@ -596,10 +608,11 @@ export function GenerationParametersFields({
                     value.reasoningEffort === choice.value ? PARAM_CHOICE_ACTIVE_CLASS : PARAM_CHOICE_IDLE_CLASS,
                   )}
                 >
-                  {choice.label ??
-                    (choice.kind === "default"
+                  {choice.label !== null
+                    ? levelLabel(choice.label)
+                    : choice.kind === "default"
                       ? localizeUi("ui.noodle.noodlehome.default")
-                      : localizeUi("ui.ui.generationparametersfields.reasoningOff"))}
+                      : localizeUi("ui.ui.generationparametersfields.reasoningOff")}
                 </button>
               ))}
             </div>
@@ -610,7 +623,7 @@ export function GenerationParametersFields({
             <ParameterHeader
               label={localizeUi("ui.ui.generationparametersfields.verbosity")}
               help={localizeUi("ui.ui.generationparametersfields.controlsHowLongAndDetailedResponsesShouldBeLow")}
-              effective={effectiveHint("verbosity")}
+              effective={effectiveLevelHint("verbosity")}
               sendEnabled={isSendEnabled("verbosity")}
               onSendChange={(enabled) => setSend("verbosity", enabled)}
             />
@@ -619,7 +632,7 @@ export function GenerationParametersFields({
                 <button
                   key={choice.value ?? "none"}
                   type="button"
-                  title={choice.description}
+                  title={choiceTitle(choice)}
                   onClick={() => set("verbosity", choice.value)}
                   aria-pressed={value.verbosity === choice.value}
                   className={cn(
@@ -627,7 +640,7 @@ export function GenerationParametersFields({
                     value.verbosity === choice.value ? PARAM_CHOICE_ACTIVE_CLASS : PARAM_CHOICE_IDLE_CLASS,
                   )}
                 >
-                  {choice.label ?? localizeUi("ui.game.gamesurfacecomponent.none")}
+                  {choice.label !== null ? levelLabel(choice.label) : localizeUi("ui.game.gamesurfacecomponent.none")}
                 </button>
               ))}
             </div>

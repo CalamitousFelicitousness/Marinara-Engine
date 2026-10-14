@@ -539,6 +539,8 @@ export function AdvancedMemoryInspector({
               {recollections.map((recollection) => {
                 const name = characterName(recollection.audienceCharacterIds[0] ?? "");
                 const draftText = recollectionDrafts[recollection.id] ?? recollection.content;
+                // An edited one is left out of prompts once what its character could read changes, until saved again.
+                const review = recollection.manualOverride && recollection.embeddingStatus === "stale";
                 return (
                   <div key={recollection.id} className="space-y-1.5">
                     <label className="block space-y-1 text-xs">
@@ -554,16 +556,35 @@ export function AdvancedMemoryInspector({
                       />
                     </label>
                     <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-                      {t(recollection.manualOverride ? "chat.advancedMemory.manual" : "chat.advancedMemory.generated")}
-                      {!recollection.manualOverride && recollection.embeddingStatus === "stale" && (
-                        <> · {t("chat.advancedMemory.recollections.stale")}</>
+                      {!recollection.content ? (
+                        t("chat.advancedMemory.recollections.empty")
+                      ) : (
+                        <>
+                          {t(
+                            recollection.manualOverride
+                              ? "chat.advancedMemory.manual"
+                              : "chat.advancedMemory.generated",
+                          )}
+                          {recollection.embeddingStatus === "stale" && (
+                            <>
+                              {" · "}
+                              {t(
+                                review
+                                  ? "chat.advancedMemory.recollections.review"
+                                  : "chat.advancedMemory.recollections.stale",
+                              )}
+                            </>
+                          )}
+                        </>
                       )}
                     </p>
                     <button
                       type="button"
                       className={`${buttonClass} w-full`}
                       aria-label={t("chat.advancedMemory.recollections.saveFor", { name })}
-                      disabled={action.isPending || !draftText.trim() || draftText === recollection.content}
+                      disabled={
+                        action.isPending || !draftText.trim() || (draftText === recollection.content && !review)
+                      }
                       onClick={() =>
                         action.mutate(
                           { action: "record", recordId: recollection.id, patch: { content: draftText } },

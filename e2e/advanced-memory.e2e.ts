@@ -1851,6 +1851,9 @@ test("Character recollections switch saves for its chat and recollections are ed
   const status = async () => (await (await request.get(endpoint)).json()) as AdvancedMemoryStatus;
   const summary = "Dottore promises to preserve the blue notebook.";
   const generated = "I remember the weight of that notebook and how carefully I wrote the promise down.";
+  const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  // Its owner could read both scene messages when it was written.
+  const access = { id: "recollection-access", revision: digest([true, true]) };
   try {
     expect(
       (
@@ -1912,26 +1915,50 @@ test("Character recollections switch saves for its chat and recollections are ed
               audienceCharacterIds: [fixture.character.id],
               content: generated,
               title: "Recollection",
-              // Written with this summary text, so it is current.
-              dependencies: [
-                {
-                  id: "recollection-summary",
-                  revision: createHash("sha256").update(JSON.stringify(summary)).digest("hex"),
-                },
-              ],
+              // Written with this summary text and what Dottore could read, so it is current.
+              dependencies: [{ id: "recollection-summary", revision: digest(summary) }, access],
+            },
+          },
+          {
+            valid: true,
+            record: {
+              ...scene,
+              // In this chat "Narrator" is an ordinary character; the Helper wrote nothing for them.
+              id: "recollection-proof-empty",
+              kind: "recollection",
+              audienceCharacterIds: [fixture.narrator.id],
+              content: "",
+              title: "Recollection",
+              dependencies: [{ id: "recollection-summary", revision: digest(summary) }, access],
             },
           },
         ],
       },
     });
     expect(imported.ok()).toBeTruthy();
-    expect(((await imported.json()) as { imported: number }).imported).toBe(3);
+    expect(((await imported.json()) as { imported: number }).imported).toBe(4);
+    const dottore = async () =>
+      (await status()).records.find(
+        (item) => item.kind === "recollection" && item.audienceCharacterIds[0] === fixture.character.id,
+      );
 
-    await openChat(page, fixture.chat.id);
     const section = page.locator('[data-chat-settings-section="roleplay-memory-recall"]');
-    await expect(section).toBeVisible();
-    if (!(await section.locator('[data-component="AdvancedMemorySettings"]').isVisible()))
-      await drawerToggle(section).click();
+    const openSettings = async () => {
+      await openChat(page, fixture.chat.id);
+      await expect(section).toBeVisible();
+      if (!(await section.locator('[data-component="AdvancedMemorySettings"]').isVisible()))
+        await drawerToggle(section).click();
+    };
+    const inspector = drawer.locator('[data-component="AdvancedMemoryInspector"]');
+    const openScene = async () => {
+      await drawer.getByRole("button", { name: "Access memories for this chat", exact: true }).click();
+      await expect(inspector).toBeVisible();
+      // A recollection is not a scene card of its own.
+      await expect(inspector.getByRole("button", { name: /^Scene #\d+\b/ })).toHaveCount(1);
+      await inspector.getByRole("button", { name: /^Scene #1\b/ }).click();
+      return inspector.locator('[data-component="AdvancedMemoryRecollections"]');
+    };
+    await openSettings();
     const settings = section.locator('[data-component="AdvancedMemorySettings"]');
     const toggle = settings.getByRole("checkbox", { name: /^Character recollections/ });
     await expect(toggle).not.toBeChecked();
@@ -1946,17 +1973,21 @@ test("Character recollections switch saves for its chat and recollections are ed
     await expect(toggle).toBeChecked();
     await captureThemes(page, info, "character-recollections-switch", settings);
 
-    await drawer.getByRole("button", { name: "Access memories for this chat", exact: true }).click();
-    const inspector = drawer.locator('[data-component="AdvancedMemoryInspector"]');
-    await expect(inspector).toBeVisible();
-    // A recollection is not a scene card of its own.
-    await expect(inspector.getByRole("button", { name: /^Scene #\d+\b/ })).toHaveCount(1);
-    await inspector.getByRole("button", { name: /^Scene #1\b/ }).click();
-    const recollections = inspector.locator('[data-component="AdvancedMemoryRecollections"]');
+    const recollections = await openScene();
     await expect(recollections.getByRole("heading", { name: "Character recollections" })).toBeVisible();
     const text = recollections.getByRole("textbox", { name: "Dottore's recollection", exact: true });
     await expect(text).toHaveValue(generated);
     await expect(recollections.getByText("Generated", { exact: true })).toBeVisible();
+    // Nothing was written for the other character: an empty field to write one in.
+    await expect(recollections.getByRole("textbox", { name: "Narrator's recollection", exact: true })).toHaveValue("");
+    await expect(
+      recollections.getByText("No recollection was written for this character. You can write one here.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      recollections.getByRole("button", { name: "Save Narrator's recollection", exact: true }),
+    ).toBeDisabled();
     const save = recollections.getByRole("button", { name: "Save Dottore's recollection", exact: true });
     await expect(save).toBeDisabled();
     await text.fill("I wrote the promise in blue ink so I could never pretend I forgot it.");
@@ -1964,13 +1995,38 @@ test("Character recollections switch saves for its chat and recollections are ed
     await save.click();
     await expect
       .poll(async () => {
-        const record = (await status()).records.find((item) => item.kind === "recollection");
+        const record = await dottore();
         return [record?.content, record?.manualOverride];
       })
       .toEqual(["I wrote the promise in blue ink so I could never pretend I forgot it.", true]);
     await expect(recollections.getByText("Manually edited", { exact: true })).toBeVisible();
     await expect(save).toBeDisabled();
     await captureThemes(page, info, "character-recollections-inspector", recollections);
+
+    // Once Dottore can no longer read part of the scene, the edited recollection waits for a review: saving the
+    // same text puts it back into prompts.
+    expect(
+      (
+        await request.patch(`/api/chats/${fixture.chat.id}/messages/${fixture.lastMessage.id}/extra`, {
+          data: { hiddenFromAICharacterIds: [fixture.character.id] },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    await expect.poll(async () => (await dottore())?.embeddingStatus).toBe("stale");
+    await openSettings();
+    const review = await openScene();
+    await expect(
+      review.getByText(
+        "Manually edited · What this character could see in the scene changed. Check it and save it to use it again.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    const reviewSave = review.getByRole("button", { name: "Save Dottore's recollection", exact: true });
+    await expect(reviewSave).toBeEnabled();
+    await reviewSave.click();
+    await expect.poll(async () => (await dottore())?.embeddingStatus).not.toBe("stale");
+    await expect(review.getByText("Manually edited", { exact: true })).toBeVisible();
+    await expect(reviewSave).toBeDisabled();
   } finally {
     await fixture.cleanup();
   }

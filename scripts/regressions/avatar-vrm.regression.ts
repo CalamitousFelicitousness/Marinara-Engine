@@ -4,7 +4,8 @@
  *     names the same expressions three-vrm registers (VRM 1.0 presets and customs, VRM 0.x preset groups under
  *     their VRM 1.0 names);
  *   - expressions bind to the six emotions, five visemes and blink through presets, then clear names, then
- *     emotion word stems, and the result fits avatar.json;
+ *     emotion word stems, never to an empty expression (one that binds nothing) except the resting face,
+ *     and the result fits avatar.json;
  *   - meta is kept as plain bounded text with only http(s) license links;
  *   - compressed models, plain glTF models, broken skeletons, missing scenes, oversized JSON chunks and
  *     dishonest files are refused in plain words;
@@ -78,6 +79,12 @@ function glb(
   return bytes;
 }
 
+/** An expression that changes something. The material is not in the file, so three-vrm adds no bind for it
+ *  and the stage's loader stays quiet; the importer only needs to see that the author bound something. */
+const FACE = { materialColorBinds: [{ material: 0, type: "color", targetValue: [1, 1, 1, 1] }] };
+/** A VRM 0.x group's morph bind (three-vrm warns about the missing mesh and skips it). */
+const GROUP_BINDS = [{ mesh: 0, index: 0, weight: 100 }];
+
 function vrm1(overrides: Record<string, unknown> = {}, vrmOverrides: Record<string, unknown> = {}) {
   return {
     asset: { version: "2.0", generator: "regression" },
@@ -99,21 +106,24 @@ function vrm1(overrides: Record<string, unknown> = {}, vrmOverrides: Record<stri
         humanoid: { humanBones: Object.fromEntries(REQUIRED_BONES.map((bone, node) => [bone, { node }])) },
         expressions: {
           preset: {
+            // The resting face binds nothing in most models.
             neutral: {},
-            happy: {},
-            angry: {},
-            sad: {},
-            relaxed: {},
-            aa: {},
-            ih: {},
-            ou: {},
-            ee: {},
-            oh: {},
-            blink: {},
-            notAPreset: {},
+            happy: FACE,
+            angry: FACE,
+            sad: FACE,
+            relaxed: FACE,
+            aa: FACE,
+            ih: FACE,
+            ou: FACE,
+            ee: FACE,
+            oh: FACE,
+            blink: FACE,
+            notAPreset: FACE,
           },
           // JSON.parse keeps "__proto__" as an own key, as a hostile file would.
-          custom: JSON.parse('{"Surprised":{},"happy":{},"__proto__":{"polluted":true},"Wink":{}}'),
+          custom: JSON.parse(
+            `{"Surprised":${JSON.stringify(FACE)},"happy":{},"__proto__":{"polluted":true},"Wink":${JSON.stringify(FACE)}}`,
+          ),
         },
         ...vrmOverrides,
       },
@@ -307,13 +317,13 @@ const legacy = await vrmImporter.validate(
   input(
     glb(
       vrm0([
-        { name: "Joy", presetName: "joy" },
-        { name: "A", presetName: "a" },
-        { name: "Blink", presetName: "blink" },
-        { name: "Surprised", presetName: "unknown" },
-        { name: "Smile_Big", presetName: "unknown" },
-        { name: "Joy again", presetName: "joy" },
-        { name: "Fun", presetName: "fun" },
+        { name: "Joy", presetName: "joy", binds: GROUP_BINDS },
+        { name: "A", presetName: "a", binds: GROUP_BINDS },
+        { name: "Blink", presetName: "blink", binds: GROUP_BINDS },
+        { name: "Surprised", presetName: "unknown", binds: GROUP_BINDS },
+        { name: "Smile_Big", presetName: "unknown", binds: GROUP_BINDS },
+        { name: "Joy again", presetName: "joy", binds: GROUP_BINDS },
+        { name: "Fun", presetName: "fun", materialValues: [{ materialName: "Face", propertyName: "_Color" }] },
         { name: "", presetName: "unknown" },
         { name: "y".repeat(129), presetName: "unknown" },
       ]),
@@ -374,11 +384,11 @@ const customs = await vrmImporter.validate(
   input(
     glb(
       vrm0([
-        { name: "Smile", presetName: "unknown" },
-        { name: "Grumpy_Glare", presetName: "unknown" },
-        { name: "びっくり", presetName: "unknown" },
-        { name: "vrc.v_aa", presetName: "unknown" },
-        { name: "まばたき", presetName: "unknown" },
+        { name: "Smile", presetName: "unknown", binds: GROUP_BINDS },
+        { name: "Grumpy_Glare", presetName: "unknown", binds: GROUP_BINDS },
+        { name: "びっくり", presetName: "unknown", binds: GROUP_BINDS },
+        { name: "vrc.v_aa", presetName: "unknown", binds: GROUP_BINDS },
+        { name: "まばたき", presetName: "unknown", binds: GROUP_BINDS },
       ]),
     ),
   ),
@@ -392,13 +402,125 @@ assert.equal(customMap.surprised?.target, "びっくり", "Japanese names bind t
 assert.equal(customMap.aa?.target, "vrc.v_aa");
 assert.equal(customMap.blink?.target, "まばたき");
 
+// Empty expressions: exporters write presets nobody set up (the VRM add-on for Blender writes every VRM 0.x
+// preset group, all empty, when it exports a VRM 1.0 model as 0.x). Such a face moves nothing, so it is not
+// bound and the import says so, instead of "Set by the model" on a face that never changes.
+const emptyGroups = await vrmImporter.validate(
+  input(
+    glb(
+      vrm0([
+        { name: "Neutral", presetName: "neutral" },
+        { name: "A", presetName: "a", binds: [] },
+        { name: "Blink", presetName: "blink", materialValues: [] },
+        { name: "Joy", presetName: "joy" },
+        { name: "Sorrow", presetName: "sorrow", binds: GROUP_BINDS },
+        { name: "Smile", presetName: "unknown", binds: GROUP_BINDS },
+        { name: "Shock", presetName: "unknown" },
+      ]),
+    ),
+  ),
+);
+assert.ok(emptyGroups.type === "model");
+assert.deepEqual(
+  emptyGroups.expressionNames,
+  ["neutral", "aa", "blink", "happy", "sad", "Smile", "Shock"],
+  "empty expressions can still be picked by hand",
+);
+const emptyImport = buildVrmImport(emptyGroups, input(new Uint8Array([1])), null);
+const emptyMap = emptyImport.data.expressionMap;
+assert.deepEqual(
+  emptyMap.neutral,
+  { target: "neutral", source: "preset", confidence: 1 },
+  "an empty neutral is the model at rest",
+);
+assert.deepEqual(emptyMap.aa, { target: null, source: "missing", confidence: 0 }, "an empty mouth shape is not bound");
+assert.deepEqual(emptyMap.blink, { target: null, source: "missing", confidence: 0 }, "an empty blink is not bound");
+assert.deepEqual(
+  emptyMap.happy,
+  { target: "Smile", source: "name-match", confidence: 0.9 },
+  "an empty preset gives way to a custom face that moves",
+);
+assert.deepEqual(emptyMap.sad, { target: "sad", source: "preset", confidence: 1 });
+assert.deepEqual(
+  emptyMap.surprised,
+  { target: null, source: "missing", confidence: 0 },
+  "an empty custom face is not guessed either",
+);
+assert.ok(
+  emptyImport.warnings.some((warning) => /empty and change nothing/u.test(warning)),
+  "empty presets are pointed out",
+);
+assert.ok(emptyImport.warnings.some((warning) => /pick them in setup/u.test(warning)));
+const emptyExpressions = await vrmImporter.validate(
+  input(
+    glb(
+      vrm1(
+        {},
+        {
+          expressions: {
+            preset: {
+              neutral: {},
+              happy: { morphTargetBinds: [], overrideBlink: "block" },
+              angry: FACE,
+              aa: { textureTransformBinds: [{ material: 0, offset: [0, 0.5] }] },
+            },
+          },
+        },
+      ),
+    ),
+  ),
+);
+assert.ok(emptyExpressions.type === "model");
+const emptyModernMap = buildVrmImport(emptyExpressions, input(new Uint8Array([1])), null).data.expressionMap;
+assert.equal(emptyModernMap.happy?.source, "missing", "VRM 1.0: no morph target, colour or texture bind");
+assert.equal(emptyModernMap.angry?.source, "preset");
+assert.equal(emptyModernMap.aa?.source, "preset", "a texture transform is a change");
+// Only an empty expression that would have taken a slot is pointed out: an empty custom face is, an empty
+// look-at preset (common where the eyes turn by bone) is not.
+const emptyCustom = await vrmImporter.validate(
+  input(
+    glb(
+      vrm0([
+        { name: "Joy", presetName: "joy", binds: GROUP_BINDS },
+        { name: "Shock", presetName: "unknown" },
+      ]),
+    ),
+  ),
+);
+assert.ok(
+  buildVrmImport(emptyCustom, input(new Uint8Array([1])), null).warnings.some((warning) =>
+    /empty and change nothing/u.test(warning),
+  ),
+  "an empty custom face is pointed out",
+);
+const emptyLookAt = await vrmImporter.validate(
+  input(
+    glb(
+      vrm1(
+        {},
+        {
+          expressions: {
+            ...vrm1().extensions.VRMC_vrm.expressions,
+            preset: { ...vrm1().extensions.VRMC_vrm.expressions.preset, lookUp: {} },
+          },
+        },
+      ),
+    ),
+  ),
+);
+assert.deepEqual(
+  buildVrmImport(emptyLookAt, input(new Uint8Array([1])), null).warnings,
+  [],
+  "an empty expression no slot uses is not worth a warning",
+);
+
 // Many expressions: capped at what avatar.json stores, with a warning; a preset past the cap still binds.
 const many = await vrmImporter.validate(
   input(
     glb(
       vrm0([
         ...Array.from({ length: 300 }, (_, index) => ({ name: `Custom${index}`, presetName: "unknown" })),
-        { name: "Joy", presetName: "joy" },
+        { name: "Joy", presetName: "joy", binds: GROUP_BINDS },
       ]),
     ),
   ),
@@ -812,10 +934,10 @@ assert.ok(
       {
         expressions: {
           preset: {
-            happy: { overrideMouth: "blend", overrideBlink: "block" },
-            sad: { overrideMouth: "block" },
-            aa: {},
-            blink: {},
+            happy: { ...FACE, overrideMouth: "blend", overrideBlink: "block" },
+            sad: { ...FACE, overrideMouth: "block" },
+            aa: FACE,
+            blink: FACE,
           },
         },
       },

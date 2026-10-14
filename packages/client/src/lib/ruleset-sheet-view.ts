@@ -5,12 +5,16 @@ import {
   evaluateRulesetSheet,
   isRulesetItemHidden,
   readRulesetLive,
+  resolveRulesetAbilityValues,
+  type EvaluatedRulesetSheet,
   type RulesetDefinition,
   type RulesetLiveState,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
+
+import type { TFunction } from "i18next";
 
 /** The summary's fields and derived values the sheet shows for this build: what it hides (a spell save
  *  for someone who casts nothing) the summary hides too, as the Game Master's own summary does. */
@@ -54,4 +58,33 @@ export function rulesetSheetLevel(
   const evaluated = evaluateRulesetSheet(definition, build, items ? { ...resolved, items } : resolved);
   const value = derived ? evaluated.derived.level : evaluated.numbers.level;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** The class-specific numbers beside a spell row. Older lists keep their existing presentation. */
+export function rulesetRowSpellcastingText(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  list: string,
+  row: Record<string, unknown>,
+  evaluated: EvaluatedRulesetSheet,
+  t: TFunction,
+): string {
+  return (definition.combat?.abilities ?? [])
+    .filter((source) => source.list === list && source.byColumn)
+    .flatMap((source) => {
+      const values = resolveRulesetAbilityValues(definition, build, source, row, evaluated);
+      return [
+        ...(values.toHitRef
+          ? [
+              t("ui.rulesets.sheet.spellAttack", {
+                value: values.toHit >= 0 ? `+${values.toHit}` : String(values.toHit),
+              }),
+            ]
+          : []),
+        ...(values.saveDifficulty !== undefined
+          ? [t("ui.rulesets.sheet.spellSave", { value: values.saveDifficulty })]
+          : []),
+      ];
+    })
+    .join(" · ");
 }

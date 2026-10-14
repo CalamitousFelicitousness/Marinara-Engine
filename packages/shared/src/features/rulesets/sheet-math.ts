@@ -10,6 +10,7 @@ import {
   RULESET_POOL_MAX_DICE,
   rulesetSheetEnvelopeSchema,
   type RulesetCatalogItem,
+  type RulesetCombatAbilitySource,
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetHideWhen,
@@ -18,6 +19,8 @@ import {
   type RulesetSheetMigrationStep,
   type RulesetUntrained,
   type RulesetValueRef,
+  rulesetDieSides,
+  type RulesetListColumn,
 } from "../../schemas/ruleset.schema.js";
 
 type StepTable = ReadonlyArray<readonly [number, number]>;
@@ -503,7 +506,8 @@ export function evaluateRulesetSheet(
     else if (entry.op === "stepTable") derived[entry.id] = lookupStepTable(entry.table, resolveRef(entry.from));
     else if (entry.op === "scale") {
       derived[entry.id] = roundRulesetNumber(resolveRef(entry.of) * entry.multiplier, entry.round);
-    } else if (entry.op === "min") derived[entry.id] = Math.min(...entry.of.map(resolveRef));
+    } else if (entry.op === "multiply") derived[entry.id] = entry.of.reduce((total, ref) => total * resolveRef(ref), 1);
+    else if (entry.op === "min") derived[entry.id] = Math.min(...entry.of.map(resolveRef));
     else if (entry.op === "enumTable") {
       // The value it is keyed on: a field as the sheet shows it, or a live state as it stands. With no
       // live state at all (only where the format refuses such a read) there is no value to key on.
@@ -1120,4 +1124,64 @@ function stableJson(value: unknown): string {
         )
       : each,
   );
+}
+
+/**
+ * What a rolled list column throws for one row (Capability API 1.85), as dice notation (`1d8`): its
+ * count of dice, of the sides it names, read from the row's own column or off the sheet. Null for a
+ * column that is not rolled, or sides that do not read as a die. A cell left empty reads as the editor
+ * shows it.
+ */
+export function rulesetListRollNotation(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  column: RulesetListColumn,
+  row: Readonly<Record<string, unknown>>,
+  evaluated?: EvaluatedRulesetSheet,
+): string | null {
+  if (column.type !== "number" || !column.roll) return null;
+  const { count, sides } = column.roll;
+  // A cell left empty reads as the editor shows it: its column's default, or an enum's first value.
+  const cell = (id: string) => {
+    if (row[id] !== undefined && row[id] !== null && row[id] !== "") return row[id];
+    const other = definition.sheet.lists
+      .find((list) => list.columns.includes(column))
+      ?.columns.find((each) => each.id === id);
+    if (other?.default !== undefined) return other.default;
+    if (other?.type === "enum") return other.values[0];
+    return other?.type === "number" ? Math.min(Math.max(0, other.min), other.max) : undefined;
+  };
+  const read =
+    typeof sides === "number"
+      ? sides
+      : "column" in sides
+        ? rulesetDieSides(cell(sides.column))
+        : rulesetDieSides(Math.trunc(resolveRulesetValueRef(definition, build, sides, evaluated)));
+  return read === null ? null : `${count}d${read}`;
+}
+
+/** One row's spellcasting numbers (1.108). Missing columns never take their editor defaults: an old
+ *  row without a class keeps the source's references until the player assigns it one. */
+export function resolveRulesetAbilityValues(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  source: RulesetCombatAbilitySource,
+  row: Record<string, unknown>,
+  evaluated: EvaluatedRulesetSheet,
+): { toHit: number; saveDifficulty?: number; toHitRef?: RulesetValueRef } {
+  const column = source.byColumn?.column;
+  const value = column && Object.prototype.hasOwnProperty.call(row, column) ? row[column] : undefined;
+  const key =
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : undefined;
+  const selected =
+    key !== undefined && source.byColumn && Object.prototype.hasOwnProperty.call(source.byColumn.values, key)
+      ? source.byColumn.values[key]
+      : undefined;
+  const toHitRef = selected?.toHit ?? source.toHit;
+  const saveRef = selected?.saveDifficulty ?? source.saveDifficulty;
+  return {
+    toHit: toHitRef ? resolveRulesetValueRef(definition, build, toHitRef, evaluated) : 0,
+    ...(toHitRef ? { toHitRef } : {}),
+    ...(saveRef ? { saveDifficulty: resolveRulesetValueRef(definition, build, saveRef, evaluated) } : {}),
+  };
 }

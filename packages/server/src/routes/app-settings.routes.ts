@@ -7,6 +7,7 @@ import {
   isProfessorMariSeenRunSettingsKey,
   TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
+  DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY,
   EMPTY_IMPERSONATE_PROMPT_TEMPLATE_CATALOG,
   IMPERSONATE_PROMPT_TEMPLATES_SETTINGS_KEY,
   HOME_CUSTOM_WIDGETS_SETTINGS_KEY,
@@ -19,15 +20,23 @@ import {
   type FeatureSettingsResponse,
   impersonatePromptTemplateCatalogSchema,
   getChatWindowDefaultSettingsKey,
+  LOCAL_SIDECAR_CONNECTION_ID,
   parseChatWindowDefault,
 } from "@marinara-engine/shared";
+import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import {
   HomeWidgetCatalogConflictError,
   readHomeWidgetCatalog,
   replaceHomeWidgetCatalog,
 } from "../services/home-widget-catalog.service.js";
+import { withLongTermMemoryEmbeddingChange } from "../services/generation/long-term-memory-runtime.js";
+import {
+  readDefaultEmbeddingConnectionId,
+  resetMemoryRecallVectorizerCache,
+} from "../services/memory-recall-embedding.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { initializeChatWindowDefaults } from "../services/storage/chat-window-defaults.js";
 import { featureSettingsResponse, loadFeatureSettings } from "../services/features/feature-settings.js";
 
@@ -90,6 +99,29 @@ export async function appSettingsRoutes(app: FastifyInstance) {
     const catalog = impersonatePromptTemplateCatalogSchema.parse(req.body);
     await storage.set(IMPERSONATE_PROMPT_TEMPLATES_SETTINGS_KEY, JSON.stringify(catalog));
     return catalog;
+  });
+
+  app.get(`/${DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY}`, async () => ({
+    connectionId: await readDefaultEmbeddingConnectionId(app.db),
+  }));
+
+  // null clears the default. Its own route so the id is checked and Long-term memory re-indexes.
+  app.put(`/${DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY}`, async (req, reply) => {
+    const { connectionId } = z.object({ connectionId: z.string().trim().min(1).nullable() }).parse(req.body);
+    if (connectionId && connectionId !== LOCAL_SIDECAR_CONNECTION_ID) {
+      const connection = await createConnectionsStorage(app.db).getWithKey(connectionId);
+      if (!connection) return reply.status(400).send({ error: "Connection not found" });
+      // A connection with no embedding source of its own would leave the default silently unused.
+      if (!connection.embeddingModel?.trim() && !connection.embeddingConnectionId?.trim()) {
+        return reply.status(400).send({ error: "That connection has no embedding model" });
+      }
+    }
+    return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
+      if (connectionId) await storage.set(DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY, connectionId);
+      else await storage.remove(DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY);
+      resetMemoryRecallVectorizerCache();
+      return { connectionId };
+    });
   });
 
   app.get<{ Params: { key: string } }>("/:key", async (req, reply) => {

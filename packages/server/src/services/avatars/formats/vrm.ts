@@ -589,7 +589,10 @@ export function buildVrmImport(
   ) {
     warnings.push("Some of this model's expressions are empty and change nothing, so they weren't used.");
   }
-  if ((["happy", "angry", "sad", "surprised", "aa"] as const).some((slot) => !expressionMap[slot]?.target)) {
+  if (validated.expressionNames.length === 0) {
+    // Nothing to pick in setup: a body-only model (one made with Tripo, for example).
+    warnings.push("This model has no face expressions, so its face doesn't move.");
+  } else if ((["happy", "angry", "sad", "surprised", "aa"] as const).some((slot) => !expressionMap[slot]?.target)) {
     warnings.push("Some faces or mouth shapes have no matching expression. You can pick them in setup.");
   }
   return {

@@ -4,13 +4,16 @@
 // Generating returns drafts the browser holds; nothing is stored until the user keeps a result, so the
 // owner's avatar stays as it was. Draft shapes mirror packages/server/src/services/avatars/generation/.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AVATAR_API_PREFIXES,
   type AvatarGenerationResponse,
   type AvatarOwnerRef,
   type AvatarPngtuberVariant,
+  type AvatarVrmModelDraft,
+  type AvatarVrmModelProgress,
+  type AvatarVrmModelStep,
 } from "@marinara-engine/shared";
 import { useAvatarModelChanged } from "../../../hooks/use-avatar-models";
 import { api } from "../../../lib/api-client";
@@ -66,6 +69,25 @@ function isAbort(error: unknown): boolean {
   return !!error && typeof error === "object" && "name" in error && error.name === "AbortError";
 }
 
+interface RunningJob {
+  controller: AbortController;
+  owner: AvatarOwnerRef;
+}
+
+/** The last Cancel's request to the server. A new start waits for it, so a cancel that arrives late never
+ *  stops the job started after it. */
+let pendingCancel: Promise<unknown> = Promise.resolve();
+
+/** Stops a running job: closes its request and asks the server to stop it too, since a proxy between the
+ *  browser and the server can keep the server's side of a closed request going. */
+function stopJob(job: RunningJob | null, kind: "pngtuber" | "mesh-avatar" | "vrm") {
+  if (!job || job.controller.signal.aborted) return;
+  job.controller.abort();
+  pendingCancel = api.post(`${PREFIX}/cancel`, { owner: job.owner, kind }).catch((error: unknown) => {
+    console.warn("[avatars] Cancel request failed", error);
+  });
+}
+
 /** Runs one async action at a time: a second call while one runs (a fast double click) does nothing.
  *  A failure is shown as a toast. */
 export function useOneAtATime() {
@@ -107,18 +129,19 @@ export function previewVariantPrompts(
 }
 
 /** Makes blink and talk pictures one at a time, so each can be checked, kept or tried again, and Cancel
- *  stops the picture being made. A second start while one runs does nothing. Pictures already made stay:
- *  a new start makes only the missing ones, and a failed try keeps the picture it was replacing. */
+ *  stops the picture being made, on the server too, and drops the ones not started. A second start while one
+ *  runs does nothing. Pictures already made stay: a new start makes only the missing ones, and a failed or
+ *  cancelled try keeps the picture it was replacing. */
 export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const [items, setItems] = useState<VariantJobItem[]>([]);
   const [running, setRunning] = useState(false);
   const runningRef = useRef(false);
-  const controllerRef = useRef<AbortController | null>(null);
+  const jobRef = useRef<RunningJob | null>(null);
 
-  useEffect(() => () => controllerRef.current?.abort(), []);
+  useEffect(() => () => stopJob(jobRef.current, "pngtuber"), []);
   // Another owner's pictures never belong to this one.
   useEffect(() => {
-    controllerRef.current?.abort();
+    stopJob(jobRef.current, "pngtuber");
     setItems([]);
   }, [owner.ownerType, owner.ownerId]);
 
@@ -132,8 +155,9 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
       runningRef.current = true;
       setRunning(true);
       const controller = new AbortController();
-      controllerRef.current = controller;
+      jobRef.current = { controller, owner };
       try {
+        await pendingCancel;
         for (const item of queue) {
           if (controller.signal.aborted) break;
           update(item.id, { status: "running", error: undefined });
@@ -167,7 +191,7 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
           }
         }
       } finally {
-        if (controllerRef.current === controller) controllerRef.current = null;
+        if (jobRef.current?.controller === controller) jobRef.current = null;
         runningRef.current = false;
         setRunning(false);
       }
@@ -199,7 +223,20 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
     [items, run],
   );
 
-  const cancel = useCallback(() => controllerRef.current?.abort(), []);
+  const cancel = useCallback(() => {
+    if (!jobRef.current) return;
+    stopJob(jobRef.current, "pngtuber");
+    // Back to idle: only pictures already made stay (a picture being redone keeps its last version).
+    setItems((current) =>
+      current.flatMap((item) =>
+        item.status === "waiting" || item.status === "running"
+          ? item.draft
+            ? [{ ...item, status: "done" as const }]
+            : []
+          : [item],
+      ),
+    );
+  }, []);
   const setKept = useCallback((id: string, kept: boolean) => update(id, { kept }), [update]);
   const keepAll = useCallback(
     () => setItems((current) => current.map((item) => (item.draft ? { ...item, kept: true } : item))),
@@ -219,11 +256,11 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const runningRef = useRef(false);
-  const controllerRef = useRef<AbortController | null>(null);
+  const jobRef = useRef<RunningJob | null>(null);
 
-  useEffect(() => () => controllerRef.current?.abort(), []);
+  useEffect(() => () => stopJob(jobRef.current, "mesh-avatar"), []);
   useEffect(() => {
-    controllerRef.current?.abort();
+    stopJob(jobRef.current, "mesh-avatar");
     setDraft(null);
     setError(null);
   }, [owner.ownerType, owner.ownerId]);
@@ -235,8 +272,10 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
       setRunning(true);
       setError(null);
       const controller = new AbortController();
-      controllerRef.current = controller;
+      jobRef.current = { controller, owner };
       try {
+        await pendingCancel;
+        controller.signal.throwIfAborted();
         const result = await api.post<MeshRigDraft>(
           `${PREFIX}/mesh-rig`,
           { owner, ...body, debugMode: useUIStore.getState().debugMode },
@@ -246,7 +285,7 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
       } catch (caught) {
         if (!controller.signal.aborted && !isAbort(caught)) setError(errorMessage(caught));
       } finally {
-        if (controllerRef.current === controller) controllerRef.current = null;
+        if (jobRef.current?.controller === controller) jobRef.current = null;
         runningRef.current = false;
         setRunning(false);
       }
@@ -254,7 +293,7 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
     [owner],
   );
 
-  const cancel = useCallback(() => controllerRef.current?.abort(), []);
+  const cancel = useCallback(() => stopJob(jobRef.current, "mesh-avatar"), []);
   const discard = useCallback(() => setDraft(null), []);
   return { draft, running, error, start, cancel, discard };
 }
@@ -273,5 +312,125 @@ export function useSaveMeshRig(owner: AvatarOwnerRef) {
   return useMutation({
     mutationFn: (archive: string) => api.post<AvatarGenerationResponse>(`${PREFIX}/mesh-rig/save`, { owner, archive }),
     onSuccess: (response) => changed(response.config),
+  });
+}
+
+/** One step of a VRM model run as the setup shows it. */
+export interface VrmModelStepState {
+  status: "waiting" | "running" | "done";
+  progress: number | null;
+}
+
+/** Makes a VRM model through Tripo with progress per step. Cancel closes the stream and asks the server to stop
+ *  (stopJob), which stops it waiting for Tripo; a Tripo task already started may still finish and use its
+ *  credits. A second start while one runs does nothing. The draft stays in the browser until it is imported. */
+export function useVrmModelJob(owner: AvatarOwnerRef) {
+  const [steps, setSteps] = useState<Partial<Record<AvatarVrmModelStep, VrmModelStepState>>>({});
+  const [creditsUsed, setCreditsUsed] = useState(0);
+  const [draft, setDraft] = useState<(AvatarVrmModelDraft & { label: string }) | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cancelled, setCancelled] = useState(false);
+  /** The stream closed before the server said the model was done or failed (a restart, a dropped link). */
+  const [interrupted, setInterrupted] = useState(false);
+  const runningRef = useRef(false);
+  const jobRef = useRef<RunningJob | null>(null);
+
+  useEffect(() => () => stopJob(jobRef.current, "vrm"), []);
+  useEffect(() => {
+    stopJob(jobRef.current, "vrm");
+    setSteps({});
+    setCreditsUsed(0);
+    setDraft(null);
+    setError(null);
+    setCancelled(false);
+    setInterrupted(false);
+  }, [owner.ownerType, owner.ownerId]);
+
+  const start = useCallback(
+    async (body: { sourceLabel: string; connectionId: string }) => {
+      if (runningRef.current) return;
+      runningRef.current = true;
+      setRunning(true);
+      setSteps({});
+      setCreditsUsed(0);
+      setDraft(null);
+      setError(null);
+      setCancelled(false);
+      setInterrupted(false);
+      const controller = new AbortController();
+      jobRef.current = { controller, owner };
+      let ended = false;
+      try {
+        await pendingCancel;
+        controller.signal.throwIfAborted();
+        const events = api.streamEvents(
+          `${PREFIX}/vrm-model`,
+          { owner, ...body, debugMode: useUIStore.getState().debugMode },
+          controller.signal,
+        );
+        for await (const event of events) {
+          if (controller.signal.aborted) break;
+          if (event.type === "progress") {
+            const progress = event.data as AvatarVrmModelProgress;
+            setSteps((current) => ({
+              ...current,
+              [progress.step]: { status: progress.status, progress: progress.progress },
+            }));
+            setCreditsUsed(progress.creditsUsed);
+          } else if (event.type === "done") {
+            ended = true;
+            setDraft({ ...(event.data as AvatarVrmModelDraft), label: body.sourceLabel });
+          } else if (event.type === "error") {
+            ended = true;
+            const message = (event.data as { message?: unknown } | null)?.message;
+            setError(typeof message === "string" && message ? message : "");
+          }
+        }
+        if (!ended && !controller.signal.aborted) setInterrupted(true);
+      } catch (caught) {
+        if (!controller.signal.aborted && !isAbort(caught)) setError(errorMessage(caught));
+      } finally {
+        if (jobRef.current?.controller === controller) jobRef.current = null;
+        runningRef.current = false;
+        setRunning(false);
+      }
+    },
+    [owner],
+  );
+
+  const cancel = useCallback(() => {
+    if (!jobRef.current) return;
+    stopJob(jobRef.current, "vrm");
+    setCancelled(true);
+  }, []);
+  /** Drops the draft and the finished run's steps (after Discard, or once the model is kept). */
+  const discard = useCallback(() => {
+    setDraft(null);
+    setSteps({});
+    setCreditsUsed(0);
+  }, []);
+  return { steps, creditsUsed, draft, running, error, cancelled, interrupted, start, cancel, discard };
+}
+
+/** A draft's model as a file, for the same import a picked .vrm file goes through. */
+export function vrmDraftFile(draft: AvatarVrmModelDraft): File {
+  const binary = atob(draft.vrm);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new File([bytes], draft.fileName, { type: "model/gltf-binary" });
+}
+
+/** A Tripo connection's credits and what a model costs, before starting. */
+export function useTripoBalance(connectionId: string | null) {
+  return useQuery({
+    queryKey: ["avatar-generation", "tripo-balance", connectionId],
+    queryFn: () =>
+      api.get<{ balance: number; frozen: number; cost: number }>(
+        `${PREFIX}/vrm-model/balance?connectionId=${encodeURIComponent(connectionId ?? "")}`,
+      ),
+    enabled: !!connectionId,
+    staleTime: 30_000,
+    retry: false,
   });
 }

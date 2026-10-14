@@ -15,6 +15,25 @@ export interface ProviderDefinition {
   apiKeyHeader: string | null;
 }
 
+/** Connections that can't answer a chat request: pictures, video, audio, decisions and 3D models. */
+export const NON_CHAT_PROVIDERS: readonly APIProvider[] = [
+  "image_generation",
+  "video_generation",
+  "audio",
+  "decision",
+  "tripo",
+];
+
+/** Whether a connection of this provider can answer a chat or agent request. */
+export function isChatProvider(provider: unknown): boolean {
+  return !(NON_CHAT_PROVIDERS as readonly unknown[]).includes(provider);
+}
+
+/** Tripo's API: the only address a Tripo key is ever sent to (the connection's base URL is not used). */
+export const TRIPO_API_BASE_URL = "https://openapi.tripo3d.ai/v3";
+/** Where a Tripo API key is made. */
+export const TRIPO_API_KEYS_URL = "https://developers.tripo3d.ai/en/keys";
+
 export const LOCAL_AUTH_PROVIDERS = ["openai_chatgpt", "claude_subscription", "grok_subscription"] as const;
 
 /** These subscription transports send text only; they ignore native tool schemas. */
@@ -233,5 +252,14 @@ export const PROVIDERS: Record<APIProvider, ProviderDefinition> = {
     supportsStreaming: false,
     usesAuthHeader: false,
     apiKeyHeader: "xi-api-key",
+  },
+  tripo: {
+    id: "tripo",
+    name: "Tripo",
+    defaultBaseUrl: TRIPO_API_BASE_URL,
+    modelsEndpoint: "",
+    supportsStreaming: false,
+    usesAuthHeader: true,
+    apiKeyHeader: null,
   },
 };

@@ -43,7 +43,9 @@ Memory Recall needs an embedding source to build those meaning fingerprints. You
 
 Some providers do not offer embeddings. In that case Marinara shows a note asking you to pick a dedicated embedding connection, such as an OpenAI-compatible one, Google, or the Local Model.
 
-If you set no embedding connection at all, Marinara falls back to a built-in local embedding model. It downloads this model one time and runs it on your own machine, with no API key needed. For more on the built-in model, see [Local Model Setup](../connections/local-model.md).
+To use one embedding source everywhere, pick it under **Embeddings** in **Connections** > **Connection defaults**. Connections without an embedding model or **Embedding Connection** of their own then use it, while a connection's own setting still wins.
+
+If you set no embedding connection and no **Embeddings** default, Marinara falls back to a built-in local embedding model. It downloads this model one time and runs it on your own machine, with no API key needed. For more on the built-in model, see [Local Model Setup](../connections/local-model.md).
 
 This same **Semantic Search (Embeddings)** setting also powers Lorebook semantic search, so setting it up once helps both features.
 

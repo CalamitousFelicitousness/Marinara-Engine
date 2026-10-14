@@ -7253,6 +7253,8 @@ html[data-marinara-reduced-effects="true"] .mari-window {
 .game-narration-prose {
   line-height: 1.75;
   letter-spacing: 0.01em;
+  /* Model text can hold runs no browser wraps on its own, such as `happy|sad|angry` or a long URL. */
+  overflow-wrap: anywhere;
 }
 .game-narration-prose p {
   margin-bottom: 0.75em;

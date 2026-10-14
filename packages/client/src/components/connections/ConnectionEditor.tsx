@@ -7,6 +7,8 @@ import {
   defaultDecisionTimeoutMs,
   resolveDecisionConnectionTimeoutMs,
   type DecisionSource,
+  isChatProvider,
+  TRIPO_API_KEYS_URL,
 } from "@marinara-engine/shared";
 import { isLanguageGenerationConnection } from "../../lib/connection-filters";
 import { useEffectiveGenerationParameters } from "../../hooks/use-effective-generation-parameters";
@@ -291,24 +293,11 @@ const AUDIO_SOURCE_OPTIONS: Array<{
 ];
 
 function canProviderTreatAsLocalEndpoint(provider: APIProvider): boolean {
-  return (
-    provider !== "image_generation" &&
-    provider !== "video_generation" &&
-    provider !== "audio" &&
-    provider !== "decision" &&
-    !isLocalAuthConnectionProvider(provider)
-  );
+  return isChatProvider(provider) && !isLocalAuthConnectionProvider(provider);
 }
 
 function providerSupportsDirectEmbeddingConfig(provider: APIProvider): boolean {
-  return (
-    provider !== "image_generation" &&
-    provider !== "video_generation" &&
-    provider !== "audio" &&
-    provider !== "decision" &&
-    provider !== "anthropic" &&
-    !isLocalAuthConnectionProvider(provider)
-  );
+  return isChatProvider(provider) && provider !== "anthropic" && !isLocalAuthConnectionProvider(provider);
 }
 
 function normalizeConnectionMaxContext(provider: APIProvider, value: unknown): number {
@@ -737,7 +726,9 @@ export function ConnectionEditor() {
                                 label: t("connections.mediaSources.spicyapi.apiKeyLink"),
                                 url: "https://spicyapi.ai/console/keys",
                               }
-                            : API_KEY_LINKS[localProvider];
+                            : localProvider === "tripo"
+                              ? { label: t("connections.tripo.apiKeyLink"), url: TRIPO_API_KEYS_URL }
+                              : API_KEY_LINKS[localProvider];
 
   useEffect(() => {
     if (localProvider !== "image_generation" || !selectedImageDefaultsService) {
@@ -852,7 +843,12 @@ export function ConnectionEditor() {
     const isImageProvider = localProvider === "image_generation";
     const isVideoProvider = localProvider === "video_generation";
     const isAudioProvider = localProvider === "audio";
-    const isMediaProvider = isImageProvider || isVideoProvider || isAudioProvider || localProvider === "decision";
+    const isMediaProvider =
+      isImageProvider ||
+      isVideoProvider ||
+      isAudioProvider ||
+      localProvider === "decision" ||
+      localProvider === "tripo";
     const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
     const canTreatAsLocalEndpoint = canProviderTreatAsLocalEndpoint(localProvider);
     const existingEmbeddingModel = (conn as { embeddingModel?: string | null } | undefined)?.embeddingModel ?? "";
@@ -1084,7 +1080,12 @@ export function ConnectionEditor() {
     const isImageProvider = localProvider === "image_generation";
     const isVideoProvider = localProvider === "video_generation";
     const isAudioProvider = localProvider === "audio";
-    const isMediaProvider = isImageProvider || isVideoProvider || isAudioProvider || localProvider === "decision";
+    const isMediaProvider =
+      isImageProvider ||
+      isVideoProvider ||
+      isAudioProvider ||
+      localProvider === "decision" ||
+      localProvider === "tripo";
     const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
     const defaultParameters = isImageProvider
       ? buildImageDefaultParameters(
@@ -1498,8 +1499,9 @@ export function ConnectionEditor() {
   const isVideoGenerationProvider = localProvider === "video_generation";
   const isAudioProvider = localProvider === "audio";
   const isDecisionProvider = localProvider === "decision";
+  const isTripoProvider = localProvider === "tripo";
   const isMediaGenerationProvider =
-    isImageGenerationProvider || isVideoGenerationProvider || isAudioProvider || isDecisionProvider;
+    isImageGenerationProvider || isVideoGenerationProvider || isAudioProvider || isDecisionProvider || isTripoProvider;
   const isClaudeSubscriptionProvider = localProvider === "claude_subscription";
   const isOpenAIChatGPTProvider = localProvider === "openai_chatgpt";
   const isGrokSubscriptionProvider = localProvider === "grok_subscription";
@@ -1922,6 +1924,8 @@ export function ConnectionEditor() {
             </button>
           )}
 
+          {isTripoProvider && <p className="text-xs text-[var(--muted-foreground)]">{t("connections.tripo.help")}</p>}
+
           {isDecisionProvider && (
             <section className="space-y-3">
               <label className="block text-xs font-medium" htmlFor="decision-source">
@@ -2172,8 +2176,9 @@ export function ConnectionEditor() {
                 </div>
               )}
 
-              {/* ── Base URL ── */}
+              {/* ── Base URL ── (Tripo's address is fixed) */}
               <FieldGroup
+                hidden={isTripoProvider}
                 label={localizeUi("ui.connections.connectioneditor.baseUrl")}
                 icon={<Globe size="0.875rem" className="text-sky-400" />}
                 help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
@@ -2533,8 +2538,9 @@ export function ConnectionEditor() {
             </FieldGroup>
           )}
 
-          {/* ── Model Selection ── */}
+          {/* ── Model Selection ── (Tripo has none to pick) */}
           <FieldGroup
+            hidden={isTripoProvider}
             label={localizeUi("ui.connections.connectioneditor.model")}
             icon={<Server size="0.875rem" className="text-sky-400" />}
             help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
@@ -3265,11 +3271,7 @@ export function ConnectionEditor() {
                           {((allConnections ?? []) as Record<string, unknown>[])
                             .filter(
                               (connection) =>
-                                connection.id !== connectionDetailId &&
-                                connection.provider !== "image_generation" &&
-                                connection.provider !== "video_generation" &&
-                                connection.provider !== "audio" &&
-                                connection.provider !== "decision",
+                                connection.id !== connectionDetailId && isChatProvider(connection.provider),
                             )
                             .map((connection) => (
                               <option key={connection.id as string} value={connection.id as string}>
@@ -3597,14 +3599,7 @@ export function ConnectionEditor() {
                     </option>
                   )}
                   {((allConnections ?? []) as Record<string, unknown>[])
-                    .filter(
-                      (c) =>
-                        c.id !== connectionDetailId &&
-                        c.provider !== "image_generation" &&
-                        c.provider !== "video_generation" &&
-                        c.provider !== "audio" &&
-                        c.provider !== "decision",
-                    )
+                    .filter((c) => c.id !== connectionDetailId && isChatProvider(c.provider))
                     .map((c) => (
                       <option key={c.id as string} value={c.id as string}>
                         {c.name as string}
@@ -3710,9 +3705,11 @@ export function ConnectionEditor() {
               <strong>{localizeUi("ui.connections.connectioneditor.testConnection")}</strong>{" "}
               {selectedImageService === "fal"
                 ? t("connections.mediaSources.fal.testHelp")
-                : isCodexImageService
-                  ? t("connections.mediaSources.codexChatgpt.testHelp")
-                  : localizeUi("ui.connections.connectioneditor.verifiesYourApiKeyAgainstTheProviderCatalogOr")}
+                : isTripoProvider
+                  ? t("connections.tripo.testHelp")
+                  : isCodexImageService
+                    ? t("connections.mediaSources.codexChatgpt.testHelp")
+                    : localizeUi("ui.connections.connectioneditor.verifiesYourApiKeyAgainstTheProviderCatalogOr")}
               {!isMediaGenerationProvider && (
                 <>
                   {" "}
@@ -3953,13 +3950,17 @@ function FieldGroup({
   label,
   icon,
   help,
+  hidden,
   children,
 }: {
   label: string;
   icon?: React.ReactNode;
   help?: string;
+  /** Left out entirely, for a provider the field means nothing to. */
+  hidden?: boolean;
   children: React.ReactNode;
 }) {
+  if (hidden) return null;
   return (
     <div className="mari-editor-panel space-y-2 p-3">
       <div className="flex items-center gap-1.5">

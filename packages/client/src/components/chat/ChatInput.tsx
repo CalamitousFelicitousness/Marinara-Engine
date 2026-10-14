@@ -46,6 +46,7 @@ import {
   shouldExecuteQuickPostAsCommand,
   getSlashCompletions,
   getSlashCommandUsage,
+  withComposerReplyAndAttachments,
   type SlashCommand,
   type SlashCommandContext,
 } from "../../lib/slash-commands";
@@ -993,7 +994,10 @@ export const ChatInput = memo(function ChatInput({
       clearInputDraft(activeChatId);
 
       try {
-        const result = await match.command.execute(match.args, ctx);
+        const result = await match.command.execute(
+          match.args,
+          withComposerReplyAndAttachments(ctx, { replyTo: replyDraft, attachments: submittedAttachments }),
+        );
         if (result.feedback) {
           setFeedback(result.feedback);
         }

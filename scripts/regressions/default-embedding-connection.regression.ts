@@ -91,6 +91,16 @@ try {
     "with no connection and no Main default, the default still applies",
   );
   assert.equal(
+    await labelFor({ chatMetadata: { embeddingConnectionId: own.id } }),
+    "Own (own-embed)",
+    "with no connection, a chat's embedding override still wins over the default",
+  );
+  assert.equal(
+    await labelFor({ connectionId: "random", chatMetadata: { embeddingConnectionId: own.id } }),
+    "Own (own-embed)",
+    "an empty random pool keeps the chat's embedding override",
+  );
+  assert.equal(
     (await resolveMemoryRecallEmbeddingSource(db, { connectionId: plain.id }))?.spaceId,
     (await resolveMemoryRecallEmbeddingSource(db, { connectionId: embedder.id }))?.spaceId,
     "the default shares the vector space of its own connection",

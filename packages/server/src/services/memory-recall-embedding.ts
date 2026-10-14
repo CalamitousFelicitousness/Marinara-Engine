@@ -222,6 +222,20 @@ async function resolveDefaultEmbeddingSource(db: DB): Promise<MemoryRecallEmbedd
   return resolveEmbeddingSource(db, { connectionId: defaultId }, false);
 }
 
+/** No usable chat connection: a chat's own embedding override still comes before the app-wide default. */
+async function resolveFallbackEmbeddingSource(
+  db: DB,
+  chatMetadata: unknown,
+): Promise<MemoryRecallEmbeddingSource | null> {
+  const chatOverride = nonEmptyString(parseMetadata(chatMetadata).embeddingConnectionId);
+  if (chatOverride === LOCAL_SIDECAR_CONNECTION_ID) return createLocalSidecarEmbeddingSource();
+  if (chatOverride) {
+    const source = await resolveEmbeddingSource(db, { connectionId: chatOverride }, false);
+    if (source) return source;
+  }
+  return resolveDefaultEmbeddingSource(db);
+}
+
 export async function resolveMemoryRecallEmbeddingSource(
   db: DB,
   options: EmbeddingSourceOptions,
@@ -254,7 +268,7 @@ async function resolveEmbeddingSource(
       if (source) return source;
     }
     // Only when no pool member has embeddings of its own, so one member cannot shadow another.
-    return useDefault ? resolveDefaultEmbeddingSource(db) : null;
+    return useDefault ? resolveFallbackEmbeddingSource(db, options.chatMetadata) : null;
   }
 
   let activeConnection =
@@ -263,7 +277,7 @@ async function resolveEmbeddingSource(
     const defaultConnection = await connections.getDefault();
     activeConnection = defaultConnection ? await connections.getWithKey(defaultConnection.id) : null;
   }
-  if (!activeConnection) return useDefault ? resolveDefaultEmbeddingSource(db) : null;
+  if (!activeConnection) return useDefault ? resolveFallbackEmbeddingSource(db, options.chatMetadata) : null;
 
   const chatMeta = parseMetadata(options.chatMetadata);
   const embeddingConnId =

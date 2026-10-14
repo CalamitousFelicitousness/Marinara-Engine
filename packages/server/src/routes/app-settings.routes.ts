@@ -108,12 +108,13 @@ export async function appSettingsRoutes(app: FastifyInstance) {
   // null clears the default. Its own route so the id is checked and Long-term memory re-indexes.
   app.put(`/${DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY}`, async (req, reply) => {
     const { connectionId } = z.object({ connectionId: z.string().trim().min(1).nullable() }).parse(req.body);
-    if (
-      connectionId &&
-      connectionId !== LOCAL_SIDECAR_CONNECTION_ID &&
-      !(await createConnectionsStorage(app.db).getById(connectionId))
-    ) {
-      return reply.status(400).send({ error: "Connection not found" });
+    if (connectionId && connectionId !== LOCAL_SIDECAR_CONNECTION_ID) {
+      const connection = await createConnectionsStorage(app.db).getWithKey(connectionId);
+      if (!connection) return reply.status(400).send({ error: "Connection not found" });
+      // A connection with no embedding source of its own would leave the default silently unused.
+      if (!connection.embeddingModel?.trim() && !connection.embeddingConnectionId?.trim()) {
+        return reply.status(400).send({ error: "That connection has no embedding model" });
+      }
     }
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       if (connectionId) await storage.set(DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY, connectionId);

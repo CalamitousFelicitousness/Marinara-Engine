@@ -339,7 +339,11 @@ export interface AvatarImageEditRequest {
   image: AvatarImageConnection;
   prompt: string;
   negativePrompt?: string;
+  /** The sprite the picture is drawn for; a cut-out gives the picture its outline. */
   source: AvatarSourceSprite;
+  /** The same sprite as the image model sees it, when that isn't `source`: the sprite with its background
+   *  (some image services drop see-through pixels, and a model edits a whole picture best). */
+  shown?: AvatarSourceSprite;
   signal?: AbortSignal;
   debug: boolean;
   /** Short name for the debug log, e.g. "pngtuber happy eyes-closed". */
@@ -375,7 +379,7 @@ export function avatarCanvasPlacement(
 }
 
 /** Edits a sprite through the image connection (with its fallback) and returns a PNG of exactly the
- *  sprite's size. The provider gets the sprite already on a canvas of the size it is asked for, with
+ *  sprite's size. The provider gets the sprite (`shown`) already on a canvas of the size it is asked for, with
  *  see-through or repeated edges around it, so an edit that keeps the picture where it is comes back
  *  lined up with the sprite whatever canvas shapes the model accepts. No see-through background is asked
  *  for: some models can't make one (GPT Image 2), and a cut-out gets the sprite's own outline back. */
@@ -384,17 +388,16 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
   const model = conn.model || "";
   const size = avatarImageRequestSize(request.source.width, request.source.height, model);
   const place = avatarCanvasPlacement(request.source, size);
+  const shown = request.shown ?? request.source;
   const sharp = await getSharp();
-  const reference = await sharp(request.source.png)
+  const reference = await sharp(shown.png)
     .resize(place.width, place.height, { fit: "fill" })
     .extend({
       top: place.top,
       bottom: size.height - place.height - place.top,
       left: place.left,
       right: size.width - place.width - place.left,
-      ...(request.source.transparent
-        ? { background: { r: 0, g: 0, b: 0, alpha: 0 } }
-        : { extendWith: "copy" as const }),
+      ...(shown.transparent ? { background: { r: 0, g: 0, b: 0, alpha: 0 } } : { extendWith: "copy" as const }),
     })
     .png()
     .toBuffer();
@@ -463,23 +466,55 @@ export async function fitAvatarImageToSource(
 }
 
 /** A picture drawn from a cut-out sprite, with exactly the sprite's outline: the picture is laid over the
- *  sprite (so a see-through spot the model left shows the sprite) and takes the sprite's alpha, so a blink
- *  or talk picture never shows a background, a halo or another edge than the face it swaps with. */
+ *  sprite (so a see-through spot the model left shows the sprite) and takes the sprite's alpha. Along the
+ *  outline (avatarOutlineBand) the sprite's own pixels stay, colour and all: the model drew them mixed with
+ *  whatever background it painted, which would show as a lighter or darker rim. So a blink or talk picture
+ *  never shows a background, a halo or another edge than the face it swaps with. */
 export async function applyAvatarSourceOutline(picture: Buffer, source: AvatarSourceSprite): Promise<Buffer> {
   const sharp = await getSharp();
-  const size = { width: source.width, height: source.height };
-  const alpha = await sharp(source.png).ensureAlpha().extractChannel(3).raw().toBuffer();
+  const { width, height } = source;
+  const sprite = await sharp(source.png).ensureAlpha().raw().toBuffer();
   const layered = await sharp(source.png)
     .ensureAlpha()
     .composite([{ input: picture }])
     .png()
     .toBuffer();
-  // Separate steps: sharp removes alpha after compositing and joining channels, whatever the call order.
-  const rgb = await sharp(layered).removeAlpha().raw().toBuffer();
-  return sharp(rgb, { raw: { ...size, channels: 3 } })
-    .joinChannel(alpha, { raw: { ...size, channels: 1 } })
+  const drawn = await sharp(layered).ensureAlpha().raw().toBuffer();
+  const band = avatarOutlineBand(sprite, width, height);
+  for (let pixel = 0; pixel < band.length; pixel += 1) {
+    if (!band[pixel]) drawn.copy(sprite, pixel * 4, pixel * 4, pixel * 4 + 3);
+  }
+  return sharp(sprite, { raw: { width, height, channels: 4 } })
     .png()
     .toBuffer();
+}
+
+/** The pixels along a cut-out's outline (1) and inside it (0), from RGBA pixels: those within a few pixels
+ *  of a pixel that is less than half covered. Not every pixel short of solid: the AI remover's mask leaves
+ *  many inside the face (over the eyes too), and those must take the drawn picture. The band widens with
+ *  the picture because that mask is made at 320 pixels and scaled up, so its soft edge widens too. */
+function avatarOutlineBand(rgba: Buffer, width: number, height: number): Uint8Array {
+  const reach = Math.max(4, Math.ceil(Math.max(width, height) / 160));
+  const far = reach + 1;
+  // Chessboard distance to the nearest mostly see-through pixel, counted up to `far`, in two passes.
+  const distance = new Uint16Array(width * height);
+  for (let pixel = 0; pixel < distance.length; pixel += 1) distance[pixel] = rgba[pixel * 4 + 3]! < 128 ? 0 : far;
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= width || y >= height ? far : distance[y * width + x]!);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = y * width + x;
+      const before = Math.min(at(x - 1, y), at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1));
+      distance[pixel] = Math.min(distance[pixel]!, before + 1);
+    }
+  }
+  for (let y = height - 1; y >= 0; y -= 1) {
+    for (let x = width - 1; x >= 0; x -= 1) {
+      const pixel = y * width + x;
+      const after = Math.min(at(x + 1, y), at(x + 1, y + 1), at(x, y + 1), at(x - 1, y + 1));
+      distance[pixel] = Math.min(distance[pixel]!, after + 1);
+    }
+  }
+  return Uint8Array.from(distance, (value) => (value <= reach ? 1 : 0));
 }
 
 // ── One job per avatar ──

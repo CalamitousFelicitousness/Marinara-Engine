@@ -5,9 +5,14 @@
  *     background is used as it is (no copy);
  *   - the AI remover is used when it is the configured engine, and the built-in cleaner when it is missing,
  *     fails or is turned off (Lite and Termux);
- *   - blink and talk pictures are drawn on the cut-out and come back with exactly its outline, whether the
- *     image model fills the background in or leaves it see-through, and saving stores the cut-out as their
- *     base, so a blink never flickers a background or a halo;
+ *   - a sprite's cut-out the built-in cleaner made because the AI remover was missing or failed is stored
+ *     apart, shown as not final, and made again once the AI remover is installed (a broken one is not run
+ *     again on every view);
+ *   - the image model is shown the sprite with its background; blink and talk pictures come back with
+ *     exactly the cut-out's outline and keep its own edge pixels (no lighter or darker rim), whether the
+ *     model fills the background in or leaves it see-through, while what it drew inside the face stays,
+ *     even where the AI remover's mask is just short of solid; saving stores the cut-out as their base, so
+ *     a blink never flickers a background or a halo;
  *   - a PNGTuber Plus costume drawn on a background of its own is stored as cut-outs whose talk and blink
  *     pictures keep the base's edge wherever they don't change;
  *   - a mesh avatar's layers are cut from the cut-out, so its base picture has no background;
@@ -44,7 +49,7 @@ const { avatarOwnerDir, readAvatarConfig, writeAvatarFiles, updateAvatarConfig }
   await import("../../packages/server/src/services/avatars/storage.js");
 const { avatarCutout, avatarSpriteCutout, spriteCutoutPath } =
   await import("../../packages/server/src/services/avatars/cutouts.js");
-const { readAvatarSourceSprite } =
+const { applyAvatarSourceOutline, readAvatarSourceSprite } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { generatePngtuberVariants, savePngtuberVariants } =
   await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
@@ -98,6 +103,24 @@ async function alphaAt(png: Buffer, x: number, y: number) {
 async function alphaChannel(png: Buffer) {
   return sharp(png).ensureAlpha().extractChannel(3).raw().toBuffer();
 }
+/** Every pixel of the cut-out that isn't solid is the same in the picture, colour and all. */
+async function assertCutoutEdge(png: Buffer, cut: Buffer, what: string) {
+  const [picture, outline] = [await rgba(png), await rgba(cut)];
+  let differing = 0;
+  for (let i = 0; i < outline.data.length; i += 4) {
+    if (outline.data[i + 3]! < 255 && picture.data.readUInt32LE(i) !== outline.data.readUInt32LE(i)) differing += 1;
+  }
+  assert.equal(differing, 0, `${what}: the edge is the cut-out's own (no rim from the model's background)`);
+}
+async function pixelAt(png: Buffer, x: number, y: number) {
+  const { data, info } = await rgba(png);
+  return [...data.subarray((y * info.width + x) * 4, (y * info.width + x) * 4 + 4)];
+}
+/** The red mark the image model draws in the middle of the face. */
+async function assertDrawnMark(png: Buffer, what: string) {
+  const [red, green, blue, alpha] = await pixelAt(png, 300, 360);
+  assert.ok(red! > 200 && green! < 60 && blue! < 60 && alpha === 255, `${what}: what the model drew shows`);
+}
 /** Corners and the face's middle: see-through around the bust, solid on it. */
 async function assertCutout(png: Buffer, what: string) {
   for (const [x, y] of [
@@ -122,6 +145,11 @@ const dataUrlPng = (url: string) => Buffer.from(url.slice(url.indexOf(",") + 1),
 // ── Providers: an image model and a vision model on one local server ──
 let imageMode: "fill-background" | "see-through" = "fill-background";
 let imageRequests = 0;
+let lastSent: Buffer | null = null;
+// A red square in the middle of the canvas: the middle of the face, around 300,360 on the sprite.
+const mark = await sharp({ create: { width: 60, height: 60, channels: 4, background: "#ff0000" } })
+  .png()
+  .toBuffer();
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -134,13 +162,20 @@ const provider = createServer(async (request, response) => {
     return;
   }
   imageRequests += 1;
-  // An edit that keeps the picture where it is (the canvas GPT Image 1 is asked for, for a 600x720 sprite),
-  // with the background filled in white like most image models, or left see-through.
+  // An edit that keeps the picture where it is (the canvas GPT Image 1 is asked for, for a 600x720 sprite)
+  // and marks the middle of the face, with the background filled in white like most image models, or with
+  // the white left see-through.
   const start = body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   const sent = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
+  lastSent = Buffer.from(sent);
   let picture = sharp(sent).resize(1024, 1536, { fit: "cover" });
   if (imageMode === "fill-background") picture = picture.flatten({ background: "#ffffff" });
-  response.end(JSON.stringify({ data: [{ b64_json: (await picture.png().toBuffer()).toString("base64") }] }));
+  else picture = picture.unflatten();
+  const drawn = await sharp(await picture.png().toBuffer())
+    .composite([{ input: mark, left: 482, top: 738 }])
+    .png()
+    .toBuffer();
+  response.end(JSON.stringify({ data: [{ b64_json: drawn.toString("base64") }] }));
 });
 await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
 const providerUrl = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
@@ -177,6 +212,12 @@ writeFileSync(join(spriteDir, "neutral.png"), opaqueBust);
 writeFileSync(join(spriteDir, "cutout.png"), cutoutBust);
 writeFileSync(join(spriteDir, "wave.gif"), animated);
 const folder = join(avatarOwnerDir(owner), "pngtuber");
+const app = Fastify();
+app.decorate("db", db);
+await app.register(avatarModelsRoutes, { prefix: "/api/avatar-models" });
+await app.ready();
+const getFace = (label: string) =>
+  app.inject({ method: "GET", url: `/api/avatar-models/character/${owner.ownerId}/sprite-cutouts/${label}?v=1` });
 
 try {
   // ── The sprite's cut-out ──
@@ -233,6 +274,37 @@ try {
         mkdirSync(empty);
         process.env.PATH = empty; // and none on PATH
         await assertCutout((await avatarCutout(opaqueBust)).png, "a missing AI remover falls back to the built-in");
+
+        // A sprite's fallback cut-out is stored apart, shown as not final, and made again with the AI remover.
+        writeFileSync(join(spriteDir, "later.png"), await sharp(bustSvg("#dddddd")).png().toBuffer());
+        const later = await readAvatarSourceSprite(owner.ownerId, "later");
+        const laterFinal = join(avatarOwnerDir(owner), spriteCutoutPath(later.hash));
+        const laterFallback = join(avatarOwnerDir(owner), spriteCutoutPath(later.hash, true));
+        await assertCutout((await avatarSpriteCutout(owner, later)).png, "a sprite's cut-out without the AI remover");
+        assert.ok(existsSync(laterFallback) && !existsSync(laterFinal), "it is stored as a fallback");
+        const shownFallback = await getFace("later");
+        assert.equal(shownFallback.statusCode, 200);
+        assert.doesNotMatch(String(shownFallback.headers["cache-control"]), /immutable/u, "and shown as not final");
+        await assertCutout(shownFallback.rawPayload, "the fallback face");
+        rmSync(marker, { force: true });
+        process.env.PATH = savedPath; // the fake AI remover's shell needs its tools
+        process.env.BACKGROUNDREMOVER_COMMAND = fake; // the AI remover is installed later
+        await assertCutout((await avatarSpriteCutout(owner, later)).png, "the cut-out made again");
+        assert.ok(existsSync(marker), "the AI remover makes it again");
+        assert.ok(existsSync(laterFinal), "and its cut-out is stored as final");
+        assert.match(String((await getFace("later")).headers["cache-control"]), /immutable/u);
+
+        // An installed AI remover that fails isn't run again for that sprite on every view.
+        writeFileSync(join(spriteDir, "broken.png"), await sharp(bustSvg("#00ff00")).png().toBuffer());
+        const broken = await readAvatarSourceSprite(owner.ownerId, "broken");
+        const ran = join(tools, "broken-ran");
+        writeFileSync(failing, `#!/bin/sh\ntouch "${ran}"\nexit 3\n`);
+        process.env.BACKGROUNDREMOVER_COMMAND = failing;
+        await assertCutout((await avatarSpriteCutout(owner, broken)).png, "a failing AI remover's fallback");
+        assert.ok(existsSync(ran) && existsSync(join(avatarOwnerDir(owner), spriteCutoutPath(broken.hash, true))));
+        rmSync(ran);
+        await assertCutout((await avatarSpriteCutout(owner, broken)).png, "the stored fallback");
+        assert.ok(!existsSync(ran), "the broken AI remover isn't run again");
       } finally {
         process.env.PATH = savedPath;
         delete process.env.SPRITE_BACKGROUND_REMOVAL_ENGINE;
@@ -259,17 +331,19 @@ try {
         connectionId: image.id,
       });
       assert.equal(response.drafts.length, 2, response.failed.map((entry) => entry.error).join("; "));
+      // Some image services drop see-through pixels: the model gets the sprite with its background.
+      assert.deepEqual(await pixelAt(lastSent!, 2, 2), [255, 255, 255, 255], "the model sees the sprite as it is");
       for (const draft of response.drafts) {
         const png = dataUrlPng(draft.image);
-        await assertCutout(
-          png,
-          `a ${draft.variant} picture when the model ${mode === "fill-background" ? "fills the background" : "leaves it see-through"}`,
-        );
+        const what = `a ${draft.variant} picture when the model ${mode === "fill-background" ? "fills the background" : "leaves it see-through"}`;
+        await assertCutout(png, what);
         assert.deepEqual(
           await alphaChannel(png),
           cutAlpha,
           "it has exactly the cut-out's outline (no flicker or halo)",
         );
+        await assertCutoutEdge(png, cut, what);
+        await assertDrawnMark(png, what);
       }
       drafts.push(...response.drafts);
     }
@@ -286,6 +360,7 @@ try {
     for (const ref of [layers.eyesClosed, layers.mouthOpen]) {
       await assertCutout(file(ref), "a saved blink or talk picture");
       assert.deepEqual(await alphaChannel(file(ref)), cutAlpha);
+      await assertCutoutEdge(file(ref), cut, "a saved blink or talk picture");
     }
     // A kept picture that comes back with a background (a draft made before this change) is cut on save.
     const old = await savePngtuberVariants({
@@ -304,6 +379,28 @@ try {
       connectionId: image.id,
     });
     assert.deepEqual(await alphaChannel(dataUrlPng(own.drafts[0]!.image)), await alphaChannel(cutoutBust));
+    await assertCutoutEdge(dataUrlPng(own.drafts[0]!.image), cutoutBust, "a picture from a see-through sprite");
+
+    // The AI remover's mask is often just short of solid inside the face: what the model drew there stays.
+    const { data, info } = await rgba(cutoutBust);
+    for (let i = 3; i < data.length; i += 4) if (data[i] === 255) data[i] = 250;
+    const softCut = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+      .png()
+      .toBuffer();
+    const softSource = { ...(await readAvatarSourceSprite(owner.ownerId, "cutout")), png: softCut };
+    const marked = await sharp(opaqueBust)
+      .composite([{ input: mark, left: 270, top: 330 }])
+      .png()
+      .toBuffer();
+    const outlined = await applyAvatarSourceOutline(marked, softSource);
+    assert.deepEqual((await pixelAt(outlined, 300, 360)).slice(0, 3), [255, 0, 0], "the drawn mark stays");
+    assert.deepEqual(await alphaChannel(outlined), await alphaChannel(softCut), "with the cut-out's alpha");
+    const [after, before] = [await rgba(outlined), await rgba(softCut)];
+    let rim = 0;
+    for (let i = 0; i < before.data.length; i += 4) {
+      if (before.data[i + 3]! < 250 && after.data.readUInt32LE(i) !== before.data.readUInt32LE(i)) rim += 1;
+    }
+    assert.equal(rim, 0, "and its own edge");
   }
 
   // ── A PNGTuber Plus costume drawn on a background ──
@@ -354,20 +451,14 @@ try {
 
   // ── What the avatar shows, and saved files stay as saved ──
   {
-    const app = Fastify();
-    app.decorate("db", db);
-    await app.register(avatarModelsRoutes, { prefix: "/api/avatar-models" });
-    await app.ready();
-    const get = (label: string) =>
-      app.inject({ method: "GET", url: `/api/avatar-models/character/${owner.ownerId}/sprite-cutouts/${label}?v=1` });
-    const face = await get("neutral");
+    const face = await getFace("neutral");
     assert.equal(face.statusCode, 200);
     assert.match(String(face.headers["cache-control"]), /immutable/u, "one sprite version's cut-out never changes");
     await assertCutout(face.rawPayload, "the face the avatar shows");
-    assert.deepEqual((await get("cutout")).rawPayload, cutoutBust, "a see-through sprite is shown as it is");
-    assert.deepEqual((await get("wave")).rawPayload, animated, "an animated sprite keeps its frames");
-    assert.equal((await get("missing")).statusCode, 404);
-    assert.equal((await get("..%2Fneutral")).statusCode, 400);
+    assert.deepEqual((await getFace("cutout")).rawPayload, cutoutBust, "a see-through sprite is shown as it is");
+    assert.deepEqual((await getFace("wave")).rawPayload, animated, "an animated sprite keeps its frames");
+    assert.equal((await getFace("missing")).statusCode, 404);
+    assert.equal((await getFace("..%2Fneutral")).statusCode, 400);
 
     // A saved PNGTuber with an opaque picture (made before cut-outs) is shown as saved, never rewritten.
     await writeAvatarFiles(owner, [{ path: "pngtuber/old-base.png", bytes: opaqueBust }]);
@@ -389,9 +480,9 @@ try {
     assert.equal(served.statusCode, 200);
     await readAvatarConfig(owner);
     assert.deepEqual(readFileSync(join(folder, "old-base.png")), before, "loading a saved avatar rewrites nothing");
-    await app.close();
   }
 } finally {
+  await app.close();
   provider.closeAllConnections();
   await new Promise<void>((resolve) => provider.close(() => resolve()));
   rmSync(dataDir, { recursive: true, force: true });

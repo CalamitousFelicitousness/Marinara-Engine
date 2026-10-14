@@ -6,14 +6,16 @@
 // by the sprite background cleanup (removeSpriteBackgroundPng) with the configured engine: the built-in
 // cleaner for a flat background, the AI remover (backgroundremover) when it is installed and the background
 // isn't flat, or always when the AI remover is the configured engine. When the AI remover is missing or
-// fails, the built-in cleaner makes the cut-out, as on Lite and Termux. The owner's sprites are never
-// changed: their cut-outs are stored in the avatar's own folder, one per version of the sprite file.
+// fails, the built-in cleaner makes the cut-out, as on Lite and Termux; a sprite's cut-out made that way is
+// made again once the AI remover is there. The owner's sprites are never changed: their cut-outs are stored
+// in the avatar's own folder, one per version of the sprite file.
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { AvatarFilePath, AvatarOwnerRef } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
+import { getBackgroundRemoverStatus } from "../image/background-remover.service.js";
 import { getSharp } from "../image/sharp-runtime.js";
 import { hasSpriteTransparency, removeSpriteBackgroundPng } from "../image/sprite-background.service.js";
 import {
@@ -30,36 +32,48 @@ const CUTOUT_VERSION = 1;
 
 let cleanupQueue: Promise<unknown> = Promise.resolve();
 
-async function cleanPicture(png: Buffer): Promise<Buffer> {
+/** A cleaned picture; `fallback` when the built-in cleaner made it because the AI remover was wanted but is
+ *  missing or failed. */
+async function cleanPicture(png: Buffer): Promise<{ png: Buffer; fallback: boolean }> {
   try {
-    return (await removeSpriteBackgroundPng(png, CLEANUP_STRENGTH)).buffer;
+    const cleaned = await removeSpriteBackgroundPng(png, CLEANUP_STRENGTH);
+    return { png: cleaned.buffer, fallback: cleaned.fallback === true };
   } catch (error) {
     // Only an AI remover set as the engine throws (missing or failed); the built-in cleaner still works.
     logger.warn(error, "[avatars] The background remover failed; using the built-in cleaner");
-    return (await removeSpriteBackgroundPng(png, CLEANUP_STRENGTH, "builtin")).buffer;
+    return { png: (await removeSpriteBackgroundPng(png, CLEANUP_STRENGTH, "builtin")).buffer, fallback: true };
   }
 }
 
 /** A cut-out of a picture, the same size: the picture itself when its background is already see-through.
- *  Cleanups run one at a time, so a stage loading many faces never starts many AI remover processes. */
-export async function avatarCutout(png: Buffer): Promise<{ png: Buffer; cleaned: boolean }> {
-  if (await hasSpriteTransparency(png)) return { png, cleaned: false };
+ *  Cleanups run one at a time, so a stage loading many faces never starts many AI remover processes.
+ *  ponytail: one line for the whole server, first come first served, so with the AI remover a generation can
+ *  wait behind the faces a panel is showing (each is cut out once per sprite version and kept), and Cancel
+ *  lets a running cleanup finish because its cut-out is kept for the face. Upgrade: let a generation's
+ *  cleanup go first. */
+export async function avatarCutout(png: Buffer): Promise<{ png: Buffer; cleaned: boolean; fallback: boolean }> {
+  if (await hasSpriteTransparency(png)) return { png, cleaned: false, fallback: false };
   const run = cleanupQueue.then(() => cleanPicture(png));
   cleanupQueue = run.catch(() => undefined);
-  return { png: await run, cleaned: true };
+  return { ...(await run), cleaned: true };
 }
 
-/** Where the cut-out of one version of a sprite file is stored. */
-export function spriteCutoutPath(hash: string): AvatarFilePath {
-  return `pngtuber/cutout-${CUTOUT_VERSION}-${hash.slice(0, 24)}.png` as AvatarFilePath;
+/** Where the cut-out of one version of a sprite file is stored; `fallback` names one the built-in cleaner
+ *  made in place of a missing or failed AI remover. */
+export function spriteCutoutPath(hash: string, fallback = false): AvatarFilePath {
+  return `pngtuber/cutout-${CUTOUT_VERSION}-${hash.slice(0, 24)}${fallback ? "-fallback" : ""}.png` as AvatarFilePath;
 }
 
 const pendingCutouts = new Map<string, Promise<{ png: Buffer; cleaned: boolean }>>();
+/** Sprite versions the installed AI remover failed on: their fallback cut-outs stay until the server
+ *  restarts, so a broken AI remover isn't run again on every view. */
+const aiRemoverFailed = new Set<string>();
 
 /** The owner's sprite as a cut-out: itself when its background is already see-through, else its cleaned
  *  copy, made once per sprite version and stored in the avatar's folder (the sprite file stays as it is).
  *  The same stored copy is the PNGTuber face, the base its blink and talk pictures are drawn on, and the
- *  mesh avatar's picture, so they always line up. */
+ *  mesh avatar's picture, so they always line up. A fallback cut-out is stored apart and made again when the
+ *  AI remover is installed (once per server start after it fails on that sprite). */
 export async function avatarSpriteCutout(
   owner: AvatarOwnerRef,
   sprite: AvatarSourceSprite,
@@ -71,8 +85,18 @@ export async function avatarSpriteCutout(
     pending = (async () => {
       const stored = resolveAvatarFile(owner, path);
       if (existsSync(stored)) return { png: await readFile(stored), cleaned: true };
+      const fallbackPath = spriteCutoutPath(sprite.hash, true);
+      const fallback = resolveAvatarFile(owner, fallbackPath);
+      const aiRemover = getBackgroundRemoverStatus().installed;
+      if (existsSync(fallback) && (!aiRemover || aiRemoverFailed.has(sprite.hash))) {
+        return { png: await readFile(fallback), cleaned: true };
+      }
       const cut = await avatarCutout(sprite.png);
-      if (cut.cleaned) await writeAvatarFiles(owner, [{ path, bytes: cut.png }]);
+      if (cut.fallback && aiRemover) {
+        if (aiRemoverFailed.size >= SHOWN_AS_IS_LIMIT) aiRemoverFailed.clear();
+        aiRemoverFailed.add(sprite.hash);
+      }
+      if (cut.cleaned) await writeAvatarFiles(owner, [{ path: cut.fallback ? fallbackPath : path, bytes: cut.png }]);
       return cut;
     })().finally(() => pendingCutouts.delete(key));
     pendingCutouts.set(key, pending);
@@ -90,7 +114,8 @@ const SHOWN_AS_IS_LIMIT = 4096;
 /** The file to show for an owner's sprite in an avatar: its cut-out, or the sprite file itself when it
  *  already has a see-through background or is animated (a cut-out would keep only its first frame). When the
  *  sprite can't be cleaned here, the sprite is shown and `final` is false (the reason is logged), so the
- *  browser asks again. Null when there is no raster sprite with this label. */
+ *  browser asks again; a fallback cut-out is not final either, since it is made again when the AI remover is
+ *  there. Null when there is no raster sprite with this label. */
 export async function avatarSpriteDisplayFile(
   owner: AvatarOwnerRef,
   label: string,
@@ -115,6 +140,9 @@ export async function avatarSpriteDisplayFile(
     const animated = ((await sharp(bytes, { animated: true }).metadata()).pages ?? 1) > 1;
     if (!animated) await avatarSpriteCutout(owner, await decodeAvatarSourceSprite(label, bytes));
     if (existsSync(stored.file)) return stored;
+    const fallbackPath = spriteCutoutPath(hash, true);
+    const fallback = resolveAvatarFile(owner, fallbackPath);
+    if (existsSync(fallback)) return { file: fallback, name: basename(fallbackPath), final: false };
     if (shownAsIs.size >= SHOWN_AS_IS_LIMIT) shownAsIs.clear();
     shownAsIs.add(hash);
     return original;
@@ -126,7 +154,10 @@ export async function avatarSpriteDisplayFile(
 
 /** Cut-outs of a base picture and its talk and blink pictures (all one size). Each variant keeps the base's
  *  cut-out wherever it shows the same pixel as the base, so swapping to it never moves an edge or shows a
- *  background the base doesn't; only what the variant changes is cut on its own. */
+ *  background the base doesn't; only what the variant changes is cut on its own.
+ *  ponytail: each variant is still cleaned whole (up to four cleanups per costume during the import, slow
+ *  with the AI remover), since a variant can uncover background where the base showed a part. Upgrade: reuse
+ *  the base's mask for a variant that uncovers nothing. */
 export async function avatarCutoutSet(base: Buffer, variants: readonly Buffer[]): Promise<Buffer[]> {
   const baseCut = await avatarCutout(base);
   const sharp = await getSharp();

@@ -809,12 +809,13 @@ async function softenBackgroundRemoverMask(
  * The sprite background cleanup: the AI remover (backgroundremover) when it is the configured engine,
  * otherwise the built-in matte, with the AI remover as a second try when the matte finds no flat
  * background. Sprite generation, sprite cleanup and the avatar agents all clean pictures through this.
+ * `fallback` is true when the AI remover was wanted for that second try but is missing or failed.
  */
 export async function removeSpriteBackgroundPng(
   input: Buffer,
   cleanupStrength = 35,
   engine: SpriteCleanupEngine = "auto",
-): Promise<{ buffer: Buffer; engine: UsedSpriteCleanupEngine }> {
+): Promise<{ buffer: Buffer; engine: UsedSpriteCleanupEngine; fallback?: true }> {
   const configuredEngine = engine === "auto" ? getBackgroundRemoverStatus().engine : engine;
   if (configuredEngine === "backgroundremover") {
     const aiOutput = await tryRemoveBackgroundWithBackgroundRemover(input, {
@@ -841,5 +842,5 @@ export async function removeSpriteBackgroundPng(
     };
   }
 
-  return { buffer: matteOutput.buffer, engine: "builtin" };
+  return { buffer: matteOutput.buffer, engine: "builtin", fallback: true };
 }

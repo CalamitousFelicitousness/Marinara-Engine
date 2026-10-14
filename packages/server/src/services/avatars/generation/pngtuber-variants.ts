@@ -350,7 +350,9 @@ export async function generatePngtuberVariants(
     const response: PngtuberVariantsDraftResponse = { drafts: [], failed: [] };
     for (const label of labels) {
       pngtuberLayerKey(label); // refuse a label that can't be stored before paying for a picture
-      const source = await spriteCutout(request.owner, await readAvatarSourceSprite(request.owner.ownerId, label));
+      // The model is shown the sprite as it is; the picture it draws takes the cut-out's outline.
+      const sprite = await readAvatarSourceSprite(request.owner.ownerId, label);
+      const source = await spriteCutout(request.owner, sprite);
       for (const variant of request.variants) {
         if (signal.aborted) throw signal.reason ?? new Error("Cancelled");
         try {
@@ -366,6 +368,7 @@ export async function generatePngtuberVariants(
             image,
             ...prompt,
             source,
+            shown: sprite,
             signal,
             debug,
             logLabel: `pngtuber ${label} ${variant}`,

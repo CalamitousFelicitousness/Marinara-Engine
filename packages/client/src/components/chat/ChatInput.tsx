@@ -791,7 +791,10 @@ export const ChatInput = memo(function ChatInput({
   const prepareUserMessage = useCallback(
     async (text: string, onTranslationError: () => void) => {
       const chat = useChatStore.getState().activeChat;
-      await ensureCharacterAndPersonaLists(qc);
+      // Only typed macros wait for the lists, so a plain message never waits on a slow first load.
+      // ponytail: a macro that a regex script or translation adds still falls back to "User" on that
+      // first load; also check the chat's regex replacements here if that case ever matters.
+      if (text.includes("{{")) await ensureCharacterAndPersonaLists(qc);
       return prepareUserInputMessage(text, {
         chat,
         characters: qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),

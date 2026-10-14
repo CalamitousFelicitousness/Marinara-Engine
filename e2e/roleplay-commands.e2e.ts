@@ -97,6 +97,7 @@ for (const mode of ["roleplay", "conversation"] as const) {
     expect(response.ok(), await response.text()).toBeTruthy();
     const chat = (await response.json()) as { id: string };
     // Hold the persona list, as on a slow first load: /send must wait for it, not store "User" for {{user}}.
+    // A message without macros must not wait.
     let releasePersonas = () => {};
     const personasHeld = new Promise<void>((resolve) => (releasePersonas = resolve));
     await page.route("**/api/characters/personas/list", async (route) => {
@@ -109,17 +110,20 @@ for (const mode of ["roleplay", "conversation"] as const) {
         enterToSendRP: true,
         enterToSendConvo: true,
       });
+      const stored = async () =>
+        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as any[])
+          .filter((message) => message.role === "user")
+          .map((message) => message.content as string);
       const composer = page.locator("textarea[data-chat-composer]");
+      await composer.fill("/send Plain hello.");
+      await composer.press("Enter");
+      await expect.poll(stored).toEqual(["Plain hello."]);
       await composer.fill("/send Pick {{random::red::green}}, I am {{user}}.");
       await composer.press("Enter");
       await expect(composer).toHaveValue("");
       releasePersonas();
-      const stored = async () =>
-        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as any[]).find(
-          (message) => message.role === "user",
-        )?.content;
-      await expect.poll(stored).toMatch(/^Pick (red|green), I am Pat Persona\.$/u);
-      await expect(page.locator('[data-message-role="user"]').last()).toContainText((await stored()) as string);
+      await expect.poll(async () => (await stored())[1]).toMatch(/^Pick (red|green), I am Pat Persona\.$/u);
+      await expect(page.locator('[data-message-role="user"]').last()).toContainText((await stored())[1]!);
     } finally {
       releasePersonas();
       await request.delete(`/api/chats/${chat.id}`);

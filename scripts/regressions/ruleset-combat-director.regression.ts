@@ -1147,12 +1147,22 @@ for (const setup of [
       const encounter = state.rulesetFight!.encounter;
       const grid = encounter.board!.grid;
       grid.tiles = grid.tiles.map((row) => row.map(() => "plains" as (typeof row)[number]));
+      // A bare board is level ground too: clear the generated foothills (combat C6b).
+      delete grid.elevation;
       const brenna = rulesetCombatant(encounter, "brenna")!;
       const hound = rulesetCombatant(encounter, "hound")!;
       Object.assign(brenna, { x: 0, y: 0 });
       Object.assign(hound, { x: far ? 11 : 5, y: 0 });
       return { state, encounter: () => state.rulesetFight!.encounter };
     };
+    // The screen is sent the board's heights with its tiles (combat C6b), and none on level ground.
+    {
+      const { state } = field(false);
+      assert.equal(directedRulesetView(fiveE, state)!.grid!.elevation, undefined, "level ground");
+      const grid = state.rulesetFight!.encounter.board!.grid;
+      grid.elevation = grid.tiles.map((row, y) => row.map((_, x) => (x === 2 && y === 0 ? 1 : 0)));
+      assert.deepEqual(directedRulesetView(fiveE, state)!.grid!.elevation, grid.elevation, "heights go to the screen");
+    }
     /** Plays up to and including the hound's next turn, and hands back what that turn logged. */
     const houndsTurn = (state: CombatDirectorState) => {
       for (let guard = 0; guard < 4; guard++) {
@@ -1219,6 +1229,8 @@ for (const setup of [
     const encounter = state.rulesetFight!.encounter;
     const grid = encounter.board!.grid;
     grid.tiles = grid.tiles.map((row) => row.map(() => "plains" as (typeof row)[number]));
+    // A bare board is level ground too: clear the generated foothills (combat C6b).
+    delete grid.elevation;
     Object.assign(rulesetCombatant(encounter, "brenna")!, { x: 0, y: 0 });
     Object.assign(rulesetCombatant(encounter, "lurker")!, { x: grid.width - 1, y: 0 });
     const allowance = rulesetCombatant(encounter, "lurker")!.movement!;

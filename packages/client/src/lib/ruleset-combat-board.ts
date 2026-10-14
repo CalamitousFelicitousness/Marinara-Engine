@@ -18,7 +18,7 @@ import type {
 } from "@marinara-engine/shared";
 import { TERRAIN_DATA } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
-import type { RulesetMenuStep } from "./ruleset-combat-menu";
+import type { RulesetAimLay, RulesetMenuStep } from "./ruleset-combat-menu";
 
 /** What this ruleset calls one cell's worth of distance. */
 export type RulesetBoardDistance = { label: string; perCell: number };
@@ -31,15 +31,27 @@ export interface RulesetBoardCell {
   /** Nothing walks into it and nothing sees through it. From the Engine's own terrain table, which
    *  is the same table the server's own reachable cells were worked out from. */
   solid: boolean;
-  /** Who is standing here, defeated or not. */
+  /** How high the cell stands (combat C6b), 0 on level ground. */
+  height: number;
+  /** Who is standing here, defeated or not: on every cell they fill (1.194). */
   occupant?: DirectedRulesetCombatant;
+  /** The cell their token is drawn from, the top-left one they fill (1.194). */
+  anchor?: true;
   /** Set while a walk is being chosen: what ending here costs of the allowance, in cells, and the
    *  ids of the standing enemies the path would be struck at by. */
   reach?: { cost: number; provokes: string[] };
   /** Set while a target is being chosen and a legal one stands here. */
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
-  aim?: { targetIds: string[] };
+  aim?: { targetIds: string[]; teleport?: true };
+  /** A cell the shape being laid has already been set down on (1.177, 1.178). */
+  laid?: true;
+  /** The labels of the lasting areas covering it (1.172), first cast first. */
+  zones?: string[];
+  /** A wall's section standing here (1.200): whose wall, and what it has left of what; 0 is broken. */
+  section?: { wall: string; health: number; max: number };
+  /** Set while a target is being chosen and the attack may strike the section here (1.200). */
+  strikable?: true;
 }
 
 export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cell.x},${cell.y}`;
@@ -48,7 +60,8 @@ export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cel
  *  Every shape does, one with nowhere to land included: the server refuses a shape sent with no
  *  cell, so the step opens and says nobody would be caught instead of sending a choice that fails. */
 export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
-  return !!option.area;
+  // A teleport is aimed at where it goes (1.276).
+  return !!option.area || (option.teleport?.cells.length ?? 0) > 0;
 }
 
 /** Whether a shape has any square it may be aimed at right now. */
@@ -56,10 +69,74 @@ export function rulesetOptionHasAim(option: DirectedRulesetOption): boolean {
   return (option.aim?.length ?? 0) > 0;
 }
 
-/** Whether taking this option asks the player to pick a cell to walk to. Getting back up spends
- *  movement and goes nowhere, so it is sent straight off the menu. */
+/** What an aimed shape sends: where it lands, and how it is laid (1.177, 1.178). */
+export interface RulesetAimChoice {
+  at: RulesetCombatCell;
+  toward?: RulesetCombatCell;
+  side?: "near" | "far";
+  ring?: boolean;
+  also?: RulesetCombatCell[];
+}
+
+/** The cells a choice made on the board carries: where a walk goes, or where a shape lands and how
+ *  it is laid. */
+export type RulesetCellChoice = {
+  to?: RulesetCombatCell;
+  wall?: RulesetCombatCell;
+  /** Who goes along on a teleport (1.276). */
+  carries?: string[];
+} & Partial<RulesetAimChoice>;
+
+/** Whether a wall being aimed has been set down and waits for the way it runs: any cell picks it. */
+export function rulesetAimTurning(option: DirectedRulesetOption, lay: RulesetAimLay | undefined): boolean {
+  return option.area?.shape === "wall" && !lay?.ring && !!lay?.at;
+}
+
+/** What is sent for the shape as it is laid so far, or null while nothing has been set down. */
+export function rulesetAimSoFar(lay: RulesetAimLay | undefined): RulesetAimChoice | null {
+  if (!lay?.at) return null;
+  return {
+    at: { ...lay.at },
+    ...(lay.side ? { side: lay.side } : {}),
+    ...(lay.ring ? { ring: true } : {}),
+    ...(lay.also?.length ? { also: lay.also.map((cell) => ({ ...cell })) } : {}),
+  };
+}
+
+/**
+ * Picking a cell while a shape is aimed. Most shapes are sent there and then. A wall is set down on
+ * the first cell and turned by the second, which is the cell it runs toward (the first again lays
+ * it across its maker's line); a ring is sent at once. A shape set down several times (1.178) takes
+ * one cell for each copy, and is sent with the last one it may have.
+ */
+export function rulesetAimTake(
+  option: DirectedRulesetOption,
+  lay: RulesetAimLay | undefined,
+  cell: RulesetCombatCell,
+): { send: RulesetAimChoice } | { lay: RulesetAimLay } {
+  const at = { x: cell.x, y: cell.y };
+  const area = option.area;
+  if (area?.shape === "wall") {
+    if (lay?.ring) return { send: { ...rulesetAimSoFar({ ...lay, at })!, ring: true } };
+    if (!lay?.at) return { lay: { ...lay, at } };
+    const across = lay.at.x === at.x && lay.at.y === at.y;
+    return { send: { ...rulesetAimSoFar(lay)!, ...(across ? {} : { toward: at }) } };
+  }
+  if ((area?.copies ?? 1) > 1) {
+    if (!lay?.at) return { lay: { ...lay, at } };
+    const taken = [lay.at, ...(lay.also ?? [])].some((one) => one.x === at.x && one.y === at.y);
+    if (taken) return { lay };
+    const next = { ...lay, also: [...(lay.also ?? []), at] };
+    return 1 + next.also.length >= area!.copies! ? { send: rulesetAimSoFar(next)! } : { lay: next };
+  }
+  return { send: { at } };
+}
+
+/** Whether taking this option asks the player to pick a cell to walk to: a walk, or a legendary
+ *  move (1.283). Getting back up spends movement and goes nowhere, so it is sent straight off the
+ *  menu. */
 export function rulesetOptionNeedsCell(option: DirectedRulesetOption): boolean {
-  return option.kind === "move" && (option.cells?.length ?? 0) > 0;
+  return (option.kind === "move" || !!option.signature) && (option.cells?.length ?? 0) > 0;
 }
 
 /**
@@ -75,7 +152,15 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const standing = new Map<string, DirectedRulesetCombatant>();
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
-    standing.set(rulesetCellKey({ x: combatant.x, y: combatant.y }), combatant);
+    // Sent away (1.236): not on the board at all.
+    if (combatant.away) continue;
+    // Every cell they fill (1.194).
+    const span = Math.max(1, combatant.span ?? 1);
+    for (let dy = 0; dy < span; dy++) {
+      for (let dx = 0; dx < span; dx++) {
+        standing.set(rulesetCellKey({ x: combatant.x + dx, y: combatant.y + dy }), combatant);
+      }
+    }
   }
   const reach = new Map<string, { cost: number; provokes: string[] }>();
   if (step?.stage === "move") {
@@ -83,11 +168,36 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       reach.set(rulesetCellKey(cell), { cost: cell.cost, provokes: [...cell.provokes] });
     }
   }
-  const aims = new Map<string, { targetIds: string[] }>();
+  const aims = new Map<string, { targetIds: string[]; teleport?: true }>();
+  const laid = new Set<string>();
   if (step?.stage === "aim") {
-    for (const entry of step.option.aim ?? []) aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds] });
+    // A teleport's cells are where it may go (1.276), not what it would catch.
+    const teleport = step.option.teleport ? { teleport: true as const } : {};
+    for (const entry of step.option.aim ?? []) {
+      aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds], ...teleport });
+    }
+    for (const cell of [step.lay?.at, ...(step.lay?.also ?? [])]) if (cell) laid.add(rulesetCellKey(cell));
   }
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
+  const strikable = new Set(step?.stage === "target" ? (step.option.walls ?? []).map(rulesetCellKey) : []);
+  const sections = new Map<string, { wall: string; health: number; max: number }>();
+  const zoned = new Map<string, string[]>();
+  for (const zone of view.zones ?? []) {
+    for (const section of zone.sections ?? []) {
+      for (const cell of section.cells) {
+        sections.set(rulesetCellKey(cell), { wall: zone.label, health: section.health, max: section.max });
+      }
+    }
+    for (const cell of zone.cells) {
+      const key = rulesetCellKey(cell);
+      zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
+    }
+    // A wall's side (1.177) is drawn as the zone's too: walking there is caught as it says.
+    for (const cell of zone.side ?? []) {
+      const key = rulesetCellKey(cell);
+      zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
+    }
+  }
   const cells: RulesetBoardCell[] = [];
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
@@ -101,11 +211,18 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         x,
         y,
         terrain,
-        solid: TERRAIN_DATA[terrain]?.impassable === true,
+        // A standing wall that blocks movement is as solid as rock while it stands (1.177).
+        solid: TERRAIN_DATA[terrain]?.impassable === true || ((grid.walls?.[key] ?? 0) & 1) === 1,
+        height: grid.elevation?.[y]?.[x] ?? 0,
         ...(occupant ? { occupant } : {}),
+        ...(occupant && occupant.x === x && occupant.y === y ? { anchor: true as const } : {}),
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
         ...(aim ? { aim } : {}),
+        ...(laid.has(key) ? { laid: true as const } : {}),
+        ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
+        ...(sections.has(key) ? { section: sections.get(key)! } : {}),
+        ...(strikable.has(key) ? { strikable: true as const } : {}),
       });
     }
   }
@@ -148,7 +265,9 @@ export function rulesetNothingInReach(view: DirectedRulesetView): boolean {
       (option.targets.side === "enemy" || option.targets.side === "any" || !!option.area),
   );
   if (offensive.length === 0) return false;
-  return offensive.every((option) => option.targetIds.length === 0 && (option.aim?.length ?? 0) === 0);
+  return offensive.every(
+    (option) => option.targetIds.length === 0 && (option.aim?.length ?? 0) === 0 && (option.walls?.length ?? 0) === 0,
+  );
 }
 
 /** The ids on a line, as names, for the sentences that have to say who. */
@@ -175,10 +294,20 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
       label: t(`ui.game.tacticalcombatui.terrain.${cell.terrain}`, { defaultValue: cell.terrain }),
     }),
   ];
-  if (cell.solid) said.push(t("game.combat.ruleset.board.solid"));
+  if (cell.height > 0) said.push(t("game.combat.ruleset.board.height", { height: cell.height }));
+  // Water is walked round but seen across; a wall or a mountain is neither (combat C6).
+  if (cell.solid)
+    said.push(
+      t(
+        TERRAIN_DATA[cell.terrain]?.blocksSight
+          ? "game.combat.ruleset.board.solid"
+          : "game.combat.ruleset.board.seenAcross",
+      ),
+    );
   const who = cell.occupant;
   if (who) {
     said.push(t("game.combat.ruleset.board.who", { name: who.name, value: who.health.value, max: who.health.max }));
+    if (who.altitude !== undefined) said.push(t("game.combat.ruleset.board.flying", { height: who.altitude }));
     if (who.id === view.actorId) said.push(t("game.combat.ruleset.board.onTurn"));
     if (who.defeated) said.push(t("game.combat.ruleset.status.defeated"));
     else if (who.down) said.push(t("game.combat.ruleset.status.down"));
@@ -195,8 +324,17 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
       );
     }
   }
+  if (cell.section) {
+    said.push(
+      cell.section.health > 0
+        ? t("game.combat.ruleset.board.section", cell.section)
+        : t("game.combat.ruleset.board.sectionBroken", { wall: cell.section.wall }),
+    );
+  }
   if (cell.targetable) said.push(t("game.combat.ruleset.board.targetable"));
-  if (cell.aim) {
+  if (cell.strikable) said.push(t("game.combat.ruleset.board.strikable"));
+  if (cell.aim?.teleport) said.push(t("game.combat.ruleset.board.teleportable"));
+  else if (cell.aim) {
     const names = rulesetNamesOf(view, cell.aim.targetIds);
     said.push(
       names.length > 0

@@ -9,8 +9,14 @@
 // shapes (`lib/tactical-board-look.ts`), because it IS the same battlefield: the same generator,
 // the same terrain and the same deployment. What it does with it is the ruleset's.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Skull } from "lucide-react";
-import type { Combatant, DirectedRulesetView, RulesetCombatCell } from "@marinara-engine/shared";
+import { Skull, Zap } from "lucide-react";
+import {
+  creatureArtVariant,
+  findCreatureArt,
+  type Combatant,
+  type DirectedRulesetView,
+  type RulesetCombatCell,
+} from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import {
   TACTICAL_BOARD_KEYFRAMES,
@@ -24,9 +30,13 @@ import {
   resolveTerrainIcon,
   ringColorFor,
   tileShadow,
+  heightWash,
 } from "../../lib/tactical-board-look";
 import {
+  rulesetAimTake,
+  rulesetAimTurning,
   rulesetBoardCells,
+  type RulesetCellChoice,
   rulesetCellKey,
   rulesetCellSentences,
   rulesetDistanceText,
@@ -35,8 +45,14 @@ import {
   rulesetPathTo,
   type RulesetBoardCell,
 } from "../../lib/ruleset-combat-board";
-import { rulesetPickTarget, rulesetSendsOnPick, type RulesetMenuStep } from "../../lib/ruleset-combat-menu";
+import {
+  rulesetPickTarget,
+  rulesetSendsOnPick,
+  rulesetPicksStep,
+  type RulesetMenuStep,
+} from "../../lib/ruleset-combat-menu";
 import { RulesetCombatMenu } from "./RulesetCombatMenu";
+import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 import { cn } from "../../lib/utils";
 
 export interface RulesetCombatBoardProps {
@@ -54,9 +70,13 @@ export interface RulesetCombatBoardProps {
     optionId: string,
     targetIds: string[],
     payWith?: string,
-    cell?: { to?: RulesetCombatCell; at?: RulesetCombatCell },
+    cell?: RulesetCellChoice,
     style?: string,
     mode?: string,
+    amount?: number,
+    alters?: string[],
+    spares?: string[],
+    heightens?: string,
   ) => void;
   onFlee: () => void;
   /** The per-member manual and automatic toggles, built by the caller so this file stays about the
@@ -147,9 +167,48 @@ export function RulesetCombatBoard({
       onChoose(step.option.id, [], step.payWith, { to: { x: cell.x, y: cell.y } }, step.style, step.mode);
       return;
     }
-    if (step.stage === "aim" && cell.aim) {
+    // A wall set down waits for the way it runs, and any square turns it (1.177).
+    if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
+      const taken = rulesetAimTake(step.option, step.lay, cell);
+      if ("lay" in taken) {
+        setStep({ ...step, lay: taken.lay });
+        return;
+      }
+      // Who it spares and who it heightens are picked in the menu first, where there is a pick
+      // (1.254, 1.255).
+      const picks = rulesetPicksStep(view, step, [], taken.send);
+      if (picks) {
+        setStep(picks);
+        return;
+      }
       setStep(null);
-      onChoose(step.option.id, [], step.payWith, { at: { x: cell.x, y: cell.y } }, step.style, step.mode);
+      // Who goes along on a teleport (1.276), picked in the menu while it is aimed.
+      const carries = step.option.teleport ? step.targets : [];
+      onChoose(
+        step.option.id,
+        [],
+        step.payWith,
+        carries.length ? { ...taken.send, carries } : taken.send,
+        step.style,
+        step.mode,
+        step.amount,
+        step.alters,
+      );
+      return;
+    }
+    // A wall's section the attack may strike (1.200): sent at once, as one target is.
+    if (step.stage === "target" && cell.strikable) {
+      setStep(null);
+      onChoose(
+        step.option.id,
+        [],
+        step.payWith,
+        { wall: { x: cell.x, y: cell.y } },
+        step.style,
+        step.mode,
+        step.amount,
+        step.alters,
+      );
       return;
     }
     // The same two rules the list in the menu picks by, so clicking a token and clicking its name
@@ -158,7 +217,7 @@ export function RulesetCombatBoard({
       const targets = rulesetPickTarget(step.option, step.targets, cell.occupant.id);
       if (rulesetSendsOnPick(step.option) && targets.length === 1) {
         setStep(null);
-        onChoose(step.option.id, targets, step.payWith, undefined, step.style, step.mode);
+        onChoose(step.option.id, targets, step.payWith, undefined, step.style, step.mode, step.amount, step.alters);
         return;
       }
       setStep({ ...step, targets });
@@ -198,6 +257,15 @@ export function RulesetCombatBoard({
   const palette = TERRAIN_PALETTES[environment ?? "default"] ?? TERRAIN_PALETTES.default;
   const tintAlpha = environment && TERRAIN_PALETTES[environment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
   const sprites = useMemo(() => new Map(units.map((unit) => [unit.id, unit.sprite])), [units]);
+  // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
+  const creaturePack = useCreaturePack();
+  const facings = useCreatureFacings(
+    cells.flatMap((cell) =>
+      cell.occupant && cell.anchor ? [{ id: cell.occupant.id, x: cell.x, y: cell.y, side: cell.occupant.side }] : [],
+    ),
+    // A ruleset fight has no id of its own on screen: its fighters, as it began, tell one from the next.
+    view.order.join(","),
+  );
 
   // What the strip under the board says: the square being read, or, failing that, the one line a
   // fight nobody can reach has to say out loud.
@@ -285,6 +353,7 @@ export function RulesetCombatBoard({
                   aria-label={[
                     t("game.combat.ruleset.board.cell", { x: cell.x, y: cell.y }),
                     sentences.get(key) ?? "",
+                    cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
                   ].join(" ")}
                   onClick={() => takeCell(cell)}
                   onKeyDown={(event) => onKeyDown(event, cell)}
@@ -330,6 +399,14 @@ export function RulesetCombatBoard({
                       }}
                     />
                   )}
+                  {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
+                  {cell.height > 0 && (
+                    <span className="pointer-events-none absolute inset-0" style={heightWash(cell.height)}>
+                      <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
+                        {"▲".repeat(Math.min(cell.height, 3))}
+                      </span>
+                    </span>
+                  )}
                   {/* Nothing walks in and nothing sees through: drawn solid rather than merely dark. */}
                   {cell.solid && (
                     <span className="pointer-events-none absolute inset-0 bg-black/45 ring-1 ring-inset ring-white/25" />
@@ -367,11 +444,29 @@ export function RulesetCombatBoard({
                       {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
                     </span>
                   )}
-                  {cell.aim && (
+                  {/* A lasting area (1.172): tinted, with its name in the tooltip of the square. */}
+                  {cell.zones && (
+                    <span
+                      className="pointer-events-none absolute inset-0 bg-fuchsia-500/20 ring-1 ring-inset ring-fuchsia-300/40"
+                      title={cell.zones.join(", ")}
+                    />
+                  )}
+                  {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
+                  {cell.section && cell.section.health > 0 && (
+                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
+                      {cell.section.health}
+                    </span>
+                  )}
+                  {cell.strikable && (
+                    <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-[var(--destructive)]" />
+                  )}
+                  {(cell.aim || cell.laid) && (
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0 ring-1 ring-inset",
-                        isAimed ? "bg-amber-400/55 ring-2 ring-amber-200" : "bg-amber-400/20 ring-amber-300/40",
+                        isAimed || cell.laid
+                          ? "bg-amber-400/55 ring-2 ring-amber-200"
+                          : "bg-amber-400/20 ring-amber-300/40",
                       )}
                     />
                   )}
@@ -387,11 +482,22 @@ export function RulesetCombatBoard({
               board has exactly one focusable thing per square and the arrow keys mean one thing. */}
           {cells.map((cell) => {
             const combatant = cell.occupant;
-            if (!combatant) return null;
+            // Drawn once, from its top-left cell, across every cell it fills (1.194).
+            if (!combatant || !cell.anchor) return null;
+            const span = Math.max(1, combatant.span ?? 1);
             const key = rulesetCellKey(cell);
             const onTurn = combatant.id === view.actorId;
             const ring = ringColorFor(combatant.id, combatant.side === "party" ? "party" : "enemy");
             const sprite = resolveSprite(sprites.get(combatant.id));
+            // An opponent with no picture of its own is drawn with its creature art when the pack has it.
+            const creature =
+              combatant.side !== "party" && sprite.kind !== "url"
+                ? findCreatureArt(creaturePack, {
+                    creature: combatant.creature,
+                    rulesetId: view.ruleset.id,
+                    name: combatant.name,
+                  })
+                : null;
             const percent = rulesetHealthPercent(combatant.health);
             const bar = percent > 60 ? "bg-emerald-500" : percent > 25 ? "bg-amber-500" : "bg-red-500";
             return (
@@ -406,9 +512,9 @@ export function RulesetCombatBoard({
                   !combatant.defeated && combatant.down && "opacity-70 grayscale",
                 )}
                 style={{
-                  left: `${((cell.x + 0.5) / grid.width) * 100}%`,
-                  top: `${((cell.y + 0.5) / grid.height) * 100}%`,
-                  width: `${(100 / grid.width) * 0.84}%`,
+                  left: `${((cell.x + span / 2) / grid.width) * 100}%`,
+                  top: `${((cell.y + span / 2) / grid.height) * 100}%`,
+                  width: `${(100 / grid.width) * 0.84 * span}%`,
                 }}
               >
                 <div
@@ -424,7 +530,18 @@ export function RulesetCombatBoard({
                     animation: onTurn ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
                   }}
                 >
-                  {sprite.kind === "url" ? (
+                  {creature && creaturePack ? (
+                    // The token is 0.84 of a cell: its art is drawn at the creature's own size, on the cell.
+                    <CreatureArtFigure
+                      pack={creaturePack}
+                      creature={creature}
+                      // Fights of one ruleset share the key: a fighter keeps its look across them.
+                      variant={creatureArtVariant(creature, view.ruleset.id, combatant.id)}
+                      facing={facings.get(combatant.id) ?? "down"}
+                      cellFraction={1 / 0.84}
+                      label={combatant.name}
+                    />
+                  ) : sprite.kind === "url" ? (
                     <img src={sprite.value} alt="" className="h-full w-full rounded-full object-cover" />
                   ) : sprite.kind === "emoji" ? (
                     <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
@@ -435,6 +552,10 @@ export function RulesetCombatBoard({
                   )}
                   {(combatant.defeated || combatant.down) && (
                     <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
+                  )}
+                  {/* Caught unaware (1.237): marked until their first turn is over. */}
+                  {combatant.surprised && !combatant.defeated && !combatant.down && (
+                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
                   )}
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the

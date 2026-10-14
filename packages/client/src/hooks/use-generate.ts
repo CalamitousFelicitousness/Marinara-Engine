@@ -59,6 +59,7 @@ import {
   applyTrackerFieldLocksToGameStatePatch,
   createInlineThinkingStreamFilter,
   EDITABLE_CHARACTER_CARD_FIELDS,
+  normalizeGroupChatMode,
   normalizeThinkingTagPairs,
   resolveChatPersonaCandidate,
   type AgentWriteApprovalProposal,
@@ -948,6 +949,18 @@ function getCachedCharacterName(qc: QueryClient, characterId: string): string | 
   );
 }
 
+/** A swipe in an Individual-mode group is the same member's reply again; the server sends no group_turn for it,
+ *  so the live reply's speaker comes from the message being swiped. Merged replies are saved under the first
+ *  character, so they name no speaker. */
+function getIndividualGroupSwipeSpeaker(qc: QueryClient, chatId: string, messageId: string | undefined): string | null {
+  if (!messageId) return null;
+  const chat = getCachedChatForGeneration(qc, chatId);
+  if (parseChatCharacterIds(chat?.characterIds).length < 2) return null;
+  if (normalizeGroupChatMode(parseChatMetadata(chat?.metadata).groupChatMode) !== "individual") return null;
+  const message = getCachedMessages(qc, chatId).find((candidate) => candidate.id === messageId);
+  return message?.role === "assistant" && message.characterId ? message.characterId : null;
+}
+
 function getCachedChatSpeakerNames(qc: QueryClient, chatId: string): string[] {
   const chat = getCachedChatForGeneration(qc, chatId);
   const ids = parseChatCharacterIds(chat?.characterIds);
@@ -1361,6 +1374,8 @@ export function useGenerate() {
         if (agentState.mariPlanChatId === params.chatId) clearMariPlan();
         clearFailedAgentTypes(params.chatId);
         setRegenerateMessageId(params.regenerateMessageId ?? null);
+        const swipeSpeaker = getIndividualGroupSwipeSpeaker(qc, params.chatId, params.regenerateMessageId);
+        if (swipeSpeaker) setStreamingCharacterId(swipeSpeaker);
       }
       if (useUIStore.getState().debugMode) {
         console.warn("[Generate] Starting generation for chat:", params.chatId);
@@ -2182,6 +2197,7 @@ export function useGenerate() {
                 durationMs: result.durationMs,
                 success: result.success,
                 error: result.error,
+                messageId: result.messageId ?? null,
               });
 
               const bubble = result.success ? formatAgentBubble(result.agentType, result.agentName, result.data) : null;
@@ -3841,6 +3857,7 @@ export function useGenerate() {
                   durationMs: result.durationMs,
                   success: result.success,
                   error: result.error,
+                  messageId: result.messageId ?? null,
                 });
               }
               const writeApproval = result.success

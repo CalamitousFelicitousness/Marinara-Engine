@@ -78,6 +78,7 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
     member.stable ? "stable" : member.dying ? "dying" : member.down ? "down" : "";
   const party = summary.party.map((member) => {
     const notes = [
+      member.left ? "left the fight" : "",
       standing(member),
       member.temp > 0 ? `${member.temp} temporary` : "",
       member.conditions.length > 0 ? member.conditions.map((id) => conditionLabel.get(id) ?? id).join(", ") : "",
@@ -90,6 +91,11 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
   if (alive.length > 0) {
     const left = alive.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ");
     lines.push(`Still standing: ${left}`);
+  }
+  // Gone alive by a teleport out of the fight (1.279): neither beaten nor still here.
+  const gone = summary.enemies.filter((enemy) => enemy.left);
+  if (gone.length > 0) {
+    lines.push(`Got away: ${gone.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ")}`);
   }
   lines.push(
     `Sheets: the ${definition.name} sheets were kept up to date while the fight ran, so every cost is already paid. Do not change those numbers again.`,
@@ -174,7 +180,7 @@ export function seedRulesetBattleParty(
 ): RulesetBattleParty {
   const seeds: RulesetCombatSeeds = {};
   if (!definition.battle) return { party, seeds };
-  const builds = rulesetSheetBuildsByName(cards, playerName);
+  const builds = rulesetSheetBuildsByName(definition, cards, playerName);
   if (builds.size === 0) return { party, seeds };
 
   let seeded = false;
@@ -213,7 +219,7 @@ export function applyRulesetBattleResult(
 ): RulesetBattleWriteBack {
   const result: RulesetBattleWriteBack = { live: null, updated: [], refused: [] };
   if (!definition.battle) return result;
-  const builds = rulesetSheetBuildsByName(cards, playerName);
+  const builds = rulesetSheetBuildsByName(definition, cards, playerName);
 
   let merged: RulesetLiveStates | null = null;
   for (const member of party) {

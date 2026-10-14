@@ -22,12 +22,56 @@ import { parseRulesetCombatDice, rulesetAverageAmount, rulesetAverageDamage } fr
 import type {
   RulesetCombatAmount,
   RulesetCombatDamage,
+  RulesetCombatCharge,
   RulesetCombatDamageClause,
   RulesetCombatRider,
   RulesetPlainStatBlock,
+  RulesetReactionAlso,
   RulesetStatBlock,
   RulesetStatBlockAction,
 } from "./types.js";
+
+import { rulesetInCells } from "./grid.js";
+
+/** What narrows one moment of a reaction: what it answers, the kind of blow (1.118), and whether its
+ *  holder must see the source (1.118). */
+type RulesetMomentNarrowing = Omit<RulesetReactionAlso, "on">;
+
+/** What a reaction answers, copied so whoever holds it owns its own lists: what narrows its first
+ *  moment, and the moments it is `also` taken at (1.117), each with what narrows it. */
+export function rulesetReactionAnswers(
+  reaction: RulesetMomentNarrowing & { also?: ReadonlyArray<RulesetReactionAlso> },
+  perCell?: number,
+): RulesetMomentNarrowing & { also?: RulesetReactionAlso[] } {
+  const narrowing = (moment: RulesetMomentNarrowing): RulesetMomentNarrowing => ({
+    ...(moment.against
+      ? {
+          against: {
+            ...(moment.against.catalogs ? { catalogs: [...moment.against.catalogs] } : {}),
+            ...(moment.against.actions ? { actions: [...moment.against.actions] } : {}),
+            ...(moment.against.entries ? { entries: [...moment.against.entries] } : {}),
+          },
+        }
+      : {}),
+    ...(moment.for ? { for: moment.for } : {}),
+    ...(moment.within !== undefined
+      ? {
+          within:
+            perCell === undefined ? moment.within : moment.within === 0 ? 0 : rulesetInCells(moment.within, perCell),
+        }
+      : {}),
+    ...(moment.blow ? { blow: moment.blow } : {}),
+    ...(moment.seesSource ? { seesSource: true as const } : {}),
+    ...(moment.by ? { by: moment.by } : {}),
+    ...(moment.weapon ? { weapon: true as const } : {}),
+    ...(moment.names ? { names: [...moment.names] } : {}),
+    ...(moment.budget ? { budget: moment.budget } : {}),
+  });
+  return {
+    ...narrowing(reaction),
+    ...(reaction.also ? { also: reaction.also.map((moment) => ({ on: moment.on, ...narrowing(moment) })) } : {}),
+  };
+}
 
 /** How many actions survive a clamp. A proposal with more than this is a creature nobody could read
  *  at the table, whatever the numbers say. */
@@ -92,15 +136,19 @@ function amountOf(input: { dice?: string; flat?: number } | undefined): RulesetC
 
 /** The clauses beside a blow's first amount. A clause with a save of its own falls back to the
  *  action's number when it named none, and a block has no other number to reach for. */
-function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] | null {
-  const fallback = action.save?.difficulty ?? action.saveDifficulty ?? 0;
-  const clauses = (action.damage?.plus ?? []).flatMap((clause) => {
+function clausesOf(
+  action: RulesetCreatureAction,
+  plus = action.damage?.plus,
+  fallback = action.save?.difficulty ?? action.saveDifficulty ?? 0,
+): RulesetCombatDamageClause[] | null {
+  const clauses = (plus ?? []).flatMap((clause) => {
     const amount = amountOf(clause);
     if (!amount) return [];
     return [
       {
         ...amount,
         ...(clause.type ? { type: clause.type } : {}),
+        ...(clause.targetIs ? { targetIs: clause.targetIs } : {}),
         ...(clause.save
           ? {
               save: {
@@ -116,44 +164,112 @@ function clausesOf(action: RulesetCreatureAction): RulesetCombatDamageClause[] |
   return clauses.length > 0 ? clauses : null;
 }
 
+/** A charge as a block carries it (1.186): its clauses' saves fall back to the charge's own number. */
+function chargeOf(
+  action: RulesetCreatureAction,
+  charge: NonNullable<RulesetCreatureAction["charge"]>,
+): RulesetCombatCharge {
+  const plus = clausesOf(
+    action,
+    charge.plus,
+    charge.save?.difficulty ?? action.save?.difficulty ?? action.saveDifficulty ?? 0,
+  );
+  return {
+    atLeast: charge.atLeast,
+    ...(plus ? { plus } : {}),
+    ...(charge.save ? { save: { ...charge.save } } : {}),
+    ...(charge.push !== undefined ? { push: charge.push } : {}),
+    ...(charge.applies ? { applies: charge.applies.map((entry) => ({ ...entry })) } : {}),
+  };
+}
+
 function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
   const damage = amountOf(action.damage);
+  const heal = amountOf(action.heal);
   const plus = clausesOf(action);
+  const alternatives = (action.damage?.alternatives ?? []).flatMap((alternative) => {
+    const amount = amountOf(alternative);
+    return amount ? [{ ...amount, when: structuredClone(alternative.when) }] : [];
+  });
   return {
     id: action.id,
     name: action.name,
     budget: action.budget,
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
+    ...(action.needs ? { needs: [...action.needs] } : {}),
+    ...(action.needs && action.needsAny ? { needsAny: true as const } : {}),
+    ...(action.seen ? { seen: true as const } : {}),
+    ...(action.components ? { components: [...action.components] } : {}),
     ...(damage
       ? {
           damage: {
             ...damage,
             ...(action.damage?.type ? { type: action.damage.type } : {}),
             ...(plus ? { plus } : {}),
+            ...(action.damage?.qualities?.length ? { qualities: [...action.damage.qualities] } : {}),
+            ...(alternatives.length ? { alternatives } : {}),
           } as RulesetCombatDamage,
         }
       : {}),
+    ...(heal ? { heal } : {}),
+    ...(action.ends ? { ends: structuredClone(action.ends) } : {}),
+    ...(action.qualities ? { qualities: [...action.qualities] } : {}),
+    ...(action.targets ? { targets: action.targets } : {}),
     ...(action.save ? { save: { ...action.save } } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
+    // Held by the creature's concentration (1.307).
+    ...(action.concentration ? { concentration: true as const } : {}),
+    // At the dying, and deadly to them (1.311): a will-o'-wisp's Consume Life.
+    ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
+    ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
+    ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
     ...(action.targetCount !== undefined ? { targetCount: action.targetCount } : {}),
     ...(action.reach !== undefined ? { reach: action.reach } : {}),
+    // In the ruleset's distance, as reach is: the encounter turns both into cells (1.184).
+    ...(action.push !== undefined ? { push: action.push } : {}),
+    // What its attack is made with (1.189), so changes narrowed to an ability reach it.
+    ...(action.ability ? { ability: action.ability } : {}),
+    ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
+    // What it dealt comes back to it (1.281): an aboleth's Psychic Drain.
+    ...(action.drain ? { drain: { ...action.drain } } : {}),
+    ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),
-    ...(action.recharge ? { recharge: { dice: { ...action.recharge.dice }, from: action.recharge.from } } : {}),
+    ...(action.recharge
+      ? {
+          recharge: {
+            dice: { ...action.recharge.dice },
+            from: action.recharge.from,
+            ...(action.recharge.group ? { group: action.recharge.group } : {}),
+          },
+        }
+      : {}),
+    ...(action.charge ? { charge: chargeOf(action, action.charge) } : {}),
     ...(action.sequence ? { sequence: action.sequence.map((step) => ({ ...step })) } : {}),
     ...(action.signature ? { signature: { ...action.signature } } : {}),
     ...(action.reaction
       ? {
           reaction: {
             ...action.reaction,
-            ...(action.reaction.against ? { against: { catalogs: [...action.reaction.against.catalogs] } } : {}),
+            ...(action.reaction.cancelSave ? { cancelSave: { ...action.reaction.cancelSave } } : {}),
+            ...rulesetReactionAnswers(action.reaction),
           },
         }
       : {}),
     ...(action.self ? { self: true as const } : {}),
+    // In the ruleset's distance, as push is (1.276): the encounter turns it into cells.
+    ...(action.teleport ? { teleport: { ...action.teleport } } : {}),
+    // In the ruleset's distance too (1.283).
+    ...(action.move ? { move: { ...action.move } } : {}),
+    ...(action.casting ? { casting: { ...action.casting } } : {}),
+    ...(action.search ? { search: true as const } : {}),
+    // Its light lit or put out (1.296).
+    ...(action.sheds !== undefined ? { sheds: action.sheds === "out" ? ("out" as const) : { ...action.sheds } } : {}),
+    // Standard actions with its own budget (1.291): Nimble Escape.
+    ...(action.standard ? { standard: structuredClone(action.standard) } : {}),
   };
 }
 
@@ -179,7 +295,7 @@ export function rulesetCreatureBlock(
  * The catalogs the creatures of a bestiary read their sheets' lists out of. A creature described by
  * a sheet takes the abilities on its lists from the ruleset's other catalogs, exactly as a
  * character's sheet does, so a fight needs those to hand as well as the bestiary itself. Bounded by
- * catalogs rather than creatures: a bestiary with no sheets in it needs nothing more.
+ * catalogs rather than creatures. Spells cast without slots also need their entry catalogs (1.123).
  */
 export function rulesetBestiarySheetCatalogIds(
   definition: RulesetDefinition,
@@ -189,6 +305,10 @@ export function rulesetBestiarySheetCatalogIds(
   for (const entries of Object.values(bestiary)) {
     for (const entry of entries) {
       const sheet = entry.creature?.sheet;
+      for (const spell of entry.creature?.spellcasting?.spells ?? []) {
+        const id = spell.entry.split("/")[0]!;
+        if (!(id in bestiary)) ids.add(id);
+      }
       if (!sheet) continue;
       for (const id of rulesetCatalogIdsForBuild(definition, sheet)) {
         if (!(id in bestiary)) ids.add(id);
@@ -205,6 +325,7 @@ export function rulesetProposedStatBlock(
   creature: RulesetProposedCreature,
 ): RulesetPlainStatBlock | null {
   const block = rulesetStatBlockFromCreature(definition, creature);
+  if (block && creature.tracks && Object.keys(creature.tracks).length) block.tracks = { ...creature.tracks };
   return block && isRulesetPlainStatBlock(block) ? block : null;
 }
 
@@ -290,16 +411,36 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.defense !== undefined ? { defense: creature.defense } : {}),
     ...(creature.initiativeModifier !== undefined ? { initiativeModifier: creature.initiativeModifier } : {}),
     ...(creature.sheet ? { sheet: structuredClone(creature.sheet) } : {}),
+    ...(creature.spellcasting ? { spellcasting: structuredClone(creature.spellcasting) } : {}),
     actions: actions.filter((action): action is RulesetStatBlockAction => action !== null),
     ...(creature.speed !== undefined ? { speed: creature.speed } : {}),
+    ...(creature.speeds ? { speeds: { ...creature.speeds } } : {}),
+    ...(creature.hover ? { hover: true as const } : {}),
     ...(creature.abilities ? { abilities: { ...creature.abilities } } : {}),
     ...(creature.saves ? { saves: { ...creature.saves } } : {}),
     ...(creature.checks ? { checks: { ...creature.checks } } : {}),
+    // Keen senses, sensitivity to light, camouflage (1.291); a printed passive Perception.
+    ...(creature.checkModes ? { checkModes: structuredClone(creature.checkModes) } : {}),
+    ...(creature.passive !== undefined ? { passive: creature.passive } : {}),
+    // Its own ways of hiding and finding (1.292); its own modes on attacks (1.293).
+    ...(creature.hiding ? { hiding: structuredClone(creature.hiding) } : {}),
+    ...(creature.attackModes ? { attackModes: structuredClone(creature.attackModes) } : {}),
+    // The light it sheds (1.294).
+    ...(creature.light ? { light: { ...creature.light } } : {}),
+    ...(creature.unlit ? { unlit: true as const } : {}),
+    ...(creature.lightOutWhile ? { lightOutWhile: [...creature.lightOutWhile] } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
+    ...(creature.keepsOn ? { keepsOn: [...creature.keepsOn] } : {}),
+    ...(creature.held ? { held: creature.held.map((thing) => ({ ...thing, tags: [...thing.tags] })) } : {}),
+    ...(creature.senses ? { senses: { ...creature.senses } } : {}),
     ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
+    ...(creature.shield ? { shield: true as const } : {}),
+    ...(creature.size !== undefined ? { size: creature.size } : {}),
+    ...(creature.type !== undefined ? { type: creature.type } : {}),
+    ...(creature.tags ? { tags: [...creature.tags] } : {}),
     ...(creature.soak
       ? {
           soak: {
@@ -470,6 +611,20 @@ export function clampRulesetStatBlock(
   const tiers = combat?.threat?.tiers ?? [];
   const block = structuredClone(proposed);
   const adjusted: string[] = [];
+  if (block.spellcasting) {
+    delete block.spellcasting;
+    adjusted.push("Spellcasting carried a spell list the threat scale cannot bound, so it was dropped.");
+  }
+  // A threat tier bounds harm, not healing or what an action does to its own side.
+  for (const action of block.actions) {
+    if (action.heal !== undefined || action.targets !== undefined || action.ends !== undefined) {
+      delete action.heal;
+      delete action.targets;
+      delete action.ends;
+      // A cure (1.261) is healing too.
+      adjusted.push(`"${action.name}" carried healing or targets the threat scale cannot bound, so they were dropped.`);
+    }
+  }
   if (!combat || tiers.length === 0) {
     adjusted.push("This ruleset declares no threat scale, so the opponent was used as it was proposed.");
     return { block, adjusted };
@@ -487,8 +642,10 @@ export function clampRulesetStatBlock(
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
   const saves = new Set(definition.sheet.saves.map((save) => save.id));
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
-  const budgets = combat.economy.budgets.map((budget) => budget.id);
-  const mainBudget = budgets[0]!;
+  // A budget of no count is one only a condition fills (Haste's extra action), so an action on it
+  // would never be on the creature's menu: it is not one an invented creature may spend.
+  const budgets = combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id);
+  const mainBudget = budgets[0] ?? combat.economy.budgets[0]!.id;
 
   const keepKnown = <K extends "resist" | "vulnerable" | "immune">(key: K) => {
     const kept = onlyKnown<NonNullable<RulesetStatBlock[K]>[number]>(block[key], types);
@@ -501,13 +658,70 @@ export function clampRulesetStatBlock(
   keepKnown("resist");
   keepKnown("vulnerable");
   keepKnown("immune");
+  // A track some level reads may be shrugged off as a condition is (1.115).
+  const leveled = new Set((combat.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   if (block.conditionImmunities) {
-    const kept = block.conditionImmunities.filter((condition) => conditions.has(condition));
+    // Or a kind of them (1.258): immune to disease.
+    const kinds = new Set((combat.conditions ?? []).flatMap((entry) => entry.kinds ?? []));
+    const kept = block.conditionImmunities.filter(
+      (condition) => conditions.has(condition) || leveled.has(condition) || kinds.has(condition),
+    );
     if (kept.length < block.conditionImmunities.length) {
       adjusted.push("A condition this ruleset does not have was dropped from the immunities.");
     }
     if (kept.length > 0) block.conditionImmunities = kept;
     else delete block.conditionImmunities;
+  }
+  // What it keeps on is a written creature's (1.263): an aura spreads harm the scale cannot bound.
+  if (block.keepsOn) {
+    delete block.keepsOn;
+    adjusted.push("Conditions kept on through the fight were dropped: the threat scale cannot bound an aura.");
+  }
+  // A held thing lets fall only by tags the ruleset has (1.267); a shield's worth is bounded like any defense.
+  if (block.held) {
+    const tags = new Set((definition.items?.tags ?? []).map((tag) => tag.id));
+    const kept = block.held
+      .filter((thing) => thing.tags.some((tag) => tags.has(tag)))
+      .slice(0, 4)
+      .map((thing) => ({
+        label: thing.label,
+        tags: thing.tags.filter((tag) => tags.has(tag)),
+        ...(Number.isFinite(thing.defense) && thing.defense
+          ? { defense: Math.max(-20, Math.min(20, Math.round(thing.defense!))) }
+          : {}),
+      }));
+    if (kept.length < block.held.length) adjusted.push("A held thing with no item tag this ruleset has was dropped.");
+    if (kept.length) block.held = kept;
+    else delete block.held;
+  }
+  // Senses are the fight's own (1.178); one it does not have is nothing to see by.
+  if (block.senses) {
+    const known = new Set((combat.senses ?? []).map((sense) => sense.id));
+    const kept = Object.fromEntries(
+      Object.entries(block.senses).filter(([id, range]) => known.has(id) && Number.isFinite(range) && range > 0),
+    );
+    if (Object.keys(kept).length < Object.keys(block.senses).length) {
+      adjusted.push("A sense this ruleset does not have was dropped.");
+    }
+    if (Object.keys(kept).length > 0) block.senses = kept;
+    else delete block.senses;
+  }
+  if (block.tracks) {
+    const tracks = new Map(definition.sheet.live.tracks.map((track) => [track.id, track]));
+    const kept = Object.fromEntries(
+      Object.entries(block.tracks).flatMap(([id, value]) => {
+        const track = tracks.get(id);
+        if (!track) return [];
+        // A maximum the sheet works out has no number without a sheet, so only a plain one holds it.
+        const top = typeof track.max === "number" ? track.max : value;
+        return [[id, Math.min(top, Math.max(typeof track.min === "number" ? track.min : 0, value))]];
+      }),
+    );
+    if (Object.keys(kept).length < Object.keys(block.tracks).length) {
+      adjusted.push("A track this ruleset does not have was dropped.");
+    }
+    if (Object.keys(kept).length > 0) block.tracks = kept;
+    else delete block.tracks;
   }
   if (block.saves) {
     const kept = Object.fromEntries(Object.entries(block.saves).filter(([id]) => saves.has(id)));
@@ -594,7 +808,12 @@ export function clampRulesetStatBlock(
   const difficultyCap = tier.saveDifficulty + RULESET_CLAMP_HEADROOM;
   block.actions = block.actions.flatMap((action) => {
     if (!budgets.includes(action.budget)) {
-      adjusted.push(`"${action.name}" spent a budget this ruleset does not have, so it spends ${mainBudget}.`);
+      const declared = combat.economy.budgets.some((budget) => budget.id === action.budget);
+      adjusted.push(
+        declared
+          ? `"${action.name}" spent a budget only a condition fills, so it spends ${mainBudget}.`
+          : `"${action.name}" spent a budget this ruleset does not have, so it spends ${mainBudget}.`,
+      );
       action.budget = mainBudget;
     }
     if (action.toHit !== undefined && action.toHit > toHitCap) {

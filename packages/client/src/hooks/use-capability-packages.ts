@@ -83,6 +83,32 @@ export function useImportRuleset() {
   });
 }
 
+/** What the Engine reads from a ruleset package file: on a dry run, for the review, nothing kept. */
+export interface RulesetPackageRead {
+  status: "checked" | "added" | "unchanged";
+  rulesetId: string;
+  version: number;
+  /** The package's ruleset.json, as read (on a dry run). */
+  ruleset?: string;
+  /** Each catalog file's number of entries, by catalog id. */
+  catalogs: Record<string, number>;
+}
+
+/** Read a ruleset package file (a parsed `.ruleset.json`) without keeping anything, for the review. */
+export function readRulesetPackage(file: Record<string, unknown>) {
+  return api.post<RulesetPackageRead>("/game-rulesets/import-package", { package: file, dryRun: true });
+}
+
+/** Import a ruleset package file (RM): its ruleset and catalog files, as data, under `local/<id>`. */
+export function useImportRulesetPackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: Record<string, unknown>) =>
+      api.post<RulesetPackageRead>("/game-rulesets/import-package", { package: file }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: capabilityPackageKeys.rulesets() }),
+  });
+}
+
 /** Remove every stored version of an imported ruleset. `force` is the answer to the server's
  *  `ruleset_in_use` 409, so a ruleset a game plays on is never removed by one click. */
 export function useRemoveRuleset() {

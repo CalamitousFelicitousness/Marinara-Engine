@@ -11,7 +11,7 @@ const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 process.env.FILE_STORAGE_DIR = dir;
 const { createFileNativeDB } = await import("../../../packages/server/src/db/file-backed-store.js");
 const { MariDbService } = await import("../../../packages/server/src/services/mari-db/mari-db.service.js");
-const { collectMariReferencedResources, countMariListOutput } =
+const { collectMariReferencedResources, countMariListOutput, mariBatchItems } =
   await import("../../../packages/client/src/lib/mari-referenced-resources.js");
 
 // Mirrors MARI_READ_OUTPUT_BUDGET in mari-db.service.ts (pretty-printed chars).
@@ -75,6 +75,30 @@ try {
     output: `stdout:\n${JSON.stringify(first, null, 2)}`,
   };
   assert.equal(countMariListOutput(step.output), first.items.length, "the work card counts the entries on the page");
+  // A book created with its entries in one call: the step row counts them and names the first few.
+  const batchOf = (names: unknown[]) => ({
+    action: "lorebook.create",
+    data: { entries: names.map((name) => ({ name })) },
+  });
+  assert.deepEqual(mariBatchItems(batchOf(["The Docks", "The Market", "The Keep", 4, "", "Old Town"])), {
+    count: 6,
+    names: "The Docks, The Market, …",
+  });
+  assert.deepEqual(mariBatchItems(batchOf([" The Docks "])), { count: 1, names: "The Docks" });
+  assert.deepEqual(mariBatchItems(batchOf([1, 2])), { count: 2, names: "" });
+  // The saved trace compacts the input (ten items, then "… N more"): the row reads the same after a reload.
+  const { compactTraceValue } =
+    await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
+  const saved = compactTraceValue({
+    action: "lorebook.create",
+    data: {
+      name: "Harbor Town",
+      entries: Array.from({ length: 14 }, (_, i) => ({ name: `Place ${i + 1}`, content: "x" })),
+    },
+  });
+  assert.deepEqual(mariBatchItems(saved), { count: 14, names: "Place 1, Place 2, …" });
+  assert.equal(mariBatchItems({ action: "lorebook.create", data: { name: "Empty", entries: [] } }), null);
+  assert.equal(mariBatchItems(step.input), null, "a call without a batch adds no fact");
   const entryRefs = collectMariReferencedResources([step]).filter((ref) => ref.kind === "lorebookEntry");
   assert.equal(entryRefs.length, first.items.length, "every entry on the page can be linked");
   assert.equal(entryRefs[0]?.name, "Session 1", "a linked entry keeps its name");

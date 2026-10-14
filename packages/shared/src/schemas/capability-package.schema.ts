@@ -607,7 +607,538 @@ const capabilityPackageManifestBaseSchema = z
 // 1.72: an Experience may ship a map pack (`contributions.gameSurface.mapPack`, worldgen W9e): its
 //        setting kit, ready-made worlds and tile pack as kit, world and tile pack share files among
 //        its declared assets. A new game with the Experience on is locked to them.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 72 } as const);
+// 1.73: the Engine hosts the 2D and 3D avatar agents (`2d-avatars`, `3d-avatars`, types/avatars.ts): it
+//        owns their storage, import, lazy renderers, setup on the Agent editor page, stream director,
+//        classifier and generation routes, and merges the 2D agent's `avatarGenerationTemplates`. No new
+//        manifest field; an avatar package declares 1.73 so an Engine without these surfaces refuses it.
+// 1.74: a ruleset's `combat.cover` may grade cover (`threeQuarters`), help saves (`saves`) and count
+//        creatures in the way (`creatures`), and a save (an entry's, a creature action's or an item use's)
+//        may ignore cover (`ignoresCover`); cover is read from the attacker's position by corner lines
+//        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.72: an Engine that cannot
+//        read these refuses the whole ruleset or catalog file, so a package that ships any of them
+//        declares 1.74. No permission.
+// 1.75: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
+//        is, what higher ground gives an attack and a shot, and what a fall does (combat C6b). Boards
+//        may have height whatever a ruleset says. Not a soft seam, for the same reason as 1.20 through
+//        1.74: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
+//        declares 1.75. No permission.
+// 1.76: a ruleset's conditions may change the action economy (combat C6d, as Haste and Slow do):
+//        `budgets`, `grants`, `exclusive`, `attacksPerTurn` and `onEnd`, and a budget may have a count of
+//        0 for one only a condition fills. Not a soft seam, for the same reason as 1.20 through 1.75: an
+//        Engine that cannot read these refuses the whole ruleset file, so a package that ships any of
+//        them declares 1.76. No permission.
+// 1.77: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
+//        (C6e-0): fields, abilities, skills and saves renamed, one field routed by another's text, and
+//        a live pool or track routed to the one the migrated sheet shows. A rest's poolGroup restore
+//        may also be `shared` (C6e): its fraction worked out on the whole group. Not a soft seam, for
+//        the same reason as 1.20 through 1.76: an Engine that cannot read it refuses the whole ruleset
+//        file, so a package that ships it declares 1.77. No permission.
+// 1.78: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
+//        never on its own, with choices and lists to pick from. Not a soft seam, for the same reason as
+//        1.20 through 1.77: an Engine that cannot read it refuses the whole ruleset file, so a package
+//        that ships it declares 1.78. No permission.
+// 1.79: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
+//        that `passesFor` another item, and a market seller may be `honest: false`. A fake bought from
+//        a dishonest seller is a stack that shows as what it passes for and keeps what it truly is.
+//        Not a soft seam, for the same reason as 1.20 through 1.78: an Engine that cannot read these
+//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.79.
+//        No permission.
+// 1.80: (reserved by Pixelforge: map pack tiles may be an image pack.)
+// 1.81: a ruleset's `combat.attackRoll.criticalFrom`: the lowest natural face of the attack die that
+//        is a critical, read off the attacker's sheet (5e's Champion). Not a soft seam, for the same
+//        reason as 1.20 through 1.79: an Engine that cannot read it refuses the whole ruleset file, so
+//        a package that ships it declares 1.81. No permission.
+// 1.82: a derived value may `multiply` (a 5e hit point maximum's Constitution modifier times the
+//        level). Not a soft seam, for the same reason. No permission.
+// 1.83: a catalog entry's mechanics may `amountAdd` a value read off the user's sheet to its amount
+//        (5e's Second Wind, 1d10 plus the fighter's level). Not a soft seam, for the same reason: an
+//        Engine that cannot read it refuses the catalog. No permission.
+// 1.84: a sheet may have up to 120 derived values (60 before). Not a soft seam: an Engine that cannot
+//        read it refuses the whole ruleset file, so a package with more than 60 declares 1.84.
+//        No permission.
+// 1.85: a sheet list's number column may be filled by a `roll` (count, and sides as a number, another
+//        column of the row, or a value off the sheet); the sheet editor rolls it with the Engine's own
+//        dice. Not a soft seam: an Engine that cannot read it refuses the whole ruleset file, so a
+//        package that ships it declares 1.85. No permission.
+// 1.86: a sheet may declare a guided `builder` (steps that pick catalog entries, fill fields, set the
+//        ability scores by point buy, an array, rolls or by hand, choose trained skills and saves, and
+//        take starting gear), and a catalog entry may say what a pick through it `grants` (score
+//        increases, training, field values). Not a soft seam: an Engine that cannot read either refuses
+//        the ruleset file or the catalog, so a package that ships them declares 1.86. No permission.
+// 1.87: a builder's abilities step may start on a `default` method, and a catalog step may offer only
+//        entries up to a value read off the sheet (`upTo`, features up to the character's level). Not a
+//        soft seam: an Engine that cannot read either refuses the ruleset file, so a package that ships
+//        them declares 1.87. No permission.
+// 1.88: a sheet may have up to 240 derived values (120 before). Not a soft seam: an Engine that cannot
+//        read it refuses the whole ruleset file, so a package with more than 120 declares 1.88.
+//        No permission.
+// 1.89: a currency unit may name one of itself (`one: "penny"` beside `label: "pennies"`), said for an
+//        amount of exactly one. Not a soft seam: an Engine that cannot read it refuses the ruleset
+//        file, so a package that ships it declares 1.89. No permission.
+// 1.90: a builder's catalog step may read how many entries it asks for and takes off the sheet
+//        (`countFrom`, spells known at the character's level). Not a soft seam: an Engine that cannot
+//        read it refuses the ruleset file, so a package that ships it declares 1.90. No permission.
+// 1.91: a catalog entry may grant entries of another catalog to choose (`grants.entries.choose`, a
+//        language of your choice), chosen at a builder `choices` step. Not a soft seam: an Engine that
+//        cannot read either refuses the ruleset file or the catalog, so a package that ships them
+//        declares 1.91. No permission.
+// 1.92: a catalog entry may scale several rows of one list when each carries its own name in the
+//        list's name column (two uses of one racial trait). Not a soft seam: an Engine that cannot read
+//        it refuses the catalog, so a package that ships it declares 1.92. No permission.
+// 1.93: a builder grant's score choice may name one score more than once (`abilities.choose[].repeat`,
+//        an ability score improvement's +2 to one or +1 to two). Not a soft seam: an Engine that cannot
+//        read it refuses the catalog, so a package that ships it declares 1.93. No permission.
+// 1.94: a catalog entry may name an `exclusive` group: a builder step keeps one pick of a group, so a
+//        feat can take an ability score improvement's place. Not a soft seam: an Engine that cannot
+//        read it refuses the catalog, so a package that ships it declares 1.94. No permission.
+// 1.95: an item's to-hit (a weapon's attack, an item's use) may add a number read off its holder's sheet
+//        (`toHit.sheetBonus`, 5e's Archery: +2 to attacks with ranged weapons). Not a soft seam: an
+//        Engine that cannot read it refuses the catalog, so a package that ships it declares 1.95. No
+//        permission.
+// 1.96: a builder grant's score choice may cap the scores it raises (`abilities.choose[].upTo`, an
+//        ability score improvement's "not above 20"). Not a soft seam: an Engine that cannot read it
+//        refuses the catalog, so a package that ships it declares 1.96. No permission.
+// 1.97: a weapon's damage may add a number read off its holder's sheet, only while held in one hand
+//        when it says `oneHanded` (`attack.damage.sheetBonus`), and `combat.offHand.fullWhen` keeps a
+//        fighter's off hand on the full ability when their sheet says so. Not a soft seam: an Engine
+//        that cannot read either refuses the ruleset or the catalog, so a package that ships them
+//        declares 1.97. No permission.
+// 1.98: a weapon's damage may reroll its low dice once, off its holder's sheet, while wielded
+//        two-handed (`attack.damage.rerollUpTo`, 5e's Great Weapon Fighting). Not a soft seam: an Engine
+//        that cannot read it refuses the catalog, so a package that ships it declares 1.98. No
+//        permission.
+// 1.99: a catalog entry may say when a builder step offers it (`offeredWhen`, a value off the sheet
+//        above 0: a second class whose prerequisites are met). Not a soft seam: an Engine that cannot
+//        read it refuses the catalog, so a package that ships it declares 1.99. No permission.
+// 1.100: a catalog entry of an `exclusive` group is judged by its `offeredWhen` on the sheet without the
+//        step's picks of that group, which picking it drops (a feat in place of an ability score
+//        improvement is not offered on the score that improvement gave). Behaviour only, no new key: a
+//        package that relies on it declares 1.100. No permission.
+// 1.101: harm may name what it carries past a resistance's or an immunity's `except`, as a weapon
+//        item's tags do: `qualities` on a catalog entry's mechanics (a spell) and on a creature
+//        action's damage (a deva's mace), so "resistance to slashing from nonmagical attacks" is
+//        `{ type, except: ["magical"] }` and a magical blow goes through it. Not a soft seam: an Engine
+//        that cannot read it refuses the catalog, so a package that ships it declares 1.101. No
+//        permission.
+// 1.102: a creature action's damage may name `alternatives`, amounts it deals instead while something
+//        holds (`twoHanded` unless the creature carries a `shield`, a new key on the creature too, or
+//        `selfHealthAtMost` a share of its health), the first that holds winning: 5e's versatile
+//        longsword on a stat block and a swarm at half its hit points. Not a soft seam: an Engine
+//        that cannot read them refuses the catalog, so a package that ships them declares 1.102. No
+//        permission.
+// 1.103: combatants have a size. `combat.sizes` lists them smallest first (with a value off the sheet
+//        and a default), a creature names its own `size`, and a contest's `maxSizeAbove` is not
+//        taken against a target that many sizes larger or more (5e's grapple and shove, `1`). A
+//        condition an action applies may name its `escapeDc`, which breaking free of it is rolled
+//        against in place of the holder's side of the contest. Not a soft seam: an Engine that
+//        cannot read them refuses the ruleset, so a package that ships them declares 1.103. No
+//        permission.
+// 1.104: a builder skill or save choice never offers what the picks already train to its tier or higher:
+//        what an entry trains outright, or what an earlier choice holds. A stored choice of one counts for
+//        nothing. Behaviour only, no new key. No permission.
+// 1.105: a skill or save choice a catalog entry grants may build on training already held (`held`, a
+//        tier: 5e's Expertise, two skills you are proficient in), offering only what the picks or a
+//        lower choice train to it. Not a soft seam: a package that ships it declares 1.105. No permission.
+// 1.106: an entry a builder choice offers (`grants.entries.choose`) is held to its `offeredWhen` on the
+//        sheet, as a step's options are. Behaviour only, no new key: a package that relies on it
+//        declares 1.106. No permission.
+// 1.107: a builder fields step may show fields only while the sheet allows (`shownWhen`), and hold
+//        number fields to a combined maximum (`total`). Not a soft seam: an Engine that cannot read
+//        it refuses the file, so a package that ships it declares 1.107. No permission.
+// 1.108: a builder catalog step stamps columns onto its added rows (`stamp`), and a combat ability
+//        source reads spellcasting references by a row's column (`byColumn`). Not a soft seam: an
+//        older Engine refuses either key, so a package that ships it declares 1.108. No permission.
+// 1.109: a builder starting-gear step may hold its gear to what the sheet fits (`strict`) in legal-only
+//        mode. Free edit still offers every gear. Not a soft seam: an older Engine refuses the key,
+//        so a package that ships it declares 1.109. No permission.
+// 1.110: a builder catalog step may ask for or take up to 40 entries, and `methods.manual` may bound
+//        typed base scores with `{ min, max }`. Not a soft seam: an older Engine refuses the ruleset,
+//        so a package with more than 20 picks or bounded manual scores declares 1.110. No permission.
+// 1.111: a sheet may have up to 400 derived values. Not a soft seam: an older Engine refuses more
+//        than 240, so a package that ships more declares 1.111. No permission.
+// 1.112: a guided builder may have up to 24 steps. Not a soft seam: an older Engine refuses more
+//        than 16, so a package that ships more declares 1.112. No permission.
+// 1.113: combatants move other ways than walking. A creature's `speeds` (fly, swim, climb, burrow)
+//        and `hover`, and a sheet's `combat.economy.movementModes`, read as the fight begins. On a
+//        board a flier crosses water and steps of any height, a swimmer crosses water, a climber
+//        takes steps of any height, and a burrower moves as a walk; every cell moved comes off every
+//        way at once. Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a
+//        package that ships them declares 1.113. No permission.
+// 1.114: a flier goes up and down. On a board whose ruleset gives `combat.elevation.levelHeight`,
+//        a combatant with a fly speed may fly up or down a level where it stands for a level's
+//        worth of its flight; reach, high ground and opportunity strikes count the height between
+//        two combatants, and a flier knocked down, prone or out of speed falls unless it hovers. No
+//        new key, so a soft seam: an Engine before it keeps fliers on the ground. A package that
+//        relies on it declares 1.114. No permission.
+// 1.115: a level says what 5e's exhaustion does at its worst. A modifier may halve the health
+//        maximum (`{ "to": "health-max", "times": 0.5 }`), and a level that `defeats` takes its holder
+//        out of the fight as it begins. A combatant without a sheet carries live tracks too (`tracks`
+//        on a proposed creature or a bestiary combatant), and a creature's `conditionImmunities` may
+//        name a track some level reads, whose levels it then never suffers. Not a soft seam: an Engine
+//        that cannot read the target, the key or the immunity refuses the ruleset, so a package that
+//        ships them declares 1.115. No permission.
+// 1.116: an answer that cancels may stop only what was paid no higher than itself. A reaction's
+//        `upTo: "paid"` compares the level of what it answers with its own, each the level of the
+//        pool paid from (a pool's new `level`, read off its holder's sheet, or its place in its
+//        group, the first being 1; nothing paid is 0), and `above: { check, dc }` is the check that
+//        stops something higher, against `dc` plus its level: 5e's Counterspell. Not a soft seam: an
+//        Engine that cannot read the keys refuses the ruleset, so a package that ships them declares
+//        1.116. No permission.
+// 1.117: answers to a named entry. A reaction's `against` may name `entries` (`<catalog>/<entry>`)
+//        beside catalogs, `also` takes it at up to three more moments with their own `against`, and a
+//        condition's `noDamageFrom` keeps those entries' harm off its holder: 5e's Shield, taken when
+//        an attack hits and when Magic Missile is aimed at its caster, under which Magic Missile does
+//        nothing. Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a
+//        package that ships them declares 1.117. No permission.
+// 1.118: a reaction's moment may say `blow: "melee" | "ranged"` (only on "hit": a blow is melee
+//        while its target stands in its reach, and a weapon with no range always is) and
+//        `seesSource: true` (only while its holder sees whoever caused it: a line of sight on the
+//        board, never somebody who has hidden). 5e's Parry is both. Not a soft seam: an Engine that
+//        cannot read the keys refuses the ruleset, so a package that ships them declares 1.118. No
+//        permission.
+// 1.119: a condition's duration may say `of: "source"`: its rounds count the turns of whoever put
+//        it on, from their next one, and its holder's again once they have left the fight. 5e's
+//        Guiding Bolt ("before the end of your next turn"). Not a soft seam: an Engine that cannot
+//        read the key refuses the ruleset, so a package that ships it declares 1.119. No permission.
+// 1.120: a combat condition's `delays: { catalogs, budget, chance: { sides, atLeast } }` holds what
+//        its holder uses out of those catalogs with that budget over to their next turn when the die
+//        shows `atLeast` or more; it is completed there with the same budget, or lost. 5e's Slow.
+//        Not a soft seam: an Engine that cannot read the key refuses the ruleset, so a package that
+//        ships it declares 1.120. No permission.
+// 1.121: a creature action's `heal: { dice, flat }` gives hit points back to its targets, capped at
+//        their maximum; `targets: "ally" | "any"` says whose side it may reach. 5e's Healing Touch.
+//        Not a soft seam: an Engine that cannot read the keys refuses the ruleset, so a package that
+//        ships them declares 1.121. No permission.
+// 1.122: an attack entry's `summons` leaves a weapon that strikes on its holder's later turns for
+//        its own budget, keeping the cast's payment level. It ends after its rounds, on defeat,
+//        or with the concentration that holds it. A package that ships it declares 1.122. No permission.
+// 1.123: a creature's `spellcasting` casts catalog spells without slots, at will or with limited
+//        uses. Coven spells need nearby members and share their uses. No permission.
+// 1.124: a reaction on `falls` answers a fall before it lands. A condition's `fallsSafely` keeps its
+//        holder from taking falling damage or being left prone. 5e's Feather Fall. No permission.
+// 1.125: a condition can end on damage or harm from its source's side, repeat its ending save when
+//        damaged, or let a nearby ally spend a budget to shake its holder out. No permission.
+// 1.126: a rider can need an adjacent ally without disadvantage on the final attack roll, as 5e's
+//        Sneak Attack does when the roll has no advantage. No permission.
+// 1.127: conditions can take away senses an effect needs, as Deafened keeps Command from affecting
+//        its holder. The ruleset names the senses; targets without them are skipped. No permission.
+// 1.128: a line area's `width` says how wide it is in the same unit as its size, on a catalog entry
+//        or a creature action. Without it the line stays one cell wide. No permission.
+// 1.129: an applies' `saveEnds.at: "damaged"` rolls only when its holder takes damage above zero,
+//        once per blow, at the stored DC. 5e's Dominate Person. No permission.
+// 1.130: a builder step's stamp can read the first offering parent pick's id, label or filter through
+//        `fromWithin`, so a spell names the class that offered it. Later edits remain the player's. No permission.
+// 1.131: reactions answer for nearby allies, at a turn's start, on a successful holder save, or for
+//        several fallers of one event. An answer may land on the target, last this action, and name a
+//        stat-block action in against.actions. No permission.
+// 1.132: conditions, levels and sheet lists keep typed harm and conditions off; item hides name
+//        exception tags, as creatures do. A package that ships these declares 1.132. No permission.
+// 1.133: condition, level and item modifiers change damage dealt or taken on attack hits, narrowed
+//        by attack kind, blow or ability, with typed additions and source-bound damage taken. No permission.
+// 1.134: save modifiers can count only against conditions, damage types or magic, together with
+//        the saves they name: Dwarven Resilience, Fey Ancestry and Gnome Cunning. No permission.
+// 1.135-1.164: reserved.
+// 1.165: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
+//        ruleset, so a package with a list of more than 12 columns declares 1.165. No permission.
+// 1.166: a catalog entry's mechanics may be usable in a fight only while a value off its holder's
+//        sheet, live state and items stands within bounds (`usableWhen`): 5e's Protection needs a
+//        shield. Not a soft seam: an older Engine refuses the key. No permission.
+// 1.167: a condition a catalog entry or item use applies may go on only while a value off its
+//        applier's sheet stands within bounds (`applies[].when`), read as it applies: 5e's Rage
+//        damage by barbarian level. Not a soft seam: an older Engine refuses the key. No permission.
+// 1.168: creature types and tags (`combat.creatureTypes`, a creature's `type` and `tags`, a
+//        character's type off a field or a default), and target tests that read them: a damage
+//        clause's or an applied condition's `targetIs`, and `mechanics.targetTypes` (is/not) for who
+//        may be picked or caught. 5e's slayer weapons, holy water, Animal Friendship. No permission.
+// 1.169: a weapon item's attack deals extra damage clauses (`attack.plus`: typed, with their own
+//        save, a target test, or only on a critical hit), and what its hit puts on may be resisted
+//        by a save (`onHit[].save`) or last until one (`onHit[].saveEnds`): 5e's dragon slayer,
+//        javelin of lightning, sword of sharpness and sword of wounding. No permission.
+// 1.170: an item may carry a switch (`toggle`: a label and the budget a fight turns it with), kept
+//        on its stack between fights, and a weapon's extra damage clause may be dealt only while the
+//        switch is on (`attack.plus[].when: "toggled"`): 5e's flame tongue. No permission.
+// 1.171: a live pool may pay for the costs of other groups at its own level (`pays`), and a
+//        catalog entry may take more targets for each step of a higher cost (`targetsPerCostStep`):
+//        5e's pact slots paying for spell-slot spells, and Hold Person. A use whose own pool is empty
+//        is offered paid from a higher one. No permission.
+// 1.172: an area may stay (`mechanics.zone`): for rounds of its caster's turns or its
+//        concentration, held where it was aimed or around its caster, doing the entry's effect
+//        again to whoever moves into it or starts or ends a turn in it, once a turn. Drawn on the
+//        board and listed beside it. 5e's Cloudkill, Spirit Guardians and Moonbeam. No permission.
+// 1.173: a zone held at a point may be moved by its caster for a budget (`zone.move`) or drift away
+//        from them as their turns start (`zone.drift`), catching whoever it reaches; and its ground
+//        may be hard going (`zone.terrain.difficult`) or hurt for every distance moved inside
+//        (`zone.terrain.perDistance`). 5e's Moonbeam, Cloudkill and Spike Growth. No permission.
+// 1.174: an applied condition's `escapeDc` may be `"save"`, the save difficulty of whatever applied
+//        it (Web, Black Tentacles); a zone may make whoever it catches while concentrating save or
+//        lose it (`zone.breaksConcentration`, Sleet Storm) and end once it has dealt `zone.damageCap`
+//        in all (Guardian of Faith); and an item's use may concentrate and leave a zone, as a spell
+//        scroll's spell does. No permission.
+// 1.175: a zone its caster moves may ram (`zone.move.ram`): it stops on the first creature it
+//        reaches, catches them, and moves no more that turn (Flaming Sphere); and its ground may cost
+//        several plain steps (`zone.terrain.costTimes`, Plant Growth) or halve speed on top of any
+//        hard going (`zone.terrain.halvesSpeed`, Spirit Guardians). A breaking-free contest may be
+//        offered only against a hold with an escape DC (`from.escapable`), a hold may name the
+//        checks that break it (`applies[].escapeChecks`), and a zone may hurt whoever starts a turn
+//        in it already held by it, with no save (`zone.whileHeld`): Web, Black Tentacles, and no
+//        escape from petrification. No permission.
+// 1.176: a catalog entry or item use may cure: end named conditions on its target (`ends`, up to
+//        `count` of them, Lesser Restoration), steady a dying target (`stabilizes`, Spare the
+//        Dying), or bring back one that died no more than `revives.withinRounds` rounds ago at
+//        `revives.health` (Revivify). No permission.
+// 1.177: an area may be a `box`, a square of its size a side set down against the cell aimed at and
+//        reaching away from its maker (5e's cubes: Web, Grease, Entangle, Black Tentacles), and a
+//        lasting one may be a `wall`, its size long and `width` thick, run through the aimed cell
+//        (or toward the choice's `toward`), or laid as a ring of its `ring` diameter when the choice
+//        says `ring`; it needs no trigger. A wall's zone may block
+//        movement, sight or both (`zone.blocks`: Wall of Stone, Wall of Force, Wall of Fire's
+//        opaque face), shoving whoever stands where it goes up, and may catch on one side
+//        (`zone.side`, the choice's `side` near or far: Wall of Fire). No permission.
+// 1.178: seeing. `combat.senses` names senses (darkvision, blindsight, truesight; `blind` ones work
+//        without eyes) whose range a character reads off its sheet and a creature carries in its
+//        `senses`. A zone may obscure (`zone.obscures`, pierced by the senses it names, in range:
+//        Fog Cloud, Darkness), a condition may hide its holder the same way (`unseen`: invisible),
+//        and `combat.sight` may make not seeing count in attacks (`unseenAttacks`) and name the
+//        sense that is eyes (`eyes`). `mechanics.seen` takes only targets its maker can see. A burst
+//        or box may be set down several times at once (`area.copies`, the choice's `also`), each
+//        touching another (Fire Storm). No permission.
+// 1.179: `combat.components` names what using something may need (verbal, somatic), and an entry or
+//        creature action lists its `components`. A zone may put conditions on and keep damage types
+//        off whoever stands in it (`zone.inside`: Silence deafens and keeps thunder out), stop what
+//        needs a component from inside it (`zone.forbids`, as a condition's `forbids` does: no
+//        verbal spells), and ward whoever is inside from entries off its `catalogs` at `maxLevel`
+//        or lower used from outside (`zone.wards`: Globe of Invulnerability). A condition that takes
+//        budgets away, put on during its holder's own turn, takes them from that turn (Stinking
+//        Cloud). No permission.
+// 1.180: an applied condition may end once its holder attacks or casts from named catalogs
+//        (`endsWhenHolder`: Invisibility), an item's use may say it casts from one (`use.casts`: a
+//        scroll), a condition or a worn or carried item may give senses with a range (`senses`:
+//        Darkvision, True Seeing, goggles of night), and a condition may give away its holder
+//        whatever hides them (`cancelsUnseen`: Faerie Fire). No permission.
+// 1.181: a zone's `wards` may compare a spell's base level (`by: "base"`) and keep out more for each
+//        step its own cast was paid up (`maxLevelPerCostStep`: Globe of Invulnerability). A save may
+//        say what else it is against (`save.against`: poison) and who succeeds outright
+//        (`save.succeeds`: immune to poison, or a creature that does not breathe: Stinking Cloud).
+//        A creature's spellcasting may say the components its spells need (`components`, `[]` for
+//        none), and an item's use may be `utility`, leaving only an area (a scroll of Fog Cloud). No
+//        permission.
+// 1.182: a sense a condition or an item gives may add to the holder's own (`{ add }`), an action may
+// `push` whoever it lands on away from its maker, a line or cone may move with its caster and be
+// turned (`zone.turn`), and a zone's hard going may count only toward its caster (`towardCaster`).
+// 1.183: a zone may go off later (`detonates`, growing each turn and set off when touched) and burn
+// away when damage of a type it names reaches it (`burns`).
+// 1.184: a creature's action may `push` (on a failed save when it has one), and an item's use may
+// give its line a `width`.
+// 1.185: a save may roll twice by what its target is (`save.modes`), damage may be at its most against
+// a kind (`maxAgainst`), `targetTypes` may bound ability scores and condition immunities, and
+// condition modifiers roll attacks twice (`attacks`, `attacks-taken` with `from`, `atSource`) or
+// narrow saves to what a kind of creature does (`against.from`).
+// 1.186: a creature's actions may recharge together (`recharge.group`), and a blow may `charge`:
+// more damage, a save, a push and conditions after a straight run at its target this turn.
+// 1.187: an item's attack may add to hit by what it hits (`against`) and `slay`, and its `plus`
+// clauses may skip some targets (`not`), count only in reach or thrown (`blow`) and drain (`tempHp`);
+// its `onHit` conditions may need a target that is something and land once a turn.
+// 1.188: a sheet, a rest and a fight may name up to 160 conditions, an attacks modifier may take
+// `ability`, and a checks modifier may take `abilities`.
+// 1.189: a condition may harm its holder each turn (`harms`), stack (`stacks`) and keep to one holder
+// per source (`onePerSource`); an item attack's `against` may name a `marked` target, a `mode`, and
+// ignore cover and long range, and its `plus` clauses may be `marked`; a creature action may name
+// the `ability` its attack is made with.
+// 1.190: an item attack's mode may carry its own `range`, `plus` clauses, a `line` that everybody
+// between the wielder and the target saves against, and `charges` it spends of the item.
+// 1.191: a combat condition effect "cannot-heal" keeps every heal off its holder; a combat condition's
+//        `conditionImmunitiesFrom` keeps conditions off only when a creature that is `from` puts them
+//        on; `targetTypes.abilityAtLeast` floors a target's ability scores; and a saves modifier's
+//        `against.actions` narrows it to named actions, AND whatever else it names.
+// 1.192: an item attack's `ignoresResistance` (a vorpal sword), a slay's `saved` conditions on a made
+//        save (a mace of disruption), and `othersWhileMarked` (an oathbow's other weapons). Off a
+//        board, an area names either side unless it spares its own (no key: a behavior change).
+// 1.193: a contest's `difficulty` (rolled against a fixed number, no defender), `targets`,
+//        `targetHolds`, `targetDying` and `onWin.stabilizes` (5e's Medicine checks), and an item
+//        attack's and a condition's `harms.healedOnlyByRest` (a sword of wounding: hit points they
+//        take come back only by rest).
+// 1.194: a size's `cells` in `combat.sizes.order`: a creature of that size fills that many cells a
+//        side on a board, for placement, movement, reach, areas, cover and sight.
+// 1.195: a combat condition's `size.steps`: its holder is that many sizes bigger or smaller while it
+//        holds (5e's Enlarge/Reduce), filling its new size on a board where there is room.
+// 1.196: catalog mechanics' `healthPool` (shared out least health first: Sleep, Color Spray),
+//        `healthAtMost` (Power Word Stun) and `kills` (Power Word Kill).
+// 1.197: a damage modifier's `diceTimes` (a blow's own dice that many times over: an enlarged
+//        duergar), and a creature's `self` action taken on its turn landing on itself.
+// 1.198: a catalog zone's `damageType`, dealt at its triggers in place of the entry's own (5e's
+//        Wall of Thorns: piercing as it appears, slashing to whoever moves into it).
+// 1.199: catalog mechanics' `healthPoolSkips` (whom a health pool passes over: holders of its
+//        `conditions`, as Sleep the unconscious, and with `unseeing` those who can't see its maker).
+// 1.200: a wall zone's `sections` (struck at like creatures with their own defense and health, and
+//        broken apart, a broken one leaving what its `broken` says: 5e's Wall of Ice), and a
+//        choice's `wall` cell, which an attack option's `walls` offers.
+// 1.201: catalog mechanics' `tracks` (live tracks moved by levels on whoever it lands on: 5e's
+//        Greater Restoration takes exhaustion off, Sickening Radiance adds it) and `unseals` (the
+//        health only a rest gives back, given back), and a wall section's `broken.perCostStep`.
+// 1.202: an applied condition's `endsWith` (it ends whenever another condition put on with it by
+//        the same use ends: 5e's Hypnotic Pattern's incapacitation goes with its charm).
+// 1.203: a creature action's `reducesMax` (a failed save lowers the health maximum by the damage
+//        taken until a rest, or with `lasting` until something unseals it; at 0 the target dies:
+//        Life Drain, a clay golem's Slam), and a live pool's `lasting`.
+// 1.204: catalog mechanics' `cureOneOf` (one of its `ends` conditions, `tracks` or `unseals`, picked
+//        as a mode of the option, else the first the target needs: 5e's Greater Restoration).
+// 1.205-1.234 are reserved; the entries go on at 1.235.
+// 1.235: `reducesMax` with no save of its own (every blow that lands), `onFailedSave` (the entry's
+//        own failed save), `damageType` and `heals` (its maker regains what it lowered), on catalog
+//        mechanics too; catalog `leavesAtLeast` (5e's Harm); `targetHolds` on a creature action or
+//        catalog mechanics (a vampire's Bite: grappled by it, incapacitated or restrained).
+// 1.236: a combat condition's `actions` (catalog entries its holder may use while it holds) and
+//        catalog mechanics' `endsCondition` (used, it ends that condition on its user, with its
+//        concentration); `ends.from` (only what a creature of those types or tags put on); and
+//        `dismisses` (out of the fight for good, or while a condition holds, back when it ends:
+//        5e's Dispel Evil and Good, Banishment).
+// 1.237: surprise. A fight's `surprised` combatants take no move and no action on their first turn and
+//        no reaction until it ends; a combat condition's `cannotBeSurprised` (5e's Foresight); catalog
+//        mechanics' `ignoresSurpriseWith` (taking that entry first shakes it off: Feral Instinct).
+// 1.238: catalog mechanics' `extraFirstTurn` (a second turn in a fight's first round at the holder's
+//        initiative plus its number, unless surprised if it says so: 5e's Thief's Reflexes).
+// 1.239: a combat condition's `grants.melee` (its granted strike only with a weapon in reach) and
+//        `onEnd.tracks` (tracks moved as it ends): 5e's Frenzy, and its exhaustion; catalog mechanics'
+//        `usesOf` (spends another row's uses by name: Frenzied Rage spends a Rage).
+// 1.240: initiative thrown twice: `combat.initiative.checkAbility` (initiative is a check with that
+//        ability, so what rolls such checks twice rolls it twice: Foresight, Cat's Grace) and catalog
+//        mechanics' `initiativeMode` (Feral Instinct).
+// 1.241: a "hit" reaction's `by: "self"` (its holder's own attack hitting, aimed at whoever it hit)
+//        and `weapon` (a weapon's blow only); catalog mechanics' `addsToBlow` (its amount joins that
+//        blow, doubled by its critical: Divine Smite) and `perCostStepsMax` (to 5d8 at most).
+// 1.242: catalog mechanics' `attackRows` (held, it changes the attack rows it names: the better of
+//        their ability and its own, a die in place of theirs where better, qualities: 5e's Martial
+//        Arts and Ki-Empowered Strikes), `grantsStrike` (held, a strike bought with another budget)
+//        and `afterAttack` (only once the attack action was taken this turn: Flurry of Blows); a
+//        condition grant's `names` and `afterAttack`.
+// 1.243: an opportunity attack's hit is held for answers as any other hit is (smite or stun it), the
+//        walk's window asked on once it lands; a walker held still on the way goes no further.
+// 1.244: `combat.attacks[].always` (rows every sheet has: 5e's unarmed strike); an `attackRows` rule's
+//        `items` (held weapons by tags, or by name with `names`, which a rule may now leave out) and
+//        `wielding.only` (kept only while every weapon held is one of these); `grantsStrike`'s `when`
+//        and `wielding`.
+// 1.245: catalog mechanics' `usesSpent` (several uses at once: Quivering Palm's 3 ki) and
+//        `dropsOnFailedSave` (a failed save drops to 0 health); a "hit" reaction's `names` (only a hit by
+//        those attacks); a condition's `onEnd.harm` (damage as it ends from whoever put it on, `unless`
+//        its holder is that: Hurl Through Hell).
+// 1.246: `afterAttack`'s `items` (the attack action taken with a held weapon matched by tags, as an
+//        `attackRows` rule's `items` matches it: a dagger +1 is a monk weapon).
+// 1.247: catalog mechanics' `beforeAttack` (only before the holder's first attack of their turn:
+//        Reckless Attack); `attacks` and `blow` narrow a change to attacks too; a damage change's
+//        `criticalDice` (more of the blow's own dice on a critical only: Brutal Critical).
+// 1.248: a hit moment's `budget` (only a strike paid for from it) and a reaction's `oneOf` (one of
+//        its holder's answers sharing the name per hit): Open Hand Technique on Flurry of Blows.
+// 1.249: a change's `rescue` (held back until the holder's own attack, save or check falls short:
+//        Bardic Inspiration, Guidance, Resistance) and catalog mechanics' `rescue` (spent on a
+//        failed roll to roll a save again or succeed: Indomitable, Diamond Soul, Stroke of Luck).
+// 1.250: catalog mechanics' `lowersRoll` (dice off somebody else's attack roll that hit: Cutting
+//        Words) and a condition's or level's `evasion` (nothing on a made half save: Evasion).
+// 1.251: catalog mechanics' `usesChosen` (a heal its user spends as many uses of as they choose,
+//        the option's `amount` and the choice's `amount`: Lay on Hands).
+// 1.252: catalog mechanics' `restore` (gives back to a pool, more for each step of a higher cost,
+//        `overMax` past its maximum until a rest) and a live pool's stored `above`: Font of Magic.
+// 1.253: catalog mechanics' `alters` and `usesSpentByLevel` (an entry chosen with another one, which
+//        changes how it is used: Metamagic), the option's `alters` and `alterNeeded`, the choice's
+//        `alters`, and the `altered` event.
+// 1.254: Empowered rerolls the lowest of all a blow's damage dice (its clauses' and a critical's
+//        too); the alter offer's `spares` and the choice's `spares` (who Careful Spell spares).
+// 1.255: catalog mechanics' `halfOnMiss` (a miss deals half: Acid Arrow), an applied condition's
+//        `harmsPerCostStep` (its harm grows with the cost it was put on at), and the alter offer's
+//        `heightens` with the choice's `heightens` (who Heightened Spell picks).
+// 1.256: catalog mechanics' `rescue` by `twenty` (Stroke of Luck on a check) and by `die` with
+//        `dice` or `die` (a holder's own die: Peerless Skill, Dark One's Own Luck), `notSelf`, and a
+//        combat condition's `oneAtATime`; the condition event's `already`.
+// 1.257: `lowersRoll.also` (Cutting Words off ability checks and damage rolls), a rescue's `saves`
+//        and `budget` (a ring of evasion), `halfOnMiss` on an item's use, and the lowered event's
+//        `roll`.
+// 1.258: a combat condition's `kinds`, which a cure's `ends` and an immunity may name, and
+//        `saveEnds.successes` and `saveEnds.failures` (Contagion); the condition event's `worsened`.
+// 1.259: `rescue` on an item's use (a ring of evasion), spending the item's own charges.
+// 1.260: a combat condition's `onRest` lowering a maximum on a rest (Mummy Rot), after a save if it
+//        has one (an otyugh's disease, cured on a success), and counted saves
+//        rolled out when a fight ends.
+// 1.261: a combat condition's `onDamaged`, `expires.becomes` and `curedOnlyBy`; `onRest.restoredWhenCured`;
+//        the `cannot-heal-nonmagical` effect and a restore op's `magical`; `ends` on a stat block's
+//        action.
+// 1.262: `qualities` on a stat block's action (a magical Healing Touch).
+// 1.263: a combat condition's `auras` (Aura of Protection, Holy Nimbus), and `keepsOn` on a catalog
+//        entry's mechanics and on a stat block: conditions held for the whole fight.
+// 1.264: a combat condition's `behavior` (`only`, `onlyWhenStuck`, `moves`, `table`): Turn Undead,
+//        Command, Confusion; `saveEnds.at: "action"` (Irresistible Dance); the `compelled` event
+//        and refusal.
+// 1.265: an aura's `needs`, `harms` and `save` (Countercharm, a balor's Fire Aura, a pit fiend's Fear
+//        Aura); a save modifier's `against.casts` (Holy Nimbus).
+// 1.266: a condition that drops what its holder holds, keeps them out of a ring, frees a turn begun
+//        stuck, a save rolled only out of sight, and a condition that destroys by threat tier.
+// 1.267: senses any one of which serves, targets kept near each other, an area that grows with its
+//        cost, more uses on an item, and things a stat block holds.
+// 1.268: auras reaching only some kinds of creature or whoever holds their holder, an aura save
+//        worse when failed by enough or one whose holder's eyes can be averted, and a save rolled
+//        leaning while its source is in sight.
+// 1.269: up to 320 conditions (160 before), an aura save whose aura stays off once what it put on
+//        ends (`immuneWhenEnds`), an item use's `sheetDifficulty`, and `chargeStep` (more charges
+//        spent for more).
+// 1.270: a catalog entry whose creature type is chosen as it is used (`kindChoice`), an aura reaching
+//        only that kind or whoever sees its holder, and a save that ends a condition only from far
+//        enough away.
+// 1.271: an item whose first use is named, an item use adding a value off its holder's sheet, more charges
+//        that push farther, and a last charge's die that gives charges back.
+// 1.272: an item that becomes another when its last charge is spent.
+// 1.273: a weapon whose charges are spent on its hits.
+// 1.274: a condition put on with a value off its applier, temporary points a condition gives each turn, an
+//        aura save against its applier's difficulty, a save on harm from a condition's source, a walk kept
+//        within reach, and a kind chosen as an item is used.
+// 1.275: a condition that holds while its source is near as well as in sight, and one condition that holds
+//        others off.
+// 1.276: spells, items and creatures that teleport.
+// 1.277: a spell, an item or a creature action that puts on more than four conditions.
+// 1.278: a save its user's side may fail, a condition that keeps its holder off a whole side, and one that
+//        ends on an attack, on harm from a catalog or on a friend harmed in sight.
+// 1.279: a teleport that leaves the fight, takes along only those its user sees, or leaves smoke behind.
+// 1.280: a creature's teleport that strikes before or after it.
+// 1.281: a blow whose maker regains the damage it dealt.
+// 1.282: a burst centred on its user.
+// 1.283: a legendary move.
+// 1.284: a legendary cast.
+// 1.285: a legendary move after its action or on one speed.
+// 1.286: a lightly obscuring fog, and a fog or wind that blows it away.
+// 1.287: hiding for real, searching, and a creature that detects.
+// 1.288: readying for real.
+// 1.289: a fog a wind disperses only after a while.
+// 1.290: a passive Perception that reads advantage, and a change to checks made to find somebody.
+// 1.291: a creature's own modes on checks, a printed passive Perception, and standard actions with their own
+//        budget.
+// 1.292: somebody's own ways of hiding or of finding the hidden.
+// 1.293: creatures whose attacks are rolled twice where they stand.
+// 1.294: fights kept dark, and things that shed light.
+// 1.295: a carried light's name and its price to put out and light again.
+// 1.296: creatures that light or put out their own light, and items that shed light while switched off.
+// 1.297: zones that shed light or end magical darkness, and light that shows the invisible.
+// 1.298: creatures whose light goes out under a condition, and light that is sunlight.
+// 1.299: darkness that puts out spell light, magical light, and a dispelling reach.
+// 1.300: what a higher cost adds only every so many steps.
+// 1.301: zones carried with somebody, and copies set down apart.
+// 1.302: entries that change another entry each time it is used.
+// 1.303: uses only in some light, and conditions that moving or acting ends.
+// 1.304: uses once a creature until a rest.
+// 1.305: targets that grow with the sheet, and the same target more than once.
+// 1.306: weapons put in hand, and amends that add damage of a type or strikes.
+// 1.307: creature actions held by concentration, conditions ended by using a named action, and uses that put
+//        conditions on their own user.
+// 1.308: an item use whose targets grow with the sheet, or that takes the same target more than once.
+// 1.309: hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden
+//        start, and a weapon bound out of the fight.
+// 1.310: an entry made again while its user concentrates on it, and a condition that ends at a distance from
+//        whoever put it on.
+// 1.311: an item use that puts conditions on its reader, creature actions that slay the dying, and conditions
+//        a rule ends when their holder moves or acts.
+// 1.312: a weapon mode whose hit claps around the one it hit.
+// 1.313: a creature sent away that still takes turns, a condition ended by a check, standard actions taken
+//        with a use, a casting's choices made again, an ability add capped, and an item bound only with
+//        others worn.
+// 1.314: a condition that shuts its holder away from everybody else, and an entry aimed only at creatures up
+//        to a size.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 314 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

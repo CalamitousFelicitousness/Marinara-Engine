@@ -2184,6 +2184,7 @@ export const ChatMessage = memo(function ChatMessage({
     } else {
       if (!hasTTSContent) return;
       void ttsService.speakSequence(ttsVoiceRequests, message.id, {
+        chatId: message.chatId,
         progressive: ttsConfig?.progressivePlayback,
         volume: ttsLinePlaybackVolume,
         onChunkStart: (_request, index) =>

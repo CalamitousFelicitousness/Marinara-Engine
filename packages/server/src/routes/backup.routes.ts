@@ -95,6 +95,7 @@ const BACKUP_DIRS = [
   "storage",
   "avatars",
   "sprites",
+  "avatar-models",
   "backgrounds",
   "gallery",
   "game-scene-videos",

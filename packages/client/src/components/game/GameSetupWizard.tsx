@@ -1,5 +1,6 @@
 import {
   compileGameWorld,
+  gameWorldFromSnapshot,
   normalizeGameDifficulty,
   parseWorldKit,
   worldSpatialDraft,
@@ -583,7 +584,7 @@ export function GameSetupWizard({
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
   const mapPackDraft = useMemo(
-    () => (mapPackWorld ? worldDraftFromWorld(mapPackWorld.world, mapPackWorld.story) : null),
+    () => (mapPackWorld ? worldDraftFromWorld(mapPackWorld.world, mapPackWorld.story, mapPackWorld.snapshot) : null),
     [mapPackWorld],
   );
   const effectiveWorldDraft = mapPackDraft ?? worldDraft;
@@ -1232,7 +1233,7 @@ export function GameSetupWizard({
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
       setWorldKit(config.worldKit ?? null);
-      setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story) : null);
+      setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story, config.worldSnapshot) : null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);
@@ -1471,7 +1472,11 @@ export function GameSetupWizard({
       ...(checkedWorldKit?.ok ? { worldKit: checkedWorldKit.kit } : {}),
       ...(checkedWorld?.ok ? { world: checkedWorld.world } : {}),
       ...(checkedWorld?.ok && checkedWorld.story ? { story: checkedWorld.story } : {}),
+      // A world another generator made goes with its snapshot (W11), played as it was made.
+      ...(checkedWorld?.ok && checkedWorld.snapshot ? { worldSnapshot: checkedWorld.snapshot } : {}),
       combatDirector: true,
+      // New games take tactical turns one unit at a time in a rolled order (combat C6c).
+      tacticalTurnOrder: "initiative",
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
       spatialMapInstructions:
@@ -1642,7 +1647,9 @@ export function GameSetupWizard({
             draft: worldSpatialDraft({
               kit: checkedWorldKit.kit,
               ...checkedWorld.world,
-              world: compileGameWorld({ kit: checkedWorldKit.kit, ...checkedWorld.world }),
+              world: checkedWorld.snapshot
+                ? gameWorldFromSnapshot(checkedWorld.snapshot).world
+                : compileGameWorld({ kit: checkedWorldKit.kit, ...checkedWorld.world }),
             }),
           }
         : enableAgents && hierarchicalMapsInstalled && draftSpatialMap
@@ -2268,9 +2275,9 @@ export function GameSetupWizard({
                         <GameSetupWorldKitChooser
                           kit={worldKit}
                           onChange={chooseWorldKit}
-                          onImportWorld={(kit, world, story) => {
+                          onImportWorld={(kit, world, story, snapshot) => {
                             chooseWorldKit(kit);
-                            setWorldDraft(worldDraftFromWorld(world, story));
+                            setWorldDraft(worldDraftFromWorld(world, story, snapshot));
                           }}
                           writeRequest={worldWriteRequest}
                         />

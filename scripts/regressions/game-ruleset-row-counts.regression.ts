@@ -1,7 +1,9 @@
 /** Capability API 1.205: a list's rows counted, or a column added up, over only the rows whose cell
  *  equals a value, so a creation rule can hold Genesys's talent pyramid. */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
@@ -11,8 +13,8 @@ import {
   type RulesetSheetBuild,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/row-counts-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-row-counts-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -137,10 +139,14 @@ try {
     restartRequired: false,
   });
   const gate = (minor: number, doc: unknown) => getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-  assert.match(gate(164, fixture()) ?? "", /1\.205/);
+  assert.match(gate(204, fixture()) ?? "", /1\.205/);
   assert.equal(gate(205, fixture()), null);
 
   console.log("game-ruleset-row-counts: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

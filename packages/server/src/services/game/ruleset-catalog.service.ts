@@ -94,10 +94,13 @@ async function openBorrowedCatalog(
   } catch {
     return { kind: "unusable", issues: ["(root): the installed rulesets could not be read"] };
   }
-  const lender =
-    registry.get(from.ruleset) ??
-    [...registry].find(([id]) => id.endsWith(`:${from.ruleset}`) || id.endsWith(`/${from.ruleset}`))?.[1];
   const notHere = (why: string) => ({ kind: "unusable" as const, issues: [`from: ${why}`] });
+  // A short id names a ruleset only when one installed ruleset ends with it.
+  const suffixed = [...registry].filter(([id]) => id.endsWith(`:${from.ruleset}`) || id.endsWith(`/${from.ruleset}`));
+  if (!registry.has(from.ruleset) && suffixed.length > 1) {
+    return notHere(`more than one installed ruleset is named "${from.ruleset}"; name it by its full id`);
+  }
+  const lender = registry.get(from.ruleset) ?? suffixed[0]?.[1];
   if (!lender) return notHere(`the ruleset "${from.ruleset}" this catalog borrows from is not installed`);
   if (lender.definition.id === definition.id) return notHere("a catalog cannot borrow from its own ruleset");
   const theirs = lender.definition.catalogs?.find((entry) => entry.id === from.catalog);

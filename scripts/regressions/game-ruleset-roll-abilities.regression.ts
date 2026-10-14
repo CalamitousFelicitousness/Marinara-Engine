@@ -1,7 +1,9 @@
 /** Capability API 1.209: a creation roll written to an ability score. An improvement check adds to
  *  the score as an increase, so rolling or buying the score again keeps it (CoC's EDU improvement). */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   applyRulesetBuilder,
   defaultRulesetSheetBuild,
@@ -15,8 +17,8 @@ import {
   type RulesetSheetBuild,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/roll-abilities-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-roll-abilities-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -181,5 +183,9 @@ try {
 
   console.log("game-ruleset-roll-abilities: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

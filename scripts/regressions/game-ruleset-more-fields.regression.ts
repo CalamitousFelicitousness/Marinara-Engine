@@ -1,6 +1,8 @@
 /** Capability API 1.208: a sheet may declare up to 240 fields (160 before it). */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   RULESET_FIELDS_MAX,
   RULESET_FIELDS_MAX_BEFORE_1203,
@@ -8,8 +10,8 @@ import {
   parseRulesetDefinition,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/more-fields-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-more-fields-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -61,5 +63,9 @@ try {
 
   console.log("game-ruleset-more-fields: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

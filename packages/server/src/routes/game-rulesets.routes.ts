@@ -179,7 +179,8 @@ const partySheetRequestSchema = z
 
 export async function gameRulesetsRoutes(app: FastifyInstance) {
   // The party's shared sheet (1.163), saved on the revision it was opened at.
-  app.post("/party-sheet", async (req, reply) => {
+  // A party member's save, like a character sheet's: behind the server's own access, not an administrative gate.
+  app.post("/party-sheet", { config: { rateLimit: GAME_RULESETS_RATE_LIMIT } }, async (req, reply) => {
     const parsed = partySheetRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Invalid party sheet", issues: parsed.error.issues.slice(0, 10) });

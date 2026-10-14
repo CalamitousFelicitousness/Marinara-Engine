@@ -1,7 +1,9 @@
 /** Capability API 1.160: creation profiles that bring their own steps and budgets, and steps that read
  *  the sheet as the steps before another make it. */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   applyRulesetBuilder,
   defaultRulesetSheetBuild,
@@ -21,8 +23,8 @@ import {
   type RulesetSheetBuild,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/creation-profiles-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-creation-profiles-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -203,5 +205,9 @@ try {
 
   console.log("game-ruleset-creation-profiles: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

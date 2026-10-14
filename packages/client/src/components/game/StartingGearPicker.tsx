@@ -174,10 +174,11 @@ export function StartingGearPicker({
       if (!paid) return "";
       if (line.roll)
         return t("game.ruleset.startingGear.rolledCoins", { dice: amount?.rolled ?? line.roll, coin: paid.label });
-      if (line.countFrom)
-        return amount
-          ? `${amount.count} ${paid.label}`
-          : t("game.ruleset.startingGear.sheetCoins", { coin: paid.label });
+      // In the coin it is paid in, and nothing when the sheet's number is 0 (nothing is added then).
+      if (line.countFrom) {
+        if (!amount) return t("game.ruleset.startingGear.sheetCoins", { coin: paid.label });
+        return amount.count > 0 ? `${paid.count} ${paid.label}` : "";
+      }
       return `${paid.count} ${paid.label}`;
     }
     if (line.name) return counted(line.name, line.count);

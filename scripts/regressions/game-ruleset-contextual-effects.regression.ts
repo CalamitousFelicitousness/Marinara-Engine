@@ -106,7 +106,8 @@ try {
   assert.equal(evaluated.abilityMods.per, 2);
   assert.equal(evaluated.skillMods.perception, 2);
   const passive = definition.sheet.derived.find((entry) => JSON.stringify(entry).includes('"perception"'));
-  if (passive) assert.equal(evaluated.derived[passive.id], 12, "a derived value reads the worked-out score");
+  assert.ok(passive, "the example ruleset has a derived value that reads perception");
+  assert.equal(evaluated.derived[passive.id], 12, "a derived value reads the worked-out score");
   assert.ok(!rulesetBuilderAbilityIds(definition, definition.sheet.builder!.steps[0] as any).includes("per"));
 
   const withRows: RulesetSheetBuild = {

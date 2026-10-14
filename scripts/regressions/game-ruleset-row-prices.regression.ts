@@ -2,7 +2,9 @@
  *  at 5 XP a tier), and a cheaper price when a derived value named by the row's cell reads above 0
  *  (a Charm of a Caste or Favored Ability). */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   applyRulesetBuilder,
   defaultRulesetSheetBuild,
@@ -15,8 +17,8 @@ import {
   type RulesetSheetBuild,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/row-prices-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-row-prices-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -185,5 +187,9 @@ try {
 
   console.log("game-ruleset-row-prices: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,7 +1,9 @@
 /** Capability API 1.215: a pick that opens items without carrying them, so a Blades playbook's
  *  items are on the sheet and before the Game Master, and none is in the bag until it is taken. */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   applyRulesetBuilder,
   createRulesetSheetEnvelope,
@@ -13,12 +15,14 @@ import {
   type RulesetDefinition,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/item-access-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-item-access-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+const { renderGameRulesetSheetBlocks } =
+  await import("../../packages/server/src/services/game/ruleset-sheet-turn.service.js");
 
 const baseText = readFileSync(new URL("../../docs/examples/rulesets/gravewatch.json", import.meta.url), "utf8");
 const fixture = (edit: (doc: Record<string, any>) => void = () => {}) => {
@@ -78,6 +82,9 @@ try {
     renderRulesetSheetBlock(definition, { name: "Ash", build: none.build }, none, catalogs),
     /Has access to/,
   );
+  // As a game renders it: the stored sheet on the card, the live state beside it.
+  const [gameBlock] = renderGameRulesetSheetBlocks(definition, [{ name: "Ash", rulesetSheet: stored }], {}, catalogs);
+  assert.match(gameBlock ?? "", /Has access to, not carried until taken as load: Grave spade, Silver coffin nail$/);
 
   // ── The schema ──
   const access = (refs: string[]) =>
@@ -109,5 +116,9 @@ try {
 
   console.log("game-ruleset-item-access: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

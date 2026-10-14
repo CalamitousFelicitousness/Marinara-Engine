@@ -155,306 +155,48 @@ try {
     null,
     "the pre-merge capability minor remains compatible",
   );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 144 },
-      }),
-    ),
-    null,
-    "Party sheet API 1.144 is supported alongside 1.145",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 151 },
-      }),
-    ),
-    null,
-    "Builder choices API 1.151 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 152 },
-      }),
-    ),
-    null,
-    "Builder allocation API 1.152 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 153 },
-      }),
-    ),
-    null,
-    "Builder spending API 1.153 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 154 },
-      }),
-    ),
-    null,
-    "Builder named rows API 1.154 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 155 },
-      }),
-    ),
-    null,
-    "Builder legality API 1.155 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 156 },
-      }),
-    ),
-    null,
-    "Contextual effects API 1.156 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 157 },
-      }),
-    ),
-    null,
-    "Starting coins API 1.157 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 158 },
-      }),
-    ),
-    null,
-    "Starting values API 1.158 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 159 },
-      }),
-    ),
-    null,
-    "Priced choices API 1.159 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 160 },
-      }),
-    ),
-    null,
-    "Creation profiles API 1.160 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 161 },
-      }),
-    ),
-    null,
-    "Row checks API 1.161 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 162 },
-      }),
-    ),
-    null,
-    "Creation rolls API 1.162 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 163 },
-      }),
-    ),
-    null,
-    "Shared party creation API 1.163 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 164 },
-      }),
-    ),
-    null,
-    "Trades API 1.164 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 205 },
-      }),
-    ),
-    null,
-    "Row counts API 1.205 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 206 },
-      }),
-    ),
-    null,
-    "Row prices API 1.206 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 207 },
-      }),
-    ),
-    null,
-    "Unpriced offers API 1.207 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 208 },
-      }),
-    ),
-    null,
-    "More fields API 1.208 is supported",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 209 },
-      }),
-    ),
-    null,
-    "roll abilities",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 210 },
-      }),
-    ),
-    null,
-    "worked-out list columns",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 211 },
-      }),
-    ),
-    null,
-    "partial score increases",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 212 },
-      }),
-    ),
-    null,
-    "row check stances",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 213 },
-      }),
-    ),
-    null,
-    "ability specialties",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 214 },
-      }),
-    ),
-    null,
-    "no-cancel check effects",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 215 },
-      }),
-    ),
-    null,
-    "item access",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 216 },
-      }),
-    ),
-    null,
-    "row dots",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 217 },
-      }),
-    ),
-    null,
-    "best-rating check effects",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 218 },
-      }),
-    ),
-    null,
-    "track costs",
-  );
-  assert.equal(
-    getCapabilityApiCompatibilityIssue(
-      capabilityPackageManifestSchema.parse({
-        ...manifestV2,
-        capabilityApi: { major: 1, minor: 219 },
-      }),
-    ),
-    null,
-    "Capability API 1.219 accepts advancement lists up to 64 fields",
-  );
+  // Every minor this Engine added stays installable alongside the newest.
+  const supportedMinors: Array<[number, string]> = [
+    [144, "party sheet"],
+    [151, "builder choices"],
+    [152, "builder allocation"],
+    [153, "builder spending"],
+    [154, "builder named rows"],
+    [155, "builder legality"],
+    [156, "contextual effects"],
+    [157, "starting coins"],
+    [158, "starting values"],
+    [159, "priced choices"],
+    [160, "creation profiles"],
+    [161, "row checks"],
+    [162, "creation rolls"],
+    [163, "shared party creation"],
+    [164, "trades"],
+    [205, "row counts"],
+    [206, "row prices"],
+    [207, "unpriced offers"],
+    [208, "more fields"],
+    [209, "roll abilities"],
+    [210, "worked-out list columns"],
+    [211, "partial score increases"],
+    [212, "row check stances"],
+    [213, "ability specialties"],
+    [214, "no-cancel check effects"],
+    [215, "item access"],
+    [216, "row dots"],
+    [217, "best-rating check effects"],
+    [218, "track costs"],
+    [219, "advancement lists up to 64 fields"],
+  ];
+  for (const [minor, label] of supportedMinors) {
+    assert.equal(
+      getCapabilityApiCompatibilityIssue(
+        capabilityPackageManifestSchema.parse({ ...manifestV2, capabilityApi: { major: 1, minor } }),
+      ),
+      null,
+      `Capability API 1.${minor} ({label}) is supported`,
+    );
+  }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
     capabilityApi: { major: 1, minor: 341 },

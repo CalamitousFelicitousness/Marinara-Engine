@@ -2920,6 +2920,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // The prompt and commands share one snapshot, including an older reply being continued.
       let turnStartSnapshotPromise: typeof selectedGameStateSnapshotPromise | null = null;
       const turnStartRulesetSnapshot = () => {
+        // Until the turn's ruleset is read, nothing is cached: its clocks and party sheet decide the answer.
+        if (turnGameRuleset === undefined) return selectedGameStateSnapshotPromise;
         turnStartSnapshotPromise ??= (async () => {
           const continuedRow = input.continueMessageId
             ? await gameStateStore.getByChatAndMessage(

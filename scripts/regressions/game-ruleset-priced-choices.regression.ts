@@ -1,7 +1,9 @@
 /** Capability API 1.159: builder picks and the player's own rows paid out of a shared pool, and rows
  *  copied from a catalog as often as the player likes, each priced and removed on its own. */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   applyRulesetBuilder,
   defaultRulesetSheetBuild,
@@ -17,8 +19,8 @@ import {
   type RulesetSheetBuild,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/priced-choices-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-priced-choices-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -244,5 +246,9 @@ try {
 
   console.log("game-ruleset-priced-choices: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

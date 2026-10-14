@@ -1234,7 +1234,7 @@ function resolveRulesetSkillCheck(
         isSave,
         bonusDice: request.bonusDice,
         dark: request.darkDice,
-        ...(purchase?.bought.dice ? { bought: { dice: purchase.bought.dice } } : {}),
+        ...(bought?.dice ? { bought: { dice: bought.dice } } : {}),
       },
       rollDie,
     );
@@ -1275,7 +1275,7 @@ function resolveRulesetSkillCheck(
         upgradeOwn: request.upgradeOwn,
         isSave,
         bonusDice: symbolRatings.bonusDice + penalty + adjust + boost + (request.bonusDice ?? 0),
-        ...(purchase?.bought.dice ? { bought: { dice: purchase.bought.dice } } : {}),
+        ...(bought?.dice ? { bought: { dice: bought.dice } } : {}),
       },
       rollDie,
     );

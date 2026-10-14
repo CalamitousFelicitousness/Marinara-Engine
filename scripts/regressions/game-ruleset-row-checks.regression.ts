@@ -89,9 +89,9 @@ try {
 
   // Each specialty is its own check with its own rating; one stance pair reads one rating.
   const physics = matchRulesetCheckTarget(definition, "Science (Physics)", undefined, build);
-  const biology = matchRulesetCheckTarget(definition, "science physics", undefined, build);
+  const physicsAlt = matchRulesetCheckTarget(definition, "science physics", undefined, build);
   assert.equal(physics?.type, "skill");
-  assert.equal(physics?.id, biology?.id, "spelled either way, one check");
+  assert.equal(physics?.id, physicsAlt?.id, "spelled either way, one check");
   assert.equal(evaluated.skillMods[physics!.id], 2 + 3);
   const bio = matchRulesetCheckTarget(definition, "Science (Biology) check", undefined, build)!;
   assert.equal(evaluated.skillMods[bio.id], 2 + 1);

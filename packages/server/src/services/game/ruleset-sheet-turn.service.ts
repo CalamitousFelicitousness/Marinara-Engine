@@ -116,10 +116,16 @@ export function renderGameRulesetSheetBlocks(
           items.playerName,
         )
       : undefined;
+  // The stored sheets, whose builder picks say which items a character can reach (1.215).
+  const envelopes = new Map(
+    party
+      .filter((card) => typeof card.name === "string")
+      .map((card) => [normalizeCharacterLookupName((card.name as string).trim()), card.rulesetSheet]),
+  );
   const blocks = built.map((card) =>
     renderRulesetSheetBlock(
       definition,
-      card,
+      { ...card, envelope: envelopes.get(normalizeCharacterLookupName(card.name)) },
       live?.[normalizeCharacterLookupName(card.name)],
       catalogs,
       itemsOf?.(card.name),

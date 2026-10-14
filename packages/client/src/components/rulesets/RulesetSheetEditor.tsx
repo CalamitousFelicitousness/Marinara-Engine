@@ -359,9 +359,10 @@ export function RulesetSheetEditor({
     () =>
       rulesetItemAccess(definition, envelope, builderCatalogs.catalogs, build).map((ref) => {
         const [catalogId, entryId] = ref.split("/") as [string, string];
-        const entry = catalogs
-          .find((catalog) => catalog.id === catalogId)
-          ?.entries?.find((each) => each.id === entryId);
+        // Fetched catalogs first: a catalog in its own file has no entries on the definition.
+        const entry =
+          builderCatalogs.catalogs[catalogId]?.find((each) => each.id === entryId) ??
+          catalogs.find((catalog) => catalog.id === catalogId)?.entries?.find((each) => each.id === entryId);
         return entry?.label ?? entryId.replace(/-/g, " ");
       }),
     [definition, envelope, builderCatalogs.catalogs, build, catalogs],

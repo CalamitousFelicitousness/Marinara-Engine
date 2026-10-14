@@ -2,7 +2,9 @@
  *  with its own entries beside it; a creature that does not fit is left out, and its art matches as
  *  the lender's. */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   findCreatureArt,
   parseBorrowedRulesetCatalog,
@@ -11,9 +13,8 @@ import {
   type RulesetDefinition,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/borrowed-catalog-regression/", import.meta.url).pathname;
-rmSync(dataDir, { recursive: true, force: true });
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-borrowed-catalog-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -311,5 +312,9 @@ try {
 
   console.log("game-ruleset-borrowed-catalog: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,6 +1,8 @@
 /** Capability API 1.153: separate formula budgets, original prices and reversible paid deltas. */
 import assert from "node:assert/strict";
-import { readFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   applyRulesetBuilder,
   defaultRulesetSheetBuild,
@@ -13,8 +15,8 @@ import {
   type RulesetDefinition,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = new URL("../../.tmp/builder-spend-regression/", import.meta.url).pathname;
-mkdirSync(dataDir, { recursive: true });
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-builder-spend-"));
+const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
 process.env.DATA_DIR = dataDir;
 process.env.MARINARA_DATA_DIR = dataDir;
 const { getCapabilityPackageInstallIssue } =
@@ -559,5 +561,9 @@ try {
   assert.equal(getCapabilityPackageInstallIssue(manifest(152) as any, base()), null);
   console.log("game-ruleset-builder-spend: passed");
 } finally {
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(dataDir, { recursive: true, force: true });
 }

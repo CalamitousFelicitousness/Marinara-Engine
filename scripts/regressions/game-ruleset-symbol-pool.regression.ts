@@ -2,6 +2,8 @@
  *  independent critical markers; the resolver, saved record, card text and package boundary. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   defaultRulesetSheetBuild,
@@ -19,7 +21,7 @@ import {
   type SkillCheckResult,
 } from "../../packages/shared/src/index.js";
 
-const dataDir = mkdtempSync(fileURLToPath(new URL(".symbol-pool-", import.meta.url)));
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-symbol-pool-"));
 const previousDataDir = process.env.DATA_DIR;
 process.env.DATA_DIR = dataDir;
 try {

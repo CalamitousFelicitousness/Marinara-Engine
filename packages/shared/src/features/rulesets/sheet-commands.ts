@@ -240,7 +240,13 @@ export function applySheetCommandTags(
         return record("party", { ok: false, reason: "not-allowed" });
       if (op.op === "advance" && ctx.advancementRefusal)
         return record("party", { ok: false, reason: ctx.advancementRefusal });
-      const result = applyRulesetSheetOp(partyDefinition, partyBuild, live[RULESET_PARTY_KEY], op);
+      let result: RulesetSheetOpResult;
+      try {
+        result = applyRulesetSheetOp(partyDefinition, partyBuild, live[RULESET_PARTY_KEY], op);
+      } catch {
+        // As applyTo: one bad command is refused, never the whole turn.
+        return record("party", { ok: false, reason: "malformed" });
+      }
       if (result.ok) {
         store(RULESET_PARTY_KEY, result.live);
         if (result.build) builds[RULESET_PARTY_KEY] = partyBuild = result.build;

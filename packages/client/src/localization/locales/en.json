@@ -13549,7 +13549,7 @@
   "ui.regex.importUnsafePatternWarning": "Entry {{value1}} ({{value2}}) was imported, but its pattern triggered the safety warning and will not run until the pattern is made safe.",
   "ui.rulesets.builder.allFields": "All fields",
   "ui.rulesets.builder.allocationHint": "Assign your budget, then buy dots. Free ratings cost no dots. Use All fields for manual overrides.",
-  "ui.rulesets.builder.allocationNotConfigured": "Not configured: this stage needs a valid budget, creation range and rating map.",
+  "ui.rulesets.builder.allocationNotConfigured": "This ruleset sets up this step incompletely, so its points cannot be spent here.",
   "ui.rulesets.builder.assignPriority": "Assign an allotment before buying dots.",
   "ui.rulesets.builder.back": "Back",
   "ui.rulesets.builder.base": "Base",

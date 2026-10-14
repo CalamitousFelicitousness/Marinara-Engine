@@ -88,7 +88,8 @@ function fieldText(field: RulesetField, build: RulesetSheetBuild): string {
 /** One party member's sheet, as the Game Master reads it. Deterministic and pure. */
 export function renderRulesetSheetBlock(
   definition: RulesetDefinition,
-  card: { name: string; build: RulesetSheetBuild },
+  /** `envelope` is the card's stored sheet, whose builder picks open items (1.215); `stored` is its live state. */
+  card: { name: string; build: RulesetSheetBuild; envelope?: unknown },
   stored: unknown,
   catalogs: RulesetCatalogEntriesById = {},
   /** The items the character holds, which an `itemStat` reads. */
@@ -286,7 +287,7 @@ export function renderRulesetSheetBlock(
   }
 
   // Items open to the character but not carried (1.215), by the name the Game Master gives them.
-  const access = rulesetItemAccess(definition, stored, catalogs, build)
+  const access = rulesetItemAccess(definition, card.envelope ?? stored, catalogs, build)
     .map((ref) => catalogEntries.get(ref)?.label)
     .filter((name): name is string => !!name);
   if (access.length)

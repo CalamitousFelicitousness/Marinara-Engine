@@ -42,7 +42,7 @@ import {
 import { ArtIcon } from "./ArtIcon";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
-import { ApiError, api } from "../../lib/api-client";
+import { stalePartySheet, useSavePartySheet } from "../../hooks/use-game";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
@@ -313,6 +313,8 @@ export interface GameRulesetSheetProps {
   buildOnly?: boolean;
   /** A note shown above the editor while a draft is open. */
   draftNotice?: string | null;
+  /** A new draft was opened, so a note about an earlier one no longer applies. */
+  onDraftStart?: () => void;
   /** What the character holds, which a value reading their items (`itemStat`) shows. */
   items?: ReadonlyArray<RulesetSheetItem>;
   /** A rest taken by the game rather than here: the sheet and what the character carries change
@@ -332,6 +334,7 @@ export function GameRulesetSheet({
   readOnly: locked = false,
   buildOnly = false,
   draftNotice,
+  onDraftStart,
   items,
   onRest,
 }: GameRulesetSheetProps) {
@@ -422,6 +425,7 @@ export function GameRulesetSheet({
     // envelope carries (the guided builder's choices) goes along, or re-picking would grant twice.
     setDraft({ ...envelope, v: rulesetSheetStamp(definition, envelope), build });
     setRestNotice(null);
+    onDraftStart?.();
   };
 
   const saveDraft = async () => {
@@ -845,7 +849,6 @@ export function GameRulesetPartySheet({
   chatId,
   revision,
   memberBuilds,
-  onSaved,
 }: {
   definition: RulesetDefinition;
   stored: unknown;
@@ -854,41 +857,25 @@ export function GameRulesetPartySheet({
   revision?: number;
   /** The party's characters' builds, which the fields read off them follow. */
   memberBuilds?: readonly RulesetSheetBuild[];
-  onSaved?: (saved: { revision: number; sheet: unknown }) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const [conflict, setConflict] = useState(false);
+  const savePartySheet = useSavePartySheet();
   const party = useMemo(() => rulesetPartyDefinition(definition), [definition]);
   const envelope = useMemo(
     () => readRulesetPartySheet(definition, stored, memberBuilds),
     [definition, stored, memberBuilds],
   );
   if (!party || !definition.party) return null;
-  const editable = Boolean(chatId && onSaved && (definition.party.builder || definition.party.lists?.length));
+  const editable = Boolean(chatId && (definition.party.builder || definition.party.lists?.length));
   const save = async (sheet: RulesetSheetEnvelope) => {
     try {
-      const saved = await api.post<{ revision: number; sheet: unknown }>("/game-rulesets/party-sheet", {
-        chatId,
-        sheet,
-        revision: revision ?? 0,
-      });
+      await savePartySheet.mutateAsync({ chatId: chatId!, sheet, revision: revision ?? 0 });
       setConflict(false);
-      onSaved?.(saved);
     } catch (error) {
-      const body =
-        error instanceof ApiError ? (error.payload as { reason?: string; revision?: number; sheet?: unknown }) : null;
-      if (
-        error instanceof ApiError &&
-        error.status === 409 &&
-        body?.reason === "stale" &&
-        typeof body.revision === "number"
-      ) {
-        // Theirs is shown as saved; this draft stays open, and saving it again replaces theirs.
-        setConflict(true);
-        onSaved?.({ revision: body.revision, sheet: body.sheet ?? null });
-      } else {
-        toast.error(error instanceof Error ? error.message : localizeUi("game.ruleset.party.saveFailed"));
-      }
+      // Theirs is shown as saved; this draft stays open, and saving it again replaces theirs.
+      if (stalePartySheet(error)) setConflict(true);
+      else toast.error(error instanceof Error ? error.message : localizeUi("game.ruleset.party.saveFailed"));
       throw error;
     }
   };
@@ -907,6 +894,7 @@ export function GameRulesetPartySheet({
             readOnly={!editable}
             buildOnly={editable}
             draftNotice={conflict ? localizeUi("game.ruleset.party.conflict") : null}
+            onDraftStart={() => setConflict(false)}
             onLiveChange={() => undefined}
             onEnvelopeSave={save}
           />

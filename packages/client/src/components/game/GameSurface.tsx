@@ -8972,21 +8972,6 @@ function GameSurfaceComponent({
       return build ? [build] : [];
     });
   }, [chatMeta.gameCharacterCards, gameRuleset]);
-  const handlePartySheetSaved = useCallback(
-    (saved: { revision: number; sheet: unknown }) => {
-      if (!activeChatId) return;
-      const patch = { gamePartySheet: saved.sheet, gamePartySheetRevision: saved.revision };
-      const detailKey = chatKeys.detail(activeChatId);
-      const patchedChat = patchChatMetadata(queryClient.getQueryData<Chat>(detailKey), patch);
-      if (patchedChat) queryClient.setQueryData(detailKey, patchedChat);
-      const chatStore = useChatStore.getState();
-      if (chatStore.activeChatId === activeChatId) {
-        const patchedActiveChat = patchChatMetadata(chatStore.activeChat, patch);
-        if (patchedActiveChat) chatStore.setActiveChat(patchedActiveChat);
-      }
-    },
-    [activeChatId, queryClient],
-  );
   // A game with no ruleset buys and pays in its setting kit's money (worldgen W6b).
   const inventoryKit = gameKit;
   const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems, inventoryKit);
@@ -12994,7 +12979,6 @@ function GameSurfaceComponent({
                           typeof chatMeta.gamePartySheetRevision === "number" ? chatMeta.gamePartySheetRevision : 0
                         }
                         memberBuilds={partySheetMemberBuilds}
-                        onSaved={handlePartySheetSaved}
                       />
                     </div>
                   )}

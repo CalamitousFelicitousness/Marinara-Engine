@@ -1,5 +1,5 @@
 import DOMPurify from "dompurify";
-import { stripSheetCommandTags } from "@marinara-engine/shared";
+import { stripSheetCommandTags, stripClockCommandTags } from "@marinara-engine/shared";
 import { escapeStandaloneGameNarrationAngleLines } from "../../lib/game-tag-parser";
 import { HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
 import { translate } from "../../localization/i18n";
@@ -31,7 +31,7 @@ export function formatNarration(content: string, boldDialogue = true): string {
   // result, so leaving them in would narrate the bookkeeping twice. Stripped here as well as in
   // the tag parser because this formatter is also handed content that never passed through it
   // (a translated turn, a storyboard line).
-  let html = escapeStandaloneGameNarrationAngleLines(stripSheetCommandTags(content))
+  let html = escapeStandaloneGameNarrationAngleLines(stripClockCommandTags(stripSheetCommandTags(content)))
     .replace(/\[combat_result]\s*([\s\S]*?)\s*\[\/combat_result]/gi, (_match, recap: string) => {
       const cleaned = recap.trim();
       return `${commandBadge("bg-red-500/15 text-red-200 ring-1 ring-red-400/20", "⚔ Combat Result")}${

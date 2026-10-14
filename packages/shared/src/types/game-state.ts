@@ -52,6 +52,9 @@ export interface GameState {
    *  rewinds it: sheet commands are relative, and a regenerated turn must not spend twice. */
   rulesetLive?: import("../features/rulesets/live-state.js").RulesetLiveStates | null;
 
+  /** Party/scene progress clocks, restored with the snapshot. Missing means no clocks. */
+  rulesetClocks?: import("../features/rulesets/clocks.js").RulesetClocks | null;
+
   createdAt: string;
 }
 

@@ -13,6 +13,7 @@ import type {
   DirectedRulesetEvent,
   DirectedRulesetView,
   RulesetCombatPoolRoll,
+  RulesetCombatDamagePool,
   RulesetCombatRollMode,
   RulesetConditionBonus,
   RulesetContestSide,
@@ -28,6 +29,7 @@ export interface RulesetCombatNames {
   /** A combatant by id, or an empty string for an id the fight does not hold. */
   combatant: (id?: string) => string;
   condition: (id: string) => string;
+  kind: (id: string) => string;
   budget: (id: string) => string;
   save: (id: string) => string;
   /** One of the checks a contest reads. */
@@ -92,6 +94,7 @@ export function rulesetCombatNames(
     },
     combatant: (id) => (id ? (combatants.get(id) ?? "") : ""),
     condition: lookup(definition.sheet.live.conditions),
+    kind: lookup(definition.sheet.live.tracks.flatMap((track) => track.kinds ?? [])),
     budget: lookup(definition.combat?.economy.budgets),
     save: lookup(definition.sheet.saves),
     check: lookup(definition.combat?.checks),
@@ -420,6 +423,15 @@ export function rulesetCombatEventLine(
       if (event.reason === "missed") return key("shiftMissed", { actor, amount: -event.amount, total: event.total });
       return key(event.reason === "spent" ? "shiftSpent" : "shiftRecovered", { actor, total: event.total });
     }
+    case "daze":
+      return [
+        key("daze", { target: names.combatant(event.targetId), damage: event.damage, over: event.over }),
+        event.text,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    case "skip":
+      return key("skipDazed", { actor: names.combatant(event.actorId) });
     case "heal":
       if (event.blocked) return key("healBlocked", { target: names.combatant(event.targetId) });
       return key("heal", {
@@ -1202,7 +1214,7 @@ function poolHarmLines(
   harm: {
     rolls: number[];
     flat: number;
-    pool: { target: number; successes: number; soak?: { value: number; rolls?: number[]; taken: number } };
+    pool: RulesetCombatDamagePool;
   },
   targetId: string,
   names: RulesetCombatNames,
@@ -1220,6 +1232,16 @@ function poolHarmLines(
       count: harm.flat,
     }),
   ];
+  if (harm.pool.minimum !== undefined) lines.push(key("damageMinimum", { minimum: harm.pool.minimum }));
+  if (harm.pool.remappedFrom !== undefined && harm.pool.kind) {
+    lines.push(
+      key("damageRemapped", {
+        target: names.combatant(targetId),
+        from: names.kind(harm.pool.remappedFrom),
+        to: names.kind(harm.pool.kind),
+      }),
+    );
+  }
   const soak = harm.pool.soak;
   if (soak?.rolls) {
     lines.push(

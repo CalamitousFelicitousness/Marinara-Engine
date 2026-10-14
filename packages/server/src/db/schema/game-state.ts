@@ -37,6 +37,8 @@ export const gameStateSnapshots = fileTable("game_state_snapshots", {
   /** JSON object of live ruleset sheet state (current pools, tracks, conditions) per party card,
    *  keyed by normalized card name. Lives here, not on the card, so it rewinds with swipes. */
   rulesetLive: text("ruleset_live"),
+  /** JSON array of party/scene progress clocks, including completed clocks until cleared. */
+  rulesetClocks: text("ruleset_clocks"),
 
   /** Whether this snapshot has been "committed" (user sent a follow-up message). */
   committed: integer("committed").notNull().default(0),

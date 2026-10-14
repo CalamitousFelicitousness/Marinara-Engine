@@ -18,6 +18,8 @@ type Call = { kind: "classify" | "summary" | "combine" | "recollect"; system: st
 const calls: Call[] = [];
 const embeddingInputs: string[] = [];
 let failRecollections: string | null = null;
+/** How the fake Helper ends its replies: OpenAI's "stop", or Anthropic's own "end_turn", passed through as is. */
+let finishReason = "stop";
 const SECRET = "Bram confides that the crimson heron sings at dawn.";
 const LONG = " The lamp oil, the brass fittings and the long spiral stair all needed care that night.".repeat(18);
 
@@ -132,7 +134,7 @@ const provider = createServer(async (request, response) => {
     calls.push({ kind: combine ? "combine" : "summary", system: system!.content, user: transcript!.content });
     content = summaryAnswer(system!.content, transcript!.content);
   }
-  response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }] }));
+  response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content }, finish_reason: finishReason }] }));
 });
 
 const { createFileNativeDB } = await import("../../packages/server/src/db/file-backed-store.js");
@@ -684,6 +686,43 @@ try {
     new Map((await summaries(later.id)).map((record) => [record.id, [record.content, record.updatedAt]])),
     before,
   );
+
+  // ── 10. A Helper that ends its replies its own way (Anthropic's "end_turn") still has its answers kept ──
+  // Every scene check, summary and recollection was thrown away as "did not complete" when the ending wasn't "stop".
+  finishReason = "end_turn";
+  const claude = await chats.create({
+    name: "Claude Helper",
+    mode: "roleplay",
+    characterIds: ["ada", "bram"],
+    connectionId: connection.id,
+  });
+  assert(claude);
+  await chats.patchMetadata(claude.id, {
+    groupChatMode: "merged",
+    advancedMemory: { ...settings, characterRecollections: false, narratorCharacterId: null, knowledgeStarts: {} },
+  });
+  await chats.createMessagesBatch(claude.id, [
+    { role: "user", content: "BACKFILL_D Ada and Bram row out.", extra: persona },
+    { role: "assistant", characterId: "bram", content: "Bram takes the oars." },
+    { role: "user", content: "SCENE_CHANGE BACKFILL_E Ada and Bram land on the island.", extra: persona },
+    { role: "assistant", characterId: "ada", content: "Ada ties the boat." },
+    { role: "user", content: "SCENE_CHANGE The tide turns.", extra: persona },
+  ]);
+  await memory.initialize(claude.id);
+  assert.equal((await memory.status(claude.id)).job.status, "ready", "scene checks and summaries are kept");
+  assert.equal((await summaries(claude.id)).length, 2);
+  mark = calls.length;
+  await memory.updateSettings(claude.id, { characterRecollections: true });
+  const claudeJob = await settle(claude.id);
+  assert.equal(claudeJob.status, "ready", claudeJob.error ?? "");
+  assert.equal(since(mark, "recollect").length, 2, "one request per scene, each paid for once");
+  const kept10 = await recollections(claude.id);
+  assert.equal(kept10.length, 4);
+  assert(kept10.every((record) => record.content), "every recollection is written");
+  mark = calls.length;
+  await memory.initialize(claude.id);
+  assert.equal(since(mark).length, 0, "nothing is asked again");
+  finishReason = "stop";
   console.log("advanced-memory-recollections regression passed");
 } finally {
   provider.close();

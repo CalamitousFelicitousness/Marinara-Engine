@@ -989,7 +989,8 @@ a reserved asset of their own, one file per catalog:
 `catalogs/<id>.json` is a reserved asset family: the file name is the catalog's own id, so the
 Engine finds the file from the ruleset alone and no catalog can name another one's file. A catalog
 asset is hash-pinned in `files[]` like every other declared asset, only ever ships beside the
-`ruleset.json` that declares it, and is refused on its declared size above 1 MB before it is read.
+`ruleset.json` that declares it, and is refused on its declared size above 2 MB before it is read (1 MB before Capability API
+1.340; a package with a catalog file over 1 MB declares 1.340).
 Its contents go through the same checks the inline entries go through, against the same sheet, so a
 catalog can never write a row the sheet could not hold. Up to 12 catalogs per ruleset and 2000
 entries per catalog.
@@ -1041,7 +1042,8 @@ This is not a soft seam. A ruleset package does nothing on an Engine that cannot
 manifest that lists `ruleset.json` must declare Capability API 1.20, and an older Engine refuses the
 install cleanly.
 
-The Engine refuses the asset on its declared size above 256 KB before reading it, re-verifies it
+The Engine refuses the asset on its declared size above 512 KB before reading it (256 KB before Capability
+API 1.340; a package whose ruleset is over 256 KB declares 1.340), re-verifies it
 against the install-time hash, and validates it with the strict shared schema
 (`packages/shared/src/schemas/ruleset.schema.ts`). A file it cannot use is dropped with one log line
 that names the package and the first few `path: message` problems. Two packages that declare the same

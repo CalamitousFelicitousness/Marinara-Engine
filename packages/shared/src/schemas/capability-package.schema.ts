@@ -840,7 +840,65 @@ const capabilityPackageManifestBaseSchema = z
 //        by attack kind, blow or ability, with typed additions and source-bound damage taken. No permission.
 // 1.134: save modifiers can count only against conditions, damage types or magic, together with
 //        the saves they name: Dwarven Resilience, Fey Ancestry and Gnome Cunning. No permission.
-// 1.135-1.164: reserved.
+// 1.135: outcome bands on a check. `resolution.outcomes` names labelled bands a check lands in,
+//        read from its margin or its total, best first, each a success or not and critical or not;
+//        `naturals: "shift"` moves a single die's highest face one band better and its lowest one
+//        worse. The record carries `outcome="..."`. Not a soft seam: an Engine that cannot read the
+//        key refuses the ruleset, so a package that ships it declares 1.135. No permission.
+// 1.136: custom faces, open-ended rolls and unmodified faces on a summed check. `resolution.dice.faces`
+//        gives each face its worth (Fate's -1, 0, +1); `resolution.openEnded` rolls a single die again
+//        and adds on `high` or more, and again and takes away on `low` or less, chained on high;
+//        `resolution.unmodified` names faces the record marks as `unmodified="N"`. Not a soft seam: an
+//        Engine that cannot read the keys refuses the ruleset, so a package that ships them declares 1.136.
+//        No permission.
+// 1.137: a dice pool reads its per-die target off the sheet (`resolution.target.from`), counts
+//        dice under or over it by stance (`resolution.stances`), and counts and flags a die on the target
+//        exactly (`resolution.exact`), for Lasers & Feelings. An Engine that cannot read the keys refuses
+//        the ruleset, so a package that ships them declares 1.137. No permission.
+// 1.138: a third resolution kind, `dice-highest`: throw as many dice as the sheet says and read the
+//        highest (or add the `keep` highest), with a zero-dice rule, a critical on several top faces and
+//        dark dice the Game Master adds (`dark=`), for Blades in the Dark and Trophy Dark. An Engine that
+//        cannot read the kind refuses the ruleset, so a package that ships it declares 1.138. No permission.
+// 1.139: a fourth resolution kind, `roll-against`: roll the dice at most (or at least) the sheet's
+//        number, with ladder steps that divide or move it, critical rules on faces or on how far a roll
+//        missed, bonus and penalty tens dice on a d100, and outcome bands read as a fraction of the target,
+//        for Call of Cthulhu, GURPS and old-school percentages. An Engine that cannot read the kind refuses
+//        the ruleset, so a package that ships it declares 1.139. No permission.
+// 1.140: `resolution.overrides`: skills, saves and abilities that roll with other keys of the
+//        resolution (`set`, `null` takes one away), always or only where the roller's sheet meets `when`.
+//        An old-school game's d100 thief skills and X-in-6 doors, exwod's 1s that do not cancel. An Engine
+//        that cannot read the key refuses the ruleset, so a package that ships it declares 1.140. No permission.
+// 1.141: a fifth resolution kind, `symbol-pool`: character and opposing narrative dice, upgrades,
+//        cancelling symbols and independent triumph/despair markers. An Engine that cannot read
+//        the kind refuses it, so a package that ships it declares 1.141. No permission.
+// 1.142: `sheet.advancement`: fields, abilities and tiers the Game Master may change with `advance`.
+//        An older Engine refuses the sheet key, so a package that ships it declares 1.142. No permission.
+// 1.143: `clocks`: party/scene progress clocks created, ticked and cleared by the Game Master.
+//        An older Engine refuses the top-level key, so a package that ships it declares 1.143. No permission.
+// 1.144: `party`: a shared sheet with live pools and permanent field advancement. No permission.
+// 1.145: `gmReference`: the ruleset's full GM rules reference in the cached system prompt.
+//        An older Engine refuses the key, so a package that ships it declares 1.145. No permission.
+// 1.146: `combat.damage.minimum` and `item.attack.damage.minimum`: minimum damage dice after soak. No permission.
+// 1.147: `combat.daze`: one hit above the target's value skips their next turn. No permission.
+// 1.148: `combat.damageKinds.remap`: target values and weapon tags remap wound kinds before soak. No permission.
+// 1.149: `dice-highest.dark.outcome`: light-only outcomes with dark dice still rolled and flagged.
+// 1.150: symbol-pool `setback=` and opt-in `allowOwnUpgrade` / `upgradeOwn=` character upgrades.
+// 1.151: guided builder counted choices, quotas, exclusions, replacement training and conditional steps.
+// 1.152: guided builder rating stages, priority groups, explicit tier maps and free rating grants.
+// 1.153: guided builder shared formula budgets, original-price purchases and capped trait credits.
+// 1.154: guided builder named rows the player adds, edits and removes on a sheet list.
+// 1.155: guided builder offer eligibility, sheet-read and discrete bounds, replacement pools and creation rules.
+// 1.156: worked-out ability scores, and rows or entries the Game Master applies to one roll with apply=.
+// 1.157: starting coins rolled when taken or read off the holder's sheet.
+// 1.158: builder initialize steps that write starting values once, and pools or tracks that start at a sheet value.
+// 1.159: builder picks and rows paid out of a shared pool, and rows copied from a catalog.
+// 1.160: creation profiles with their own steps and budgets, and steps that read the sheet before a step.
+// 1.161: list rows that are checks of their own, such as Science (Physics), one or more stances each.
+// 1.162: scores rolled in order with their own dice, and creation rolls kept with their dice.
+// 1.163: the party's shared sheet set up through its own builder and lists, saved on a revision, with
+// fields read off the party's characters.
+// 1.164: spend offers raised and lowered from one start, levels owned under a better value, and
+// closed creation trades out of one rating into another.
 // 1.165: a sheet list may have up to 24 columns. Not a soft seam: an older Engine refuses the
 //        ruleset, so a package with a list of more than 12 columns declares 1.165. No permission.
 // 1.166: a catalog entry's mechanics may be usable in a fight only while a value off its holder's
@@ -985,7 +1043,25 @@ const capabilityPackageManifestBaseSchema = z
 //        Life Drain, a clay golem's Slam), and a live pool's `lasting`.
 // 1.204: catalog mechanics' `cureOneOf` (one of its `ends` conditions, `tracks` or `unseals`, picked
 //        as a mode of the option, else the first the target needs: 5e's Greater Restoration).
-// 1.205-1.234 are reserved; the entries go on at 1.235.
+// 1.205: list sums that count rows, or read only the rows whose cell equals a value.
+// 1.206: row prices scaled, offset, or overridden by a derived value the row's cell names.
+// 1.207: spend offers whose price the source has not supplied yet.
+// 1.208: up to 240 sheet fields (160 before it).
+// 1.209: a creation roll may be written to an ability score; an improvement check adds as an increase.
+// 1.210: a number list column may be worked out from other columns of its row (`sum`).
+// 1.211: a score choice may give partial increases past a mark (`partialFrom`); two make one.
+// 1.212: a list's row checks may sit in a resolution stance.
+// 1.213: a row applied by name may name an ability in its skill cell (`contextual.abilities`).
+// 1.214: a contextual check effect may switch off cancelling faces (`cancel: false`).
+// 1.215: a catalog pick may open items without carrying them (`grants.itemAccess`).
+// 1.216: allocation groups count list rows' dots, and a row price override may set a per-dot rate.
+// 1.217: a contextual check effect may take the best skill rating (`best: true`), also on dice-highest.
+// 1.218: contextual costs may mark a live track, and a list's contextual rows may cost.
+// 1.219: sheet advancement may list up to 64 fields (was 24).
+// 1.220: a catalog may borrow another installed ruleset's catalog (`from`), read against this one,
+//        with its own entries beside it adding or replacing; a borrowed creature's art matches as the
+//        lender's. A D&D 5e ruleset may fight the SRD bestiary of the Engine's 5e. No permission.
+// 1.221-1.234: reserved.
 // 1.235: `reducesMax` with no save of its own (every blow that lands), `onFailedSave` (the entry's
 //        own failed save), `damageType` and `heals` (its maker regains what it lowered), on catalog
 //        mechanics too; catalog `leavesAtLeast` (5e's Harm); `targetHolds` on a creature action or
@@ -1171,7 +1247,8 @@ const capabilityPackageManifestBaseSchema = z
 // 1.338: icons on a catalog entry or a condition, and portraits, from packs of their own kind.
 // 1.339: the Game Master's intro message, part of the GM setup and a story's `intro`: defined is the game's
 //        first message exactly, guided only shapes it; an Experience may lock its own.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 339 } as const);
+// 1.340: a ruleset of up to 512 KB and catalog files of up to 2 MB (256 KB and 1 MB before).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 340 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -126,6 +126,16 @@ function amountOf(amount: RulesetCatalogMechanics["amount"]): RulesetCombatAmoun
 
 // ── Reading a combatant ──
 
+/** A bestiary reference as the fight keeps it: out of a borrowed catalog (1.220), it also names the
+ *  lender's ruleset and catalog, which is what the creature's art is matched by. */
+function creatureRef(
+  definition: RulesetDefinition,
+  ref: { catalogId: string; entryId: string },
+): NonNullable<RulesetCombatant["creature"]> {
+  const from = definition.catalogs?.find((catalog) => catalog.id === ref.catalogId)?.from;
+  return { catalogId: ref.catalogId, entryId: ref.entryId, ...(from ? { from: { ...from } } : {}) };
+}
+
 /**
  * The round whose lair action this combatant may take right now (Capability API 1.315), or null.
  * Its lair's count comes once a round, after everybody at that count or above it and before
@@ -321,6 +331,53 @@ export function rulesetCombatDamageKind(combat: RulesetCombat, damageType: strin
     if (type.trim().toLowerCase() === wanted) return kind;
   }
   return kinds.default;
+}
+
+/** A fight rule's value on this sheet as it stands now. A plain block can only supply a constant. */
+export function rulesetCombatValue(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  ref: RulesetValueRef,
+): number | undefined {
+  const sheet = actor.sheet;
+  const value = sheet
+    ? resolveRulesetValueRef(
+        definition,
+        sheet.build,
+        ref,
+        evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items),
+      )
+    : ref.const;
+  return value !== undefined && Number.isFinite(value) ? value : undefined;
+}
+
+/** Minimum dice belongs to the weapon when it says so, otherwise to the attacker's sheet. */
+export function rulesetDamageMinimum(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  damage: RulesetCombatDamage,
+): number | undefined {
+  const ref = definition.combat?.damage?.minimum;
+  const value = damage.minimum ?? (ref ? rulesetCombatValue(definition, actor, ref) : undefined);
+  if (value === undefined || definition.resolution.kind !== "dice-pool") return undefined;
+  return Math.max(0, Math.min(definition.resolution.pool.max, Math.floor(value)));
+}
+
+/** Remaps are ordered, not chained. The original type still decides resistance; the kind decides soak and marks. */
+export function rulesetTargetDamageKind(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  target: RulesetCombatant,
+  damageType: string | undefined,
+  tags?: readonly string[],
+): { kind: string; remappedFrom?: string } {
+  const kind = rulesetCombatDamageKind(combat, damageType);
+  for (const rule of combat.damageKinds?.remap ?? []) {
+    if (rule.from !== kind || (rule.tags && !rule.tags.some((tag) => tags?.includes(tag)))) continue;
+    const when = rulesetCombatValue(definition, target, rule.when);
+    if (when !== undefined && when !== 0) return { kind: rule.to, remappedFrom: kind };
+  }
+  return { kind };
 }
 
 /** One command through the sheet's own rules. A refusal changes nothing and says so, exactly as it
@@ -2040,6 +2097,12 @@ function itemAttackActions(
         ? Math.trunc(resolveRulesetValueRef(definition, build, attack.damage.rerollUpTo, evaluated))
         : 0;
     const rerollUpTo = Number.isFinite(rerollRead) ? Math.max(0, Math.min(rerollRead, dice.sides - 1)) : 0;
+    const minimum = attack.damage.minimum;
+    const minimumRead = minimum
+      ? "stat" in minimum
+        ? read(minimum)
+        : resolveRulesetValueRef(definition, build, minimum, evaluated)
+      : undefined;
     const floorRead = read(attack.floor);
     const floor = typeof floorRead === "number" && Number.isFinite(floorRead) && floorRead >= 1 ? floorRead : 0;
     // A damage ability read as the off hand reads it where the ruleset says so: added only when it
@@ -2055,6 +2118,9 @@ function itemAttackActions(
       ...(type ? { type } : {}),
       ...(item.tags?.length ? { qualities: [...item.tags] } : {}),
       ...(floor ? { floor: Math.trunc(floor) } : {}),
+      ...(typeof minimumRead === "number" && Number.isFinite(minimumRead)
+        ? { minimum: Math.max(0, Math.trunc(minimumRead)) }
+        : {}),
       ...(rerollUpTo > 0 ? { reroll: rerollUpTo } : {}),
       ...(plus.length ? { plus: plus.map((clause) => ({ ...clause })) } : {}),
     });
@@ -4174,7 +4240,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         // And one that names how it moves moves that way, whatever its sheet reads.
         if (block.speeds) combatant.speeds = { ...block.speeds };
         if (block.hover) combatant.hover = true;
-        if ("creature" in entry) combatant.creature = { ...entry.creature };
+        if ("creature" in entry) combatant.creature = creatureRef(definition, entry.creature);
         // A sheet that gives it no health at all is a creature that could never be hurt or ever
         // stand: left out, and the opening says why, rather than walked in as something unkillable.
         const health = rulesetCombatHealth(definition, combat, combatant);
@@ -4212,7 +4278,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         id: entry.id,
         name: entry.name,
         side: "enemy",
-        ...("creature" in entry ? { creature: { ...entry.creature } } : {}),
+        ...("creature" in entry ? { creature: creatureRef(definition, entry.creature) } : {}),
         initiativeRoll: initiative.roll,
         initiativeModifier: initiative.modifier,
         initiative: initiative.total,

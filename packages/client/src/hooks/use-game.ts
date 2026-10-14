@@ -15,6 +15,8 @@ import {
   registerPendingHudWidgetPersistence,
   useGameModeStore,
 } from "../stores/game-mode.store";
+export { patchChatMetadata } from "../lib/chat-metadata-patch";
+import { patchChatMetadata } from "../lib/chat-metadata-patch";
 import { useGameAssetStore } from "../stores/game-asset.store";
 import { useGameStateStore } from "../stores/game-state.store";
 import { useChatStore } from "../stores/chat.store";
@@ -184,33 +186,6 @@ interface MapMoveResponse {
 
 interface UpdateGameWidgetsResponse {
   ok: boolean;
-}
-
-export function patchChatMetadata(chat: Chat | null | undefined, patch: Record<string, unknown>): Chat | null {
-  if (!chat) return null;
-  const rawMetadata = chat.metadata as unknown;
-  const metadata =
-    typeof rawMetadata === "string"
-      ? (() => {
-          try {
-            const parsed = JSON.parse(rawMetadata);
-            return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-              ? (parsed as Record<string, unknown>)
-              : {};
-          } catch {
-            return {};
-          }
-        })()
-      : rawMetadata && typeof rawMetadata === "object" && !Array.isArray(rawMetadata)
-        ? (rawMetadata as Record<string, unknown>)
-        : {};
-  return {
-    ...chat,
-    metadata: {
-      ...metadata,
-      ...patch,
-    } as Chat["metadata"],
-  };
 }
 
 // Mirror a guarded snapshot into the active-chat store when it targets the

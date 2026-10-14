@@ -16,6 +16,7 @@ import type {
 import { gameInventoryCoinRef } from "../../utils/game-inventory-stacks.js";
 import { rulesetLayeredCurrencies, type RulesetLayerOptions } from "./layers.js";
 import type { RulesetItemBook } from "./item-book.js";
+import { parseDiceNotation } from "../../utils/dice-notation.js";
 import { resolveRulesetValueRef } from "./sheet-math.js";
 
 /** What the player chose: the gear, an option for each of its choices, and an item for each line
@@ -34,6 +35,41 @@ export interface RulesetStartingGearAdd {
   name: string;
   count: number;
   equip?: true;
+  /** Coins still to be rolled ("3d6 x 10"), where nothing rolled them yet: a preview counts 0. */
+  rolled?: string;
+}
+
+/** What a coin line's amount is read from when the gear is taken (1.157): the holder's sheet and the
+ *  dice. Without a roller a rolled line is shown as its dice and counts nothing. */
+export interface RulesetStartingGearAmounts {
+  build?: RulesetSheetBuild;
+  rollDie?: (sides: number) => number;
+}
+
+/** How many coins a line gives: its count, or what its dice or the sheet say times `times`. Null for
+ *  a line read off a sheet nobody has. */
+export function rulesetStartingGearCoinCount(
+  definition: RulesetDefinition,
+  line: RulesetStartingGearLine,
+  amounts?: RulesetStartingGearAmounts,
+): { count: number; rolled?: string } | null {
+  const times = line.times ?? 1;
+  if (line.countFrom) {
+    if (!amounts?.build) return null;
+    return {
+      count: Math.max(0, Math.floor(resolveRulesetValueRef(definition, amounts.build, line.countFrom))) * times,
+    };
+  }
+  if (line.roll) {
+    const dice = parseDiceNotation(line.roll);
+    const text = times > 1 ? `${line.roll} x ${times}` : line.roll;
+    if (!dice) return null;
+    if (!amounts?.rollDie) return { count: 0, rolled: text };
+    let total = dice.modifier;
+    for (let n = 0; n < dice.count; n++) total += amounts.rollDie(dice.sides);
+    return { count: Math.max(0, total) * times };
+  }
+  return { count: line.count };
 }
 
 export type RulesetStartingGearRefusal = "unknown-gear" | "does-not-fit" | "choice" | "pick" | "unknown-item" | "empty";
@@ -151,6 +187,7 @@ export function resolveRulesetStartingGear(
   selection: RulesetStartingGearSelection,
   layerOptions?: RulesetLayerOptions | null,
   builder?: RulesetStartingGearBuilderContext,
+  amounts?: RulesetStartingGearAmounts,
 ): RulesetStartingGearResolution {
   const gear = rulesetStartingGear(definition).find((entry) => entry.id === selection.gear);
   if (!gear) return { ok: false, reason: "unknown-gear", detail: `No starting gear "${selection.gear}"` };
@@ -210,7 +247,18 @@ export function resolveRulesetStartingGear(
         ...(line.equip ? { equip: true } : {}),
       });
     } else if (line.coins) {
-      const paid = rulesetStartingGearCoins(definition, line, layerOptions);
+      const amount = rulesetStartingGearCoinCount(definition, line, {
+        build: amounts?.build ?? builder?.build,
+        rollDie: amounts?.rollDie,
+      });
+      if (!amount) return { ok: false, reason: "choice", detail: `Line ${key} reads a sheet this bag has not got` };
+      // Nothing to give, as a sheet reading 0 says: left out rather than an empty purse.
+      if (amount.count === 0 && !amount.rolled) continue;
+      const paid = rulesetStartingGearCoins(
+        definition,
+        { coins: line.coins, count: Math.max(1, amount.count) },
+        layerOptions,
+      );
       if (!paid) {
         const named = definition.items?.currencies
           ?.flatMap((family) => family.units)
@@ -219,7 +267,8 @@ export function resolveRulesetStartingGear(
         continue;
       }
       const item = gameInventoryCoinRef(paid.unit);
-      add(item, { item, name: paid.label, count: paid.count });
+      if (amount.rolled) add(`${item}:${key}`, { item, name: paid.label, count: 0, rolled: amount.rolled });
+      else add(item, { item, name: paid.label, count: paid.count });
     } else if (line.name) {
       add(`name:${line.name.toLowerCase()}`, { name: line.name, count: line.count });
     }

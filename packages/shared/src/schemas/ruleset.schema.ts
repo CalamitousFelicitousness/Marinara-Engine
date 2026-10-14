@@ -14,8 +14,11 @@ import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../u
  *  `gm-verbs.json`: declared in `contributions.assets.paths`, hash-pinned in `files[]`. */
 export const RULESET_ASSET_PATH = "ruleset.json";
 
-/** Byte ceiling checked against the manifest's declared `files[].bytes` BEFORE the asset is read. */
-export const RULESET_MAX_BYTES = 256 * 1024;
+/** Byte ceiling checked against the manifest's declared `files[].bytes` BEFORE the asset is read. 512 KB
+ *  since Capability API 1.340; a package whose ruleset is over the earlier ceiling declares 1.340. */
+export const RULESET_MAX_BYTES = 512 * 1024;
+/** The ruleset ceiling before Capability API 1.340, which an older Engine still holds a package to. */
+export const RULESET_EARLIER_MAX_BYTES = 256 * 1024;
 
 /** A stored character sheet (`{ v, build }`) is refused above this many serialized bytes. */
 export const RULESET_SHEET_MAX_BYTES = 64 * 1024;
@@ -146,12 +149,38 @@ export const RULESET_ITEM_STAT_PICKS = Object.freeze(["sum", "max", "min", "coun
  *  floor, how far from its top, or on a wound track the penalty in force. */
 export const RULESET_TRACK_READS = Object.freeze(["value", "filled", "remaining", "penalty"] as const);
 
+/** How many fields a sheet may declare (Capability API 1.208), and how many before it. */
+export const RULESET_FIELDS_MAX = 240;
+export const RULESET_FIELDS_MAX_BEFORE_1203 = 160;
+
+/** A list's column added up, or its rows counted (Capability API 1.205), over the rows `onlyWhen`
+ *  marks and whose `where` cell equals its value. */
+export interface RulesetListSum {
+  list: string;
+  column?: string;
+  onlyWhen?: string;
+  where?: { column: string; equals: number | string | boolean };
+  count?: true;
+}
+const rulesetListSumSchema = z
+  .object({
+    list: sheetId,
+    column: sheetId.optional(),
+    onlyWhen: sheetId.optional(),
+    where: z
+      .object({ column: sheetId, equals: z.union([z.number().finite(), z.string().max(80), z.boolean()]) })
+      .strict()
+      .optional(),
+    count: z.literal(true).optional(),
+  })
+  .strict();
 /** Exactly one key. `abilityModFromField` names an enum field whose VALUE is an ability id (a
  *  caster's chosen spellcasting ability); any other value, such as "none", reads as 0. `liveTrack`
  *  and `livePool` read the character's live state, so nothing worked out without one (a maximum,
  *  the proficiency bonus, a catalog's scaling) may read them; `read` goes only beside `liveTrack`.
  *  `listSum` adds up one number column of a list's rows, only the rows a boolean column marks where
- *  `onlyWhen` names one. `itemStat` reads a stat over the items the character holds (see
+ *  `onlyWhen` names one, and only the rows whose `where` cell equals its value; `count` counts the
+ *  rows instead (1.205). `itemStat` reads a stat over the items the character holds (see
  *  `RULESET_ITEM_STAT_FROM`); items change in play, so it is held to the same rule as a live read. */
 export const rulesetValueRefSchema = z
   .object({
@@ -166,7 +195,7 @@ export const rulesetValueRefSchema = z
     liveTrack: sheetId.optional(),
     read: z.enum(RULESET_TRACK_READS).optional(),
     livePool: sheetId.optional(),
-    listSum: z.object({ list: sheetId, column: sheetId, onlyWhen: sheetId.optional() }).strict().optional(),
+    listSum: (rulesetListSumSchema as z.ZodType<RulesetListSum, z.ZodTypeDef, unknown>).optional(),
     itemStat: z
       .object({
         stat: sheetId.optional(),
@@ -336,6 +365,118 @@ const resolutionAdjustSchema = z
   })
   .strict();
 
+/** One band a check can land in (Capability API 1.135), best first. `atLeast` is the lowest
+ *  measure that lands here; the last band has none and catches everything below. `success` says
+ *  whether landing here is a success, and `critical` marks the band as a critical one of its kind.
+ *  A band `on` a critical is never reached by the measure: only that critical lands in it. */
+const outcomeTierSchema = z
+  .object({
+    id: sheetId,
+    label,
+    atLeast: z.number().int().min(-1000).max(1000).optional(),
+    on: z.enum(["critical-success", "critical-failure"]).optional(),
+    success: z.boolean().default(false),
+    critical: z.boolean().default(false),
+    /** What the band means at the table, said to the Game Master beside the band. */
+    text: promptSafeText(200).optional(),
+  })
+  .strict();
+
+/** What a check's outcome is read from (1.135): `margin` is how far the result is past what the
+ *  check needed (a summed total minus its difficulty, or net successes minus those needed), and
+ *  `total` the result itself (a summed total, or net successes). `fraction` (1.139), on a roll at
+ *  most a target only, reads each band's `atLeast` as a divisor: a roll at or under the target divided
+ *  by it lands there (Call of Cthulhu's Extreme is a fifth, Hard a half, Regular the whole). */
+export const RULESET_OUTCOME_MEASURES = Object.freeze(["margin", "total", "fraction"] as const);
+
+/** Labelled bands a check lands in, in place of a bare success or failure. `naturals: "shift"`
+ *  moves a single die's highest face one band better and its lowest one band worse. */
+const outcomesSchema = z
+  .object({
+    by: z.enum(RULESET_OUTCOME_MEASURES).default("margin"),
+    tiers: z.array(outcomeTierSchema).min(2).max(8),
+    naturals: z.enum(["shift"]).optional(),
+  })
+  .strict()
+  .superRefine((outcomes, ctx) => {
+    const issue = (path: (string | number)[], message: string) =>
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+    // The bands the measure reads, in the order written; a band `on` a critical stands apart.
+    const read = outcomes.tiers.flatMap((tier, index) => (tier.on ? [] : [{ tier, index }]));
+    read.forEach(({ tier, index }, at) => {
+      const last = at === read.length - 1;
+      if (last && tier.atLeast !== undefined) {
+        issue(["tiers", index, "atLeast"], "The last band catches everything below the others, so it has no atLeast");
+      }
+      if (!last && tier.atLeast === undefined) {
+        issue(["tiers", index, "atLeast"], "Every band but the last needs atLeast");
+      }
+      const before = read[at - 1]?.tier.atLeast;
+      if (!last && at > 0 && before !== undefined && tier.atLeast !== undefined && tier.atLeast >= before) {
+        issue(["tiers", index, "atLeast"], "Bands go best first, so each atLeast is below the one before it");
+      }
+    });
+    outcomes.tiers.forEach((tier, index) => {
+      if (!tier.on) return;
+      if (tier.atLeast !== undefined) {
+        issue(
+          ["tiers", index, "atLeast"],
+          "A band on a critical is reached by the critical alone, so it has no atLeast",
+        );
+      }
+      if (tier.success !== (tier.on === "critical-success")) {
+        issue(
+          ["tiers", index, "success"],
+          `A band on a ${tier.on} is ${tier.on === "critical-success" ? "" : "not "}a success`,
+        );
+      }
+      if (outcomes.tiers.filter((other) => other.on === tier.on).length > 1) {
+        issue(["tiers", index, "on"], `Only one band may be on a ${tier.on}`);
+      }
+    });
+    if (read.length < 2) issue(["tiers"], "At least two bands are read from the measure");
+    if (new Set(outcomes.tiers.map((tier) => tier.id)).size !== outcomes.tiers.length) {
+      issue(["tiers"], "Two bands share an id");
+    }
+    if (!read.some(({ tier }) => tier.success)) issue(["tiers"], "No band is a success, so no check could succeed");
+    if (read.every(({ tier }) => tier.success)) issue(["tiers"], "Every band is a success, so no check could fail");
+  });
+
+/** Checks that roll their own way (1.140): the skills, saves and abilities named roll with the
+ *  resolution's keys that `set` replaces (`null` takes one away), where `when` reads anything but 0
+ *  on the roller's sheet or always without it. An old-school game's d100 thief skills and X-in-6
+ *  doors, or exwod's 1s that do not cancel on a favored ability. The kind and the sheet math stay
+ *  the base resolution's. */
+const resolutionOverrideSchema = z
+  .object({
+    id: sheetId,
+    label,
+    /** What it means at the table, said to the Game Master. */
+    text: promptSafeText(200).optional(),
+    skills: z.array(sheetId).min(1).max(60).optional(),
+    saves: z.array(sheetId).min(1).max(60).optional(),
+    abilities: z.array(sheetId).min(1).max(12).optional(),
+    when: rulesetValueRefSchema.optional(),
+    set: z.record(z.unknown()),
+  })
+  .strict();
+export type RulesetResolutionOverride = z.infer<typeof resolutionOverrideSchema>;
+
+/** The resolution keys an override may not replace: the kind, the sheet math every check shares,
+ *  the ladder the Game Master names steps from, and the overrides themselves. */
+export const RULESET_OVERRIDE_LOCKED_KEYS = Object.freeze([
+  "kind",
+  "abilityModifier",
+  "proficiency",
+  "proficiencyTiers",
+  "penaltyFrom",
+  "spend",
+  "adjust",
+  "difficultyLadder",
+  "overrides",
+  "symbols",
+] as const);
+
 /** The sheet math every resolution kind shares: how a score becomes a modifier, and what training
  *  is worth. Declared once and spread into each kind, so two kinds can never grow different rules
  *  for the same number and the cross-checks below run for all of them. What the resulting number
@@ -360,6 +501,10 @@ const sheetMathShape = {
   /** What the sheet itself adds to or takes off a check, with no word from the Game Master. Applied
    *  where the wound penalty is: dice on a pool, a flat number on a sum. */
   adjust: z.array(resolutionAdjustSchema).max(8).optional(),
+  /** Labelled bands a check lands in (1.135), read from its margin or its total. */
+  outcomes: outcomesSchema.optional(),
+  /** Checks that roll their own way (1.140). */
+  overrides: z.array(resolutionOverrideSchema).min(1).max(12).optional(),
 };
 
 /** One rung of a summed ladder. Hoisted out of the kind because a layer may swap the whole ladder
@@ -373,10 +518,28 @@ const diceSumResolutionSchema = z
   .object({
     kind: z.literal("dice-sum"),
     dice: z
-      .object({ count: z.number().int().min(1).max(10), sides: z.number().int().min(2).max(1000) })
+      .object({
+        count: z.number().int().min(1).max(10),
+        sides: z.number().int().min(2).max(1000),
+        /** What each face is worth, lowest face first, where it is not its own number (1.136): Fate's
+         *  dice are three faces worth -1, 0 and +1. One value per face. */
+        faces: z.array(z.number().int().min(-100).max(1000)).min(2).max(20).optional(),
+      })
       .strict()
       .default({ count: 1, sides: 20 }),
     ...sheetMathShape,
+    /** Open-ended (1.136): a single die showing `high` or more is rolled again and added, chained;
+     *  one showing `low` or less is rolled again and taken away, and that roll chains on `high` too. */
+    openEnded: z
+      .object({
+        high: z.number().int().min(2).max(1000).optional(),
+        low: z.number().int().min(1).max(999).optional(),
+      })
+      .strict()
+      .optional(),
+    /** Faces of a single die the record marks as rolled unmodified (1.136), before anything is added
+     *  or rolled again: Rolemaster's 66 and 100. */
+    unmodified: z.array(z.number().int().min(1).max(1000)).min(1).max(6).optional(),
     /** Whether the GM may ask for advantage or disadvantage (roll the dice twice, keep one). */
     advantage: z.boolean().default(false),
     naturals: z
@@ -443,8 +606,28 @@ const dicePoolResolutionSchema = z
       })
       .strict()
       .default({ min: 1, max: 40 }),
-    /** The per-die success threshold. `min` below `max` lets the GM set it per check. */
-    target: z.object({ default: poolFace, min: poolFace, max: poolFace }).strict(),
+    /** The per-die success threshold. `min` below `max` lets the GM set it per check. `from` (1.137)
+     *  reads it off the roller's sheet instead, held to `min`..`max`. */
+    target: z
+      .object({ default: poolFace, min: poolFace, max: poolFace, from: rulesetValueRefSchema.optional() })
+      .strict(),
+    /** Stances (1.137): checks on these skills count dice BELOW the target, or ABOVE it, rather than
+     *  at or above it. Lasers & Feelings' Lasers and Feelings. */
+    stances: z
+      .array(
+        z
+          .object({ id: sheetId, label, count: z.enum(["below", "above"]), skills: z.array(sheetId).min(1).max(40) })
+          .strict(),
+      )
+      .min(1)
+      .max(6)
+      .optional(),
+    /** A die showing exactly the target (1.137): it counts as a success when `counts`, and the record
+     *  and the Game Master name it by `label` (Lasers & Feelings' LASER FEELINGS). */
+    exact: z
+      .object({ counts: z.boolean().default(true), label: promptSafeText(40), text: promptSafeText(200).optional() })
+      .strict()
+      .optional(),
     /** Optional: a face at or above `from` counts twice. With `min`, a check may move it down that far. */
     double: poolFaceRuleSchema.optional(),
     /** Optional: a face at or above `from` rolls one more die, chained, up to the Engine's ceiling.
@@ -495,20 +678,222 @@ const dicePoolResolutionSchema = z
   })
   .strict();
 
+/** The most dice one `dice-highest` check throws from the sheet. Only the highest few are read, so a
+ *  larger handful would change nothing but the odds of a critical. */
+export const RULESET_HIGHEST_MAX_DICE = 20;
+
+/** Throw a handful of dice and read the highest one (1.138): Blades in the Dark's 6 / 4-5 / 1-3 and
+ *  Trophy Dark's light and dark dice. The sheet's number is how many dice, as on a pool; the check
+ *  needs the kept die (or the sum of the `keep` highest) to reach its difficulty. */
+const diceHighestResolutionSchema = z
+  .object({
+    kind: z.literal("dice-highest"),
+    die: z.object({ sides: poolFace }).strict().default({ sides: 6 }),
+    ...sheetMathShape,
+    /** The sheet's number is clamped into this. A `min` of 0 lets a character with no rating roll. */
+    pool: z
+      .object({
+        min: z.number().int().min(0).max(RULESET_HIGHEST_MAX_DICE),
+        max: z.number().int().min(1).max(RULESET_HIGHEST_MAX_DICE),
+      })
+      .strict()
+      .default({ min: 0, max: 10 }),
+    /** How many of the highest dice are added up. One is Blades; two is Trophy's fights. */
+    keep: z.number().int().min(1).max(3).default(1),
+    /** No dice at all: throw two and keep the lowest (Blades' zero rating), or fail without a roll. */
+    zeroDice: z.enum(["lowest-of-two", "fail"]).default("lowest-of-two"),
+    /** Several dice on the top face (or on `face` and above) is a critical success. Blades' two sixes. */
+    critical: z
+      .object({ count: z.number().int().min(2).max(10), face: poolFace.optional() })
+      .strict()
+      .optional(),
+    /** Dark dice (Trophy Dark): the Game Master adds up to `max` with `dark=`. They normally count toward
+     *  the outcome; the record flags a dark die that strictly beats every light die. */
+    dark: z
+      .object({
+        label: promptSafeText(40),
+        max: z.number().int().min(1).max(10),
+        text: promptSafeText(200).optional(),
+        /** Read only light dice for the outcome (1.149); absent means all dice. */
+        outcome: z.enum(["all", "light"]).optional(),
+      })
+      .strict()
+      .optional(),
+    situationalDice: z
+      .object({ min: z.number().int().min(-20).max(0), max: z.number().int().min(0).max(20) })
+      .strict()
+      .optional(),
+    /** `dc` is what the kept dice must reach. */
+    difficultyLadder: diceSumLadderSchema,
+  })
+  .strict();
+
+/** A critical rule of a `roll-against` ruleset (1.139): the dice showing `from` to `to`, or landing
+ *  `pastTarget` or more beyond the target on the failing side, and only `whenTarget` holds. */
+const againstCriticalSchema = z
+  .object({
+    from: z.number().int().min(1).max(10000).optional(),
+    to: z.number().int().min(1).max(10000).optional(),
+    pastTarget: z.number().int().min(1).max(1000).optional(),
+    whenTarget: z
+      .object({
+        atLeast: z.number().int().min(-1000).max(10000).optional(),
+        below: z.number().int().min(-1000).max(10000).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+/** One rung of a roll-against ladder (1.139): `dc` moves the target, and `divide` divides the
+ *  sheet's number first (Call of Cthulhu's Hard is half, Extreme a fifth). */
+const rollAgainstLadderStepSchema = z
+  .object({ label, dc: z.number().int().min(-1000).max(1000), divide: z.number().int().min(2).max(10).optional() })
+  .strict();
+const rollAgainstLadderSchema = z.array(rollAgainstLadderStepSchema).min(1).max(12);
+
+/** Roll the dice against the sheet's number (1.139): at most it (Call of Cthulhu, GURPS, a thief's
+ *  percentages) or at least it (an old-school saving throw). The sheet's number is the target. */
+const rollAgainstResolutionSchema = z
+  .object({
+    kind: z.literal("roll-against"),
+    dice: z
+      .object({ count: z.number().int().min(1).max(10), sides: z.number().int().min(2).max(1000) })
+      .strict()
+      .default({ count: 1, sides: 100 }),
+    ...sheetMathShape,
+    against: z.enum(["at-most", "at-least"]).default("at-most"),
+    criticalSuccess: z.array(againstCriticalSchema).min(1).max(6).optional(),
+    criticalFailure: z.array(againstCriticalSchema).min(1).max(6).optional(),
+    /** Bonus and penalty tens dice on a single d100 (Call of Cthulhu): `bonus="+N"` throws N more tens
+     *  dice and keeps the best, `bonus="-N"` the worst. */
+    tens: z
+      .object({ max: z.number().int().min(1).max(3) })
+      .strict()
+      .optional(),
+    difficultyLadder: rollAgainstLadderSchema,
+  })
+  .strict();
+
+/** The most character or difficulty dice a symbol pool throws (1.141). */
+export const RULESET_SYMBOL_POOL_MAX_DICE = 12;
+
+/** Dice whose faces carry symbols (1.141): the sheet builds the character's dice, difficulty
+ *  adds opposing dice, and pairs cancel before the remaining symbols decide the check. */
+const symbolPoolResolutionSchema = z
+  .object({
+    kind: z.literal("symbol-pool"),
+    /** Allow upgradeOwn= to upgrade character dice beyond the sheet's upgrades (1.150). */
+    allowOwnUpgrade: z.boolean().optional(),
+    ...sheetMathShape,
+    symbols: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            cancels: sheetId.optional(),
+            /** Also counted once, before cancellation; counts chains are refused. */
+            counts: sheetId.optional(),
+            text: promptSafeText(200).optional(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(10),
+    dice: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            faces: z.array(z.array(sheetId).max(3)).min(2).max(20),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(8),
+    success: z.object({ symbol: sheetId, needed: z.number().int().min(1).max(10).default(1) }).strict(),
+    pool: z
+      .object({
+        die: sheetId,
+        upgrade: sheetId.optional(),
+        build: z.enum(["larger-upgraded", "sum"]).default("larger-upgraded"),
+        max: z.number().int().min(1).max(RULESET_SYMBOL_POOL_MAX_DICE).default(6),
+      })
+      .strict(),
+    difficulty: z
+      .object({
+        die: sheetId,
+        upgrade: sheetId.optional(),
+        max: z.number().int().min(1).max(RULESET_SYMBOL_POOL_MAX_DICE).default(5),
+      })
+      .strict(),
+    /** Positive bonus adds boost dice; negative bonus adds setback dice. */
+    boost: z
+      .object({ die: sheetId, max: z.number().int().min(1).max(6).default(3) })
+      .strict()
+      .optional(),
+    setback: z
+      .object({ die: sheetId, max: z.number().int().min(1).max(6).default(3) })
+      .strict()
+      .optional(),
+    criticalSuccess: sheetId.optional(),
+    criticalFailure: sheetId.optional(),
+    difficultyLadder: diceSumLadderSchema,
+  })
+  .strict();
+
 /** A ladder in either kind's shape. A layer declares one of these and the cross-checks hold it to
  *  the base ruleset's own kind, so the two can never mean different things by "difficulty". */
-export const rulesetDifficultyLadderSchema = z.union([diceSumLadderSchema, dicePoolLadderSchema]);
+export const rulesetDifficultyLadderSchema = z.union([
+  diceSumLadderSchema,
+  dicePoolLadderSchema,
+  rollAgainstLadderSchema,
+]);
 export type RulesetDiceSumLadderStep = z.infer<typeof diceSumLadderStepSchema>;
 export type RulesetDicePoolLadderStep = z.infer<typeof dicePoolLadderStepSchema>;
-export type RulesetDifficultyLadderStep = RulesetDiceSumLadderStep | RulesetDicePoolLadderStep;
+export type RulesetRollAgainstLadderStep = z.infer<typeof rollAgainstLadderStepSchema>;
+export type RulesetDifficultyLadderStep =
+  RulesetDiceSumLadderStep | RulesetDicePoolLadderStep | RulesetRollAgainstLadderStep;
 export type RulesetDifficultyLadder = z.infer<typeof rulesetDifficultyLadderSchema>;
 
 /** Closed registry of resolution kinds. Adding a kind is an Engine PR with regressions. */
-export const rulesetResolutionSchema = z.discriminatedUnion("kind", [
+const resolutionKindsSchema = z.discriminatedUnion("kind", [
   diceSumResolutionSchema,
   dicePoolResolutionSchema,
+  diceHighestResolutionSchema,
+  rollAgainstResolutionSchema,
+  symbolPoolResolutionSchema,
 ]);
-export const RULESET_RESOLUTION_KINDS = Object.freeze(["dice-sum", "dice-pool"] as const);
+/** Named so the definition's own type refers to it rather than spelling all three kinds out again,
+ *  which would pass what the compiler will write into a declaration file. */
+export type RulesetResolutionDeclaration = z.infer<typeof resolutionKindsSchema>;
+export const rulesetResolutionSchema: z.ZodType<RulesetResolutionDeclaration, z.ZodTypeDef, unknown> =
+  resolutionKindsSchema;
+
+/** A resolution with an override's keys laid over it (1.140), read by the resolution's own schema:
+ *  the result, or the issues that schema found. A `null` in `set` takes the key away. */
+export function rulesetOverriddenResolution(
+  resolution: RulesetResolutionDeclaration,
+  set: Record<string, unknown>,
+): { ok: true; resolution: RulesetResolutionDeclaration } | { ok: false; issues: z.ZodIssue[] } {
+  const merged: Record<string, unknown> = { ...resolution };
+  delete merged.overrides;
+  for (const [key, value] of Object.entries(set)) {
+    if (value === null) delete merged[key];
+    else merged[key] = value;
+  }
+  const parsed = resolutionKindsSchema.safeParse(merged);
+  return parsed.success ? { ok: true, resolution: parsed.data } : { ok: false, issues: parsed.error.issues };
+}
+export const RULESET_RESOLUTION_KINDS = Object.freeze([
+  "dice-sum",
+  "dice-pool",
+  "dice-highest",
+  "roll-against",
+  "symbol-pool",
+] as const);
 
 // ── Sheet primitives ──
 
@@ -575,7 +960,17 @@ export const rulesetListRollSchema: z.ZodType<RulesetListRoll, z.ZodTypeDef, unk
   })
   .strict();
 export const rulesetListColumnSchema = z.discriminatedUnion("type", [
-  z.object({ ...columnBase, ...numberFieldShape, roll: rulesetListRollSchema.optional() }).strict(),
+  z
+    .object({
+      ...columnBase,
+      ...numberFieldShape,
+      roll: rulesetListRollSchema.optional(),
+      /** A cell worked out rather than typed (Capability API 1.210): these number columns of the same
+       *  row added up, held to `min` and `max`, and shown read-only. A CoC specialty is its base plus
+       *  the occupation and interest points spent on it. */
+      sum: z.array(sheetId).min(1).max(6).optional(),
+    })
+    .strict(),
   z.object({ ...columnBase, ...textFieldShape }).strict(),
   z.object({ ...columnBase, ...longtextFieldShape }).strict(),
   z.object({ ...columnBase, ...booleanFieldShape }).strict(),
@@ -592,6 +987,10 @@ const abilitySchema = z
     max: z.number().int(),
     default: z.number().int(),
     section: sheetId.optional(),
+    /** A score worked out rather than written down (Capability API 1.156): these added up, held to
+     *  `min` and `max`, and shown read-only. A Blades attribute is its marked actions; GURPS
+     *  Perception is IQ plus what was bought. No derived value, cap or proficiency may read it. */
+    value: z.array(rulesetValueRefSchema).min(1).max(8).optional(),
   })
   .strict();
 
@@ -679,6 +1078,63 @@ export const RULESET_DERIVED_OPS = Object.freeze([
   "enumTable",
 ] as const);
 
+/** What applying something does to a pool check's own dice (Capability API 1.156): dice added to
+ *  the pool, successes added after counting, and a face that counts twice or explodes from. */
+/** What applying a row or entry to a roll costs: points out of a live pool (1.156), or marks on a
+ *  live track (Capability API 1.218), Blades' 2 Stress for Rook's Gambit. A track is moved as far as
+ *  its bounds let it; a pool that cannot pay refuses the whole application. */
+const contextualCostSchema = z
+  .array(
+    z.union([
+      z.object({ pool: sheetId, amount: z.number().int().min(1).max(1000) }).strict(),
+      z.object({ track: sheetId, by: z.number().int().min(1).max(1000) }).strict(),
+    ]),
+  )
+  .min(1)
+  .max(2);
+export type RulesetContextualCost = z.infer<typeof contextualCostSchema>;
+
+const contextualCheckSchema = z
+  .object({
+    dice: z.number().int().min(1).max(SPEND_EFFECT_MAX).optional(),
+    successes: z.number().int().min(1).max(SPEND_EFFECT_MAX).optional(),
+    double: z.number().int().min(2).max(1000).optional(),
+    explode: z.number().int().min(2).max(1000).optional(),
+    /** Faces that cancel successes do not on this roll (Capability API 1.214): an exWoD specialty
+     *  or a spent point that keeps 1s from taking successes away. */
+    cancel: z.literal(false).optional(),
+    /** The roll takes the character's best skill rating in place of the one asked for (Capability
+     *  API 1.217): Blades' Rook's Gambit, "roll your best action rating while performing a
+     *  different action". Skills only; it is never lower than the asked one. */
+    best: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((check) => Object.keys(check).length > 0, { message: "A check effect does something, or is left out" });
+export type RulesetContextualCheck = z.infer<typeof contextualCheckSchema>;
+
+/** A list whose rows the player writes and the Game Master applies to a roll by name with `apply=`
+ *  (Capability API 1.156): stunts, specialties, traits. Owning a row is not enough; a row applies to
+ *  checks (or saves) of the skill its `skill` cell names, or to any when that cell is empty. */
+const listContextualSchema = z
+  .object({
+    name: sheetId,
+    skill: sheetId.optional(),
+    /** The `skill` cell may name an ability too (Capability API 1.213): the row then applies to any
+     *  check rolled with that ability, its own or the one `with=` asks for. A World of Darkness
+     *  attribute specialty, "Strength: lifting". */
+    abilities: z.literal(true).optional(),
+    bonus: sheetId.optional(),
+    dice: sheetId.optional(),
+    to: z.enum(["checks", "saves"]).optional(),
+    check: contextualCheckSchema.optional(),
+    /** What applying a row costs (Capability API 1.218), as an entry's `cost` does. */
+    cost: contextualCostSchema.optional(),
+  })
+  .strict()
+  .refine((entry) => entry.bonus !== undefined || entry.dice !== undefined || entry.check !== undefined, {
+    message: "A row applied to a roll changes it: bonus, dice or check",
+  });
+
 const listSchema = z
   .object({
     id: sheetId,
@@ -688,6 +1144,31 @@ const listSchema = z
     maxItems: z.number().int().min(1).max(500),
     /** Up to 24 columns; a package with more than 12 declares Capability API 1.165. */
     columns: z.array(rulesetListColumnSchema).min(1).max(24),
+    contextual: listContextualSchema.optional(),
+    /** Every row is a check of its own (Capability API 1.161): Science (Physics) and Science (Biology)
+     *  each roll their own rating. Two checks on one list are two stances backed by one rating, each
+     *  named by its `label` after the row's name. */
+    checks: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label: promptSafeText(24).optional(),
+            /** The text column a row is named by. */
+            name: sheetId,
+            /** The number column that is the row's rating. */
+            rating: sheetId,
+            /** The ability the check rolls with, added the way a skill's is. */
+            ability: sheetId.optional(),
+            /** The resolution stance every row's check is in (Capability API 1.212), as a skill named
+             *  in that stance is: Stewpot's "Fishing (STILLNESS)". */
+            stance: sheetId.optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
     /** Makes every row a live pool (a named class resource with its own maximum). Rows are keyed
      *  by `nameColumn`, so renaming a row starts its pool over. */
     pools: z
@@ -714,6 +1195,9 @@ const livePoolSchema = z
     pays: z.array(sheetId).min(1).max(4).optional(),
     /** `full` starts at the maximum (hit points); `empty` starts at zero (stress, corruption). */
     start: z.enum(["full", "empty"]).default("full"),
+    /** Where the pool starts instead, read off the sheet (Capability API 1.158): SAN at a snapshot of
+     *  POW, Fate Points at Refresh. Held to 0..max; a value that reads 0 or less starts it empty. */
+    startFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     hideWhen: hideWhenSchema.optional(),
   })
   .strict();
@@ -759,6 +1243,8 @@ const liveTrackSchema = z
      *  rating of the character's own). A wound track's is always its number of levels. */
     max: z.union([z.number().int(), rulesetValueRefSchema]),
     default: z.number().int().optional(),
+    /** Where a plain track starts instead of `default`, read off the sheet (Capability API 1.158). */
+    startFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     levels: z.array(liveTrackLevelSchema).min(1).max(RULESET_TRACK_LEVELS_MAX).optional(),
     kinds: z.array(liveTrackKindSchema).min(1).max(RULESET_TRACK_KINDS_MAX).optional(),
     /** A wound track of numbered BOXES instead of named `levels`: as many as the track's own `max`
@@ -939,7 +1425,311 @@ const rulesetBuilderUpToSchema: z.ZodType<RulesetBuilderUpTo, z.ZodTypeDef, unkn
   .object({ filter: sheetId, value: rulesetValueRefSchema })
   .strict();
 
-const builderStepBase = { id: sheetId, label: promptSafeText(40) };
+/** Counted choices and catalog quotas (Capability API 1.151). */
+const builderChoiceBase = {
+  id: sheetId.optional(),
+  countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+  max: z.number().int().min(1).max(20).optional(),
+  excludeChoices: z
+    .array(
+      z
+        .string()
+        .max(161)
+        .regex(/^[a-z][a-z0-9_]*\/[a-z][a-z0-9_]*$/),
+    )
+    .min(1)
+    .max(20)
+    .optional(),
+};
+const builderCatalogLimits = {
+  quotas: z
+    .array(
+      z
+        .object({
+          filter: sheetId,
+          value: z.union([z.number().finite(), z.string().max(80)]),
+          min: z.number().int().min(0).max(20),
+          max: z.number().int().min(0).max(20),
+        })
+        .strict(),
+    )
+    .min(1)
+    .max(12)
+    .optional(),
+  distinctBy: sheetId.optional(),
+  quotaBelow: z.object({ filter: sheetId }).strict().optional(),
+};
+const builderTrainedChoiceSchema = z
+  .object({
+    ...builderChoiceBase,
+    what: z.enum(["skills", "saves"]),
+    count: z.number().int().min(1).max(20),
+    from: z.array(sheetId).min(1).max(120).optional(),
+    tier: sheetId.optional(),
+    /** Only choices already trained to this tier or higher (Capability API 1.105). */
+    held: sheetId.optional(),
+    only: z.enum(["any", "trained", "untrained"]).optional(),
+    onDuplicate: z.literal("replace").optional(),
+    /** What a duplicate may be replaced with, in place of every skill or save (Capability API 1.155). */
+    replacementFrom: z.array(sheetId).min(1).max(120).optional(),
+  })
+  .strict();
+export type RulesetBuilderTrainedChoice = z.infer<typeof builderTrainedChoiceSchema>;
+export type RulesetBuilderChoice = Pick<
+  RulesetBuilderTrainedChoice,
+  "id" | "count" | "countFrom" | "max" | "excludeChoices"
+>;
+export interface RulesetBuilderCatalogLimits {
+  quotas?: { filter: string; value: string | number; min: number; max: number }[];
+  distinctBy?: string;
+  quotaBelow?: { filter: string };
+}
+/** Dice a creation roll throws (Capability API 1.162): `count` d `sides`, the highest `keep` kept,
+ *  `add` added and the whole times `multiplier`. CoC's (2d6+6)x5 is count 2, sides 6, add 6, x5. */
+const creationDiceSchema = z
+  .object({
+    count: z.number().int().min(1).max(20),
+    sides: z.number().int().min(2).max(100),
+    keep: z.number().int().min(1).max(20).optional(),
+    add: z.number().int().min(-1000).max(1000).optional(),
+    multiplier: z.number().int().min(1).max(100).optional(),
+  })
+  .strict()
+  .refine((dice) => dice.keep === undefined || dice.keep <= dice.count, {
+    message: "A roll keeps at most the dice it throws",
+  });
+export type RulesetCreationDice = z.infer<typeof creationDiceSchema>;
+
+const builderStepBase = {
+  id: sheetId,
+  label: promptSafeText(40),
+  when: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+  requiredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+};
+
+/** Numeric creation ratings (Capability API 1.152). Tier maps are per target, never inferred. */
+const builderRatingTargetSchema = z.union([
+  z.object({ ability: sheetId }).strict(),
+  z.object({ field: sheetId }).strict(),
+  z.object({ skill: sheetId }).strict(),
+  z.object({ save: sheetId }).strict(),
+  z.object({ bonus: sheetId }).strict(),
+]);
+export type RulesetBuilderRatingTarget = z.infer<typeof builderRatingTargetSchema>;
+const builderRatingBoundSchema = z.union([
+  z.number().int().min(0).max(10000),
+  rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+]);
+const builderAllocationGroupSchema = z
+  .object({
+    id: sheetId,
+    label: promptSafeText(40),
+    targets: z.array(builderRatingTargetSchema).min(1).max(120),
+    base: builderRatingBoundSchema.optional(),
+    min: builderRatingBoundSchema,
+    max: builderRatingBoundSchema,
+    budget: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** Dots the player puts on list rows' own ratings, counted against the budget (Capability API
+     *  1.216): Exalted's Craft and Martial Arts rows paid from the 28 Ability dots. The rows are
+     *  edited where the list is; the group only counts them. */
+    rows: z
+      .array(z.object({ list: sheetId, column: sheetId }).strict())
+      .min(1)
+      .max(4)
+      .optional(),
+  })
+  .strict();
+export interface RulesetBuilderAllocationGroup {
+  id: string;
+  label: string;
+  targets: RulesetBuilderRatingTarget[];
+  base?: number | RulesetValueRef;
+  min: number | RulesetValueRef;
+  max: number | RulesetValueRef;
+  budget?: RulesetValueRef;
+  rows?: Array<{ list: string; column: string }>;
+}
+const builderRatingTiersSchema = z
+  .object({
+    target: z.union([z.object({ skill: sheetId }).strict(), z.object({ save: sheetId }).strict()]),
+    /** Index is the rating, starting at zero/untrained. */
+    tiers: z.array(sheetId).min(1).max(12),
+  })
+  .strict();
+const builderRatingGrantSchema = z.union([
+  z.object({ target: builderRatingTargetSchema, add: z.number().int().min(1).max(10000) }).strict(),
+  z.object({ target: builderRatingTargetSchema, set: z.number().int().min(0).max(10000) }).strict(),
+]);
+export type RulesetBuilderRatingGrant = z.infer<typeof builderRatingGrantSchema>;
+
+/** Shared creation budgets and original-price purchases (Capability API 1.153). */
+const builderCostSchema = z.union([
+  z
+    .object({
+      flat: z
+        .number()
+        .finite()
+        .min(-100000)
+        .max(100000)
+        .refine((n) => n !== 0),
+    })
+    .strict(),
+  z.object({ perRank: z.number().finite().positive().max(100000) }).strict(),
+  /** A price the source has not supplied yet (Capability API 1.207): the offer shows, and nothing
+   *  is bought on it until a price is written in. */
+  z.object({ unpriced: z.literal(true) }).strict(),
+  z
+    .object({
+      table: z
+        .array(z.tuple([z.number().finite().min(-100000).max(100000), z.number().finite().min(-100000).max(100000)]))
+        .min(2)
+        .max(200),
+    })
+    .strict(),
+]);
+export type RulesetBuilderCost = z.infer<typeof builderCostSchema>;
+// ponytail: list purchases await F4's stable row IDs; extend the target union with that contract.
+export interface RulesetBuilderSpendOffer {
+  id: string;
+  label: string;
+  target: RulesetBuilderRatingTarget;
+  cost: RulesetBuilderCost;
+  min: number;
+  max: number;
+  credit?: boolean;
+  baseline?: number;
+  tags?: string[];
+  overrides?: { when: RulesetValueRef; cost: RulesetBuilderCost }[];
+  when?: RulesetValueRef;
+  minFrom?: RulesetValueRef;
+  maxFrom?: RulesetValueRef;
+  allowedRatings?: number[];
+  /** Which way the offer moves its rating (1.164). "both" raises and lowers one trait from its
+   *  starting value: lowering past it is credit, and lowering what was bought refunds it. */
+  direction?: "increase" | "decrease" | "both";
+  /** "ownership" (1.164) prices the offer on its own ladder from `baseline` (or `min`), and the
+   *  sheet keeps the higher of its own value and the level bought: GURPS familiarity under a
+   *  better default. */
+  effect?: "rating" | "ownership";
+  /** A closed creation trade (1.164): each purchase lowers `from` by `units` and raises the target
+   *  by `gain`, never taking `from` under `floor`. It costs the pool nothing. */
+  exchange?: RulesetBuilderExchange;
+}
+export interface RulesetBuilderExchange {
+  from: RulesetBuilderRatingTarget;
+  units: number;
+  gain: number;
+  floor: number;
+}
+export interface RulesetBuilderPool {
+  id: string;
+  label: string;
+  budget: RulesetValueRef;
+  creditLimit?: number;
+  caps?: { filter: string; maxCredit: number }[];
+}
+const builderPoolSchema = z
+  .object({
+    id: sheetId,
+    label: promptSafeText(40),
+    budget: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+    creditLimit: z.number().finite().min(0).max(100000).optional(),
+    caps: z
+      .array(z.object({ filter: sheetId, maxCredit: z.number().finite().min(0).max(100000) }).strict())
+      .max(12)
+      .optional(),
+  })
+  .strict();
+const builderSpendOfferSchema = z
+  .object({
+    id: sheetId,
+    label: promptSafeText(40),
+    target: builderRatingTargetSchema,
+    /** Required, except on an exchange, which costs the pool nothing. */
+    cost: builderCostSchema.optional(),
+    min: z.number().finite().min(-100000).max(100000),
+    max: z.number().finite().min(-100000).max(100000),
+    credit: z.literal(true).optional(),
+    baseline: z.number().finite().min(-100000).max(100000).optional(),
+    tags: z.array(sheetId).max(12).optional(),
+    overrides: z
+      .array(
+        z
+          .object({
+            when: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+            cost: builderCostSchema,
+          })
+          .strict(),
+      )
+      .max(12)
+      .optional(),
+    /** Offered only while this reads above 0 on the sheet before purchases: an occupation's own
+     *  skills, a Background a tribe may take (Capability API 1.155). Saved purchases stay, inactive. */
+    when: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** A floor and a ceiling read off the sheet, held inside `min` and `max`: a Credit Rating range
+     *  by occupation, Dodge capped by DEX (1.155). */
+    minFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    maxFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** The only ratings a purchase may end on, such as a Merit sold at 1, 3 or 5 dots (1.155). */
+    allowedRatings: z.array(z.number().finite()).min(1).max(40).optional(),
+    /** Raise, lower, or both from one starting value (Capability API 1.164). */
+    direction: z.enum(["increase", "decrease", "both"]).optional(),
+    /** A level owned and paid for even where the sheet's own value is higher (1.164). */
+    effect: z.enum(["rating", "ownership"]).optional(),
+    /** A closed creation trade out of another rating, at no cost to the pool (1.164). */
+    exchange: z
+      .object({
+        from: builderRatingTargetSchema,
+        units: z.number().int().min(1).max(20),
+        gain: z.number().int().min(1).max(20).default(1),
+        floor: z.number().finite().min(-100000).max(100000),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  // An exchange is priced in the rating it trades out of, so the pool's price is nothing.
+  .transform((offer) => ({ ...offer, cost: offer.cost ?? ({ flat: 0 } as RulesetBuilderCost) }));
+
+/** A row's price worked out from the row (1.159, 1.206): its number `column` times `times`, plus
+ *  `add`; and the first `overrides` price whose derived value, named by a prefix and the row's cell
+ *  (`affinity_` + "melee"), reads above 0 on the sheet: a Charm of a Caste or Favored Ability. */
+export interface RulesetBuilderRowsCost {
+  column?: string;
+  times?: number;
+  add?: number;
+  overrides?: Array<{ derived: { prefix: string; cell: string }; cost?: number; times?: number }>;
+}
+const rowsCostSchema: z.ZodType<RulesetBuilderRowsCost, z.ZodTypeDef, unknown> = z
+  .object({
+    column: sheetId.optional(),
+    times: z.number().finite().min(-1000).max(1000).optional(),
+    add: z.number().finite().min(-100000).max(100000).optional(),
+    overrides: z
+      .array(
+        z
+          .object({
+            derived: z
+              .object({
+                prefix: z
+                  .string()
+                  .max(30)
+                  .regex(/^[a-z0-9_]*$/),
+                cell: sheetId,
+              })
+              .strict(),
+            cost: z.number().finite().min(-100000).max(100000).optional(),
+            /** Or the column's per-unit rate instead of `times` (Capability API 1.216): an Exalted
+             *  Craft dot is 1 BP on a Caste or Favored Ability and 2 otherwise. */
+            times: z.number().finite().min(-1000).max(1000).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
+  })
+  .strict();
 
 /** One step of the guided builder. The steps are offered in order, each says how many choices it
  *  still waits on, and none of them blocks the next. */
@@ -948,6 +1738,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
     .object({
       ...builderStepBase,
       kind: z.literal("catalog"),
+      ...builderCatalogLimits,
       /** A catalog of rows whose entries are offered as cards. */
       catalog: sheetId,
       /** How many entries the step asks for, and at most takes. */
@@ -974,6 +1765,13 @@ const builderStepSchema = z.discriminatedUnion("kind", [
        *  place of `min` and never above `max` (spells known at the character's level; Capability API
        *  1.90). Picks past it are kept but count for nothing. */
       countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+      /** Each pick is paid out of this builder pool (Capability API 1.159): talents bought with
+       *  creation XP. `cost` is a fixed price or the entry's own number filter. */
+      pool: sheetId.optional(),
+      cost: z.union([z.number().finite().min(-100000).max(100000), z.object({ filter: sheetId }).strict()]).optional(),
+      /** Entries' `offeredWhen` and the step's `upTo` read the sheet as the steps before `before`
+       *  make it (Capability API 1.160): multiclass prerequisites on the scores before this level. */
+      reads: z.object({ before: sheetId }).strict().optional(),
     })
     .strict(),
   z
@@ -1015,6 +1813,13 @@ const builderStepSchema = z.discriminatedUnion("kind", [
             .strict()
             .refine((roll) => roll.keep <= roll.count, { message: "A roll keeps at most the dice it throws" })
             .optional(),
+          /** Each score rolled in turn with its own group's dice, never moved (Capability API 1.162):
+           *  OSE's 3d6 in order, CoC's 3d6x5 beside (2d6+6)x5. */
+          rolls: z
+            .array(z.object({ abilities: z.array(sheetId).min(1).max(20), dice: creationDiceSchema }).strict())
+            .min(1)
+            .max(6)
+            .optional(),
           /** Typed in: `true` keeps each score's own bounds; an object bounds the base (1.110). */
           manual: z
             .union([
@@ -1029,7 +1834,7 @@ const builderStepSchema = z.discriminatedUnion("kind", [
         .strict()
         .refine((methods) => Object.keys(methods).length > 0, { message: "An abilities step offers a method" }),
       /** The method a new character starts on, until the player picks another (Capability API 1.87). */
-      default: z.enum(["pointBuy", "standardArray", "roll", "manual"]).optional(),
+      default: z.enum(["pointBuy", "standardArray", "roll", "rolls", "manual"]).optional(),
     })
     .strict(),
   z
@@ -1037,19 +1842,121 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       ...builderStepBase,
       kind: z.literal("trained"),
       /** Skills or saves of the player's own choosing, besides the ones picked entries offer. */
-      choose: z
+      choose: z.array(builderTrainedChoiceSchema).min(1).max(4).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("allocate"),
+      priorities: z.array(z.number().int().min(0).max(1200000)).min(1).max(12).optional(),
+      groups: z.array(builderAllocationGroupSchema).min(1).max(12),
+      annotations: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("spend"),
+      pool: sheetId,
+      offers: z.array(builderSpendOfferSchema).min(1).max(120),
+    })
+    .strict(),
+  /** Rolls made once during creation and kept with their dice (Capability API 1.162): Luck, hit
+   *  points, starting money, an EDU improvement check. Reopening the builder never rolls again. */
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("roll"),
+      rolls: z
         .array(
           z
             .object({
-              what: z.enum(["skills", "saves"]),
-              count: z.number().int().min(1).max(20),
-              from: z.array(sheetId).min(1).max(120).optional(),
+              id: sheetId,
+              label: promptSafeText(40),
+              /** The number field the result is written to. */
+              field: sheetId.optional(),
+              /** Or the ability score it is written to (Capability API 1.209): CoC's EDU improvement. An
+               *  improvement check adds to the score as an increase, so a score rolled or bought again
+               *  keeps it. Exactly one of `field` and `ability`. */
+              ability: sheetId.optional(),
+              dice: creationDiceSchema,
+              /** Roll this many times and keep the best (a youngest investigator's Luck). */
+              best: z.number().int().min(2).max(3).optional(),
+              /** The least the result may be, a number or read off the sheet (1 hit point; a potential
+               *  never below the stat it grows from). */
+              floor: z
+                .union([
+                  z.number().finite(),
+                  rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+                ])
+                .optional(),
+              /** An improvement check instead: the dice are rolled against the field, and only a result
+               *  above it adds `gain` to it (CoC's EDU improvement). */
+              gain: creationDiceSchema.optional(),
             })
             .strict(),
         )
         .min(1)
-        .max(4)
-        .optional(),
+        .max(12),
+      /** The player may throw a step's rolls away and roll again; otherwise a result stands. */
+      retry: z.literal(true).optional(),
+    })
+    .strict(),
+  /** Named rows the player adds, edits and removes on one of the sheet's lists: retainers, contacts,
+   *  ritual ingredients (Capability API 1.154). Rows a catalog pick wrote are shown and not edited. */
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("rows"),
+      list: sheetId,
+      /** The columns the step edits. All of the list's columns when left out. */
+      columns: z.array(sheetId).min(1).max(20).optional(),
+      /** Columns a row must fill to count toward `min`. */
+      required: z.array(sheetId).min(1).max(20).optional(),
+      /** Rows the step waits on before its badge clears. */
+      min: z.number().int().min(0).max(20).optional(),
+      /** Rows the step lets the player add, never above the list's own maximum. */
+      max: z.number().int().min(1).max(200).optional(),
+      /** Values a new row starts with, in place of the columns' own defaults. */
+      defaults: z.record(sheetId, sheetScalar).optional(),
+      /** Each row is paid out of this builder pool (Capability API 1.159): a custom stunt, a trait, a
+       *  repeated Charm. `cost` is a fixed price or the row's own number column; a negative price is a
+       *  credit, held to the pool's credit limit. */
+      pool: sheetId.optional(),
+      cost: z.union([z.number().finite().min(-100000).max(100000), rowsCostSchema]).optional(),
+      /** A catalog of rows the player may copy a row from, as many times as they like: each copy is a
+       *  row of their own, priced and removed on its own. */
+      from: sheetId.optional(),
+    })
+    .strict(),
+  /** Starting values written once, when the player confirms them (Capability API 1.158): SAN from POW,
+   *  Humanity before freebies, the creation XP left over. Reopening never writes them again. */
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("initialize"),
+      /** The values are worked out on the sheet as the steps before `before` make it (1.160):
+       *  Humanity from the Virtues before freebies, whatever was bought since. */
+      reads: z.object({ before: sheetId }).strict().optional(),
+      writes: z
+        .array(
+          z
+            .object({
+              field: sheetId,
+              value: z
+                .union([sheetScalar, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>])
+                .optional(),
+              /** What a builder pool has left, such as unspent creation XP. */
+              remaining: sheetId.optional(),
+            })
+            .strict()
+            .refine((write) => (write.value === undefined) !== (write.remaining === undefined), {
+              message: "A write has value or remaining, not both",
+            }),
+        )
+        .min(1)
+        .max(20),
     })
     .strict(),
   z
@@ -1064,26 +1971,32 @@ const builderStepSchema = z.discriminatedUnion("kind", [
   z.object({ ...builderStepBase, kind: z.literal("choices"), catalog: sheetId }).strict(),
 ]);
 
-type BuilderMethodName = "pointBuy" | "standardArray" | "roll" | "manual";
+type BuilderMethodName = "pointBuy" | "standardArray" | "roll" | "rolls" | "manual";
 interface BuilderStepBase {
   id: string;
   label: string;
+  when?: RulesetValueRef;
+  requiredWhen?: RulesetValueRef;
 }
 /** One step of the guided builder (see `builderStepSchema`). Typed by hand: inferred, the value ref in
  *  `upTo` makes the ruleset's own type too long for the compiler to write out. */
 export type RulesetBuilderStep =
-  | (BuilderStepBase & {
-      kind: "catalog";
-      catalog: string;
-      min: number;
-      max: number;
-      field?: string;
-      stamp?: Record<string, string | number | boolean | { fromWithin: string }>;
-      filters?: Record<string, string | number>;
-      within?: { step: string; filter: string };
-      upTo?: RulesetBuilderUpTo;
-      countFrom?: RulesetValueRef;
-    })
+  | (BuilderStepBase &
+      RulesetBuilderCatalogLimits & {
+        kind: "catalog";
+        catalog: string;
+        min: number;
+        max: number;
+        field?: string;
+        stamp?: Record<string, string | number | boolean | { fromWithin: string }>;
+        filters?: Record<string, string | number>;
+        within?: { step: string; filter: string };
+        upTo?: RulesetBuilderUpTo;
+        countFrom?: RulesetValueRef;
+        pool?: string;
+        cost?: number | { filter: string };
+        reads?: { before: string };
+      })
   | (BuilderStepBase & {
       kind: "fields";
       fields: string[];
@@ -1099,28 +2012,159 @@ export type RulesetBuilderStep =
         pointBuy?: { budget: number; costs: [number, number][] };
         standardArray?: number[];
         roll?: { count: number; sides: number; keep: number };
+        rolls?: Array<{ abilities: string[]; dice: RulesetCreationDice }>;
         manual?: true | { min: number; max: number };
       };
       default?: BuilderMethodName;
     })
   | (BuilderStepBase & {
       kind: "trained";
-      choose?: { what: "skills" | "saves"; count: number; from?: string[] }[];
+      choose?: RulesetBuilderTrainedChoice[];
+    })
+  | (BuilderStepBase & {
+      kind: "allocate";
+      priorities?: number[];
+      groups: RulesetBuilderAllocationGroup[];
+      annotations?: boolean;
+    })
+  | (BuilderStepBase & { kind: "spend"; pool: string; offers: RulesetBuilderSpendOffer[] })
+  | (BuilderStepBase & {
+      kind: "rows";
+      list: string;
+      columns?: string[];
+      required?: string[];
+      min?: number;
+      max?: number;
+      defaults?: Record<string, string | number | boolean>;
+      pool?: string;
+      cost?: number | RulesetBuilderRowsCost;
+      from?: string;
+    })
+  | (BuilderStepBase & {
+      kind: "roll";
+      rolls: Array<{
+        id: string;
+        label: string;
+        field?: string;
+        ability?: string;
+        dice: RulesetCreationDice;
+        best?: number;
+        floor?: number | RulesetValueRef;
+        gain?: RulesetCreationDice;
+      }>;
+      retry?: true;
+    })
+  | (BuilderStepBase & {
+      kind: "initialize";
+      reads?: { before: string };
+      writes: Array<{ field: string; value?: string | number | boolean | RulesetValueRef; remaining?: string }>;
     })
   | (BuilderStepBase & { kind: "startingGear"; strict?: true });
 export interface RulesetSheetBuilder {
+  pools?: RulesetBuilderPool[];
+  ratingTiers?: z.infer<typeof builderRatingTiersSchema>[];
   steps: RulesetBuilderStep[];
   tier?: string;
+  constraints?: RulesetBuilderConstraint[];
+  profiles?: RulesetBuilderProfile[];
 }
+
+const builderBoundSchema = z.union([
+  z.number().finite(),
+  rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+]);
+/** A creation rule the builder checks and shows on one step's badge until it holds (Capability API
+ *  1.155). It never blocks Next or All fields. Exactly one of `value`, `rows`, `distinct` and
+ *  `approved` says what it reads. */
+const builderConstraintSchema = z
+  .object({
+    id: sheetId,
+    /** The rule as the player reads it while it fails. */
+    label: promptSafeText(160),
+    /** The step whose badge carries the rule. */
+    step: sheetId,
+    /** Checked only while this reads above 0. */
+    when: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    value: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** A list's rows: how many there are and what one number column adds up to, over the rows
+     *  `filter` keeps. */
+    rows: z
+      .object({
+        list: sheetId,
+        filter: z
+          .object({
+            column: sheetId,
+            equals: sheetScalar.optional(),
+            below: z.number().finite().optional(),
+            above: z.number().finite().optional(),
+          })
+          .strict()
+          .optional(),
+        sum: sheetId.optional(),
+      })
+      .strict()
+      .optional(),
+    /** No two rows of the list share a filled-in value of the column. */
+    distinct: z.object({ list: sheetId, column: sheetId }).strict().optional(),
+    /** A boolean field that must be on: a Storyteller's approval, recorded on the sheet. */
+    approved: sheetId.optional(),
+    min: builderBoundSchema.optional(),
+    max: builderBoundSchema.optional(),
+  })
+  .strict()
+  .superRefine((rule, ctx) => {
+    const kinds = (["value", "rows", "distinct", "approved"] as const).filter((key) => rule[key] !== undefined);
+    if (kinds.length !== 1)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A rule reads exactly one of: value, rows, distinct, approved",
+      });
+    if ((rule.value || rule.rows) && rule.min === undefined && rule.max === undefined)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A value or rows rule names a min or a max" });
+    if ((rule.distinct || rule.approved) && (rule.min !== undefined || rule.max !== undefined))
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A distinct or approved rule takes no min or max" });
+  });
+export type RulesetBuilderConstraint = z.infer<typeof builderConstraintSchema>;
+
+/** One creation profile (Capability API 1.160): a character type, career or package the sheet selects.
+ *  The first whose `when` reads above 0 is the character's. Steps a profile lists are shown only while
+ *  it is active, and its `budgets` replace the pools' own while it is. */
+const builderProfileSchema = z
+  .object({
+    id: sheetId,
+    label: promptSafeText(40),
+    when: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+    steps: z.array(sheetId).min(1).max(RULESET_BUILDER_STEPS_MAX).optional(),
+    budgets: z.record(sheetId, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+  })
+  .strict();
+export type RulesetBuilderProfile = z.infer<typeof builderProfileSchema>;
 
 const sheetBuilderSchema: z.ZodType<RulesetSheetBuilder, z.ZodTypeDef, unknown> = z
   .object({
+    constraints: z.array(builderConstraintSchema).min(1).max(40).optional(),
+    profiles: z.array(builderProfileSchema).min(1).max(16).optional(),
+    pools: z.array(builderPoolSchema).min(1).max(12).optional(),
     steps: z.array(builderStepSchema).min(1).max(RULESET_BUILDER_STEPS_MAX),
+    ratingTiers: z.array(builderRatingTiersSchema).min(1).max(140).optional(),
     /** The tier a skill or save the builder trains is set to, unless a grant names its own. The first
      *  tier above untrained the sheet offers when left out. */
     tier: sheetId.optional(),
   })
   .strict();
+
+const advancementSchema = z
+  .object({
+    fields: z.array(sheetId).max(64).optional(),
+    abilities: z.boolean().optional(),
+    skills: z.boolean().optional(),
+    saves: z.boolean().optional(),
+    text: promptSafeText(400).optional(),
+  })
+  .strict()
+  .refine((value) => !!(value.fields?.length || value.abilities || value.skills || value.saves), {
+    message: "Advancement must allow at least one field, abilities, skills or saves",
+  });
 
 export const rulesetSheetSchema = z
   .object({
@@ -1153,13 +2197,16 @@ export const rulesetSheetSchema = z
       .object({ min: z.number().int().min(-100), max: z.number().int().max(100) })
       .strict()
       .default({ min: -20, max: 40 }),
-    fields: z.array(rulesetFieldSchema).max(160).default([]),
+    /** Up to 240 (Capability API 1.208; 160 before it): Rolemaster's ranks, potentials and totals. */
+    fields: z.array(rulesetFieldSchema).max(RULESET_FIELDS_MAX).default([]),
     /** Up to 240 (Capability API 1.88; 120 from 1.84, 60 before it). */
     derived: z.array(rulesetDerivedSchema).max(RULESET_DERIVED_MAX).default([]),
     lists: z.array(listSchema).max(20).default([]),
     live: liveSchema.default({}),
     /** A guided character builder beside the full form (Capability API 1.86). */
     builder: sheetBuilderSchema.optional(),
+    /** Permanent changes the Game Master may make (Capability API 1.142). */
+    advancement: advancementSchema.optional(),
   })
   .strict();
 
@@ -1342,8 +2389,11 @@ const combatDiceSchema = z
 export const RULESET_CATALOG_ROW_KEY = "_catalog";
 
 /** Byte ceiling for one `catalogs/<id>.json` asset, checked against the manifest's declared
- *  `files[].bytes` BEFORE the asset is read. Larger than a ruleset because a spell list is long. */
-export const RULESET_CATALOG_MAX_BYTES = 1024 * 1024;
+ *  `files[].bytes` BEFORE the asset is read. Larger than a ruleset because a spell list is long. 2 MB
+ *  since Capability API 1.340; a package with a catalog over the earlier ceiling declares 1.340. */
+export const RULESET_CATALOG_MAX_BYTES = 2 * 1024 * 1024;
+/** The catalog ceiling before Capability API 1.340. */
+export const RULESET_CATALOG_EARLIER_MAX_BYTES = 1024 * 1024;
 
 /** How many entries one catalog may hold, inline or in its asset. */
 export const RULESET_CATALOG_MAX_ENTRIES = 2000;
@@ -3269,6 +4319,9 @@ const catalogMechanicsObject = z
       .optional(),
     /** What one step of a higher cost adds, for systems that let a player pay more. */
     perCostStep: z.object(catalogAmountShape).strict().optional(),
+    /** What it does to a check or save only when the Game Master names it on that roll with
+     *  `apply=` (Capability API 1.156): owning it is not enough. */
+    contextual: z.lazy(() => rulesetContextualSchema).optional(),
     /** The most steps of a higher cost that count (Capability API 1.241): paying more than this
      *  adds nothing more. 5e's Divine Smite, 2d8 and 1d8 a slot level above 1st, to 5d8 at most: 3. */
     perCostStepsMax: z.number().int().min(1).max(20).optional(),
@@ -5330,11 +6383,38 @@ const startingGearLineSchema = z
      *  name the Game Master reads, so it is held to the ruleset's label rules. */
     name: promptSafeText(80).optional(),
     count: z.number().int().min(1).max(999).default(1),
+    /** Coins rolled when the gear is taken, never again (Capability API 1.157): OSE's 3d6 x 10 gold. */
+    roll: catalogDice.optional(),
+    /** Coins read off the holder's sheet when the gear is taken (1.157): cash by Credit Rating. */
+    countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** What a rolled or read amount is multiplied by (1.157). */
+    times: z.number().int().min(1).max(10000).optional(),
     /** Put on as it is taken, where its slots are free: armor and a shield are worn from the start. */
     equip: z.literal(true).optional(),
   })
   .strict()
   .superRefine((line, ctx) => {
+    if (
+      (line.roll !== undefined || line.countFrom !== undefined || line.times !== undefined) &&
+      line.coins === undefined
+    )
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["coins"],
+        message: "Only coins are rolled or read off the sheet",
+      });
+    if (line.roll !== undefined && line.countFrom !== undefined)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["roll"],
+        message: "Coins are rolled or read off the sheet, not both",
+      });
+    if (line.times !== undefined && line.roll === undefined && line.countFrom === undefined)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["times"],
+        message: "times multiplies a rolled or read amount",
+      });
     if (line.equip && line.item === undefined && line.oneOf === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -5598,6 +6678,8 @@ const itemAttackDamageBaseSchema = z
      *  free, or one that takes two of a slot) and only in a summed fight (Capability API 1.98):
      *  5e's Great Weapon Fighting through a derived value that is 2 for the style and 0 without. */
     rerollUpTo: itemToHitValueRefSchema.optional(),
+    /** The least damage dice after soak (1.146), from the holder or this item's stat. */
+    minimum: orItemStat(itemToHitValueRefSchema).optional(),
   })
   .strict();
 /** One more amount on an item's blow (Capability API 1.169; named for 1.190, which gives a weapon's
@@ -5752,6 +6834,7 @@ export interface RulesetItemAttackDamage {
   sheetBonus?: RulesetValueRef;
   oneHanded?: true;
   rerollUpTo?: RulesetValueRef;
+  minimum?: OrItemStat<RulesetValueRef>;
 }
 const itemAttackDamageSchema: z.ZodType<RulesetItemAttackDamage, z.ZodTypeDef, unknown> = itemAttackDamageBaseSchema;
 
@@ -6382,8 +7465,30 @@ const catalogItemSchema: z.ZodType<RulesetCatalogItem, z.ZodTypeDef, unknown> = 
 
 /** What a catalog entry gives a character when it is picked through the guided builder (Capability API
  *  1.86), and takes back when it is unpicked. The catalog picker ignores it. */
-const catalogGrantsSchema = z
+export interface RulesetCatalogGrants {
+  ratings?: RulesetBuilderRatingGrant[];
+  abilities?: {
+    add?: Record<string, number>;
+    choose?: (RulesetBuilderChoice & {
+      amount: number;
+      from?: string[];
+      except?: string[];
+      repeat?: boolean;
+      upTo?: number;
+      partialFrom?: number;
+    })[];
+  };
+  trained?: { skills?: string[]; saves?: string[]; choose?: RulesetBuilderTrainedChoice[]; tier?: string };
+  sets?: Record<string, number | string | boolean>;
+  itemAccess?: string[];
+  entries?: {
+    choose: (RulesetBuilderChoice &
+      RulesetBuilderCatalogLimits & { catalog: string; filters?: Record<string, number | string>; ids?: string[] })[];
+  };
+}
+const catalogGrantsSchema: z.ZodType<RulesetCatalogGrants, z.ZodTypeDef, unknown> = z
   .object({
+    ratings: z.array(builderRatingGrantSchema).min(1).max(120).optional(),
     abilities: z
       .object({
         add: z.record(z.number().int().min(-20).max(20)).optional(),
@@ -6392,6 +7497,8 @@ const catalogGrantsSchema = z
           .array(
             z
               .object({
+                ...builderChoiceBase,
+                from: z.array(sheetId).min(1).max(20).optional(),
                 count: z.number().int().min(1).max(6),
                 amount: z.number().int().min(-20).max(20),
                 except: z.array(sheetId).max(20).optional(),
@@ -6402,6 +7509,10 @@ const catalogGrantsSchema = z
                  *  improvement's "you can't increase an ability score above 20 using this feature".
                  *  What other grants add counts first. */
                 upTo: z.number().int().min(1).max(99).optional(),
+                /** A score already at or above this when the choice comes gets a partial increase
+                 *  (Capability API 1.211): two partials give `amount` once. Pathfinder 2e's boost to a
+                 *  +4 modifier. Choices count in the order the builder makes them. */
+                partialFrom: z.number().int().min(-20).max(99).optional(),
               })
               .strict(),
           )
@@ -6415,23 +7526,7 @@ const catalogGrantsSchema = z
       .object({
         skills: z.array(sheetId).max(40).optional(),
         saves: z.array(sheetId).max(20).optional(),
-        choose: z
-          .array(
-            z
-              .object({
-                what: z.enum(["skills", "saves"]),
-                count: z.number().int().min(1).max(20),
-                /** Any of them when left out. */
-                from: z.array(sheetId).min(1).max(120).optional(),
-                /** Only what the sheet already has at this tier or higher, from the picks or a lower
-                 *  choice (Capability API 1.105): 5e's Expertise, in two skills you are proficient in. */
-                held: sheetId.optional(),
-              })
-              .strict(),
-          )
-          .min(1)
-          .max(4)
-          .optional(),
+        choose: z.array(builderTrainedChoiceSchema).min(1).max(4).optional(),
         /** The tier they are trained to: the first one above untrained when left out. */
         tier: sheetId.optional(),
       })
@@ -6439,6 +7534,9 @@ const catalogGrantsSchema = z
       .optional(),
     /** Field values (a class's hit die, its spellcasting ability). */
     sets: z.record(z.union([z.number().finite(), z.string().max(200), z.boolean()])).optional(),
+    /** Items the character may take without carrying them from the start (Capability API 1.215): a
+     *  Blades playbook's items, chosen as load when a score begins. Nothing goes in the bag. */
+    itemAccess: z.array(rulesetItemRefSchema).min(1).max(48).optional(),
     /** Entries of another catalog of rows for the player to choose, `count` of them, among those that
      *  match `filters` and, when given, are one of `ids` (a language of your choice, one of three
      *  artisan's tools; Capability API 1.91). Chosen at the builder's `choices` step for that catalog,
@@ -6449,6 +7547,8 @@ const catalogGrantsSchema = z
           .array(
             z
               .object({
+                ...builderChoiceBase,
+                ...builderCatalogLimits,
                 catalog: sheetId,
                 count: z.number().int().min(1).max(20),
                 filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
@@ -6549,7 +7649,7 @@ const catalogSchema = z
       .strict()
       .optional(),
     entries: z.array(catalogEntrySchema).max(RULESET_CATALOG_MAX_ENTRIES).optional(),
-    /** A package asset instead, for a list too long to sit inside the 256 KB ruleset file. */
+    /** A package asset instead, for a list too long to sit inside the 512 KB ruleset file. */
     // The shape is checked here so an author's editor flags a wrong path; that it names THIS
     // catalog's id is the refinement below.
     asset: z
@@ -6557,11 +7657,50 @@ const catalogSchema = z
       .max(240)
       .regex(RULESET_CATALOG_ASSET_PATTERN, "A catalog asset is catalogs/<catalog id>.json")
       .optional(),
+    /** Or another installed ruleset's catalog, borrowed whole (Capability API 1.220): a D&D 5e
+     *  ruleset may fight the SRD's creatures, and cast its spells, out of the Engine's own 5e. Its entries are
+     *  read against THIS ruleset, so one that names what this ruleset lacks is left out (and logged),
+     *  and a borrowed creature's art is matched as the lender's. `entries` beside it add to the
+     *  borrowed ones or replace one of the same id. */
+    from: z
+      .object({
+        ruleset: z
+          .string()
+          .max(64)
+          .regex(RULESET_ID_PATTERN, "A ruleset id is lowercase letters, digits and single hyphens"),
+        catalog: sheetId,
+        /** How a borrowed entry, written in the lender's ids, reads in this ruleset's: a creature's
+         *  field under another id (`null` leaves it out), a field's values, and proficiency tiers (a
+         *  creature's, and those an entry grants or asks for); a
+         *  lender's derived value read as one of this ruleset's values (`refs`: an item's to-hit
+         *  proficiency, a scroll's spell slot), and an item's slot under another id. */
+        sheet: z
+          .object({
+            fields: z.record(sheetId, sheetId.nullable()).optional(),
+            values: z.record(sheetId, z.record(z.string().max(80), z.string().max(80))).optional(),
+            tiers: z.record(sheetId, sheetId).optional(),
+            refs: z.record(sheetId, rulesetValueRefSchema).optional(),
+            slots: z.record(sheetId, sheetId).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((catalog, ctx) => {
-    if ((catalog.entries === undefined) === (catalog.asset === undefined)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A catalog has exactly one of "entries" or "asset"' });
+    // Borrowed entries may sit beside the catalog's own (1.220), which add to them or replace one of
+    // the same id; a package asset stands alone.
+    if (
+      catalog.from !== undefined
+        ? catalog.asset !== undefined
+        : (catalog.entries === undefined) === (catalog.asset === undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A catalog has exactly one of "entries" or "asset", or "from" with its own "entries" beside it',
+      });
     }
     // The picker offers a catalog on the lists it feeds, so a bestiary or an item catalog declaring
     // feeds would be offered on a sheet it can write nothing into.
@@ -6619,7 +7758,26 @@ const combatHealthSchema = z.union([battlePoolSchema, z.object({ track: sheetId 
  * hit (`per-blow`). A ruleset says which, rather than the Engine guessing.
  */
 const combatDamageKindsSchema = z
-  .object({ default: sheetId, byType: z.record(sheetId).optional(), marks: z.enum(["per-blow", "per-point"]) })
+  .object({
+    default: sheetId,
+    byType: z.record(sheetId).optional(),
+    marks: z.enum(["per-blow", "per-point"]),
+    /** First matching target rule wins, before soak (Capability API 1.148). */
+    remap: z
+      .array(
+        z
+          .object({
+            when: rulesetValueRefSchema,
+            from: sheetId,
+            to: sheetId,
+            tags: z.array(sheetId).min(1).max(16).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(12)
+      .optional(),
+  })
   .strict();
 
 /** A sheet list that contributes combat skills. Only rows carrying the `_catalog` mark count, and
@@ -7938,6 +9096,39 @@ const itemAbilityChangeSchema = z.union([
     .strict(),
 ]);
 
+/** A catalog entry's effect on one roll it is applied to (Capability API 1.156): the check and save
+ *  part of the condition vocabulary, a pool check's own dice, and what applying it spends. */
+export const rulesetContextualSchema = z
+  .object({
+    effects: z
+      .array(z.enum(RULESET_ITEM_CHECK_EFFECTS as unknown as [string, ...string[]]))
+      .min(1)
+      .max(4)
+      .optional(),
+    modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
+    skills: z.array(sheetId).min(1).max(24).optional(),
+    saves: z.array(sheetId).min(1).max(12).optional(),
+    check: contextualCheckSchema.optional(),
+    cost: contextualCostSchema.optional(),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    if (!entry.effects && !entry.modifiers && !entry.check)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "An applied effect does something: effects, modifiers or check",
+      });
+    entry.modifiers?.forEach((modifier, index) => {
+      if (modifier.to !== "checks" && modifier.to !== "saves")
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["modifiers", index, "to"],
+          message: "An applied effect changes checks or saves",
+        });
+    });
+  });
+export type RulesetContextual = z.infer<typeof rulesetContextualSchema>;
+
 export const rulesetItemEffectSchema = z
   .object({
     effects: z.array(itemEffectSchema).min(1).max(6).optional(),
@@ -8250,7 +9441,7 @@ const combatInitiativeResourceSchema = z
  *  nothing about combat is read exactly as it was before this block existed. A ruleset may carry
  *  both `combat` and `battle`; the bridge simply never runs for one whose fights follow its own
  *  rules, so an author can keep the older block for an Engine that lacks this one. */
-const combatSchema = z
+const combatObjectSchema = z
   .object({
     /** The closed registry of combat kinds. Adding one is an Engine PR with regressions.
      *  `attack-vs-defense` adds dice up and compares them with a number; `dice-pool` throws the
@@ -8328,6 +9519,18 @@ const combatSchema = z
       })
       .strict()
       .describe("Required when kind is dice-pool, and refused when it is attack-vs-defense.")
+      .optional(),
+    /** A pool's least damage dice after soak, read off the attacker (1.146). */
+    damage: z.object({ minimum: rulesetValueRefSchema.optional() }).strict().optional(),
+    /** One hit above the target's number costs their next turn (1.147). */
+    daze: z
+      .object({
+        over: rulesetValueRefSchema,
+        measure: z.literal("damage"),
+        condition: sheetId.optional(),
+        text: promptSafeText(500).optional(),
+      })
+      .strict()
       .optional(),
     economy: z
       .object({
@@ -8559,6 +9762,11 @@ const combatSchema = z
   })
   .strict();
 
+// Named so its type is written once, not inlined into the definition schema's (which grew past
+// what the compiler will serialize).
+type RulesetCombatDeclaration = z.output<typeof combatObjectSchema>;
+const combatSchema: z.ZodType<RulesetCombatDeclaration, z.ZodTypeDef, unknown> = combatObjectSchema;
+
 // ── Layers: variants a ruleset ships inside its own file ──
 
 /** How many layers one ruleset may declare. They are toggles under the ruleset in the setup
@@ -8658,6 +9866,45 @@ const rulesetLayerSchema = z
   })
   .strict();
 
+export interface RulesetParty {
+  label: string;
+  fields: z.infer<typeof rulesetFieldSchema>[];
+  pools: z.infer<typeof livePoolSchema>[];
+  lists?: z.infer<typeof listSchema>[];
+  builder?: RulesetSheetBuilder;
+  fromMembers?: Array<{ field: string; count?: true; sum?: string }>;
+  advancement?: { fields?: string[]; text?: string };
+  summary?: z.infer<typeof gmSchema>["sheetSummary"];
+  text?: string;
+}
+const partySheetSchema: z.ZodType<RulesetParty, z.ZodTypeDef, unknown> = z
+  .object({
+    label,
+    fields: z.array(rulesetFieldSchema).max(160).default([]),
+    pools: z.array(livePoolSchema).max(60).default([]),
+    /** Shared rows: a crew's upgrades and cohorts, a ship's systems (Capability API 1.163). */
+    lists: z.array(listSchema).max(12).optional(),
+    /** A guided setup for the shared sheet, saved once for the whole party (Capability API 1.163). */
+    builder: sheetBuilderSchema.optional(),
+    /** Party fields read off the party's own characters as they stand: how many there are, or what
+     *  one number field of theirs adds up to (Totem dots, party size). */
+    fromMembers: z
+      .array(z.object({ field: sheetId, count: z.literal(true).optional(), sum: sheetId.optional() }).strict())
+      .min(1)
+      .max(8)
+      .optional(),
+    advancement: z
+      .object({ fields: z.array(sheetId).max(24).optional(), text: promptSafeText(400).optional() })
+      .strict()
+      .optional(),
+    summary: gmSchema.shape.sheetSummary.optional(),
+    text: promptSafeText(400).optional(),
+  })
+  .strict()
+  .refine((party) => party.fields.length + party.pools.length > 0, {
+    message: "A party sheet needs at least one field or pool",
+  });
+
 const rulesetDefinitionBaseSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -8672,8 +9919,26 @@ const rulesetDefinitionBaseSchema = z
     coverage: coverageSchema,
     resolution: rulesetResolutionSchema,
     sheet: rulesetSheetSchema,
+    /** One shared sheet per game (Capability API 1.144). */
+    party: partySheetSchema.optional(),
+    /** Party/scene progress clocks (Capability API 1.143). */
+    clocks: z
+      .object({
+        sizes: z
+          .array(z.number().int().min(2).max(12))
+          .min(1)
+          .max(6)
+          .refine((sizes) => new Set(sizes).size === sizes.length, "Clock sizes must be unique")
+          .default([4, 6, 8]),
+        max: z.number().int().min(1).max(12).default(8),
+        text: promptSafeText(400).optional(),
+      })
+      .strict()
+      .optional(),
     rests: z.array(restSchema).max(12).default([]),
     gm: gmSchema,
+    /** The ruleset's full rules reference for the Game Master, in the cached system prompt. */
+    gmReference: promptSafeText(16000).optional(),
     /** Optional, and absent rather than empty when the ruleset ships none, so a file that predates
      *  catalogs still parses to exactly the bytes it did before. */
     catalogs: z.array(catalogSchema).max(12).optional(),
@@ -8876,6 +10141,36 @@ function refReadsSheet(
   return into;
 }
 
+/** The abilities a value reads, exactly: a skill or save brings its own ability, its cap and the
+ *  proficiency bonus, never every ability (Capability API 1.156). */
+function abilityReads(
+  def: Pick<RulesetDefinitionBase, "sheet" | "resolution">,
+  ref: RulesetValueRef,
+  into = new Set<string>(),
+  depth = 0,
+): Set<string> {
+  if (depth > 64) return into;
+  if (ref.abilityScore !== undefined) into.add(ref.abilityScore);
+  if (ref.abilityMod !== undefined) into.add(ref.abilityMod);
+  if (ref.abilityModFromField !== undefined) for (const ability of def.sheet.abilities) into.add(ability.id);
+  const entry =
+    ref.skillMod !== undefined
+      ? def.sheet.skills.find((skill) => skill.id === ref.skillMod)
+      : ref.saveMod !== undefined
+        ? def.sheet.saves.find((save) => save.id === ref.saveMod)
+        : undefined;
+  if (entry) {
+    if (entry.ability) into.add(entry.ability);
+    if (entry.cap) abilityReads(def, entry.cap, into, depth + 1);
+    if (def.resolution.proficiency) abilityReads(def, def.resolution.proficiency.bonus, into, depth + 1);
+  }
+  if (ref.derived !== undefined) {
+    const derived = def.sheet.derived.find((each) => each.id === ref.derived);
+    if (derived) for (const inner of derivedRefs(derived)) abilityReads(def, inner, into, depth + 1);
+  }
+  return into;
+}
+
 function rulesetSheetNames(
   sheet: RulesetSheetSchema,
   items?: {
@@ -8987,15 +10282,29 @@ function rulesetValueRefIssues(
     }
   }
   if (ref.listSum !== undefined) {
-    const { list: listId, column: columnId, onlyWhen } = ref.listSum;
+    const { list: listId, column: columnId, onlyWhen, where } = ref.listSum;
     const list = names.lists.get(listId);
-    const column = list?.columns.find((entry) => entry.id === columnId);
+    const column = columnId === undefined ? undefined : list?.columns.find((entry) => entry.id === columnId);
     const marker = onlyWhen === undefined ? undefined : list?.columns.find((entry) => entry.id === onlyWhen);
-    if (!list) add("listSum", `Unknown list "${listId}"`);
-    else if (!column) add("listSum", `"${listId}" has no column "${columnId}"`);
-    else if (column.type !== "number") add("listSum", `Column "${columnId}" is not a number`);
+    const keyed = where === undefined ? undefined : list?.columns.find((entry) => entry.id === where.column);
+    if ((columnId === undefined) === (ref.listSum.count === undefined))
+      add("listSum", "A list sum adds up a column or counts rows, one of the two");
+    else if (!list) add("listSum", `Unknown list "${listId}"`);
+    else if (columnId !== undefined && !column) add("listSum", `"${listId}" has no column "${columnId}"`);
+    else if (column && column.type !== "number") add("listSum", `Column "${columnId}" is not a number`);
     else if (onlyWhen !== undefined && !marker) add("listSum", `"${listId}" has no column "${onlyWhen}"`);
     else if (marker && marker.type !== "boolean") add("listSum", `Column "${onlyWhen}" is not a boolean`);
+    else if (where && !keyed) add("listSum", `"${listId}" has no column "${where.column}"`);
+    else if (
+      where &&
+      keyed &&
+      (keyed.type === "number"
+        ? typeof where.equals !== "number"
+        : keyed.type === "boolean"
+          ? typeof where.equals !== "boolean"
+          : typeof where.equals !== "string")
+    )
+      add("listSum", `Column "${where.column}" never holds ${JSON.stringify(where.equals)}`);
   }
   if (!live) {
     if (ref.derived !== undefined && names.live.derived.has(ref.derived)) {
@@ -9025,6 +10334,52 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   }
 
   const { sheet, resolution } = def;
+  // Checks that roll their own way (1.140): each override is read as the resolution it makes, and
+  // that resolution is held to every rule below by checking the file again with it in place.
+  resolution.overrides?.forEach((override, index) => {
+    const path = ["resolution", "overrides", index];
+    const known = {
+      skills: new Set(sheet.skills.map((entry) => entry.id)),
+      saves: new Set(sheet.saves.map((entry) => entry.id)),
+      abilities: new Set(sheet.abilities.map((entry) => entry.id)),
+    };
+    if (!override.skills && !override.saves && !override.abilities) {
+      issue(path, "An override names the skills, saves or abilities it changes");
+    }
+    for (const key of ["skills", "saves", "abilities"] as const) {
+      override[key]?.forEach((id, at) => {
+        if (!known[key].has(id)) issue([...path, key, at], `Unknown ${key.slice(0, -1)} "${id}"`);
+        const earlier = resolution.overrides!.slice(0, index).find((other) => other[key]?.includes(id));
+        if (earlier && !override.when && !earlier.when) {
+          issue([...path, key, at], `"${id}" is already in the override "${earlier.id}"`);
+        }
+      });
+    }
+    if (resolution.overrides!.slice(0, index).some((other) => other.id === override.id)) {
+      issue([...path, "id"], `Duplicate override id "${override.id}"`);
+    }
+    const locked = Object.keys(override.set).filter(
+      (key) =>
+        (RULESET_OVERRIDE_LOCKED_KEYS as readonly string[]).includes(key) ||
+        (resolution.kind === "symbol-pool" && key === "dice"),
+    );
+    for (const key of locked) issue([...path, "set", key], `An override does not change ${key}`);
+    if (locked.length > 0) return;
+    const made = rulesetOverriddenResolution(resolution, override.set);
+    if (!made.ok) {
+      for (const found of made.issues) issue([...path, "set", ...found.path], found.message);
+      return;
+    }
+    const nested: z.ZodIssue[] = [];
+    const nestedCtx = {
+      addIssue: (found: z.IssueData) => nested.push({ ...found, path: found.path ?? [] } as z.ZodIssue),
+      path: [],
+    } as unknown as z.RefinementCtx;
+    refineRulesetDefinition({ ...def, resolution: made.resolution }, nestedCtx, layersApplied);
+    for (const found of nested) {
+      if (found.path[0] === "resolution") issue([...path, "set", ...found.path.slice(1)], found.message);
+    }
+  });
   const unique = (items: { id: string }[], path: (string | number)[], what: string): Set<string> => {
     const seen = new Set<string>();
     items.forEach((item, index) => {
@@ -9039,6 +10394,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   const skills = unique(sheet.skills, ["sheet", "skills"], "skill");
   const saves = unique(sheet.saves, ["sheet", "saves"], "save");
   const fields = unique(sheet.fields, ["sheet", "fields"], "field");
+  for (const [index, id] of (sheet.advancement?.fields ?? []).entries()) {
+    const field = sheet.fields.find((entry) => entry.id === id);
+    if (!field || !["number", "text", "longtext"].includes(field.type)) {
+      issue(
+        ["sheet", "advancement", "fields", index],
+        field ? `Advancement field "${id}" must be number or text` : `Unknown advancement field "${id}"`,
+      );
+    }
+  }
   const derivedIds = unique(sheet.derived, ["sheet", "derived"], "derived value");
   const lists = unique(sheet.lists, ["sheet", "lists"], "list");
   const pools = unique(sheet.live.pools, ["sheet", "live", "pools"], "pool");
@@ -9050,6 +10414,58 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   const tiers = unique(resolution.proficiencyTiers, ["resolution", "proficiencyTiers"], "proficiency tier");
   unique(def.rests, ["rests"], "rest");
   const poolGroups = new Set(sheet.live.pools.map((pool) => pool.group).filter((group): group is string => !!group));
+
+  // Rows that are checks of their own (1.161) read their own columns.
+  sheet.lists.forEach((list, index) => {
+    if (!list.checks) return;
+    unique(list.checks, ["sheet", "lists", index, "checks"], "row check");
+    list.checks.forEach((check, checkIndex) => {
+      const at = ["sheet", "lists", index, "checks", checkIndex];
+      const type = (id: string) => list.columns.find((each) => each.id === id)?.type;
+      if (type(check.name) !== "text" && type(check.name) !== "enum")
+        issue([...at, "name"], `No text column "${check.name}"`);
+      if (type(check.rating) !== "number") issue([...at, "rating"], `No number column "${check.rating}"`);
+      if (check.ability !== undefined && !sheet.abilities.some((ability) => ability.id === check.ability))
+        issue([...at, "ability"], `Unknown ability "${check.ability}"`);
+      if (list.checks!.length > 1 && !check.label)
+        issue([...at, "label"], "Two checks on one list are told apart by their labels");
+      if (
+        check.stance !== undefined &&
+        !(resolution.kind === "dice-pool" && resolution.stances?.some((stance) => stance.id === check.stance))
+      )
+        issue([...at, "stance"], `No resolution stance "${check.stance}"`);
+    });
+  });
+
+  // Rows applied to a roll by name (1.156) read their own columns.
+  sheet.lists.forEach((list, index) => {
+    const contextual = list.contextual;
+    if (!contextual) return;
+    const at = ["sheet", "lists", index, "contextual"];
+    const column = (key: "name" | "skill" | "bonus" | "dice", types: readonly string[]) => {
+      const id = contextual[key];
+      if (id === undefined) return;
+      const found = list.columns.find((each) => each.id === id);
+      if (!found) issue([...at, key], `Unknown column "${id}"`);
+      else if (!types.includes(found.type)) issue([...at, key], `"${id}" is not a ${types.join(" or ")} column`);
+    };
+    column("name", ["text", "enum"]);
+    column("skill", ["text", "enum"]);
+    column("bonus", ["number"]);
+    column("dice", ["dice"]);
+    contextual.cost?.forEach((cost, costIndex) => {
+      if ("track" in cost) {
+        if (!sheet.live.tracks.some((track) => track.id === cost.track && !track.kinds && !track.boxes))
+          issue([...at, "cost", costIndex, "track"], `No live track "${cost.track}" to mark`);
+      } else if (!sheet.live.pools.some((pool) => pool.id === cost.pool || pool.group === cost.pool))
+        issue([...at, "cost", costIndex, "pool"], `Unknown pool or pool group "${cost.pool}"`);
+    });
+    if (contextual.abilities && contextual.skill === undefined)
+      issue([...at, "abilities"], 'An ability is named in the "skill" column, so it needs one');
+    if (contextual.check)
+      for (const found of contextualCheckIssues(resolution, contextual.check))
+        issue([...at, "check", ...found.path], found.message);
+  });
 
   // Sheet migrations (1.77). Each hop once and below this version. What a step writes to is on this
   // sheet, and what it reads from is not: an id moved away is never used again, which is what makes
@@ -9235,7 +10651,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   // silently ignoring it in play.
   resolution.spend?.forEach((spend, index) => {
     const path = ["resolution", "spend", index];
-    if (resolution.kind !== "dice-pool") {
+    if (resolution.kind === "dice-highest" || resolution.kind === "symbol-pool") {
+      // Keep-the-highest dice (1.138) count no successes and throw nothing again: only dice are bought.
+      if (spend.successes || spend.reroll) issue(path, `A ${resolution.kind} ruleset buys only dice`);
+    } else if (resolution.kind !== "dice-pool") {
       issue(path, `A ${resolution.kind} ruleset has no successes or pool dice to buy`);
     }
     if (!pools.has(spend.pool)) {
@@ -9312,9 +10731,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   const checkSection = (section: string | undefined, path: (string | number)[]) => {
     if (section && !sections.has(section)) issue([...path, "section"], `Unknown section "${section}"`);
   };
-  const checkHideWhen = (hideWhen: RulesetHideWhen | undefined, path: (string | number)[]) => {
+  const checkHideWhen = (hideWhen: RulesetHideWhen | undefined, path: (string | number)[], fieldsById = fieldById) => {
     if (!hideWhen) return;
-    const field = fieldById.get(hideWhen.field);
+    const field = fieldsById.get(hideWhen.field);
     if (!field) return issue([...path, "hideWhen", "field"], `Unknown field "${hideWhen.field}"`);
     // Every value compared against must be one the field can actually hold, or the rule could never
     // match (or, for notEquals, could never fail to): checked one listed value at a time. For the two
@@ -9364,6 +10783,84 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     if (section.untrained === "harder" && harderIssue) issue(["sheet", "sections", index, "untrained"], harderIssue);
   });
 
+  if (def.party) {
+    const party = def.party;
+    const partyFields = new Map(party.fields.map((field) => [field.id, field]));
+    const ids = new Set<string>();
+    for (const key of ["fields", "pools"] as const)
+      party[key].forEach((entry, index) => {
+        if (ids.has(entry.id)) issue(["party", key, index, "id"], `Duplicate party id "${entry.id}"`);
+        ids.add(entry.id);
+      });
+    party.fields.forEach((field, index) => {
+      const path = ["party", "fields", index];
+      checkTyped(field, path);
+      if (field.section) issue([...path, "section"], "Party sheets have no sections");
+      checkHideWhen(field.hideWhen, path, partyFields);
+    });
+    party.pools.forEach((pool, index) => {
+      const path = ["party", "pools", index];
+      if (
+        pool.max.const === undefined &&
+        (pool.max.field === undefined || partyFields.get(pool.max.field)?.type !== "number")
+      )
+        issue([...path, "max"], "A party pool maximum reads a constant or a numeric party field");
+      checkHideWhen(pool.hideWhen, path, partyFields);
+    });
+    for (const [index, id] of (party.advancement?.fields ?? []).entries()) {
+      if (!["number", "text", "longtext"].includes(partyFields.get(id)?.type ?? ""))
+        issue(["party", "advancement", "fields", index], `Unknown or non-advanceable party field "${id}"`);
+    }
+    if (new Set(party.advancement?.fields).size !== (party.advancement?.fields?.length ?? 0))
+      issue(["party", "advancement", "fields"], "Duplicate advancement field");
+    party.summary?.fields.forEach((id, index) => {
+      if (!partyFields.has(id)) issue(["party", "summary", "fields", index], `Unknown party field "${id}"`);
+    });
+    if (party.summary?.derived.length) issue(["party", "summary"], "Party sheets have no derived values");
+    party.summary?.lists.forEach((entry, index) => {
+      if (!party.lists?.some((list) => list.id === entry.list))
+        issue(["party", "summary", "lists", index], `Unknown party list "${entry.list}"`);
+    });
+    party.lists?.forEach((list, index) => {
+      if (ids.has(list.id)) issue(["party", "lists", index, "id"], `Duplicate party id "${list.id}"`);
+      ids.add(list.id);
+    });
+    party.fromMembers?.forEach((from, index) => {
+      const path = ["party", "fromMembers", index];
+      if (partyFields.get(from.field)?.type !== "number")
+        issue([...path, "field"], `No number party field "${from.field}"`);
+      if ((from.count === undefined) === (from.sum === undefined))
+        issue(path, "A party field is filled with count or sum, not both");
+      if (from.sum !== undefined && sheet.fields.find((field) => field.id === from.sum)?.type !== "number")
+        issue([...path, "sum"], `No number field "${from.sum}" on a character's sheet`);
+    });
+    // The shared setup (1.163) is held to every rule a character's builder is, on the party's own sheet.
+    if (party.builder || party.lists) {
+      let partyDefinition: RulesetDefinition | null = null;
+      try {
+        partyDefinition = rulesetPartyDefinition(def as RulesetDefinition);
+      } catch {
+        issue(["party"], "The party sheet does not make a sheet of its own");
+      }
+      if (partyDefinition) {
+        const checked = (layersApplied ? rulesetEffectiveDefinitionSchema : rulesetDefinitionSchema).safeParse(
+          partyDefinition,
+        );
+        // Only what the party's own sheet and the catalogs its steps read are checked here: the
+        // copy keeps the character rules (resolution, items, combat), which name the character
+        // sheet and are checked against it already.
+        if (!checked.success)
+          for (const found of checked.error.issues
+            .filter((found) => found.path[0] === "sheet" || found.path[0] === "catalogs")
+            .slice(0, 20)) {
+            const [head, ...rest] = found.path;
+            const path = head === "sheet" ? ["party", ...rest] : ["party", ...found.path];
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: found.message });
+          }
+      }
+    }
+  }
+
   sheet.fields.forEach((field, index) => {
     const path = ["sheet", "fields", index];
     checkTyped(field, path);
@@ -9392,6 +10889,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
   };
   const refsOf = derivedRefs;
+  // What turns an override on reads the roller's sheet like any other value (1.140).
+  resolution.overrides?.forEach((override, index) => {
+    if (override.when) checkRef(override.when, ["resolution", "overrides", index, "when"], derivedIds);
+  });
 
   const derivedAbove = new Set<string>();
   sheet.derived.forEach((derived, index) => {
@@ -9471,6 +10972,35 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     if (resolution.kind === "dice-sum") {
       ladder.forEach((step, index) => {
         if (!("dc" in step)) issue([...path, index], 'This ruleset sums dice, so a ladder step names "dc"');
+        else if ("divide" in step) issue([...path, index, "divide"], "Only a roll-against ladder divides the target");
+      });
+      return;
+    }
+    if (resolution.kind === "symbol-pool") {
+      ladder.forEach((step, index) => {
+        if (!("dc" in step)) issue([...path, index], 'A symbol pool ladder names "dc" difficulty dice');
+        else if ("divide" in step) issue([...path, index, "divide"], "Only a roll-against ladder divides the target");
+        else if (step.dc < 0 || step.dc > resolution.difficulty.max)
+          issue([...path, index, "dc"], `Difficulty dice are from 0 to ${resolution.difficulty.max}`);
+      });
+      return;
+    }
+    // A roll-against ladder's `dc` moves the target, and `divide` divides the sheet's number (1.139).
+    if (resolution.kind === "roll-against") {
+      ladder.forEach((step, index) => {
+        if (!("dc" in step))
+          issue([...path, index], 'This ruleset rolls against the sheet, so a ladder step names "dc"');
+      });
+      return;
+    }
+    // A highest-die ladder's `dc` is what the kept dice must reach, so it is a face (or the sum of
+    // the kept faces) the dice can show.
+    if (resolution.kind === "dice-highest") {
+      const most = resolution.keep * resolution.die.sides;
+      ladder.forEach((step, index) => {
+        if (!("dc" in step)) issue([...path, index], 'This ruleset reads the highest die, so a ladder step names "dc"');
+        else if ("divide" in step) issue([...path, index, "divide"], "Only a roll-against ladder divides the target");
+        else if (step.dc < 1 || step.dc > most) issue([...path, index, "dc"], `The kept dice show 1 to ${most}`);
       });
       return;
     }
@@ -9494,9 +11024,164 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     });
   };
 
+  // Outcome bands (1.135). A natural that shifts a band needs a single die to have a natural at all,
+  // and it replaces the summed kind's own automatic success and failure rather than stacking on it.
+  // On a pool the bands say what a critical is, so `exceptional` beside them would be a second answer.
+  if (resolution.outcomes?.naturals === "shift") {
+    if (resolution.kind !== "dice-sum" || resolution.dice.count !== 1) {
+      issue(["resolution", "outcomes", "naturals"], "A natural shifts a band only where one die is rolled");
+    } else if (resolution.naturals.check !== "none" || resolution.naturals.save !== "none") {
+      issue(
+        ["resolution", "outcomes", "naturals"],
+        "Shifting bands on a natural replaces resolution.naturals, so set both of those to none",
+      );
+    }
+  }
+  // A fraction of the target (1.139) is a roll-against reading, and each band's atLeast a divisor.
+  if (resolution.outcomes?.by === "fraction") {
+    if (resolution.kind !== "roll-against") {
+      issue(["resolution", "outcomes", "by"], "Only a roll-against ruleset reads a fraction of its target");
+    }
+    resolution.outcomes.tiers.forEach((tier, index) => {
+      if (tier.atLeast !== undefined && tier.atLeast < 1) {
+        issue(["resolution", "outcomes", "tiers", index, "atLeast"], "A fraction band divides the target by 1 or more");
+      }
+    });
+  }
+  if (resolution.outcomes && resolution.kind === "dice-pool" && resolution.exceptional) {
+    issue(["resolution", "exceptional"], "The outcome bands say what a critical success is, so leave exceptional out");
+  }
+
   if (resolution.kind === "dice-sum") {
     if (resolution.dice.count !== 1 && (resolution.naturals.check !== "none" || resolution.naturals.save !== "none")) {
       issue(["resolution", "naturals"], "Natural results need a single die; with several dice use none");
+    }
+    // Custom faces, open-ended rolls and unmodified faces (1.136).
+    const { dice, openEnded, unmodified } = resolution;
+    if (dice.faces && dice.faces.length !== dice.sides) {
+      issue(["resolution", "dice", "faces"], `A d${dice.sides} has ${dice.sides} faces, so give ${dice.sides} values`);
+    }
+    if (openEnded) {
+      if (dice.count !== 1) issue(["resolution", "openEnded"], "An open-ended roll needs a single die");
+      if (dice.faces)
+        issue(["resolution", "openEnded"], "An open-ended roll adds its die's own numbers, so it has no faces");
+      if (openEnded.high === undefined && openEnded.low === undefined) {
+        issue(["resolution", "openEnded"], "Give high, low or both");
+      }
+      if (openEnded.high !== undefined && (openEnded.high < 2 || openEnded.high > dice.sides)) {
+        issue(["resolution", "openEnded", "high"], `A face of this die is from 2 to ${dice.sides}`);
+      }
+      if (openEnded.low !== undefined && openEnded.low >= (openEnded.high ?? dice.sides + 1)) {
+        issue(["resolution", "openEnded", "low"], "low is at or above high, so a face would roll both ways");
+      }
+      if (openEnded.low !== undefined && openEnded.low >= dice.sides) {
+        issue(["resolution", "openEnded", "low"], `A face of this die is from 1 to ${dice.sides - 1}`);
+      }
+    }
+    if (unmodified) {
+      if (dice.count !== 1) issue(["resolution", "unmodified"], "An unmodified face is a single die's");
+      unmodified.forEach((face, index) => {
+        if (face > dice.sides)
+          issue(["resolution", "unmodified", index], `A face of this die is from 1 to ${dice.sides}`);
+      });
+    }
+  } else if (resolution.kind === "symbol-pool") {
+    if (resolution.allowOwnUpgrade && !resolution.pool.upgrade) {
+      issue(["resolution", "allowOwnUpgrade"], "Own upgrades require pool.upgrade");
+    }
+    const symbols = unique(resolution.symbols, ["resolution", "symbols"], "symbol");
+    const dice = unique(resolution.dice, ["resolution", "dice"], "die");
+    const byId = new Map(resolution.symbols.map((symbol) => [symbol.id, symbol]));
+    const paired = new Map<string, string>();
+    resolution.symbols.forEach((symbol, index) => {
+      for (const key of ["counts", "cancels"] as const) {
+        const id = symbol[key];
+        if (!id) continue;
+        const path = ["resolution", "symbols", index, key];
+        if (!symbols.has(id)) issue(path, `Unknown symbol "${id}"`);
+        if (id === symbol.id) issue(path, "A symbol cannot count or cancel itself");
+        if (key === "counts" && byId.get(id)?.counts) issue(path, "counts must name a symbol without counts");
+        if (key === "cancels") {
+          for (const [first, second] of [
+            [symbol.id, id],
+            [id, symbol.id],
+          ]) {
+            if (paired.has(first!) && paired.get(first!) !== second) issue(path, "A symbol cancels only one partner");
+            paired.set(first!, second!);
+          }
+        }
+      }
+    });
+    resolution.dice.forEach((die, index) =>
+      die.faces.forEach((face, at) =>
+        face.forEach((id, n) => {
+          if (!symbols.has(id)) issue(["resolution", "dice", index, "faces", at, n], `Unknown symbol "${id}"`);
+        }),
+      ),
+    );
+    for (const key of ["pool", "difficulty", "boost", "setback"] as const) {
+      const part = resolution[key];
+      if (!part) continue;
+      if (!dice.has(part.die)) issue(["resolution", key, "die"], `Unknown die "${part.die}"`);
+      if ("upgrade" in part && part.upgrade && !dice.has(part.upgrade))
+        issue(["resolution", key, "upgrade"], `Unknown die "${part.upgrade}"`);
+    }
+    if (!symbols.has(resolution.success.symbol)) issue(["resolution", "success", "symbol"], "Unknown success symbol");
+    for (const key of ["criticalSuccess", "criticalFailure"] as const) {
+      if (resolution[key] && !symbols.has(resolution[key])) issue(["resolution", key], "Unknown critical symbol");
+    }
+  } else if (resolution.kind === "roll-against") {
+    // Rolling against the sheet's number (1.139).
+    const { dice, tens, against } = resolution;
+    const most = dice.count * dice.sides;
+    if (tens && (dice.count !== 1 || dice.sides !== 100)) {
+      issue(["resolution", "tens"], "Tens dice are thrown on a single d100");
+    }
+    for (const key of ["criticalSuccess", "criticalFailure"] as const) {
+      resolution[key]?.forEach((rule, index) => {
+        const at = ["resolution", key, index];
+        const byFace = rule.from !== undefined || rule.to !== undefined;
+        if (byFace === (rule.pastTarget !== undefined)) {
+          issue(at, "A critical names faces (from, to) or pastTarget, one of the two");
+        }
+        if (rule.pastTarget !== undefined && key === "criticalSuccess") {
+          issue([...at, "pastTarget"], "pastTarget is how far a roll failed, so it names a critical failure");
+        }
+        for (const end of ["from", "to"] as const) {
+          const face = rule[end];
+          if (face !== undefined && (face < dice.count || face > most)) {
+            issue([...at, end], `${dice.count}d${dice.sides} shows ${dice.count} to ${most}`);
+          }
+        }
+        if (rule.from !== undefined && rule.to !== undefined && rule.from > rule.to) {
+          issue([...at, "from"], "from is above to");
+        }
+      });
+    }
+    if (resolution.outcomes?.by === "fraction" && against !== "at-most") {
+      issue(["resolution", "outcomes", "by"], "A fraction of the target is read on a roll at most the target");
+    }
+  } else if (resolution.kind === "dice-highest") {
+    // Keep-the-highest dice (1.138).
+    const { die, pool, critical, keep } = resolution;
+    if (pool.min > pool.max) issue(["resolution", "pool", "min"], "pool.min is above pool.max");
+    if (critical?.face !== undefined && critical.face > die.sides) {
+      issue(["resolution", "critical", "face"], `A face of this die is from 2 to ${die.sides}`);
+    }
+    if (
+      critical &&
+      critical.count >
+        pool.max +
+          (resolution.situationalDice?.max ?? 0) +
+          (resolution.dark?.outcome === "light" ? 0 : (resolution.dark?.max ?? 0))
+    ) {
+      issue(["resolution", "critical", "count"], "No roll throws that many dice, so the critical could never happen");
+    }
+    if (keep > 1 && resolution.zeroDice === "lowest-of-two" && pool.min === 0) {
+      issue(
+        ["resolution", "zeroDice"],
+        "Two dice kept lowest is one die, so it cannot be read with keep above 1; use fail",
+      );
     }
   } else {
     const { die, pool, target } = resolution;
@@ -9532,6 +11217,29 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue(["resolution", key, "upTo"], `A ${key} face must be below the lowest target (${target.min})`);
       }
     }
+    // The target off the sheet, stances and the exact face (1.137).
+    if (target.from) checkRef(target.from, ["resolution", "target", "from"], derivedIds);
+    if (resolution.stances) {
+      unique(resolution.stances, ["resolution", "stances"], "stance");
+      const claimed = new Set<string>();
+      resolution.stances.forEach((stance, index) => {
+        stance.skills.forEach((skill, at) => {
+          const path = ["resolution", "stances", index, "skills", at];
+          if (!skills.has(skill)) issue(path, `Unknown skill "${skill}"`);
+          else if (claimed.has(skill)) issue(path, `"${skill}" is in two stances, so a check could not say which`);
+          claimed.add(skill);
+        });
+      });
+      // A face that explodes, doubles, cancels or botches is read against "at or above"; counting
+      // below or above the target would make each of those mean something else.
+      for (const key of ["explode", "double", "cancel", "botch"] as const) {
+        if (resolution[key])
+          issue(
+            ["resolution", key],
+            `A ruleset with stances counts dice below or above the target, so it has no ${key}`,
+          );
+      }
+    }
     // A number above what the largest roll can count could never be reached at the table.
     const reachable = rulesetPoolMaxSuccesses(resolution);
     if (resolution.exceptional && resolution.exceptional.successes > reachable) {
@@ -9559,6 +11267,19 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (unread.length) issue(at, `"${unread[0]}" does not read as a die (d6, 8)`);
         } else if (other.type !== "number") issue(at, "Sides read a number column or an enum of dice");
       } else checkRef(sides, at, derivedIds, false);
+    });
+    // A worked-out column (1.210) adds up other number columns of the row that are typed, not worked out.
+    list.columns.forEach((column, columnIndex) => {
+      if (column.type !== "number" || !column.sum) return;
+      const at = [...path, "columns", columnIndex, "sum"];
+      if (column.roll) issue(at, "A worked-out column is not rolled");
+      column.sum.forEach((id, idIndex) => {
+        const other = list.columns.find((each) => each.id === id);
+        if (!other || other.id === column.id || other.type !== "number")
+          issue([...at, idIndex], `"${id}" is not another number column of this list`);
+        else if (other.sum) issue([...at, idIndex], `"${id}" is itself worked out`);
+        if (column.sum!.indexOf(id) !== idIndex) issue([...at, idIndex], `"${id}" is named twice`);
+      });
     });
     checkSection(list.section, path);
     checkHideWhen(list.hideWhen, path);
@@ -9602,6 +11323,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     const path = ["sheet", "live", "pools", index];
     checkRef(pool.max, [...path, "max"], derivedIds, false);
     if (pool.level) checkRef(pool.level, [...path, "level"], derivedIds, false);
+    if (pool.startFrom) checkRef(pool.startFrom, [...path, "startFrom"], derivedIds, false);
     (pool.pays ?? []).forEach((group, at) => {
       if (!sheet.live.pools.some((other) => other.group === group)) {
         issue([...path, "pays", at], `Unknown pool group "${group}"`);
@@ -9643,6 +11365,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   sheet.live.tracks.forEach((track, index) => {
     const path = ["sheet", "live", "tracks", index];
     checkHideWhen(track.hideWhen, path);
+    if (track.startFrom) {
+      if (track.levels || track.boxes) issue([...path, "startFrom"], "A wound track starts unmarked");
+      else checkRef(track.startFrom, [...path, "startFrom"], derivedIds, false);
+    }
     if (typeof track.max !== "number") {
       // A maximum the sheet works out is only known per character, so only the floor is checked here;
       // the live state holds a value inside whatever the character's own maximum turns out to be.
@@ -9827,6 +11553,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           else if (
             !layersApplied &&
             catalog.entries &&
+            !catalog.from &&
             !catalog.entries.some((each) => each.id === entryId && each.item)
           ) {
             issue([...path, "item"], `No item "${entryId}" in catalog "${catalogId}"`);
@@ -9852,7 +11579,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const [catalogId, entryId] = ref.split("/") as [string, string];
       const catalog = def.catalogs?.find((each) => each.id === catalogId);
       if (!catalog || catalog.holds !== "items") return issue(path, `No item catalog "${catalogId}"`);
-      if (layersApplied || !catalog.entries) return;
+      // A borrowed catalog's entries (1.220) are read with it, not here.
+      if (layersApplied || !catalog.entries || catalog.from) return;
       const entry = catalog.entries.find((each) => each.id === entryId && each.item);
       if (!entry?.item) return issue(path, `No item "${entryId}" in catalog "${catalogId}"`);
       if (entry.item.service) issue(path, `"${entryId}" is a service, which is never carried`);
@@ -9933,8 +11661,24 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
 
   const catalogs = def.catalogs ?? [];
   unique(catalogs, ["catalogs"], "catalog");
+  // A catalog only the party's own setup reads (1.163) writes the party's lists and fields, so it is
+  // checked against the party's sheet, with the party's builder, and not against a character's.
+  const stepCatalogs = (steps: readonly RulesetBuilderStep[] | undefined) =>
+    new Set(
+      (steps ?? []).flatMap((step) =>
+        step.kind === "catalog" || step.kind === "choices"
+          ? [step.catalog]
+          : step.kind === "rows" && step.from
+            ? [step.from]
+            : [],
+      ),
+    );
+  const characterCatalogs = stepCatalogs(sheet.builder?.steps);
+  const partyOnly = stepCatalogs(def.party?.builder?.steps);
+  for (const id of characterCatalogs) partyOnly.delete(id);
   catalogs.forEach((catalog, index) => {
     const path = ["catalogs", index];
+    if (partyOnly.has(catalog.id)) return;
     // A creature is written in the numbers a fight reads, and those numbers are the `combat` block's
     // own: its budgets, its saves, its damage types and its threat scale.
     if (catalog.holds === "creatures" && !def.combat) {
@@ -9960,19 +11704,120 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
   });
 
+  // Worked-out scores (1.156) are worked out once the derived values are, which are then worked out
+  // again, so anything may read one; but none reads another, even through a derived value or skill.
+  const valued = new Set(sheet.abilities.filter((ability) => ability.value).map((ability) => ability.id));
+  if (valued.size > 0) {
+    const readsValued = (ref: RulesetValueRef) => [...abilityReads(def, ref)].some((id) => valued.has(id));
+    sheet.abilities.forEach((ability, index) =>
+      ability.value?.forEach((ref, refIndex) => {
+        const at = ["sheet", "abilities", index, "value", refIndex];
+        checkRef(ref, at, derivedIds, false);
+        if (readsValued(ref)) issue(at, "A worked-out score cannot read another worked-out score");
+      }),
+    );
+    sheet.builder?.steps.forEach((step, index) => {
+      const targets =
+        step.kind === "abilities"
+          ? (step.abilities ?? [])
+          : step.kind === "allocate"
+            ? step.groups.flatMap((group) =>
+                group.targets.flatMap((target) => ("ability" in target ? [target.ability] : [])),
+              )
+            : step.kind === "spend"
+              ? step.offers.flatMap((offer) => ("ability" in offer.target ? [offer.target.ability] : []))
+              : [];
+      for (const id of targets)
+        if (valued.has(id))
+          issue(["sheet", "builder", "steps", index], `"${id}" is worked out, not set by the builder`);
+    });
+  }
+
   // The guided builder (1.86): its steps name this ruleset's own catalogs, fields, scores and skills.
   if (sheet.builder) {
     const stepPath = (index: number) => ["sheet", "builder", "steps", index];
     unique(sheet.builder.steps, ["sheet", "builder", "steps"], "builder step");
     const catalogSteps = new Map<string, string>();
+    const tierTargets = new Set<string>();
+    sheet.builder.ratingTiers?.forEach((mapping, index) => {
+      const path = ["sheet", "builder", "ratingTiers", index];
+      const key = rulesetBuilderRatingKey(mapping.target);
+      if (tierTargets.has(key)) issue(path, "A rating target has one tier map");
+      tierTargets.add(key);
+      const what = "skill" in mapping.target ? "skills" : "saves";
+      const id = "skill" in mapping.target ? mapping.target.skill : mapping.target.save;
+      if (!sheet[what].some((entry) => entry.id === id)) issue(path, `Unknown rating target "${id}"`);
+      const offered = what === "skills" ? sheet.skillTiers : sheet.saveTiers;
+      let previous = -1;
+      mapping.tiers.forEach((id, tierIndex) => {
+        const at = resolution.proficiencyTiers.findIndex((tier) => tier.id === id);
+        if (at <= previous || (tierIndex === 0 && at !== 0) || (offered && !offered.includes(id)))
+          issue([...path, "tiers", tierIndex], "A rating map starts at untrained and uses increasing offered tiers");
+        previous = at;
+      });
+    });
+    unique(sheet.builder.pools ?? [], ["sheet", "builder", "pools"], "builder pool");
+    unique(sheet.builder.profiles ?? [], ["sheet", "builder", "profiles"], "builder profile");
+    sheet.builder.profiles?.forEach((profile, index) => {
+      const path = ["sheet", "builder", "profiles", index];
+      checkRef(profile.when, [...path, "when"], derivedIds, false);
+      profile.steps?.forEach((id, stepIndex) => {
+        if (!sheet.builder!.steps.some((step) => step.id === id))
+          issue([...path, "steps", stepIndex], `Unknown builder step "${id}"`);
+      });
+      for (const [id, ref] of Object.entries(profile.budgets ?? {})) {
+        if (!sheet.builder!.pools?.some((pool) => pool.id === id))
+          issue([...path, "budgets", id], `Unknown builder pool "${id}"`);
+        checkRef(ref, [...path, "budgets", id], derivedIds, false);
+      }
+    });
+    sheet.builder.steps.forEach((step, index) => {
+      if ((step.kind !== "catalog" && step.kind !== "initialize") || !step.reads) return;
+      const at = sheet.builder!.steps.findIndex((other) => other.id === step.reads!.before);
+      if (at < 0) issue([...stepPath(index), "reads", "before"], `Unknown builder step "${step.reads.before}"`);
+      else if (at === 0) issue([...stepPath(index), "reads", "before"], "No step comes before the first");
+    });
+    // Priced picks and rows (1.159) name a pool and a price together.
+    const pricedIssues = (step: { pool?: string; cost?: unknown }, path: (string | number)[]) => {
+      if ((step.pool === undefined) !== (step.cost === undefined))
+        issue([...path, step.pool === undefined ? "cost" : "pool"], "A priced step has pool and cost together");
+      if (step.pool !== undefined && !sheet.builder!.pools?.some((pool) => pool.id === step.pool))
+        issue([...path, "pool"], `Unknown builder pool "${step.pool}"`);
+    };
+    sheet.builder.pools?.forEach((pool, index) => {
+      const path = ["sheet", "builder", "pools", index];
+      checkRef(pool.budget, [...path, "budget"], derivedIds, false);
+      if (pool.budget.const !== undefined && (pool.budget.const < 0 || pool.budget.const > 100000))
+        issue(path, "A spending budget is between 0 and 100000");
+      for (const cap of pool.caps ?? [])
+        if (
+          !sheet.builder!.steps.some(
+            (step) =>
+              step.kind === "spend" &&
+              step.pool === pool.id &&
+              step.offers.some((offer) => offer.credit && offer.tags?.includes(cap.filter)),
+          )
+        )
+          issue(path, "A credit cap filter names a credit offer tag in this pool");
+    });
+    const spendTargets = sheet.builder.steps.flatMap((step) => (step.kind === "spend" ? step.offers : []));
     let abilitySteps = 0;
     sheet.builder.steps.forEach((step, index) => {
       const path = stepPath(index);
+      if (step.when) checkRef(step.when, [...path, "when"], derivedIds, false);
+      if (step.requiredWhen) checkRef(step.requiredWhen, [...path, "requiredWhen"], derivedIds, false);
       if (step.kind === "catalog") {
         const catalog = catalogs.find((each) => each.id === step.catalog);
         if (!catalog || (catalog.holds ?? "rows") !== "rows") {
           issue([...path, "catalog"], `No catalog of rows "${step.catalog}"`);
         }
+        builderLimitsIssues(step, catalog, step.max, path, issue);
+        pricedIssues(step, path);
+        if (
+          typeof step.cost === "object" &&
+          catalog?.filters?.find((filter) => filter.id === (step.cost as { filter: string }).filter)?.type !== "number"
+        )
+          issue([...path, "cost", "filter"], `No number filter "${step.cost.filter}"`);
         for (const [column, value] of Object.entries(step.stamp ?? {})) {
           if (
             !catalog?.feeds?.length ||
@@ -10048,6 +11893,107 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (fieldById.get(id)?.type !== "number") issue(at, `No number field "${id}"`);
           if (step.total!.fields.indexOf(id) !== fieldIndex) issue(at, `"${id}" is named twice`);
         });
+      } else if (step.kind === "roll") {
+        unique(step.rolls, [...path, "rolls"], "roll");
+        step.rolls.forEach((roll, rollIndex) => {
+          const at = [...path, "rolls", rollIndex];
+          if ((roll.field === undefined) === (roll.ability === undefined))
+            issue(at, "A roll writes a field or an ability, exactly one");
+          else if (roll.field !== undefined) {
+            if (fieldById.get(roll.field)?.type !== "number")
+              issue([...at, "field"], `No number field "${roll.field}"`);
+          } else {
+            const ability = sheet.abilities.find((each) => each.id === roll.ability);
+            if (!ability) issue([...at, "ability"], `Unknown ability "${roll.ability}"`);
+            else if (ability.value) issue([...at, "ability"], `"${roll.ability}" is worked out, not written`);
+            if (step.rolls.some((other, otherIndex) => otherIndex < rollIndex && other.ability === roll.ability))
+              issue([...at, "ability"], `"${roll.ability}" is rolled twice`);
+          }
+          if (typeof roll.floor === "object") checkRef(roll.floor, [...at, "floor"], derivedIds, false);
+          if (roll.gain && roll.best) issue([...at, "best"], "An improvement check is rolled once");
+        });
+      } else if (step.kind === "initialize") {
+        step.writes.forEach((write, writeIndex) => {
+          const at = [...path, "writes", writeIndex];
+          const field = fieldById.get(write.field);
+          if (!field) issue([...at, "field"], `Unknown field "${write.field}"`);
+          if (step.writes.findIndex((other) => other.field === write.field) !== writeIndex)
+            issue([...at, "field"], `"${write.field}" is written twice`);
+          if (write.remaining !== undefined) {
+            if (!sheet.builder!.pools?.some((pool) => pool.id === write.remaining))
+              issue([...at, "remaining"], `Unknown builder pool "${write.remaining}"`);
+            if (field && field.type !== "number") issue([...at, "field"], `"${write.field}" is not a number field`);
+          } else if (write.value !== null && typeof write.value === "object") {
+            checkRef(write.value, [...at, "value"], derivedIds, false);
+            if (field && field.type !== "number") issue([...at, "field"], `"${write.field}" is not a number field`);
+          } else if (
+            field &&
+            typeof write.value !==
+              (field.type === "boolean" ? "boolean" : field.type === "number" ? "number" : "string")
+          ) {
+            issue(
+              [...at, "value"],
+              `"${write.field}" takes a ${field.type === "boolean" ? "boolean" : field.type === "number" ? "number" : "text"} value`,
+            );
+          }
+        });
+      } else if (step.kind === "rows") {
+        const list = listById.get(step.list);
+        if (!list) issue([...path, "list"], `Unknown list "${step.list}"`);
+        const columnIds = new Set(list?.columns.map((column) => column.id) ?? []);
+        const edited = step.columns ?? [...columnIds];
+        step.columns?.forEach((id, columnIndex) => {
+          if (list && !columnIds.has(id)) issue([...path, "columns", columnIndex], `Unknown column "${id}"`);
+          if (step.columns!.indexOf(id) !== columnIndex)
+            issue([...path, "columns", columnIndex], `"${id}" is named twice`);
+        });
+        step.required?.forEach((id, requiredIndex) => {
+          if (!edited.includes(id))
+            issue([...path, "required", requiredIndex], `"${id}" is not one of this step's columns`);
+        });
+        if (list && step.defaults)
+          for (const message of rulesetListRowIssues(list, step.defaults)) issue([...path, "defaults"], message);
+        if (step.max !== undefined && list && step.max > list.maxItems)
+          issue([...path, "max"], `"${step.list}" holds at most ${list.maxItems} rows`);
+        if (step.min !== undefined && step.min > (step.max ?? list?.maxItems ?? 20))
+          issue([...path, "min"], "The step asks for more rows than it lets the player add");
+        pricedIssues(step, path);
+        if (typeof step.cost === "object") {
+          const cost = step.cost;
+          if (cost.column === undefined && cost.add === undefined && !cost.overrides)
+            issue([...path, "cost"], "A row price names a column, an amount or overrides");
+          if (cost.times !== undefined && cost.column === undefined)
+            issue([...path, "cost", "times"], "times scales a column");
+          if (cost.column !== undefined) {
+            const column = list?.columns.find((each) => each.id === cost.column);
+            if (list && column?.type !== "number")
+              issue([...path, "cost", "column"], `No number column "${cost.column}"`);
+            else if (!edited.includes(cost.column) && !step.from)
+              issue([...path, "cost", "column"], `"${cost.column}" is not one of this step's columns`);
+          }
+          cost.overrides?.forEach((override, overrideIndex) => {
+            if ((override.cost === undefined) === (override.times === undefined))
+              issue([...path, "cost", "overrides", overrideIndex], "An override gives a cost or a rate, exactly one");
+            else if (override.times !== undefined && cost.column === undefined)
+              issue([...path, "cost", "overrides", overrideIndex, "times"], "times scales a column");
+            const at = [...path, "cost", "overrides", overrideIndex, "derived"];
+            const cell = list?.columns.find((each) => each.id === override.derived.cell);
+            if (list && !cell) issue([...at, "cell"], `"${step.list}" has no column "${override.derived.cell}"`);
+            // An enum cell names every derived value it can read, and each must be on the sheet.
+            if (cell?.type === "enum")
+              for (const value of cell.values) {
+                const id = `${override.derived.prefix}${value}`;
+                if (!derivedIds.has(id)) issue(at, `No derived value "${id}" for "${value}"`);
+              }
+          });
+        }
+        if (step.from !== undefined) {
+          const catalog = catalogs.find((each) => each.id === step.from);
+          if (!catalog || (catalog.holds ?? "rows") !== "rows")
+            issue([...path, "from"], `No catalog of rows "${step.from}"`);
+          else if (!catalog.feeds?.includes(step.list))
+            issue([...path, "from"], `"${step.from}" writes no rows to "${step.list}"`);
+        }
       } else if (step.kind === "abilities") {
         abilitySteps += 1;
         if (sheet.abilities.length === 0) issue([...path, "kind"], "This sheet has no ability scores");
@@ -10060,7 +12006,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (step.default !== undefined && step.methods[step.default] === undefined) {
           issue([...path, "default"], `"${step.default}" is not one of this step's methods`);
         }
-        const set = sheet.abilities.filter((ability) => !step.abilities || step.abilities.includes(ability.id));
+        const set = sheet.abilities.filter(
+          (ability) => !ability.value && (!step.abilities || step.abilities.includes(ability.id)),
+        );
         const array = step.methods.standardArray;
         if (array && array.length !== set.length) {
           issue(
@@ -10086,8 +12034,178 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (roll && !(fits(roll.keep) && fits(roll.keep * roll.sides))) {
           issue([...path, "methods", "roll"], "A roll can come to a number outside a score's bounds");
         }
+        if (step.methods.rolls) {
+          const grouped = step.methods.rolls.flatMap((group) => group.abilities);
+          step.methods.rolls.forEach((group, groupIndex) =>
+            group.abilities.forEach((id, abilityIndex) => {
+              const at = [...path, "methods", "rolls", groupIndex, "abilities", abilityIndex];
+              if (!set.some((ability) => ability.id === id)) issue(at, `"${id}" is not one of this step's scores`);
+              else if (grouped.indexOf(id) !== grouped.lastIndexOf(id)) issue(at, `"${id}" is rolled twice`);
+            }),
+          );
+          for (const ability of set)
+            if (!grouped.includes(ability.id))
+              issue([...path, "methods", "rolls"], `"${ability.id}" is not rolled by any group`);
+        }
+      } else if (step.kind === "spend") {
+        const pool = sheet.builder!.pools?.find((pool) => pool.id === step.pool);
+        if (!pool) issue([...path, "pool"], "Unknown builder pool");
+        unique(step.offers, [...path, "offers"], "spend offer");
+        step.offers.forEach((offer, offerIndex) => {
+          const at = [...path, "offers", offerIndex];
+          builderRatingTargetIssues(def, offer.target, [...at, "target"], issue);
+          const [low, high] = rulesetBuilderRatingBounds(def, offer.target);
+          const field = "field" in offer.target ? fieldById.get(offer.target.field) : undefined;
+          const integer = field?.type !== "number" || field.integer;
+          if (
+            offer.min > offer.max ||
+            offer.min < low ||
+            offer.max > high ||
+            (integer && (!Number.isInteger(offer.min) || !Number.isInteger(offer.max)))
+          )
+            issue(at, "Spend bounds must fit the target's numeric bounds or tier map");
+          const twoWay = offer.direction === "both";
+          const owned = offer.effect === "ownership";
+          const exchange = offer.exchange;
+          if (offer.direction === "decrease" && offer.baseline === undefined)
+            issue(at, "A reduction declares the baseline it lowers from");
+          if (
+            offer.baseline !== undefined &&
+            !twoWay &&
+            !owned &&
+            offer.direction !== "increase" &&
+            (!offer.credit || offer.baseline !== offer.max)
+          )
+            issue(at, "A signed reduction declares credit and its maximum as baseline");
+          if (offer.baseline !== undefined && (offer.baseline < offer.min || offer.baseline > offer.max))
+            issue([...at, "baseline"], "The baseline is inside the offer's bounds");
+          if (twoWay || owned || exchange) {
+            if (offer.credit) issue([...at, "credit"], "This offer earns no declared credit");
+            if (offer.allowedRatings) issue([...at, "allowedRatings"], "This offer steps one rating at a time");
+          }
+          if (owned && (offer.direction === "both" || offer.direction === "decrease" || exchange))
+            issue([...at, "effect"], "An owned level is only ever bought up");
+          if (exchange) {
+            builderRatingTargetIssues(def, exchange.from, [...at, "exchange", "from"], issue);
+            if (rulesetBuilderRatingKey(exchange.from) === rulesetBuilderRatingKey(offer.target))
+              issue([...at, "exchange", "from"], "An exchange trades out of another rating");
+            const [fromLow, fromHigh] = rulesetBuilderRatingBounds(def, exchange.from);
+            if (exchange.floor < fromLow || exchange.floor > fromHigh)
+              issue([...at, "exchange", "floor"], "The floor fits the traded rating's bounds");
+            if (offer.direction && offer.direction !== "increase")
+              issue([...at, "direction"], "An exchange raises its target");
+            if (!("flat" in offer.cost) || offer.cost.flat !== 0 || offer.overrides)
+              issue([...at, "cost"], "An exchange costs the pool nothing; leave cost out");
+          } else if ("flat" in offer.cost && offer.cost.flat === 0)
+            issue([...at, "cost"], "A spend offer needs a cost");
+          if (
+            twoWay &&
+            spendTargets.filter(
+              (other) => rulesetBuilderRatingKey(other.target) === rulesetBuilderRatingKey(offer.target),
+            ).length > 1
+          )
+            issue(at, "A two-way target has one offer, preventing buy/credit cycles");
+          for (const key of ["when", "minFrom", "maxFrom"] as const)
+            if (offer[key]) checkRef(offer[key]!, [...at, key], derivedIds, false);
+          offer.allowedRatings?.forEach((rating, ratingIndex) => {
+            const where = [...at, "allowedRatings", ratingIndex];
+            if (rating < offer.min || rating > offer.max) issue(where, `${rating} is outside the offer's bounds`);
+            if (integer && !Number.isInteger(rating)) issue(where, `${rating} is not a whole number`);
+            if ("table" in offer.cost && !offer.cost.table.some(([each]) => each === rating))
+              issue(where, `${rating} is not a rating of the cost table`);
+            if (offer.allowedRatings!.indexOf(rating) !== ratingIndex) issue(where, `${rating} is named twice`);
+          });
+          if (offer.allowedRatings && offer.baseline !== undefined)
+            issue([...at, "allowedRatings"], "A reduction from a baseline steps one rating at a time");
+          if (offer.credit && !pool?.creditLimit) issue(at, "Credit offers need a positive pool creditLimit");
+          if (
+            offer.credit &&
+            spendTargets.filter(
+              (other) => rulesetBuilderRatingKey(other.target) === rulesetBuilderRatingKey(offer.target),
+            ).length > 1
+          )
+            issue(at, "A credit target has one offer, preventing buy/credit cycles");
+          const costs = exchange ? [] : [offer.cost, ...(offer.overrides ?? []).map((entry) => entry.cost)];
+          for (const cost of costs) {
+            const descending = !!offer.credit && offer.baseline === undefined;
+            if ("flat" in cost && (descending ? cost.flat >= 0 : cost.flat <= 0))
+              issue(at, "Only declared trait credits have negative prices");
+            if ("perRank" in cost && (descending || offer.min < 0))
+              issue(at, "Per-rank prices need nonnegative ratings and positive marginal prices");
+            if ("table" in cost) {
+              for (let n = 0; n < cost.table.length; n++) {
+                const [rating, price] = cost.table[n]!;
+                const previous = cost.table[n - 1];
+                if (
+                  (integer && !Number.isInteger(rating)) ||
+                  rating < low ||
+                  rating > high ||
+                  (previous && (rating <= previous[0] || (descending ? price >= previous[1] : price <= previous[1])))
+                )
+                  issue(
+                    at,
+                    "Cost tables need increasing ratings and strictly signed marginal prices within target bounds",
+                  );
+              }
+              if (
+                !cost.table.some(([rating]) => rating === offer.min) ||
+                !cost.table.some(([rating]) => rating === offer.max)
+              )
+                issue(at, "A cost table includes both offer bounds");
+            }
+          }
+          offer.overrides?.forEach((override, overrideIndex) =>
+            checkRef(override.when, [...at, "overrides", overrideIndex, "when"], derivedIds, false),
+          );
+        });
+      } else if (step.kind === "allocate") {
+        unique(step.groups, [...path, "groups"], "allocation group");
+        if (step.priorities && step.priorities.length !== step.groups.length)
+          issue([...path, "priorities"], "Priorities need one allotment per group");
+        const targets = new Set<string>();
+        step.groups.forEach((group, groupIndex) => {
+          const at = [...path, "groups", groupIndex];
+          if (!!step.priorities === !!group.budget)
+            issue(at, "Use exactly one budget mode: priorities or a budget for every group");
+          if (group.budget) checkRef(group.budget, [...at, "budget"], derivedIds, false);
+          const budget = group.budget?.const;
+          if (budget !== undefined && (!Number.isInteger(budget) || budget < 0 || budget > 1200000))
+            issue([...at, "budget"], "An allocation budget is a whole number from 0 to 1200000");
+          for (const bound of ["base", "min", "max"] as const) {
+            const value = group[bound];
+            if (typeof value === "object") checkRef(value, [...at, bound], derivedIds, false);
+          }
+          const constant = (value: number | RulesetValueRef | undefined) =>
+            typeof value === "number" ? value : value?.const;
+          const min = constant(group.min);
+          const max = constant(group.max);
+          if (min !== undefined && max !== undefined && min > max) issue(at, "Allocation min exceeds max");
+          group.rows?.forEach((row, rowIndex) => {
+            const list = sheet.lists.find((each) => each.id === row.list);
+            if (!list) issue([...at, "rows", rowIndex, "list"], `Unknown list "${row.list}"`);
+            else if (list.columns.find((each) => each.id === row.column)?.type !== "number")
+              issue([...at, "rows", rowIndex, "column"], `No number column "${row.column}"`);
+          });
+          group.targets.forEach((target, targetIndex) => {
+            const targetPath = [...at, "targets", targetIndex];
+            builderRatingTargetIssues(def, target, targetPath, issue);
+            const key = rulesetBuilderRatingKey(target);
+            if (targets.has(key)) issue(targetPath, "Allocation groups need distinct, disjoint targets");
+            targets.add(key);
+            const [low, high] = rulesetBuilderRatingBounds(def, target);
+            for (const bound of ["base", "min", "max"] as const) {
+              const value = constant(group[bound]);
+              if (
+                value !== undefined &&
+                (!Number.isInteger(value) || value < Math.max(0, low) || value > Math.min(10000, high))
+              )
+                issue([...at, bound], "Allocation rating is outside the target's bounds or tier map");
+            }
+          });
+        });
       } else if (step.kind === "trained") {
         step.choose?.forEach((choice, choiceIndex) => {
+          builderChoiceIssues(def, choice, [...path, "choose", choiceIndex], issue);
           const known = choice.what === "skills" ? skills : saves;
           choice.from?.forEach((id, idIndex) => {
             if (!known.has(id)) {
@@ -10107,7 +12225,47 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       }
     });
+    builderChoicesIssues(def, issue);
     if (abilitySteps > 1) issue(["sheet", "builder", "steps"], "A builder sets the scores in one step");
+    // Creation rules (1.155) read the sheet as it stands and sit on a step's badge.
+    unique(sheet.builder.constraints ?? [], ["sheet", "builder", "constraints"], "builder rule");
+    sheet.builder.constraints?.forEach((rule, index) => {
+      const path = ["sheet", "builder", "constraints", index];
+      if (!sheet.builder!.steps.some((step) => step.id === rule.step))
+        issue([...path, "step"], `Unknown step "${rule.step}"`);
+      if (rule.when) checkRef(rule.when, [...path, "when"], derivedIds, false);
+      if (rule.value) checkRef(rule.value, [...path, "value"], derivedIds, false);
+      for (const key of ["min", "max"] as const) {
+        const bound = rule[key];
+        if (bound !== undefined && typeof bound !== "number") checkRef(bound, [...path, key], derivedIds, false);
+      }
+      const listColumn = (listId: string, columnId: string | undefined, at: (string | number)[]) => {
+        const list = listById.get(listId);
+        if (!list) {
+          issue([...at, "list"], `Unknown list "${listId}"`);
+          return undefined;
+        }
+        if (columnId === undefined) return undefined;
+        const column = list.columns.find((each) => each.id === columnId);
+        if (!column) issue(at, `Unknown column "${columnId}"`);
+        return column;
+      };
+      if (rule.rows) {
+        const filter = rule.rows.filter;
+        const column = listColumn(rule.rows.list, filter?.column, [...path, "rows", "filter"]);
+        if (filter && (filter.below !== undefined || filter.above !== undefined) && column && column.type !== "number")
+          issue([...path, "rows", "filter"], "Only a number column is filtered by below or above");
+        if (filter && filter.equals === undefined && filter.below === undefined && filter.above === undefined)
+          issue([...path, "rows", "filter"], "A filter names equals, below or above");
+        if (rule.rows.sum !== undefined) {
+          const sum = listColumn(rule.rows.list, rule.rows.sum, [...path, "rows", "sum"]);
+          if (sum && sum.type !== "number") issue([...path, "rows", "sum"], "Only a number column is added up");
+        }
+      }
+      if (rule.distinct) listColumn(rule.distinct.list, rule.distinct.column, [...path, "distinct"]);
+      if (rule.approved !== undefined && fieldById.get(rule.approved)?.type !== "boolean")
+        issue([...path, "approved"], `No boolean field "${rule.approved}"`);
+    });
     if (
       sheet.builder.tier !== undefined &&
       resolution.proficiencyTiers.findIndex((tier) => tier.id === sheet.builder!.tier) < 1
@@ -10297,6 +12455,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
     // Each kind rolls with its own block and never the other's: an attack total needs attack dice,
     // and a pool fight throws the ruleset's own pools, so it has nothing to say about a total.
+    // A keep-the-highest ruleset (1.138) has no fight of its own: its checks read one die, which no
+    // attack, save or damage roll of a fight is written in. Fights stay with the Game Master.
+    if (resolution.kind === "dice-highest" || resolution.kind === "symbol-pool") {
+      issue(at("kind"), `A ${resolution.kind} ruleset has no fight of its own, so leave combat out`);
+    }
     const pooled = combat.kind === "dice-pool";
     if (pooled) {
       if (resolution.kind !== "dice-pool") {
@@ -10308,6 +12471,35 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!combat.attackRoll) issue(at("attackRoll"), 'An "attack-vs-defense" fight says what an attack rolls');
       if (combat.pool) issue(at("pool"), '"pool" is for a "dice-pool" fight');
     }
+    if (combat.damage?.minimum) {
+      checkRef(combat.damage.minimum, at("damage", "minimum"), derivedIds);
+      if (!pooled) issue(at("damage", "minimum"), 'Minimum damage dice need a "dice-pool" fight');
+      if (combat.damage.minimum.const !== undefined && combat.damage.minimum.const < 0) {
+        issue(at("damage", "minimum"), "Minimum damage dice cannot be negative");
+      }
+    }
+    if (combat.daze) {
+      checkRef(combat.daze.over, at("daze", "over"), derivedIds);
+      if (!pooled) issue(at("daze"), 'Daze needs a "dice-pool" fight');
+      if (combat.daze.condition && !conditions.has(combat.daze.condition)) {
+        issue(at("daze", "condition"), `Unknown condition "${combat.daze.condition}"`);
+      }
+    }
+    combat.damageKinds?.remap?.forEach((remap, index) => {
+      const path = at("damageKinds", "remap", index);
+      checkRef(remap.when, [...path, "when"], derivedIds);
+      if (!pooled) issue(path, 'Damage kind remaps need a "dice-pool" fight');
+      const health = combat.health;
+      const kinds =
+        "track" in health ? (sheet.live.tracks.find((track) => track.id === health.track)?.kinds ?? []) : [];
+      for (const key of ["from", "to"] as const) {
+        if (!kinds.some((kind) => kind.id === remap[key]))
+          issue([...path, key], `"${remap[key]}" is not a kind of the health track`);
+      }
+      for (const tag of remap.tags ?? []) {
+        if (!def.items?.tags?.some((entry) => entry.id === tag)) issue([...path, "tags"], `Unknown item tag "${tag}"`);
+      }
+    });
     // The same rule the check dice follow: an extreme face is only a face when one die was thrown.
     const naturals = combat.attackRoll?.naturals;
     if (combat.attackRoll?.criticalFrom) {
@@ -11242,6 +13434,44 @@ export function rulesetPoolMaxSuccesses(
   return (resolution.pool.max + (resolution.explode ? resolution.pool.max : 0)) * (resolution.double ? 2 : 1);
 }
 export type RulesetSheetSchema = RulesetDefinition["sheet"];
+/** A party sheet uses the existing sheet math and renderer with its own field namespace. */
+export function rulesetPartyDefinition(definition: RulesetDefinition): RulesetDefinition | null {
+  const party = definition.party;
+  if (!party) return null;
+  return {
+    ...definition,
+    party: undefined,
+    sheet: rulesetSheetSchema.parse({
+      version: definition.sheet.version,
+      fields: party.fields,
+      live: { pools: party.pools },
+      ...(party.lists ? { lists: party.lists } : {}),
+      ...(party.builder ? { builder: party.builder } : {}),
+      ...(party.advancement?.fields?.length ? { advancement: party.advancement } : {}),
+    }),
+    // A shared setup reads only the catalogs its own steps name (1.163), which feed the party's lists.
+    ...(party.builder
+      ? {
+          catalogs: definition.catalogs?.filter((catalog) =>
+            party.builder!.steps.some(
+              (step) =>
+                ((step.kind === "catalog" || step.kind === "choices") && step.catalog === catalog.id) ||
+                (step.kind === "rows" && step.from === catalog.id),
+            ),
+          ),
+        }
+      : {}),
+    rests: [],
+    gm: {
+      ...definition.gm,
+      sheetSummary: party.summary ?? { fields: party.fields.map((field) => field.id), derived: [], lists: [] },
+    },
+  };
+}
+
+/** Punctuation cannot occur in a normalized character name, so this snapshot key cannot collide. */
+export const RULESET_PARTY_KEY = "$party";
+
 export type RulesetField = z.infer<typeof rulesetFieldSchema>;
 export type RulesetListColumn = z.infer<typeof rulesetListColumnSchema>;
 
@@ -11383,7 +13613,6 @@ export function parseRulesetDefinition(input: unknown): RulesetParseResult {
 
 export type RulesetCatalogHeader = z.infer<typeof catalogSchema>;
 export type RulesetCatalogEntry = z.infer<typeof catalogEntrySchema>;
-export type RulesetCatalogGrants = z.infer<typeof catalogGrantsSchema>;
 
 /** One item as a catalog entry writes it, for reading an invented item back off a game. */
 export const rulesetCatalogItemSchema = catalogItemSchema;
@@ -11572,7 +13801,7 @@ function creatureSheetIssues(
         return;
       }
       const entryId = ref.slice(slash + 1);
-      if (catalog.entries && !catalog.entries.some((entry) => entry.id === entryId)) {
+      if (catalog.entries && !catalog.from && !catalog.entries.some((entry) => entry.id === entryId)) {
         add(where, `Catalog "${catalogId}" has no entry "${entryId}"`);
       }
     });
@@ -12934,6 +15163,18 @@ function attackIssues(
       add([...at, "strikes", issue.key], issue.message);
     }
   }
+  if (attack.damage.minimum) {
+    const minimum = attack.damage.minimum;
+    if ("stat" in minimum) value(minimum, "number", [...at, "damage", "minimum"]);
+    else {
+      for (const issue of rulesetValueRefIssues(minimum, names, names.derived, true)) {
+        add([...at, "damage", "minimum", issue.key], issue.message);
+      }
+      if (minimum.const !== undefined && minimum.const < 0)
+        add([...at, "damage", "minimum"], "Minimum damage dice cannot be negative");
+    }
+    if (combat.kind !== "dice-pool") add([...at, "damage", "minimum"], 'Minimum damage dice need a "dice-pool" fight');
+  }
   if (attack.strikes?.const !== undefined && attack.strikes.const < 1) {
     add([...at, "strikes", "const"], "One spend buys at least one strike");
   }
@@ -13125,6 +15366,372 @@ export function rulesetItemIssues(definition: RulesetDefinition, item: RulesetCa
   return found;
 }
 
+/** Stable keys also separate a skill's tier from its numeric bonus. */
+export function rulesetBuilderRatingKey(target: RulesetBuilderRatingTarget): string {
+  const [kind, id] = Object.entries(target)[0]!;
+  return `${kind}/${id}`;
+}
+
+export function rulesetBuilderRatingBounds(
+  definition: RulesetDefinition,
+  target: RulesetBuilderRatingTarget,
+): [number, number] {
+  if ("ability" in target) {
+    const ability = definition.sheet.abilities.find((entry) => entry.id === target.ability);
+    return [ability?.min ?? 0, ability?.max ?? 0];
+  }
+  if ("field" in target) {
+    const field = definition.sheet.fields.find((entry) => entry.id === target.field);
+    return field?.type === "number" ? [field.min, field.max] : [0, 0];
+  }
+  if ("bonus" in target) return [definition.sheet.bonusRange.min, definition.sheet.bonusRange.max];
+  const map = definition.sheet.builder?.ratingTiers?.find(
+    (entry) => rulesetBuilderRatingKey(entry.target) === rulesetBuilderRatingKey(target),
+  );
+  return [0, (map?.tiers.length ?? 1) - 1];
+}
+
+function builderRatingTargetIssues(
+  definition: RulesetDefinition,
+  target: RulesetBuilderRatingTarget,
+  path: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const { sheet } = definition;
+  const exists =
+    "ability" in target
+      ? sheet.abilities.some((entry) => entry.id === target.ability)
+      : "field" in target
+        ? sheet.fields.some((entry) => entry.id === target.field && entry.type === "number")
+        : "skill" in target
+          ? sheet.skills.some((entry) => entry.id === target.skill)
+          : "save" in target
+            ? sheet.saves.some((entry) => entry.id === target.save)
+            : [...sheet.skills, ...sheet.saves].some((entry) => entry.id === target.bonus);
+  if (!exists) add(path, "Unknown or nonnumeric rating target");
+  if (
+    ("skill" in target || "save" in target) &&
+    !sheet.builder?.ratingTiers?.some(
+      (entry) => rulesetBuilderRatingKey(entry.target) === rulesetBuilderRatingKey(target),
+    )
+  )
+    add(path, "Skill and save ratings require an explicit tier map");
+}
+
+/** Choice constraints use declared catalog filters and bounded counts, never predicates. */
+function builderLimitsIssues(
+  limits: RulesetBuilderCatalogLimits,
+  catalog: RulesetCatalogHeader | undefined,
+  max: number,
+  path: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const filterOf = (id: string) => catalog?.filters?.find((filter) => filter.id === id);
+  limits.quotas?.forEach((quota, index) => {
+    const at = [...path, "quotas", index];
+    const filter = filterOf(quota.filter);
+    if (!filter || (filter.type === "number") !== (typeof quota.value === "number"))
+      add(at, "A quota needs an existing filter and a value of its type");
+    if (quota.min > quota.max || quota.max > max) add(at, "A quota needs 0 <= min <= max <= the choice maximum");
+  });
+  if (limits.distinctBy && !filterOf(limits.distinctBy)) add([...path, "distinctBy"], "Unknown distinctness filter");
+  if (limits.quotaBelow && filterOf(limits.quotaBelow.filter)?.type !== "number")
+    add([...path, "quotaBelow"], "A pyramid needs a number filter");
+}
+
+function builderChoiceIssues(
+  definition: RulesetDefinition,
+  choice: RulesetBuilderChoice & {
+    tier?: string;
+    held?: string;
+    what?: "skills" | "saves";
+    onDuplicate?: "replace";
+    replacementFrom?: string[];
+  },
+  path: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+  grantedTier?: string,
+): void {
+  if (choice.replacementFrom) {
+    if (choice.onDuplicate !== "replace")
+      add([...path, "replacementFrom"], "Only a choice that replaces duplicates names what replaces them");
+    const known = new Set(definition.sheet[choice.what ?? "skills"].map((entry) => entry.id));
+    choice.replacementFrom.forEach((id, index) => {
+      if (!known.has(id))
+        add([...path, "replacementFrom", index], `Unknown ${choice.what === "saves" ? "save" : "skill"} "${id}"`);
+    });
+  }
+  if (choice.countFrom && choice.max === undefined) add([...path, "max"], "A counted choice declares its maximum");
+  if (choice.max !== undefined && choice.count > choice.max) add([...path, "count"], "Count exceeds the maximum");
+  if (choice.countFrom) {
+    const names = rulesetSheetNames(definition.sheet, definition.items);
+    for (const issue of rulesetValueRefIssues(choice.countFrom, names, names.derived, false))
+      add([...path, "countFrom", issue.key], issue.message);
+  }
+  if (choice.tier !== undefined) {
+    const offered = choice.what === "skills" ? definition.sheet.skillTiers : definition.sheet.saveTiers;
+    if (
+      definition.resolution.proficiencyTiers.findIndex((tier) => tier.id === choice.tier) < 1 ||
+      (offered && !offered.includes(choice.tier))
+    )
+      add([...path, "tier"], "A choice needs an offered tier above untrained");
+  }
+  if (choice.held !== undefined) {
+    const tiers = definition.resolution.proficiencyTiers;
+    const sheet = definition.sheet;
+    const held = tiers.findIndex((tier) => tier.id === choice.held);
+    // The tier the choice trains to, as the builder reads it: its own, the builder's, else the first.
+    const named = tiers.findIndex((tier) => tier.id === (choice.tier ?? grantedTier ?? definition.sheet.builder?.tier));
+    const offered = choice.what === "skills" ? sheet.skillTiers : sheet.saveTiers;
+    const first = tiers.findIndex((tier, at) => at >= 1 && (!offered || offered.includes(tier.id)));
+    const own = named >= 1 ? named : first >= 1 ? first : 1;
+    if (held < 1) {
+      add([...path, "held"], `"${choice.held}" is not a tier above untrained`);
+    } else if (held >= own) {
+      add(
+        [...path, "held"],
+        `"${choice.held}" is not below the tier this choice trains to, so nothing it builds on could be raised`,
+      );
+    }
+  }
+}
+
+/** Forward-only choice references and sheet reads keep a change from enabling its own prerequisite.
+ * Catalog files are checked with their entries substituted; unknown later files are conservative. */
+function builderChoicesIssues(
+  definition: RulesetDefinition,
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const steps = definition.sheet.builder?.steps ?? [];
+  // A free grant can deactivate paid dots across a group's shared budget, including earlier stages.
+  const ratingGroups = steps.flatMap((step) => (step.kind === "allocate" ? step.groups : []));
+  const ratingPeers = new Map<string, RulesetBuilderRatingTarget[]>();
+  const freeRatingTargets = (target: RulesetBuilderRatingTarget): RulesetBuilderRatingTarget[] => {
+    const key = rulesetBuilderRatingKey(target);
+    const cached = ratingPeers.get(key);
+    if (cached) return cached;
+    const found = new Map([[key, target]]);
+    let size = 0;
+    while (size !== found.size) {
+      size = found.size;
+      for (const group of ratingGroups) {
+        if (group.targets.some((target) => found.has(rulesetBuilderRatingKey(target))))
+          for (const target of group.targets) found.set(rulesetBuilderRatingKey(target), target);
+      }
+    }
+    const peers = [...found.values()];
+    for (const key of found.keys()) ratingPeers.set(key, peers);
+    return peers;
+  };
+  const seen = new Map<string, string>();
+  const changes = steps.map((step) => {
+    const writes = {
+      abilities: new Set<string>(),
+      fields: new Set<string>(),
+      skills: new Set<string>(),
+      saves: new Set<string>(),
+      lists: new Set<string>(),
+    };
+    const ratingWrites = (target: RulesetBuilderRatingTarget) => {
+      if ("ability" in target) writes.abilities.add(target.ability);
+      else if ("field" in target) writes.fields.add(target.field);
+      else if ("skill" in target) writes.skills.add(target.skill);
+      else if ("save" in target) writes.saves.add(target.save);
+      else {
+        writes.skills.add(target.bonus);
+        writes.saves.add(target.bonus);
+      }
+    };
+    if (step.kind === "spend")
+      for (const offer of step.offers) {
+        ratingWrites(offer.target);
+        if (offer.exchange) ratingWrites(offer.exchange.from);
+      }
+    if (step.kind === "allocate")
+      for (const group of step.groups) for (const target of group.targets) ratingWrites(target);
+    if (step.kind === "abilities") for (const ability of definition.sheet.abilities) writes.abilities.add(ability.id);
+    if (step.kind === "fields") for (const id of step.fields) writes.fields.add(id);
+    if (step.kind === "rows") writes.lists.add(step.list);
+    if (step.kind === "trained")
+      for (const choice of step.choose ?? [])
+        for (const id of choice.onDuplicate
+          ? definition.sheet[choice.what].map((entry) => entry.id)
+          : (choice.from ?? definition.sheet[choice.what].map((entry) => entry.id)))
+          writes[choice.what].add(id);
+    if (step.kind === "catalog") {
+      if (step.field) writes.fields.add(step.field);
+      const catalog = definition.catalogs?.find((entry) => entry.id === step.catalog);
+      for (const entry of catalog?.entries ?? []) {
+        const grants = entry.grants;
+        const freeRatingWrites = (target: RulesetBuilderRatingTarget) => {
+          for (const peer of freeRatingTargets(target)) ratingWrites(peer);
+        };
+        for (const grant of grants?.ratings ?? []) freeRatingWrites(grant.target);
+        for (const id of Object.keys(grants?.abilities?.add ?? {})) freeRatingWrites({ ability: id });
+        for (const choice of grants?.abilities?.choose ?? [])
+          for (const ability of definition.sheet.abilities)
+            if ((!choice.from || choice.from.includes(ability.id)) && !choice.except?.includes(ability.id))
+              freeRatingWrites({ ability: ability.id });
+        for (const id of Object.keys(grants?.sets ?? {})) freeRatingWrites({ field: id });
+        for (const what of ["skills", "saves"] as const)
+          for (const id of grants?.trained?.[what] ?? [])
+            freeRatingWrites(what === "skills" ? { skill: id } : { save: id });
+        for (const choice of grants?.trained?.choose ?? [])
+          for (const id of choice.onDuplicate
+            ? definition.sheet[choice.what].map((entry) => entry.id)
+            : (choice.from ?? definition.sheet[choice.what].map((entry) => entry.id)))
+            freeRatingWrites(choice.what === "skills" ? { skill: id } : { save: id });
+        for (const row of entry.rows ?? []) writes.lists.add(row.list);
+        for (const choice of grants?.entries?.choose ?? [])
+          for (const id of definition.catalogs?.find((catalog) => catalog.id === choice.catalog)?.feeds ?? [])
+            writes.lists.add(id);
+      }
+    }
+    return writes;
+  });
+  // A conditional host also controls the choices displayed there, even when an earlier pick grants them.
+  steps.forEach((step, hostIndex) => {
+    if (!step.when) return;
+    for (const catalog of definition.catalogs ?? [])
+      for (const entry of catalog.entries ?? []) {
+        if (step.kind === "trained" && steps.find((each) => each.kind === "trained") === step)
+          for (const choice of entry.grants?.trained?.choose ?? [])
+            for (const id of choice.onDuplicate
+              ? definition.sheet[choice.what].map((entry) => entry.id)
+              : (choice.from ?? definition.sheet[choice.what].map((entry) => entry.id)))
+              changes[hostIndex]![choice.what].add(id);
+        if (
+          step.kind === "choices" &&
+          steps.find((each) => each.kind === "choices" && each.catalog === step.catalog) === step
+        )
+          for (const choice of entry.grants?.entries?.choose ?? [])
+            if (choice.catalog === step.catalog)
+              for (const id of definition.catalogs?.find((each) => each.id === choice.catalog)?.feeds ?? [])
+                changes[hostIndex]!.lists.add(id);
+      }
+  });
+  steps.forEach((step, index) => {
+    const path = ["sheet", "builder", "steps", index];
+    const checkRead = (ref: RulesetValueRef | undefined, at: (string | number)[], choiceCount = false) => {
+      if (!ref) return;
+      const reads = refReadsSheet(definition, ref);
+      for (const what of ["skills", "saves"] as const)
+        for (const id of reads[what]) {
+          const cap = definition.sheet[what].find((entry) => entry.id === id)?.cap;
+          if (cap) refReadsSheet(definition, cap, reads);
+        }
+      if ((reads.skills.size || reads.saves.size) && definition.resolution.proficiency?.bonus)
+        refReadsSheet(definition, definition.resolution.proficiency.bonus, reads);
+      // Step conditions are declared in the definition and checked again with each catalog file.
+      // A count inside a catalog file cannot inspect another later file's writes.
+      if (
+        choiceCount &&
+        Object.values(reads).some((ids) => ids.size > 0) &&
+        steps
+          .slice(index)
+          .some(
+            (step) =>
+              step.kind === "catalog" &&
+              definition.catalogs?.some(
+                (catalog) => catalog.id === step.catalog && ((catalog.asset && !catalog.entries) || catalog.from),
+              ),
+          )
+      ) {
+        add(at, "A choice count cannot depend on unread later catalog files");
+      }
+      for (const writes of changes.slice(index)) {
+        for (const key of Object.keys(reads) as (keyof typeof reads)[])
+          if ([...reads[key]].some((id) => writes[key].has(id))) {
+            add(at, "Builder conditions and counts may only read values changed by earlier steps");
+            return;
+          }
+      }
+    };
+    if (step.kind === "spend") {
+      const checkSpendRead = (ref: RulesetValueRef | undefined, at: (string | number)[]) => {
+        checkRead(ref, at, true);
+        if (!ref) return;
+        const reads = refReadsSheet(definition, ref);
+        for (const what of ["skills", "saves"] as const)
+          for (const id of reads[what]) {
+            const cap = definition.sheet[what].find((entry) => entry.id === id)?.cap;
+            if (cap) refReadsSheet(definition, cap, reads);
+          }
+        if ((reads.skills.size || reads.saves.size) && definition.resolution.proficiency?.bonus)
+          refReadsSheet(definition, definition.resolution.proficiency.bonus, reads);
+        steps.forEach((other, otherIndex) => {
+          if (other.kind !== "spend") return;
+          for (const key of Object.keys(reads) as (keyof typeof reads)[])
+            if ([...reads[key]].some((id) => changes[otherIndex]![key].has(id)))
+              add(at, "Spending budgets and conditions cannot read purchased targets");
+        });
+      };
+      checkSpendRead(definition.sheet.builder?.pools?.find((pool) => pool.id === step.pool)?.budget, [...path, "pool"]);
+      checkSpendRead(step.when, [...path, "when"]);
+      step.offers.forEach((offer, offerIndex) => {
+        offer.overrides?.forEach((override, overrideIndex) =>
+          checkSpendRead(override.when, [...path, "offers", offerIndex, "overrides", overrideIndex, "when"]),
+        );
+        for (const key of ["when", "minFrom", "maxFrom"] as const)
+          checkSpendRead(offer[key], [...path, "offers", offerIndex, key]);
+      });
+    }
+    checkRead(step.when, [...path, "when"]);
+    if (step.kind === "allocate")
+      step.groups.forEach((group, groupIndex) => {
+        for (const key of ["base", "min", "max", "budget"] as const) {
+          const ref = group[key];
+          if (typeof ref === "object") checkRead(ref, [...path, "groups", groupIndex, key], true);
+        }
+      });
+    // requiredWhen only changes a badge, so it cannot cause a grant cycle.
+    if (step.kind === "catalog" && (step.quotas || step.distinctBy || step.quotaBelow))
+      checkRead(step.countFrom, [...path, "countFrom"]);
+    const groups: {
+      choices: (RulesetBuilderChoice & { what?: string; catalog?: string })[];
+      kind: string;
+      path: (string | number)[];
+    }[] = [];
+    if (step.kind === "trained")
+      groups.push({ choices: step.choose ?? [], kind: "trained", path: [...path, "choose"] });
+    if (step.kind === "catalog") {
+      const catalogIndex = definition.catalogs?.findIndex((catalog) => catalog.id === step.catalog) ?? -1;
+      const catalog = definition.catalogs?.[catalogIndex];
+      if (steps.some((step) => step.kind === "allocate")) {
+        checkRead(step.countFrom, [...path, "countFrom"], true);
+        checkRead(step.upTo?.value, [...path, "upTo", "value"], true);
+      }
+      for (const [entryIndex, entry] of (catalog?.entries ?? []).entries()) {
+        if (entry.grants?.ratings || steps.some((step) => step.kind === "allocate"))
+          checkRead(entry.offeredWhen, ["catalogs", catalogIndex, "entries", entryIndex, "offeredWhen"], true);
+        for (const kind of ["abilities", "trained", "entries"] as const) {
+          groups.push({
+            choices: entry.grants?.[kind]?.choose ?? [],
+            kind,
+            path: ["catalogs", catalogIndex, "entries", entryIndex, "grants", kind, "choose"],
+          });
+        }
+      }
+    }
+    for (const group of groups)
+      group.choices.forEach((choice, choiceIndex) => {
+        const at = [...group.path, choiceIndex];
+        const kind =
+          group.kind === "trained" ? choice.what! : group.kind === "entries" ? `entries:${choice.catalog}` : group.kind;
+        checkRead(choice.countFrom, [...at, "countFrom"], true);
+        // ponytail: references resolve within the definition or this catalog file; cross-file
+        // exclusions need a bundle validation pass with every catalog loaded.
+        for (const ref of choice.excludeChoices ?? [])
+          if (seen.get(ref) !== kind) add([...at, "excludeChoices"], `No earlier choice "${ref}" of the same kind`);
+        if (choice.id) {
+          const key = `${step.id}/${choice.id}`;
+          if (seen.has(key)) add([...at, "id"], `Duplicate builder choice "${key}"`);
+          seen.set(key, kind);
+        }
+      });
+  });
+}
+
 /** A builder grant names the sheet's own scores, skills, saves, tiers and fields, and a field's value
  *  is one it can hold. */
 function grantsIssues(
@@ -13134,11 +15741,24 @@ function grantsIssues(
   add: (path: (string | number)[], message: string) => void,
 ): void {
   const { sheet } = definition;
+  grants.ratings?.forEach((grant, index) => {
+    const at = [...path, "ratings", index];
+    builderRatingTargetIssues(definition, grant.target, [...at, "target"], add);
+    const [min, max] = rulesetBuilderRatingBounds(definition, grant.target);
+    if ("set" in grant && (grant.set < min || grant.set > max))
+      add(at, "Rating grant is outside the target's bounds or tier map");
+  });
   const abilities = new Set(sheet.abilities.map((ability) => ability.id));
   for (const id of Object.keys(grants.abilities?.add ?? {})) {
     if (!abilities.has(id)) add([...path, "abilities", "add", id], `Unknown ability "${id}"`);
   }
   grants.abilities?.choose?.forEach((choice, index) => {
+    builderChoiceIssues(definition, choice, [...path, "abilities", "choose", index], add);
+    choice.from?.forEach((id) => {
+      if (!abilities.has(id)) add([...path, "abilities", "choose", index, "from"], `Unknown ability "${id}"`);
+    });
+    if (choice.max !== undefined && choice.max > 6)
+      add([...path, "abilities", "choose", index, "max"], "At most six ability picks");
     choice.except?.forEach((id, idIndex) => {
       if (!abilities.has(id))
         add([...path, "abilities", "choose", index, "except", idIndex], `Unknown ability "${id}"`);
@@ -13158,6 +15778,7 @@ function grantsIssues(
     });
   }
   grants.trained?.choose?.forEach((choice, index) => {
+    builderChoiceIssues(definition, choice, [...path, "trained", "choose", index], add, grants.trained?.tier);
     choice.from?.forEach((id, idIndex) => {
       if (!known[choice.what].has(id)) {
         add(
@@ -13173,23 +15794,6 @@ function grantsIssues(
     const at = tiers.findIndex((tier) => tier.id === grants.trained!.tier);
     if (at < 1) add([...path, "trained", "tier"], `"${grants.trained.tier}" is not a tier above untrained`);
   }
-  grants.trained?.choose?.forEach((choice, index) => {
-    if (choice.held === undefined) return;
-    const held = tiers.findIndex((tier) => tier.id === choice.held);
-    // The tier the choice trains to, as the builder reads it: its own, the builder's, else the first.
-    const named = tiers.findIndex((tier) => tier.id === (grants.trained?.tier ?? definition.sheet.builder?.tier));
-    const offered = choice.what === "skills" ? sheet.skillTiers : sheet.saveTiers;
-    const first = tiers.findIndex((tier, at) => at >= 1 && (!offered || offered.includes(tier.id)));
-    const own = named >= 1 ? named : first >= 1 ? first : 1;
-    if (held < 1) {
-      add([...path, "trained", "choose", index, "held"], `"${choice.held}" is not a tier above untrained`);
-    } else if (held >= own) {
-      add(
-        [...path, "trained", "choose", index, "held"],
-        `"${choice.held}" is not below the tier this choice trains to, so nothing it builds on could be raised`,
-      );
-    }
-  });
   for (const [id, value] of Object.entries(grants.sets ?? {})) {
     const field = sheet.fields.find((each) => each.id === id);
     if (!field) {
@@ -13208,9 +15812,30 @@ function grantsIssues(
               : typeof value === "string";
     if (!fits) add([...path, "sets", id], `Field "${id}" cannot hold ${JSON.stringify(value)}`);
   }
+  // Items open to the character (1.215): each one of the ruleset's items, never a service. A catalog
+  // kept in its own file is checked when its entries are read.
+  grants.itemAccess?.forEach((ref, index) => {
+    const at = [...path, "itemAccess", index];
+    const [catalogId, entryId] = ref.split("/") as [string, string];
+    const catalog = definition.catalogs?.find((each) => each.id === catalogId);
+    if (!catalog || catalog.holds !== "items") return add(at, `No item catalog "${catalogId}"`);
+    if (!catalog.entries || catalog.from) return;
+    const entry = catalog.entries.find((each) => each.id === entryId && each.item);
+    if (!entry?.item) add(at, `No item "${entryId}" in catalog "${catalogId}"`);
+    else if (entry.item.service) add(at, `"${entryId}" is a service, which is never carried`);
+    if (grants.itemAccess!.indexOf(ref) !== index) add(at, `"${ref}" is named twice`);
+  });
   // Entries to choose (1.91) are chosen at a `choices` step, which is what loads their catalog.
   grants.entries?.choose.forEach((choice, index) => {
     const at = [...path, "entries", "choose", index];
+    builderChoiceIssues(definition, choice, at, add);
+    builderLimitsIssues(
+      choice,
+      definition.catalogs?.find((catalog) => catalog.id === choice.catalog),
+      choice.max ?? choice.count,
+      at,
+      add,
+    );
     const hosted = sheet.builder?.steps.some((step) => step.kind === "choices" && step.catalog === choice.catalog);
     if (!hosted) add([...at, "catalog"], `No builder "choices" step for catalog "${choice.catalog}"`);
     const catalog = definition.catalogs?.find((each) => each.id === choice.catalog);
@@ -13254,6 +15879,34 @@ function reactionAgainstIssues(
   reaction.also?.forEach((moment, index) => one(moment.against, [...path, "also", index, "against"]));
 }
 
+/** What a pool check effect a row or entry applies (1.156) may ask of this ruleset's dice: a pool, and
+ *  faces it lets a check move, as `mechanics.check` is held to. */
+function contextualCheckIssues(
+  resolution: RulesetDefinitionBase["resolution"],
+  check: RulesetContextualCheck,
+): { path: string[]; message: string }[] {
+  // A highest-die check (1.217) may only take the best rating; everything else changes a pool.
+  if (resolution.kind === "dice-highest" && Object.keys(check).every((key) => key === "best")) return [];
+  if (resolution.kind !== "dice-pool")
+    return [{ path: [], message: `A ${resolution.kind} ruleset has no pool for a check effect to change` }];
+  const found: { path: string[]; message: string }[] = [];
+  for (const key of ["explode", "double"] as const) {
+    const face = check[key];
+    if (face === undefined) continue;
+    const min = resolution[key]?.min;
+    if (min === undefined)
+      found.push({ path: [key], message: `This ruleset gives resolution.${key} no min, so no check may move it` });
+    else if (face < min || face > resolution.die.sides)
+      found.push({
+        path: [key],
+        message: `This ruleset lets a check move ${key} from ${min} to ${resolution.die.sides}`,
+      });
+  }
+  if (check.cancel === false && !resolution.cancel)
+    found.push({ path: ["cancel"], message: "This ruleset has no resolution.cancel to switch off" });
+  return found;
+}
+
 export function rulesetCatalogEntryIssues(
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
@@ -13263,6 +15916,20 @@ export function rulesetCatalogEntryIssues(
 ): RulesetCatalogEntryIssue[] {
   const issues: RulesetCatalogEntryIssue[] = [];
   const add = (path: (string | number)[], message: string) => issues.push({ path, message });
+  if (catalog.asset)
+    builderChoicesIssues(
+      {
+        ...definition,
+        catalogs: definition.catalogs?.map((each) =>
+          each.id === catalog.id ? { ...each, entries: [...entries] } : each,
+        ),
+      },
+      (path, message) => {
+        const catalogIndex = definition.catalogs?.findIndex((each) => each.id === catalog.id);
+        if (path[0] === "catalogs" && path[1] === catalogIndex && path[2] === "entries") add(path.slice(3), message);
+        else add([], `${path.join(".")}: ${message}`);
+      },
+    );
   const listById = new Map(definition.sheet.lists.map((list) => [list.id, list]));
   const names = rulesetSheetNames(definition.sheet, definition.items);
   const feeds = new Set(catalog.feeds ?? []);
@@ -13353,7 +16020,8 @@ export function rulesetCatalogEntryIssues(
           add(path, `Unknown spell catalog "${catalogId}"`);
           return;
         }
-        const available = catalogId === catalog.id ? entries : header.entries;
+        // A borrowed catalog's entries (1.220) are read with it, not here.
+        const available = catalogId === catalog.id ? entries : header.from ? undefined : header.entries;
         // Another catalog file is checked once the import has read all its entries.
         if (!available) return;
         const target = available.find((other) => other.id === entryId);
@@ -13429,6 +16097,19 @@ export function rulesetCatalogEntryIssues(
       const reads = refReadsSheet(definition, entry.offeredWhen);
       const grants = entry.grants;
       const changed = [
+        ...(grants?.ratings ?? [])
+          .filter(({ target }) =>
+            "ability" in target
+              ? reads.abilities.has(target.ability)
+              : "field" in target
+                ? reads.fields.has(target.field)
+                : "skill" in target
+                  ? reads.skills.has(target.skill)
+                  : "save" in target
+                    ? reads.saves.has(target.save)
+                    : reads.skills.has(target.bonus) || reads.saves.has(target.bonus),
+          )
+          .map(({ target }) => rulesetBuilderRatingKey(target)),
         ...Object.keys(grants?.abilities?.add ?? {}).filter((id) => reads.abilities.has(id)),
         ...(grants?.abilities?.choose ?? []).flatMap((choice) =>
           definition.sheet.abilities
@@ -13641,6 +16322,27 @@ export function rulesetCatalogEntryIssues(
     // What an entry does to a CHECK. Successes, pool dice, a per-die target and a re-throw are all
     // pool words, so a summed ruleset can honour none of them, and each number is held to the same
     // range the ruleset's own dice are.
+    if (mechanics?.contextual) {
+      const contextual = mechanics.contextual;
+      const path = [index, "mechanics", "contextual"];
+      if (contextual.check)
+        for (const found of contextualCheckIssues(definition.resolution, contextual.check))
+          add([...path, "check", ...found.path], found.message);
+      contextual.cost?.forEach((cost, costIndex) => {
+        if ("track" in cost) {
+          if (!definition.sheet.live.tracks.some((track) => track.id === cost.track && !track.kinds && !track.boxes))
+            add([...path, "cost", costIndex, "track"], `No live track "${cost.track}" to mark`);
+        } else if (!costTargets.has(cost.pool))
+          add([...path, "cost", costIndex, "pool"], `Unknown pool or pool group "${cost.pool}"`);
+      });
+      contextual.saves?.forEach((id, saveIndex) => {
+        if (!saves.has(id)) add([...path, "saves", saveIndex], `Unknown save "${id}"`);
+      });
+      contextual.skills?.forEach((id, skillIndex) => {
+        if (!definition.sheet.skills.some((skill) => skill.id === id))
+          add([...path, "skills", skillIndex], `Unknown skill "${id}"`);
+      });
+    }
     if (mechanics?.check) {
       const check = mechanics.check;
       const path = [index, "mechanics", "check"];
@@ -13751,7 +16453,7 @@ export function rulesetCatalogEntryIssues(
       const catalog = definition.catalogs?.find((one) => one.id === catalogId);
       // A catalog kept in its own file has no entries here yet: the whole ruleset's pass checks it.
       if (!catalog) return add([index, "mechanics", "conjures", "items", refIndex], `Unknown entry "${ref}"`);
-      if (!catalog.entries) return;
+      if (!catalog.entries || catalog.from) return;
       const attack = catalog.entries.find((one) => `${catalogId}/${one.id}` === ref)?.item?.attack;
       if (!attack) add([index, "mechanics", "conjures", "items", refIndex], `"${ref}" is not a weapon`);
       // A thrown weapon strikes in reach too (1.308): a dagger, a javelin, a trident.
@@ -13784,7 +16486,10 @@ export function rulesetCatalogEntryIssues(
       const catalogId = amend.entry.slice(0, amend.entry.indexOf("/"));
       const catalog = definition.catalogs?.find((one) => one.id === catalogId);
       // A catalog kept in its own file has no entries here yet: the whole ruleset's pass checks it.
-      if (!catalog || (catalog.entries && !catalog.entries.some((one) => `${catalogId}/${one.id}` === amend.entry)))
+      if (
+        !catalog ||
+        (catalog.entries && !catalog.from && !catalog.entries.some((one) => `${catalogId}/${one.id}` === amend.entry))
+      )
         add([index, "mechanics", "amends", amendIndex, "entry"], `Unknown entry "${amend.entry}"`);
       if ((amend.range !== undefined || amend.push !== undefined) && !definition.combat?.distance)
         add(
@@ -13961,6 +16666,138 @@ const rulesetCatalogFileSchema = z
   .strict();
 
 export type RulesetCatalogParseResult = { ok: true; entries: RulesetCatalogEntry[] } | { ok: false; issues: string[] };
+
+/** Every `{ derived: id }` reference in a borrowed entry that `refs` names, read as the borrower's value. */
+function borrowedRefs(value: unknown, refs: Record<string, RulesetValueRef>): unknown {
+  if (Array.isArray(value)) return value.map((item) => borrowedRefs(item, refs));
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (
+    keys.length === 1 &&
+    typeof record.derived === "string" &&
+    Object.prototype.hasOwnProperty.call(refs, record.derived)
+  ) {
+    return { ...refs[record.derived] };
+  }
+  return Object.fromEntries(keys.map((key) => [key, borrowedRefs(record[key], refs)]));
+}
+
+function renamedBorrowedSheet(
+  lent: RulesetCatalogEntry,
+  rename: NonNullable<NonNullable<RulesetCatalogHeader["from"]>["sheet"]>,
+): RulesetCatalogEntry {
+  let entry = rename.refs ? (borrowedRefs(lent, rename.refs) as RulesetCatalogEntry) : lent;
+  // A tier a borrowed entry grants or asks for ("expertise" in skills held at "proficient").
+  if (rename.tiers && entry.grants) {
+    const tiers = rename.tiers;
+    const walk = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(walk);
+      if (!value || typeof value !== "object") return value;
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+          key,
+          (key === "tier" || key === "held") && typeof item === "string" ? (tiers[item] ?? item) : walk(item),
+        ]),
+      );
+    };
+    entry = { ...entry, grants: walk(entry.grants) as typeof entry.grants };
+  }
+  const slots = entry.item?.slots;
+  if (rename.slots && slots) {
+    const moved: Record<string, number> = {};
+    for (const [id, count] of Object.entries(slots)) {
+      const to = rename.slots[id] ?? id;
+      moved[to] = (moved[to] ?? 0) + count;
+    }
+    entry = { ...entry, item: { ...entry.item!, slots: moved as typeof slots } };
+  }
+  const sheet = entry.creature?.sheet;
+  if (!sheet) return entry;
+  const fields: Record<string, unknown> = {};
+  for (const [id, value] of Object.entries(sheet.fields ?? {})) {
+    const to = rename.fields && id in rename.fields ? rename.fields[id] : id;
+    if (to === null || to === undefined) continue;
+    const mapped = rename.values?.[id]?.[String(value)];
+    fields[to] = mapped ?? value;
+  }
+  const tiers = (record: Record<string, string> | undefined) =>
+    record && Object.fromEntries(Object.entries(record).map(([id, tier]) => [id, rename.tiers?.[tier] ?? tier]));
+  return {
+    ...entry,
+    creature: {
+      ...entry.creature!,
+      sheet: {
+        ...sheet,
+        fields: fields as typeof sheet.fields,
+        ...(sheet.skills ? { skills: tiers(sheet.skills) } : {}),
+        ...(sheet.saves ? { saves: tiers(sheet.saves) } : {}),
+      },
+    },
+  };
+}
+
+/** A bestiary borrowed from another ruleset (Capability API 1.220): what the lender's catalog file
+ *  holds, read against the borrower. The borrower's header takes the lender's filters and units where
+ *  it names none, and a creature that does not fit the borrower (a condition, tier or sense it never
+ *  declares) is left out and named in `dropped`, so one stray entry never costs the whole bestiary. */
+export function parseBorrowedRulesetCatalog(
+  definition: RulesetDefinition,
+  catalogId: string,
+  lender: Pick<RulesetCatalogHeader, "filters" | "units">,
+  input: unknown,
+  narrowedByLayers = false,
+): { ok: true; entries: RulesetCatalogEntry[]; dropped: string[] } | { ok: false; issues: string[] } {
+  const own = definition.catalogs?.find((entry) => entry.id === catalogId);
+  if (!own?.from) return { ok: false, issues: [`(root): "${catalogId}" borrows no catalog`] };
+  const shape = rulesetShapeIssue(input);
+  if (shape) return { ok: false, issues: [shape] };
+  const parsed = rulesetCatalogFileSchema.safeParse(stripRulesetComments(input));
+  if (!parsed.success) {
+    return {
+      ok: false,
+      issues: parsed.error.issues.slice(0, 40).map((entry) => `${entry.path.join(".") || "(root)"}: ${entry.message}`),
+    };
+  }
+  if (parsed.data.catalog !== own.from.catalog) {
+    return { ok: false, issues: [`catalog: this file is for "${parsed.data.catalog}", not "${own.from.catalog}"`] };
+  }
+  // A creature's sheet is written in the lender's ids; `from.sheet` says how they read here.
+  const rename = own.from.sheet;
+  const lent = rename ? parsed.data.entries.map((entry) => renamedBorrowedSheet(entry, rename)) : parsed.data.entries;
+  // The catalog's own entries add to the borrowed ones, or stand in for one of the same id.
+  const mine = new Map((own.entries ?? []).map((entry) => [entry.id, entry]));
+  const borrowed = [
+    ...lent.map((entry) => mine.get(entry.id) ?? entry),
+    ...(own.entries ?? []).filter((entry) => !parsed.data.entries.some((other) => other.id === entry.id)),
+  ];
+  const header: RulesetCatalogHeader = {
+    ...own,
+    ...(own.filters === undefined && lender.filters ? { filters: lender.filters } : {}),
+    ...(own.units === undefined && lender.units ? { units: lender.units } : {}),
+  };
+  const effective: RulesetDefinition = {
+    ...definition,
+    catalogs: (definition.catalogs ?? []).map((entry) => (entry.id === catalogId ? header : entry)),
+  };
+  const issues = rulesetCatalogEntryIssues(effective, header, borrowed, narrowedByLayers);
+  const bad = new Map<number, string[]>();
+  for (const issue of issues) {
+    const index = issue.path[0];
+    if (typeof index === "number")
+      bad.set(index, [...(bad.get(index) ?? []), `${issue.path.slice(1).join(".")}: ${issue.message}`]);
+  }
+  // An issue that is no one entry's (a duplicate id across the file) leaves the file unread.
+  const loose = issues.filter((issue) => typeof issue.path[0] !== "number");
+  if (loose.length)
+    return {
+      ok: false,
+      issues: loose.slice(0, 40).map((issue) => `entries.${issue.path.join(".")}: ${issue.message}`),
+    };
+  const entries = borrowed.filter((_, index) => !bad.has(index));
+  const dropped = [...bad].map(([index, why]) => `${borrowed[index]!.id} (${why.join("; ")})`);
+  return { ok: true, entries, dropped };
+}
 
 /** Read a catalog asset against the ruleset that declares it. Never throws: an asset the Engine
  *  cannot use comes back as plain `path: message` lines, the same way a ruleset file does. */

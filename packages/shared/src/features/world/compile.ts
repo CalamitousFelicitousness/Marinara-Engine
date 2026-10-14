@@ -11,8 +11,16 @@ import { mulberry32 } from "../tactical-combat/rng.js";
 import type { WorldBrief, WorldBriefPlace } from "../../schemas/world-brief.schema.js";
 import { worldBriefDeepestLayer } from "../../schemas/world-brief.schema.js";
 import type { WorldKit } from "../../schemas/world-kit.schema.js";
+import { worldKitArtFamily } from "./art-family.js";
 
-export const WORLD_GENERATOR_VERSION = 1;
+export const WORLD_GENERATOR_VERSION = 2;
+/** The generator versions this Engine makes again from a recipe exactly as they were made: 2 adds sites
+ *  (caves, ruins, crypts a few steps out of the settlements; design-game-overworld-sites.md), 1 has none.
+ *  A recipe of a version it reads stays editable and sharable as a recipe. */
+export const WORLD_GENERATOR_VERSIONS_READ: readonly number[] = Object.freeze([1, 2]);
+export function worldGeneratorReads(version: unknown): boolean {
+  return typeof version === "number" && WORLD_GENERATOR_VERSIONS_READ.includes(version);
+}
 
 export const WORLD_PROSPERITIES = Object.freeze(["struggling", "modest", "thriving"] as const);
 export type WorldProsperity = (typeof WORLD_PROSPERITIES)[number];
@@ -73,6 +81,8 @@ export interface WorldCompileInput {
   /** Strict grounding: the brief's places and no more than the tree needs to hold them (a player
    *  who wants nothing invented beside their lore). Otherwise the scale fills the world around them. */
   strict?: boolean;
+  /** The generator version to make it as (a recipe's own); the latest when left out. */
+  generatorVersion?: number;
 }
 
 // ── Field-path streams ──
@@ -299,7 +309,13 @@ function shareChildren(parents: number, total: number, random: () => number): nu
   return counts;
 }
 
-export function compileWorld({ seed, kit, brief, strict = false }: WorldCompileInput): CompiledWorld {
+export function compileWorld({
+  seed,
+  kit,
+  brief,
+  strict = false,
+  generatorVersion = WORLD_GENERATOR_VERSION,
+}: WorldCompileInput): CompiledWorld {
   seed = seed >>> 0;
   const [width, height] = GROUND_SIZE[kit.scale];
   const { terrain, kinds } = compileGround(seed, kit, width, height);
@@ -614,8 +630,13 @@ export function compileWorld({ seed, kit, brief, strict = false }: WorldCompileI
     settlementIds[0]!,
   );
 
+  // Generator 2: sites out of the settlements, after everything else, so the rest is made as before.
+  // Never in a strict world, which holds the brief's places and nothing invented beside them.
+  if (generatorVersion >= 2 && !strict)
+    places.push(...compileSites(seed, kit, places, kindOf, width, height, settlementsDepth));
+
   return {
-    generatorVersion: WORLD_GENERATOR_VERSION,
+    generatorVersion,
     seed,
     width,
     height,
@@ -625,6 +646,94 @@ export function compileWorld({ seed, kit, brief, strict = false }: WorldCompileI
     links,
     startId: (startFrom ?? fallback).id,
   };
+}
+
+// ── Sites (generator 2): caves, ruins and crypts a few steps out of the settlements ──
+
+/** The word a site of each kind is named with, by the setting's art family. */
+const SITE_WORDS: Record<string, Record<"cave" | "ruins" | "dungeon", string>> = {
+  default: { cave: "Caves", ruins: "Ruins", dungeon: "Crypt" },
+  modern: { cave: "Caves", ruins: "Ruins", dungeon: "Tunnels" },
+  jazz_age: { cave: "Caves", ruins: "Ruins", dungeon: "Tunnels" },
+  scifi: { cave: "Tunnels", ruins: "Derelict", dungeon: "Bunker" },
+  wasteland: { cave: "Caves", ruins: "Ruins", dungeon: "Bunker" },
+};
+
+/** Up to two sites in each region (the layer the settlements are in), each beside one of its settlements:
+ *  on open ground two to four cells out, in the layer inside the settlements, named after the settlement
+ *  and what it is ("Hollin Caves"). The kinds are the setting's own scenes that are caves, ruins or
+ *  dungeons, else all three. A kit with no layer inside its settlements has no sites. */
+function compileSites(
+  seed: number,
+  kit: WorldKit,
+  places: WorldPlace[],
+  kindOf: (cell: number) => string,
+  width: number,
+  height: number,
+  settlementsDepth: number,
+): WorldPlace[] {
+  const inner = kit.layers[settlementsDepth + 1];
+  if (!inner) return [];
+  const words = SITE_WORDS[worldKitArtFamily(kit) ?? ""] ?? SITE_WORDS.default!;
+  const sceneKinds = [
+    ...new Set(
+      (kit.scenes ?? [])
+        .map((scene) => scene.like)
+        .filter(
+          (like): like is "cave" | "ruins" | "dungeon" => like === "cave" || like === "ruins" || like === "dungeon",
+        ),
+    ),
+  ];
+  const kinds = sceneKinds.length ? sceneKinds : (["cave", "ruins", "dungeon"] as const);
+  const settlements = places.filter((place) => place.depth === settlementsDepth);
+  const taken = new Set(places.map((place) => place.at.y * width + place.at.x));
+  const names = new Set(places.map((place) => place.name.toLowerCase()));
+  const regions = new Map<string, WorldPlace[]>();
+  for (const settlement of settlements) {
+    const key = settlement.parentId ?? "";
+    regions.set(key, [...(regions.get(key) ?? []), settlement]);
+  }
+  const sites: WorldPlace[] = [];
+  for (const [region, members] of regions) {
+    const random = worldStream(seed, "sites", region);
+    const count = Math.min(members.length, between(1, 2, random));
+    const order = [...members];
+    for (let index = order.length - 1; index > 0; index--) {
+      const other = Math.floor(random() * (index + 1));
+      [order[index], order[other]] = [order[other]!, order[index]!];
+    }
+    const chosen = order.slice(0, count);
+    for (const settlement of chosen) {
+      const open: number[] = [];
+      for (let dy = -4; dy <= 4; dy++)
+        for (let dx = -4; dx <= 4; dx++) {
+          const [x, y] = [settlement.at.x + dx, settlement.at.y + dy];
+          const far = Math.max(Math.abs(dx), Math.abs(dy));
+          if (far < 2 || x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
+          const cell = y * width + x;
+          if (!taken.has(cell) && kindOf(cell) === "open") open.push(cell);
+        }
+      const kind = pick(kinds, random);
+      const name = `${settlement.name} ${words[kind]}`;
+      if (!open.length || names.has(name.toLowerCase())) continue;
+      const cell = pick(open, random);
+      taken.add(cell);
+      names.add(name.toLowerCase());
+      sites.push({
+        id: `p${places.length + sites.length}`,
+        name,
+        layer: inner.id,
+        depth: settlementsDepth + 1,
+        parentId: settlement.id,
+        at: { x: cell % width, y: Math.floor(cell / width) },
+        culture: settlement.culture,
+        // Named for what it is ("Ruins"), never tagged: a kit's tags are its own words.
+        tags: [],
+        named: false,
+      });
+    }
+  }
+  return sites;
 }
 
 // ── Links: a connected web over the settlements, each trip by the way that fits the ground ──

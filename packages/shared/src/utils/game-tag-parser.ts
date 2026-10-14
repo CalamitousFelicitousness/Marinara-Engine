@@ -394,6 +394,7 @@ export function parseSegmentInventoryUpdates(content: string): SegmentInventoryU
   source = extractFlatTags(source, /\[ambient:/gi).remaining;
   source = extractFlatTags(source, /\[qte:/gi).remaining;
   source = extractFlatTags(source, /\[state:/gi).remaining;
+  source = extractFlatTags(source, /\[map:/gi).remaining;
   source = extractFlatTags(source, /\[reputation:/gi).remaining;
   source = extractFlatTags(source, /\[combat:/gi).remaining;
   source = extractFlatTags(source, /\[direction:/gi).remaining;
@@ -738,6 +739,8 @@ export function parseGmTags(content: string): ParsedGmTags {
   // [map_update: ...] is persisted in message history, but canonical map
   // changes are applied on the backend.
   text = stripMapUpdateTag(text);
+  // [map: ...] opens or leaves a dungeon map; the Engine carries it out when the reply is saved.
+  text = extractFlatTags(text, /\[map:/gi).remaining;
   // [dialogue: npc="..."]
   text = text.replace(/\[dialogue:\s*npc="[^"]*"\]/gi, "");
   // [session_end: ...]
@@ -837,6 +840,7 @@ export function stripGmTags(content: string): string {
   text = extractFlatTags(text, /\[combat:/gi).remaining;
   text = extractFlatTags(text, /\[direction:/gi).remaining;
   text = extractFlatTags(text, /\[widget:/gi).remaining;
+  text = extractFlatTags(text, /\[map:/gi).remaining;
   text = text.replace(/\[dialogue:\s*npc="[^"]*"\]/gi, "");
   text = extractFlatTags(text, /\[session_end:/gi, false, true).remaining;
   text = extractFlatTags(text, /\[skill_check:/gi).remaining;

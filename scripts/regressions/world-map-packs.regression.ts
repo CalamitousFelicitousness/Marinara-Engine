@@ -28,6 +28,7 @@ import {
   worldKitFile,
   type TilePack,
 } from "../../packages/shared/src/index.js";
+import { imageTilePack, undecodablePng } from "./fixtures/image-tile-pack.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-map-packs-"));
 process.env.DATA_DIR = dataDir;
@@ -169,6 +170,34 @@ const installed = [
     },
     { kit: "kit.worldkit.json", worlds: ["huge.world.json"] },
   ),
+  // Image tiles (tile pack v2) need Capability API 1.80.
+  install(
+    "imagetiles",
+    { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+    undefined,
+    80,
+  ),
+  // Whole as a PNG, but its pixels do not decode: refused where the Engine decodes sheets.
+  install(
+    "badimagetiles",
+    {
+      "kit.worldkit.json": text(worldKitFile(kit)),
+      "tiles.tilepack.json": text(
+        imageTilePack({ sheets: [{ ...imageTilePack().sheets[0]!, png: undecodablePng() }] }),
+      ),
+    },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+    undefined,
+    80,
+  ),
+  install(
+    "oldimagetiles",
+    { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+    undefined,
+    79,
+  ),
   // A story's intro message is Capability API 1.339: a pack declaring 1.338 may not carry one.
   ...[338, 339].map((minor) =>
     install(
@@ -260,6 +289,28 @@ try {
   );
   const badTiles = await readMapPack("badtiles");
   assert.ok(badTiles && !badTiles.ok && /tiles do not read/.test(badTiles.reason), JSON.stringify(badTiles));
+  const imageTiles = await readMapPack("imagetiles");
+  assert.ok(imageTiles?.ok && imageTiles.pack.tiles?.tilePackVersion === 2, JSON.stringify(imageTiles));
+  assert.deepEqual(await readMapPack("imagetiles"), imageTiles, "read again from what was checked");
+  // Only an Engine that can decode sheets (sharp) finds that out.
+  const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
+  if (
+    await getSharp().then(
+      () => true,
+      () => false,
+    )
+  ) {
+    const badImageTiles = await readMapPack("badimagetiles");
+    assert.ok(
+      badImageTiles && !badImageTiles.ok && /does not decode/.test(badImageTiles.reason),
+      JSON.stringify(badImageTiles),
+    );
+  }
+  const oldImageTiles = await readMapPack("oldimagetiles");
+  assert.ok(
+    oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.80/.test(oldImageTiles.reason),
+    JSON.stringify(oldImageTiles),
+  );
   const early = await readMapPack("intro338");
   assert.ok(early && !early.ok && /needs Capability API 1\.339/.test(early.reason), JSON.stringify(early));
   const intro = await readMapPack("intro339");

@@ -9211,40 +9211,38 @@ export function ChatSettingsDrawer({
                           </label>
                           {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "pictures" &&
                             renderIllustratorVideoRunInterval()}
-                          {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "pictures" && (
-                            <label className="flex flex-col gap-1">
-                              <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
-                                {localizeUi("ui.chat.chatsettingsdrawer.videoFirstFrame")}
-                              </span>
-                              <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
-                                {localizeUi("ui.chat.chatsettingsdrawer.roleplayVideoFirstFrameHelp")}
-                              </span>
-                              <select
-                                value={normalizeVideoFirstFrame(
-                                  metadata.sceneVideoFirstFrame,
-                                  ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME,
-                                )}
-                                onChange={(e) =>
-                                  updateMeta.mutate({
-                                    id: chat.id,
-                                    sceneVideoFirstFrame: normalizeVideoFirstFrame(e.target.value),
-                                  })
-                                }
-                                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
-                              >
-                                {VIDEO_FIRST_FRAMES.map((mode) => (
-                                  <option key={mode} value={mode}>
-                                    {/* Send Avatar References for videos gives Prompt only the avatar to start from. */}
-                                    {localizeUi(
-                                      mode === "prompt_only" && metadata.illustratorVideoUseAvatarReferences === true
-                                        ? "ui.chat.chatsettingsdrawer.videoFirstFrame.prompt_only_avatar"
-                                        : `ui.chat.chatsettingsdrawer.roleplayVideoFirstFrame.${mode}`,
-                                    )}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
+                          <label className="flex flex-col gap-1">
+                            <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.videoFirstFrame")}
+                            </span>
+                            <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.roleplayVideoFirstFrameHelp")}
+                            </span>
+                            <select
+                              value={normalizeVideoFirstFrame(
+                                metadata.sceneVideoFirstFrame,
+                                ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME,
+                              )}
+                              onChange={(e) =>
+                                updateMeta.mutate({
+                                  id: chat.id,
+                                  sceneVideoFirstFrame: normalizeVideoFirstFrame(e.target.value),
+                                })
+                              }
+                              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                            >
+                              {VIDEO_FIRST_FRAMES.map((mode) => (
+                                <option key={mode} value={mode}>
+                                  {/* Send Avatar References for videos gives Prompt only the avatar to start from. */}
+                                  {localizeUi(
+                                    mode === "prompt_only" && metadata.illustratorVideoUseAvatarReferences === true
+                                      ? "ui.chat.chatsettingsdrawer.videoFirstFrame.prompt_only_avatar"
+                                      : `ui.chat.chatsettingsdrawer.roleplayVideoFirstFrame.${mode}`,
+                                  )}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           {renderIllustratorImageStyleSelect({
                             description:
                               "Shared by Illustrator scenes and generated backgrounds so both keep the same visual language.",

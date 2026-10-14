@@ -1648,6 +1648,39 @@ const LocalChatArea = memo(function LocalChatArea({
     ],
   );
 
+  // Roleplay /video: the server makes a clip of the latest reply (or the description) from the avatar or no
+  // picture. With a picture first frame, /illustrate draws it first and the Gallery animates the newest picture.
+  const handleRoleplayVideo = useCallback(
+    async (description?: string) => {
+      if (!activeChatId || chatMode !== "roleplay") return;
+      const result = await api.post<{ needsPicture?: boolean }>(
+        `/gallery/${activeChatId}/roleplay-video`,
+        { ...(description ? { description } : {}), debugMode: useUIStore.getState().debugMode },
+        { signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS) },
+      );
+      if (result?.needsPicture) {
+        const drawn = await retryAgents(activeChatId, ["illustrator"], {
+          illustratorRetryTargets: ["illustration"],
+          ...(description
+            ? {
+                illustratorPromptReviewOverride: {
+                  prompt: description,
+                  subjectOnly: true,
+                  resultData: { prompt: description, characters: [] },
+                },
+              }
+            : {}),
+        });
+        if (drawn) await handleGenerateRoleplaySceneVideo();
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
+      void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
+      toast.success(localizeUi("ui.chat.chatarea.sceneVideoGenerated"), { duration: 1800 });
+    },
+    [activeChatId, chatMode, handleGenerateRoleplaySceneVideo, localizeUi, queryClient, retryAgents],
+  );
+
   /** A Conversation character sends a video message, or animates a gallery picture under the newest reply. */
   const handleGenerateConversationVideo = useCallback(
     async (characterId?: string, galleryImageId?: string) => {
@@ -4001,7 +4034,17 @@ const LocalChatArea = memo(function LocalChatArea({
           onIllustrate={handleIllustrate}
           onIllustrateWithAgent={handleIllustrateWithAgent}
           onGenerateBackground={handleGenerateRoleplayBackground}
-          onGenerateVideo={() => handleGenerateRoleplaySceneVideo()}
+          // The Gallery's Video button makes a clip of the latest reply, like /video.
+          onGenerateVideo={() =>
+            void Promise.resolve(handleRoleplayVideo()).catch((error: unknown) =>
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : localizeUi("ui.game.gamesurfacecomponent.sceneVideoGenerationFailed"),
+              ),
+            )
+          }
+          onRoleplayVideo={handleRoleplayVideo}
           onAnimateImage={(image) => handleGenerateRoleplaySceneVideo({ galleryImageId: image.id })}
           onWizardFinish={() => {
             setWizardOpen(false);

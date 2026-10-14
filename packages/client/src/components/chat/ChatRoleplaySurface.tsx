@@ -796,6 +796,7 @@ type RoleplaySurfaceProps = {
   onOpenScheduleEditor?: ComponentProps<typeof ChatCommonOverlays>["onOpenScheduleEditor"];
   onCloseSettings: (options?: { force?: boolean }) => void;
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void;
+  onRoleplayVideo?: (description?: string) => void | Promise<void>;
   onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
   onGenerateBackground?: () => void | Promise<void>;
   onGenerateVideo?: () => void | Promise<void>;
@@ -916,6 +917,7 @@ export function ChatRoleplaySurface({
   onOpenScheduleEditor,
   onCloseSettings,
   onIllustrate,
+  onRoleplayVideo,
   onIllustrateWithAgent,
   onGenerateBackground,
   onGenerateVideo,
@@ -2242,6 +2244,7 @@ export function ChatRoleplaySurface({
                   onExpressionChange={onExpressionChange}
                   onPeekPrompt={onPeekPrompt}
                   onIllustrate={onIllustrate}
+                  onRoleplayVideo={onRoleplayVideo}
                   interactionsLocked={agentProcessing}
                 />
               </div>

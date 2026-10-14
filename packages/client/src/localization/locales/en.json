@@ -8747,7 +8747,7 @@
   "ui.chat.slash.usage.status": "/status [online|idle|dnd|offline|clear] [name (optional)]",
   "ui.chat.slash.usage.sys": "/sys [message]",
   "ui.chat.slash.usage.unhide": "/unhide [range]",
-  "ui.chat.slash.usage.video": "/video [name (optional)]",
+  "ui.chat.slash.usage.video": "/video [name (optional)] — in Roleplay: /video [description (optional)]",
   "ui.chat.slash.video.alreadyRunning": "A video is already being made for this chat.",
   "ui.chat.slash.video.ambiguousCharacter": "More than one character matches {{name}}: {{matches}}\nType the full name, or pick the character in the Gallery.",
   "ui.chat.slash.video.characterNotFound": "Character not found: {{name}}\nAvailable: {{available}}",

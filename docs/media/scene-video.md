@@ -128,7 +128,9 @@ Both **Roleplay** and **Game Mode** chats can make scene videos from the **Galle
 
 The Gallery has an **Images** tab and a **Videos** tab, each with a count. Still pictures live under **Images**. Finished clips live under **Videos**.
 
-To animate the newest picture:
+In **Roleplay**, **Video** in the action row at the top of the Gallery makes a clip of the **latest reply**, the same as typing `/video`. What it starts from follows Illustrator's **First frame** setting: a new Illustrator picture of the latest reply (drawn first, then animated), the character's avatar or sprite, or no picture at all. Add a description after `/video` to say what the clip should show. The AI writing the clip reads as many recent messages as Illustrator does for a picture (its **Agent Budget** context size), so it shows what is happening now.
+
+In **Game Mode**, **Video** animates the newest picture:
 
 1. Make sure at least one picture exists under the **Images** tab. Use **Illustrate** or upload a picture first.
 2. Click **Video** in the action row at the top of the Gallery.
@@ -144,7 +146,7 @@ To animate one specific picture instead of the newest one:
 2. Hover over the picture you want.
 3. Click the **Animate illustration** button (the film icon) in the hover controls.
 
-The same **Review Video Prompt** window appears for **Animate illustration** when prompt review is enabled. It shows the exact server-compiled prompt, duration, aspect ratio, and resolution that will be used for that selected image. Your edit applies only to that generation. In Roleplay, the reusable instructions that produce this prompt are controlled separately by **Roleplay Gallery Animation Director** under **Settings**, **Generations**, **Video Generation Prompt Overrides**.
+The same **Review Video Prompt** window appears for **Animate illustration** when prompt review is enabled. It shows the exact server-compiled prompt, duration, aspect ratio, and resolution that will be used for that selected image. Your edit applies only to that generation. In Roleplay, the AI planning the motion reads Illustrator's recent messages (its **Agent Budget** context size), ending at the reply the picture belongs to. In Roleplay, the reusable instructions that produce this prompt are controlled separately by **Roleplay Gallery Animation Director** under **Settings**, **Generations**, **Video Generation Prompt Overrides**.
 
 Under the **Videos** tab, each clip plays inline and shows its length and model name. You can pin a clip with **Pin video to chat**, or save it with **Download scene video**. If there are no clips yet, the tab reads **No videos yet**.
 

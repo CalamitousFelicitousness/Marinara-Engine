@@ -565,6 +565,44 @@ try {
     );
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(315) as never, doc({ actions: [cQuake] })), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(314) as never, fiveE()), gate, "the plain 5e example");
+    // A ruleset's own value ids are its data: a row's `lair`, `reaps`, `clears` or `icon` column asks for
+    // nothing newer.
+    const columns = fiveE((doc) =>
+      doc.catalogs.push({
+        id: "x",
+        label: "X",
+        entries: [
+          {
+            id: "a",
+            label: "A",
+            values: {
+              lair: 1,
+              lairInitiative: 20,
+              legendaryResistance: 3,
+              reaps: true,
+              clears: true,
+              shade: 1,
+              alerts: true,
+              stillIn: 1,
+              untilLair: true,
+              usableNear: 1,
+              whileNearProp: 1,
+              aroundProp: 1,
+              feeds: 2,
+              lingers: 1,
+              hangsOn: 1,
+              heldAtMost: 1,
+              reaction: true,
+              icon: "ic_lair",
+            },
+          },
+        ],
+      }),
+    );
+    assert.doesNotMatch(
+      getCapabilityPackageInstallIssue(manifest(314) as never, columns) ?? "",
+      /capabilityApi 1\.3[1-3]\d or newer/,
+    );
   }
 
   console.log(

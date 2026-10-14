@@ -1607,10 +1607,9 @@ function carriesBossAsks(value: unknown, depth = 0): boolean {
   if (record.heldAtMost !== undefined) return true;
   if (record.hangsOn !== undefined) return true;
   if (plainRecord(record.harms)?.on !== undefined || plainRecord(record.shakeOff)?.self !== undefined) return true;
-  return Object.values(record).some((one) => carriesBossAsks(one, depth + 1));
+  return featureValues(record).some((one) => carriesBossAsks(one, depth + 1));
 }
 
-/** A use only beside a prop, or a ground change whose occupants stay in it (1.332). */
 /** An item's use that gives its user more of the turn (1.334): the Time-Flour Loaf. */
 function carriesItemGives(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -1619,7 +1618,7 @@ function carriesItemGives(value: unknown, depth = 0): boolean {
   if (!record) return false;
   // A use's, or one of its `moreUses`' as the walk reaches each.
   if (plainRecord(record.use)?.gives !== undefined) return true;
-  return Object.values(record).some((one) => carriesItemGives(one, depth + 1));
+  return featureValues(record).some((one) => carriesItemGives(one, depth + 1));
 }
 
 /** A lasting area with a look of its own on a fight's board (1.333). */
@@ -1629,9 +1628,10 @@ function carriesBoardArt(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (typeof plainRecord(record.zone)?.art === "string") return true;
-  return Object.values(record).some((one) => carriesBoardArt(one, depth + 1));
+  return featureValues(record).some((one) => carriesBoardArt(one, depth + 1));
 }
 
+/** A use only beside a prop, or a ground change whose occupants stay in it (1.332). */
 function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesNearUseOrFall(one, depth + 1));
@@ -1639,7 +1639,7 @@ function carriesNearUseOrFall(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.usableNear !== undefined) return true;
   if (plainRecord(record.ground)?.occupants !== undefined) return true;
-  return Object.values(record).some((one) => carriesNearUseOrFall(one, depth + 1));
+  return featureValues(record).some((one) => carriesNearUseOrFall(one, depth + 1));
 }
 
 /** Props and felling in a condition or a creature action (1.331): a condition held only near a
@@ -1651,7 +1651,7 @@ function carriesPropsAndFeeding(value: unknown, depth = 0): boolean {
   if (!record) return false;
   if (record.whileNearProp !== undefined || record.aroundProp !== undefined || typeof record.feeds === "number")
     return true;
-  return Object.values(record).some((one) => carriesPropsAndFeeding(one, depth + 1));
+  return featureValues(record).some((one) => carriesPropsAndFeeding(one, depth + 1));
 }
 
 /** A condition that moves the difficulty of the saves its holder calls for (1.328). */
@@ -1661,7 +1661,7 @@ function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.to === "save-difficulty") return true;
-  return Object.values(record).some((one) => carriesSaveDifficulty(one, depth + 1));
+  return featureValues(record).some((one) => carriesSaveDifficulty(one, depth + 1));
 }
 
 /** Whether a catalog entry or a condition names its icon (1.338). */
@@ -1671,7 +1671,7 @@ function carriesArtIcon(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (typeof record.icon === "string" && record.icon.startsWith("ic_")) return true;
-  return Object.values(record).some((one) => carriesArtIcon(one, depth + 1));
+  return featureValues(record).some((one) => carriesArtIcon(one, depth + 1));
 }
 
 /** Whether anything names a list of lair actions for a broken concentration to pick from (1.336). */
@@ -1681,7 +1681,7 @@ function carriesBrokenLairList(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (Array.isArray(record.brokenNextLair)) return true;
-  return Object.values(record).some((one) => carriesBrokenLairList(one, depth + 1));
+  return featureValues(record).some((one) => carriesBrokenLairList(one, depth + 1));
 }
 
 /** Lair timing (1.327): a creature action only at whoever has acted this round, one whose broken
@@ -1701,7 +1701,7 @@ function carriesLairTiming(value: unknown, depth = 0): boolean {
     })
   )
     return true;
-  return Object.values(record).some((one) => carriesLairTiming(one, depth + 1));
+  return featureValues(record).some((one) => carriesLairTiming(one, depth + 1));
 }
 
 /** A creature's action that draws whoever it lands on toward it (1.326). */
@@ -1713,7 +1713,7 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   const creature = plainRecord(record.creature);
   if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.draws !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesDraws(one, depth + 1));
+  return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
 /** A creature's action that calls creatures into the fight (1.325). */
@@ -1725,7 +1725,7 @@ function carriesCalls(value: unknown, depth = 0): boolean {
   const creature = plainRecord(record.creature);
   if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.calls !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesCalls(one, depth + 1));
+  return featureValues(record).some((one) => carriesCalls(one, depth + 1));
 }
 
 /** A creature's action that leaves an area standing or changes the ground, or an area that lasts
@@ -1745,7 +1745,7 @@ function carriesCreatureZones(value: unknown, depth = 0): boolean {
     })
   )
     return true;
-  return Object.values(record).some((one) => carriesCreatureZones(one, depth + 1));
+  return featureValues(record).some((one) => carriesCreatureZones(one, depth + 1));
 }
 
 /** A blow that reaps what it fells on Held Ground (1.323): the Reaping Hook. */
@@ -1755,7 +1755,7 @@ function carriesReaps(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.reaps !== undefined) return true;
-  return Object.values(record).some((one) => carriesReaps(one, depth + 1));
+  return featureValues(record).some((one) => carriesReaps(one, depth + 1));
 }
 
 /** An item's use taken as a reaction (1.322): Liesl's Coffin, the Straw Proxy. */
@@ -1767,7 +1767,7 @@ function carriesItemReactions(value: unknown, depth = 0): boolean {
   // A use's, or one of its `moreUses`' as the walk reaches each.
   const reaction = plainRecord(record.use)?.reaction;
   if (reaction !== undefined && reaction !== false) return true;
-  return Object.values(record).some((one) => carriesItemReactions(one, depth + 1));
+  return featureValues(record).some((one) => carriesItemReactions(one, depth + 1));
 }
 
 /** A light that sheds shade, something that gives the unseen away, or a creature light holds still
@@ -1778,7 +1778,7 @@ function carriesShadeOrAlerts(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.shade !== undefined || record.alerts !== undefined || record.stillIn !== undefined) return true;
-  return Object.values(record).some((one) => carriesShadeOrAlerts(one, depth + 1));
+  return featureValues(record).some((one) => carriesShadeOrAlerts(one, depth + 1));
 }
 
 /** An entry or an item's use that clears growth (1.318). */
@@ -1788,7 +1788,7 @@ function carriesClears(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.clears !== undefined) return true;
-  return Object.values(record).some((one) => carriesClears(one, depth + 1));
+  return featureValues(record).some((one) => carriesClears(one, depth + 1));
 }
 
 /** A creature's legendary resistances, and an item's use no bigger than it reaches (1.317). */
@@ -1803,7 +1803,7 @@ function carriesLegendaryResistance(value: unknown, depth = 0): boolean {
   if (use?.targetsUpTo !== undefined) return true;
   if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.targetsUpTo !== undefined))
     return true;
-  return Object.values(record).some((one) => carriesLegendaryResistance(one, depth + 1));
+  return featureValues(record).some((one) => carriesLegendaryResistance(one, depth + 1));
 }
 
 /** Lair actions and a lair's count (1.315). */
@@ -1813,7 +1813,7 @@ function carriesLair(value: unknown, depth = 0): boolean {
   const record = plainRecord(value);
   if (!record) return false;
   if (record.lair !== undefined || record.lairInitiative !== undefined) return true;
-  return Object.values(record).some((one) => carriesLair(one, depth + 1));
+  return featureValues(record).some((one) => carriesLair(one, depth + 1));
 }
 
 /** A sphere that shuts its holder away, and an entry aimed only at creatures up to a size (1.314). */

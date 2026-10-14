@@ -7,7 +7,8 @@
 // abort and throw leave nothing behind, toggle off restores parallel requests), the
 // server mirror of the synced `ui` setting, and the real generateImage path against a
 // local fixture provider reached through two different "connections". Also pinned:
-// the gap a lane keeps after each request for providers that need it (NovelAI).
+// the gap a lane keeps after each request for providers that need it (NovelAI), and the
+// retry when a provider still answers 429 because another generation is running.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 
@@ -20,7 +21,8 @@ const {
   mediaProviderLanesEnabled,
   runInMediaProviderLane,
 } = await import("../../packages/server/src/services/image/image-generation-queue.js");
-const { generateImage } = await import("../../packages/server/src/services/image/image-generation.js");
+const { generateImage, retryOnProviderBusy } =
+  await import("../../packages/server/src/services/image/image-generation.js");
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -197,6 +199,45 @@ idle();
   assert.ok(secondStartedAt - firstEndedAt >= gapMs - 5, "the next request waits out the gap");
   await sleep(gapMs + 20);
   idle();
+}
+
+// ── 6c) A busy provider (429) is retried after a wait, then reported as-is ──
+{
+  const statuses = [429, 429, 200];
+  let calls = 0;
+  const ok = await retryOnProviderBusy(async () => new Response("x", { status: statuses[calls++] }), undefined, [5, 5]);
+  assert.equal(ok.status, 200);
+  assert.equal(calls, 3, "two retries, then the success");
+
+  calls = 0;
+  const busy = await retryOnProviderBusy(
+    async () => {
+      calls += 1;
+      return new Response("Concurrent generation is locked", { status: 429 });
+    },
+    undefined,
+    [5, 5],
+  );
+  assert.equal(busy.status, 429, "out of retries: the caller sees the provider's answer");
+  assert.equal(calls, 3);
+
+  calls = 0;
+  const other = await retryOnProviderBusy(
+    async () => {
+      calls += 1;
+      return new Response("nope", { status: 500 });
+    },
+    undefined,
+    [5, 5],
+  );
+  assert.equal(other.status, 500);
+  assert.equal(calls, 1, "only 429 is retried");
+
+  const controller = new AbortController();
+  const aborted = retryOnProviderBusy(async () => new Response("busy", { status: 429 }), controller.signal, [10_000]);
+  await tick();
+  controller.abort(new Error("user cancelled"));
+  await assert.rejects(aborted, /user cancelled/u, "an abort ends the wait at once");
 }
 
 // ── 7) Real generateImage path: two "connections" to one provider account ──

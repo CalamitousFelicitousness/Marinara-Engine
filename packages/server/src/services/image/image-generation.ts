@@ -2650,6 +2650,38 @@ export function buildNovelAiV4CharacterPromptPayload(
   };
 }
 
+export const PROVIDER_BUSY_RETRY_DELAYS_MS = [2_000, 4_000] as const;
+
+/**
+ * NovelAI answers 429 while another generation on the account is still running
+ * ("Concurrent generation is locked"), including ones started outside Marinara.
+ * Wait and retry a couple of times instead of failing the image; the caller
+ * still holds its provider lane, so nothing else in Marinara jumps ahead.
+ */
+export async function retryOnProviderBusy(
+  send: () => Promise<Response>,
+  signal?: AbortSignal,
+  delaysMs: readonly number[] = PROVIDER_BUSY_RETRY_DELAYS_MS,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt += 1) {
+    const resp = await send();
+    if (resp.status !== 429 || attempt >= delaysMs.length || signal?.aborted) return resp;
+    await resp.body?.cancel().catch(() => undefined);
+    logger.warn("[image] Provider is busy (429); retrying in %dms", delaysMs[attempt]);
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal?.reason instanceof Error ? signal.reason : new Error("Image generation aborted"));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, delaysMs[attempt]);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+}
+
 async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   // Only use the native NovelAI API format when hitting the actual NovelAI domain.
   // Proxies (linkapi.ai, etc.) expose OpenAI-compatible chat completions that return
@@ -2766,18 +2798,22 @@ async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGe
   const effectivePrompt = getNovelAiDisplayPrompt(body);
 
   const hasReferences = directorReferenceImages.length > 0;
-  const resp = await imageFetch(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        ...(hasReferences ? {} : { "Content-Type": "application/json" }),
-      },
-      body: hasReferences ? buildNovelAiReferenceFormData(body, directorReferenceImages) : JSON.stringify(body),
-      signal: imageRequestSignal(request),
-    },
-    { allowLocal: request.allowLocalUrls, allowedOrigins: [nativeUrl.origin] },
+  const resp = await retryOnProviderBusy(
+    () =>
+      imageFetch(
+        url,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            ...(hasReferences ? {} : { "Content-Type": "application/json" }),
+          },
+          body: hasReferences ? buildNovelAiReferenceFormData(body, directorReferenceImages) : JSON.stringify(body),
+          signal: imageRequestSignal(request),
+        },
+        { allowLocal: request.allowLocalUrls, allowedOrigins: [nativeUrl.origin] },
+      ),
+    imageRequestSignal(request),
   );
 
   if (!resp.ok) {

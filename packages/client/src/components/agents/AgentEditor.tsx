@@ -2424,31 +2424,34 @@ export function AgentEditor() {
             </FieldGroup>
           )}
 
-          <FieldGroup
-            label={localizeUi("ui.agents.agenteditor.contextSources")}
-            icon={<Layers size="0.875rem" className="text-[var(--primary)]" />}
-            help={localizeUi("ui.agents.agenteditor.contextSourcesHelp")}
-          >
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {CUSTOM_AGENT_CONTEXT_SOURCE_META.map((source) => {
-                const allowed =
-                  !source.requiredCapability || localCustomCapabilities[source.requiredCapability] === true;
-                return (
-                  <EditorSwitchRow
-                    key={source.id}
-                    label={localizeUi(source.label)}
-                    description={localizeUi(source.description)}
-                    checked={allowed && localContextSources[source.id]}
-                    disabled={!allowed}
-                    onChange={(checked) => {
-                      setLocalContextSources((current) => ({ ...current, [source.id]: checked }));
-                      markDirty();
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </FieldGroup>
+          {/* The avatar agents never send chat context to a model, so their sources would do nothing. */}
+          {!isAvatarAgentId(currentAgentType) && (
+            <FieldGroup
+              label={localizeUi("ui.agents.agenteditor.contextSources")}
+              icon={<Layers size="0.875rem" className="text-[var(--primary)]" />}
+              help={localizeUi("ui.agents.agenteditor.contextSourcesHelp")}
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {CUSTOM_AGENT_CONTEXT_SOURCE_META.map((source) => {
+                  const allowed =
+                    !source.requiredCapability || localCustomCapabilities[source.requiredCapability] === true;
+                  return (
+                    <EditorSwitchRow
+                      key={source.id}
+                      label={localizeUi(source.label)}
+                      description={localizeUi(source.description)}
+                      checked={allowed && localContextSources[source.id]}
+                      disabled={!allowed}
+                      onChange={(checked) => {
+                        setLocalContextSources((current) => ({ ...current, [source.id]: checked }));
+                        markDirty();
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </FieldGroup>
+          )}
 
           {(isCustomAgent || isNewCustomAgent) && (
             <FieldGroup

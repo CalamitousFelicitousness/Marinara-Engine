@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash } from "node:crypto";
 import { DEFAULT_MEDIA_GENERATION_CONCURRENCY } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 
@@ -296,7 +295,7 @@ export const runImageGenerationRequest = runMediaGenerationRequest;
 // covers callers that opt in, so agents, trackers and capability packages
 // bypassed it and providers that reject parallel work (NovelAI) still got
 // overlapping requests. Lanes are entered inside generateImage itself, keyed on
-// the physical endpoint plus a hash of the API key, so every path shares one
+// the physical endpoint plus the account (API key), so every path shares one
 // line per account no matter which connection row it came through.
 //
 // Order vs the global ceiling: callers enter the lane first and take a permit
@@ -338,11 +337,19 @@ export function mediaProviderLanesEnabled(): boolean {
   return providerLanesEnabled;
 }
 
-/** One lane per provider endpoint and account. The key is hashed, never stored or logged in clear. */
+// API keys are interned to opaque per-process account numbers, so lane keys never
+// carry a key (or anything derived from it) and nothing secret is hashed.
+const mediaProviderAccountIds = new Map<string, number>();
+
+/** One lane per provider endpoint and account. */
 export function mediaProviderLaneKey(endpointKey: string, apiKey: string): string {
   const key = apiKey.trim();
-  const account = key ? createHash("sha256").update(key).digest("hex").slice(0, 16) : "no-key";
-  return `${endpointKey.trim() || "default"}|${account}`;
+  let account = 0;
+  if (key) {
+    account = mediaProviderAccountIds.get(key) ?? mediaProviderAccountIds.size + 1;
+    mediaProviderAccountIds.set(key, account);
+  }
+  return `${endpointKey.trim() || "default"}|account-${account}`;
 }
 
 // Some providers keep their own one-at-a-time lock for a moment after they answer,

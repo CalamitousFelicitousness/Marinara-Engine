@@ -74,7 +74,7 @@ const keyA = mediaProviderLaneKey("https://image.novelai.net", "secret-key-a");
 assert.equal(keyA, mediaProviderLaneKey("https://image.novelai.net", "  secret-key-a "));
 assert.notEqual(keyA, mediaProviderLaneKey("https://image.novelai.net", "secret-key-b"));
 assert.notEqual(keyA, mediaProviderLaneKey("https://other.example", "secret-key-a"));
-assert.ok(!keyA.includes("secret-key-a"), "the API key must be hashed");
+assert.ok(!keyA.includes("secret-key-a"), "the API key must never appear in a lane key");
 
 // ── 3) Same lane runs one at a time in FIFO order; other lanes run alongside ──
 {

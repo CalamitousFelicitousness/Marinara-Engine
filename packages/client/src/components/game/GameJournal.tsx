@@ -23,6 +23,7 @@ import {
   Download,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { GAME_WINDOW_CONTENT_CLASS } from "../../lib/chat-widget-colors";
 import { api } from "../../lib/api-client";
 import { downloadJsonFile } from "../../lib/download-json";
 import { useWorldJournal } from "../../hooks/use-game";
@@ -364,11 +365,13 @@ export function GameJournal({
   if (!journal) {
     return (
       <div
-        className={
+        data-game-section="journal"
+        className={cn(
+          GAME_WINDOW_CONTENT_CLASS,
           embedded
             ? "flex min-h-40 items-center justify-center"
-            : "absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-        }
+            : "absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+        )}
       >
         <div className="text-sm text-[var(--muted-foreground)]">{localizeUi("ui.game.gamejournal.loadingJournal")}</div>
       </div>
@@ -377,11 +380,13 @@ export function GameJournal({
 
   return (
     <div
-      className={
+      data-game-section="journal"
+      className={cn(
+        GAME_WINDOW_CONTENT_CLASS,
         embedded
           ? "relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent"
-          : "absolute inset-0 z-40 flex min-h-0 flex-col overflow-hidden bg-black/85 backdrop-blur-md"
-      }
+          : "absolute inset-0 z-40 flex min-h-0 flex-col overflow-hidden bg-black/85 backdrop-blur-md",
+      )}
     >
       {/* Header */}
       {!embedded && (

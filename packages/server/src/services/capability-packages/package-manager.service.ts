@@ -2114,6 +2114,20 @@ function carriesDraws(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDraws(one, depth + 1));
 }
 
+/** A call from a catalog entry or an item use (1.344): `calls` anywhere but a creature's action. */
+function carriesCatalogCalls(value: unknown, depth = 0, inCreature = false): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCatalogCalls(one, depth + 1, inCreature));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (!inCreature && plainRecord(record.calls)) return true;
+  return Object.entries(record).some(
+    ([key, one]) =>
+      !(ID_KEYED_MAPS.has(key) && plainRecord(one)) &&
+      carriesCatalogCalls(one, depth + 1, inCreature || key === "creature"),
+  );
+}
+
 /** Attack gates on who stands beside and who is hurt (1.343): a creature's attack mode with
  *  `allyAdjacent` or `targetHurt`, a rider `when` "target-hurt", or a rider once on its holder's own turn. */
 function carriesAttackGates343(value: unknown, depth = 0): boolean {
@@ -5159,6 +5173,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Calls from catalog entries and item uses, 1.344.
+  if (
+    !declaresApi(344) &&
+    (carriesCatalogCalls(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCatalogCalls(document)))
+  ) {
+    return "A ruleset with a catalog entry or an item use that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.344 or newer";
   }
   // Pack Tactics, Blood Frenzy, Colossus Slayer, Divine Strike, 1.343.
   if (

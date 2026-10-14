@@ -67,6 +67,8 @@ export function rulesetModedAction(
           })),
         }
       : {}),
+    // Who is called in this mode (1.344): Conjure Animals' picks.
+    ...(mode.call ? { calls: mode.call } : {}),
     // What a hit sets off around whoever it hit (1.312): a Hammer of Thunderbolts' clap.
     ...(mode.aroundHit ? { aroundHit: mode.aroundHit } : {}),
   };

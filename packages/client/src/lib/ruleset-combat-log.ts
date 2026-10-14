@@ -711,6 +711,12 @@ export function rulesetCombatEventLine(
         label: event.label,
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
+    // Called creatures sent away (1.344): Conjure Animals' minute up, or its concentration broken.
+    case "sentAway":
+      return key("sentAway", {
+        actor: names.combatant(event.actorId),
+        names: event.ids.map((id) => names.combatant(id)).join(", "),
+      });
     // A shape taken, given up or refused (1.342): Wild Shape, Polymorph.
     case "shaped":
       return key(event.refused ? "shapeRefused" : event.gone ? "shapeGone" : "shaped", {

@@ -3400,6 +3400,8 @@ function endConcentration(
   }
   endSummons(ctx, actor, held.actionId);
   endZones(ctx, actor, held.actionId);
+  // Whoever it called (1.344) goes with it.
+  dismissCalled(ctx, actor, (one) => one.calledWith === held.actionId, "concentration");
   // Broken, it makes its lair's next action this one (1.327), or one of these (1.336): the Litany of Keeping.
   const next = actor.actions.find((action) => action.id === held.actionId)?.brokenNextLair;
   if (next && actor.lair && (reason === "damage" || reason === "down" || reason === "zone"))
@@ -6140,7 +6142,35 @@ function callCreatures(
   if (!action.calls) return;
   const count = rollAmount(ctx, action.calls.count).total;
   const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells);
+  // Kept by what called them (1.344): its concentration, and its rounds.
+  for (const id of ids) {
+    const called = rulesetCombatant(ctx.state, id);
+    if (!called) continue;
+    called.calledWith = action.id;
+    if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
+  }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
+}
+
+/** Sends away those `caller` called that `which` picks (1.344): off the board and out of the fight. */
+function dismissCalled(
+  ctx: RulesetCombatContext,
+  caller: RulesetCombatant,
+  which: (one: RulesetCombatant) => boolean,
+  reason: "rounds" | "concentration",
+): void {
+  const going = ctx.state.combatants.filter(
+    (one) => one.calledBy === caller.id && !one.dismissed && !one.defeated && which(one),
+  );
+  if (!going.length) return;
+  for (const one of going) {
+    if (one.concentrating) endConcentration(ctx, one, "spent");
+    one.dismissed = true;
+    one.defeated = true;
+    delete one.x;
+    delete one.y;
+  }
+  ctx.events.push({ type: "sentAway", actorId: caller.id, ids: going.map((one) => one.id), reason });
 }
 
 /**
@@ -7805,6 +7835,8 @@ function resolveAction(
   }
   // Creatures called beside it (1.325), and nothing else: Jars Burst.
   if (action.calls && !action.area && !action.damage) {
+    // Held by its concentration (1.344): Conjure Animals.
+    if (action.concentration && !held) startConcentration(ctx, actor, action);
     callCreatures(ctx, actor, action);
     return null;
   }
@@ -9874,6 +9906,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     if (!ctx.state.acted?.includes(actor.id)) (ctx.state.acted ??= []).push(actor.id);
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
+    // Whoever it called for a while (1.344) leaves as its time comes round.
+    dismissCalled(ctx, actor, (one) => one.calledUntil !== undefined && round >= one.calledUntil, "rounds");
     recoverFromCrash(ctx, actor);
     // Its own drifting zones move first (1.173), then starting a turn in a zone (1.172), before
     // the turn's own conditions tick.

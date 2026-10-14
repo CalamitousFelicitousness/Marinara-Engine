@@ -15,6 +15,7 @@ import {
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
   type RulesetCatalogMechanics,
+  type RulesetCatalogCalls,
   type RulesetCatalogZone,
   type RulesetItemUse,
   type RulesetCombat,
@@ -2559,7 +2560,9 @@ function mechanicsAction(
     !mechanics.rescue &&
     !mechanics.alters &&
     !mechanics.conjures &&
-    !mechanics.teleport
+    !mechanics.teleport &&
+    // Calling creatures (1.344) is something to resolve: Conjure Animals.
+    !mechanics.calls
   ) {
     return null;
   }
@@ -2838,6 +2841,11 @@ function mechanicsAction(
   if (mechanics.forms) {
     action.shapes = true;
     action.formsOf = structuredClone(mechanics.forms);
+  }
+  // Creatures it calls (1.344), found once the fight's bestiary is known; options picked as it is used.
+  if (mechanics.calls) {
+    action.callsOf = structuredClone(mechanics.calls);
+    if (mechanics.calls.options) action.callChoice = true;
   }
   // A creature type named as it is used (1.270), picked like a weapon's mode: Antipathy/Sympathy.
   const creatureTypes = definition.combat?.creatureTypes;
@@ -4207,6 +4215,46 @@ export function rulesetBoardProps(grid: TacticalGrid, props: RulesetBoardPropInp
  */
 /** A shape change's forms (1.342), each a mode of its action: from the bestiary, the fight's own and
  *  its user's catalogs, kept to what its user's sheet allows them now. */
+/** A catalog entry's or an item use's call (1.344), found in `catalogs`: its one creature, or its
+ *  options as modes. One nobody can find calls nobody, and an option nobody can find is not offered. */
+function fillCatalogCalls(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction,
+  catalogs: RulesetCatalogEntriesById,
+): void {
+  const calls = action.callsOf!;
+  delete action.callsOf;
+  const found = (
+    ref: string,
+    written: RulesetCatalogCalls["count"],
+  ): NonNullable<RulesetCombatAction["calls"]> | null => {
+    const [catalogId, entryId] = ref.split("/");
+    const entry = catalogId && entryId ? findRulesetCreatureEntry(catalogs, { catalogId, entryId }) : null;
+    const block = rulesetCreatureBlock(definition, entry);
+    const count = amountOf(written);
+    if (!entry || !block || !count) return null;
+    return {
+      block,
+      name: entry.label,
+      creature: { catalogId: catalogId!, entryId: entryId! },
+      count,
+      ...(calls.initiative === "after" ? { after: true as const } : {}),
+      ...(calls.rounds ? { rounds: calls.rounds } : {}),
+    };
+  };
+  if (calls.creature && calls.count) {
+    const call = found(calls.creature, calls.count);
+    if (call) action.calls = call;
+    return;
+  }
+  action.modes = (calls.options ?? []).flatMap((option, index) => {
+    const call = found(option.creature, option.count);
+    if (!call) return [];
+    const many = option.count.dice ? option.count.dice : String(option.count.flat ?? 1);
+    return [{ id: `call-${index}`, label: option.label ?? `${call.name} ×${many}`, call }];
+  });
+}
+
 function fillShapeForms(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -4286,7 +4334,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
 
   const refused: RulesetCombatEvent[] = [];
   for (const entry of input.combatants) {
-    if (entry.side === "enemy") {
+    // A stat block or a bestiary creature is built as one, whichever side it stands on (1.344).
+    if (!("build" in entry)) {
       // A bestiary reference that names nothing is left out of the fight rather than walked in with
       // no numbers, and the opening says so.
       const block =
@@ -4307,7 +4356,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         const combatant = sheetCombatant(definition, combat, {
           id: entry.id,
           name: entry.name,
-          side: "enemy",
+          side: entry.side,
           initiativeRoll,
           roll,
           build: block.sheet,
@@ -4370,7 +4419,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       state.combatants.push({
         id: entry.id,
         name: entry.name,
-        side: "enemy",
+        side: entry.side,
         ...("creature" in entry ? { creature: creatureRef(definition, entry.creature) } : {}),
         initiativeRoll: initiative.roll,
         initiativeModifier: initiative.modifier,
@@ -4534,6 +4583,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.initiative === "after" ? { after: true as const } : {}),
       };
     });
+  }
+  // Who a catalog entry or an item use calls (1.344), the same way; its options as modes.
+  for (const combatant of state.combatants) {
+    for (const action of combatant.actions) {
+      if (action.callsOf) fillCatalogCalls(definition, action, callable());
+    }
   }
   // The forms a shape change offers (1.342), found now in the ruleset's catalogs, the fight's bestiary
   // or the user's own: one nobody can find is not offered, nor one its user may not take yet.

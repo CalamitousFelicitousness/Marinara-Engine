@@ -4306,6 +4306,49 @@ export const shapeFormsSchema = z
   .strict();
 export type RulesetShapeForms = z.infer<typeof shapeFormsSchema>;
 
+const calledCreatureRef = z
+  .string()
+  .trim()
+  .regex(/^[^/\s]{1,80}\/[^/\s]{1,120}$/, 'A called creature is named "<catalogId>/<entryId>"');
+const calledCount = z
+  .object(catalogAmountShape)
+  .strict()
+  .refine((count) => count.dice !== undefined || (count.flat ?? 0) >= 1, {
+    message: "A call brings at least one creature",
+  });
+
+/** Creatures a catalog entry or an item use calls into the fight on its user's side (Capability API
+ *  1.344): 5e's Conjure Animals, Animate Dead, Find Familiar, a Figurine of Wondrous Power. Either
+ *  one `creature` and its `count`, or up to 8 `options` its user picks among as they use it, like a
+ *  weapon's mode ("one beast of challenge rating 2, two of 1, four of 1/2 ..."). They are set down
+ *  in the entry's `area` where it is aimed, or beside its user, and roll their own initiative, or
+ *  with `"initiative": "after"` act right after their caller. They leave when `rounds` have passed,
+ *  counted from their caller's next turn, or when the concentration the entry holds ends. */
+export const catalogCallsSchema = z
+  .object({
+    creature: calledCreatureRef.optional(),
+    count: calledCount.optional(),
+    options: z
+      .array(
+        z.object({ creature: calledCreatureRef, count: calledCount, label: promptSafeText(80).optional() }).strict(),
+      )
+      .min(2)
+      .max(8)
+      .optional(),
+    initiative: z.enum(["roll", "after"]).optional(),
+    rounds: z.number().int().min(1).max(14400).optional(),
+  })
+  .strict()
+  .superRefine((calls, ctx) => {
+    if ((calls.creature === undefined) === (calls.options === undefined))
+      ctx.addIssue({ code: "custom", message: 'A call names one "creature" or a list of "options", not both' });
+    if (calls.creature !== undefined && !calls.count)
+      ctx.addIssue({ code: "custom", path: ["count"], message: 'A call of one "creature" says its "count"' });
+    if (calls.options && calls.count)
+      ctx.addIssue({ code: "custom", path: ["count"], message: 'Each of the "options" says its own "count"' });
+  });
+export type RulesetCatalogCalls = z.infer<typeof catalogCallsSchema>;
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -4595,6 +4638,9 @@ const catalogMechanicsObject = z
     /** The forms it changes its target into (Capability API 1.342), picked as it is used: see
      *  `shapeFormsSchema`. 5e's Wild Shape, Polymorph, True Polymorph, Shapechange. */
     forms: shapeFormsSchema.optional(),
+    /** Creatures it calls into the fight on its user's side (Capability API 1.344): see
+     *  `catalogCallsSchema`. */
+    calls: catalogCallsSchema.optional(),
     /** Its damage lowers the health maximum as a creature's can (Capability API 1.235), with no save
      *  of its own: on every target, or with `onFailedSave` only on one that failed the entry's save
      *  (5e's Harm). Health only in points. */

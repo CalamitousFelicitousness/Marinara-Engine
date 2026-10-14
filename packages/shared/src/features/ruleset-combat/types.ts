@@ -14,6 +14,7 @@ import type {
   RulesetLightRadius,
   RulesetSheetBuild,
   RulesetShapeForms,
+  RulesetCatalogCalls,
   RulesetTargetIs,
   RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
@@ -604,12 +605,13 @@ export type RulesetCombatantInput =
       /** The items they hold as the fight starts, which an `itemStat` on their sheet reads. */
       items?: ReadonlyArray<RulesetSheetItem>;
     }
-  | { id: string; name: string; side: "enemy"; block: RulesetStatBlock }
-  /** An opponent out of a bestiary, looked up in the catalogs the encounter was handed. */
+  /** A stat block, on either side (1.344): an ally beside the party is built as an opponent is. */
+  | { id: string; name: string; side: "enemy" | "party"; block: RulesetStatBlock }
+  /** A creature out of a bestiary, looked up in the catalogs the encounter was handed. */
   | {
       id: string;
       name: string;
-      side: "enemy";
+      side: "enemy" | "party";
       creature: { catalogId: string; entryId: string };
       /** Where its live tracks stand as the fight begins (1.115), as a bestiary creature has none. */
       tracks?: Record<string, number>;
@@ -727,6 +729,10 @@ export interface RulesetCombatAction {
   formCap?: RulesetShapeCap;
   /** Its forms as written, until the fight finds them in the bestiary (1.342). */
   formsOf?: RulesetShapeForms;
+  /** Who it calls as written (1.344), until the fight finds them in the bestiary; picked from its
+   *  `modes` when it names options. */
+  callsOf?: RulesetCatalogCalls;
+  callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
   /** Taken as somebody else's attack hits, these dice come off the roll (1.250): Cutting Words. */
@@ -927,6 +933,8 @@ export interface RulesetCombatAction {
     creature: { catalogId: string; entryId: string };
     count: RulesetCombatAmount;
     after?: true;
+    /** They leave once this many rounds have passed, at their caller's turn (1.344). */
+    rounds?: number;
   };
   /** A burst centred on its user, never aimed (1.282): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
@@ -1110,6 +1118,8 @@ export interface RulesetCombatMode {
   kind?: string;
   /** The form picked in this mode (1.342), taken by whoever what it puts on lands on. */
   form?: RulesetShapeForm;
+  /** Who is called in this mode (1.344): Conjure Animals' two wolves or four. */
+  call?: NonNullable<RulesetCombatAction["calls"]>;
   /** What a hit in this mode sets off around whoever it hit (1.312), `within` in cells. */
   aroundHit?: RulesetCombatAroundHit;
 }
@@ -1321,6 +1331,12 @@ export interface RulesetCombatant {
   reaped?: true;
   /** Who called it into the fight (1.325). */
   calledBy?: string;
+  /** The action that called them (1.344), whose concentration ending sends them away. */
+  calledWith?: string;
+  /** The round, at their caller's turn, they leave in (1.344). */
+  calledUntil?: number;
+  /** Sent away (1.344): off the board and out of the fight, as if never there. */
+  dismissed?: true;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
    *  cleared at the end of the turn they were bought on, so nothing carries into the next one. */
   strikesLeft?: number;
@@ -2430,6 +2446,8 @@ export type RulesetCombatEvent =
     }
   /** Creatures called into the fight (1.325), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[] }
+  /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */
+  | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.319), after this many round ends in its light. */

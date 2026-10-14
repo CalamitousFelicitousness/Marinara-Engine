@@ -2,10 +2,12 @@ import {
   normalizeTextForMatch,
   resolveChatPersonaCandidate,
   resolveMacros,
+  usesLorebookIncludes,
   type MacroContext,
   type Persona,
   type ScopedRegexMode,
 } from "@marinara-engine/shared";
+import { api } from "./api-client";
 import { parseChatMetadata } from "./chat-display";
 
 export interface MacroCharacterData {
@@ -278,9 +280,26 @@ export function createInputMacroResolverForChat(
 }
 
 /**
+ * `{{include::...}}` reads lorebooks, which only the server has, so the server puts the
+ * entries in and the final macro pass then fills in their macros with the rest (#7607).
+ * If that fails, the include stays as written and the prompt fills it in, as before.
+ */
+async function expandMessageIncludes(text: string, chatId: string | undefined): Promise<string> {
+  if (!usesLorebookIncludes(text)) return text;
+  try {
+    const result = await api.post<{ text?: unknown }>("/lorebooks/expand-includes", { text, chatId });
+    return typeof result?.text === "string" ? result.text : text;
+  } catch (error) {
+    console.warn("[chat-macros] Could not fill in lorebook includes; sending them as written", error);
+    return text;
+  }
+}
+
+/**
  * What a composer send stores as the user's message: user-input regex scripts, optional
  * input translation, then the macros. Send, Post Only and /send all store this text, so
- * a stored message holds the resolved macros the chat shows and the model reads (#7585).
+ * a stored message holds the resolved macros the chat shows and the model reads (#7585),
+ * lorebook includes too (#7607).
  */
 export async function prepareUserInputMessage(
   text: string,
@@ -292,7 +311,9 @@ export async function prepareUserInputMessage(
     onTranslationError,
   }: {
     chat:
-      (NonNullable<Parameters<typeof createInputMacroResolverForChat>[0]> & { metadata?: unknown }) | null | undefined;
+      | (NonNullable<Parameters<typeof createInputMacroResolverForChat>[0]> & { id?: string; metadata?: unknown })
+      | null
+      | undefined;
     characters: Array<{ id: string; data: unknown }> | undefined;
     personas: Persona[] | undefined;
     applyToUserInput: (
@@ -322,5 +343,6 @@ export async function prepareUserInputMessage(
   }
 
   // Final pass: resolve macros introduced by translation while {{input}} still points to raw.
-  return resolveInputMacros(message);
+  // Lorebook includes go in first, as resolveMacros puts them in before every other macro.
+  return resolveInputMacros(await expandMessageIncludes(message, chat?.id));
 }

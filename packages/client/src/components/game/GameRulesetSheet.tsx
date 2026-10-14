@@ -42,7 +42,7 @@ import {
 import { ArtIcon } from "./ArtIcon";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
-import { stalePartySheet, useSavePartySheet } from "../../hooks/use-game";
+import { stalePartySheet, useSavePartySheet } from "../../hooks/use-party-sheet";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
 import { DraftNumberInput } from "../ui/DraftNumberInput";

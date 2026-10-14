@@ -37,31 +37,37 @@ for (const theme of ["light", "dark"] as const) {
         const dependencyUrl = window.__viteFixtureDependencyUrl;
         const { default: React } = await import(dependencyUrl("react"));
         const { default: ReactDOM } = await import(dependencyUrl("react-dom_client"));
+        const { QueryClient, QueryClientProvider } = await import(dependencyUrl("@tanstack_react-query"));
         const { GameRulesetPartySheet } = await import("/src/components/game/GameRulesetSheet.tsx" as string);
         const container = document.createElement("div");
         container.style.cssText =
           "position:fixed;inset:0;z-index:10000;overflow:auto;padding:16px;background:var(--background);color:var(--foreground)";
         document.body.append(container);
+        // The party sheet saves through a React Query mutation, so it renders inside the app's provider.
         ReactDOM.createRoot(container).render(
           React.createElement(
-            "div",
-            { style: { maxWidth: "320px" } },
+            QueryClientProvider,
+            { client: new QueryClient() },
             React.createElement(
               "div",
-              { "data-testid": "party" },
-              React.createElement(GameRulesetPartySheet, {
-                definition,
-                stored: envelope,
-                live: { pools: { coin: { value: 6 } } },
-              }),
-            ),
-            React.createElement(
-              "div",
-              { "data-testid": "unreadable" },
-              React.createElement(GameRulesetPartySheet, {
-                definition,
-                stored: { broken: true },
-              }),
+              { style: { maxWidth: "320px" } },
+              React.createElement(
+                "div",
+                { "data-testid": "party" },
+                React.createElement(GameRulesetPartySheet, {
+                  definition,
+                  stored: envelope,
+                  live: { pools: { coin: { value: 6 } } },
+                }),
+              ),
+              React.createElement(
+                "div",
+                { "data-testid": "unreadable" },
+                React.createElement(GameRulesetPartySheet, {
+                  definition,
+                  stored: { broken: true },
+                }),
+              ),
             ),
           ),
         );

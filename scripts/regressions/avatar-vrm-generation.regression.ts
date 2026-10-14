@@ -552,12 +552,15 @@ const tripoError = (kind: string, pattern: RegExp) => (error: unknown) =>
   const stalled = createTripoClient({ apiKey: KEY, fetch: silent, requestTimeoutMs: 30, transferTimeoutMs: 30 });
   // AbortSignal.timeout's timer doesn't keep Node running (the server's sockets do); this test holds it open.
   const awake = setInterval(() => undefined, 1000);
-  await assert.rejects(stalled.balance(), tripoError("unavailable", /Couldn't reach Tripo/u));
-  await assert.rejects(
-    stalled.download("https://tripo-data.example.com/a.glb", 1024),
-    tripoError("unavailable", /download/u),
-  );
-  clearInterval(awake);
+  try {
+    await assert.rejects(stalled.balance(), tripoError("unavailable", /Couldn't reach Tripo/u));
+    await assert.rejects(
+      stalled.download("https://tripo-data.example.com/a.glb", 1024),
+      tripoError("unavailable", /download/u),
+    );
+  } finally {
+    clearInterval(awake);
+  }
 }
 {
   // Busy: wait as long as Tripo asks, then go on; still busy after the retries: a plain message.
@@ -942,10 +945,13 @@ try {
     },
   );
   const awake = setInterval(() => undefined, 1000);
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.equal(cancelAvatarGenerationJob(runOwner, "vrm"), true, "the running job is found");
-  await assert.rejects(stopped, (error: unknown) => (error as Error).name === "AbortError");
-  clearInterval(awake);
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(cancelAvatarGenerationJob(runOwner, "vrm"), true, "the running job is found");
+    await assert.rejects(stopped, (error: unknown) => (error as Error).name === "AbortError");
+  } finally {
+    clearInterval(awake);
+  }
   const pollsWhenStopped = polls;
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(polls, pollsWhenStopped, "no more polling after Cancel");

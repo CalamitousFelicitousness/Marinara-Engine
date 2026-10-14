@@ -277,6 +277,10 @@ try {
   assert.equal(harm(dwarf, "magical"), 8);
   assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning except magical" }] })), 0);
   assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning except magical" }] }), "magical"), 8);
+  // Any run of spaces or tabs separates the words.
+  assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning\t except \tmagical" }] })), 0);
+  assert.equal(harm(fight({ rows: [{ immunity: "bludgeoning\t except \tmagical" }] }), "magical"), 8);
+  assert.equal(harm(fight({ rows: [{ resistance: `bludgeoning${"\t".repeat(3_900)}x` }] })), 8);
   assert.equal(harm(fight({ rows: [{ vulnerability: "fire" }] }), "fire"), 16);
   assert.equal(harm(fight({ rows: [{ resistance: "fire", vulnerability: "fire" }] }), "fire"), 8);
   assert.equal(harm(fight({ conditions: ["energy"], rows: [{ immunity: "fire", vulnerability: "fire" }] }), "fire"), 0);

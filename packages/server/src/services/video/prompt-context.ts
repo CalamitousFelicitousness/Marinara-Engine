@@ -225,7 +225,7 @@ function dedupeInOrder(values: string[]): string[] {
   return result;
 }
 
-export function extraReferencesGalleryImage(extra: unknown, galleryImageId: string): boolean {
+function extraReferencesGalleryImage(extra: unknown, galleryImageId: string): boolean {
   const record = parseExtraRecord(extra);
   const attachments = Array.isArray(record.attachments) ? record.attachments : [];
   return attachments.some((attachment) => {

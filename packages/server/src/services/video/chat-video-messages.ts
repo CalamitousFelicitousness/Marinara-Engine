@@ -1,4 +1,5 @@
 import type { GeneratedSceneVideo, MessageAttachment } from "@marinara-engine/shared";
+import { parseExtra } from "../generation/prompt-attachments.js";
 
 export interface ChatVideoAnchor {
   messageId: string;
@@ -6,18 +7,20 @@ export interface ChatVideoAnchor {
 }
 
 /**
- * The message a generated video belongs under: the newest reply (on its shown swipe), where the user is,
- * whichever reply its picture came from. Null when the chat has no reply yet; the video then lives only
- * in the gallery.
+ * The message a generated video belongs under: the newest reply the user can see (on its shown swipe), whichever
+ * reply its picture came from. Hidden command-only replies are skipped, as the chat skips them. Null when the
+ * chat has no visible reply yet; the video then lives only in the gallery.
  */
 export function resolveChatVideoAnchor(
-  messages: ReadonlyArray<{ id: string; role?: string | null; activeSwipeIndex?: number | null }>,
+  messages: ReadonlyArray<{ id: string; role?: string | null; activeSwipeIndex?: number | null; extra?: unknown }>,
 ): ChatVideoAnchor | null {
-  const latest = [...messages].reverse().find((message) => message.role === "assistant");
+  const latest = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && parseExtra(message.extra).hiddenFromUser !== true);
   return latest ? { messageId: latest.id, swipeIndex: latest.activeSwipeIndex ?? 0 } : null;
 }
 
-export function buildChatVideoAttachment(video: GeneratedSceneVideo, characterName?: string): MessageAttachment {
+export function buildChatVideoAttachment(video: GeneratedSceneVideo): MessageAttachment {
   return {
     type: "video",
     url: video.url,
@@ -26,7 +29,6 @@ export function buildChatVideoAttachment(video: GeneratedSceneVideo, characterNa
     videoId: video.id,
     durationSeconds: video.durationSeconds,
     aspectRatio: video.aspectRatio,
-    ...(characterName ? { characterName } : {}),
   };
 }
 

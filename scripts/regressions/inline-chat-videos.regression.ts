@@ -1,6 +1,7 @@
 // Generated scene videos play inline: through the real gallery route, with a fake text model and a fake
-// ComfyUI, the finished video is attached to the message that shows its source image (or else the latest
-// assistant message), and a video attachment never reaches a model prompt as an image or a readable file.
+// ComfyUI, the finished video is attached to the newest reply the user can see (whichever reply its picture
+// came from, and never in Game Mode), a video attachment never reaches a model prompt as an image or a
+// readable file, and attaching one does not change Advanced Memory's history fingerprint.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -23,6 +24,7 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
 const { resolveChatVideoAnchor } = await import("../../packages/server/src/services/video/chat-video-messages.js");
+const { advancedMemorySourceFingerprint } = await import("../../packages/server/src/services/advanced-memory.js");
 const { extractImageAttachmentDataUrls, extractFileAttachmentInputs, buildReadableAttachmentBlocks } =
   await import("../../packages/server/src/services/generation/prompt-attachments.js");
 
@@ -158,7 +160,14 @@ try {
   };
 
   // Animating the image attaches the video to the newest reply, on the message and its swipe.
+  // A clip landing on the newest reply mid-send must not look like a history change to Advanced Memory.
+  const fingerprintBefore = advancedMemorySourceFingerprint(await chats.listMessages(roleplay.id));
   const first = await generate({ galleryImageId: image.id });
+  assert.equal(
+    advancedMemorySourceFingerprint(await chats.listMessages(roleplay.id)),
+    fingerprintBefore,
+    "adding a clip leaves the memory fingerprint unchanged",
+  );
   assert.equal(first.messageId, later.id);
   assert.equal((await videoAttachments(source.id)).message.length, 0, "not under the older picture's message");
   const onSource = await videoAttachments(later.id);
@@ -231,6 +240,19 @@ try {
     { messageId: "reply", swipeIndex: 1 },
   );
   assert.equal(resolveChatVideoAnchor([{ id: "you", role: "user" }]), null, "no reply yet: Gallery only");
+  // A hidden command-only reply is never shown, so the clip goes to the newest reply the user can see.
+  assert.deepEqual(
+    resolveChatVideoAnchor([
+      { id: "shown", role: "assistant", activeSwipeIndex: 0 },
+      { id: "hidden", role: "assistant", activeSwipeIndex: 0, extra: JSON.stringify({ hiddenFromUser: true }) },
+    ]),
+    { messageId: "shown", swipeIndex: 0 },
+  );
+  assert.equal(
+    resolveChatVideoAnchor([{ id: "hidden", role: "assistant", extra: { hiddenFromUser: true } }]),
+    null,
+    "only hidden replies: Gallery only",
+  );
 
   // A video attachment is never an image, a provider file, or readable text for a model prompt.
   const attachment = { type: "video", url: first.video.url, filename: "clip.mp4", prompt: "Aster lifts the lantern" };

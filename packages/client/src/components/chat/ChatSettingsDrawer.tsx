@@ -125,6 +125,8 @@ import {
   getRelevantCardVariables,
   hasOnboardingContent,
   readCardOnboarding,
+  ILLUSTRATOR_VIDEO_MODES,
+  normalizeIllustratorVideoMode,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   advancedMemoryProblems,
@@ -7461,6 +7463,21 @@ export function ChatSettingsDrawer({
                           <span className="block text-[0.6875rem] font-semibold text-[var(--foreground)]">
                             {localizeUi("ui.chat.chatsettingsdrawer.videoMessages")}
                           </span>
+                          <AgentSettingsToggle
+                            label={localizeUi("ui.chat.chatsettingsdrawer.generatedVideos")}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.generatedVideosConversationHelp")}
+                            enabled={conversationCommandsEnabled && conversationCommandToggles.video === true}
+                            onToggle={() => {
+                              const nextEnabled = !(
+                                conversationCommandsEnabled && conversationCommandToggles.video === true
+                              );
+                              updateMeta.mutate({
+                                id: chat.id,
+                                ...(nextEnabled ? { characterCommands: true } : {}),
+                                conversationCommandToggles: { ...conversationCommandToggles, video: nextEnabled },
+                              });
+                            }}
+                          />
                           <label className="flex flex-col gap-1">
                             <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
                               {localizeUi("ui.chat.chatsettingsdrawer.videoConnection")}
@@ -9064,6 +9081,56 @@ export function ChatSettingsDrawer({
                             enabled={illustratorAutoBackgroundsEnabled}
                             onToggle={toggleIllustratorAutoBackgrounds}
                           />
+                          <label className="flex flex-col gap-1">
+                            <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.illustratorMakes")}
+                            </span>
+                            <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.illustratorMakesHelp")}
+                            </span>
+                            <select
+                              value={normalizeIllustratorVideoMode(metadata.illustratorVideoMode)}
+                              onChange={(e) =>
+                                updateMeta.mutate({
+                                  id: chat.id,
+                                  illustratorVideoMode: normalizeIllustratorVideoMode(e.target.value),
+                                })
+                              }
+                              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                            >
+                              {ILLUSTRATOR_VIDEO_MODES.map((mode) => (
+                                <option key={mode} value={mode}>
+                                  {localizeUi(`ui.chat.chatsettingsdrawer.illustratorVideoMode.${mode}`)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "pictures" && (
+                            <label className="flex flex-col gap-1">
+                              <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+                                {localizeUi("ui.chat.chatsettingsdrawer.videoFirstFrame")}
+                              </span>
+                              <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+                                {localizeUi("ui.chat.chatsettingsdrawer.roleplayVideoFirstFrameHelp")}
+                              </span>
+                              <select
+                                value={normalizeVideoFirstFrame(metadata.sceneVideoFirstFrame)}
+                                onChange={(e) =>
+                                  updateMeta.mutate({
+                                    id: chat.id,
+                                    sceneVideoFirstFrame: normalizeVideoFirstFrame(e.target.value),
+                                  })
+                                }
+                                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                              >
+                                {VIDEO_FIRST_FRAMES.map((mode) => (
+                                  <option key={mode} value={mode}>
+                                    {localizeUi(`ui.chat.chatsettingsdrawer.roleplayVideoFirstFrame.${mode}`)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           {renderIllustratorImageStyleSelect({
                             description:
                               "Shared by Illustrator scenes and generated backgrounds so both keep the same visual language.",
@@ -9092,13 +9159,18 @@ export function ChatSettingsDrawer({
                             }
                             onReset={resetIllustratorCharacterAppearance}
                           />
-                          <AgentSettingsToggle
+                          <MediaScopeSelect
                             label={localizeUi("ui.chat.agentaddsetupfields.sendAvatarReferences")}
-                            description={localizeUi(
-                              "ui.chat.agentaddsetupfields.sendMatchingCharacterAndPersonaAvatarsOrSpritesAs",
-                            )}
-                            enabled={illustratorUseAvatarReferences}
-                            onToggle={toggleIllustratorAvatarReferences}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.roleplayAvatarReferencesScopeHelp")}
+                            images={illustratorUseAvatarReferences}
+                            videos={metadata.illustratorVideoUseAvatarReferences === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                illustratorUseAvatarReferences: images,
+                                illustratorVideoUseAvatarReferences: videos,
+                              })
+                            }
                             overridden={typeof metadata.illustratorUseAvatarReferences === "boolean"}
                             onReset={resetIllustratorAvatarReferences}
                           />

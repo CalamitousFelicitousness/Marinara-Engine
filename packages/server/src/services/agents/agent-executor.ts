@@ -2924,8 +2924,15 @@ function buildAgentMessages(
   // assistant. Anthropic treats a trailing assistant turn as prefill and rejects
   // some models, so add a terminal user instruction for that agent type too.
   const outputFormatBlock = options.outputFormatBlock?.trim() ?? "";
+  const generatedVideos =
+    options.includeImagePromptInstructions === true &&
+    context.memory._generatedVideos &&
+    typeof context.memory._generatedVideos === "object"
+      ? (context.memory._generatedVideos as { instructions?: unknown; clipsOnly?: unknown })
+      : null;
   const requiresTerminalUserInstruction =
     finalParts.length > 0 ||
+    !!generatedVideos ||
     contextAgentTypes.includes("echo-chamber") ||
     !!outputFormatBlock ||
     (options.includeImagePromptInstructions === true &&
@@ -2941,6 +2948,24 @@ function buildAgentMessages(
     );
     finalParts.push(lateImagePromptInstructions);
     finalParts.push("</image_prompting_instructions>");
+  }
+  if (generatedVideos) {
+    // Generated Videos: the picture can become a short clip when the agent decides motion adds to the moment.
+    finalParts.push("\n<optional_video>");
+    finalParts.push(
+      generatedVideos.clipsOnly === true
+        ? 'This chat shows short video clips instead of pictures. When you generate, "prompt" describes the scene the clip starts from, and always add "videoPrompt": "<what moves and how the camera moves, in one or two present-tense sentences>" to your JSON.'
+        : 'When you generate a picture and a few seconds of motion would genuinely add to this moment, you may also add "generateVideo": true and "videoPrompt": "<what moves and how the camera moves, starting from your picture, in one or two present-tense sentences>" to your JSON. A picture stays still unless motion is the point of the moment (action, violence, a chase, dancing, something breaking).',
+    );
+    const videoInstructions =
+      typeof generatedVideos.instructions === "string" ? generatedVideos.instructions.trim() : "";
+    if (videoInstructions) {
+      finalParts.push(
+        "Apply these video-backend instructions when writing videoPrompt. They are instructions, not text to copy into it:",
+      );
+      finalParts.push(videoInstructions);
+    }
+    finalParts.push("</optional_video>");
   }
 
   if (requiresTerminalUserInstruction) {

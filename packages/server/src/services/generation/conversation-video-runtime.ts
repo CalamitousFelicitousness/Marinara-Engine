@@ -35,6 +35,7 @@ import { excerptIllustrationPromptForVideo, formatRecentVideoContext } from "../
 import { createAgentsStorage } from "../storage/agents.storage.js";
 import { normalizeAgentContextSize } from "../agents/agent-executor.js";
 import { resolveSceneVideoPrompt } from "../video/scene-video-prompt-review.js";
+import { attachVideoToMessage, buildChatVideoAttachment } from "../video/chat-video-messages.js";
 import { resolveBaseUrl } from "./connection-base-url.js";
 import {
   handleConversationSelfieCommand,
@@ -63,6 +64,7 @@ export interface ConversationVideoResult {
 const VIDEO_PROMPT_WRITER_MAX_TOKENS = 8_196;
 const SELFIE_CONTEXT_MAX_CHARS = 2_000;
 const PICTURE_PROMPT_MAX_CHARS = 1_500;
+const VIDEO_COMMAND_CONTEXT_MAX_CHARS = 2_000;
 const UNCLOSED_THINKING_RE = /^<(?:think|thinking|reasoning)\b/iu;
 
 type PromptCharacter = Parameters<typeof handleConversationSelfieCommand>[0]["charInfo"][number];
@@ -533,4 +535,74 @@ export async function loadIllustratorContextSize(db: DB): Promise<number> {
   return normalizeAgentContextSize(
     mergeBuiltInAgentSettings("illustrator", parseAgentSettingsRecord(illustrator?.settings)).contextSize,
   );
+}
+
+/**
+ * A character's `[video]` command: make the clip in the background and attach it to the character's
+ * message. Returns the running job (for the caller to keep the stream open), or null when the command
+ * is not a video request.
+ */
+export function startConversationVideoCommand(args: {
+  command: { type: string; context?: string };
+  characterId: string | null;
+  chatId: string;
+  messageId: string;
+  swipeIndex: number | null;
+  chatMeta: Record<string, unknown>;
+  charInfo: PromptCharacter[];
+  promptConnection: IllustratorPromptConnection;
+  promptConnectionId: string;
+  debugMode?: boolean;
+  serviceTier: "flex" | "priority" | null;
+  db: DB;
+  sendEvent: (payload: Record<string, unknown>) => void;
+}): Promise<void> | null {
+  if (args.command.type !== "video" || !args.characterId) return null;
+  const characterId = args.characterId;
+  args.sendEvent({ type: "video_started", data: { characterId, messageId: args.messageId } });
+  return (async () => {
+    try {
+      // A bare [video] still has the reply around it, which is what the character is showing.
+      const context =
+        args.command.context?.trim() ||
+        String((await createChatsStorage(args.db).getMessage(args.messageId))?.content ?? "")
+          .trim()
+          .slice(0, VIDEO_COMMAND_CONTEXT_MAX_CHARS);
+      const result = await generateConversationVideo({
+        db: args.db,
+        chatId: args.chatId,
+        chatMeta: args.chatMeta,
+        characterId,
+        charInfo: args.charInfo,
+        promptConnection: args.promptConnection,
+        promptConnectionId: args.promptConnectionId,
+        context,
+        queue: true,
+        debugMode: args.debugMode,
+        serviceTier: args.serviceTier,
+      });
+      if (!("video" in result)) return;
+      await attachVideoToMessage(
+        createChatsStorage(args.db),
+        { messageId: args.messageId, swipeIndex: args.swipeIndex ?? 0 },
+        buildChatVideoAttachment(result.video, result.characterName),
+      );
+      args.sendEvent({
+        type: "video",
+        data: {
+          characterId,
+          characterName: result.characterName,
+          messageId: args.messageId,
+          videoUrl: result.video.url,
+          videoId: result.video.id,
+        },
+      });
+    } catch (err) {
+      logger.error(err, "[commands] Video message failed");
+      args.sendEvent({
+        type: "video_error",
+        data: { characterId, error: err instanceof Error ? err.message : "Video generation failed" },
+      });
+    }
+  })();
 }

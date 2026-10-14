@@ -2894,6 +2894,24 @@ export function useGenerate() {
               break;
             }
 
+            case "video": {
+              const videoData = event.data as { characterName: string; messageId: string };
+              toast(translate("generation.video.sent", { name: videoData.characterName }));
+              void qc.invalidateQueries({ queryKey: ["gallery", "scene-videos", params.chatId] });
+              // A clip usually lands after "done"; one that beats the streamed reply waits for the final refresh.
+              if (sawDoneEvent || (!streamingEnabled && !isGameGeneration)) {
+                await refreshMessagesAuthoritatively(qc, params.chatId, persistedMessages.values());
+              }
+              break;
+            }
+
+            case "video_error": {
+              const errData = event.data as { error: string };
+              console.warn("[video] Generation failed:", errData.error);
+              toast.error(translate("generation.video.failed", { error: errData.error }));
+              break;
+            }
+
             case "conversation_call_ringing": {
               const data = event.data as {
                 session?: {

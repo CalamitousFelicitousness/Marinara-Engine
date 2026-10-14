@@ -59,10 +59,19 @@ export function normalizeVideoFirstFrame(value: unknown): VideoFirstFrame {
   return VIDEO_FIRST_FRAMES.includes(value as VideoFirstFrame) ? (value as VideoFirstFrame) : "picture_or_avatar";
 }
 
+/** What a Roleplay Illustrator makes. Clips only draws a picture solely as a clip's first frame. */
+export const ILLUSTRATOR_VIDEO_MODES = ["pictures", "pictures_and_clips", "clips_only"] as const;
+export type IllustratorVideoMode = (typeof ILLUSTRATOR_VIDEO_MODES)[number];
+
+export function normalizeIllustratorVideoMode(value: unknown): IllustratorVideoMode {
+  return ILLUSTRATOR_VIDEO_MODES.includes(value as IllustratorVideoMode) ? (value as IllustratorVideoMode) : "pictures";
+}
+
 export const CONVERSATION_COMMAND_KEYS = [
   "schedule_update",
   "cross_post",
   "selfie",
+  "video",
   "memory",
   "scene",
   "call",
@@ -86,6 +95,7 @@ export type ConversationCommandToggles = Partial<Record<ConversationCommandKey, 
 /** Downloadable agent package that owns each optional Conversation command. */
 export const CONVERSATION_COMMAND_AGENT_IDS: Partial<Record<ConversationCommandKey, string>> = {
   selfie: "illustrator",
+  video: "illustrator",
   call: "conversation-calls",
   uno: "uno",
   chess: "chess",
@@ -377,6 +387,8 @@ export interface ChatMetadata {
   illustratorUseAvatarReferences?: boolean;
   /** Whether Roleplay video prompts get matched character appearance lines, like images with the setting above. */
   illustratorVideoIncludeCharacterAppearance?: boolean;
+  /** Send Avatar References for Roleplay videos: a Prompt only clip starts from the character's avatar or sprite. */
+  illustratorVideoUseAvatarReferences?: boolean;
   /** Optional per-chat LLM connection override used only to write Illustrator/selfie image prompts. */
   illustratorPromptConnectionId?: string | null;
   /** Optional per-chat image generation connection override used by Illustrator. */
@@ -388,6 +400,12 @@ export interface ChatMetadata {
    * it only runs when the user asks (Gallery or slash command). Missing/null = the agent's Run Interval.
    */
   illustratorRunInterval?: number | null;
+  /**
+   * What a Roleplay Illustrator (and custom image agents) makes: pictures only, pictures that it may animate
+   * into short clips when motion adds to the moment, or a clip instead of every picture. See
+   * normalizeIllustratorVideoMode; clips use the chat's scene-video connection.
+   */
+  illustratorVideoMode?: IllustratorVideoMode | null;
   /** Whether Roleplay Illustrator may generate and activate a reusable background after a scene-location change. */
   illustratorAutoBackgroundsEnabled?: boolean;
   /** Whether Conversation selfie commands should send the matching character avatar as a reference image. */
@@ -764,7 +782,7 @@ export interface ChatMetadata {
   gameLastSceneVideoId?: string | null;
   /** Connection used for roleplay/gallery scene-video generation and Conversation video messages. */
   sceneVideoConnectionId?: string | null;
-  /** First frame of a Conversation video message; see `normalizeVideoFirstFrame`. */
+  /** First frame of a Conversation video message or a Roleplay clip; see `normalizeVideoFirstFrame`. */
   sceneVideoFirstFrame?: VideoFirstFrame | null;
   /** Last generated roleplay/gallery scene-video record ID. */
   sceneLastVideoId?: string | null;

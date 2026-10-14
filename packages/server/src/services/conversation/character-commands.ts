@@ -74,6 +74,12 @@ export interface SelfieCommand {
   context?: string;
 }
 
+export interface VideoCommand {
+  type: "video";
+  /** Optional hint from the character about what the clip shows */
+  context?: string;
+}
+
 export interface MemoryCommand {
   type: "memory";
   /** Target character name */
@@ -414,6 +420,7 @@ export type CharacterCommand =
   | ScheduleUpdateCommand
   | CrossPostCommand
   | SelfieCommand
+  | VideoCommand
   | MemoryCommand
   | SceneCommand
   | CallCommand
@@ -445,6 +452,9 @@ const QUOTED_PARAM_BLOCK = '(?:[^"\\]]|"(?:\\\\.|[^"\\\\])*")*';
 const SCHEDULE_UPDATE_RE = new RegExp(`\\[schedule_update:\\s*(${QUOTED_PARAM_BLOCK})\\]`, "gi");
 const CROSS_POST_RE = /\[cross_post:\s*target="([^"]+)"\]/gi;
 const SELFIE_RE = /\[selfie(?::\s*(?:context="([^"]*)"|"([^"]*)"|([^\]\r\n"]+)))?\]/gi;
+// Free text may quote dialogue or on-screen text and wrap lines, so it runs to the closing "]". It stops at
+// "[" and is capped, so an unclosed tag cannot swallow the rest of the reply or the next command.
+const VIDEO_RE = /\[video(?::\s*(?:context="([^"]*)"|"([^"]*)"|([^[\]]{1,2000})))?\]/gi;
 const MEMORY_RE = /\[memory:\s*target="([^"]+)"\s*,\s*summary="([^"]+)"\]/gi;
 const SCENE_RE = new RegExp(`\\[scene:\\s*(${QUOTED_PARAM_BLOCK})\\]`, "gi");
 const CALL_RE = new RegExp(`\\[call(?::\\s*(${QUOTED_PARAM_BLOCK}))?\\]`, "gi");
@@ -1174,6 +1184,12 @@ export function parseCharacterCommands(content: string): {
     commands.push({ type: "selfie", context: context || undefined });
   }
 
+  // Parse video message commands
+  for (const match of content.matchAll(VIDEO_RE)) {
+    const context = (match[1] ?? match[2] ?? match[3])?.trim();
+    commands.push({ type: "video", context: context || undefined });
+  }
+
   // Parse memory commands
   for (const match of content.matchAll(MEMORY_RE)) {
     commands.push({ type: "memory", target: match[1]!, summary: match[2]! });
@@ -1434,6 +1450,7 @@ export function parseCharacterCommands(content: string): {
     .replace(SCHEDULE_UPDATE_RE, "")
     .replace(CROSS_POST_RE, "")
     .replace(SELFIE_RE, "")
+    .replace(VIDEO_RE, "")
     .replace(MEMORY_RE, "")
     .replace(SCENE_RE, "")
     .replace(CALL_RE, "")

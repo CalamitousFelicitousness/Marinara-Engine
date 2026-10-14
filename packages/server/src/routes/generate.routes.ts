@@ -141,6 +141,8 @@ import {
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
   normalizeImagePromptInstructions,
+  normalizeVideoPromptInstructions,
+  normalizeIllustratorVideoMode,
   normalizeTextForMatch,
   parseGroupedSpeakerSegments,
   stripLeadingMessageTimestamps,
@@ -752,6 +754,17 @@ import { handleConversationScheduleCommand } from "../services/generation/conver
 import { handleConversationCrossPostCommand } from "../services/generation/conversation-cross-post-command-runtime.js";
 import { handleHapticCommand } from "../services/generation/haptic-command-runtime.js";
 import { handleConversationSelfieCommand } from "../services/generation/conversation-selfie-command-runtime.js";
+import { startConversationVideoCommand } from "../services/generation/conversation-video-runtime.js";
+import {
+  animateGalleryImage,
+  generateRoleplayClip,
+  roleplayVideoFirstFrame,
+} from "../services/video/chat-video-generation.js";
+import {
+  attachVideoToMessage,
+  buildChatVideoAttachment,
+  resolveSceneVideoConnectionId,
+} from "../services/video/chat-video-messages.js";
 import {
   CONTINUE_ASSISTANT_MESSAGE_PROMPT,
   CONTINUE_ASSISTANT_MESSAGE_DIRECT_PROMPT,
@@ -4632,6 +4645,75 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         }
 
         const charInfo = await loadCharacterPromptInfo({ chars, characterIds, chatMode });
+        // Who Illustrator can show: the chat's characters (and a character used as the user's identity)
+        // and the user's persona, with their appearance and avatars. Pictures and clips match names against it.
+        const illustratorCast = () => ({
+          chatCharacters: [
+            ...charInfo.map((character) => ({
+              id: character.id,
+              name: character.name,
+              avatarPath: character.avatarPath,
+              appearance: character.appearance,
+              appearanceOverride: character.imageAppearanceOverride ?? null,
+            })),
+            ...(identity?.source === "character" && !charInfo.some((character) => character.id === identity.id)
+              ? [
+                  {
+                    id: identity.id,
+                    name: identity.name,
+                    avatarPath: identity.avatarPath,
+                    appearance: identity.appearance,
+                    // #7053: mirror the charInfo entries above so a
+                    // character used as the user identity keeps its
+                    // image-prompt override.
+                    appearanceOverride: identity.imageAppearanceOverride || null,
+                  },
+                ]
+              : []),
+          ],
+          persona:
+            identity?.source === "persona" && persona
+              ? {
+                  id: personaId,
+                  name: personaName,
+                  avatarPath: persona.avatarPath as string | null,
+                  appearance: personaFields.appearance,
+                  // #7053: identity-source persona, so the override
+                  // is already resolved as a string.
+                  appearanceOverride: persona.imageAppearanceOverride || null,
+                  characterSheetImageId:
+                    typeof persona.characterSheetImageId === "string" ? persona.characterSheetImageId : null,
+                  useCharacterSheetAsReference: persona.useCharacterSheetAsReference,
+                }
+              : null,
+        });
+        // The cast of a clip with no picture of its own: every character or persona it names, with their
+        // appearance lines and, for the Avatar first frame, the avatar of the first one named.
+        const resolveClipCast = async (names: readonly string[], promptText: string, withAvatar: boolean) => {
+          const cast = await resolveIllustratorCharacterReferences({
+            charactersStore: chars,
+            characterGallery,
+            personaGallery,
+            ...illustratorCast(),
+            requestedNames: [...names],
+            promptText,
+            fallbackToChatCharacters: true,
+            includeReferenceImages: withAvatar,
+            includePersonaWhenMentionedInPrompt: false,
+            maxReferences: 12,
+          });
+          const first = names[0]?.trim().toLowerCase();
+          const index = Math.max(
+            0,
+            first ? cast.referenceNames.findIndex((name) => name.trim().toLowerCase() === first) : 0,
+          );
+          const base64 = cast.referenceImages[index];
+          return {
+            characterIds: cast.characterIds,
+            appearanceBlock: cast.appearanceBlock,
+            avatar: base64 ? { base64, name: cast.referenceNames[index] ?? "" } : null,
+          };
+        };
         const roleplayRollParticipants = identity
           ? [
               ...charInfo.filter((character) => character.id !== identity.id),
@@ -6876,6 +6958,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           imageConnection ??= await connections.getDefaultForImageGeneration();
           const imagePromptInstructions = normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions);
           if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
+          delete memory._generatedVideos;
+          const illustratorVideoMode = normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode);
+          if (chatMode === "roleplay" && illustratorVideoMode !== "pictures") {
+            // Offer the generateVideo/videoPrompt fields, guided by the video connection's instructions.
+            const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);
+            const videoConnection = videoConnectionId ? await connections.getWithKey(videoConnectionId) : null;
+            if (videoConnection?.provider === "video_generation") {
+              memory._generatedVideos = {
+                instructions: normalizeVideoPromptInstructions(videoConnection.videoPromptInstructions) ?? "",
+                clipsOnly: illustratorVideoMode === "clips_only",
+              };
+            }
+          }
           return { ...trackerContext, memory };
         };
         // Decision statements in agent prompt templates (#6569), planned from the agents
@@ -13692,7 +13787,56 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   );
                 }
                 imgConnFull ??= await connections.getDefaultForImageGeneration();
-                if (imgConnFull) {
+                // Clips only, starting from the avatar or from no picture: no picture is drawn at all.
+                const clipOnlyFrame =
+                  requestChatMode === "roleplay" &&
+                  normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode) === "clips_only"
+                    ? roleplayVideoFirstFrame(chatMeta, Boolean(imgConnFull))
+                    : "picture";
+                if (clipOnlyFrame !== "picture" && messageId) {
+                  pendingRoleplayMedia.push(
+                    (async () => {
+                      try {
+                        const motion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
+                        // Without a picture, the clip needs the scene as well as the motion.
+                        const prompt = [motion, imagePrompt].filter(Boolean).join("\n\n");
+                        const cast = await resolveClipCast(illCharacters, prompt, clipOnlyFrame !== "none");
+                        const video = await generateRoleplayClip(app.db, {
+                          chatId: input.chatId,
+                          chatMeta,
+                          prompt,
+                          firstFrame: clipOnlyFrame,
+                          avatar: cast.avatar,
+                          characterIds: cast.characterIds,
+                          appearanceBlock:
+                            chatMeta.illustratorVideoIncludeCharacterAppearance === true ? cast.appearanceBlock : null,
+                          queue: true,
+                          debugMode: input.debugMode,
+                        });
+                        await attachVideoToMessage(
+                          chats,
+                          { messageId, swipeIndex: targetSwipeIndex },
+                          buildChatVideoAttachment(video),
+                        );
+                        sendSseEvent(reply, {
+                          type: "video",
+                          data: {
+                            messageId,
+                            videoUrl: video.url,
+                            videoId: video.id,
+                            characterName: imagePromptAgent?.name ?? "Illustrator",
+                          },
+                        });
+                      } catch (videoErr) {
+                        logger.warn(videoErr, "[illustrator] Clip failed");
+                        sendSseEvent(reply, {
+                          type: "video_error",
+                          data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
+                        });
+                      }
+                    })(),
+                  );
+                } else if (imgConnFull) {
                   const resolvedImageConnection = imgConnFull;
                   sendSseEvent(reply, {
                     type: "illustration_queued",
@@ -13799,47 +13943,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         charactersStore: chars,
                         characterGallery,
                         personaGallery,
-                        chatCharacters: [
-                          ...charInfo.map((character) => ({
-                            id: character.id,
-                            name: character.name,
-                            avatarPath: character.avatarPath,
-                            appearance: character.appearance,
-                            appearanceOverride: character.imageAppearanceOverride ?? null,
-                          })),
-                          ...(identity?.source === "character" &&
-                          !charInfo.some((character) => character.id === identity.id)
-                            ? [
-                                {
-                                  id: identity.id,
-                                  name: identity.name,
-                                  avatarPath: identity.avatarPath,
-                                  appearance: identity.appearance,
-                                  // #7053: mirror the charInfo entries above so a
-                                  // character used as the user identity keeps its
-                                  // image-prompt override.
-                                  appearanceOverride: identity.imageAppearanceOverride || null,
-                                },
-                              ]
-                            : []),
-                        ],
-                        persona:
-                          identity?.source === "persona" && persona
-                            ? {
-                                id: personaId,
-                                name: personaName,
-                                avatarPath: persona.avatarPath as string | null,
-                                appearance: personaFields.appearance,
-                                // #7053: identity-source persona, so the override
-                                // is already resolved as a string.
-                                appearanceOverride: persona.imageAppearanceOverride || null,
-                                characterSheetImageId:
-                                  typeof persona.characterSheetImageId === "string"
-                                    ? persona.characterSheetImageId
-                                    : null,
-                                useCharacterSheetAsReference: persona.useCharacterSheetAsReference,
-                              }
-                            : null,
+                        ...illustratorCast(),
                         requestedNames: illCharacters.filter((name): name is string => typeof name === "string"),
                         promptText: [
                           currentUserInputContent() ?? "",
@@ -13990,6 +14094,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           logger.warn(error, "[illustrator] Image variant %d failed", index + 1),
                       });
 
+                      // Clips only: the picture is the clip's first frame, shown only if the clip fails.
+                      const clipsOnly =
+                        chatMode === "roleplay" &&
+                        normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode) === "clips_only";
+                      const pictureShows: Array<() => Promise<void>> = [];
+                      let firstGalleryImageId: string | null = null;
                       for (const [variantIndex, imageResult] of imageResults.entries()) {
                         const renderedPrompt = imageResult.effectivePrompt ?? fullPrompt;
                         // Save to disk
@@ -14024,6 +14134,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                               : null,
                           }),
                         });
+                        firstGalleryImageId ??= (galleryEntry as { id?: string } | null)?.id ?? null;
                         await persistGeneratedImageToEntityGalleries({
                           enabled: imageSettings.autoSaveToGalleries,
                           sourceFilePath: filePath,
@@ -14042,48 +14153,127 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         // Attach to the assistant message + its specific swipe row
                         const filename = filePath.split("/").pop()!;
                         const imageUrl = `/api/gallery/file/${input.chatId}/${encodeURIComponent(filename)}`;
-                        if (messageId) {
-                          const attachment = {
-                            type: "image",
-                            url: imageUrl,
-                            filename: `illustration_${variantIndex + 1}.${imageResult.ext}`,
-                            prompt: renderedPrompt,
-                            galleryId: (galleryEntry as any)?.id,
-                            ...(commandTarget?.command.type === "illustrate" &&
-                            typeof commandTarget.activityIndex === "number"
-                              ? { roleplayCommandIndex: commandTarget.activityIndex }
-                              : {}),
-                          };
+                        const showPicture = async () => {
+                          if (messageId) {
+                            const attachment = {
+                              type: "image",
+                              url: imageUrl,
+                              filename: `illustration_${variantIndex + 1}.${imageResult.ext}`,
+                              prompt: renderedPrompt,
+                              galleryId: (galleryEntry as any)?.id,
+                              ...(commandTarget?.command.type === "illustrate" &&
+                              typeof commandTarget.activityIndex === "number"
+                                ? { roleplayCommandIndex: commandTarget.activityIndex }
+                                : {}),
+                            };
 
-                          // Always persist to the swipe row so the attachment survives
-                          // swipe switches even if the user has already navigated away.
-                          await chats.appendSwipeAttachment(messageId, targetSwipeIndex, attachment);
+                            // Always persist to the swipe row so the attachment survives
+                            // swipe switches even if the user has already navigated away.
+                            await chats.appendSwipeAttachment(messageId, targetSwipeIndex, attachment);
 
-                          // Also update the live message row if this swipe is still active,
-                          // so the SSE illustration event is immediately visible.
-                          const msgRow = await chats.getMessage(messageId);
-                          if (msgRow && (msgRow.activeSwipeIndex ?? 0) === targetSwipeIndex) {
-                            await chats.appendMessageAttachment(messageId, attachment);
+                            // Also update the live message row if this swipe is still active,
+                            // so the SSE illustration event is immediately visible.
+                            const msgRow = await chats.getMessage(messageId);
+                            if (msgRow && (msgRow.activeSwipeIndex ?? 0) === targetSwipeIndex) {
+                              await chats.appendMessageAttachment(messageId, attachment);
+                            }
                           }
-                        }
 
-                        // Notify client
-                        sendSseEvent(reply, {
-                          type: "illustration",
-                          data: {
-                            messageId,
-                            imageUrl,
-                            prompt: renderedPrompt,
-                            reason: illData.reason,
-                            galleryId: (galleryEntry as any)?.id,
-                          },
-                        });
+                          // Notify client
+                          sendSseEvent(reply, {
+                            type: "illustration",
+                            data: {
+                              messageId,
+                              imageUrl,
+                              prompt: renderedPrompt,
+                              reason: illData.reason,
+                              galleryId: (galleryEntry as any)?.id,
+                            },
+                          });
+                        };
+                        if (clipsOnly) pictureShows.push(showPicture);
+                        else await showPicture();
                       }
                       logger.info(
                         "[illustrator] Generated %d illustration(s): %s...",
                         imageResults.length,
                         (illData.reason as string)?.slice(0, 80) ?? imagePrompt.slice(0, 80),
                       );
+
+                      // Generated Videos: Illustrator chose to animate its picture, or the chat makes clips only.
+                      // The clip joins the same message when it is ready.
+                      const videoMode = normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode);
+                      const wantsVideo =
+                        clipsOnly || (videoMode === "pictures_and_clips" && illData.generateVideo === true);
+                      // Every clip starts from the chat's First frame.
+                      const videoFirstFrame = roleplayVideoFirstFrame(chatMeta, true);
+                      const videoPrompt =
+                        (typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "") ||
+                        "Subtle, natural motion brings the moment to life while the camera slowly pushes in.";
+                      const showPicturesInstead = async () => {
+                        for (const show of pictureShows) await show();
+                      };
+                      if (wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay") {
+                        try {
+                          const appearanceBlock =
+                            chatMeta.illustratorVideoIncludeCharacterAppearance === true
+                              ? referenceResolution.appearanceBlock
+                              : null;
+                          const video =
+                            videoFirstFrame === "picture"
+                              ? await animateGalleryImage(app.db, {
+                                  chatId: input.chatId,
+                                  chatMeta,
+                                  galleryImageId: firstGalleryImageId,
+                                  motionPrompt: videoPrompt,
+                                  appearanceBlock,
+                                  queue: true,
+                                  debugMode: input.debugMode,
+                                })
+                              : await generateRoleplayClip(app.db, {
+                                  chatId: input.chatId,
+                                  chatMeta,
+                                  // Without the picture, the clip needs the scene as well as the motion.
+                                  prompt: [videoPrompt, typeof illData.prompt === "string" ? illData.prompt : ""]
+                                    .filter(Boolean)
+                                    .join("\n\n"),
+                                  firstFrame: videoFirstFrame,
+                                  // The same characters (and persona) the picture showed; its appearance lines too.
+                                  avatar:
+                                    videoFirstFrame === "none"
+                                      ? null
+                                      : (await resolveClipCast(illCharacters, imagePrompt, true)).avatar,
+                                  characterIds: referenceResolution.characterIds,
+                                  appearanceBlock,
+                                  queue: true,
+                                  debugMode: input.debugMode,
+                                });
+                          await attachVideoToMessage(
+                            chats,
+                            { messageId, swipeIndex: targetSwipeIndex },
+                            buildChatVideoAttachment(video),
+                          );
+                          sendSseEvent(reply, {
+                            type: "video",
+                            data: {
+                              messageId,
+                              videoUrl: video.url,
+                              videoId: video.id,
+                              characterName: imagePromptAgent?.name ?? "Illustrator",
+                            },
+                          });
+                        } catch (videoErr) {
+                          logger.warn(videoErr, "[illustrator] Generated video failed");
+                          sendSseEvent(reply, {
+                            type: "video_error",
+                            data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
+                          });
+                          // Clips only: a failed clip still leaves its picture in the reply.
+                          await showPicturesInstead();
+                        }
+                      } else {
+                        await showPicturesInstead();
+                      }
                     } catch (illErr) {
                       logger.error(illErr, "[illustrator] Image generation failed");
                       sendSseEvent(reply, {
@@ -14458,6 +14648,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     sendSseEvent(reply, payload);
                   },
                 });
+
+                // A clip takes minutes; it finishes after "done" while the stream stays open for media.
+                const videoMessage = startConversationVideoCommand({
+                  command,
+                  characterId,
+                  chatId: input.chatId,
+                  messageId,
+                  swipeIndex,
+                  chatMeta,
+                  charInfo,
+                  promptConnection: conn,
+                  promptConnectionId: conn.id,
+                  debugMode: input.debugMode,
+                  serviceTier,
+                  db: app.db,
+                  sendEvent: (payload) => {
+                    sendSseEvent(reply, payload);
+                  },
+                });
+                if (videoMessage) pendingRoleplayMedia.push(videoMessage);
 
                 await handleConversationCallCommand({
                   command,

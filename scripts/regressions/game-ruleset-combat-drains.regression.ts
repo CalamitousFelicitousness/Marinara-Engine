@@ -1,5 +1,5 @@
 /**
- * Lowered maximums with no save of their own, a floor, and whom a blow may target (Capability API 1.234).
+ * Lowered maximums with no save of their own, a floor, and whom a blow may target (Capability API 1.235).
  *
  *   - A vampire's Bite: only on a creature it grapples or one incapacitated or restrained
  *     (`targetHolds`); its necrotic part lowers the maximum with no save (`reducesMax.damageType`),
@@ -326,7 +326,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with lowered health maximums that need no save of their own, damage that leaves some health, or actions whose targets must hold a condition, requires schemaVersion 2 and capabilityApi 1.234 or newer";
+      "A ruleset with lowered health maximums that need no save of their own, damage that leaves some health, or actions whose targets must hold a condition, requires schemaVersion 2 and capabilityApi 1.235 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -339,24 +339,24 @@ try {
       { targetHolds: { conditions: ["restrained"] } },
     ]) {
       const document = { ...without, extra: { creature: { actions: [one] } } };
-      assert.equal(issue(233, document), gate, JSON.stringify(one));
-      assert.notEqual(issue(234, document), gate);
+      assert.equal(issue(234, document), gate, JSON.stringify(one));
+      assert.notEqual(issue(235, document), gate);
     }
-    // 1.202's own save, and a contest's targetHolds word, are not this.
+    // 1.203's own save, and a contest's targetHolds word, are not this.
     assert.notEqual(
-      issue(233, {
+      issue(234, {
         ...without,
         extra: { creature: { actions: [{ reducesMax: { save: "con_save", difficulty: 12 } }] } },
       }),
       gate,
     );
-    assert.notEqual(issue(233, { ...without, extra: { contest: { targetHolds: "grappled" } } }), gate);
-    assert.notEqual(issue(233, without), gate);
-    assert.equal(issue(233, without, new Map([["spells.json", { entries: [harm] }]])), gate);
+    assert.notEqual(issue(234, { ...without, extra: { contest: { targetHolds: "grappled" } } }), gate);
+    assert.notEqual(issue(234, without), gate);
+    assert.equal(issue(234, without, new Map([["spells.json", { entries: [harm] }]])), gate);
   }
 
   console.log(
-    "Ruleset drains: a vampire's Bite lowers the maximum and heals on whom it grapples, Draining Kiss whatever the save, Harm on a failed save leaving 1; gated at 1.234.",
+    "Ruleset drains: a vampire's Bite lowers the maximum and heals on whom it grapples, Draining Kiss whatever the save, Harm on a failed save leaving 1; gated at 1.235.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

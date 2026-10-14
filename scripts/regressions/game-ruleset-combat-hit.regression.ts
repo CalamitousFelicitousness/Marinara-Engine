@@ -318,7 +318,7 @@ try {
       label: "Scimitar",
       blow: "melee",
       weapon: true,
-      // The budget it was paid for from (1.247).
+      // The budget it was paid for from (1.248).
       budget: "action",
       total: 20,
       defense: 18,

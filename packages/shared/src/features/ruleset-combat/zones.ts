@@ -42,7 +42,7 @@ export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: Rule
   return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);
 }
 
-/** Whether a zone's cells hold any cell somebody fills (1.193). */
+/** Whether a zone's cells hold any cell somebody fills (1.194). */
 export function rulesetZoneHoldsOne(cells: readonly RulesetCombatCell[], combatant: RulesetCombatant): boolean {
   return rulesetFootprint(combatant).some((cell) => rulesetZoneHolds(cells, cell));
 }
@@ -87,7 +87,7 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
     const blocks = action.zone?.blocks;
     if (!blocks || zone.anchor !== "point") continue;
     const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
-    // A broken section closes nothing (1.199).
+    // A broken section closes nothing (1.200).
     const broken = new Set(
       (zone.sections ?? [])
         .filter((section) => section.health <= 0)
@@ -118,7 +118,7 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
     rounds: zone.rounds,
     cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
     ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
-    // Each section and what it has left (1.199).
+    // Each section and what it has left (1.200).
     ...(zone.sections?.length && action.zone?.sections
       ? {
           sections: zone.sections.map((section) => ({
@@ -131,7 +131,7 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   }));
 }
 
-/** The standing sections of walls that may be struck (1.199), each with its zone. */
+/** The standing sections of walls that may be struck (1.200), each with its zone. */
 export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   caster: RulesetCombatant;
   zone: RulesetCombatZone;
@@ -166,7 +166,7 @@ export function rulesetZoneMoveCells(
   return cells;
 }
 
-/** The ways a line or cone its caster carries may be turned to face (1.181): toward any cell next
+/** The ways a line or cone its caster carries may be turned to face (1.182): toward any cell next
  *  to them on the board but the one it faces now, each a step away. */
 export function rulesetZoneTurnCells(
   state: RulesetEncounterState,

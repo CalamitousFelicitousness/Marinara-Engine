@@ -1,5 +1,5 @@
 /**
- * Martial Arts, Flurry of Blows and Ki-Empowered Strikes (Capability API 1.241).
+ * Martial Arts, Flurry of Blows and Ki-Empowered Strikes (Capability API 1.242).
  *
  *   - `attackRows`, held: the rows it names hit and deal damage with the best of their own ability
  *     and its `abilities`, roll its die (by monk level) where that is the better, and carry its
@@ -317,7 +317,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with entries that change attack rows, grant strikes or come only after the attack action, or granted attacks narrowed by name or to after it, requires schemaVersion 2 and capabilityApi 1.241 or newer";
+      "A ruleset with entries that change attack rows, grant strikes or come only after the attack action, or granted attacks narrowed by name or to after it, requires schemaVersion 2 and capabilityApi 1.242 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -330,15 +330,15 @@ try {
     ]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(240, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(241, document), gate);
+      assert.equal(issue(241, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(242, document), gate);
     }
-    assert.notEqual(issue(240, without), gate);
-    assert.equal(issue(240, without, new Map([["monk.json", { entries: [flurry] }]])), gate);
+    assert.notEqual(issue(241, without), gate);
+    assert.equal(issue(241, without, new Map([["monk.json", { entries: [flurry] }]])), gate);
   }
 
   console.log(
-    "Ruleset martial arts: held entries change named attack rows (best ability, a better die, qualities), grant a bonus strike after the attack action, and Flurry gives two unarmed strikes; gated at 1.241.",
+    "Ruleset martial arts: held entries change named attack rows (best ability, a better die, qualities), grant a bonus strike after the attack action, and Flurry gives two unarmed strikes; gated at 1.242.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

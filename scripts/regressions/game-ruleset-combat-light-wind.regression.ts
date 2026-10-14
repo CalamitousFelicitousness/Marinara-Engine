@@ -1,5 +1,5 @@
 /**
- * Light obscurement and the wind (Capability API 1.285).
+ * Light obscurement and the wind (Capability API 1.286).
  *
  *   - `obscures.light` (and a teleport's `smoke.light`): it hides nobody, though whoever is seen
  *     only through it is seen lightly obscured (dim light, a Cape of the Mountebank's smoke).
@@ -73,7 +73,7 @@ try {
     range: 120,
     zone: { rounds: 10, triggers: [], obscures: { light: true, dispersed: true }, disperses: true },
   });
-  // Stinking Cloud: a strong wind disperses it only after it has blown on it a whole round (1.288).
+  // Stinking Cloud: a strong wind disperses it only after it has blown on it a whole round (1.289).
   const stink = spell("stink", cloud({ dispersed: { after: 1 } }, 5));
   const cape = spell("cape", { teleport: { distance: 30, smoke: { light: true } } });
   const spells = [fog, dark, haze, gust, cape, storm, stink];
@@ -201,7 +201,7 @@ try {
     assert.ok(late.events.some((one) => one.type === "zone" && one.outcome === "dispersed"));
   }
 
-  // ── A cloud the wind takes a whole round to blow away (1.288) ──
+  // ── A cloud the wind takes a whole round to blow away (1.289) ──
   {
     const end = (state: RulesetEncounterState) => {
       const actorId = state.order[state.turn]!;
@@ -274,26 +274,26 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a lightly obscuring fog, or a fog or wind that blows it away, requires schemaVersion 2 and capabilityApi 1.285 or newer";
+      "A ruleset with a lightly obscuring fog, or a fog or wind that blows it away, requires schemaVersion 2 and capabilityApi 1.286 or newer";
     const only = (entry: RulesetCatalogEntry) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "x", label: "X", feeds: ["spells"], entries: [entry] });
       return doc;
     };
     for (const entry of [fog, haze, gust, cape]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(284) as never, only(entry)), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(285) as never, only(entry)), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(285) as never, only(entry)), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(286) as never, only(entry)), gate, entry.id);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(284) as never, only(dark)), gate, "darkness");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(285) as never, only(dark)), gate, "darkness");
     const slow =
-      "A ruleset with a fog a wind disperses only after a while requires schemaVersion 2 and capabilityApi 1.288 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(287) as never, only(stink)), slow);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(288) as never, only(stink)), null);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(287) as never, only(fog)), slow, "a fog blown at once");
+      "A ruleset with a fog a wind disperses only after a while requires schemaVersion 2 and capabilityApi 1.289 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(288) as never, only(stink)), slow);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(289) as never, only(stink)), null);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(288) as never, only(fog)), slow, "a fog blown at once");
   }
 
   console.log(
-    "Light and wind: a light fog or the Cape's thin smoke hides nobody but leaves whoever is seen through it lightly obscured; a wind's zone blows away the fogs it reaches with their concentration, not darkness; Stinking Cloud only after a whole round of wind (1.288); refusals; gated at 1.285 and 1.288.",
+    "Light and wind: a light fog or the Cape's thin smoke hides nobody but leaves whoever is seen through it lightly obscured; a wind's zone blows away the fogs it reaches with their concentration, not darkness; Stinking Cloud only after a whole round of wind (1.289); refusals; gated at 1.286 and 1.289.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

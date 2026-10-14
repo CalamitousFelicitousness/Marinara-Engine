@@ -1,5 +1,5 @@
 /**
- * Targets that grow with the sheet, the same one more than once (Capability API 1.304).
+ * Targets that grow with the sheet, the same one more than once (Capability API 1.305).
  *
  *   - `targetsScale`: extra targets at each step of what it reads, as `scales` adds dice: 5e's
  *     eldritch blast, a beam more at 5th, 11th and 17th level.
@@ -308,17 +308,17 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with targets that grow with the sheet, or the same target more than once, requires schemaVersion 2 and capabilityApi 1.304 or newer";
+      "A ruleset with targets that grow with the sheet, or the same target more than once, requires schemaVersion 2 and capabilityApi 1.305 or newer";
     for (const mechanics of [{ targetsRepeat: true }, { targetsScale: beams.targetsScale }]) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [spell("x", "X", mechanics)] });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(303) as never, doc), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(304) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(304) as never, doc), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate);
     }
   }
 
   console.log(
-    "Beams: eldritch blast's beams grow with level, each its own attack at the same target or another, every amend on each; refusals; gated at 1.304.",
+    "Beams: eldritch blast's beams grow with level, each its own attack at the same target or another, every amend on each; refusals; gated at 1.305.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

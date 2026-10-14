@@ -1,5 +1,5 @@
 /**
- * Hide in Plain Sight's needs, Feral Senses and surprise from a hidden start (Capability API 1.308).
+ * Hide in Plain Sight's needs, Feral Senses and surprise from a hidden start (Capability API 1.309).
  *
  *   - `hiding.stillWhile`: `still` counts only while its holder holds a condition (camouflage made
  *     beforehand) and, with `wall`, stands beside something that blocks sight.
@@ -289,27 +289,27 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.308 or newer";
+      "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.309 or newer";
     const only = (entry: RulesetCatalogEntry) => {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "feats").entries.push(entry);
       return doc;
     };
     for (const entry of [plainSight, wallOnly, feral]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(307) as never, only(entry)), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(308) as never, only(entry)), gate, entry.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(308) as never, only(entry)), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(309) as never, only(entry)), gate, entry.id);
     }
     const creature = JSON.parse(fiveEText) as Record<string, any>;
     creature.catalogs
       .find((catalog: { id: string }) => catalog.id === "creatures")
       .entries.push({ id: "cube", label: "Cube", creature: { hiding: { starts: 15, surprises: true } } });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(307) as never, creature), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(308) as never, creature), gate);
     const old = only(trait("Old", { still: 10 }));
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(307) as never, old), gate, "1.291's own");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(308) as never, old), gate, "1.292's own");
   }
 
   console.log(
-    "Hiding needs: Hide in Plain Sight only camouflaged and against a wall, Feral Senses' attacks unhindered, a cube surprising those unaware of it; refusals; gated at 1.308.",
+    "Hiding needs: Hide in Plain Sight only camouflaged and against a wall, Feral Senses' attacks unhindered, a cube surprising those unaware of it; refusals; gated at 1.309.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

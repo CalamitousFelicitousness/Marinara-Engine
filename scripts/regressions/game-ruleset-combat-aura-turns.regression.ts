@@ -1,5 +1,5 @@
 /**
- * More from auras (Capability API 1.264).
+ * More from auras (Capability API 1.265).
  *
  *   - `needs`: Countercharm reaches only allies who can hear: not a deafened one, and not across
  *     Silence, whichever of the two stands in it.
@@ -375,7 +375,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with auras that need senses, harm as their holder's turn starts or ask for a save, or saves changed against what a catalog casts, requires schemaVersion 2 and capabilityApi 1.264 or newer";
+      "A ruleset with auras that need senses, harm as their holder's turn starts or ask for a save, or saves changed against what a catalog casts, requires schemaVersion 2 and capabilityApi 1.265 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
@@ -387,20 +387,20 @@ try {
             doc.combat.conditions = doc.combat.conditions.filter((entry: any) => entry !== conditionsOf(doc, id));
         }
       });
-      assert.equal(issue(263, one), gate, key);
-      assert.notEqual(issue(264, one), gate);
+      assert.equal(issue(264, one), gate, key);
+      assert.notEqual(issue(265, one), gate);
     }
     const casts = {
       ...without,
       extra: { ward: { modifiers: [{ to: "saves", flat: 1, against: { casts: ["spells"] } }] } },
     };
-    assert.equal(issue(263, casts), gate);
-    assert.notEqual(issue(263, without), gate);
-    assert.equal(issue(263, without, new Map([["extra.json", casts.extra]])), gate);
+    assert.equal(issue(264, casts), gate);
+    assert.notEqual(issue(264, without), gate);
+    assert.equal(issue(264, without, new Map([["extra.json", casts.extra]])), gate);
   }
 
   console.log(
-    "Ruleset aura turns: Countercharm only to allies who can hear (Silence either side), Fire Aura burns at the holder's turn start, Fear Aura and a gaze ask saves as turns start (proof once made, sight for a gaze), Holy Nimbus only against spells; gated at 1.264.",
+    "Ruleset aura turns: Countercharm only to allies who can hear (Silence either side), Fire Aura burns at the holder's turn start, Fear Aura and a gaze ask saves as turns start (proof once made, sight for a gaze), Holy Nimbus only against spells; gated at 1.265.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

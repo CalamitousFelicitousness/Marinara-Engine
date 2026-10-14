@@ -182,7 +182,7 @@ export interface RulesetItemUseFact {
     cost: number;
     max: number;
     recharge?: { rests: string[]; amount: "max" | string };
-    /** `regains` (1.270): the faces at or over `atLeast` give back `amount` charges. */
+    /** `regains` (1.271): the faces at or over `atLeast` give back `amount` charges. */
     breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string }; becomes?: string };
   };
   /** A pool it gives back some of, by the pool's label. */
@@ -234,7 +234,7 @@ export interface RulesetItemAttackFact {
     save?: { save: string; difficulty: number };
     saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
   }>;
-  /** Charges its holder may spend once it hits (1.272): what each adds, a charge more's, and the
+  /** Charges its holder may spend once it hits (1.273): what each adds, a charge more's, and the
    *  conditions it puts on the one hit, by their labels. */
   spends?: Array<{
     label: string;
@@ -391,7 +391,7 @@ function rulesetItemUseFacts(
                   breaksOn: {
                     die: item.charges.breaksOn.die,
                     ...(item.charges.breaksOn.atMost !== undefined ? { atMost: item.charges.breaksOn.atMost } : {}),
-                    // What it becomes, by its name where the ruleset's own catalogs hold it (1.271).
+                    // What it becomes, by its name where the ruleset's own catalogs hold it (1.272).
                     ...(item.charges.breaksOn.becomes !== undefined
                       ? { becomes: itemLabelOf(definition, item.charges.breaksOn.becomes) }
                       : {}),
@@ -986,7 +986,7 @@ function itemLabelOf(definition: RulesetDefinition, ref: string): string {
   return catalog?.entries?.find((entry) => entry.id === ref.slice(at + 1))?.label ?? ref;
 }
 
-/** An item's last-charge die as an inventory spends it (1.270): its `regains` dice read once. */
+/** An item's last-charge die as an inventory spends it (1.271): its `regains` dice read once. */
 function bookBreaksOn(
   breaks: NonNullable<NonNullable<RulesetCatalogItem["charges"]>["breaksOn"]>,
 ): NonNullable<NonNullable<RulesetItemBookEntry["charges"]>["breaksOn"]> {
@@ -1334,7 +1334,7 @@ export function rulesetSheetItems(
       },
     ];
   });
-  // A binding that needs other items worn holds only while they are (1.312): a stack left bound
+  // A binding that needs other items worn holds only while they are (1.313): a stack left bound
   // after its belt came off by some other road is still not worn.
   for (;;) {
     const unmet = held.find(
@@ -1548,7 +1548,7 @@ export function rulesetBreakFaces(breaks: { atMost: number }): string {
   return breaks.atMost === 1 ? "a 1" : `1 to ${breaks.atMost}`;
 }
 
-/** The faces a last charge's die gives charges back on (1.270): "a 20", "19 to 20". */
+/** The faces a last charge's die gives charges back on (1.271): "a 20", "19 to 20". */
 export function rulesetRegainFaces(die: number, atLeast: number): string {
   return atLeast === die ? `a ${die}` : `${atLeast} to ${die}`;
 }

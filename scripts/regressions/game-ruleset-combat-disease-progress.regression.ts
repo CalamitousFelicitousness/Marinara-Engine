@@ -1,11 +1,11 @@
 /**
- * Diseases between fights (Capability API 1.259).
+ * Diseases between fights (Capability API 1.260).
  *
  *   - A combat condition's `onRest`: each rest it names lowers health's maximum while it is on its
  *     holder (5e's Mummy Rot, 3d6 a long rest), rolled where the rest is taken or its average
  *     without dice; `lasting` keeps it past the next rest. A save first (the otyugh's): only a
  *     failure lowers, and with `cures` a success ends it.
- *   - Counted saves (1.257) rolled out as the fight ends, won or fled: Contagion is shaken off or
+ *   - Counted saves (1.258) rolled out as the fight ends, won or fled: Contagion is shaken off or
  *     sets in by then. A save made only on damage waits, and nobody fallen rolls.
  *   - Import refusals and the install gate.
  */
@@ -300,7 +300,7 @@ try {
     );
   }
 
-  // ── The install gate: 1.259 ──
+  // ── The install gate: 1.260 ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -316,23 +316,23 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions that lower a maximum on a rest requires schemaVersion 2 and capabilityApi 1.259 or newer";
+      "A ruleset with conditions that lower a maximum on a rest requires schemaVersion 2 and capabilityApi 1.260 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const doc = structuredClone(without);
     doc.extra = { entry: { condition: "mummy_rot", onRest: mummyRot } };
-    assert.equal(issue(258, doc), gate);
-    assert.notEqual(issue(259, doc), gate);
-    assert.notEqual(issue(258, without), gate);
+    assert.equal(issue(259, doc), gate);
+    assert.notEqual(issue(260, doc), gate);
+    assert.notEqual(issue(259, without), gate);
     assert.equal(
-      issue(258, without, new Map([["conditions.json", { entries: [{ condition: "mummy_rot", onRest: mummyRot }] }]])),
+      issue(259, without, new Map([["conditions.json", { entries: [{ condition: "mummy_rot", onRest: mummyRot }] }]])),
       gate,
     );
   }
 
   console.log(
-    "Ruleset disease progress: Mummy Rot lowers the maximum each long rest, lasting or not, and counted saves are rolled out as a fight ends, won or fled; gated at 1.259.",
+    "Ruleset disease progress: Mummy Rot lowers the maximum each long rest, lasting or not, and counted saves are rolled out as a fight ends, won or fled; gated at 1.260.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

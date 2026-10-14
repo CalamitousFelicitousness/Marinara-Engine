@@ -1,5 +1,5 @@
 /**
- * Wounds that stack, sworn enemies, and monster attacks by ability (Capability API 1.188).
+ * Wounds that stack, sworn enemies, and monster attacks by ability (Capability API 1.189).
  *
  *   - `harms`: a condition deals damage as its holder's turn starts (or ends), from its source, before
  *     the save that may end it; `stacks` puts it on again up to a most, and harms once for each.
@@ -446,7 +446,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions that harm each turn, stack or keep to one holder per source, weapons that mark a sworn enemy, or creature actions that name their ability requires schemaVersion 2 and capabilityApi 1.188 or newer";
+      "A ruleset with conditions that harm each turn, stack or keep to one holder per source, weapons that mark a sworn enemy, or creature actions that name their ability requires schemaVersion 2 and capabilityApi 1.189 or newer";
     const condition = (entry: Record<string, unknown>) => {
       const doc = JSON.parse(fiveE);
       doc.combat.conditions.push({ condition: "poisoned", ...entry });
@@ -489,18 +489,18 @@ try {
       ["plus marked", withItem({ plus: [{ dice: "1d6", marked: "poisoned" }] })],
       ["creature ability", ogre],
     ] as const) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(187) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(188) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(188) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(189) as never, doc), gate, label);
     }
-    // A 1.186 smiting entry, by what the target is and with toHit, is not this minor's.
+    // A 1.187 smiting entry, by what the target is and with toHit, is not this minor's.
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(187) as never,
+        manifest(188) as never,
         withItem({ against: [{ is: { types: ["undead"] }, toHit: 2 }] }),
       ),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, JSON.parse(fiveE)), gate, "plain 5e");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(188) as never, JSON.parse(fiveE)), gate, "plain 5e");
   }
 
   console.log(

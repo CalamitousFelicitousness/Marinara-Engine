@@ -1,5 +1,5 @@
 /**
- * Lay on Hands (Capability API 1.250).
+ * Lay on Hands (Capability API 1.251).
  *
  *   - An entry's `usesChosen`: its option offers an `amount` up to the uses left, the choice spends
  *     that many and heals that many times over.
@@ -224,20 +224,20 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with heals that spend as many uses as their user chooses requires schemaVersion 2 and capabilityApi 1.250 or newer";
+      "A ruleset with heals that spend as many uses as their user chooses requires schemaVersion 2 and capabilityApi 1.251 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     const document = structuredClone(without);
     document.extra = { entry: { mechanics: { usesChosen: true } } };
-    assert.equal(issue(249, document), gate);
-    assert.notEqual(issue(250, document), gate);
-    assert.notEqual(issue(249, without), gate);
-    assert.equal(issue(249, without, new Map([["oath.json", { entries: [layOnHands] }]])), gate);
+    assert.equal(issue(250, document), gate);
+    assert.notEqual(issue(251, document), gate);
+    assert.notEqual(issue(250, without), gate);
+    assert.equal(issue(250, without, new Map([["oath.json", { entries: [layOnHands] }]])), gate);
   }
 
   console.log(
-    "Ruleset Lay on Hands: the paladin chooses how many points to spend, one hit point each, or just enough to fill the target; more than is left is refused; gated at 1.250.",
+    "Ruleset Lay on Hands: the paladin chooses how many points to spend, one hit point each, or just enough to fill the target; more than is left is refused; gated at 1.251.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

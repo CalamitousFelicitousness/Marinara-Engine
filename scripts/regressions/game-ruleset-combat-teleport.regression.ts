@@ -1,5 +1,5 @@
 /**
- * Teleports (Capability API 1.275).
+ * Teleports (Capability API 1.276).
  *
  *   - `teleport` on an entry: Misty Step goes up to 30 feet to a place its caster can see, with no
  *     step between, so nobody standing beside them gets a strike at them leaving. Its option offers
@@ -450,7 +450,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a spell, an item or a creature that teleports requires schemaVersion 2 and capabilityApi 1.275 or newer";
+      "A ruleset with a spell, an item or a creature that teleports requires schemaVersion 2 and capabilityApi 1.276 or newer";
     const withEntries = (entries: unknown[]) =>
       fiveE((doc) => {
         doc.catalogs.push({ id: "x", label: "X", entries });
@@ -475,10 +475,10 @@ try {
       ],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(274) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(275) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(275) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(276) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(274) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(275) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

@@ -1,5 +1,5 @@
 /**
- * A weapon put in hand, and what amends it (Capability API 1.305).
+ * A weapon put in hand, and what amends it (Capability API 1.306).
  *
  *   - `conjures`: used, one of its melee weapons (picked as its mode) is in its user's hand for the
  *     rest of the fight, with proficiency where it says and its blows magical; or a held magic weapon
@@ -62,7 +62,7 @@ try {
     { id: "greataxe", label: "Greataxe", item: weapon("1d12", "slashing") },
     { id: "bow", label: "Bow", item: weapon("1d8", "piercing", { range: { normal: 80, long: 320 } }) },
     { id: "rope", label: "Rope", item: { category: "gear" } },
-    // Thrown, and struck with in reach (1.307).
+    // Thrown, and struck with in reach (1.308).
     { id: "dagger", label: "Dagger", item: weapon("1d4", "piercing", { reach: 5, range: { normal: 20, long: 60 } }) },
   ];
   const feature = (id: string, mechanics: Record<string, unknown>) =>
@@ -251,7 +251,7 @@ try {
     assert.ok(actionOf(axe.state, "Greataxe"));
   }
 
-  // ── Dismissed for nothing, and gone with its maker (1.307) ──
+  // ── Dismissed for nothing, and gone with its maker (1.308) ──
   {
     const state = fight([pact], 16, [flameTongue]);
     const dismissOf = (at: RulesetEncounterState) =>
@@ -315,7 +315,7 @@ try {
     assert.equal(actionOf(killed.state, "Longsword"), undefined, "gone with its maker");
   }
 
-  // ── Bound out of the fight, by the weapon a sheet note names (1.308) ──
+  // ── Bound out of the fight, by the weapon a sheet note names (1.309) ──
   {
     const ritualDoc = fiveE((doc) => {
       doc.sheet.live.text.push({ id: "pact_bound", label: "Pact weapon", maxLength: 80 });
@@ -373,7 +373,7 @@ try {
       /"boundIn" names the weapon "binds" binds/,
     );
     const gate =
-      "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.308 or newer";
+      "A ruleset with hiding that needs camouflage or a wall, attacks unhindered by not seeing, surprise from a hidden start, or a weapon bound out of the fight requires schemaVersion 2 and capabilityApi 1.309 or newer";
     const manifest = (minor: number) =>
       ({
         schemaVersion: 2,
@@ -388,8 +388,8 @@ try {
         permissions: [],
         restartRequired: false,
       }) as never;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(307), ritualDoc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(308), ritualDoc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(308), ritualDoc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(309), ritualDoc), gate);
   }
 
   // ── Lifedrinker and Thirsting Blade ride on it ──
@@ -542,17 +542,17 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with weapons put in hand, or amends that add damage of a type or strikes, requires schemaVersion 2 and capabilityApi 1.305 or newer";
+      "A ruleset with weapons put in hand, or amends that add damage of a type or strikes, requires schemaVersion 2 and capabilityApi 1.306 or newer";
     for (const entry of [pact, lifedrinker, thirsting]) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.push({ id: "features", label: "Features", feeds: ["features"], entries: [entry] });
-      assert.equal(getCapabilityPackageInstallIssue(manifest(304) as never, doc), gate, entry.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate, entry.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(306) as never, doc), gate);
     }
   }
 
   console.log(
-    "Pact weapon: a weapon of its user's choice in hand, proficient and magical, or a held magic one bound, given back when replaced; Lifedrinker and Thirsting Blade on it; refusals; gated at 1.305.",
+    "Pact weapon: a weapon of its user's choice in hand, proficient and magical, or a held magic one bound, given back when replaced; Lifedrinker and Thirsting Blade on it; refusals; gated at 1.306.",
   );
 
   function refusedStep(state: RulesetEncounterState, label: string) {

@@ -1,5 +1,5 @@
 /**
- * Cutting Words and Evasion (Capability API 1.249).
+ * Cutting Words and Evasion (Capability API 1.250).
  *
  *   - `lowersRoll`: taken as somebody else's attack hits an ally, its die (sized by the bard's level)
  *     comes off the roll, which is checked again: a hit can become a miss; a natural one stays.
@@ -290,22 +290,22 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with answers that take dice off a roll that hit, or saves evaded, requires schemaVersion 2 and capabilityApi 1.249 or newer";
+      "A ruleset with answers that take dice off a roll that hit, or saves evaded, requires schemaVersion 2 and capabilityApi 1.250 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
     for (const extra of [{ evasion: ["dex_save"] }, { mechanics: { lowersRoll: { dice: "1d6" } } }]) {
       const document = structuredClone(without);
       document.extra = { entry: extra };
-      assert.equal(issue(248, document), gate, JSON.stringify(extra));
-      assert.notEqual(issue(249, document), gate);
+      assert.equal(issue(249, document), gate, JSON.stringify(extra));
+      assert.notEqual(issue(250, document), gate);
     }
-    assert.notEqual(issue(248, without), gate);
-    assert.equal(issue(248, without, new Map([["lore.json", { entries: [cutting] }]])), gate);
+    assert.notEqual(issue(249, without), gate);
+    assert.equal(issue(249, without, new Map([["lore.json", { entries: [cutting] }]])), gate);
   }
 
   console.log(
-    "Ruleset cutting words: Cutting Words takes a bardic die off an attack that hit an ally and checks it again, and Evasion takes nothing from a made Dexterity half save and half from a failed one; gated at 1.249.",
+    "Ruleset cutting words: Cutting Words takes a bardic die off an attack that hit an ally and checks it again, and Evasion takes nothing from a made Dexterity half save and half from a failed one; gated at 1.250.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

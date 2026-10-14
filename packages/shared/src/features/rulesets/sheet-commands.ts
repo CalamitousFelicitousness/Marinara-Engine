@@ -38,7 +38,7 @@ export interface SheetCommandContext {
   /** The entries of the catalogs the party's rows point at, which the `use` command needs to know
    *  what an ability costs. Absent, every `use` is refused as naming nothing the Engine knows. */
   catalogs?: RulesetCatalogEntriesById;
-  /** What a rest rolls for a condition that lowers health's maximum (1.259). Absent, its dice count
+  /** What a rest rolls for a condition that lowers health's maximum (1.260). Absent, its dice count
    *  their average. */
   roll?: (sides: number) => number;
 }

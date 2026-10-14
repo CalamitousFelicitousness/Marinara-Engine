@@ -71,9 +71,9 @@ export interface RulesetItemUseSaid {
   left: { count: number } | { charges: number; max: number };
   /** It spent its last charge and its `breaksOn` die said it breaks: the face rolled. */
   broke?: number;
-  /** It spent its last charge and its `breaksOn` die gave some back (1.270): the face, and how many. */
+  /** It spent its last charge and its `breaksOn` die gave some back (1.271): the face, and how many. */
   recharged?: { roll: number; amount: number };
-  /** It spent its last charge and became another item (1.271): that item's name, and the face. */
+  /** It spent its last charge and became another item (1.272): that item's name, and the face. */
   becomes?: { name: string; roll: number };
   /** Its gate, when its user rolled one: what was rolled, the total (a pool's successes) against the
    *  difficulty, and whether it passed. Failed, nothing it does happened. */
@@ -183,7 +183,7 @@ export function useRulesetItemOutsideFight(input: {
         ? undefined
         : `${definition.sheet.live.pools.find((entry) => entry.id === pool)?.label ?? pool} ${now}`;
     const healed = use.kind === "heal" ? rolled(use.amount) : null;
-    // What its holder's sheet adds (1.270): a Staff of Healing's spellcasting modifier.
+    // What its holder's sheet adds (1.271): a Staff of Healing's spellcasting modifier.
     const added = healed && use.amountAdd ? sheetValue(use.amountAdd) : 0;
     const heal = healed ? { ...healed, total: Math.max(0, healed.total + (Number.isFinite(added) ? added : 0)) } : null;
     if (heal && health) {
@@ -200,7 +200,7 @@ export function useRulesetItemOutsideFight(input: {
                   op: "restore",
                   pool: health.pool,
                   amount: heal.total,
-                  // A potion tagged magical is a magical heal (1.260), as its use in a fight is.
+                  // A potion tagged magical is a magical heal (1.261), as its use in a fight is.
                   ...(item.tags?.includes("magical") ? { magical: true as const } : {}),
                 }),
               )
@@ -248,13 +248,13 @@ export function useRulesetItemOutsideFight(input: {
   // The last charge spent: an item that may break rolls for it, as it would in a fight.
   const breaks = charges === 0 ? item.charges?.breaksOn : undefined;
   const face = breaks ? roll(breaks.die) : undefined;
-  // A high face gives charges back instead (1.270), as it would in a fight.
+  // A high face gives charges back instead (1.271), as it would in a fight.
   const regained =
     breaks?.regains && face !== undefined && face >= breaks.regains.atLeast ? rolled(breaks.regains.amount) : null;
   const recharged = regained && max !== undefined ? { roll: face!, amount: Math.min(max, regained.total) } : undefined;
   const cracked =
     !recharged && breaks?.atMost !== undefined && face !== undefined && face <= breaks.atMost ? face : undefined;
-  // Or it becomes another item instead (1.271).
+  // Or it becomes another item instead (1.272).
   const turnsInto = cracked !== undefined && breaks?.becomes ? input.itemOf(breaks.becomes) : undefined;
   const becomes = turnsInto && breaks?.becomes ? { ref: breaks.becomes, name: turnsInto.name } : undefined;
   const broke = becomes ? undefined : cracked;

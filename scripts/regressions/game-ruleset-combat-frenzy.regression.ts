@@ -1,5 +1,5 @@
 /**
- * Berserker Frenzy (Capability API 1.238).
+ * Berserker Frenzy (Capability API 1.239).
  *
  *   - A combat condition's `grants.melee`: the one strike its granted budget pays for is made only
  *     with a weapon that strikes in reach, and a thrown one only within its reach (swung, not
@@ -326,7 +326,7 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with conditions whose granted attacks are melee only or that move a track as they end, or uses that spend another row's, requires schemaVersion 2 and capabilityApi 1.238 or newer";
+      "A ruleset with conditions whose granted attacks are melee only or that move a track as they end, or uses that spend another row's, requires schemaVersion 2 and capabilityApi 1.239 or newer";
     const without = JSON.parse(fiveEText);
     const issue = (minor: number, document: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, document, files as never);
@@ -338,8 +338,8 @@ try {
       const document = structuredClone(without);
       if (condition) document.combat.conditions.push(condition);
       else document.extra = { frenzy: { mechanics: { usesOf: "Rage" } } };
-      assert.equal(issue(237, document), gate, JSON.stringify(condition));
-      assert.notEqual(issue(238, document), gate);
+      assert.equal(issue(238, document), gate, JSON.stringify(condition));
+      assert.notEqual(issue(239, document), gate);
     }
     // A grant of any attack, and an ending that only puts something on, are older.
     const older = structuredClone(without);
@@ -349,12 +349,12 @@ try {
       grants: { budget: "bonus", attacks: true },
       onEnd: { applies: [{ condition: "prone", duration: { rounds: 1 } }] },
     });
-    assert.notEqual(issue(237, older), gate);
-    assert.equal(issue(237, without, new Map([["rages.json", { entries: [frenzied] }]])), gate);
+    assert.notEqual(issue(238, older), gate);
+    assert.equal(issue(238, without, new Map([["rages.json", { entries: [frenzied] }]])), gate);
   }
 
   console.log(
-    "Ruleset frenzy: a frenzied rage grants one melee strike a bonus action, held to reach, and leaves a level of exhaustion as the rage ends; gated at 1.238.",
+    "Ruleset frenzy: a frenzied rage grants one melee strike a bonus action, held to reach, and leaves a level of exhaustion as the rage ends; gated at 1.239.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

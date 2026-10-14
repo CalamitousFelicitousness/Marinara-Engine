@@ -1,5 +1,5 @@
 /**
- * Bursts centred on their user (Capability API 1.281).
+ * Bursts centred on their user (Capability API 1.282).
  *
  *   - `area.around` on a creature's action: a mummy lord's Channel Negative Energy, bought with
  *     points between turns. Never aimed: everybody within its size of the mummy lord is caught, the
@@ -389,7 +389,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with a burst centred on its user requires schemaVersion 2 and capabilityApi 1.281 or newer";
+    const gate = "A ruleset with a burst centred on its user requires schemaVersion 2 and capabilityApi 1.282 or newer";
     const docs: Array<[string, Record<string, any>]> = [
       ["spell", fiveE((doc) => doc.catalogs.push({ id: "x", label: "X", entries: [nova] }))],
       [
@@ -404,10 +404,10 @@ try {
       ],
     ];
     for (const [label, doc] of docs) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(280) as never, doc), gate, label);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(281) as never, doc), gate, label);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(281) as never, doc), gate, label);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(282) as never, doc), gate, label);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(280) as never, fiveE()), gate, "the plain 5e example");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(281) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log(

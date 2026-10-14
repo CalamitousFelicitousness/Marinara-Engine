@@ -1,5 +1,5 @@
 /**
- * A zone's own damage type at its triggers (Capability API 1.197), as 5e's Wall of Thorns has it.
+ * A zone's own damage type at its triggers (Capability API 1.198), as 5e's Wall of Thorns has it.
  *
  *   - `zone.damageType`: whoever it appears around takes the entry's own type; whoever it catches
  *     later, at one of its triggers, takes this type instead. Without it, its triggers deal the
@@ -232,19 +232,19 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with zones that deal another damage type at their triggers requires schemaVersion 2 and capabilityApi 1.197 or newer";
+      "A ruleset with zones that deal another damage type at their triggers requires schemaVersion 2 and capabilityApi 1.198 or newer";
     const withThorns = fiveE((doc) => {
       doc.catalogs.push({ id: "walls", label: "Walls", feeds: ["spells"], entries: [thorns] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(196) as never, withThorns), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(197) as never, withThorns), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(196) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(197) as never, withThorns), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(198) as never, withThorns), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(197) as never, fiveE()), gate);
     const files = new Map([["walls.json", { entries: [thorns] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(196) as never, fiveE(), files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(197) as never, fiveE(), files as never), gate);
   }
 
   console.log(
-    "Ruleset zone damage type: Wall of Thorns deals piercing as it appears and slashing to whoever moves into it; gated at 1.197.",
+    "Ruleset zone damage type: Wall of Thorns deals piercing as it appears and slashing to whoever moves into it; gated at 1.198.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

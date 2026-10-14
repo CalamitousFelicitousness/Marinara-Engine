@@ -1,5 +1,5 @@
 /**
- * Picking targets by the health they have left (Capability API 1.195).
+ * Picking targets by the health they have left (Capability API 1.196).
  *
  *   - `mechanics.healthPool`: rolled once and shared out from the target with the least health left
  *     upward, each affected only while their health is no more than what remains, which they use up;
@@ -279,18 +279,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with entries that share out a pool of health, affect only those at or below some health, or kill outright requires schemaVersion 2 and capabilityApi 1.195 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(194) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(195) as never, fiveE()), gate);
+      "A ruleset with entries that share out a pool of health, affect only those at or below some health, or kill outright requires schemaVersion 2 and capabilityApi 1.196 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(196) as never, fiveE()), gate);
     for (const only of [sleep, stun, kill]) {
       const one = fiveE((doc) => (doc.catalogs.at(-1).entries = [structuredClone(only)]));
-      assert.equal(getCapabilityPackageInstallIssue(manifest(194) as never, one), gate, only.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, one), gate, only.id);
     }
     // In a catalog file of its own too.
     const plain = JSON.parse(fiveEText);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(194) as never, plain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(195) as never, plain), gate);
     const files = new Map([["spells.json", { entries: [structuredClone(sleep)] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(194) as never, plain, files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(195) as never, plain, files as never), gate);
   }
 
   console.log(

@@ -32,12 +32,12 @@ export interface RulesetSaveAgainst {
   conditions?: readonly string[];
   damage?: readonly string[];
   magic?: boolean;
-  /** What the creature the save is against is (1.184): its type and tags. */
+  /** What the creature the save is against is (1.185): its type and tags. */
   from?: { type?: string; tags: readonly string[] };
-  /** What the action the save is against is known by (1.190): its id, its name and its shared
+  /** What the action the save is against is known by (1.191): its id, its name and its shared
    *  recharge group. */
   action?: readonly string[];
-  /** The catalog the entry it is against came from, or the one an item's use casts from (1.264). */
+  /** The catalog the entry it is against came from, or the one an item's use casts from (1.265). */
   catalog?: string;
 }
 
@@ -48,12 +48,12 @@ export function rulesetSaveAgainstMatches(
 ): boolean {
   if (!against) return true;
   if (!source) return false;
-  // Named actions narrow everything else it says (1.190): one of them, and then the rest as usual.
+  // Named actions narrow everything else it says (1.191): one of them, and then the rest as usual.
   if (against.actions) {
     const known = (source.action ?? []).map((name) => name.trim().toLowerCase());
     if (!against.actions.some((name) => known.includes(name.trim().toLowerCase()))) return false;
   }
-  // As do the catalogs it is cast from (1.264): a spell, and then whoever cast it.
+  // As do the catalogs it is cast from (1.265): a spell, and then whoever cast it.
   if (against.casts && !(source.catalog !== undefined && against.casts.includes(source.catalog))) return false;
   if ((against.actions || against.casts) && !against.conditions && !against.damage && !against.magic && !against.from) {
     return true;
@@ -87,7 +87,7 @@ export interface RulesetCheckSource {
   conditionImmunities?: readonly string[];
   /** How far it lets its holder sense with each of the fight's senses (Capability API 1.179). */
   senses?: Readonly<Record<string, number | { add: number }>>;
-  /** The light it sheds for its holder (Capability API 1.293). */
+  /** The light it sheds for its holder (Capability API 1.294). */
   light?: Readonly<{ bright: number; dim: number }>;
 }
 
@@ -238,7 +238,7 @@ export function rulesetCheckEffects(
   };
   const save = target?.type === "save" ? target.id : undefined;
   const skill = target?.type === "skill" ? target.id : undefined;
-  // The ability a check is made with (1.187): a raw ability check's own, or a skill's as it is rolled.
+  // The ability a check is made with (1.188): a raw ability check's own, or a skill's as it is rolled.
   const ability =
     target?.type === "ability"
       ? target.id

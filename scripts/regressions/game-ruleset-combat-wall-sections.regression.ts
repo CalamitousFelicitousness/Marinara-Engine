@@ -1,5 +1,5 @@
 /**
- * Walls in sections, struck and broken (Capability API 1.199), as 5e's Wall of Ice has them.
+ * Walls in sections, struck and broken (Capability API 1.200), as 5e's Wall of Ice has them.
  *
  *   - `zone.sections`: the wall is cut into sections `every` long, each with its own defense and
  *     health, shown with what each has left.
@@ -92,7 +92,7 @@ try {
     rows: [{ list: "spells", values: { name: "Ice", level: 1, prepared: true } }],
     mechanics: iceMechanics,
   } as unknown as RulesetCatalogEntry;
-  // The same paid for with a slot, its frigid air 3 more a step above it (1.200).
+  // The same paid for with a slot, its frigid air 3 more a step above it (1.201).
   const iceUp = {
     id: "ice-up",
     label: "Ice Up",
@@ -338,7 +338,7 @@ try {
     assert.equal(hp(beside.state, "a"), 100);
   }
 
-  // ── Frigid air grows with the slot (1.200): 3 more a step above the cast's base ──
+  // ── Frigid air grows with the slot (1.201): 3 more a step above the cast's base ──
   {
     const walkIn = (payWith?: string) => {
       d20 = 15;
@@ -402,19 +402,19 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with walls in sections that are struck and broken requires schemaVersion 2 and capabilityApi 1.199 or newer";
+      "A ruleset with walls in sections that are struck and broken requires schemaVersion 2 and capabilityApi 1.200 or newer";
     const withIce = fiveE((doc) => {
       doc.catalogs.push({ id: "walls", label: "Walls", feeds: ["spells"], entries: [ice] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(198) as never, withIce), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(199) as never, withIce), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(198) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(199) as never, withIce), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(200) as never, withIce), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(199) as never, fiveE()), gate);
     const files = new Map([["walls.json", { entries: [ice] }]]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(198) as never, fiveE(), files as never), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(199) as never, fiveE(), files as never), gate);
   }
 
   console.log(
-    "Ruleset wall sections: Wall of Ice stands in sections struck like creatures, fire doing double; a broken one opens and leaves frigid air; gated at 1.199.",
+    "Ruleset wall sections: Wall of Ice stands in sections struck like creatures, fire doing double; a broken one opens and leaves frigid air; gated at 1.200.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

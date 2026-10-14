@@ -56,13 +56,13 @@ export interface RulesetCombatMenuProps {
     style?: string,
     /** The weapon's mode an attack is made in. */
     mode?: string,
-    /** How many uses it spends, where the option lets its user choose (1.250). */
+    /** How many uses it spends, where the option lets its user choose (1.251). */
     amount?: number,
-    /** The alterations it is used with (1.252): Metamagic. */
+    /** The alterations it is used with (1.253): Metamagic. */
     alters?: string[],
-    /** Who of its user's side they spare (1.253): Careful Spell. */
+    /** Who of its user's side they spare (1.254): Careful Spell. */
     spares?: string[],
-    /** Who they give disadvantage on their first save (1.254): Heightened Spell. */
+    /** Who they give disadvantage on their first save (1.255): Heightened Spell. */
     heightens?: string,
   ) => void;
   /** Walking away. The ruleset's menu never carries it, because leaving is not a thing the rules
@@ -105,11 +105,11 @@ export function RulesetCombatMenu({
 }: RulesetCombatMenuProps) {
   const { t } = useTranslation();
   const [ownStep, setOwnStep] = useState<RulesetMenuStep | null>(null);
-  // The number typed into the amount step (1.250), kept as text so a cleared box is not a zero.
+  // The number typed into the amount step (1.251), kept as text so a cleared box is not a zero.
   const [amountText, setAmountText] = useState("");
-  // The alterations ticked in the alter step (1.252).
+  // The alterations ticked in the alter step (1.253).
   const [altersPicked, setAltersPicked] = useState<string[]>([]);
-  // Who of its user's side is ticked to be spared in the spare step (1.253).
+  // Who of its user's side is ticked to be spared in the spare step (1.254).
   const [sparesPicked, setSparesPicked] = useState<string[]>([]);
   // Held by the owner only when it passes BOTH halves (`step` may be null, never left out): with one
   // of them missing the menu keeps its own, or a pick would be handed up and never come back down.
@@ -205,7 +205,7 @@ export function RulesetCombatMenu({
     onChoose(option.id, targets, payWith, undefined, style, mode, amount, alters);
   };
   /** Who it spares and who it heightens are picked before it is sent, where there is a pick to make
-   *  (1.253, 1.254). True when that step was opened. */
+   *  (1.254, 1.255). True when that step was opened. */
   const picksFirst = (held: RulesetMenuStep): boolean => {
     const next = rulesetPicksStep(view, held, held.targets, held.cell);
     if (!next) return false;
@@ -242,7 +242,7 @@ export function RulesetCombatMenu({
     style?: string,
     mode?: string,
     amount?: number | null,
-    /** null once the alter step was passed with none ticked (1.252). */
+    /** null once the alter step was passed with none ticked (1.253). */
     alters?: string[] | null,
   ) => {
     const how = {
@@ -251,7 +251,7 @@ export function RulesetCombatMenu({
       ...(typeof amount === "number" ? { amount } : {}),
       ...(alters?.length ? { alters } : {}),
     };
-    // What it may be used with comes first (1.252): Metamagic, which may give it another target.
+    // What it may be used with comes first (1.253): Metamagic, which may give it another target.
     if (option.alters?.length && alters === undefined) {
       setAltersPicked(option.alterNeeded ? [option.alterNeeded] : []);
       setStep({ stage: "alter", option, ...how, targets: [] });
@@ -261,7 +261,7 @@ export function RulesetCombatMenu({
     const moded = chosen ? { ...option, targets: { ...option.targets, count: chosen.targets } } : option;
     const twins = (alters ?? []).filter((id) => option.alters?.find((offer) => offer.id === id)?.twins).length;
     const aimed = twins ? { ...moded, targets: { ...moded.targets, count: moded.targets.count + twins } } : moded;
-    // How much of it to spend comes first where its user chooses (1.250); null is "just enough",
+    // How much of it to spend comes first where its user chooses (1.251); null is "just enough",
     // which the rules work out from the target.
     if (aimed.amount && amount === undefined) {
       setAmountText(String(aimed.amount.max));
@@ -403,7 +403,7 @@ export function RulesetCombatMenu({
     );
   }
 
-  // ── Choosing what to use it with (1.252) ──
+  // ── Choosing what to use it with (1.253) ──
   if (step?.stage === "alter" && step.option.alters?.length) {
     const option = step.option;
     const offers = option.alters!;
@@ -474,7 +474,7 @@ export function RulesetCombatMenu({
     );
   }
 
-  // ── Who of its user's side it spares (1.253): Careful Spell ──
+  // ── Who of its user's side it spares (1.254): Careful Spell ──
   if (step?.stage === "spare" && step.spare) {
     const { ids, most } = step.spare;
     const toggle = (id: string) =>
@@ -534,7 +534,7 @@ export function RulesetCombatMenu({
     );
   }
 
-  // ── Who it gives disadvantage on their first save (1.254): Heightened Spell ──
+  // ── Who it gives disadvantage on their first save (1.255): Heightened Spell ──
   if (step?.stage === "heighten" && step.heighten) {
     return (
       <div className="flex flex-col gap-2 p-3">
@@ -568,7 +568,7 @@ export function RulesetCombatMenu({
     );
   }
 
-  // ── Choosing how much of it to spend (1.250) ──
+  // ── Choosing how much of it to spend (1.251) ──
   if (step?.stage === "amount" && step.option.amount) {
     const option = step.option;
     const max = option.amount!.max;
@@ -652,7 +652,7 @@ export function RulesetCombatMenu({
               onClick={() => paid(pool)}
               className={cn(buttonClass, "border-blue-400/25 bg-blue-500/10 text-white/85 hover:bg-blue-500/20")}
             >
-              {/* More of the item's own charges (1.268). */}
+              {/* More of the item's own charges (1.269). */}
               {pool.startsWith(RULESET_CHARGE_STEP_PREFIX)
                 ? t("game.combat.ruleset.upcast.charges", {
                     count: Number(pool.slice(RULESET_CHARGE_STEP_PREFIX.length)),
@@ -685,7 +685,7 @@ export function RulesetCombatMenu({
       closeStep();
       onChoose(option.id, [], step.payWith, laid, step.style, step.mode, step.amount, step.alters);
     };
-    // Who may go along on a teleport (1.275), ticked here while the board takes the cell.
+    // Who may go along on a teleport (1.276), ticked here while the board takes the cell.
     const carries = step.stage === "aim" ? option.teleport?.carries : undefined;
     const prompt =
       step.stage === "move"
@@ -736,7 +736,7 @@ export function RulesetCombatMenu({
             })}
           </div>
         )}
-        {/* Out of the fight altogether (1.278), with whoever is ticked to go along. */}
+        {/* Out of the fight altogether (1.279), with whoever is ticked to go along. */}
         {option.teleport?.leaves && step.stage === "aim" && (
           <div className="flex flex-wrap gap-2">
             <button
@@ -811,7 +811,7 @@ export function RulesetCombatMenu({
     const option = step.option;
     const many = option.targets.count > 1;
     const targets = view.combatants.filter((combatant) => option.targetIds.includes(combatant.id));
-    // The walls' sections it may strike instead (1.199), each by the first of its cells offered.
+    // The walls' sections it may strike instead (1.200), each by the first of its cells offered.
     const offered = new Set((option.walls ?? []).map((cell) => `${cell.x},${cell.y}`));
     const sections = (view.zones ?? []).flatMap((zone) =>
       (zone.sections ?? []).flatMap((section) => {
@@ -837,7 +837,7 @@ export function RulesetCombatMenu({
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-target-prompt">
           {targets.map((combatant, index) => {
             const picked = step.targets.includes(combatant.id);
-            // Picked more than once (1.304): eldritch blast's beams at one target.
+            // Picked more than once (1.305): eldritch blast's beams at one target.
             const times = step.targets.filter((id) => id === combatant.id).length;
             return (
               <button

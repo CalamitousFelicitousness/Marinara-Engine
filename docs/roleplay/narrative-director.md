@@ -70,7 +70,7 @@ To use your own instructions, follow these steps.
 
 Click **Reset to default** to go back to the built-in prompt.
 
-Keep the JSON reply format at the end of the prompt. Without it, the arc can't be read.
+Keep the JSON reply format at the end of the prompt: an `overarchingArc` object with `description`, `protagonistArc`, an optional `characterArc`, and `completed`. Without it, the arc can't be read.
 
 This prompt is saved on the agent, so it applies to every chat that uses that Narrative Director.
 

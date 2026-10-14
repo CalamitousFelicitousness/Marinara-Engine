@@ -3406,6 +3406,7 @@ export function AgentEditor() {
                     }}
                     rows={12}
                     title={localizeUi("ui.agents.agenteditor.secretPlotPrompt")}
+                    ariaLabel={localizeUi("ui.agents.agenteditor.secretPlotPrompt")}
                     className="w-full resize-y rounded-xl bg-[var(--secondary)] px-4 py-3 font-mono text-xs leading-relaxed ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] max-h-[50vh] overflow-y-auto"
                   />
                 ) : (

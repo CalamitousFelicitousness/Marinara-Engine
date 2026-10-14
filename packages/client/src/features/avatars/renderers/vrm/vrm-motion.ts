@@ -111,7 +111,7 @@ export interface BlinkTimer {
   phase: number;
 }
 
-/** Seconds until the next blink: every avatar kind blinks at the PNGTuber default rate (3 to 6 seconds). */
+/** Seconds until the next blink: VRM avatars blink at the PNGTuber default rate (3 to 6 seconds). */
 function nextBlinkWait(random: () => number): number {
   return pngtuberBlinkWaitMs(PNGTUBER_DEFAULT_MOTION.blinkIntervalSeconds, random) / 1000;
 }

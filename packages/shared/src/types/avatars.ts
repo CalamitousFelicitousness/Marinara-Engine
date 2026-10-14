@@ -340,8 +340,8 @@ export interface PngtuberMotion {
   blinkIntervalSeconds: number;
 }
 
-/** Motion for a new PNGTuber setup: a small hop while talking and a blink every 4.5 seconds on average, the
- *  blink rate every avatar kind uses. */
+/** Motion for a new PNGTuber setup: a small hop while talking and a blink every 4.5 seconds on average. VRM
+ *  avatars blink at the same rate; mesh avatars keep the mesh-avatar runtime's own blinking. */
 export const PNGTUBER_DEFAULT_MOTION: Readonly<PngtuberMotion> = Object.freeze({
   bounceOnTalk: true,
   bounceHeight: 0.06,

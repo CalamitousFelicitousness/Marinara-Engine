@@ -89,6 +89,7 @@ const WINDOW_PROMPTS = {
   falls: "Falls",
   "turn-start": "TurnStart",
   used: "Used",
+  caught: "Caught",
   signature: "Between",
   reaction: "Leaving",
 } as const;

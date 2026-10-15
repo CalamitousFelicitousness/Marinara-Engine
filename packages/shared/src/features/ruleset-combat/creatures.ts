@@ -66,6 +66,7 @@ export function rulesetReactionAnswers(
     ...(moment.weapon ? { weapon: true as const } : {}),
     ...(moment.names ? { names: [...moment.names] } : {}),
     ...(moment.budget ? { budget: moment.budget } : {}),
+    ...(moment.freeSlot ? { freeSlot: moment.freeSlot } : {}),
   });
   return {
     ...narrowing(reaction),

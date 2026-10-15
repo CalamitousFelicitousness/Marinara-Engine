@@ -38544,6 +38544,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "throwsCaught": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "lowersRoll": {
                       "type": "object",
                       "properties": {
@@ -42726,7 +42730,8 @@
                                 "harmed",
                                 "used",
                                 "falls",
-                                "turn-start"
+                                "turn-start",
+                                "caught"
                               ]
                             },
                             "at": {
@@ -42780,6 +42785,11 @@
                               "maxItems": 30
                             },
                             "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "freeSlot": {
                               "type": "string",
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
@@ -42859,7 +42869,8 @@
                                       "harmed",
                                       "used",
                                       "falls",
-                                      "turn-start"
+                                      "turn-start",
+                                      "caught"
                                     ]
                                   },
                                   "against": {
@@ -42941,6 +42952,11 @@
                                     "maxItems": 30
                                   },
                                   "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "freeSlot": {
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
@@ -51566,7 +51582,8 @@
                                   "harmed",
                                   "used",
                                   "falls",
-                                  "turn-start"
+                                  "turn-start",
+                                  "caught"
                                 ]
                               },
                               "at": {
@@ -51620,6 +51637,11 @@
                                 "maxItems": 30
                               },
                               "budget": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "freeSlot": {
                                 "type": "string",
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
@@ -51699,7 +51721,8 @@
                                         "harmed",
                                         "used",
                                         "falls",
-                                        "turn-start"
+                                        "turn-start",
+                                        "caught"
                                       ]
                                     },
                                     "against": {
@@ -51781,6 +51804,11 @@
                                       "maxItems": 30
                                     },
                                     "budget": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "freeSlot": {
                                       "type": "string",
                                       "maxLength": 40,
                                       "pattern": "^[a-z][a-z0-9_]*$"
@@ -65808,6 +65836,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "throwsCaught": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "lowersRoll": {
                           "type": "object",
                           "properties": {
@@ -69758,7 +69790,8 @@
                                     "harmed",
                                     "used",
                                     "falls",
-                                    "turn-start"
+                                    "turn-start",
+                                    "caught"
                                   ]
                                 },
                                 "at": {
@@ -69812,6 +69845,11 @@
                                   "maxItems": 30
                                 },
                                 "budget": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "freeSlot": {
                                   "type": "string",
                                   "maxLength": 40,
                                   "pattern": "^[a-z][a-z0-9_]*$"
@@ -69891,7 +69929,8 @@
                                           "harmed",
                                           "used",
                                           "falls",
-                                          "turn-start"
+                                          "turn-start",
+                                          "caught"
                                         ]
                                       },
                                       "against": {
@@ -69973,6 +70012,11 @@
                                         "maxItems": 30
                                       },
                                       "budget": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "freeSlot": {
                                         "type": "string",
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
@@ -77333,6 +77377,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "throwsCaught": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "lowersRoll": {
                                 "type": "object",
                                 "properties": {
@@ -81283,7 +81331,8 @@
                                           "harmed",
                                           "used",
                                           "falls",
-                                          "turn-start"
+                                          "turn-start",
+                                          "caught"
                                         ]
                                       },
                                       "at": {
@@ -81337,6 +81386,11 @@
                                         "maxItems": 30
                                       },
                                       "budget": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "freeSlot": {
                                         "type": "string",
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
@@ -81416,7 +81470,8 @@
                                                 "harmed",
                                                 "used",
                                                 "falls",
-                                                "turn-start"
+                                                "turn-start",
+                                                "caught"
                                               ]
                                             },
                                             "against": {
@@ -81498,6 +81553,11 @@
                                               "maxItems": 30
                                             },
                                             "budget": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "freeSlot": {
                                               "type": "string",
                                               "maxLength": 40,
                                               "pattern": "^[a-z][a-z0-9_]*$"

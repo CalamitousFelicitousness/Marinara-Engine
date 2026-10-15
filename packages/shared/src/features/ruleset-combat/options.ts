@@ -3944,7 +3944,8 @@ export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReact
     trigger.kind === "harmed" ||
     trigger.kind === "used" ||
     trigger.kind === "falls" ||
-    trigger.kind === "turn-start"
+    trigger.kind === "turn-start" ||
+    trigger.kind === "caught"
     ? trigger.kind
     : null;
 }
@@ -3968,6 +3969,8 @@ function momentAnswers(
   if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry, cause.action)) return false;
   // Its holder's own hit, or somebody else's (1.241): never both.
   if (moment.on === "hit" && (moment.by === "self") !== (sourceId === holder.id)) return false;
+  // Only the one who caught it throws it back (1.363).
+  if (moment.on === "caught" && !(cause.targetIds ?? []).includes(holder.id)) return false;
   if (moment.weapon && !cause.weapon) return false;
   if (moment.names && !(cause.attack !== undefined && rulesetAttackNamed(cause.attack, moment.names))) return false;
   // Only a strike paid for from its budget (1.248): Open Hand Technique, on Flurry of Blows.
@@ -4004,7 +4007,7 @@ export function rulesetReactionTarget(
   sourceId: string,
   cause: RulesetMomentCause,
 ): string | undefined {
-  if (moment === "turn-start" || moment === "falls" || moment === "used") return sourceId;
+  if (moment === "turn-start" || moment === "falls" || moment === "used" || moment === "caught") return sourceId;
   return [action.reaction!, ...(action.reaction?.also ?? [])].flatMap((one) => {
     if (one.on !== moment || !momentAnswers(state, holder, sourceId, one, cause)) return [];
     // Its holder's own blow is about whoever it hit (1.241).
@@ -4041,6 +4044,19 @@ export function rulesetFallTargets(
     );
 }
 
+/** Whether a holder has one of a slot free (1.363): a hand to catch a missile in. What it has let
+ *  fall takes no slot, and a creature off a stat block keeps its hands its own business. */
+function rulesetSlotFree(definition: RulesetDefinition, actor: RulesetCombatant, slot: string): boolean {
+  if (!actor.sheet) return true;
+  const count = definition.items?.slots?.find((one) => one.id === slot)?.count ?? 0;
+  const down = new Set((actor.dropped ?? []).map((thing) => thing.key));
+  const used = (actor.sheet.items ?? []).reduce(
+    (sum, held, index) => (held.worn && !down.has(`item:${index}`) ? sum + (held.item.slots?.[slot] ?? 0) : sum),
+    0,
+  );
+  return used < count;
+}
+
 export function rulesetReactionsAt(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -4063,7 +4079,16 @@ export function rulesetReactionsAt(
     const moments = [action.reaction, ...(action.reaction.also ?? [])];
     // Choosing what one's own hit does is part of making it, not a reaction to it (1.241).
     if (effects.has("cannot-react") && !moments.every((one) => one.by === "self")) return false;
-    if (!moments.some((one) => one.on === moment && momentAnswers(state, actor, sourceId, one, cause))) return false;
+    if (
+      !moments.some(
+        (one) =>
+          one.on === moment &&
+          momentAnswers(state, actor, sourceId, one, cause) &&
+          // A hand free to catch it in (1.363).
+          (!one.freeSlot || rulesetSlotFree(definition, actor, one.freeSlot)),
+      )
+    )
+      return false;
     const target = rulesetReactionTarget(state, actor, action, moment, sourceId, cause);
     if ((moment === "aimed" || moment === "hit") && !target) return false;
     if (optionFrom(definition, combat, state, actor, action, true) === null) return false;

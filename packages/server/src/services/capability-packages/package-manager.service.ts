@@ -2179,6 +2179,16 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** A missile caught and thrown back, and a reaction needing a free slot (1.363): Deflect Missiles. */
+function carriesCaught363(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCaught363(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.on === "caught" || record.throwsCaught === true || typeof record.freeSlot === "string") return true;
+  return featureValues(record).some((one) => carriesCaught363(one, depth + 1));
+}
+
 /** Damage or healing at its most, and an alteration's backlash (1.362): Overchannel, Supreme
  *  Healing. */
 function carriesMaximized362(value: unknown, depth = 0): boolean {
@@ -5433,6 +5443,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A missile caught and thrown back, 1.363.
+  if (
+    !declaresApi(363) &&
+    (carriesCaught363(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCaught363(document)))
+  ) {
+    return "A ruleset whose reaction answers a caught missile (on caught, throwsCaught) or needs a free slot (freeSlot) requires schemaVersion 2 and capabilityApi 1.363 or newer";
+  }
   // Damage or healing at its most, and backlash, 1.362.
   if (
     !declaresApi(362) &&

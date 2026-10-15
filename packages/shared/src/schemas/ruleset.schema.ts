@@ -3183,6 +3183,9 @@ const rulesetMomentNarrowing = {
   /** Only a hit by a strike paid for from this budget (Capability API 1.248): 5e's Open Hand
    *  Technique, on the strikes Flurry of Blows grants. */
   budget: sheetId.optional(),
+  /** Only while its holder's worn items leave one of this item slot free (Capability API 1.363):
+   *  Deflect Missiles' catch, "you have at least one hand free". */
+  freeSlot: sheetId.optional(),
 };
 const blowOnlyOnHit = (
   moment: {
@@ -3225,7 +3228,7 @@ const blowOnlyOnHit = (
 
 const rulesetReactionMomentBase = z
   .object({
-    on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start"]),
+    on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start", "caught"]),
     at: z.enum(["source", "chosen", "target"]).default("source"),
     ...rulesetMomentNarrowing,
     /** Stops what opened the window from happening at all. Only a moment BEFORE something resolves
@@ -3244,7 +3247,7 @@ const rulesetReactionMomentBase = z
       .array(
         z
           .object({
-            on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start"]),
+            on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start", "caught"]),
             against: rulesetReactionAgainstSchema.optional(),
             ...rulesetMomentNarrowing,
           })
@@ -3270,7 +3273,11 @@ const rulesetReactionMomentBase = z
   .superRefine((reaction, ctx) => {
     if (
       reaction.cancels &&
-      (reaction.on === "harmed" || reaction.on === "hit" || reaction.on === "falls" || reaction.on === "turn-start")
+      (reaction.on === "harmed" ||
+        reaction.on === "hit" ||
+        reaction.on === "falls" ||
+        reaction.on === "turn-start" ||
+        reaction.on === "caught")
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -4787,6 +4794,10 @@ const catalogMechanicsObject = z
      *  added to that blow instead of dealt on its own (Capability API 1.241): rolled with it, doubled
      *  by its critical, and taken as part of it. 5e's Divine Smite. */
     addsToBlow: z.literal(true).optional(),
+    /** Taken as a `"caught"` moment opens (Capability API 1.363), its attack deals the dice and the
+     *  type of the blow it caught in place of its own: Deflect Missiles' throw back, with the
+     *  entry's own ability, proficiency and range. */
+    throwsCaught: z.literal(true).optional(),
     /** Taken as somebody else's attack hits (a `"hit"` reaction without `"by"`), this many dice come
      *  off the roll before it is checked again (Capability API 1.250): 5e's Cutting Words, a bardic
      *  inspiration die, sized by the bard's level with `die` as Martial Arts' is. */
@@ -5566,6 +5577,16 @@ const catalogMechanicsSchema: z.ZodType<
         code: z.ZodIssueCode.custom,
         path: ["lowersRoll"],
         message: '"lowersRoll" is taken as somebody else\'s attack hits: reaction "hit" without "by" or "also"',
+      });
+    }
+  }
+  if (mechanics.throwsCaught) {
+    const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
+    if (moment?.on !== "caught" || !mechanics.amount || !mechanics.attackRoll || mechanics.kind !== "attack") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["throwsCaught"],
+        message: '"throwsCaught" is an attack that rolls to hit with an amount, taken at a "caught" moment',
       });
     }
   }
@@ -17445,6 +17466,16 @@ export function rulesetCatalogEntryIssues(
         `Health is the wound track "${trackHealth}", which carries no buffer for temporary points`,
       );
     }
+    // A slot left free (1.363) is one the items declare.
+    const declaredMoment = typeof mechanics?.reaction === "object" ? mechanics.reaction : undefined;
+    [declaredMoment, ...(declaredMoment?.also ?? [])].forEach((moment, momentIndex) => {
+      if (!moment?.freeSlot) return;
+      if (!definition.items?.slots?.some((slot) => slot.id === moment.freeSlot))
+        add(
+          [index, "mechanics", "reaction", ...(momentIndex === 0 ? [] : ["also", momentIndex - 1]), "freeSlot"],
+          `Unknown item slot "${moment.freeSlot}"`,
+        );
+    });
     if (mechanics?.alters) {
       const alters = mechanics.alters;
       const path = [index, "mechanics", "alters"];

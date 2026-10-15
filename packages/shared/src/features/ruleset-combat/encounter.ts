@@ -2719,6 +2719,8 @@ function mechanicsAction(
   if (mechanics.kills) action.kills = true;
   // Its damage joins its holder's own blow that just hit (1.241).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
+  // Throws back what its holder just caught (1.363): Deflect Missiles, the missile's own damage.
+  if (mechanics.throwsCaught && moment) action.throwsCaught = true;
   // Dice off somebody else's roll that hit (1.250): Cutting Words, its die sized by a level.
   // As many uses as its user chooses, healing that many times over (1.251): Lay on Hands.
   if (mechanics.usesChosen) action.usesChosen = true;

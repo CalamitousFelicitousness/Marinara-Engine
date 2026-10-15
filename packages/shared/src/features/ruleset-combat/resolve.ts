@@ -347,6 +347,8 @@ interface RulesetCombatContext {
     spentBefore: number;
     label: string;
   }>;
+  /** Who just caught a weapon's missile, and its damage, for the moment that opens after (1.363). */
+  caught?: { targetIds: string[]; damage: { count: number; sides: number; type?: string } };
 }
 
 /** Set while a legendary cast (1.284) resolves as its maker's turn would, so each step begun inside
@@ -6210,7 +6212,8 @@ function takeReaction(
     trigger.kind !== "harmed" &&
     trigger.kind !== "used" &&
     trigger.kind !== "falls" &&
-    trigger.kind !== "turn-start"
+    trigger.kind !== "turn-start" &&
+    trigger.kind !== "caught"
   ) {
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
@@ -6396,7 +6399,20 @@ function takeReaction(
     noteOutcome(ctx);
     return finish();
   }
-  resolveAction(ctx, taking, action, workingTargets, choice.payWith);
+  // Thrown back with the caught missile's own dice and kind of harm, its own flat part kept (1.363).
+  const thrown =
+    action.throwsCaught && trigger.kind === "caught" && action.damage
+      ? {
+          ...action,
+          damage: {
+            ...structuredClone(action.damage),
+            count: trigger.damage.count,
+            sides: trigger.damage.sides,
+            ...(trigger.damage.type ? { type: trigger.damage.type } : {}),
+          },
+        }
+      : action;
+  resolveAction(ctx, taking, thrown, workingTargets, choice.payWith);
   answered();
   noteOutcome(ctx);
   return finish();
@@ -7557,7 +7573,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
  */
 function openMoment(
   ctx: RulesetCombatContext,
-  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" | "falls" | "turn-start" }>,
+  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" | "falls" | "turn-start" | "caught" }>,
   candidates: readonly RulesetCombatant[],
   resume?: RulesetWindowResume,
 ): boolean {
@@ -7876,6 +7892,7 @@ function harmedBy(
   if (action.reaps) ctx.reaping = actor.id;
   else delete ctx.reaping;
   let hold: RulesetHitHold | null;
+  delete ctx.caught;
   try {
     hold = resolve();
   } finally {
@@ -7915,7 +7932,30 @@ function harmedBy(
       [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
       action.summons || action.zone ? { ...resume, resolved: true } : undefined,
     );
-  if (!waiting) finishSummon(ctx, actor, action, resume);
+  // A missile caught (1.363), asked of whoever caught it once nobody hurt had anything to answer.
+  // Read fresh: resolve() above records it, which the narrowing from the delete before cannot see.
+  const caught = ctx.caught as RulesetCombatContext["caught"];
+  delete ctx.caught;
+  const catching =
+    !waiting &&
+    !resume.outer &&
+    !!caught &&
+    rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+    openMoment(
+      ctx,
+      {
+        kind: "caught",
+        targetIds: caught.targetIds,
+        sourceId: actor.id,
+        label: action.label,
+        ...(action.catalog ? { catalog: action.catalog } : {}),
+        ...(action.entry ? { entry: action.entry } : {}),
+        damage: caught.damage,
+      },
+      caught.targetIds.map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
+      action.summons || action.zone ? { ...resume, resolved: true } : undefined,
+    );
+  if (!waiting && !catching) finishSummon(ctx, actor, action, resume);
 }
 
 /** The window for an attack held where one of its rolls hit, picked up from that roll once everybody
@@ -10172,6 +10212,9 @@ function resolveActionBody(
         });
       }
     }
+    // Whether something its target holds took some of it away (1.363): a missile so lessened to
+    // nothing is caught.
+    let lessened = false;
     if (parts.length) {
       for (const one of modifiers) {
         const { modifier } = one;
@@ -10188,6 +10231,7 @@ function resolveActionBody(
               ? parseRulesetCombatDice(modifier.dice)
               : null;
         if (!dice && modifier.flat === undefined && modifier.add === undefined) continue;
+        if (modifier.minus && takenModifiers.includes(one)) lessened = true;
         const amount = dice ?? { count: 0, sides: 0, flat: 0 };
         const rolled = rollAmount(ctx, amount);
         const bonus = critical && !onCritical ? criticalExtra(ctx, amount) : { rolls: [], flat: 0 };
@@ -10239,6 +10283,19 @@ function resolveActionBody(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    // Caught (1.363): a weapon's missile its target took all of away, to be thrown back with the
+    // missile's own damage.
+    if (before && lessened && dealt === 0 && action.damage && rulesetWeaponBlow(action) && !target.defeated) {
+      ctx.caught ??= {
+        targetIds: [],
+        damage: {
+          count: action.damage.count,
+          sides: action.damage.sides,
+          ...(action.damage.type ? { type: action.damage.type } : {}),
+        },
+      };
+      ctx.caught.targetIds.push(target.id);
+    }
     // One hit, including its clauses, never accumulated wounds from previous hits.
     const levels = ctx.combat.damageKinds?.marks === "per-blow" ? Math.min(1, dealt) : dealt;
     if (before && daze && dazeOver !== undefined && levels > 0 && levels > dazeOver) {

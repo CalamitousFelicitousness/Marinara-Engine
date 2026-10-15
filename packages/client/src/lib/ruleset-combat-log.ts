@@ -265,6 +265,7 @@ const WINDOW_LINES = {
   falls: "windowFalls",
   "turn-start": "windowTurnStart",
   used: "windowUsed",
+  caught: "windowCaught",
 } as const;
 
 /**

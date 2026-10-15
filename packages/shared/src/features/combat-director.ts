@@ -258,7 +258,7 @@ export interface DirectedRulesetView {
     id: string;
     kind: "reaction" | "signature";
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
-    moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start";
+    moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start" | "caught";
     targetIds?: string[];
     label?: string;
     /** For a held hit: what the roll came to, and what it was made against. */

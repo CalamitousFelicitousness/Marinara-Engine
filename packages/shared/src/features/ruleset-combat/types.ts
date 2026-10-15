@@ -753,6 +753,8 @@ export interface RulesetCombatAction {
   callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
+  /** Throws back the missile its holder just caught, with that missile's damage (1.363). */
+  throwsCaught?: true;
   /** Taken as somebody else's attack hits, these dice come off the roll (1.250): Cutting Words. */
   lowersRoll?: { count: number; sides: number; flat: number; also?: Array<"checks" | "damage"> };
   /** Its user chooses how many uses one use spends, and it heals that many times over (1.251). */
@@ -903,6 +905,8 @@ export interface RulesetCombatAction {
     oneOf?: string;
     /** Only a hit with the item at this place in its holder's items (1.273): charges spent on it. */
     item?: number;
+    /** Only while its holder's worn items leave one of this slot free (1.363). */
+    freeSlot?: string;
     /** It stops only what was paid for no higher up its pool family than this was (1.116). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -1776,6 +1780,18 @@ export type RulesetWindowTrigger =
   /** Somebody is falling, before its damage and prone (1.124). The source is the faller. */
   | { kind: "falls"; sourceId: string; label: "fall"; levels: number; fallerIds?: string[] }
   | { kind: "turn-start"; sourceId: string; label: string }
+  /** A weapon's blow that the ones being asked lessened to nothing (1.363): `damage` is its dice
+   *  and type, for an answer that throws it back. */
+  | {
+      kind: "caught";
+      /** Who caught it: only they answer. */
+      targetIds: string[];
+      sourceId: string;
+      label: string;
+      catalog?: string;
+      entry?: string;
+      damage: { count: number; sides: number; type?: string };
+    }
   /** What somebody readied waits for has happened (1.288): `sourceId` came where it can be reached
    *  (`comes`, before the rest of their walk) or has just used something (`acts`). */
   | { kind: "readied"; sourceId: string; on: RulesetReadyOn };
@@ -1784,7 +1800,7 @@ export type RulesetWindowTrigger =
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
  *  roll has hit the holder and before its damage, `harmed` is after something has hurt them, and
  *  `falls` is before a falling creature lands, and `turn-start` before its creature acts (1.131). */
-export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start";
+export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start" | "caught";
 
 /** A blow struck in reach (`melee`) or from afar (`ranged`), as a reaction that answers only one
  *  of them reads it (1.118). */
@@ -1808,6 +1824,8 @@ export interface RulesetReactionAlso {
   budget?: string;
   /** Only a hit with the item at this place in its holder's items (1.273). */
   item?: number;
+  /** Only while its holder's worn items leave one of this slot free (1.363). */
+  freeSlot?: string;
 }
 
 /** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind

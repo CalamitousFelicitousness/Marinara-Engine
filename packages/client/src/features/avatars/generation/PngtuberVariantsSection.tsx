@@ -353,7 +353,8 @@ export function PngtuberVariantsSection({
           <button
             type="button"
             onClick={() => job.keepAll(shownIds)}
-            disabled={!drafts.some((item) => !item.kept)}
+            // Like each picture's Keep: a picture being redone can't be kept.
+            disabled={busy || !drafts.some((item) => !item.kept)}
             className="inline-flex min-h-9 items-center rounded-xl px-3 py-2 text-xs ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] active:scale-95 disabled:opacity-50"
           >
             {t("avatars.generation.keepAll")}

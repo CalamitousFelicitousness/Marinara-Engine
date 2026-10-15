@@ -31,6 +31,12 @@ import { askNoulQuestions, DECISION_CHOICE_NONE, type NoulQuestion } from "./sys
  */
 const SIDECAR_STATE_HEADROOM_TOKENS = 512;
 
+/**
+ * Expected time of one statement on a model nothing measured: a chat model asked one question per request, one
+ * at a time, or a pasted sidecar checkpoint. A guess on the slow side, used to size passes of many statements.
+ */
+export const DECISION_UNMEASURED_STATEMENT_MS = 1000;
+
 export interface DecisionBackend {
   model?: string;
   debugMode?: boolean;
@@ -50,6 +56,12 @@ export interface DecisionBackend {
    * into gating pre-generation agents anyway.
    */
   deferPreGeneration: boolean;
+  /**
+   * The expected time of one request carrying this many statements, for sizing a pass of many requests:
+   * measured where the model is known, otherwise a deliberately slow guess. Not a time limit. Absent, each
+   * statement counts `DECISION_UNMEASURED_STATEMENT_MS`.
+   */
+  requestMs?: (statements: number) => number;
   ask: (state: unknown, questions: NoulQuestion[]) => Promise<Map<string, number> | null>;
   /**
    * Yes/no and Choice questions together, for prompt conditionals. A question with
@@ -156,6 +168,10 @@ async function chatBackend(
     // answers on the ordinary scale.
     calibration: DEFAULT_DECISION_CALIBRATION,
     deferPreGeneration: thinks && !(await deps.getThinkingPreGeneration()),
+    // One request per statement, one at a time; a connection whose own limit is shorter is that fast at most.
+    requestMs: (statements) =>
+      statements *
+      Math.min(target.connection?.timeoutMs ?? DECISION_UNMEASURED_STATEMENT_MS, DECISION_UNMEASURED_STATEMENT_MS),
     ask: async (state, questions) =>
       askSidecarNoulQuestions({
         slot: target,
@@ -264,6 +280,8 @@ export async function resolveDecisionBackend(
         calibration,
         // It scores candidates in one pass and never reasons, so nothing is deferred.
         deferPreGeneration: false,
+        // Each statement re-reads the scene, so a request costs its measured time per statement.
+        requestMs: (statements) => statements * (resolved.perQuestionMs ?? DECISION_UNMEASURED_STATEMENT_MS),
         ask: async (state, questions) => (await askSidecar(state, questions)).answers,
         askMixed: askSidecar,
       };
@@ -326,6 +344,10 @@ export async function resolveDecisionBackend(
     maxStateTokens: connection.maxStateTokens,
     calibration,
     deferPreGeneration: false,
+    // System One answers a request's statements together, so a request costs about one statement's time. A long
+    // per-statement limit allows for a slow outlier; it is not the expected time, so it counts at most the 4 s a
+    // local request gets.
+    requestMs: () => Math.min(perStatement, DECISION_TIMEOUT_MS.sidecar),
     ask: async (state, questions) => (await askConnection(state, questions)).answers,
     askMixed: askConnection,
   };

@@ -5,10 +5,22 @@ const RECALL_STOP_WORDS = new Set(
   ),
 );
 
+// Chinese and Japanese write no spaces between words, so a run of these scripts would read as one long word.
+const UNSPACED_RUN = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\u30FC]+/gu;
+
 export function recallTerms(text: string): Set<string> {
-  return new Set(
-    (text.toLocaleLowerCase().match(/[\p{L}][\p{L}\p{N}]{2,}/gu) ?? []).filter((word) => !RECALL_STOP_WORDS.has(word)),
+  const lower = text.toLocaleLowerCase();
+  const terms = new Set(
+    (lower.replace(UNSPACED_RUN, " ").match(/[\p{L}][\p{L}\p{N}]{2,}/gu) ?? []).filter(
+      (word) => !RECALL_STOP_WORDS.has(word),
+    ),
   );
+  // Each such run counts as its overlapping character pairs, and a single character as itself (#7699).
+  for (const run of lower.match(UNSPACED_RUN) ?? []) {
+    if (run.length === 1) terms.add(run);
+    for (let index = 0; index + 1 < run.length; index++) terms.add(run.slice(index, index + 2));
+  }
+  return terms;
 }
 
 // ponytail: capitalisation finds names only in cased scripts, and a fixed weight lets one name
@@ -61,4 +73,51 @@ export function scoreRecallTerms(
     }
     return score / (1 + score); // Keep lexical and semantic relevance on the same 0–1 scale.
   });
+}
+
+/**
+ * Small, so the top of either ranking gets in. The usual 60 favours scenes both rankings place in the middle: on a
+ * synthetic 800-scene archive it kept a scene with a unique name or object out of a 24-scene shortlist up to 100%
+ * of the time, and 1, 3 and 10 kept every one (#7699).
+ */
+const FUSION_K = 3;
+
+/**
+ * Scene ids by reciprocal rank fusion of their word-match and vector-similarity scores (#7699), so a scene that
+ * shares no word with the question can still rank by meaning, however modest its similarity. Equal scores share
+ * the middle of the ranks they span. A scene without a vector counts its word rank twice, so a vector still missing neither helps nor hurts
+ * it. Ties keep the order of `words`, which with no vectors at all is exactly the word-match order.
+ */
+export function fuseRecallRanks(words: ReadonlyMap<string, number>, vectors: ReadonlyMap<string, number>): string[] {
+  const ranks = (scores: ReadonlyMap<string, number>) => {
+    const first = new Map<number, number>();
+    const last = new Map<number, number>();
+    const sorted = [...scores.values()].sort((a, b) => b - a);
+    for (const [index, score] of sorted.entries()) {
+      if (!first.has(score)) first.set(score, index + 1);
+      last.set(score, index + 1);
+    }
+    return new Map([...scores].map(([id, score]) => [id, (first.get(score)! + last.get(score)!) / 2]));
+  };
+  const wordRanks = ranks(words);
+  const vectorRanks = ranks(vectors);
+  const fused = new Map(
+    [...wordRanks].map(([id, rank]) => [id, 1 / (FUSION_K + rank) + 1 / (FUSION_K + (vectorRanks.get(id) ?? rank))]),
+  );
+  return [...words.keys()].sort((a, b) => fused.get(b)! - fused.get(a)!);
+}
+
+/**
+ * The first `size` of `order`, with the scene that follows each of its best three placed right after them when
+ * not already in, for "what happened after X" questions. The weakest places make room, so the size holds.
+ */
+export function withFollowingScenes(
+  order: readonly string[],
+  next: (id: string) => string | undefined,
+  size: number,
+): string[] {
+  const shortlist = order.slice(0, size);
+  const best = shortlist.slice(0, 3);
+  const following = best.map(next).filter((id): id is string => !!id && !shortlist.includes(id));
+  return [...new Set([...best, ...following, ...shortlist.slice(3)])].slice(0, size);
 }

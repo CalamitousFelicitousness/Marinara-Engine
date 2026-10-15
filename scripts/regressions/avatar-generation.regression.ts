@@ -9,9 +9,11 @@
  *   - the packed .mavatar passes mesh-avatar's archive validator and the Engine's strict ZIP reader, and
  *     carries no partial sprites.json (mesh-avatar would switch its own eyelids and mouth off);
  *   - a sprite edit goes through the existing image generation path (an edit request with the sprite as
- *     reference, padded to the canvas the model is asked for, without a see-through background), its
- *     prompt reaches the debug log, and an edit that keeps the picture in place comes back lined up with
- *     the sprite at its exact size, with the sprite's own outline;
+ *     the only reference, padded to the canvas the model is asked for, a cut-out shown on white, without a
+ *     see-through background), its prompt reaches the debug log, and an edit that keeps the picture in
+ *     place comes back lined up with the sprite at its exact size, with the sprite's own outline;
+ *   - a blink or talk prompt is the agent's template as written: never cut down to tags by the sprite
+ *     prompt compiler, so "open the mouth" and "keep the framing" reach the model and "full body" doesn't;
  *   - kept PNGTuber pictures merge into the owner's setup without mixing pictures drawn for other bases,
  *     an avatar still showing plain sprites keeps all of them, and full-body sprites stay out of a
  *     portrait setup;
@@ -20,7 +22,8 @@
  * The picture is drawn here from SVG, so no binary fixture is committed and no paid provider is called.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -54,8 +57,15 @@ const { buildMeshAvatarLayers, meshWorkScale, packMeshAvatar } =
 const { generateMeshRig, requestMeshRigLayout } =
   await import("../../packages/server/src/services/avatars/generation/mesh-rig.js");
 const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
-const { mergePngtuberVariants, pngtuberSpriteFamily, pngtuberVariantFilePath, spriteBuiltPngtuber } =
-  await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
+const {
+  avatarVariantPrompt,
+  mergePngtuberVariants,
+  pngtuberSpriteFamily,
+  pngtuberVariantFilePath,
+  savePngtuberVariants,
+  spriteBuiltPngtuber,
+} = await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
+const { readAvatarConfig } = await import("../../packages/server/src/services/avatars/storage.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
 
 const sharp = await getSharp();
@@ -428,6 +438,18 @@ async function dotCentre(png: Buffer) {
       !requests[0]!.body.includes('name="background"'),
       "no see-through background is asked for (GPT Image 2 has none; the sprite's outline is used)",
     );
+    const sentStart = requests[0]!.body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const sent = requests[0]!.body.subarray(sentStart, requests[0]!.body.indexOf(Buffer.from("IEND"), sentStart) + 8);
+    assert.deepEqual(
+      await rgbaAt(sent, 5, 5),
+      [255, 255, 255, 255],
+      "a cut-out is shown on plain white, not on the black its see-through pixels read as",
+    );
+    assert.deepEqual(
+      (await rgbaAt(sent, 512, 153 + Math.round(300 * (1229 / 720)))).slice(0, 3),
+      SKIN,
+      "the sprite itself is sent as it is",
+    );
     const meta = await sharp(edited).metadata();
     assert.deepEqual([meta.width, meta.height], [600, 720], "the variant is the sprite's exact size");
     assert.equal((await rgbaAt(edited, 5, 5))[3], 0, "a cut-out sprite keeps its own outline");
@@ -468,10 +490,77 @@ async function dotCentre(png: Buffer) {
         `an edit that keeps the picture lines up with a ${width}x${height} sprite on ${model}: ${before} -> ${after}`,
       );
     }
+
+    // A soft pixel inside a cut-out (as an AI background remover leaves over the face) is shown in its own
+    // colour, not blended with the white backdrop, so an edit that keeps it gives back the same colour.
+    echoCanvas = { width: 1024, height: 1024 };
+    const soft = await sharp({
+      create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 400, height: 400, channels: 4, background: { r: 20, g: 20, b: 40, alpha: 200 / 255 } },
+          })
+            .png()
+            .toBuffer(),
+          left: 312,
+          top: 312,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const softEdit = await drawAvatarImageEdit({
+      image: image("gpt-image-2"),
+      prompt: "Keep it.",
+      source: { label: "soft", png: soft, width: 1024, height: 1024, transparent: true, hash: "" },
+      debug: false,
+      logLabel: "soft",
+    });
+    const [r, g, b, a] = await rgbaAt(softEdit, 512, 512);
+    assert.ok(
+      Math.abs(r! - 20) <= 2 && Math.abs(g! - 20) <= 2 && Math.abs(b! - 40) <= 2 && Math.abs(a! - 200) <= 1,
+      `a soft inside pixel keeps its colour: ${[r, g, b, a]}`,
+    );
+    // The ChatGPT route asks for a new composition unless told the reference already is the canvas.
+    const contextSource = readFileSync(
+      new URL("../../packages/server/src/services/avatars/generation/generation-context.ts", import.meta.url),
+      "utf8",
+    );
+    const editFunction = contextSource.slice(contextSource.indexOf("export async function drawAvatarImageEdit"));
+    assert.match(
+      editFunction.slice(0, editFunction.indexOf("\n}\n")),
+      /referenceIsCanvas: true/u,
+      "avatar edits tell providers the reference already is the canvas",
+    );
   } finally {
     (logger as { warn: unknown }).warn = warn;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+}
+
+// ── Blink and talk prompts ──
+{
+  const template =
+    'Edit the attached sprite of ${characterName}, which shows the "${expression}" expression.\n' +
+    'Open the mouth as if saying a clear "ah". Do not crop, zoom, recentre or redraw the character.\n' +
+    "Appearance notes: ${appearance}";
+  const context = { name: "Mira", appearance: "tall, ripped jeans and combat boots", template: () => template };
+  const prompt = avatarVariantPrompt(context, "very_happy", "mouth-open");
+  assert.equal(
+    prompt.prompt,
+    'Edit the attached sprite of Mira, which shows the "very happy" expression.\n' +
+      'Open the mouth as if saying a clear "ah". Do not crop, zoom, recentre or redraw the character.\n' +
+      "Appearance notes: tall, ripped jeans and combat boots",
+    "the template is sent as written, not cut down to tags",
+  );
+  assert.equal(prompt.negativePrompt, "", "no style profile adds negative tags to an edit");
+  assert.doesNotMatch(prompt.prompt, /full[ -]body/iu);
+  assert.deepEqual(
+    avatarVariantPrompt(context, "happy", "eyes-closed", { id: "x", prompt: " Close the eyes. ", negativePrompt: "" }),
+    { prompt: "Close the eyes.", negativePrompt: "" },
+    "a reviewed prompt replaces the template",
+  );
 }
 
 // ── PNGTuber setups ──
@@ -605,6 +694,50 @@ async function dotCentre(png: Buffer) {
     "nor drawn for it",
   );
   assert.equal((await post("/pngtuber-variants/save", { owner, images: [keptHappy] })).statusCode, 400);
+
+  // A sprite face added after the setup was saved keeps its own blink sprite when a talk picture is saved.
+  {
+    const later = { ownerType: "character", ownerId: "V1StGXR8_Z5jdHi6B-myZ" } as const;
+    const dir = join(dataDir, "sprites", later.ownerId);
+    mkdirSync(dir, { recursive: true });
+    const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+    writeFileSync(join(dir, "neutral.png"), sourcePng);
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "neutral", variant: "eyes-closed", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    assert.equal((await readAvatarConfig(later))?.kinds.pngtuber?.source, "generated");
+    writeFileSync(join(dir, "relaxed.png"), sourcePng);
+    writeFileSync(join(dir, "relaxed_blink.png"), sourcePng);
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "relaxed", variant: "mouth-open", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    const relaxed = (await readAvatarConfig(later))?.kinds.pngtuber?.layers.relaxed;
+    assert.deepEqual(relaxed?.eyesClosed, { source: "sprite", label: "relaxed_blink" }, "its blink sprite stays");
+    assert.deepEqual(relaxed?.mouthOpen, { source: "file", path: "pngtuber/relaxed-mouth-open.png" });
+    assert.ok((await readAvatarConfig(later))?.kinds.pngtuber?.layers.neutral?.eyesClosed, "the earlier face stays");
+    // A talk sprite added to a saved face stays when another picture of that face is saved; the saved
+    // picture of the same slot wins over a sprite.
+    writeFileSync(join(dir, "neutral_talk.png"), sourcePng);
+    writeFileSync(join(dir, "neutral_blink.png"), sourcePng);
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "relaxed", variant: "mouth-open", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    assert.equal(
+      (await readAvatarConfig(later))?.kinds.pngtuber?.layers.neutral?.mouthOpen,
+      undefined,
+      "other faces as saved",
+    );
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "neutral", variant: "eyes-closed", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    const neutral = (await readAvatarConfig(later))?.kinds.pngtuber?.layers.neutral;
+    assert.deepEqual(neutral?.mouthOpen, { source: "sprite", label: "neutral_talk" }, "its new talk sprite joins it");
+    assert.deepEqual(neutral?.eyesClosed, { source: "file", path: "pngtuber/neutral-eyes-closed.png" });
+  }
   const garbage = await post("/mesh-rig/save", { owner, archive: Buffer.from("not a zip").toString("base64") });
   assert.equal(garbage.statusCode, 422, "a kept archive is checked by the 2D importer like an upload");
   assert.equal((await app.inject({ method: "GET", url: "/api/avatar-generation/mesh-rig" })).statusCode, 404);

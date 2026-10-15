@@ -241,6 +241,9 @@ export interface ImageGenRequest {
   referenceImage?: string;
   /** Optional array of base64-encoded reference images (avatars). Providers that support multiple refs use all; others use the first. */
   referenceImages?: string[];
+  /** The reference image already is the requested canvas (an in-place edit such as a blink picture), so
+   *  providers must keep its framing rather than compose a new picture around it. */
+  referenceIsCanvas?: boolean;
   /** Optional structured per-character prompts. NovelAI V4/V4.5 maps these to native character captions. */
   characterPrompts?: SceneIllustrationCharacterPrompt[];
   /** Request a transparent image background when the provider/model supports it. */

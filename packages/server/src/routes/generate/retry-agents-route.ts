@@ -139,7 +139,7 @@ import { persistGeneratedImageToEntityGalleries } from "../../services/image/gen
 import { resolveImageConnectionFallback } from "../../services/generation/media-connection-fallback.js";
 import type { GenerationFallbackNotifier } from "../../services/generation/fallback-notification.js";
 import { createReplyFallbackNotifier } from "./fallback-notification.js";
-import { runImageGenerationRequest } from "../../services/image/image-generation-queue.js";
+import { mediaProviderLanesEnabled } from "../../services/image/image-generation-queue.js";
 import { generateIllustratorImageVariants } from "../../services/image/illustrator-image-variants.js";
 import {
   buildCharacterAppearanceReferenceBlock,
@@ -2941,7 +2941,6 @@ async function applyRetryResultEffects(args: {
     conns,
     chars,
     resolvedAgents,
-    queueImageGenerationRequests,
     reviewImagePromptsBeforeSend,
     illustratorPromptReviewOverride,
     illustratorRetryTargets,
@@ -4030,11 +4029,10 @@ async function applyRetryResultEffects(args: {
                 promptSubmission.negativePrompt,
               );
             }
-            const imageConnectionQueueKey = imgConnFull.id?.trim() || `${imgServiceHint}:${imgBaseUrl}:${imgModel}`;
             logger.debug(
               "[retry-agents] Illustrator image request queue=%s connection=%s",
-              queueImageGenerationRequests ? "enabled" : "disabled",
-              imageConnectionQueueKey,
+              mediaProviderLanesEnabled() ? "enabled" : "disabled",
+              imgConnFull.id?.trim() || `${imgServiceHint}:${imgBaseUrl}:${imgModel}`,
             );
             assertRetryActive();
             sendSseEvent(reply, {
@@ -4044,32 +4042,24 @@ async function applyRetryResultEffects(args: {
             const imageResults = await generateIllustratorImageVariants({
               count: chatMeta.illustratorImagesPerGeneration,
               generate: () =>
-                runImageGenerationRequest({
-                  connectionKey: imageConnectionQueueKey,
-                  queue: queueImageGenerationRequests,
+                generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
+                  prompt: promptSubmission.prompt,
+                  negativePrompt: promptSubmission.negativePrompt || undefined,
+                  model: imgModel,
+                  width: imgWidth,
+                  height: imgHeight,
+                  imageEndpointId: imgConnFull.imageEndpointId || undefined,
+                  comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
+                  imageDefaults,
+                  quality: resolveConnectionImageQuality(imgConnFull),
+                  referenceImages,
+                  ...(illustratorCharacterPrompts.length > 0 ? { characterPrompts: illustratorCharacterPrompts } : {}),
                   signal: agentContext.signal,
-                  task: () =>
-                    generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
-                      prompt: promptSubmission.prompt,
-                      negativePrompt: promptSubmission.negativePrompt || undefined,
-                      model: imgModel,
-                      width: imgWidth,
-                      height: imgHeight,
-                      imageEndpointId: imgConnFull.imageEndpointId || undefined,
-                      comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
-                      imageDefaults,
-                      quality: resolveConnectionImageQuality(imgConnFull),
-                      referenceImages,
-                      ...(illustratorCharacterPrompts.length > 0
-                        ? { characterPrompts: illustratorCharacterPrompts }
-                        : {}),
-                      signal: agentContext.signal,
-                      fallback: providerAwareImageFallback,
-                      onFallback: (notice) => {
-                        assertRetryActive();
-                        notifyImageFallback(notice);
-                      },
-                    }),
+                  fallback: providerAwareImageFallback,
+                  onFallback: (notice) => {
+                    assertRetryActive();
+                    notifyImageFallback(notice);
+                  },
                 }),
               onVariantError: (error, index) =>
                 logger.warn(error, "[retry-agents] Illustrator image variant %d failed", index + 1),

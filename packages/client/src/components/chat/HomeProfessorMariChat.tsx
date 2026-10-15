@@ -1864,7 +1864,6 @@ export function HomeProfessorMariChat({
     latestConnectionSelectionRef.current = id;
     pendingConnectionPersistRef.current = id;
     useUIStore.getState().setMariConnectionId(id);
-    setConnectionMenuOpen(false);
     persistLatestConnectionSelection();
   };
 
@@ -2459,20 +2458,22 @@ export function HomeProfessorMariChat({
     void handleSubmit(target.text, { ...target, reuseSavedMessage: true });
   };
   const retryRunEvent = useEffectEvent(retryRun);
-  // "Retry with another model" opens the composer's own connection menu; picking a different one retries.
+  // "Retry with another model" opens the composer's own connection menu. The retry waits for the menu to close,
+  // so choosing a connection leaves room to pick its model; it runs only if the connection or model changed.
   const [retryAfterPickFrom, setRetryAfterPickFrom] = useState<string | null>(null);
+  const effectiveModelKey = effectiveConnection
+    ? `${effectiveConnection.id}\u0000${effectiveConnection.model ?? ""}`
+    : "";
   const retryWithAnotherModel = () => {
-    setRetryAfterPickFrom(effectiveConnectionId ?? "");
+    setRetryAfterPickFrom(effectiveModelKey);
     setPermissionsMenuOpen(false);
     setConnectionMenuOpen(true);
   };
   useEffect(() => {
-    if (retryAfterPickFrom === null) return;
-    if (effectiveConnectionId && effectiveConnectionId !== retryAfterPickFrom) {
-      setRetryAfterPickFrom(null);
-      retryRunEvent();
-    } else if (!connectionMenuOpen) setRetryAfterPickFrom(null);
-  }, [connectionMenuOpen, effectiveConnectionId, retryAfterPickFrom]);
+    if (retryAfterPickFrom === null || connectionMenuOpen) return;
+    setRetryAfterPickFrom(null);
+    if (effectiveModelKey && effectiveModelKey !== retryAfterPickFrom) retryRunEvent();
+  }, [connectionMenuOpen, effectiveModelKey, retryAfterPickFrom]);
   // Dismiss answers the failure without a retry: the card folds to its quiet line and the red goes.
   const dismissRunError = async () => {
     setRecovery(null);

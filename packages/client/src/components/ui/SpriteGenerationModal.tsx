@@ -32,6 +32,9 @@ interface SpriteGenerationModalProps {
   defaultAvatarUrl?: string | null;
   /** Callback after sprites are saved */
   onSpritesGenerated?: () => void;
+  /** Expressions offered instead of the full list, in order; grids larger than the list are hidden. The
+   *  default 6 (2×3) grid needs at least six. */
+  expressionChoices?: readonly string[];
 }
 
 interface SlicedCell {
@@ -195,6 +198,12 @@ const EXPRESSION_PRESETS = {
 } as const;
 
 type PresetKey = keyof typeof EXPRESSION_PRESETS;
+
+/** The expressions a grid starts with: the first offered ones when the modal offers its own list. */
+function presetExpressions(key: PresetKey, choices?: readonly string[]): string[] {
+  const { cols, rows, expressions } = EXPRESSION_PRESETS[key];
+  return [...(choices ? choices.slice(0, cols * rows) : expressions)];
+}
 
 type SpriteType = "expressions" | "full-body";
 
@@ -561,6 +570,7 @@ export function SpriteGenerationModal({
   defaultAppearance,
   defaultAvatarUrl,
   onSpritesGenerated,
+  expressionChoices,
 }: SpriteGenerationModalProps) {
   const { t: localizeUi } = useUiTranslation();
   // Step: 0 = configure, 1 = generating, 2 = preview & label
@@ -575,9 +585,9 @@ export function SpriteGenerationModal({
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [useCurrentAvatarReference, setUseCurrentAvatarReference] = useState(false);
   const [preset, setPreset] = useState<PresetKey>(DEFAULT_SPRITE_PRESET);
-  const [selectedExpressions, setSelectedExpressions] = useState<string[]>([
-    ...EXPRESSION_PRESETS[DEFAULT_SPRITE_PRESET].expressions,
-  ]);
+  const [selectedExpressions, setSelectedExpressions] = useState<string[]>(() =>
+    presetExpressions(DEFAULT_SPRITE_PRESET, expressionChoices),
+  );
   const [matchExistingExpressions, setMatchExistingExpressions] = useState(false);
   const [nativeTransparentPng, setNativeTransparentPng] = useState(true);
   const [noBackground, setNoBackground] = useState(true);
@@ -677,6 +687,15 @@ export function SpriteGenerationModal({
   const animatedExpressionMode = spriteType === "expressions" && animatedPortraits;
   const generationUnavailable = !animatedExpressionMode && spriteGenerationUnavailable;
   const generationUnavailableReason = animatedExpressionMode ? "" : spriteGenerationReason;
+  /** Expression grids the offered expressions can fill. */
+  const expressionPresetKeys = useMemo(
+    () =>
+      (Object.keys(EXPRESSION_PRESETS) as PresetKey[]).filter(
+        (key) =>
+          !expressionChoices || EXPRESSION_PRESETS[key].cols * EXPRESSION_PRESETS[key].rows <= expressionChoices.length,
+      ),
+    [expressionChoices],
+  );
   const generationGrid = fullBodyExpressionMode ? matchedFullBodyGrid : EXPRESSION_PRESETS[preset];
   const sliceAdjustmentGrid = fullBodyExpressionMode ? matchedFullBodySliceGrid : generationGrid;
   const generationCapacity = generationGrid.cols * generationGrid.rows;
@@ -688,7 +707,11 @@ export function SpriteGenerationModal({
   );
   const assignmentOptions = useMemo(() => {
     const fallbackOptions =
-      spriteType === "full-body" && !fullBodyExpressionMode ? ALL_FULL_BODY_POSES : ALL_EXPRESSIONS;
+      spriteType === "full-body" && !fullBodyExpressionMode
+        ? ALL_FULL_BODY_POSES
+        : spriteType === "expressions" && expressionChoices
+          ? expressionChoices
+          : ALL_EXPRESSIONS;
     const seen = new Set<string>();
 
     return [...cappedSelectedExpressions, ...fallbackOptions].map(normalizeSpriteLabel).filter((label) => {
@@ -696,7 +719,7 @@ export function SpriteGenerationModal({
       seen.add(label);
       return true;
     });
-  }, [cappedSelectedExpressions, fullBodyExpressionMode, spriteType]);
+  }, [cappedSelectedExpressions, expressionChoices, fullBodyExpressionMode, spriteType]);
   const previewColumnCount = animatedExpressionMode
     ? Math.min(3, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, cells.length || cappedSelectedExpressions.length)))))
     : generationGrid.cols;
@@ -800,7 +823,7 @@ export function SpriteGenerationModal({
     setSelectedExpressions(
       initialSpriteType === "full-body"
         ? [...FULL_BODY_POSE_PRESETS[DEFAULT_SPRITE_PRESET]]
-        : [...EXPRESSION_PRESETS[DEFAULT_SPRITE_PRESET].expressions],
+        : presetExpressions(DEFAULT_SPRITE_PRESET, expressionChoices),
     );
     setMatchExistingExpressions(false);
     setAnimatedPortraits(false);
@@ -826,7 +849,15 @@ export function SpriteGenerationModal({
     setFrameApplying(false);
     setSaving(false);
     setError(null);
-  }, [abortActiveGeneration, defaultAppearance, defaultAvatarUrl, entityId, initialSpriteType, open]);
+  }, [
+    abortActiveGeneration,
+    defaultAppearance,
+    defaultAvatarUrl,
+    entityId,
+    expressionChoices,
+    initialSpriteType,
+    open,
+  ]);
 
   // Reset reference image & appearance only when the target character/persona changes.
   useEffect(() => {
@@ -915,10 +946,10 @@ export function SpriteGenerationModal({
     (key: PresetKey) => {
       setPreset(key);
       setSelectedExpressions(
-        spriteType === "full-body" ? [...FULL_BODY_POSE_PRESETS[key]] : [...EXPRESSION_PRESETS[key].expressions],
+        spriteType === "full-body" ? [...FULL_BODY_POSE_PRESETS[key]] : presetExpressions(key, expressionChoices),
       );
     },
-    [spriteType],
+    [expressionChoices, spriteType],
   );
 
   const toggleExpression = useCallback(
@@ -1865,9 +1896,12 @@ export function SpriteGenerationModal({
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
                 )}
                 onClick={() => {
+                  // Full-body grids include ones the offered expressions can't fill.
+                  const next = expressionPresetKeys.includes(preset) ? preset : DEFAULT_SPRITE_PRESET;
                   setSpriteType("expressions");
                   setMatchExistingExpressions(false);
-                  setSelectedExpressions([...EXPRESSION_PRESETS[preset].expressions]);
+                  setPreset(next);
+                  setSelectedExpressions(presetExpressions(next, expressionChoices));
                 }}
               >
                 {localizeUi("ui.ui.spritegenerationmodal.expressionsPortrait")}
@@ -2089,7 +2123,7 @@ export function SpriteGenerationModal({
                     {localizeUi("ui.ui.spritegenerationmodal.expressionCount")}
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {(Object.keys(EXPRESSION_PRESETS) as PresetKey[]).map((key) => (
+                    {expressionPresetKeys.map((key) => (
                       <button
                         key={key}
                         type="button"
@@ -2115,7 +2149,7 @@ export function SpriteGenerationModal({
                     {selectedExpressions.length} {localizeUi("ui.ui.spritegenerationmodal.selected")}
                   </label>
                   <div className="flex flex-wrap gap-1.5">
-                    {ALL_EXPRESSIONS.map((expr) => (
+                    {(expressionChoices ?? ALL_EXPRESSIONS).map((expr) => (
                       <button
                         key={expr}
                         type="button"

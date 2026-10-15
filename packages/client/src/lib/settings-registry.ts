@@ -562,7 +562,8 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     id: "queue-media-generation",
     sectionId: "overall-generations",
     label: "Queue media generation requests",
-    description: "Send image and video generation jobs one at a time per connection.",
+    description:
+      "Sends image and video generation jobs to each provider account one at a time, from every feature. Keep this on for providers that reject simultaneous requests.",
     aliases: ["media", "image", "video", "queue", "generation"],
     kind: "Toggle",
   },

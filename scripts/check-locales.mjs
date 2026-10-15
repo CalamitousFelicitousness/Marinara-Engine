@@ -116,9 +116,12 @@ async function findRegistryKeyProblems(messages) {
   const controls = source.slice(source.indexOf("export const SETTINGS_SEARCHABLE_CONTROLS"));
   // Prettier leaves a string single-quoted when it contains double quotes.
   const string = String.raw`("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`;
+  // One pass over the single-quoted body: keep escape sequences, unescape \', and escape bare double quotes.
   const parse = (literal) =>
     literal.startsWith("'")
-      ? JSON.parse(`"${literal.slice(1, -1).replace(/\\'/gu, "'").replace(/"/gu, '\\"')}"`)
+      ? JSON.parse(
+          `"${literal.slice(1, -1).replace(/\\(.)|"/gsu, (match, escaped) => (escaped === undefined ? '\\"' : escaped === "'" ? "'" : match))}"`,
+        )
       : JSON.parse(literal);
   const entry = new RegExp(
     String.raw`\n    id: ([^\n]+),\n    sectionId: [^\n]+,\n    labelKey: ${string},\n    label:\s*${string},\n    description:\s*${string},\n    descriptionKey: ${string},`,

@@ -1501,7 +1501,8 @@ export async function galleryRoutes(app: FastifyInstance) {
         prompt,
         firstFrame,
         avatar,
-        characterIds,
+        // The clip belongs to the whole chat: its characters and the persona, so it shows in each one's gallery.
+        characterIds: [...characterIds, ...personaIds],
         queue: true,
         debugMode: input.debugMode,
       });

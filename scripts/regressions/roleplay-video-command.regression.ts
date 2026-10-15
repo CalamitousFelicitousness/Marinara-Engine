@@ -83,6 +83,14 @@ try {
   assert.equal(slashClip.statusCode, 200, slashClip.body);
   assert.equal((slashClip.json() as { messageId: string }).messageId, pairReply?.id, "under the newest reply");
   assert.match(lastDirector(), /Requested clip: Bottles explode off the shelf/u);
+  // The clip belongs to the whole chat, so it is listed in the persona's gallery too.
+  const slashVideoId = (slashClip.json() as { video: { id: string } }).video.id;
+  const personaGallery = await h.app.inject({
+    method: "GET",
+    url: `/api/characters/personas/${james.id}/gallery/clips`,
+  });
+  assert.equal(personaGallery.statusCode, 200, personaGallery.body);
+  assert.match(personaGallery.body, new RegExp(`"scene:${slashVideoId}"`, "u"), "in the persona's gallery");
   // No picture shows this moment, so the director describes the scene instead of continuing an image.
   assert.match(lastDirector(), /No picture of this moment exists/u, "the no-picture director writes the clip");
   assert.doesNotMatch(lastDirector(), /reference image|first frame/iu);

@@ -12541,12 +12541,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       // and the Video Run Interval counts from this reply either way.
                       let attachedTo: string | null = null;
                       try {
-                        await attachVideoToMessage(
+                        const attached = await attachVideoToMessage(
                           chats,
                           { messageId: request.messageId, swipeIndex: request.swipeIndex },
                           buildChatVideoAttachment(video),
                         );
-                        attachedTo = request.messageId;
+                        // Reported on the reply only when the clip landed (the reply may have been deleted meanwhile).
+                        if (attached) attachedTo = request.messageId;
                       } catch (attachErr) {
                         logger.warn(attachErr, "[roleplay/commands] Saved clip %s but could not attach it", video.id);
                       }

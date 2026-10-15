@@ -142,6 +142,17 @@ try {
   assert.match(unattachedStream, /"videoId":"[^"]+"/u, "with the saved clip's id");
   assert.doesNotMatch(unattachedStream, /video_error/u);
 
+  // The reply deleted while its clip is made: still made, reported with no message.
+  h.hooks.beforeVideo = async () => {
+    const latest = (await h.chats.listMessages(unattached.id)).filter((message) => message.role === "assistant").at(-1);
+    assert.ok(latest);
+    await h.chats.removeMessage(latest.id);
+  };
+  const deletedStream = await h.generate(unattached.id, "Aster looks again.");
+  assert.equal(h.hooks.beforeVideo, null, "the clip reached the video service");
+  assert.match(deletedStream, /"type":"video","data":\{"messageId":null/u, "no message to show the clip on");
+  assert.doesNotMatch(deletedStream, /video_error/u);
+
   console.log("roleplay-video-tag regression passed");
 } finally {
   await h.close();

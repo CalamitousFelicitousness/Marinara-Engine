@@ -47208,8 +47208,8 @@
                         },
                         "spends": {
                           "type": "string",
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_]*$"
+                          "minLength": 1,
+                          "maxLength": 60
                         },
                         "save": {
                           "type": "object",
@@ -47235,8 +47235,8 @@
                             },
                             "tally": {
                               "type": "string",
-                              "maxLength": 40,
-                              "pattern": "^[a-z][a-z0-9_]*$"
+                              "minLength": 1,
+                              "maxLength": 60
                             },
                             "$comment": {}
                           },
@@ -47273,6 +47273,16 @@
                           "type": "string",
                           "minLength": 1,
                           "maxLength": 60
+                        },
+                        "whileHolding": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 12
                         },
                         "$comment": {}
                       },
@@ -91098,6 +91108,10 @@
                     "maxLength": 40,
                     "pattern": "^[a-z][a-z0-9_]*$"
                   },
+                  "betterOf": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false
@@ -91832,8 +91846,8 @@
                   },
                   "spends": {
                     "type": "string",
-                    "maxLength": 40,
-                    "pattern": "^[a-z][a-z0-9_]*$"
+                    "minLength": 1,
+                    "maxLength": 60
                   },
                   "save": {
                     "type": "object",
@@ -91859,8 +91873,8 @@
                       },
                       "tally": {
                         "type": "string",
-                        "maxLength": 40,
-                        "pattern": "^[a-z][a-z0-9_]*$"
+                        "minLength": 1,
+                        "maxLength": 60
                       },
                       "$comment": {}
                     },
@@ -91897,6 +91911,16 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 60
+                  },
+                  "whileHolding": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
                   },
                   "$comment": {}
                 },
@@ -97715,8 +97739,8 @@
                   },
                   "spends": {
                     "type": "string",
-                    "maxLength": 40,
-                    "pattern": "^[a-z][a-z0-9_]*$"
+                    "minLength": 1,
+                    "maxLength": 60
                   },
                   "save": {
                     "type": "object",
@@ -97742,8 +97766,8 @@
                       },
                       "tally": {
                         "type": "string",
-                        "maxLength": 40,
-                        "pattern": "^[a-z][a-z0-9_]*$"
+                        "minLength": 1,
+                        "maxLength": 60
                       },
                       "$comment": {}
                     },
@@ -97780,6 +97804,16 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 60
+                  },
+                  "whileHolding": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
                   },
                   "$comment": {}
                 },

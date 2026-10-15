@@ -274,6 +274,33 @@ try {
       "a way back",
     );
     assert.equal(wolfDruid.saves.wis_save, ownSaves.wis_save, "its own wisdom save, kept");
+    // Each the better of the druid's own and the wolf's (1.351).
+    {
+      const better = parsed(
+        document([wolfOnly, polymorph], (doc) => {
+          doc.combat.conditions.find((one: { condition: string }) => one.condition === "wild_shaped").shape.betterOf =
+            true;
+        }),
+      );
+      const betterEntries = better.catalogs!.find((catalog) => catalog.id === "spells")!
+        .entries! as RulesetCatalogEntry[];
+      const start = fight(better, betterEntries);
+      const own = structuredClone(who(start, "druid").saves);
+      const turned = step(better, start, {
+        actorId: "druid",
+        optionId: optionFor(better, start, "druid", "Wild Shape").id,
+        targetIds: ["druid"],
+        mode: "form-creatures-dire-wolf",
+      });
+      const saves = who(turned.state, "druid").saves;
+      let higher = 0;
+      for (const id of new Set([...Object.keys(own), ...Object.keys(wolfDruid.saves)])) {
+        const want = Math.max(wolfDruid.saves[id] ?? own[id]!, own[id] ?? wolfDruid.saves[id]!);
+        assert.equal(saves[id], want, id);
+        if ((own[id] ?? -99) > (wolfDruid.saves[id] ?? -99)) higher += 1;
+      }
+      assert.ok(higher > 0, "some save of the druid's own beats the wolf's");
+    }
     assert.deepEqual(wolfDruid.creature, { catalogId: "creatures", entryId: "dire-wolf" }, "drawn as the wolf");
     assert.deepEqual(health(definition, wolfDruid), { value: 30, max: 30, temp: 0 }, "the wolf's health");
 

@@ -1182,10 +1182,15 @@ function sheetPool(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
   key: string,
-): { value: number; max: number } | undefined {
+): { key: string; value: number; max: number } | undefined {
   if (!target.sheet) return undefined;
-  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
-  return live.pools.find((entry) => !entry.listId && entry.key === key);
+  const pools = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live).pools;
+  // A declared pool by id, or a list row's by its name (1.351): the half-orc's Relentless Endurance.
+  const wanted = key.trim().toLowerCase();
+  return (
+    pools.find((entry) => !entry.listId && entry.key === key) ??
+    pools.find((entry) => entry.listId && entry.label.trim().toLowerCase() === wanted)
+  );
 }
 
 /** Whether one way of hanging on at 1 works against this blow (1.320, 1.347), paying for it if it
@@ -1203,9 +1208,16 @@ function hangsOnNow(
   if (blow && hangs.notCritical && blow.critical) return null;
   if (blow && hangs.notFrom?.some((kind) => blow.kinds.has(kind.trim().toLowerCase()))) return null;
   if (blow && hangs.dealtAtMost !== undefined && blow.dealt > hangs.dealtAtMost) return null;
+  // Only while its holder holds one of these (1.351): Relentless Rage, while raging.
+  if (
+    hangs.whileHolding &&
+    !rulesetCombatConditions(ctx.definition, target).some((one) => hangs.whileHolding!.includes(one))
+  )
+    return null;
   const used = from === null ? (target.hungOn ?? 0) : (target.hungOnBy?.[from] ?? 0);
   if (hangs.uses !== undefined && used >= hangs.uses) return null;
-  if (hangs.spends !== undefined && (sheetPool(ctx, target, hangs.spends)?.value ?? 0) < 1) return null;
+  const spends = hangs.spends !== undefined ? sheetPool(ctx, target, hangs.spends) : undefined;
+  if (hangs.spends !== undefined && (spends?.value ?? 0) < 1) return null;
   if (hangs.save) {
     // Times it has worked before: this fight's count, or what has been spent off the tally since a
     // rest last filled it.
@@ -1215,10 +1227,9 @@ function hangsOnNow(
       hangs.save.difficulty + (hangs.save.plusDamage ? (blow?.dealt ?? 0) : 0) + (hangs.save.raisedBy ?? 0) * before;
     if (!rollSave(ctx, target, hangs.save.save, difficulty)) return null;
     if (tally && tally.value > 0)
-      writeRulesetSheet(ctx.definition, target, { op: "spend", pool: hangs.save.tally!, amount: 1 });
+      writeRulesetSheet(ctx.definition, target, { op: "spend", pool: tally.key, amount: 1 });
   }
-  if (hangs.spends !== undefined)
-    writeRulesetSheet(ctx.definition, target, { op: "spend", pool: hangs.spends, amount: 1 });
+  if (spends) writeRulesetSheet(ctx.definition, target, { op: "spend", pool: spends.key, amount: 1 });
   if (from === null) target.hungOn = used + 1;
   else target.hungOnBy = { ...target.hungOnBy, [from]: used + 1 };
   return hangs.uses !== undefined ? { left: hangs.uses - used - 1 } : {};

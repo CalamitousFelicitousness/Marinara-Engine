@@ -2179,6 +2179,24 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** Hanging on off a list row's pool or only while holding a condition, and a shape's better-of
+ *  saves and checks (1.351). `pools` are the sheet's declared pool ids. */
+function carriesHangsOnRows351(value: unknown, pools: ReadonlySet<string>, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHangsOnRows351(one, pools, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const hangs = plainRecord(record.hangsOn);
+  if (hangs) {
+    if (hangs.whileHolding !== undefined) return true;
+    if (typeof hangs.spends === "string" && !pools.has(hangs.spends)) return true;
+    const tally = plainRecord(hangs.save)?.tally;
+    if (typeof tally === "string" && !pools.has(tally)) return true;
+  }
+  if (plainRecord(record.shape)?.betterOf !== undefined) return true;
+  return featureValues(record).some((one) => carriesHangsOnRows351(one, pools, depth + 1));
+}
+
 /** Engulfing, being inside, harms on its source's turns or spared by a save, and sized target
  *  tests (1.350). */
 function carriesEngulf350(value: unknown, depth = 0): boolean {
@@ -5260,6 +5278,22 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Hanging on off a list row's pool or while holding a condition, and better-of shapes, 1.351.
+  if (!declaresApi(351)) {
+    const live = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.live);
+    const pools = new Set(
+      (Array.isArray(live?.pools) ? live.pools : []).flatMap((one) => {
+        const id = plainRecord(one)?.id;
+        return typeof id === "string" ? [id] : [];
+      }),
+    );
+    if (
+      carriesHangsOnRows351(ruleset, pools) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHangsOnRows351(document, pools))
+    ) {
+      return "A ruleset that hangs on at 1 off a list row's pool or only while holding a condition, or with a shape's saves and checks the better of two, requires schemaVersion 2 and capabilityApi 1.351 or newer";
+    }
   }
   // Engulfing, being inside, source-turn and saved-against harms, and sized target tests, 1.350.
   if (

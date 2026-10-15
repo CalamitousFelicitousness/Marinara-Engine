@@ -106,8 +106,15 @@ export function rulesetTakeShape(
   target.speed = built.speed;
   const pick = (from: Record<string, number> | undefined, ids: readonly string[] | undefined) =>
     Object.fromEntries(Object.entries(from ?? {}).filter(([id]) => ids?.includes(id)));
-  target.saves = { ...built.saves, ...pick(was.saves, rule.keepsSaves) };
-  const checks = { ...(built.checks ?? {}), ...pick(was.checks, rule.keepsChecks) };
+  // Each the better of their own and the form's (1.351), where the rule says so.
+  const better = (form: Record<string, number> | undefined, own: Record<string, number> | undefined) => {
+    if (!rule.betterOf) return { ...(form ?? {}) };
+    const out = { ...(form ?? {}) };
+    for (const [id, value] of Object.entries(own ?? {})) out[id] = Math.max(out[id] ?? value, value);
+    return out;
+  };
+  target.saves = { ...better(built.saves, was.saves), ...pick(was.saves, rule.keepsSaves) };
+  const checks = { ...better(built.checks, was.checks), ...pick(was.checks, rule.keepsChecks) };
   if (Object.keys(checks).length) target.checks = checks;
   else delete target.checks;
   for (const key of ["speeds", "hover", "senses", "size", "span", "riders", "block", "soak", "hardness"] as const) {

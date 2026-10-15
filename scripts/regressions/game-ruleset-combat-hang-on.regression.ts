@@ -19,6 +19,7 @@ import {
   parseRulesetDefinition,
   rulesetCombatant,
   rulesetCombatHealth,
+  readRulesetLive,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCombatChoice,
@@ -260,6 +261,127 @@ try {
     assert.deepEqual(of(gritted.events, "hangsOn"), [{ type: "hangsOn", actorId: "orc", label: "Grit", left: 0 }]);
   }
 
+  // ── A list row's pool, and only while raging (1.351) ──
+  {
+    const rows = parsed(
+      document((doc) => {
+        // The rows the half-orc's and the barbarian's features write.
+        doc.catalogs.push({
+          id: "traits",
+          label: "Traits",
+          feeds: ["counters"],
+          entries: [
+            {
+              id: "relentless-endurance",
+              label: "Relentless Endurance",
+              rows: [{ list: "counters", values: { name: "Relentless Endurance", max: 1, recharge: "long" } }],
+            },
+            {
+              id: "relentless-rage",
+              label: "Relentless Rage",
+              rows: [{ list: "counters", values: { name: "Relentless Rage", max: 5, recharge: "short" } }],
+            },
+          ],
+        });
+        doc.sheet.live.conditions.push(
+          { id: "endurance_row", label: "Relentless Endurance" },
+          { id: "rage_feat", label: "Relentless Rage" },
+        );
+        doc.combat.conditions.push(
+          { condition: "endurance_row", effects: [], hangsOn: { spends: "Relentless Endurance" } },
+          {
+            condition: "rage_feat",
+            effects: [],
+            hangsOn: {
+              whileHolding: ["raging"],
+              save: { save: "con_save", difficulty: 10, raisedBy: 5, tally: "Relentless Rage" },
+            },
+          },
+        );
+        // The rage condition itself no longer hangs on: the feature's does, while it holds.
+        delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "raging").hangsOn;
+      }),
+    );
+    const orc = (amount: number, conditions: string[], counters: Array<Record<string, unknown>>) => {
+      const state = createRulesetEncounter({
+        definition: rows,
+        seed: 1,
+        roller: () => 10,
+        combatants: [
+          {
+            id: "orc",
+            name: "Orc",
+            side: "party",
+            build: rulesetSheetBuildSchema.parse({
+              abilities: { str: 16, dex: 10, con: 16, int: 10, wis: 10, cha: 10 },
+              fields: { level: 11, ac: 14, speed: 30, hp_max: 100 },
+              lists: { counters },
+            }),
+            live: {},
+          },
+          { id: "dummy", name: "Dummy", side: "enemy", block: blaster(amount, "slashing") },
+        ],
+      });
+      for (const condition of conditions) who(state, "orc").tracked.push({ condition, rounds: null } as never);
+      state.order = ["dummy", "orc"];
+      state.turn = 0;
+      return state;
+    };
+    const strike = (state: RulesetEncounterState) => {
+      who(state, "dummy").budgets.action = 1;
+      const taken = applyRulesetCombatChoice(
+        rows,
+        state,
+        { actorId: "dummy", optionId: who(state, "dummy").actions[0]!.id, targetIds: ["orc"] },
+        () => 10,
+      );
+      assert.deepEqual(of(taken.events, "refused"), [], JSON.stringify(taken.events));
+      return taken;
+    };
+    const row = (state: RulesetEncounterState, name: string) => {
+      const sheet = who(state, "orc").sheet!;
+      return readRulesetLive(rows, sheet.build, sheet.live).pools.find((one) => one.listId && one.label === name)
+        ?.value;
+    };
+    const rowHealth = (state: RulesetEncounterState) =>
+      rulesetCombatHealth(rows, rows.combat!, who(state, "orc")).value;
+    // Relentless Endurance off the half-orc's counter row.
+    const endured = strike(orc(110, ["endurance_row"], [{ name: "Relentless Endurance", max: 1, recharge: "long" }]));
+    assert.deepEqual(of(endured.events, "hangsOn"), [{ type: "hangsOn", actorId: "orc" }]);
+    assert.equal(rowHealth(endured.state), 1);
+    assert.equal(row(endured.state, "Relentless Endurance"), 0, "the row's use spent");
+    assert.ok(who(strike(endured.state).state, "orc").down, "and down the next time");
+    // Relentless Rage: only while raging, its tally a counter row.
+    const rageRow = [{ name: "Relentless Rage", max: 5, recharge: "short" }];
+    const calm = strike(orc(110, ["rage_feat"], rageRow));
+    assert.deepEqual(of(calm.events, "save"), [], "not raging: no save at all");
+    assert.ok(who(calm.state, "orc").down);
+    const raged = strike(orc(110, ["rage_feat", "raging"], rageRow));
+    assert.deepEqual(
+      of(raged.events, "save").map((one) => [one.difficulty, one.success]),
+      [[10, true]],
+    );
+    assert.equal(row(raged.state, "Relentless Rage"), 4, "one tallied on the row");
+    const second = strike(raged.state);
+    assert.deepEqual(
+      of(second.events, "save").map((one) => [one.difficulty, one.success]),
+      [[15, false]],
+    );
+    // A row name nothing could hold is refused where no list keeps pools.
+    refused(
+      document((doc) => {
+        doc.combat.conditions.at(-1).hangsOn = { spends: "Relentless Resolve" };
+      }),
+      /Unknown pool "Relentless Resolve"/,
+    );
+    refused(
+      document((doc) => {
+        doc.combat.conditions.at(-1).hangsOn = { uses: 1, whileHolding: ["furious"] };
+      }),
+      /Unknown condition "furious"/,
+    );
+  }
+
   // ── Refusals ──
   {
     const onZombie = (hangsOn: unknown) =>
@@ -320,7 +442,23 @@ try {
     hourglass.catalogs
       .find((catalog: { holds?: string }) => catalog.holds === "creatures")
       .entries.push({ ...zombie, creature: { ...zombie.creature, hangsOn: { uses: 1, extraTurn: true } } });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(346) as never, hourglass), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(346) as never, hourglass), gate); // A list row's pool, or whileHolding: 1.351.
+    const later =
+      "A ruleset that hangs on at 1 off a list row's pool or only while holding a condition, or with a shape's saves and checks the better of two, requires schemaVersion 2 and capabilityApi 1.351 or newer";
+    const rowSpend = document((doc) => {
+      doc.combat.conditions.at(-1).hangsOn = { spends: "Relentless Endurance" };
+    });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(350) as never, rowSpend), later);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(351) as never, rowSpend), later);
+    assert.notEqual(
+      getCapabilityPackageInstallIssue(manifest(350) as never, document()),
+      later,
+      "pool ids are 1.347's",
+    );
+    const holding = document((doc) => {
+      doc.combat.conditions.at(-1).hangsOn.whileHolding = ["raging"];
+    });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(350) as never, holding), later);
   }
 
   console.log(

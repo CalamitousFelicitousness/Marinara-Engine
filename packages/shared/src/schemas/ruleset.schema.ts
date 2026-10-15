@@ -2516,7 +2516,10 @@ export const regenerationSchema: z.ZodType<RulesetRegeneration, z.ZodTypeDef, un
  *  It never works against a blow with a damage type in `notFrom` or a critical hit with `notCritical`
  *  (Undead Fortitude's radiant and critical hits), nor one that dealt more than `dealtAtMost` (a
  *  boar's Relentless, 7). `extraTurn` gives its holder a turn of its own straight after. With no
- *  `uses`, `spends` or `save` it would work every time, so one of them is needed. */
+ *  `uses`, `spends` or `save` it would work every time, so one of them is needed.
+ *  Since Capability API 1.351 `spends` and `tally` may name a list row's pool by its name (the
+ *  half-orc's "Relentless Endurance" counter), and `whileHolding` keeps it to while its holder holds
+ *  one of these conditions (Relentless Rage, only while raging). */
 export interface RulesetHangsOn {
   uses?: number;
   spends?: string;
@@ -2526,18 +2529,19 @@ export interface RulesetHangsOn {
   dealtAtMost?: number;
   extraTurn?: true;
   label?: string;
+  whileHolding?: string[];
 }
 export const hangsOnSchema: z.ZodType<RulesetHangsOn, z.ZodTypeDef, unknown> = z
   .object({
     uses: z.number().int().min(1).max(10).optional(),
-    spends: sheetId.optional(),
+    spends: z.string().trim().min(1).max(60).optional(),
     save: z
       .object({
         save: sheetId,
         difficulty: z.number().int().min(0).max(100),
         plusDamage: z.literal(true).optional(),
         raisedBy: z.number().int().min(1).max(20).optional(),
-        tally: sheetId.optional(),
+        tally: z.string().trim().min(1).max(60).optional(),
       })
       .strict()
       .refine((save) => !save.tally || save.raisedBy !== undefined, {
@@ -2550,6 +2554,7 @@ export const hangsOnSchema: z.ZodType<RulesetHangsOn, z.ZodTypeDef, unknown> = z
     dealtAtMost: z.number().int().min(0).max(10000).optional(),
     extraTurn: z.literal(true).optional(),
     label: promptSafeText(60).optional(),
+    whileHolding: z.array(sheetId).min(1).max(12).optional(),
   })
   .strict()
   .refine((hangs) => hangs.uses !== undefined || hangs.spends !== undefined || hangs.save !== undefined, {
@@ -9167,6 +9172,10 @@ const combatConditionSchema = z
         keepsChecks: uniqueIds(32).optional(),
         keeps: z.array(z.string().trim().min(1).max(200)).max(24).optional(),
         revert: sheetId.optional(),
+        /** Each save and check the better of their own and the form's (Capability API 1.351):
+         *  Wild Shape's and Shapechange's "if ... the bonus in its stat block is higher than yours,
+         *  use the creature's bonus instead of yours". What they keep is still their own. */
+        betterOf: z.literal(true).optional(),
       })
       .strict()
       .optional(),
@@ -15275,14 +15284,31 @@ function hangsOnIssues(
     if (declared && !declared.includes(kind.trim().toLowerCase()))
       add([...at, "notFrom", index], `Unknown damage type "${kind}"`);
   });
+  const conditions = new Set(definition.sheet.live.conditions.map((one) => one.id));
+  hangs.whileHolding?.forEach((condition, index) => {
+    if (!conditions.has(condition)) add([...at, "whileHolding", index], `Unknown condition "${condition}"`);
+  });
   if (creature) {
     if (hangs.spends !== undefined) add([...at, "spends"], 'A creature has no sheet to spend "spends" off');
     if (hangs.save?.tally !== undefined) add([...at, "save", "tally"], 'A creature has no sheet to keep "tally" on');
     return;
   }
+  // A declared pool by id, or a list row's pool by its name (1.351): a row some catalog entry writes
+  // into a list that keeps pools.
   const pools = new Set(definition.sheet.live.pools.map((pool) => pool.id));
-  if (hangs.spends !== undefined && !pools.has(hangs.spends)) add([...at, "spends"], `Unknown pool "${hangs.spends}"`);
-  if (hangs.save?.tally !== undefined && !pools.has(hangs.save.tally))
+  const rowNames = new Set<string>();
+  for (const list of definition.sheet.lists) {
+    if (!list.pools) continue;
+    for (const catalog of definition.catalogs ?? [])
+      for (const entry of catalog.entries ?? [])
+        for (const row of entry.rows ?? []) {
+          const name = row.list === list.id ? row.values?.[list.pools.nameColumn] : undefined;
+          if (typeof name === "string") rowNames.add(name.trim().toLowerCase());
+        }
+  }
+  const known = (name: string) => pools.has(name) || rowNames.has(name.trim().toLowerCase());
+  if (hangs.spends !== undefined && !known(hangs.spends)) add([...at, "spends"], `Unknown pool "${hangs.spends}"`);
+  if (hangs.save?.tally !== undefined && !known(hangs.save.tally))
     add([...at, "save", "tally"], `Unknown pool "${hangs.save.tally}"`);
   if (hangs.save && !definition.sheet.saves.some((save) => save.id === hangs.save!.save))
     add([...at, "save", "save"], `Unknown save "${hangs.save.save}"`);

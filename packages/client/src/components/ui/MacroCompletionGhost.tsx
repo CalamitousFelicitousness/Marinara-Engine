@@ -75,7 +75,8 @@ function measure(textarea: HTMLTextAreaElement): Pick<MacroCompletion, "box" | "
 
 /**
  * Macro ghost-text for a textarea: typing `{{ch` greys in `ar}}` and Tab accepts it,
- * like the omnibar and the Professor Mari composer. Attach `textareaRef`, call
+ * like the omnibar and the Professor Mari composer; tapping the ghost accepts it too,
+ * for phone keyboards without Tab. Attach `textareaRef`, call
  * `refresh` on focus, select and scroll, `clear` on blur, and `accept` first in keydown.
  */
 export function useMacroCompletion(enabled: boolean, value: string) {
@@ -113,6 +114,11 @@ export function useMacroCompletion(enabled: boolean, value: string) {
 
   const clear = useCallback(() => setCompletion(null), []);
 
+  const insert = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (completion && textarea) insertTextAtCaret(textarea, completion.suffix);
+  }, [completion]);
+
   /** Accepts the ghost on a plain Tab. Returns true when it handled the key. */
   const accept = useCallback(
     (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -129,17 +135,24 @@ export function useMacroCompletion(enabled: boolean, value: string) {
         return false;
       }
       event.preventDefault();
-      insertTextAtCaret(event.currentTarget, completion.suffix);
+      insert();
       return true;
     },
-    [completion],
+    [completion, insert],
   );
 
-  return { textareaRef, completion, refresh, clear, accept };
+  return { textareaRef, completion, refresh, clear, accept, insert };
 }
 
 /** Draws the macro ghost over its textarea. Render it right after the textarea, inside a positioned wrapper. */
-export function MacroCompletionGhost({ completion }: { completion: MacroCompletion | null }) {
+export function MacroCompletionGhost({
+  completion,
+  onAccept,
+}: {
+  completion: MacroCompletion | null;
+  /** Tapping the ghost accepts it; pass the hook's `insert`. */
+  onAccept: () => void;
+}) {
   if (!completion) return null;
   return (
     <div
@@ -154,6 +167,7 @@ export function MacroCompletionGhost({ completion }: { completion: MacroCompleti
         scrollLeft={completion.scrollLeft}
         scrollTop={completion.scrollTop}
         style={completion.text}
+        onAccept={onAccept}
       />
     </div>
   );

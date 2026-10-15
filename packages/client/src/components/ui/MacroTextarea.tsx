@@ -103,6 +103,7 @@ function ExpandedMacroEditor({
     refresh: refreshCompletion,
     clear: clearCompletion,
     accept: acceptCompletion,
+    insert: insertCompletion,
   } = useMacroCompletion(open && macroCompletion && !readOnly, localValue);
   const valueRef = useRef(value);
   valueRef.current = value;
@@ -213,7 +214,7 @@ function ExpandedMacroEditor({
               )}
               spellCheck={false}
             />
-            <MacroCompletionGhost completion={completion} />
+            <MacroCompletionGhost completion={completion} onAccept={insertCompletion} />
           </div>
         </div>
       </div>
@@ -417,6 +418,7 @@ export function MacroTextarea({
     refresh: refreshCompletion,
     clear: clearCompletion,
     accept: acceptCompletion,
+    insert: insertCompletion,
   } = useMacroCompletion(macroCompletionEnabled && !expanded, value);
   const setTextareaRef = useCallback(
     (node: HTMLTextAreaElement | null) => {
@@ -514,7 +516,7 @@ export function MacroTextarea({
             )}
           />
         )}
-        <MacroCompletionGhost completion={completion} />
+        <MacroCompletionGhost completion={completion} onAccept={insertCompletion} />
         {(showExpand || showMacroReference || showMarkdownPreview || toolbarExtra) && (
           <div className={cn("absolute right-1.5 top-1.5 flex flex-col gap-0.5", toolbarClassName)}>
             {showMarkdownPreview ? (

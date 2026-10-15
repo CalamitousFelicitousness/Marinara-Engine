@@ -83,6 +83,12 @@ try {
   assert.equal(slashClip.statusCode, 200, slashClip.body);
   assert.equal((slashClip.json() as { messageId: string }).messageId, pairReply?.id, "under the newest reply");
   assert.match(lastDirector(), /Requested clip: Bottles explode off the shelf/u);
+  // Room for a model that thinks first; running out says so instead of "an empty direction".
+  assert.ok((requests.directorMaxTokens.at(-1) ?? 0) >= 8_000, "the director has room to think");
+  replies.director = { content: "", finishReason: "length" };
+  const outOfBudget = await roleplayVideo(pair.id, "Bottles explode off the shelf");
+  assert.equal(outOfBudget.statusCode, 502);
+  assert.match(outOfBudget.body, /used its whole response budget/u);
   // The clip belongs to the whole chat, so it is listed in the persona's gallery too.
   const slashVideoId = (slashClip.json() as { video: { id: string } }).video.id;
   const personaGallery = await h.app.inject({

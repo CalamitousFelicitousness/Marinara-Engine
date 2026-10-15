@@ -725,6 +725,8 @@ export async function galleryRoutes(app: FastifyInstance) {
     return Array.from(names).slice(0, 10);
   }
 
+  const ROLEPLAY_VIDEO_DIRECTOR_MAX_TOKENS = 8_196;
+
   /**
    * The Roleplay video director's prompt for a clip: written by the Prompt Model from the exchange it shows,
    * following the video connection's Video Prompting Instructions, with the named characters' appearance lines
@@ -786,15 +788,20 @@ export async function galleryRoutes(app: FastifyInstance) {
       systemMessage.content,
       userMessage.content,
     );
+    let finishReason: string | null | undefined;
     try {
       const result = await promptRuntime.provider.chatComplete(directionMessages, {
         model: promptRuntime.model,
-        ...(promptRuntime.suppressModelParameters ? {} : { temperature: 0.5, maxTokens: 1_200 }),
+        // Room for a model that thinks before answering, as the Conversation video writer has.
+        ...(promptRuntime.suppressModelParameters
+          ? {}
+          : { temperature: 0.5, maxTokens: ROLEPLAY_VIDEO_DIRECTOR_MAX_TOKENS }),
         suppressModelParameters: promptRuntime.suppressModelParameters,
         signal: args.signal,
         enableCaching: promptRuntime.enableCaching,
         anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
       });
+      finishReason = result.finishReason;
       // A sentence of the connection's instructions the director copied word for word is not video-model text.
       promptDraft = removeCopiedPromptGuidance(
         resolveRoleplayVideoDirection(result.content, args.videoRuntime.promptLimits.finalPrompt),
@@ -809,7 +816,12 @@ export async function galleryRoutes(app: FastifyInstance) {
       throw new GallerySceneVideoRequestError(502, message);
     }
     if (!promptDraft) {
-      throw new GallerySceneVideoRequestError(502, "The Roleplay animation Prompt Model returned an empty direction.");
+      throw new GallerySceneVideoRequestError(
+        502,
+        finishReason === "length"
+          ? "The Roleplay animation Prompt Model used its whole response budget before writing the clip. Try a model that thinks less, or shorter Video Prompting Instructions."
+          : "The Roleplay animation Prompt Model returned an empty direction.",
+      );
     }
     if (args.meta.illustratorVideoIncludeCharacterAppearance === true) {
       // The characters the direction names get their appearance lines, as Illustrator images do.

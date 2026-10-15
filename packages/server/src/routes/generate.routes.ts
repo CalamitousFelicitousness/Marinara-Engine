@@ -74,6 +74,7 @@ import { registerParameterPreviewRoute } from "./generate/parameter-preview-rout
 import { GenerationStreamOutput } from "./generate/generation-stream-output.js";
 import { parseConversationReplyCommands, parseRoleplayDmReplyCommands } from "./generate/reply-commands.js";
 import { cleanGeneratedReply } from "./generate/reply-text-cleanup.js";
+import { saveHiddenCommandAnchor } from "./generate/hidden-command-anchor.js";
 import { buildGenerationInfoExtra } from "./generate/saved-message-extra.js";
 import { runToolRounds } from "./generate/tool-rounds.js";
 // ──────────────────────────────────────────────
@@ -10026,26 +10027,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 collectedGmVerbCalls.length,
                 input.chatId,
               );
-              if (input.regenerateMessageId) await chats.addSwipe(input.regenerateMessageId, "");
-              const savedMsg = input.regenerateMessageId
-                ? await chats.getMessage(input.regenerateMessageId)
-                : await chats.createMessage({
-                    chatId: input.chatId,
-                    role: "assistant",
-                    characterId: targetCharId,
-                    content: "",
-                  });
-              const anchoredMsg = savedMsg?.id
-                ? await chats.updateMessageExtra(savedMsg.id, {
-                    hiddenFromUser: !sceneRequest,
-                    hiddenFromAI: !conversationCommandContent,
-                    commandOnly: true,
-                    sceneRequest,
-                    conversationCommandContent: conversationCommandContent ?? null,
-                    isGenerated: true,
-                    encryptedReasoning: encryptedReasoningItems?.length ? encryptedReasoningItems : null,
-                  })
-                : savedMsg;
+              const anchoredMsg = await saveHiddenCommandAnchor(chats, {
+                chatId: input.chatId,
+                regenerateMessageId: input.regenerateMessageId,
+                targetCharId,
+                sceneRequest,
+                conversationCommandContent,
+                encryptedReasoningItems,
+              });
               if (sceneRequest && anchoredMsg?.id) {
                 sendSseEvent(reply, { type: "message_saved", data: anchoredMsg });
               }

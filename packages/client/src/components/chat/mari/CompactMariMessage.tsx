@@ -32,7 +32,11 @@ import {
   type MariReferencedResource,
 } from "../../../lib/mari-referenced-resources";
 import { formatRelativeContact } from "../../../lib/relative-time";
-import { getOmnibarSettingsDestinations } from "../../../lib/omnibar-settings";
+import {
+  getOmnibarSettingsDestinations,
+  localizeOmnibarSettingDescription,
+  localizeOmnibarSettingTitle,
+} from "../../../lib/omnibar-settings";
 import { useAgentConfigs } from "../../../hooks/use-agents";
 import { ResultTypeIcon } from "../../command-center/ResultTypeIcon";
 import { chatResultType, resourceResultType } from "../../../lib/command-icons";
@@ -213,7 +217,7 @@ export function MariReferencedResources({
       character?.name ??
       lorebook?.name ??
       agent?.name ??
-      (setting ? localize(setting.title) : null) ??
+      (setting ? localizeOmnibarSettingTitle(setting, localize, localizeUi) : null) ??
       resource.name ??
       builtInAgent?.name;
     // A record she read that no longer exists (or never loaded) has nothing to show.
@@ -223,7 +227,7 @@ export function MariReferencedResources({
       character?.description ??
       lorebook?.description ??
       agent?.description ??
-      (setting ? localize(setting.description) : undefined) ??
+      (setting ? localizeOmnibarSettingDescription(setting, localize, localizeUi) : undefined) ??
       resource.detail ??
       builtInAgent?.description;
     const agentState =

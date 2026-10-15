@@ -4833,6 +4833,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   }
 
   const leveled = openLevels(definition, combat, state);
+  const refilled = openRefills(definition, state);
   state.order = rulesetInitiativeOrder(state.combatants);
   // A second turn this first round (1.238), placed at its own number among everybody's: 5e's
   // Thief's Reflexes. The order holds them twice until the round is over.
@@ -4882,6 +4883,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       }),
     },
     ...leveled,
+    ...refilled,
     ...crashed,
     ...(surprised.length ? ([{ type: "surprised", actorIds: surprised }] as RulesetCombatEvent[]) : []),
     ...extraTurns,
@@ -4968,6 +4970,50 @@ export function rulesetImmuneToCondition(
  * the health they bring to it, so a blow is taken off what they really have, and a level that
  * defeats takes them out before anybody moves.
  */
+/** What a sheet's entries give back as initiative is rolled to a pool its holder has none of (1.358):
+ *  Superior Inspiration's one use of Bardic Inspiration. */
+function openRefills(definition: RulesetDefinition, state: RulesetEncounterState): RulesetCombatEvent[] {
+  const events: RulesetCombatEvent[] = [];
+  for (const combatant of state.combatants) {
+    const sheet = combatant.sheet;
+    if (!sheet || combatant.defeated) continue;
+    const byRef = rulesetCatalogEntriesByRef({
+      ...Object.fromEntries((definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []])),
+      ...sheet.catalogs,
+    });
+    const refs = new Set(
+      Object.values(sheet.build.lists ?? {}).flatMap((rows) =>
+        Array.isArray(rows)
+          ? rows.flatMap((row) => {
+              const ref =
+                row && typeof row === "object" ? (row as Record<string, unknown>)[RULESET_CATALOG_ROW_KEY] : undefined;
+              return typeof ref === "string" ? [ref] : [];
+            })
+          : [],
+      ),
+    );
+    for (const ref of refs) {
+      const entry = byRef.get(ref);
+      const refill = entry?.mechanics?.refillsAtInitiative;
+      if (!entry || !refill) continue;
+      const wanted = refill.pool.trim().toLowerCase();
+      const pool = readRulesetLive(definition, sheet.build, sheet.live).pools.find(
+        (one) => one.key.toLowerCase() === wanted || one.label.trim().toLowerCase() === wanted,
+      );
+      if (!pool || pool.value > 0) continue;
+      const done = applyRulesetSheetOp(definition, sheet.build, sheet.live, {
+        op: "restore",
+        pool: pool.key,
+        amount: refill.amount ?? 1,
+      });
+      if (!done.ok) continue;
+      sheet.live = done.live;
+      events.push({ type: "refilled", actorId: combatant.id, label: entry.label, pool: pool.label, now: done.now });
+    }
+  }
+  return events;
+}
+
 function openLevels(
   definition: RulesetDefinition,
   combat: RulesetCombat,

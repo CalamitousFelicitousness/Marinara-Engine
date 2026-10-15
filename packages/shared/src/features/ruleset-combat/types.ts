@@ -2753,6 +2753,9 @@ export type RulesetCombatEvent =
       by: number;
       total: number;
     }
+  /** A pool given back as initiative was rolled, its holder having none left (1.358): Superior
+   *  Inspiration. `now` is the pool as it stands after. */
+  | { type: "refilled"; actorId: string; label: string; pool: string; now: string }
   /** A face of its maker's own roll rolled again by what they hold (1.355): a halfling's Lucky. */
   | { type: "rerolled"; actorId: string; label: string; face: number; to: number }
   /** A failed roll rolled again or turned into a success by what its maker spent (1.249). */

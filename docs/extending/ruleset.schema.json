@@ -36305,6 +36305,26 @@
                               "minItems": 1,
                               "maxItems": 100
                             },
+                            "texts": {
+                              "type": "array",
+                              "items": {
+                                "type": "array",
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "items": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  }
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 30
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -46365,6 +46385,27 @@
                       "required": [
                         "pool",
                         "amount"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "refillsAtInitiative": {
+                      "type": "object",
+                      "properties": {
+                        "pool": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100,
+                          "default": 1
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "pool"
                       ],
                       "additionalProperties": false
                     },
@@ -72093,6 +72134,27 @@
                           ],
                           "additionalProperties": false
                         },
+                        "refillsAtInitiative": {
+                          "type": "object",
+                          "properties": {
+                            "pool": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 60
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100,
+                              "default": 1
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "pool"
+                          ],
+                          "additionalProperties": false
+                        },
                         "recovers": {
                           "type": "object",
                           "properties": {
@@ -83101,6 +83163,27 @@
                                 "required": [
                                   "pool",
                                   "amount"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "refillsAtInitiative": {
+                                "type": "object",
+                                "properties": {
+                                  "pool": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 60
+                                  },
+                                  "amount": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100,
+                                    "default": 1
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "pool"
                                 ],
                                 "additionalProperties": false
                               },

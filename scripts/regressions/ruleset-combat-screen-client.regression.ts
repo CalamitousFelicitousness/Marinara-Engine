@@ -800,6 +800,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         alters: ["Careful Spell", "Empowered Spell"],
       }),
     ],
+    [
+      "refilled",
+      say({
+        type: "refilled",
+        actorId: "brenna",
+        label: "Superior Inspiration",
+        pool: "Bardic Inspiration",
+        now: "1/5",
+      }),
+    ],
     ["rerolled", say({ type: "rerolled", actorId: "brenna", label: "Lucky", face: 1, to: 14 })],
     [
       "rescued",
@@ -1172,6 +1182,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("slain"), "Brenna's Mace of Disruption destroys Thorn Lurker outright.");
   assert.equal(printed.get("dropped"), "Brenna's Quivering Palm drops Thorn Lurker to 0.");
+  assert.equal(
+    printed.get("refilled"),
+    "Brenna's Superior Inspiration gives back Bardic Inspiration as initiative is rolled: 1/5.",
+  );
   assert.equal(printed.get("rerolled"), "Brenna rolls a 1, and Lucky rolls it again: 14.");
   assert.equal(printed.get("rescued"), "Brenna uses Indomitable and rolls again.");
   assert.equal(printed.get("lowered"), "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite, to 12.");

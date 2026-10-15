@@ -2152,6 +2152,7 @@
   "game.combat.ruleset.event.recheckHit": "Against {{defense}}, {{actor}}'s {{label}} still hits {{target}}.",
   "game.combat.ruleset.event.recheckMiss": "Against {{defense}}, {{actor}}'s {{label}} now misses {{target}}.",
   "game.combat.ruleset.event.recovered": "{{actor}} picks up {{count}} of their {{label}} after the fight.",
+  "game.combat.ruleset.event.refilled": "{{actor}}'s {{label}} gives back {{pool}} as initiative is rolled: {{now}}.",
   "game.combat.ruleset.event.refused": "{{actor}} could not do that: {{reason}}",
   "game.combat.ruleset.event.regenerates": "{{actor}} regenerates {{amount}}.",
   "game.combat.ruleset.event.regenerationStopped": "{{actor}} does not regenerate this turn.",

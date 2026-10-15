@@ -2180,6 +2180,17 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
 }
 
 /** A floor under defense (1.353): a modifier to defense with `atLeast`. */
+/** A text column by steps, or a pool refilled at initiative (1.358): Font and Superior Inspiration. */
+function carriesInspiration358(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesInspiration358(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.refillsAtInitiative)) return true;
+  if (Array.isArray(record.texts) && record.from !== undefined) return true;
+  return featureValues(record).some((one) => carriesInspiration358(one, depth + 1));
+}
+
 /** Pools a use gives back, picked within a budget (1.357): Arcane Recovery's `recovers`. */
 function carriesRecovers357(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5374,6 +5385,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A scaled text by steps, or a pool refilled at initiative, 1.358.
+  if (
+    !declaresApi(358) &&
+    (carriesInspiration358(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesInspiration358(document)))
+  ) {
+    return "A ruleset whose row sets a text by steps (scaled texts) or refills a pool at initiative (mechanics.refillsAtInitiative) requires schemaVersion 2 and capabilityApi 1.358 or newer";
+  }
   // Pools given back within a budget, 1.357.
   if (
     !declaresApi(357) &&

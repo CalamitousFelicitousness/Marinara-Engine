@@ -583,6 +583,13 @@ export function rulesetCombatEventLine(
       });
     case "evaded":
       return key("evaded", { target: names.combatant(event.targetId), label: event.label });
+    case "refilled":
+      return key("refilled", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        pool: event.pool,
+        now: event.now,
+      });
     case "rerolled":
       return key("rerolled", {
         actor: names.combatant(event.actorId),

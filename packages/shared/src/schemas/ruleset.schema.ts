@@ -5103,6 +5103,14 @@ const catalogMechanicsObject = z
       })
       .strict()
       .optional(),
+    /** As a fight's initiative is rolled, gives `amount` back to the pool named here (a live pool by
+     *  id, or a list row's pool by its name) when its holder has none of it left (Capability API
+     *  1.358): 5e's Superior Inspiration, "when you roll initiative and have no uses of Bardic
+     *  Inspiration left, you regain one use". Never past the pool's maximum. */
+    refillsAtInitiative: z
+      .object({ pool: z.string().trim().min(1).max(60), amount: z.number().int().min(1).max(100).default(1) })
+      .strict()
+      .optional(),
     /** Gives back spent pools of one group that its user picks as they use it, whose levels add up
      *  to no more than `upTo` read off their sheet, none above level `most` (Capability API 1.357):
      *  5e's Arcane Recovery and Natural Recovery, "a combined level that is equal to or less than half
@@ -5579,7 +5587,26 @@ export const RULESET_SCALED_MAX_COLUMNS = 4;
 /** A number column whose value follows the sheet: the reference's own number, or that number looked
  *  up in `table` (a maximum that grows with a level). The sheet editor writes it when the build
  *  changes; nothing recomputes it at read time, so a stored row is always the number it says. */
-const catalogScaledColumnSchema = z.object({ from: rulesetValueRefSchema, table: stepTableSchema.optional() }).strict();
+const catalogScaledColumnSchema = z
+  .object({
+    from: rulesetValueRefSchema,
+    table: stepTableSchema.optional(),
+    /** For a text or enum column (Capability API 1.358): the reference's number looked up in steps of
+     *  text, the last whose threshold it reaches, the first when it reaches none. 5e's Font of
+     *  Inspiration: a bard's counter recharges `[[1, "long"], [5, "short"]]` by level. */
+    texts: z
+      .array(z.tuple([z.number().finite(), promptSafeText(80)]))
+      .min(1)
+      .max(30)
+      .refine((steps) => steps.every((step, index) => index === 0 || step[0] > steps[index - 1]![0]), {
+        message: "Each step of texts starts above the one before it",
+      })
+      .optional(),
+  })
+  .strict()
+  .refine((scaled) => !(scaled.table && scaled.texts), {
+    message: 'A scaled column is looked up in "table" (a number) or "texts" (a text), not both',
+  });
 
 const catalogScaledSchema = z.record(catalogScaledColumnSchema).superRefine((scaled, ctx) => {
   const keys = Object.keys(scaled);
@@ -17013,7 +17040,22 @@ export function rulesetCatalogEntryIssues(
       for (const [columnId, scaled] of Object.entries(row.scaled)) {
         const column = list.columns.find((candidate) => candidate.id === columnId);
         if (!column) add([...path, "scaled", columnId], `Unknown column "${columnId}"`);
-        else if (column.type !== "number") add([...path, "scaled", columnId], `Column "${columnId}" is not a number`);
+        // A text read off a step table (1.358) goes in a text or enum column, and an enum's is one of
+        // its values.
+        else if (scaled.texts) {
+          if (column.type !== "text" && column.type !== "enum")
+            add([...path, "scaled", columnId], `Column "${columnId}" holds no text for "texts" to set`);
+          else if (column.type === "enum")
+            scaled.texts.forEach(([, text], stepIndex) => {
+              if (!column.values.includes(text))
+                add(
+                  [...path, "scaled", columnId, "texts", stepIndex],
+                  `"${text}" is not one of "${columnId}"'s values`,
+                );
+            });
+          if (!Object.prototype.hasOwnProperty.call(row.values, columnId))
+            add([...path, "values"], `Scaled column "${columnId}" needs a starting value in values`);
+        } else if (column.type !== "number") add([...path, "scaled", columnId], `Column "${columnId}" is not a number`);
         // `values` holds what the row starts as, because an entry is picked before anything knows
         // which sheet it lands on. Without it a picked row would sit incomplete until the first
         // recompute, and a reader without the catalog would never see a number at all.

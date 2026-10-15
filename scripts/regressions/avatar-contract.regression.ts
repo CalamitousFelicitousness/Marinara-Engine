@@ -19,6 +19,10 @@ const Fastify = createRequire(new URL("../../packages/server/package.json", impo
 const {
   AVATAR_2D_AGENT_ID,
   AVATAR_EMOTIONS,
+  AVATAR_EXTRA_FEELINGS,
+  AVATAR_FACE_GROUPS,
+  AVATAR_FEELINGS,
+  AVATAR_FEELING_EMOTIONS,
   AVATAR_PROMPT_TEMPLATE_IDS,
   AVATAR_PROMPT_TEMPLATE_SETTINGS_KEY,
   SPRITE_EXPRESSION_LABELS,
@@ -27,6 +31,7 @@ const {
   avatarModelFileUrl,
   createAvatarConfig,
   detectSpriteEmotionBindings,
+  isAvatarExtraFeeling,
   isAvatarFilePath,
   mapSpriteExpressionToAvatarEmotion,
   mergeBuiltInAgentSettings,
@@ -209,5 +214,40 @@ for (const file of walk(clientSrc)) {
 }
 const contractSource = readFileSync(join(clientSrc, "features", "avatars", "contract.ts"), "utf8");
 assert.equal(/^import[^;]*["']\.\/renderers\//mu.test(contractSource), false, "renderers load only by import()");
+
+// ── The 28 detected feelings ──
+assert.equal(AVATAR_FEELINGS.length, 28);
+assert.deepEqual(
+  Object.keys(AVATAR_FEELING_EMOTIONS).sort(),
+  [...AVATAR_FEELINGS].sort(),
+  "every feeling has an emotion",
+);
+const folded = ["neutral", "joy", "anger", "sadness", "surprise"];
+assert.equal(AVATAR_EXTRA_FEELINGS.length, 23);
+assert.deepEqual(
+  [...AVATAR_EXTRA_FEELINGS, ...folded].sort(),
+  [...AVATAR_FEELINGS].sort(),
+  "the extra feelings are the 28 less the five main faces",
+);
+assert.deepEqual(
+  folded.map((feeling) => AVATAR_FEELING_EMOTIONS[feeling as keyof typeof AVATAR_FEELING_EMOTIONS].emotion),
+  ["neutral", "happy", "angry", "sad", "surprised"],
+);
+assert.deepEqual(
+  AVATAR_FACE_GROUPS.map((group) => group[0]),
+  [...AVATAR_EMOTIONS],
+  "faces group under the six in their order",
+);
+assert.deepEqual(
+  AVATAR_FACE_GROUPS.flatMap((group) => group.slice(1)),
+  [...AVATAR_EXTRA_FEELINGS],
+  "extra feelings are listed by group",
+);
+for (const [emotion, ...feelings] of AVATAR_FACE_GROUPS) {
+  for (const feeling of feelings) assert.equal(AVATAR_FEELING_EMOTIONS[feeling].emotion, emotion);
+}
+assert.equal(isAvatarExtraFeeling("fear"), true);
+assert.equal(isAvatarExtraFeeling("joy"), false, "a main face is not an extra feeling");
+assert.equal(isAvatarExtraFeeling("toString"), false);
 
 console.log("avatar contract regression passed");

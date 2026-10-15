@@ -97,6 +97,117 @@ export interface AvatarEmotionWeight {
   weight: number;
 }
 
+// ── Feelings: the 28 the emotion classifier detects ──
+
+/** The GoEmotions labels the streaming emotion classifier scores, in the model's order. Each belongs to one of
+ *  the six emotions (AVATAR_FEELING_EMOTIONS), which is all 3D and mesh avatars show. */
+export const AVATAR_FEELINGS = [
+  "admiration",
+  "amusement",
+  "anger",
+  "annoyance",
+  "approval",
+  "caring",
+  "confusion",
+  "curiosity",
+  "desire",
+  "disappointment",
+  "disapproval",
+  "disgust",
+  "embarrassment",
+  "excitement",
+  "fear",
+  "gratitude",
+  "grief",
+  "joy",
+  "love",
+  "nervousness",
+  "optimism",
+  "pride",
+  "realization",
+  "relief",
+  "remorse",
+  "sadness",
+  "surprise",
+  "neutral",
+] as const;
+export type AvatarFeeling = (typeof AVATAR_FEELINGS)[number];
+
+/** The emotion each feeling belongs to and how much of it the feeling carries. */
+export const AVATAR_FEELING_EMOTIONS: Readonly<Record<AvatarFeeling, AvatarEmotionWeight>> = Object.freeze({
+  admiration: { emotion: "happy", weight: 0.6 },
+  amusement: { emotion: "happy", weight: 1 },
+  anger: { emotion: "angry", weight: 1 },
+  annoyance: { emotion: "angry", weight: 0.6 },
+  approval: { emotion: "relaxed", weight: 0.4 },
+  caring: { emotion: "relaxed", weight: 0.8 },
+  confusion: { emotion: "surprised", weight: 0.4 },
+  curiosity: { emotion: "neutral", weight: 1 },
+  desire: { emotion: "happy", weight: 0.5 },
+  disappointment: { emotion: "sad", weight: 0.7 },
+  disapproval: { emotion: "angry", weight: 0.5 },
+  disgust: { emotion: "angry", weight: 0.6 },
+  embarrassment: { emotion: "happy", weight: 0.4 },
+  excitement: { emotion: "happy", weight: 0.9 },
+  fear: { emotion: "surprised", weight: 0.8 },
+  gratitude: { emotion: "happy", weight: 0.7 },
+  grief: { emotion: "sad", weight: 1 },
+  joy: { emotion: "happy", weight: 1 },
+  love: { emotion: "relaxed", weight: 1 },
+  nervousness: { emotion: "sad", weight: 0.5 },
+  optimism: { emotion: "happy", weight: 0.6 },
+  pride: { emotion: "happy", weight: 0.6 },
+  realization: { emotion: "surprised", weight: 0.5 },
+  relief: { emotion: "relaxed", weight: 0.8 },
+  remorse: { emotion: "sad", weight: 0.7 },
+  sadness: { emotion: "sad", weight: 1 },
+  surprise: { emotion: "surprised", weight: 1 },
+  neutral: { emotion: "neutral", weight: 1 },
+});
+
+/** The 23 feelings a talking head (PNGTuber) can give a face of its own, grouped by their emotion in
+ *  AVATAR_EMOTIONS order. The other five (neutral, joy, anger, sadness, surprise) are the main faces
+ *  themselves. A feeling without its own face shows its emotion's face. */
+export const AVATAR_EXTRA_FEELINGS = [
+  "curiosity",
+  "admiration",
+  "amusement",
+  "desire",
+  "embarrassment",
+  "excitement",
+  "gratitude",
+  "optimism",
+  "pride",
+  "annoyance",
+  "disapproval",
+  "disgust",
+  "disappointment",
+  "grief",
+  "nervousness",
+  "remorse",
+  "approval",
+  "caring",
+  "love",
+  "relief",
+  "confusion",
+  "fear",
+  "realization",
+] as const satisfies readonly AvatarFeeling[];
+export type AvatarExtraFeeling = (typeof AVATAR_EXTRA_FEELINGS)[number];
+
+export function isAvatarExtraFeeling(value: unknown): value is AvatarExtraFeeling {
+  return typeof value === "string" && (AVATAR_EXTRA_FEELINGS as readonly string[]).includes(value);
+}
+
+/** The talking head's faces grouped by emotion: each main face, then the extra feelings that fall back to it. */
+export const AVATAR_FACE_GROUPS: ReadonlyArray<readonly [AvatarEmotion, ...AvatarExtraFeeling[]]> = AVATAR_EMOTIONS.map(
+  (emotion) =>
+    [
+      emotion,
+      ...AVATAR_EXTRA_FEELINGS.filter((feeling) => AVATAR_FEELING_EMOTIONS[feeling].emotion === emotion),
+    ] as const,
+);
+
 export const SPRITE_EXPRESSION_AVATAR_EMOTIONS: Readonly<Record<SpriteExpressionLabel, AvatarEmotionWeight>> =
   Object.freeze({
     neutral: { emotion: "neutral", weight: 1 },

@@ -98,6 +98,21 @@ try {
   assert.equal(personaGallery.statusCode, 200, personaGallery.body);
   assert.match(personaGallery.body, new RegExp(`"scene:${slashVideoId}"`, "u"), "in the persona's gallery");
   // No picture shows this moment, so the director describes the scene instead of continuing an image.
+  // A clip that names only Bram is filed under Bram, not in the persona's gallery.
+  replies.director = {
+    content: JSON.stringify({ narrationBeat: "Bram ducks behind the bench" }),
+    finishReason: "stop",
+  };
+  const bramOnly = await roleplayVideo(pair.id, "Bram ducks");
+  assert.equal(bramOnly.statusCode, 200, bramOnly.body);
+  const bramOnlyId = (bramOnly.json() as { video: { id: string } }).video.id;
+  const personaClipsAfter = await h.app.inject({
+    method: "GET",
+    url: `/api/characters/personas/${james.id}/gallery/clips`,
+  });
+  assert.doesNotMatch(personaClipsAfter.body, new RegExp(`"scene:${bramOnlyId}"`, "u"), "not shown, not filed");
+  const bramClips = await h.app.inject({ method: "GET", url: `/api/characters/${bram.id}/gallery/clips` });
+  assert.match(bramClips.body, new RegExp(`"scene:${bramOnlyId}"`, "u"), "filed under the one it shows");
   assert.match(lastDirector(), /No picture of this moment exists/u, "the no-picture director writes the clip");
   assert.doesNotMatch(lastDirector(), /reference image|first frame/iu);
   // It reads as many recent messages as Illustrator does (its context size, 2 here), the latest reply last.
@@ -108,7 +123,7 @@ try {
   assert.match(lastDirector(), /James throws a beaker\./u, "a wider context size reaches further back");
   assert.match(h.lastComfyInputs()?.text ?? "", /Bottles burst across the lab floor/u);
   assert.notEqual(h.lastComfyInputs()?.image, bramPng.toString("base64"), "Prompt only sends no picture");
-  assert.equal((await h.attachments(pair.id, "video")).length, 2);
+  assert.equal((await h.attachments(pair.id, "video")).length, 3, "two clips, plus the one filed under Bram");
 
   // Avatar first frame: whoever the description names first, the persona included, else the chat's character.
   await h.saveChatSettings(pair.id, { sceneVideoFirstFrame: "avatar" });

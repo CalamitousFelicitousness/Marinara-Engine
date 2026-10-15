@@ -505,7 +505,7 @@ async function resolveVideoCharacters(
 const QUOTED_SPEECH_RE =
   /"(?:[^"\n]|\n(?!\s*\n))*"|\u201c(?:[^\u201d\n]|\n(?!\s*\n))*\u201d|\u00ab(?:[^\u00bb\n]|\n(?!\s*\n))*\u00bb|(?<![\p{L}\p{N}])['\u2018](?:[^'\u2018\u2019\n]|\n(?!\s*\n)|(?<=\p{L})['\u2019](?=\p{L}))*['\u2019](?![\p{L}\p{N}])/gu;
 
-function withoutQuotedSpeech(text: string): string {
+export function withoutQuotedSpeech(text: string): string {
   return text.replace(QUOTED_SPEECH_RE, " ");
 }
 
@@ -515,7 +515,10 @@ function withoutQuotedSpeech(text: string): string {
  * matcher only takes a full name, which stays the rule for pictures. A part counts only when written with a
  * capital (or in a script without capitals), so "hazel eyes" or "the snow" name no one.
  */
-function namesMentionedByPart(text: string, members: Array<{ id: string | null; name: string }>): Set<string | null> {
+export function namesMentionedByPart(
+  text: string,
+  members: Array<{ id: string | null; name: string }>,
+): Set<string | null> {
   const capitalised = new Set(
     text
       .normalize("NFKC")

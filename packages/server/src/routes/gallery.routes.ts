@@ -83,6 +83,8 @@ import {
 import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../services/video/scene-video-prompt-review.js";
 import {
   generateConversationVideo,
+  namesMentionedByPart,
+  withoutQuotedSpeech,
   loadIllustratorContextSize,
 } from "../services/generation/conversation-video-runtime.js";
 import {
@@ -728,6 +730,55 @@ export async function galleryRoutes(app: FastifyInstance) {
   const ROLEPLAY_VIDEO_DIRECTOR_MAX_TOKENS = 8_196;
 
   /**
+   * Who a Roleplay clip shows, read from its prompt: chat characters and the persona named in full or by a name part
+   * no one else in the chat shares. Gives their ids (for galleries) and their appearance lines.
+   */
+  async function resolveRoleplayClipCast(
+    chat: Awaited<ReturnType<typeof chats.getById>> & {},
+    promptText: string,
+  ): Promise<{ characterIds: string[]; appearanceBlock: string | null }> {
+    const chatCharacters = [];
+    for (const id of (await collectChatAssetParticipants(chat)).characterIds) {
+      const row = await characters.getById(id);
+      if (!row) continue;
+      const data = parseJsonRecord(row.data);
+      chatCharacters.push({
+        id,
+        name: readTrimmedString(data.name) ?? "",
+        avatarPath: row.avatarPath ?? null,
+        appearance: getCharacterAppearance(data).appearance,
+      });
+    }
+    // A character played as the user is already listed; a persona joins when the prompt names them.
+    const identity = await resolveChatUserIdentity(characters, chat);
+    const persona =
+      identity?.source === "persona"
+        ? {
+            id: identity.id,
+            name: identity.name,
+            avatarPath: identity.avatarPath,
+            appearance: identity.appearance,
+            appearanceOverride: identity.imageAppearanceOverride || null,
+          }
+        : null;
+    const members = [...chatCharacters, ...(persona ? [persona] : [])].map(({ id, name }) => ({ id, name }));
+    const mentioned = namesMentionedByPart(withoutQuotedSpeech(promptText), members);
+    const cast = await resolveIllustratorCharacterReferences({
+      charactersStore: characters,
+      chatCharacters,
+      persona,
+      requestedNames: members.filter(({ id }) => mentioned.has(id)).map(({ name }) => name),
+      promptText,
+      fallbackToChatCharacters: false,
+      includeReferenceImages: false,
+    });
+    return {
+      characterIds: cast.personaId ? [...cast.characterIds, cast.personaId] : cast.characterIds,
+      appearanceBlock: cast.appearanceBlock,
+    };
+  }
+
+  /**
    * The Roleplay video director's prompt for a clip: written by the Prompt Model from the exchange it shows,
    * following the video connection's Video Prompting Instructions, with the named characters' appearance lines
    * when the chat sends appearance with videos.
@@ -825,39 +876,8 @@ export async function galleryRoutes(app: FastifyInstance) {
     }
     if (args.meta.illustratorVideoIncludeCharacterAppearance === true) {
       // The characters the direction names get their appearance lines, as Illustrator images do.
-      const chatCharacters = [];
-      for (const id of (await collectChatAssetParticipants(args.chat)).characterIds) {
-        const row = await characters.getById(id);
-        if (!row) continue;
-        const data = parseJsonRecord(row.data);
-        chatCharacters.push({
-          id,
-          name: readTrimmedString(data.name) ?? "",
-          avatarPath: row.avatarPath ?? null,
-          appearance: getCharacterAppearance(data).appearance,
-        });
-      }
-      // The persona joins when the direction names them; a character played as the user is already listed.
-      const identity = await resolveChatUserIdentity(characters, args.chat);
-      const references = await resolveIllustratorCharacterReferences({
-        charactersStore: characters,
-        chatCharacters,
-        persona:
-          identity?.source === "persona"
-            ? {
-                id: identity.id,
-                name: identity.name,
-                avatarPath: identity.avatarPath,
-                appearance: identity.appearance,
-                appearanceOverride: identity.imageAppearanceOverride || null,
-              }
-            : null,
-        requestedNames: [],
-        promptText: promptDraft,
-        fallbackToChatCharacters: false,
-        includeReferenceImages: false,
-      });
-      if (references.appearanceBlock) promptDraft = `${promptDraft}\n\n${references.appearanceBlock}`;
+      const { appearanceBlock } = await resolveRoleplayClipCast(args.chat, promptDraft);
+      if (appearanceBlock) promptDraft = `${promptDraft}\n\n${appearanceBlock}`;
     }
     logDebugOverride(debugOverrideEnabled, "[debug/gallery/roleplay-video-director] final prompt:\n%s", promptDraft);
     return promptDraft;
@@ -1481,6 +1501,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       // chat's first character with a usable avatar or sprite.
       let avatar: { base64: string; name: string } | null = null;
       const { characterIds, personaIds } = await collectChatAssetParticipants(chat);
+      const shown = (await resolveRoleplayClipCast(chat, prompt)).characterIds;
       if (firstFrame !== "none") {
         const candidates: Array<{ name: string; read: () => Promise<{ base64: string } | null> }> = [];
         for (const id of characterIds) {
@@ -1541,8 +1562,8 @@ export async function galleryRoutes(app: FastifyInstance) {
         prompt,
         firstFrame,
         avatar,
-        // The clip belongs to the whole chat: its characters and the persona, so it shows in each one's gallery.
-        characterIds: [...characterIds, ...personaIds],
+        // Filed under the people the clip shows; a clip that names no one belongs to the whole chat.
+        characterIds: shown.length ? shown : [...characterIds, ...personaIds],
         queue: true,
         debugMode: input.debugMode,
       });

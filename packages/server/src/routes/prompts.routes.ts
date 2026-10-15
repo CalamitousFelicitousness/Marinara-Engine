@@ -21,6 +21,8 @@ import {
 import type { ExportEnvelope } from "@marinara-engine/shared";
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { assemblePrompt, type AssemblerInput } from "../services/prompt/index.js";
+import { parsePresetParameters } from "../services/prompt/assembler.js";
+import { resolveReasoningMacroValue } from "../services/generation/provider-generation-runtime.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
 import { resolveLorebookScopeExclusions } from "../services/lorebook/game-lorebook-scope.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -542,6 +544,15 @@ export async function promptsRoutes(app: FastifyInstance) {
     const assemblerInput: AssemblerInput = {
       db: app.db,
       model: connection?.model,
+      reasoning: connection
+        ? resolveReasoningMacroValue({
+            connection,
+            chatMode: chat.mode,
+            isSceneChat: chatMeta.sceneStatus === "active",
+            chatParameters: chatMeta.chatParameters,
+            baseReasoningEffort: parsePresetParameters(preset.parameters).reasoningEffort ?? null,
+          })
+        : undefined,
       preset: preset as any,
       sections: sections as any,
       groups: groups as any,

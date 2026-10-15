@@ -88,10 +88,12 @@ try {
     apiKey: "",
   });
   const characters = createCharactersStorage(db);
-  const [aster, bob, carol] = await Promise.all(
-    ["Aster", "Bob", "Carol"].map((name) => characters.create(characterDataSchema.parse({ name }))),
+  const [aster, bob, carol, lena] = await Promise.all(
+    ["Aster", "Bob", "Carol Kowalski", "Dr. Lena Kowalski"].map((name) =>
+      characters.create(characterDataSchema.parse({ name })),
+    ),
   );
-  assert.ok(aster && bob && carol);
+  assert.ok(aster && bob && carol && lena);
   const jamie = await characters.createPersona("Jamie", "The player.");
   assert.ok(jamie);
 
@@ -99,7 +101,7 @@ try {
   const group = await chats.create({
     name: "Group",
     mode: "conversation",
-    characterIds: [aster.id, bob.id, carol.id],
+    characterIds: [aster.id, bob.id, carol.id, lena.id],
     connectionId: text.id,
     personaId: jamie.id,
   });
@@ -163,6 +165,25 @@ try {
   assert.ok(personaClips.includes(`scene:${personaVideoId}`), "a clip that names the persona is in its gallery");
   assert.ok(personaClips.includes(`scene:${legacy.id}`), "an untagged video still belongs to the persona's chat");
   assert.ok(!(await clipIds(bob.id)).includes(`scene:${personaVideoId}`), "naming the persona doesn't add Bob");
+
+  // Prompts call people by first name: a name part no one else in the chat shares counts ("Lena" for
+  // "Dr. Lena Kowalski"), while a shared one ("Kowalski", also Carol's) names no one.
+  const sendClip = async (reply: string) => {
+    writerReply = reply;
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/gallery/${group.id}/video`,
+      payload: { characterId: aster.id },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    return `scene:${(response.json() as { video: { id: string } }).video.id}`;
+  };
+  const lenaClip = await sendClip("Aster dances while Lena waves a glow stick");
+  assert.ok((await clipIds(lena.id)).includes(lenaClip), "a unique first name counts");
+  assert.ok(!(await clipIds(carol.id)).includes(lenaClip));
+  const surnameClip = await sendClip("Aster dances while Kowalski watches");
+  assert.ok(!(await clipIds(lena.id)).includes(surnameClip), "a shared surname names no one");
+  assert.ok(!(await clipIds(carol.id)).includes(surnameClip));
   console.log("convo-video-character-galleries regression passed");
 } finally {
   await app.close();

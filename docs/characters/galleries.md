@@ -36,7 +36,7 @@ You can upload common image types, such as JPG, PNG, GIF, WebP, and AVIF. Click 
 3. Drag video files onto the **Upload Character Videos** box, or click it to pick files. In a persona, this box is labeled **Upload Persona Videos**.
 4. Wait for the upload to finish.
 
-Supported video types are MP4, WebM, and MOV. The **Videos** sub-tab also lists scene videos generated in chats with this character, plus any video-call clips. They are sorted with the newest first. A Conversation video message is listed only for the characters it shows: the character who sent it, anyone it names, and everyone in the chat when it is a group clip. Your persona's gallery lists it only when the clip names your persona. Older videos, and videos from Roleplay and Game Mode chats, are listed for every character and the persona of their chat.
+Supported video types are MP4, WebM, and MOV. The **Videos** sub-tab also lists scene videos generated in chats with this character, plus any video-call clips. They are sorted with the newest first. A Conversation video message is listed only for the characters it shows: the character who sent it, anyone it names (a first name is enough when no one else in the chat shares it), and everyone in the chat when it is a group clip. Your persona's gallery lists it only when the clip names your persona. Older videos, and videos from Roleplay and Game Mode chats, are listed for every character and the persona of their chat.
 
 ## Tagging a gallery image as a custom emoji or sticker
 

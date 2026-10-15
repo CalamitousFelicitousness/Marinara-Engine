@@ -322,12 +322,18 @@ async function readAvatarFrame(
 async function resolveVideoCharacterIds(
   args: Parameters<typeof generateConversationVideo>[0] & { characterName: string; prompt: string },
 ): Promise<string[]> {
-  const requestedNames = resolveConversationSelfieRequestedNames({
-    speakerName: args.characterName,
-    chatCharacters: args.charInfo,
-    commandContext: args.context,
-    imagePrompt: args.prompt,
-  });
+  const requestedNames = [
+    ...resolveConversationSelfieRequestedNames({
+      speakerName: args.characterName,
+      chatCharacters: args.charInfo,
+      commandContext: args.context,
+      imagePrompt: args.prompt,
+    }),
+    ...namesMentionedByPart([args.context ?? "", args.prompt].join("\n"), [
+      ...args.charInfo.map((character) => character.name),
+      ...(args.persona ? [args.persona.name] : []),
+    ]),
+  ];
   const resolution = await resolveIllustratorCharacterReferences({
     charactersStore: createCharactersStorage(args.db),
     chatCharacters: args.charInfo.map((character) => ({
@@ -347,6 +353,39 @@ async function resolveVideoCharacterIds(
   return Array.from(
     new Set([args.characterId, ...resolution.characterIds, ...(resolution.personaId ? [resolution.personaId] : [])]),
   );
+}
+
+const NAME_TITLES = new Set(["dr", "mr", "mrs", "ms", "miss", "prof", "sir", "lady", "lord", "the"]);
+
+/**
+ * The chat members (characters and persona) a clip's text names by a part of their name no one else in the chat
+ * shares: "Lena" for "Dr. Lena Kowalski". Video prompts usually call people by first name, while the shared
+ * matcher only takes a full name, which stays the rule for pictures.
+ */
+function namesMentionedByPart(text: string, names: string[]): string[] {
+  const words = new Set(
+    text
+      .normalize("NFKC")
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}']+/u),
+  );
+  const parts = names.map((name) => ({
+    name,
+    tokens: [
+      ...new Set(
+        name
+          .normalize("NFKC")
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}']+/u)
+          .filter((token) => token.length >= 3 && !NAME_TITLES.has(token)),
+      ),
+    ],
+  }));
+  const owners = new Map<string, number>();
+  for (const { tokens } of parts) for (const token of tokens) owners.set(token, (owners.get(token) ?? 0) + 1);
+  return parts
+    .filter(({ tokens }) => tokens.some((token) => owners.get(token) === 1 && words.has(token)))
+    .map(({ name }) => name);
 }
 
 type SelfieArgs = Parameters<typeof generateConversationVideo>[0] & { selfieContext: string };

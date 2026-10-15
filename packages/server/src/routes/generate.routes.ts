@@ -71,6 +71,7 @@ import {
   type AdvancedMemoryPlacement,
 } from "../services/prompt/advanced-memory-prompt.js";
 import { registerParameterPreviewRoute } from "./generate/parameter-preview-route.js";
+import { GenerationStreamOutput } from "./generate/generation-stream-output.js";
 // ──────────────────────────────────────────────
 // Routes: Generation (SSE Streaming with Tool Use + Agent Pipeline)
 // ──────────────────────────────────────────────
@@ -435,7 +436,6 @@ import {
 import { wrapContent } from "../services/prompt/format-engine.js";
 import {
   withLlmRequestTimeout,
-  yieldToEventLoop,
   type ChatMessage,
   type ChatOptions,
   type LLMUsage,
@@ -7500,9 +7500,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let fullResponse = "";
         let fullThinking = "";
         let providerThinking = "";
-        let generationStartedAt: number | null = null;
-        let reasoningDurationMs: number | null = null;
-        let receivedThinking = false;
         let allResponses: string[] = [];
         // The scenes a game reply shows as written (worldgen W10): a rewrite of the reply must keep them.
         let turnShownScenes: readonly string[] = [];
@@ -7525,65 +7522,31 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const onThinking = (chunk: string) => {
           providerThinking += chunk;
           if (showThoughts) {
-            receivedThinking = true;
+            streamOutput.receivedThinking = true;
             fullThinking += chunk;
             sendSseEvent(reply, { type: "thinking", data: chunk });
           }
         };
         const captureReasoning = chatMode === "roleplay" && showThoughts;
 
-        // Helper: write text content progressively as small SSE token chunks.
-        // Some providers dump a full buffered response through the streaming
-        // path; yield periodically so health checks and chat navigation are not
-        // starved while we fan that response out to the client.
-        const TOKEN_CHUNK_SIZE = 6;
-        const TOKEN_CHUNK_YIELD_EVERY = 64;
-        let tokenChunksSinceYield = 0;
-        let roleplayCommandStreamFilter: RoleplayCommandStreamFilter | null = null;
         const roleplayMediaRequests: Array<{ command: RoleplayCommand; messageId: string; swipeIndex: number }> = [];
-        const spatialDirectiveStreamFilter =
-          hierarchicalMapsEnabledForChat && (requestChatMode === "roleplay" || requestChatMode === "game")
-            ? createAssistantSpatialDirectiveStreamFilter()
-            : null;
-        // ── One-request dice: the stream filter (#6215) ──
-        // A placeholder and a branch block both stream before the chance pass runs, so
-        // without this the player watches `[[roll: 2d6+3]]` appear and silently become a
-        // number. Held here, the finished text arrives through content_replace instead.
-        const gameChanceStreamFilter =
+        const streamOutput = new GenerationStreamOutput(
+          reply,
+          holdForTextRewrite,
+          // ── One-request dice: the stream filter (#6215) ──
+          // A placeholder and a branch block both stream before the chance pass runs, so
+          // without this the player watches `[[roll: 2d6+3]]` appear and silently become a
+          // number. Held here, the finished text arrives through content_replace instead.
           chatMode === "game" && !input.impersonate && isOneRequestDiceEnabled(chatMeta)
             ? createGameChanceStreamFilter()
-            : null;
-        const emitTokenTextChunked = async (text: string) => {
-          for (let i = 0; i < text.length; i += TOKEN_CHUNK_SIZE) {
-            const chunk = text.slice(i, i + TOKEN_CHUNK_SIZE);
-            sendSseEvent(reply, { type: "token", data: chunk });
-            tokenChunksSinceYield += 1;
-            if (tokenChunksSinceYield % TOKEN_CHUNK_YIELD_EVERY === 0) {
-              await yieldToEventLoop();
-            }
-          }
-        };
-        const recordReasoningDuration = (text: string) => {
-          if (text.trim() && receivedThinking && generationStartedAt !== null && reasoningDurationMs === null) {
-            reasoningDurationMs = Math.max(1, Date.now() - generationStartedAt);
-          }
-        };
-        const sendTokenTextChunked = async (text: string) => {
-          const commandFiltered = roleplayCommandStreamFilter?.push(text) ?? text;
-          const chanceFiltered = gameChanceStreamFilter?.push(commandFiltered) ?? commandFiltered;
-          const visibleText = spatialDirectiveStreamFilter?.push(chanceFiltered) ?? chanceFiltered;
-          if (visibleText) {
-            recordReasoningDuration(visibleText);
-            await emitTokenTextChunked(visibleText);
-          }
-        };
+            : null,
+          hierarchicalMapsEnabledForChat && (requestChatMode === "roleplay" || requestChatMode === "game")
+            ? createAssistantSpatialDirectiveStreamFilter()
+            : null,
+        );
         const writeContentChunked = async (text: string) => {
           fullResponse += text;
-          if (holdForTextRewrite) {
-            recordReasoningDuration(text);
-          } else {
-            await sendTokenTextChunked(text);
-          }
+          await streamOutput.write(text);
         };
 
         const resolveMessageSpeakerName = (message: any): string => {
@@ -8671,15 +8634,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           rememberMainPromptPreviewForAgents(initialProviderMessages);
 
           // Reset per-character accumulators
-          roleplayCommandStreamFilter =
+          streamOutput.roleplayCommandFilter =
             chatMode === "roleplay" && !input.impersonate ? new RoleplayCommandStreamFilter(roleplayRollEnabled) : null;
           if (chatMode === "roleplay") encryptedReasoningItems = undefined;
           fullResponse = "";
           fullThinking = "";
           providerThinking = "";
-          generationStartedAt = null;
-          reasoningDurationMs = null;
-          receivedThinking = false;
+          streamOutput.resetReasoningClock();
           if (
             tailMessages.assistantPrefillInjected &&
             !tailMessages.googleUserRegenerationInjected &&
@@ -8697,7 +8658,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
           // Track timing and usage
           const genStartTime = Date.now();
-          generationStartedAt = genStartTime;
+          streamOutput.generationStartedAt = genStartTime;
           let usage: LLMUsage | undefined;
           let tokensContext: number | null = null;
           let tokensLastRequestInput: number | null = null;
@@ -8893,20 +8854,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 return;
               }
               fullResponse += chunk;
-              if (holdForTextRewrite) {
-                recordReasoningDuration(chunk);
-                roleplayCommandStreamFilter?.push(chunk);
-              } else {
-                await sendTokenTextChunked(chunk);
-              }
-              if (roleplayRollEnabled && roleplayCommandStreamFilter?.rollRequested) rollRequestAbort?.abort();
+              // A held stream still feeds the command filter, which spots a roll request.
+              if (holdForTextRewrite) streamOutput.roleplayCommandFilter?.push(chunk);
+              await streamOutput.write(chunk);
+              if (roleplayRollEnabled && streamOutput.roleplayCommandFilter?.rollRequested) rollRequestAbort?.abort();
             };
 
             for (let round = 0; round < maxToolRounds; round++) {
               const roundResponseStart = fullResponse.length;
               rollRequestAbort = roleplayRollEnabled ? new AbortController() : null;
               if (chatMode === "roleplay" && !input.impersonate)
-                roleplayCommandStreamFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
+                streamOutput.roleplayCommandFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
               // Treat abort as a silent cancellation: stop the pipeline immediately.
               if (generationSignal.aborted) {
                 return null;
@@ -9003,7 +8961,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 // has already consumed this round's text: show the clean text and start it afresh.
                 const roleplayFiltered = chatMode === "roleplay" && !input.impersonate;
                 if (roleplayFiltered)
-                  roleplayCommandStreamFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
+                  streamOutput.roleplayCommandFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
                 if (!holdForTextRewrite)
                   sendSseEvent(reply, {
                     type: "content_replace",
@@ -9274,7 +9232,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               }
 
               if (roleplayRollEnabled)
-                roleplayCommandStreamFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
+                streamOutput.roleplayCommandFilter = new RoleplayCommandStreamFilter(roleplayRollEnabled);
 
               if (round === maxToolRounds - 1) {
                 // Reset per-character accumulator for final round content
@@ -9356,13 +9314,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 fullResponse += result.value;
                 // Break large chunks (e.g. Gemini non-streaming) into small pieces
                 // so the client sees progressive streaming.
-                const val = result.value;
-                if (holdForTextRewrite) {
-                  recordReasoningDuration(val);
-                  result = await withLlmRequestTimeout(chatGenerationTimeoutMs, () => gen.next());
-                  continue;
-                }
-                await sendTokenTextChunked(val);
+                await streamOutput.write(result.value);
                 result = await withLlmRequestTimeout(chatGenerationTimeoutMs, () => gen.next());
               }
               // Generator return value contains usage
@@ -9387,20 +9339,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           }
 
-          if (!holdForTextRewrite) {
-            // The chance filter drains first and its leftovers go through the spatial
-            // filter, so a released candidate still meets every filter downstream of it.
-            const pendingChanceText = gameChanceStreamFilter?.flush() ?? "";
-            const pendingChanceVisible = pendingChanceText
-              ? (spatialDirectiveStreamFilter?.push(pendingChanceText) ?? pendingChanceText)
-              : "";
-            const pendingSpatialText = spatialDirectiveStreamFilter?.flush() ?? "";
-            const pendingStreamText = `${pendingChanceVisible}${pendingSpatialText}`;
-            if (pendingStreamText) {
-              recordReasoningDuration(pendingStreamText);
-              await emitTokenTextChunked(pendingStreamText);
-            }
-          }
+          await streamOutput.flush();
 
           let durationMs = Date.now() - genStartTime;
 
@@ -11461,7 +11400,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 tokensCachedPrompt: usage?.cachedPromptTokens ?? null,
                 tokensCacheWritePrompt: usage?.cacheWritePromptTokens ?? null,
                 durationMs,
-                reasoningDurationMs,
+                reasoningDurationMs: streamOutput.reasoningDurationMs,
                 finishReason: finishReason ?? null,
                 contextFit: lastContextFit ?? null,
               },

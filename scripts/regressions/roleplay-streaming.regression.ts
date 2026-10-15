@@ -104,24 +104,26 @@ const useGenerateSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
 );
+// The reasoning clock itself is pinned behaviourally in generation-stream-output.regression.ts;
+// these pin that every reply path routes its text through it.
 assert.match(
   generateRouteSource,
-  /const recordReasoningDuration = \(text: string\) => \{[\s\S]{0,300}text\.trim\(\)[\s\S]{0,300}reasoningDurationMs = Math\.max\(1, Date\.now\(\) - generationStartedAt\);[\s\S]{0,80}\};/u,
-  "The server must capture reasoning duration only when visible output begins",
-);
-assert.match(
-  generateRouteSource,
-  /const writeContentChunked = async \(text: string\) => \{\s*fullResponse \+= text;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(text\);/u,
+  /const writeContentChunked = async \(text: string\) => \{\s*fullResponse \+= text;\s*await streamOutput\.write\(text\);/u,
   "Buffered text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
   generateRouteSource,
-  /fullResponse \+= chunk;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(chunk\);/u,
+  /fullResponse \+= chunk;[\s\S]{0,200}await streamOutput\.write\(chunk\);/u,
   "Tool-streamed text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
   generateRouteSource,
-  /const val = result\.value;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(val\);/u,
+  /if \(holdForTextRewrite\) streamOutput\.roleplayCommandFilter\?\.push\(chunk\);\s*await streamOutput\.write\(chunk\);\s*if \(roleplayRollEnabled && streamOutput\.roleplayCommandFilter\?\.rollRequested\)/u,
+  "A held tool-round stream must still feed the command filter so a roll request is detected",
+);
+assert.match(
+  generateRouteSource,
+  /fullResponse \+= result\.value;[\s\S]{0,200}await streamOutput\.write\(result\.value\);/u,
   "Generator-streamed text-rewrite responses must still capture reasoning duration",
 );
 const generationInfoPersistenceSource =
@@ -131,7 +133,7 @@ const generationInfoPersistenceSource =
 assert.ok(generationInfoPersistenceSource, "The committed generation metadata block must remain available");
 assert.match(
   generationInfoPersistenceSource,
-  /durationMs,\s*reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
+  /durationMs,\s*reasoningDurationMs: streamOutput\.reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
   "Committed generation metadata must retain the reasoning-only duration",
 );
 assert.match(

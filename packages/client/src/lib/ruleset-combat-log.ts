@@ -712,6 +712,12 @@ export function rulesetCombatEventLine(
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
     // Health regained as a turn starts (1.346): Regeneration, Survivor.
+    // Taken inside somebody, or let out beside them (1.350).
+    case "inside":
+      return key(event.out ? "letOut" : "inside", {
+        target: names.combatant(event.targetId),
+        holder: names.combatant(event.holderId),
+      });
     case "regenerates":
       return key(event.stopped ? "regenerationStopped" : "regenerates", {
         actor: names.combatant(event.actorId),

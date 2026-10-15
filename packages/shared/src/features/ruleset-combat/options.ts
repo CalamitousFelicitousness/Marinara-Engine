@@ -69,6 +69,7 @@ import {
   rulesetConditionModifiers,
   rulesetDamageInEffect,
   rulesetLairRound,
+  rulesetEngulfable,
   rulesetSealed,
   rulesetSealedApart,
   rulesetSizeRank,
@@ -2433,6 +2434,14 @@ function optionFrom(
       ...(action.teleport.leaves ? { leaves: true as const } : {}),
     };
   }
+  // Where an engulf may walk to (1.350), through whoever it takes in: picked on the board as a walk
+  // is, aimed at nobody. With nowhere to go it is not offered.
+  if (action.engulf && positioned(state)) {
+    const cells = rulesetEngulfCells(definition, state, actor, action);
+    if (cells.length === 0) return null;
+    option.cells = cells;
+    option.targets = { side: "self", count: 0 };
+  }
   // The weapon's other ways to make this attack, each only while its holder has the shots for it,
   // and each with what it is expected to do. Not in a window: what is taken at its moment is made
   // as it is.
@@ -3338,6 +3347,25 @@ export function rulesetWithMovement<T>(
     if (kept.modeLeft === undefined) delete actor.modeLeft;
     else actor.modeLeft = kept.modeLeft;
   }
+}
+
+/** Where an engulf may end (1.350), each with the path it walks: up to its speed, lent for it (or
+ *  what is left of its own walk, with `ownMovement`), into the spaces of whoever it takes in. */
+export function rulesetEngulfCells(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetReachableCell[] {
+  const engulf = action.engulf;
+  if (!engulf || !state.board) return [];
+  const lent = engulf.ownMovement
+    ? { movementLeft: actor.movementLeft ?? 0, ...(actor.modeLeft ? { modeLeft: actor.modeLeft } : {}) }
+    : rulesetLentMovement(definition, actor, { share: 1 }, state);
+  if (lent.movementLeft < 1) return [];
+  return rulesetWithMovement(actor, lent, () =>
+    rulesetReachableCells(definition, state, actor.id, (one) => rulesetEngulfable(definition, actor, engulf, one)),
+  );
 }
 
 /** Where a legendary move may end (1.283), each with the path it walks: on a board only. */

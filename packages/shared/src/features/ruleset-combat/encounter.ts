@@ -99,6 +99,7 @@ import type {
   RulesetCombatAction,
   RulesetCombatAmount,
   RulesetCombatant,
+  RulesetEngulf,
   RulesetCombatantInput,
   RulesetCombatBoard,
   RulesetCombatDamage,
@@ -686,6 +687,18 @@ export function rulesetTargetIs(
   test: RulesetTargetIs | undefined,
 ): boolean {
   if (!test) return true;
+  // Of a size (1.350), as well as whatever else it asks.
+  if (test.upToSize !== undefined || test.atLeastSize !== undefined) {
+    const combat = definition.combat;
+    const rank = combat ? rulesetSizeRank(combat, combatant) : undefined;
+    const order = combat?.sizes?.order ?? [];
+    if (rank !== undefined) {
+      if (test.upToSize !== undefined && rank > order.findIndex((size) => size.id === test.upToSize)) return false;
+      if (test.atLeastSize !== undefined && rank < order.findIndex((size) => size.id === test.atLeastSize))
+        return false;
+    }
+    if (test.types === undefined && test.tags === undefined) return true;
+  }
   const kind = rulesetCreatureKind(definition, combatant);
   return (
     (kind.type !== undefined && !!test.types?.includes(kind.type)) ||
@@ -977,7 +990,30 @@ export function rulesetSealedApart(
   other: RulesetCombatant,
 ): boolean {
   if (one.id === other.id) return false;
+  // Inside somebody (1.350): apart from everybody but them and whoever else they hold.
+  if (one.insideOf !== undefined || other.insideOf !== undefined) {
+    const together =
+      one.insideOf === other.id ||
+      other.insideOf === one.id ||
+      (one.insideOf !== undefined && one.insideOf === other.insideOf);
+    if (!together) return true;
+  }
   return !!rulesetSealed(definition, one, state) || !!rulesetSealed(definition, other, state);
+}
+
+/** Whether an engulf (1.350) takes this one in as its maker moves into them: standing, inside
+ *  nobody, and no bigger than it holds. One with no size is never too big. */
+export function rulesetEngulfable(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  engulf: RulesetEngulf,
+  combatant: RulesetCombatant,
+): boolean {
+  if (combatant.id === actor.id || combatant.insideOf !== undefined || !rulesetCombatStanding(combatant)) return false;
+  const combat = definition.combat;
+  if (!combat?.sizes) return true;
+  const rank = rulesetSizeRank(combat, combatant);
+  return rank === undefined || rank <= combat.sizes.order.findIndex((size) => size.id === engulf.upToSize);
 }
 
 /** Whether a condition makes this save fail without rolling. */
@@ -3369,6 +3405,8 @@ function blockActions(
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
     // Whisper a Name (1.326).
     ...(action.draws ? { draws: { ...action.draws } } : {}),
+    // Engulf and Whelm (1.350).
+    ...(action.engulf ? { engulf: structuredClone(action.engulf) } : {}),
     // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
@@ -3991,6 +4029,8 @@ export function rulesetMovementAllowance(
   if (rulesetCombatEffects(definition, combat, combatant, state).has("speed-zero")) return 0;
   // Shut in a sphere (1.314): it goes only where it is rolled or carried.
   if (!unsealed && rulesetSealed(definition, combatant, state)) return 0;
+  // Inside somebody (1.350): it goes only where they go.
+  if (combatant.insideOf) return 0;
   // What a condition does to speed: every flat change first, then halving or doubling, so "10 feet
   // slower, and half speed" is half of what is left.
   const changes = rulesetConditionModifiers(definition, combat, combatant, "speed", state);

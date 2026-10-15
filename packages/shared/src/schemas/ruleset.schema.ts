@@ -2443,20 +2443,30 @@ const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int(
 /** Damage a combat condition deals its holder each turn (Capability API 1.189). Typed by hand:
  *  written out, its inferred type is too long for the definition schema around it to emit. */
 export interface RulesetConditionHarms {
-  at: "turn-start" | "turn-end";
+  at: "turn-start" | "turn-end" | "source-turn-start" | "source-turn-end";
   dice?: string;
   flat?: number;
   type?: string;
   healedOnlyByRest?: true;
+  save?: { save: string; difficulty?: number };
 }
 const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unknown> = z
   .object({
-    at: z.enum(["turn-start", "turn-end"]),
+    /** As its holder's turns start or end, or (Capability API 1.350) as those of whoever put it on
+     *  do: a gelatinous cube's 6d6 acid "at the start of each of the cube's turns". */
+    at: z.enum(["turn-start", "turn-end", "source-turn-start", "source-turn-end"]),
     dice: catalogDice.optional(),
     flat: z.number().int().min(0).max(1000).optional(),
     type: promptSafeText(40).optional(),
     /** What it takes comes back only with a rest (Capability API 1.193): a sword of wounding's. */
     healedOnlyByRest: z.literal(true).optional(),
+    /** A save that spares its holder this time (Capability API 1.350), against `difficulty` or the
+     *  one it was put on with: a shambling mound's "must succeed on a DC 14 Constitution saving throw
+     *  ... or take 13 (2d8 + 4) bludgeoning damage". */
+    save: z
+      .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000).optional() })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
@@ -3282,20 +3292,33 @@ const catalogClauseSaveSchema = z
   .strict();
 
 /** What a target is (Capability API 1.168): one of these `combat.creatureTypes` types, or carrying
- *  one of these tags. Any one match passes; a combatant with no type and no tags never does. */
+ *  one of these tags. Any one match passes; a combatant with no type and no tags never does. And of
+ *  a size (Capability API 1.350): no bigger than `upToSize` and no smaller than `atLeastSize`, by
+ *  `combat.sizes`, as well as any type or tag it names; a combatant with no size passes on size. 5e's
+ *  "If the target is Medium or smaller, it is grappled" is an applied grapple with
+ *  `{"upToSize": "medium"}`. */
 export interface RulesetTargetIs {
   types?: string[];
   tags?: string[];
+  upToSize?: string;
+  atLeastSize?: string;
 }
 const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
   .object({
     types: z.array(sheetId).min(1).max(20).optional(),
     tags: z.array(sheetId).min(1).max(20).optional(),
+    upToSize: sheetId.optional(),
+    atLeastSize: sheetId.optional(),
   })
   .strict()
-  .refine((test) => test.types !== undefined || test.tags !== undefined, {
-    message: "A target test names types, tags or both",
-  });
+  .refine(
+    (test) =>
+      test.types !== undefined ||
+      test.tags !== undefined ||
+      test.upToSize !== undefined ||
+      test.atLeastSize !== undefined,
+    { message: "A target test names types, tags, sizes or some of them" },
+  );
 
 /** One more amount on the same blow, rolled and typed on its own: "and 2d6 fire", "and 1d6 poison
  *  the target may shake off". Never a second attack roll: a clause rides the blow that carried it. */
@@ -5875,6 +5898,22 @@ const creatureActionSchema = z
      *  open way and drawing no strikes; with a save, only on a failed one. The Owed's Whisper a
      *  Name: `{ "spends": "reaction" }`. */
     draws: z.object({ spends: sheetId }).strict().optional(),
+    /** It moves and takes in whoever it enters (Capability API 1.350): 5e's gelatinous cube Engulf
+     *  and water elemental Whelm. Picked as a cell on the board, it walks there up to its speed (or,
+     *  with `ownMovement`, on what is left of its own walk this turn), entering the spaces of those
+     *  no bigger than `upToSize` as it goes. Each it enters makes `save` against `difficulty`: on a
+     *  failure, the action's damage and `applies` land on them, and one of those it applies with
+     *  `inside` keeps them within it; on a success, they are pushed out of its way. `atMost` holds no
+     *  more than that many inside it at once. Off a board it is aimed at one creature. */
+    engulf: z
+      .object({
+        upToSize: sheetId,
+        save: z.object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) }).strict(),
+        ownMovement: z.literal(true).optional(),
+        atMost: z.number().int().min(1).max(20).optional(),
+      })
+      .strict()
+      .optional(),
     /** Only somebody who has already taken their turn this round may be picked (Capability API
      *  1.327): the Hour Bell's "one creature that has already acted this round". */
     actedOnly: z.literal(true).optional(),
@@ -9267,6 +9306,10 @@ const combatConditionSchema = z
     /** Damage its holder takes as each of their turns starts or ends (Capability API 1.189), from
      *  whoever put it on: a sword of wounding's 1d4 necrotic, before the save that ends it. */
     harms: conditionHarmsSchema.optional(),
+    /** Its holder is inside whoever put it on (Capability API 1.350), off the ground and carried
+     *  along wherever they go, until it ends and they are set down beside them: a gelatinous cube's
+     *  engulfed. */
+    inside: z.literal(true).optional(),
     /** What its holder regains as each of their own turns starts (Capability API 1.346). */
     regenerates: regenerationSchema.optional(),
     /** Left at 1 instead of dropping to 0 while it holds (Capability API 1.347): Relentless Rage. */
@@ -13246,6 +13289,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (harmType && damageTypes && !damageTypes.includes(harmType.trim().toLowerCase())) {
         issue([...path, "harms", "type"], `Unknown damage type "${harmType}"`);
       }
+      // The save that spares it (1.350), one the sheet has.
+      const harmSave = entry.harms?.save?.save;
+      if (harmSave && !def.sheet.saves.some((one) => one.id === harmSave)) {
+        issue([...path, "harms", "save", "save"], `Unknown save "${harmSave}"`);
+      }
       // What it deals as it ends (1.245): a damage type of the ruleset's, spared what it names.
       const endType = entry.onEnd?.harm?.type;
       if (endType && damageTypes && !damageTypes.includes(endType.trim().toLowerCase())) {
@@ -14169,6 +14217,15 @@ function targetIsIssues(
   add: (path: (string | number)[], message: string) => void,
 ): void {
   if (!test) return;
+  // Sizes (1.350) read combat.sizes.
+  for (const key of ["upToSize", "atLeastSize"] as const) {
+    const size = test[key];
+    if (size === undefined) continue;
+    const sizes = definition.combat?.sizes;
+    if (!sizes) add([...at, key], `"${key}" reads combat.sizes, so the block declares "sizes" too`);
+    else if (!sizes.order.some((one) => one.id === size)) add([...at, key], `Unknown size "${size}"`);
+  }
+  if (test.types === undefined && test.tags === undefined) return;
   const kinds = definition.combat?.creatureTypes;
   if (!kinds) {
     add(at, "This ruleset declares no creature types for a target to be");
@@ -14718,6 +14775,23 @@ function creatureIssues(
     }
     if (action.draws && !budgets.has(action.draws.spends)) {
       add([...path, "draws", "spends"], `Unknown budget "${action.draws.spends}"`);
+    }
+    // Engulfing (1.350): sizes the fight has, and a save the sheet has.
+    if (action.engulf) {
+      const sizes = definition.combat?.sizes;
+      if (!sizes)
+        add([...path, "engulf", "upToSize"], '"upToSize" reads combat.sizes, so the block declares "sizes" too');
+      else if (!sizes.order.some((one) => one.id === action.engulf!.upToSize))
+        add([...path, "engulf", "upToSize"], `Unknown size "${action.engulf.upToSize}"`);
+      if (!definition.sheet.saves.some((one) => one.id === action.engulf!.save.save))
+        add([...path, "engulf", "save", "save"], `Unknown save "${action.engulf.save.save}"`);
+      if (action.area || action.targets !== undefined)
+        add([...path, "engulf"], "An engulf walks to a cell and takes in whom it enters, so it has no area or targets");
+      if (action.toHit !== undefined || action.save)
+        add(
+          [...path, "engulf"],
+          "An engulf is saved against with its own save, so it has no attack roll or save of its own",
+        );
     }
     if (action.ability !== undefined && !definition.sheet.abilities.some((one) => one.id === action.ability)) {
       add([...path, "ability"], `Unknown ability "${action.ability}"`);

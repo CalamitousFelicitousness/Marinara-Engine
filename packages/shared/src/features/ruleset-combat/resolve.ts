@@ -14,6 +14,7 @@ import {
   type RulesetCreatureHideEntry,
   type RulesetDefinition,
   type RulesetHangsOn,
+  type RulesetConditionHarms,
 } from "../../schemas/ruleset.schema.js";
 import { evaluateRulesetSheetLive, readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
@@ -63,6 +64,8 @@ import {
   rulesetMovementAllowance,
   rulesetSealed,
   rulesetSealedApart,
+  rulesetEngulfable,
+  rulesetFitCell,
   rulesetLairRound,
   rulesetCombatFailsSave,
   rulesetCombatDamageKind,
@@ -2129,6 +2132,10 @@ function applyConditionId(
   );
   // The shape it holds (1.342), in place of any other.
   if (shapeRule && applies.form) takeShape(ctx, target, condition, shapeRule, applies.form);
+  // Inside whoever put it on (1.350): a gelatinous cube's engulfed, a purple worm's swallowed.
+  if (rule?.inside && extra.sourceId && extra.sourceId !== target.id && target.insideOf !== extra.sourceId) {
+    takeInside(ctx, target, extra.sourceId);
+  }
   endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
   // What it makes its holder let fall at once (1.266): Fear.
@@ -2143,6 +2150,142 @@ function applyConditionId(
       target.budgets[change.budget] = Math.max(0, target.budgets[change.budget]! + change.flat);
     }
   }
+}
+
+/** `target` is taken inside `holderId` (1.350): off the ground, where its holder is, and carried along
+ *  wherever it goes. Nothing reaches in or out but its holder (`rulesetSealedApart`). */
+function takeInside(ctx: RulesetCombatContext, target: RulesetCombatant, holderId: string): void {
+  const holder = rulesetCombatant(ctx.state, holderId);
+  if (!holder) return;
+  if (target.insideOf) letOut(ctx, target);
+  target.insideOf = holder.id;
+  if (rulesetPositionOf(holder) && rulesetPositionOf(target)) placeInside(holder, target);
+  ctx.events.push({ type: "inside", targetId: target.id, holderId: holder.id });
+}
+
+/** Wherever its holder stands, inside it (1.350): on its first cell, and as high as it is. */
+function placeInside(holder: RulesetCombatant, inside: RulesetCombatant): void {
+  inside.x = holder.x!;
+  inside.y = holder.y!;
+  if (holder.altitude !== undefined) inside.altitude = holder.altitude;
+  else delete inside.altitude;
+}
+
+/** Whether something its holder put on still keeps it inside (1.350). */
+function keptInside(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
+  return target.tracked.some(
+    (entry) =>
+      entry.source === target.insideOf &&
+      !!ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.inside,
+  );
+}
+
+/** Let out of whoever held them inside (1.350): set down on the nearest open cell beside them. */
+function letOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  const holderId = target.insideOf!;
+  delete target.insideOf;
+  const holder = rulesetCombatant(ctx.state, holderId);
+  const grid = ctx.state.board?.grid;
+  if (grid && holder && rulesetPositionOf(holder) && rulesetPositionOf(target)) {
+    setDownBeside(ctx, holder, target);
+  }
+  ctx.events.push({ type: "inside", targetId: target.id, holderId, out: true });
+}
+
+/** `target` moved to the nearest cell open to it around `beside` (1.350): out of an engulf's way,
+ *  or let out of it. Where there is none, it stays. */
+function setDownBeside(
+  ctx: RulesetCombatContext,
+  beside: RulesetCombatant,
+  target: RulesetCombatant,
+): RulesetCombatCell | null {
+  const grid = ctx.state.board!.grid;
+  const taken = new Set<string>();
+  for (const one of ctx.state.combatants) {
+    if (one.id === target.id || one.insideOf || !rulesetCombatStanding(one) || !rulesetPositionOf(one)) continue;
+    for (const cell of rulesetFootprint(one)) taken.add(`${cell.x},${cell.y}`);
+  }
+  // Beside them, even where they have fallen.
+  for (const cell of rulesetFootprint(beside)) taken.add(`${cell.x},${cell.y}`);
+  const to = rulesetFitCell(grid, { x: target.x!, y: target.y! }, rulesetSpanOf(target), taken);
+  if (!to) return null;
+  target.x = to.x;
+  target.y = to.y;
+  if (beside.altitude !== undefined && target.altitude !== undefined && !rulesetAirborne(grid, target)) {
+    delete target.altitude;
+  }
+  return to;
+}
+
+/**
+ * An engulf lands (1.350) on whoever its maker entered, or, off a board, the one it was aimed at:
+ * each makes its save against it, and on a failure takes what the action does, an `inside`
+ * condition among it taking them in. Whoever saves, or finds it already holding all it may, is
+ * pushed out of its way.
+ */
+function engulfLands(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  entered: readonly RulesetCombatant[],
+): void {
+  const engulf = action.engulf!;
+  const held = ctx.state.combatants.filter((one) => one.insideOf === actor.id).length;
+  const room = engulf.atMost === undefined ? entered.length : Math.max(0, engulf.atMost - held);
+  const taken = entered.filter((one) => rulesetEngulfable(ctx.definition, actor, engulf, one)).slice(0, room);
+  if (taken.length > 0) {
+    const { engulf: _engulf, ...rest } = action;
+    resolveAction(
+      ctx,
+      actor,
+      {
+        ...rest,
+        save: { save: engulf.save.save, difficulty: engulf.save.difficulty, onSuccess: "negates" },
+      },
+      taken,
+    );
+  }
+  if (!ctx.state.board?.grid || !rulesetPositionOf(actor)) return;
+  const covered = new Set(rulesetFootprint(actor).map((cell) => `${cell.x},${cell.y}`));
+  for (const one of entered) {
+    if (one.insideOf === actor.id || !rulesetPositionOf(one)) continue;
+    if (!rulesetFootprint(one).some((cell) => covered.has(`${cell.x},${cell.y}`))) continue;
+    const from = rulesetPositionOf(one)!;
+    const to = setDownBeside(ctx, actor, one);
+    if (to)
+      ctx.events.push({ type: "pushed", actorId: actor.id, targetId: one.id, from, to: { ...to }, path: [{ ...to }] });
+  }
+}
+
+/** An engulf's walk (1.350): up to its maker's speed, lent for it, or on what is left of its own. */
+function engulfWalk(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  path: RulesetCombatCell[],
+): void {
+  const own = action.engulf!.ownMovement;
+  const kept = {
+    ...(actor.movementLeft !== undefined ? { movementLeft: actor.movementLeft } : {}),
+    ...(actor.modeLeft ? { modeLeft: actor.modeLeft } : {}),
+  };
+  if (!own) {
+    const lent = rulesetLentMovement(ctx.definition, actor, { share: 1 }, ctx.state);
+    actor.movementLeft = lent.movementLeft;
+    if (lent.modeLeft) actor.modeLeft = lent.modeLeft;
+    else delete actor.modeLeft;
+  }
+  walkOn(ctx, actor, {
+    kind: "walk",
+    actorId: actor.id,
+    from: { x: actor.x!, y: actor.y! },
+    walked: [],
+    path: [...path],
+    asked: [],
+    spent: 0,
+    ...(own ? {} : { legendary: { kept } }),
+    engulf: { actionId: action.id, entered: [] },
+  });
 }
 
 /** `target` takes a form's shape (1.342), giving up one another condition held. */
@@ -2274,6 +2417,8 @@ function removeCondition(
   if (target.shape?.condition === condition) leaveShape(ctx, target, reason);
   // Out of the sphere, nobody is carrying them (1.314).
   if (target.carriedBy && !rulesetSealed(ctx.definition, target, ctx.state)) delete target.carriedBy;
+  // Out of whoever held them inside (1.350), once nothing of theirs keeps them there.
+  if (target.insideOf && !keptInside(ctx, target)) letOut(ctx, target);
   // What an aura put on, ended, keeps that aura off them where it says so (1.269).
   if (removed?.auraSafeOnEnd && !target.auraSafe?.includes(removed.auraSafeOnEnd)) {
     target.auraSafe = [...(target.auraSafe ?? []), removed.auraSafeOnEnd];
@@ -2488,6 +2633,9 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   for (const holder of ctx.state.combatants) {
     if (holder.id === actor.id) continue;
     for (const entry of [...holder.tracked]) {
+      // What it harms them with as this one's turn starts or ends (1.350): a gelatinous cube's acid.
+      if (entry.source === actor.id) harmFromCondition(ctx, holder, entry, `source-${at}`);
+      if (!holder.tracked.includes(entry)) continue;
       if (entry.source !== actor.id || !ticksOnSource(ctx, holder, entry)) continue;
       if (entry.rounds === null || at !== (entry.clock ?? "turn-end")) continue;
       entry.rounds -= 1;
@@ -2671,10 +2819,15 @@ function harmFromCondition(
   ctx: RulesetCombatContext,
   holder: RulesetCombatant,
   entry: RulesetTrackedCondition,
-  at: "turn-start" | "turn-end",
+  at: RulesetConditionHarms["at"],
 ): void {
   const harms = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
   if (!harms || harms.at !== at || holder.defeated) return;
+  // Spared this time by a save (1.350): a shambling mound's engulfed.
+  if (harms.save) {
+    const difficulty = harms.save.difficulty ?? entry.difficulty;
+    if (difficulty !== undefined && rollSave(ctx, holder, harms.save.save, difficulty, entry.source)) return;
+  }
   conditionHarm(ctx, holder, entry.condition, entry.source, harms, entry.stacks ?? 1, entry.harmsMore);
 }
 
@@ -4261,6 +4414,9 @@ function applyChoice(
   ) {
     return refusal(state, choice.actorId, "bad-target", option.id);
   }
+  // Where an engulf walks to (1.350): a cell its option offered.
+  const engulfTo = named?.engulf && option.cells ? destinationOf(option, choice.to) : undefined;
+  if (named?.engulf && option.cells && !engulfTo) return refusal(state, choice.actorId, "unreachable", option.id);
 
   const { ctx, finish } = begin(definition, combat, state, roller);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
@@ -4621,6 +4777,13 @@ function applyChoice(
     if (working.hiding) (ctx.giveaways ??= new Map()).set(working.id, "attack");
     resolveContest(ctx, working, action, action.contest, workingTargets[0]!);
     holderActed(ctx, working, action, before);
+    noteOutcome(ctx);
+    return finish();
+  }
+  // An engulf (1.350): the walk, and whoever it enters on the way; off a board, the one aimed at.
+  if (action.engulf) {
+    if (engulfTo) engulfWalk(ctx, working, action, engulfTo.path);
+    else engulfLands(ctx, working, action, workingTargets);
     noteOutcome(ctx);
     return finish();
   }
@@ -6791,6 +6954,12 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   let at = walked.length > 0 ? walked[walked.length - 1]! : resume.from;
   const rest = [...resume.path];
   const legendary = resume.legendary;
+  // An engulf's walk (1.350): whoever it has entered so far.
+  const engulfAction = resume.engulf ? actor.actions.find((one) => one.id === resume.engulf!.actionId) : undefined;
+  const engulfing =
+    resume.engulf && engulfAction?.engulf
+      ? { rule: engulfAction.engulf, entered: [...resume.engulf.entered] }
+      : undefined;
   // Taken back up after a strike it provoked (1.283): the window it was bought in stands again, so
   // nothing else opens over it while the walk goes on.
   let outer = resume.outer;
@@ -6841,6 +7010,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             spent,
             ...(legendary ? { legendary } : {}),
             ...(outer ? { outer } : {}),
+            ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
           },
         });
         return;
@@ -6879,6 +7049,17 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
+    // And whoever they hold inside (1.350), within them still.
+    for (const inside of ctx.state.combatants) if (inside.insideOf === actor.id) placeInside(actor, inside);
+    // Whoever an engulf walks into (1.350), taken in once the walk ends.
+    if (engulfing) {
+      const covered = new Set(rulesetFootprint(actor).map((one) => `${one.x},${one.y}`));
+      for (const one of ctx.state.combatants) {
+        if (engulfing.entered.includes(one.id) || !rulesetEngulfable(ctx.definition, actor, engulfing.rule, one))
+          continue;
+        if (rulesetFootprint(one).some((mine) => covered.has(`${mine.x},${mine.y}`))) engulfing.entered.push(one.id);
+      }
+    }
     // Seen on the way, out in the open (1.287), even where the walk ends back in hiding; and no
     // longer still (1.292).
     stirs(ctx, actor, "moved");
@@ -6917,6 +7098,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             spent,
             ...(legendary ? { legendary } : {}),
             ...(outer ? { outer } : {}),
+            ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
           },
         });
         return;
@@ -6951,6 +7133,15 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     left: actor.movementLeft ?? 0,
     ...(stopped ? { stopped: true } : {}),
   });
+  // Whoever an engulf walked into (1.350), once it has stopped.
+  if (engulfing && engulfAction && rulesetCombatStanding(actor)) {
+    engulfLands(
+      ctx,
+      actor,
+      engulfAction,
+      engulfing.entered.flatMap((id) => rulesetCombatant(ctx.state, id) ?? []),
+    );
+  }
   // Held behind a strike it provoked (1.283): the window it was bought in is asked on from there.
   if (resume.outer && ctx.state.window === resume.outer) goOn(ctx.definition, ctx.combat, ctx, false);
 }

@@ -395,6 +395,8 @@ export interface RulesetStatBlockAction {
   ground?: RulesetCreatureGround;
   /** Whoever it lands on walks toward it on their own budget (1.326): Whisper a Name. */
   draws?: { spends: string };
+  /** Engulf (1.350): moves into smaller creatures' spaces, each saving or taken inside. */
+  engulf?: RulesetEngulf;
   /** Only at somebody who has taken their turn this round (1.327): the Hour Bell. */
   actedOnly?: true;
   /** Its concentration broken, this lair action is its next (1.327): the Litany of Keeping. One of a
@@ -923,6 +925,8 @@ export interface RulesetCombatAction {
   ground?: RulesetCreatureGround;
   /** Whoever it lands on spends `spends` to walk up to their speed toward its user (1.326). */
   draws?: { spends: string };
+  /** Engulf (1.350): moves into smaller creatures' spaces, each saving or taken inside. */
+  engulf?: RulesetEngulf;
   /** Only at somebody who has taken their turn this round (1.327). */
   actedOnly?: true;
   /** Its concentration broken, this lair action of its user's is the next they take (1.327), or one of
@@ -1179,6 +1183,17 @@ export interface RulesetCombatContest {
   stabilizes?: true;
 }
 
+/** Engulf (1.350): the actor moves through creatures no bigger than `upToSize`; each one entered
+ *  makes `save` against `difficulty` or takes the action's damage and `applies`, and a condition
+ *  with `inside` carries it along inside the actor. `ownMovement` spends the actor's own speed
+ *  (otherwise the move is free, up to its speed); `atMost` caps how many it can hold at once. */
+export interface RulesetEngulf {
+  upToSize: string;
+  save: { save: string; difficulty: number };
+  ownMovement?: boolean;
+  atMost?: number;
+}
+
 /** A shape on the board, in cells. `friendlyFire` false leaves the actor's own side out of it. */
 export interface RulesetCombatArea {
   /** `box` is a square `size` a side reaching away from its maker; `wall` a wall `size` long (1.177). */
@@ -1332,6 +1347,8 @@ export interface RulesetCombatant {
   };
   /** How many of its block's legendary resistances it has spent (1.317). */
   legendaryResisted?: number;
+  /** The creature it is inside of (1.350), engulfed: it moves with that creature. */
+  insideOf?: string;
   /** How many times it has hung on at 1 instead of dropping (1.320). */
   hungOn?: number;
   /** How many times each condition or level of theirs has had them hang on at 1 this fight (1.347),
@@ -1924,6 +1941,9 @@ export interface RulesetWalkResume {
   /** The window between turns a legendary move was bought in, held behind a strike it provoked and
    *  asked on from once the walk ends. */
   outer?: RulesetCombatWindow;
+  /** An engulf (1.350): the action it is, and whoever it has entered so far, each taken in or pushed
+   *  out of its way once the walk ends. */
+  engulf?: { actionId: string; entered: string[] };
 }
 
 /** The board, as the fight keeps it: the tactical engine's own grid and where it came from. The
@@ -2440,6 +2460,8 @@ export type RulesetCombatEvent =
       /** Who it carried and where to (1.329). */
       pushed?: Array<{ id: string; from: RulesetCombatCell; to: RulesetCombatCell }>;
     }
+  /** Taken inside somebody (1.350), or let out beside them (`out`). */
+  | { type: "inside"; targetId: string; holderId: string; out?: true }
   /** Left at 1 instead of dropping to 0 (1.320), and how many more times it may. */
   | { type: "hangsOn"; actorId: string; label?: string; left?: number }
   /** A prop lit again (1.332): who lit it, and how many cells it lights. */

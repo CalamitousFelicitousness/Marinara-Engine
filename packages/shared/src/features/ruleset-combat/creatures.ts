@@ -278,6 +278,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
     // Whoever it lands on walks toward it (1.326).
     ...(action.draws ? { draws: { ...action.draws } } : {}),
+    // Engulf and Whelm (1.350).
+    ...(action.engulf ? { engulf: structuredClone(action.engulf) } : {}),
     // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),

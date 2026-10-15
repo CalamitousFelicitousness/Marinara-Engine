@@ -36608,6 +36608,16 @@
                               "minItems": 1,
                               "maxItems": 20
                             },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -36634,6 +36644,16 @@
                               },
                               "minItems": 1,
                               "maxItems": 20
+                            },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
                             },
                             "$comment": {}
                           },
@@ -36705,6 +36725,16 @@
                           },
                           "minItems": 1,
                           "maxItems": 20
+                        },
+                        "upToSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "atLeastSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
                         },
                         "$comment": {}
                       },
@@ -37067,6 +37097,16 @@
                                 "minItems": 1,
                                 "maxItems": 20
                               },
+                              "upToSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "atLeastSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -37207,6 +37247,16 @@
                                   "minItems": 1,
                                   "maxItems": 20
                                 },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -37242,6 +37292,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -37493,6 +37553,16 @@
                                         "minItems": 1,
                                         "maxItems": 20
                                       },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -37571,6 +37641,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -39254,6 +39334,16 @@
                               "minItems": 1,
                               "maxItems": 20
                             },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -40809,6 +40899,16 @@
                                   },
                                   "minItems": 1,
                                   "maxItems": 20
+                                },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "$comment": {}
                               },
@@ -43150,6 +43250,16 @@
                                 "minItems": 1,
                                 "maxItems": 20
                               },
+                              "upToSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "atLeastSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -43194,6 +43304,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -44086,6 +44206,16 @@
                                 "minItems": 1,
                                 "maxItems": 20
                               },
+                              "upToSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "atLeastSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -44130,6 +44260,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -47298,6 +47438,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -47496,6 +47646,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -47616,6 +47776,16 @@
                                         "minItems": 1,
                                         "maxItems": 20
                                       },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -47651,6 +47821,16 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "$comment": {}
                                       },
@@ -48311,6 +48491,16 @@
                                       "minItems": 1,
                                       "maxItems": 20
                                     },
+                                    "upToSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "atLeastSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
                                     "$comment": {}
                                   },
                                   "additionalProperties": false
@@ -48355,6 +48545,16 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "$comment": {}
                                       },
@@ -49051,6 +49251,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -49549,6 +49759,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -49593,6 +49813,16 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -52430,6 +52660,52 @@
                             ],
                             "additionalProperties": false
                           },
+                          "engulf": {
+                            "type": "object",
+                            "properties": {
+                              "upToSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "save": {
+                                "type": "object",
+                                "properties": {
+                                  "save": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "difficulty": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "save",
+                                  "difficulty"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "ownMovement": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "atMost": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "upToSize",
+                              "save"
+                            ],
+                            "additionalProperties": false
+                          },
                           "actedOnly": {
                             "type": "boolean",
                             "const": true
@@ -53454,6 +53730,16 @@
                                         "minItems": 1,
                                         "maxItems": 20
                                       },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -53532,6 +53818,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -54361,6 +54657,16 @@
                                         "minItems": 1,
                                         "maxItems": 20
                                       },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -54439,6 +54745,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -55455,6 +55771,16 @@
                                               "minItems": 1,
                                               "maxItems": 20
                                             },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
                                             "$comment": {}
                                           },
                                           "additionalProperties": false
@@ -55533,6 +55859,16 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "$comment": {}
                                       },
@@ -57815,6 +58151,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -57841,6 +58187,16 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "$comment": {}
                                       },
@@ -58137,6 +58493,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -58183,6 +58549,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -58255,6 +58631,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -58281,6 +58667,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -58772,6 +59168,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -58816,6 +59222,16 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -59382,6 +59798,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -59408,6 +59834,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -59855,6 +60291,16 @@
                                   "minItems": 1,
                                   "maxItems": 20
                                 },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -59881,6 +60327,16 @@
                                   },
                                   "minItems": 1,
                                   "maxItems": 20
+                                },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "$comment": {}
                               },
@@ -59952,6 +60408,16 @@
                               },
                               "minItems": 1,
                               "maxItems": 20
+                            },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
                             },
                             "$comment": {}
                           },
@@ -60302,6 +60768,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -60442,6 +60918,16 @@
                                       "minItems": 1,
                                       "maxItems": 20
                                     },
+                                    "upToSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "atLeastSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
                                     "$comment": {}
                                   },
                                   "additionalProperties": false
@@ -60477,6 +60963,16 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "$comment": {}
                                     },
@@ -60689,6 +61185,16 @@
                                             "minItems": 1,
                                             "maxItems": 20
                                           },
+                                          "upToSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "atLeastSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
                                           "$comment": {}
                                         },
                                         "additionalProperties": false
@@ -60767,6 +61273,16 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "$comment": {}
                                     },
@@ -62325,6 +62841,16 @@
                                   "minItems": 1,
                                   "maxItems": 20
                                 },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -63804,6 +64330,16 @@
                                       },
                                       "minItems": 1,
                                       "maxItems": 20
+                                    },
+                                    "upToSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "atLeastSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
                                     },
                                     "$comment": {}
                                   },
@@ -66114,6 +66650,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -66158,6 +66704,16 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "$comment": {}
                                     },
@@ -67050,6 +67606,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -67094,6 +67660,16 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "$comment": {}
                                     },
@@ -70188,6 +70764,16 @@
                                         "minItems": 1,
                                         "maxItems": 20
                                       },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -70214,6 +70800,16 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "$comment": {}
                                     },
@@ -70285,6 +70881,16 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -70635,6 +71241,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -70775,6 +71391,16 @@
                                             "minItems": 1,
                                             "maxItems": 20
                                           },
+                                          "upToSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "atLeastSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
                                           "$comment": {}
                                         },
                                         "additionalProperties": false
@@ -70810,6 +71436,16 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -71022,6 +71658,16 @@
                                                   "minItems": 1,
                                                   "maxItems": 20
                                                 },
+                                                "upToSize": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "atLeastSize": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
                                                 "$comment": {}
                                               },
                                               "additionalProperties": false
@@ -71100,6 +71746,16 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -72658,6 +73314,16 @@
                                         "minItems": 1,
                                         "maxItems": 20
                                       },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -74137,6 +74803,16 @@
                                             },
                                             "minItems": 1,
                                             "maxItems": 20
+                                          },
+                                          "upToSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "atLeastSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
                                           },
                                           "$comment": {}
                                         },
@@ -76447,6 +77123,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -76491,6 +77177,16 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -77383,6 +78079,16 @@
                                           "minItems": 1,
                                           "maxItems": 20
                                         },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -77427,6 +78133,16 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -89491,6 +90207,16 @@
                           "minItems": 1,
                           "maxItems": 20
                         },
+                        "upToSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "atLeastSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -89876,6 +90602,16 @@
                               "minItems": 1,
                               "maxItems": 20
                             },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -89954,6 +90690,16 @@
                           },
                           "minItems": 1,
                           "maxItems": 20
+                        },
+                        "upToSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "atLeastSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
                         },
                         "$comment": {}
                       },
@@ -90803,7 +91549,9 @@
                     "type": "string",
                     "enum": [
                       "turn-start",
-                      "turn-end"
+                      "turn-end",
+                      "source-turn-start",
+                      "source-turn-end"
                     ]
                   },
                   "dice": {
@@ -90825,12 +91573,36 @@
                     "type": "boolean",
                     "const": true
                   },
+                  "save": {
+                    "type": "object",
+                    "properties": {
+                      "save": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "difficulty": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "save"
+                    ],
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "required": [
                   "at"
                 ],
                 "additionalProperties": false
+              },
+              "inside": {
+                "type": "boolean",
+                "const": true
               },
               "regenerates": {
                 "type": "object",
@@ -91726,6 +92498,16 @@
                               "minItems": 1,
                               "maxItems": 20
                             },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -91770,6 +92552,16 @@
                                   },
                                   "minItems": 1,
                                   "maxItems": 20
+                                },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "$comment": {}
                               },
@@ -92489,6 +93281,16 @@
                               "minItems": 1,
                               "maxItems": 20
                             },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -92515,6 +93317,16 @@
                               },
                               "minItems": 1,
                               "maxItems": 20
+                            },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
                             },
                             "$comment": {}
                           },
@@ -93103,6 +93915,16 @@
                                     "minItems": 1,
                                     "maxItems": 20
                                   },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -93147,6 +93969,16 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "$comment": {}
                                     },
@@ -94060,6 +94892,16 @@
                                         "minItems": 1,
                                         "maxItems": 20
                                       },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -94104,6 +94946,16 @@
                                             },
                                             "minItems": 1,
                                             "maxItems": 20
+                                          },
+                                          "upToSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "atLeastSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
                                           },
                                           "$comment": {}
                                         },
@@ -95242,6 +96094,16 @@
                               "minItems": 1,
                               "maxItems": 20
                             },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -95286,6 +96148,16 @@
                                   },
                                   "minItems": 1,
                                   "maxItems": 20
+                                },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "$comment": {}
                               },
@@ -95801,6 +96673,16 @@
                             "minItems": 1,
                             "maxItems": 20
                           },
+                          "upToSize": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "atLeastSize": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
                           "$comment": {}
                         },
                         "additionalProperties": false
@@ -96219,6 +97101,16 @@
                               "minItems": 1,
                               "maxItems": 20
                             },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -96297,6 +97189,16 @@
                           },
                           "minItems": 1,
                           "maxItems": 20
+                        },
+                        "upToSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "atLeastSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
                         },
                         "$comment": {}
                       },

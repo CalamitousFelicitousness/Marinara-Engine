@@ -749,6 +749,8 @@ export function rulesetReachableCells(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,
+  /** Whoever it may walk into and through (1.350): those an engulf takes in. */
+  passes?: (combatant: RulesetCombatant) => boolean,
 ): RulesetReachableCell[] {
   const combat = definition.combat;
   const grid = state.board?.grid;
@@ -764,6 +766,8 @@ export function rulesetReachableCells(
   const occupied = new Set<string>();
   for (const combatant of state.combatants) {
     if (combatant.id === actor.id || !rulesetCombatStanding(combatant)) continue;
+    // Inside somebody (1.350), they fill none of their own: whoever holds them fills it.
+    if (combatant.insideOf || passes?.(combatant)) continue;
     // Every cell they fill (1.194).
     for (const at of rulesetFootprint(combatant)) {
       occupied.add(`${at.x},${at.y}`);

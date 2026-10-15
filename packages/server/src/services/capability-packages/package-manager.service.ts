@@ -2179,6 +2179,22 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** Engulfing, being inside, harms on its source's turns or spared by a save, and sized target
+ *  tests (1.350). */
+function carriesEngulf350(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEngulf350(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // A zone's `inside` is an object of its own: a condition's is `true`.
+  if (plainRecord(record.engulf) || record.inside === true) return true;
+  if (record.upToSize !== undefined || record.atLeastSize !== undefined) return true;
+  const harms = plainRecord(record.harms);
+  if (harms && (harms.save !== undefined || (typeof harms.at === "string" && harms.at.startsWith("source-"))))
+    return true;
+  return featureValues(record).some((one) => carriesEngulf350(one, depth + 1));
+}
+
 /** Calls read from a catalog, capped or scaled by cost, and attack modes on melee alone (1.349). */
 function carriesCalls349(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2188,8 +2204,7 @@ function carriesCalls349(value: unknown, depth = 0): boolean {
   const calls = plainRecord(record.calls);
   if (calls) {
     if (plainRecord(calls.from) || calls.timesPerSteps !== undefined) return true;
-    if (Array.isArray(calls.options) && calls.options.some((one) => plainRecord(plainRecord(one)?.from)))
-      return true;
+    if (Array.isArray(calls.options) && calls.options.some((one) => plainRecord(plainRecord(one)?.from))) return true;
   }
   if (Array.isArray(record.attackModes) && record.attackModes.some((one) => plainRecord(one)?.melee !== undefined))
     return true;
@@ -5246,11 +5261,18 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
   }
+  // Engulfing, being inside, source-turn and saved-against harms, and sized target tests, 1.350.
+  if (
+    !declaresApi(350) &&
+    (carriesEngulf350(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEngulf350(document)))
+  ) {
+    return "A ruleset with an engulf, a condition that holds its holder inside, a harm on its source's turns or spared by a save, or a target test by size requires schemaVersion 2 and capabilityApi 1.350 or newer";
+  }
   // Calls read from a catalog or scaled by cost, and melee-only attack modes, 1.349.
   if (
     !declaresApi(349) &&
-    (carriesCalls349(ruleset) ||
-      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls349(document)))
+    (carriesCalls349(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls349(document)))
   ) {
     return "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.349 or newer";
   }

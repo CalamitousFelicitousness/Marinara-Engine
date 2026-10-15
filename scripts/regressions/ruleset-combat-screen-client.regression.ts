@@ -862,6 +862,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["shaped", say({ type: "shaped", targetId: "brenna", condition: "wild_shape", form: "Brown Bear", gone: true })],
     ["shaped", say({ type: "shaped", targetId: "lurker", condition: "polymorph", form: "Toad", refused: true })],
     ["sentAway", say({ type: "sentAway", actorId: "brenna", ids: ["lurker"], reason: "rounds" })],
+    ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker" })],
+    ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker", out: true })],
     ["regenerates", say({ type: "regenerates", actorId: "lurker", amount: 10 })],
     ["regenerates", say({ type: "regenerates", actorId: "lurker", amount: 0, stopped: true })],
     ["reaped", say({ type: "reaped", actorId: "lurker", sourceId: "brenna" })],

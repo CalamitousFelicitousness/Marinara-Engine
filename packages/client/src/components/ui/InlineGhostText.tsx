@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { cn } from "../../lib/utils";
 
 /**
@@ -13,6 +14,7 @@ export function InlineGhostText({
   multiline,
   scrollLeft = 0,
   scrollTop = 0,
+  style,
 }: {
   value: string;
   suffix: string;
@@ -20,6 +22,8 @@ export function InlineGhostText({
   multiline?: boolean;
   scrollLeft?: number;
   scrollTop?: number;
+  /** Extra inline styles, e.g. a field's computed font and padding when classes can't be repeated. */
+  style?: CSSProperties;
 }) {
   if (!suffix) return null;
   return (
@@ -31,7 +35,7 @@ export function InlineGhostText({
         multiline ? "whitespace-pre-wrap break-words" : "whitespace-pre",
         className,
       )}
-      style={multiline ? { transform: `translate(${-scrollLeft}px, ${-scrollTop}px)` } : undefined}
+      style={multiline ? { ...style, transform: `translate(${-scrollLeft}px, ${-scrollTop}px)` } : style}
     >
       {value}
       <span className="text-[var(--muted-foreground)]/55">{suffix}</span>

@@ -138,7 +138,8 @@ export function previewVariantPrompts(
 /** Makes blink and talk pictures one at a time, so each can be checked, kept or tried again, and Cancel
  *  stops the picture being made, on the server too, and drops the ones not started. A second start while one
  *  runs does nothing. Pictures already made stay: a new start makes only the chosen ones not made yet, and a
- *  failed or cancelled try keeps the picture it was replacing (a failed one says so in a toast too).
+ *  failed or cancelled try keeps the picture it was replacing (a failed redo or single picture says so in a
+ *  toast too).
  *  `progress` counts the pictures of the run going on. */
 export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const [items, setItems] = useState<VariantJobItem[]>([]);
@@ -157,11 +158,12 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const update = useCallback((id: string, patch: Partial<VariantJobItem>) => {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }, []);
-  /** A failed try of a picture already made keeps showing that picture, so the failure is a toast too. */
+  /** A failed redo or single picture is a toast too (the slot may keep showing its old picture); a run of
+   *  many shows each failure in its slot only, so one provider outage doesn't stack a toast per picture. */
   const failed = useCallback(
-    (item: VariantJobItem, error: string) => {
+    (item: VariantJobItem, error: string, single: boolean) => {
       update(item.id, { status: "failed", error });
-      if (item.draft) toast.error(error || translate("avatars.generation.failed"));
+      if (item.draft || single) toast.error(error || translate("avatars.generation.failed"));
     },
     [update],
   );
@@ -195,13 +197,13 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
             );
             const draft = response.drafts[0];
             if (draft) update(item.id, { status: "done", draft, kept: false, error: undefined });
-            else failed(item, response.failed[0]?.error ?? "");
+            else failed(item, response.failed[0]?.error ?? "", queue.length === 1);
           } catch (error) {
             if (controller.signal.aborted || isAbort(error)) {
               update(item.id, { status: item.draft ? "done" : "waiting" });
               break;
             }
-            failed(item, errorMessage(error));
+            failed(item, errorMessage(error), queue.length === 1);
           }
         }
       } finally {

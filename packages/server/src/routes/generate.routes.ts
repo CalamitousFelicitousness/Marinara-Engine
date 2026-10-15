@@ -75,6 +75,7 @@ import { GenerationStreamOutput } from "./generate/generation-stream-output.js";
 import { parseConversationReplyCommands, parseRoleplayDmReplyCommands } from "./generate/reply-commands.js";
 import { cleanGeneratedReply } from "./generate/reply-text-cleanup.js";
 import { saveHiddenCommandAnchor } from "./generate/hidden-command-anchor.js";
+import { saveGeneratedReply } from "./generate/save-generated-reply.js";
 import { buildGenerationInfoExtra } from "./generate/saved-message-extra.js";
 import { runToolRounds } from "./generate/tool-rounds.js";
 // ──────────────────────────────────────────────
@@ -681,7 +682,6 @@ import {
   type GenerationOutput,
 } from "./generate/sse.js";
 import {
-  resolveAlreadyAppliedSpatialTurn,
   resolveSpatialGenerationOrigin,
   shouldSaveHiddenGenerationAnchor,
   shouldSuppressAssistantSpatialMutation,
@@ -745,7 +745,6 @@ import { handleConversationSelfieCommand } from "../services/generation/conversa
 import {
   CONTINUE_ASSISTANT_MESSAGE_PROMPT,
   CONTINUE_ASSISTANT_MESSAGE_DIRECT_PROMPT,
-  appendContinuationMessageContent,
   clampRoleplaySummaryContextSize,
   clampRoleplaySummaryInterval,
   clampRoleplaySummaryMaxTokens,
@@ -10125,137 +10124,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
 
           // Save assistant message (or user message for impersonate)
-          let savedMsg: any;
-          let savedSwipeIndex: number | null = null;
-          // A new reply split at scene breaks: each part with where it starts in the whole reply.
-          type ReplyPart = { content: string; start: number; message: any; activity: RoleplayCommandActivity[] };
-          let replyParts = null as ReplyPart[] | null;
-          if (input.regenerateMessageId) {
-            const createdSwipe = await chats.addSwipe(input.regenerateMessageId, fullResponse);
-            savedSwipeIndex = createdSwipe.index;
-            savedMsg = await chats.getMessage(input.regenerateMessageId);
-          } else if (input.continueMessageId) {
-            const targetMessage = (await chats.getMessage(input.continueMessageId)) ?? continueTargetMessage;
-            continuedMessageRewriteSource = appendContinuationMessageContent(
-              targetMessage?.content,
-              fullResponse,
-              input.continueAddsNewline,
-            );
-            savedMsg = await chats.updateMessageContent(input.continueMessageId, continuedMessageRewriteSource);
-            savedSwipeIndex =
-              typeof savedMsg?.activeSwipeIndex === "number" && Number.isInteger(savedMsg.activeSwipeIndex)
-                ? savedMsg.activeSwipeIndex
-                : 0;
-          } else if (input.impersonate && input.pendingSpatialTransition) {
-            try {
-              const committed = await commitSpatialOwnerTurn({
-                chatId: input.chatId,
-                content: fullResponse,
-                transition: input.pendingSpatialTransition,
-              });
-              savedMsg = committed.message;
-              savedSwipeIndex = 0;
-              sendSseEvent(reply, {
-                type: "spatial_transition_committed",
-                data: {
-                  chatId: input.chatId,
-                  commandId: input.pendingSpatialTransition.commandId,
-                  currentLocationId: committed.snapshot.currentLocationId,
-                  definitionRevision: committed.snapshot.definitionRevision,
-                  ...(committed.travel ? { travel: committed.travel } : {}),
-                },
-              });
-            } catch (error) {
-              if (error instanceof SpatialOwnerTurnError) {
-                if (error.code === "spatial_transition_already_applied") {
-                  const recovered = resolveAlreadyAppliedSpatialTurn(error);
-                  if (!recovered) throw error;
-                  const recoveredMessage = await chats.getMessage(recovered.messageId);
-                  if (!recoveredMessage) throw error;
-                  recoveredAlreadyAppliedSpatialTurn = true;
-                  recoveredAlreadyAppliedOwnerTurn = true;
-                  encryptedReasoningItems = undefined;
-                  savedMsg = recoveredMessage;
-                  savedSwipeIndex = recovered.swipeIndex;
-                  fullResponse = recoveredMessage.content;
-                  sendSseEvent(reply, { type: "content_replace", data: fullResponse });
-                  sendSseEvent(reply, {
-                    type: "spatial_transition_committed",
-                    data: {
-                      chatId: input.chatId,
-                      commandId: input.pendingSpatialTransition.commandId,
-                      currentLocationId: recovered.currentLocationId,
-                      definitionRevision: recovered.definitionRevision,
-                      ...(recovered.travel ? { travel: recovered.travel } : {}),
-                    },
-                  });
-                } else {
-                  sendSseEvent(reply, {
-                    type: "spatial_transition_rejected",
-                    data: {
-                      chatId: input.chatId,
-                      commandId: input.pendingSpatialTransition.commandId,
-                      code: error.code,
-                      message: error.message,
-                      ...(error.details ?? {}),
-                    },
-                  });
-                  throw error;
-                }
-              } else {
-                throw error;
-              }
-            }
-          } else {
-            const roomAuthority = currentRoomGeneration();
-            const roomAudience = chatMode === "game" ? roomAuthority : undefined;
-            const roomActor = roomAuthority?.characters.find((character) =>
-              chatMode === "game" ? character.role === "gm" : character.id === targetCharId,
-            );
-            // With Advanced Memory, each scene or POV break starts a message of its own, so each part has its own
-            // audience (#7481). The last part is the reply the rest of this turn works with.
-            const parts =
-              advancedMemoryEnabled && !input.impersonate ? splitAtSceneBreaks(fullResponse) : [fullResponse];
-            const saved: ReplyPart[] = [];
-            try {
-              for (const content of parts) {
-                const previous = saved.at(-1);
-                const start = fullResponse.indexOf(content, previous ? previous.start + previous.content.length : 0);
-                savedMsg = await chats.createMessage({
-                  chatId: input.chatId,
-                  role: input.impersonate ? "user" : "assistant",
-                  characterId: input.impersonate ? null : targetCharId,
-                  content,
-                  ...(roomAuthority
-                    ? {
-                        extra: {
-                          multiplayerActor: roomActor
-                            ? { id: roomActor.id, name: roomActor.name, role: roomActor.role }
-                            : { id: null, name: "GM", role: "gm" },
-                          ...(roomAudience
-                            ? {
-                                multiplayerGameAudience: {
-                                  roomId: roomAudience.roomId,
-                                  participants: roomAudience.participants.map((participant) => ({
-                                    id: participant.id,
-                                    name: participant.persona.name,
-                                  })),
-                                },
-                              }
-                            : {}),
-                        },
-                      }
-                    : {}),
-                });
-                saved.push({ content, start, message: savedMsg, activity: [] });
-              }
-            } catch (error) {
-              // A reply is saved whole or not at all: drop the parts already saved, so no half-reply is left.
-              for (const part of saved) await chats.removeMessage(part.message.id).catch(() => undefined);
-              throw error;
-            }
-            if (saved.length > 1) replyParts = saved;
-            savedSwipeIndex = 0;
+          const savedReply = await saveGeneratedReply(
+            {
+              chats,
+              reply,
+              input,
+              chatMode,
+              targetCharId,
+              continueTargetMessage,
+              advancedMemoryEnabled,
+            },
+            fullResponse,
+          );
+          let savedMsg = savedReply.savedMsg;
+          const savedSwipeIndex = savedReply.savedSwipeIndex;
+          const replyParts = savedReply.replyParts;
+          fullResponse = savedReply.fullResponse;
+          if (savedReply.continuedSource !== null) continuedMessageRewriteSource = savedReply.continuedSource;
+          if (savedReply.recoveredSpatialTurn) {
+            recoveredAlreadyAppliedSpatialTurn = true;
+            recoveredAlreadyAppliedOwnerTurn = true;
+            encryptedReasoningItems = undefined;
           }
           // The scenes the reply shows as written (worldgen W10) stay with it, so a rewrite later (a retry, or
           // after a continuation) keeps them too.

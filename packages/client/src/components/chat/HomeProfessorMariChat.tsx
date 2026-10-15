@@ -2300,8 +2300,9 @@ export function HomeProfessorMariChat({
     // under her answer once the thread has a message.
     handledArrivalAppendRequestRef.current = arrivalAppendRequestRef.current;
     let localMessageId: string | undefined;
-    // How many of your questions the server holds now: one more after the failure means it saved this one.
-    const savedUserCount = messagesRef.current.filter(isSavedUserMessage).length;
+    // Your newest question the server holds now: a different one after the failure means it saved this one
+    // (an id, not a count, because the thread loads only its newest page).
+    const lastSavedUserId = messagesRef.current.findLast(isSavedUserMessage)?.id;
     try {
       const chat = await ensureProfessorMariChat(effectiveConnectionId);
       // A retry or a chip sends its own text: leave whatever you have typed since in the composer.
@@ -2361,7 +2362,7 @@ export function HomeProfessorMariChat({
         context: submittedContext,
         localMessageId,
       })?.then((loaded) => {
-        if (!localMessageId || !loaded || loaded.filter(isSavedUserMessage).length > savedUserCount) return;
+        if (!localMessageId || !loaded || loaded.findLast(isSavedUserMessage)?.id !== lastSavedUserId) return;
         // The server refused before it saved your message (no admin secret, a 401/403, a dead connection),
         // so the reload took your bubble away. Give it back in the composer, ahead of anything typed since.
         setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));

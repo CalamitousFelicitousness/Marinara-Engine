@@ -11,6 +11,9 @@ export type OmnibarSettingsDestination = {
   id: string;
   title: string;
   description: string;
+  /** `en.json` keys for a control's `title` and `description`; tabs and sections have none. */
+  titleKey?: string;
+  descriptionKey?: string;
   aliases: readonly string[];
   /** Looser synonyms, scored below the label/alias match (O3). Controls only. */
   keywords?: readonly string[];
@@ -19,6 +22,24 @@ export type OmnibarSettingsDestination = {
   controlId?: string;
   sectionId?: SettingsSectionId;
 };
+
+type DestinationText = Pick<OmnibarSettingsDestination, "title" | "description" | "titleKey" | "descriptionKey">;
+
+export function localizeOmnibarSettingTitle(
+  setting: DestinationText,
+  localize: (englishText: string) => string,
+  t: (key: string, defaultValue: string) => string,
+): string {
+  return setting.titleKey ? t(setting.titleKey, setting.title) : localize(setting.title);
+}
+
+export function localizeOmnibarSettingDescription(
+  setting: DestinationText,
+  localize: (englishText: string) => string,
+  t: (key: string, defaultValue: string) => string,
+): string {
+  return setting.descriptionKey ? t(setting.descriptionKey, setting.description) : localize(setting.description);
+}
 
 let cachedDestinations: readonly OmnibarSettingsDestination[] | null = null;
 
@@ -32,8 +53,9 @@ let cachedDestinations: readonly OmnibarSettingsDestination[] | null = null;
  * the tab and silently failed to scroll. Deriving removes the second list, and
  * `omnibar-settings.test.ts` fails if a row ever points at an unknown id.
  *
- * Strings are the registry's English. The caller localizes them the same way
- * the Settings panel's own search does, through `useLocalizedUiText`.
+ * Strings are the registry's English. A control also carries its `en.json` keys; the caller translates
+ * through `localizeOmnibarSettingTitle` / `localizeOmnibarSettingDescription`, which use the key when there
+ * is one and `useLocalizedUiText` for tabs and sections.
  */
 // The window-size sliders sit in sections hidden below `sm`, so on a phone their results would open nowhere.
 const WINDOW_SIZE_CONTROL_IDS = new Set([
@@ -93,6 +115,8 @@ function buildDestinations(): OmnibarSettingsDestination[] {
       id: `settings-control:${control.id}`,
       title: control.label,
       description: control.description,
+      titleKey: control.labelKey,
+      descriptionKey: control.descriptionKey,
       // The control kind joins the aliases so "toggle" or "slider" finds them.
       aliases: [...control.aliases, section.label, control.kind],
       keywords: control.keywords,

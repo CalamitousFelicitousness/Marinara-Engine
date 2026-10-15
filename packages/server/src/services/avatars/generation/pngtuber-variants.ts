@@ -11,15 +11,19 @@
 // The final prompt is logged with logDebugOverride (debugMode / DEBUG_AGENTS) before it reaches the provider.
 import { createHash } from "node:crypto";
 import {
+  AVATAR_EXTRA_FEELINGS,
   AVATAR_PROMPT_TEMPLATE_IDS,
   PNGTUBER_DEFAULT_MOTION,
   SPRITE_EXPRESSION_LABELS,
   avatarKindDataSchema,
   createAvatarConfig,
   detectSpriteEmotionBindings,
+  detectSpriteFeelingBindings,
   isAvatarFilePath,
   normalizeSpriteExpressionKey,
+  type AvatarExpressionBinding,
   type AvatarExpressionMap,
+  type AvatarFeelingMap,
   type AvatarFilePath,
   type AvatarGenerationResponse,
   type AvatarOwnerRef,
@@ -158,7 +162,7 @@ export function spriteBuiltPngtuber(labels: readonly string[]): PngtuberAvatarDa
       variant.mouthOpen && variant.eyesClosed ? "eyesClosedMouthOpen" : variant.mouthOpen ? "mouthOpen" : "eyesClosed";
     set[slot] ??= { source: "sprite", label: variant.key };
   }
-  const known: readonly string[] = SPRITE_EXPRESSION_LABELS;
+  const known: readonly string[] = [...SPRITE_EXPRESSION_LABELS, ...AVATAR_EXTRA_FEELINGS];
   const rank = (key: string) => (known.includes(key) ? known.indexOf(key) : known.length);
   const keys = [...layers.keys()]
     .sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
@@ -167,6 +171,7 @@ export function spriteBuiltPngtuber(labels: readonly string[]): PngtuberAvatarDa
   return {
     layers: Object.fromEntries(keys.map((key) => [key, layers.get(key)!])),
     expressionMap: detectSpriteEmotionBindings(keys),
+    feelingMap: detectSpriteFeelingBindings(keys),
     motion: { ...PNGTUBER_DEFAULT_MOTION },
     source: "sprites",
   };
@@ -207,11 +212,27 @@ export interface KeptPngtuberSet {
   keepOthers: boolean;
 }
 
+/** Fresh bindings for the layer keys, with the current bindings laid over them that still name a face (or
+ *  none on purpose). */
+function keepCurrentBindings<M extends Partial<Record<string, AvatarExpressionBinding>>>(
+  detected: M,
+  current: M | undefined,
+  layers: Record<string, PngtuberLayerSet>,
+): M {
+  const map: Partial<Record<string, AvatarExpressionBinding>> = detected;
+  for (const [slot, binding] of Object.entries(current ?? {})) {
+    if (binding && binding.source !== "missing" && (binding.target === null || Object.hasOwn(layers, binding.target))) {
+      map[slot] = binding;
+    }
+  }
+  return detected;
+}
+
 /** Puts kept pictures into the owner's PNGTuber setup (pass spriteBuiltPngtuber when none is saved). A
  *  layer set that was built from another picture (another sprite, or a PNGTuber Plus import) is replaced,
  *  so a blink never swaps to a picture drawn for a different base. Bindings the user or an import chose
- *  stay. A setup built from sprites becomes a generated one, so refreshing it from the sprites can't drop
- *  the new pictures. */
+ *  stay, for the six emotions and the extra feelings. A setup built from sprites becomes a generated one, so
+ *  refreshing it from the sprites can't drop the new pictures. */
 export function mergePngtuberVariants(
   current: PngtuberAvatarData | undefined,
   kept: readonly KeptPngtuberSet[],
@@ -227,15 +248,15 @@ export function mergePngtuberVariants(
     delete set.eyesClosedMouthOpen;
     layers[key] = set;
   }
-  const expressionMap: AvatarExpressionMap = detectSpriteEmotionBindings(Object.keys(layers));
-  for (const [slot, binding] of Object.entries(current?.expressionMap ?? {})) {
-    if (binding && binding.source !== "missing" && (binding.target === null || binding.target in layers)) {
-      expressionMap[slot as keyof AvatarExpressionMap] = binding;
-    }
-  }
+  const keys = Object.keys(layers);
   return {
     layers,
-    expressionMap,
+    expressionMap: keepCurrentBindings<AvatarExpressionMap>(
+      detectSpriteEmotionBindings(keys),
+      current?.expressionMap,
+      layers,
+    ),
+    feelingMap: keepCurrentBindings<AvatarFeelingMap>(detectSpriteFeelingBindings(keys), current?.feelingMap, layers),
     motion: current?.motion ?? { ...PNGTUBER_DEFAULT_MOTION },
     source: current?.source === "pngtuber-plus" ? "pngtuber-plus" : "generated",
   };

@@ -15,8 +15,8 @@
  *   - a blink or talk prompt is the agent's template as written: never cut down to tags by the sprite
  *     prompt compiler, so "open the mouth" and "keep the framing" reach the model and "full body" doesn't;
  *   - kept PNGTuber pictures merge into the owner's setup without mixing pictures drawn for other bases,
- *     an avatar still showing plain sprites keeps all of them, and full-body sprites stay out of a
- *     portrait setup;
+ *     an avatar still showing plain sprites keeps all of them, the faces chosen for the six and the extra
+ *     feelings stay, and full-body sprites stay out of a portrait setup;
  *   - saving refuses a sprite replaced since its pictures were made, before anything is stored;
  *   - the routes refuse bad bodies, and one avatar runs one generation job at a time.
  * The picture is drawn here from SVG, so no binary fixture is committed and no paid provider is called.
@@ -646,6 +646,35 @@ async function dotCentre(png: Buffer) {
   assert.equal(saved.expressionMap.sad?.target, "sad", "other emotions still pick their own face");
   assert.equal(saved.source, "generated", "refreshing from the sprites can't drop the new pictures");
   assert.ok(avatarKindDataSchema.safeParse({ pngtuber: saved }).success);
+
+  // Faces for the extra feelings: found by name in the sprites, and kept like the six when pictures are saved.
+  const feelingSprites = spriteBuiltPngtuber(["neutral", "happy", "scared", "embarrassment"])!;
+  assert.deepEqual(feelingSprites.feelingMap, {
+    fear: { target: "scared", source: "sprite-label", confidence: 0.8 },
+    embarrassment: { target: "embarrassment", source: "sprite-label", confidence: 1 },
+  });
+  const withFeelings = mergePngtuberVariants(
+    {
+      ...feelingSprites,
+      feelingMap: {
+        ...feelingSprites.feelingMap,
+        embarrassment: { target: "happy", source: "user", confidence: 1 },
+        amusement: { target: null, source: "user", confidence: 1 },
+        pride: { target: "gone", source: "user", confidence: 1 },
+      },
+    },
+    [{ key: "scared", variants: ["mouth-open"], keepOthers: true }],
+  );
+  assert.deepEqual(
+    withFeelings.feelingMap,
+    {
+      fear: { target: "scared", source: "sprite-label", confidence: 0.8 },
+      embarrassment: { target: "happy", source: "user", confidence: 1 },
+      amusement: { target: null, source: "user", confidence: 1 },
+    },
+    "the user's feeling faces stay, one whose face is gone goes, and new names are found",
+  );
+  assert.ok(avatarKindDataSchema.safeParse({ pngtuber: withFeelings }).success);
 }
 
 // ── Routes and the job guard ──

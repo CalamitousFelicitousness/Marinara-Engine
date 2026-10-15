@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -111,6 +112,16 @@ export function useMacroCompletion(enabled: boolean, value: string) {
 
   // The field is controlled, so check again once the new value is in the DOM.
   useLayoutEffect(refresh, [refresh, value]);
+
+  // A resize (drag handle, phone rotation) changes the wrapping, so re-measure while a ghost shows.
+  const showing = completion !== null;
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!showing || !textarea || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => refresh());
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, [refresh, showing]);
 
   const clear = useCallback(() => setCompletion(null), []);
 

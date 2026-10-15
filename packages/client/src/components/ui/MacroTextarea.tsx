@@ -419,7 +419,7 @@ export function MacroTextarea({
     clear: clearCompletion,
     accept: acceptCompletion,
     insert: insertCompletion,
-  } = useMacroCompletion(macroCompletionEnabled && !expanded, value);
+  } = useMacroCompletion(macroCompletionEnabled && !expanded && !(showMarkdownPreview && showPreview), value);
   const setTextareaRef = useCallback(
     (node: HTMLTextAreaElement | null) => {
       completionTextareaRef.current = node;

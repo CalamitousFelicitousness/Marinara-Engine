@@ -146,6 +146,15 @@ function isSpriteGenerationAborted(error: unknown): error is SpriteGenerationAbo
   return error instanceof SpriteGenerationAbortedError;
 }
 
+/** The client stopped waiting, but the server may still be making (and charging for) the picture, so it is not
+ *  retried automatically. */
+class SpriteGenerationRequestTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpriteGenerationRequestTimeoutError";
+  }
+}
+
 // ── Constants ──
 
 const EXPRESSION_PRESETS = {
@@ -438,7 +447,7 @@ async function postSpriteGenerationRequest<T>(
       if (!timedOut && signal?.aborted) {
         throw new SpriteGenerationAbortedError();
       }
-      throw new Error(
+      throw new SpriteGenerationRequestTimeoutError(
         timeoutMs > SPRITE_GENERATION_REQUEST_TIMEOUT_MS
           ? "Animated expression generation timed out. The video provider may still be busy; try again with fewer expressions or a faster video connection."
           : "Sprite generation timed out after about 5 minutes. The image provider may still be busy; try again or use a faster image connection.",
@@ -1219,7 +1228,12 @@ export function SpriteGenerationModal({
               : localizeUi("ui.spriteGeneration.batch.pictureLabel", { number: batchIndex + 1 }),
           );
         } catch (err) {
-          if (isSpritePromptReviewCancelled(err) || isSpriteGenerationAborted(err)) throw err;
+          if (
+            isSpritePromptReviewCancelled(err) ||
+            isSpriteGenerationAborted(err) ||
+            err instanceof SpriteGenerationRequestTimeoutError
+          )
+            throw err;
           lastError = getGenerationErrorMessage(err);
         }
       }
@@ -1251,7 +1265,12 @@ export function SpriteGenerationModal({
         }
         return createGeneratedSpritesFromResult(result, grid, "Neutral full-body");
       } catch (err) {
-        if (isSpritePromptReviewCancelled(err) || isSpriteGenerationAborted(err)) throw err;
+        if (
+          isSpritePromptReviewCancelled(err) ||
+          isSpriteGenerationAborted(err) ||
+          err instanceof SpriteGenerationRequestTimeoutError
+        )
+          throw err;
         lastError = getGenerationErrorMessage(err);
       }
     }
@@ -1423,13 +1442,17 @@ export function SpriteGenerationModal({
           // ponytail: every picture's request carries all the reviewed prompts and the server picks its own by id;
           // fine for 29 faces, send each picture only its own ids if runs grow much larger.
           const items: ImagePromptReviewItem[] = [];
-          for (const batch of faceBatches) {
+          for (const [index, batch] of faceBatches.entries()) {
             const preview = await api.post<GenerateSheetPreviewResult>(
               "/sprites/generate-sheet/preview",
               sheetRequestBody(batch, generationGrid, false),
               { signal: controller.signal },
             );
-            items.push(...preview.items);
+            // The pictures share a grid, so the server's titles match; name each card after its faces. The ids
+            // stay, so each reviewed prompt still reaches its own picture.
+            const faces = batch.map((expression) => expression.replace(/_/g, " ")).join(", ");
+            const title = `${localizeUi("ui.spriteGeneration.batch.pictureLabel", { number: index + 1 })}: ${faces}`;
+            items.push(...preview.items.map((item) => ({ ...item, title })));
           }
           if (controller.signal.aborted) throw new SpriteGenerationAbortedError();
           if (items.length > 0) {
@@ -1500,6 +1523,7 @@ export function SpriteGenerationModal({
     generateSpriteBatch,
     requestGeneratedSheet,
     generationGrid,
+    localizeUi,
     spriteType,
     noBackground,
   ]);

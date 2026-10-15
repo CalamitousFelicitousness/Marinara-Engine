@@ -631,6 +631,24 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
       expression: string;
     }>;
     expect(savedAll.map((sprite) => sprite.expression)).toEqual(expect.arrayContaining(allFaces));
+    // The last picture is only partly filled; its prompt still asks for the whole grid it is cut from.
+    const lastSheetPreview = await request.post("/api/sprites/generate-sheet/preview", {
+      data: {
+        connectionId: connection.id,
+        appearance: OVERRIDE_LOOK,
+        expressions: allFaces.slice(24),
+        cols: 2,
+        rows: 3,
+        spriteType: "expressions",
+        talkingHeadFaces: true,
+        styleProfileId: "realistic",
+      },
+    });
+    expect(lastSheetPreview.ok(), await lastSheetPreview.text()).toBeTruthy();
+    const lastSheetPrompt = ((await lastSheetPreview.json()) as { items: Array<{ prompt: string }> }).items[0]?.prompt;
+    expect(lastSheetPrompt).toContain("EXACTLY 6 total portrait cells");
+    expect(lastSheetPrompt).toContain("6 equally sized square cells");
+    expect(lastSheetPrompt).not.toMatch(/EXACTLY 5 |5 equally sized/u);
 
     // ── An older GPT Image model gets one face per request, past its eight-face limit ──
     await makeFaces.click();
@@ -685,6 +703,9 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
     // Each picture's prompt describes its own face, with open eyes and closed lips.
     await expect(prompts.first()).toHaveValue(/Draw each face like this: neutral: calm resting face/u);
     await expect(prompts.first()).not.toHaveValue(/happy: /u);
+    // Each picture's card names the faces it makes.
+    await expect(review.getByText("Picture 1: neutral", { exact: true })).toBeVisible();
+    await expect(review.getByText("Picture 6: surprised", { exact: true })).toBeVisible();
     expect(sheets).toHaveLength(0);
     await review.getByRole("button", { name: "Generate", exact: true }).click();
     await expect(dialog.getByRole("combobox", { name: /^Assign expression for sprite \d+$/u })).toHaveCount(6);

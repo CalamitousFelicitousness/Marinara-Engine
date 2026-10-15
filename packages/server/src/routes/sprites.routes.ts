@@ -1145,7 +1145,7 @@ async function buildSpritePromptPlan(
     prompt = await loadPrompt(promptOverridesStorage, SPRITES_EXPRESSION_SHEET, {
       cols,
       rows,
-      expressionCount: expressions.length,
+      expressionCount: cols * rows,
       expressionList,
       appearance: trimmedAppearance,
       sheetWidth,

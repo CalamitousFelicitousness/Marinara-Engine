@@ -31,6 +31,27 @@ assert.match(
   /for \(let attempt = 0; attempt < 2; attempt \+= 1\)[\s\S]*await requestGeneratedSheet/u,
   "each expression request must receive one automatic retry",
 );
+// The server keeps making a picture after the client stops waiting, so a retry after a timeout could be paid twice.
+assert.match(
+  source,
+  /if \(isAbortError\(err\)\) \{[\s\S]*?throw new SpriteGenerationRequestTimeoutError\(/u,
+  "a request the client stopped waiting for must be marked as timed out",
+);
+for (const [name, start, end] of [
+  ["generateSpriteBatch", "const generateSpriteBatch = useCallback(", "const generateNeutralFullBodyCandidate"],
+  [
+    "generateNeutralFullBodyCandidate",
+    "const generateNeutralFullBodyCandidate = useCallback(",
+    "const runSpriteBatches",
+  ],
+]) {
+  const body = source.slice(source.indexOf(start), source.indexOf(end));
+  assert.match(
+    body,
+    /catch \(err\) \{[\s\S]*?err instanceof SpriteGenerationRequestTimeoutError[\s\S]*?throw err;[\s\S]*?lastError = /u,
+    `${name} must not retry a timed-out picture by itself`,
+  );
+}
 assert.match(
   source,
   /nextCells = \[\.\.\.nextCells, \.\.\.generated\.cells\];[\s\S]*setCells\(nextCells\);/u,

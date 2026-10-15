@@ -2263,7 +2263,12 @@ export function ChatSettingsDrawer({
     });
   }, [chat.id, illustratorUseAvatarReferences, updateMeta]);
   const resetIllustratorCharacterAppearance = useCallback(() => {
-    updateMeta.mutate({ id: chat.id, illustratorIncludeCharacterAppearance: null });
+    // Both halves of Attach Card Appearance: images back to the agent's default, videos back to off.
+    updateMeta.mutate({
+      id: chat.id,
+      illustratorIncludeCharacterAppearance: null,
+      illustratorVideoIncludeCharacterAppearance: null,
+    });
   }, [chat.id, updateMeta]);
   const resetIllustratorAvatarReferences = useCallback(() => {
     updateMeta.mutate({ id: chat.id, illustratorUseAvatarReferences: null });
@@ -9076,7 +9081,10 @@ export function ChatSettingsDrawer({
                                 illustratorVideoIncludeCharacterAppearance: videos,
                               })
                             }
-                            overridden={typeof metadata.illustratorIncludeCharacterAppearance === "boolean"}
+                            overridden={
+                              typeof metadata.illustratorIncludeCharacterAppearance === "boolean" ||
+                              metadata.illustratorVideoIncludeCharacterAppearance === true
+                            }
                             onReset={resetIllustratorCharacterAppearance}
                           />
                           <AgentSettingsToggle

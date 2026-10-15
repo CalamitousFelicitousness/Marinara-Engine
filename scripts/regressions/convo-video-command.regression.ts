@@ -453,6 +453,32 @@ try {
     `\n[Aster sent a video message: ${VIDEO_PROMPT}]`,
   );
   assert.equal(formatSentVideoNotes([{ type: "video", prompt: "scene" }]), "");
+
+  // /video with a partial name several characters share picks no one; an exact or unique name still works.
+  const { matchSlashCommand } = await import("../../packages/client/src/lib/slash-commands.js");
+  const slashVideo = matchSlashCommand("/video", {
+    mode: "conversation",
+    availableCapabilityIds: new Set(["illustrator"]),
+  })?.command;
+  assert.ok(slashVideo, "/video is registered in Conversation with Illustrator installed");
+  const videoTargets: Array<string | undefined> = [];
+  const slashContext = {
+    chatId: "slash-chat",
+    mode: "conversation",
+    characters: [
+      { id: "alice", name: "Alice Smith" },
+      { id: "bob", name: "Bob Smith" },
+    ],
+    video: (characterId?: string) => {
+      videoTargets.push(characterId);
+    },
+  };
+  const ambiguous = await slashVideo.execute("Smith", slashContext as never);
+  assert.equal(ambiguous.feedback, "ui.chat.slash.video.ambiguousCharacter", "asks for the full name");
+  assert.deepEqual(videoTargets, [], "an ambiguous name makes no clip");
+  await slashVideo.execute("Bob", slashContext as never);
+  await slashVideo.execute("alice smith", slashContext as never);
+  assert.deepEqual(videoTargets, ["bob", "alice"], "a unique partial or exact name still picks its character");
   console.log("convo-video-command regression passed");
 } finally {
   await app.close();

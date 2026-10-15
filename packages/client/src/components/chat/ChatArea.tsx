@@ -1634,7 +1634,6 @@ const LocalChatArea = memo(function LocalChatArea({
       if (!targetCharacterId) throw new Error(localizeUi("ui.chat.chatarea.addACharacterBeforeSendingAVideo"));
       // One at a time: a second action would find the review window taken, and its cleanup would cancel the first.
       if (conversationVideoGeneratingRef.current) throw new Error(localizeUi("ui.chat.slash.video.alreadyRunning"));
-      conversationVideoGeneratingRef.current = true;
       const payload: Record<string, unknown> = {
         characterId: targetCharacterId,
         ...(galleryImageId ? { galleryImageId } : {}),
@@ -1644,6 +1643,7 @@ const LocalChatArea = memo(function LocalChatArea({
       // Closing the review is left to the call that opened it; it can belong to another chat's request.
       let reviewOpened = false;
       try {
+        conversationVideoGeneratingRef.current = true;
         if (useUIStore.getState().reviewImagePromptsBeforeSend) {
           let preview: ConversationVideoPromptPreview | undefined;
           try {

@@ -8421,6 +8421,7 @@
   "ui.chat.slash.usage.unhide": "/unhide [range]",
   "ui.chat.slash.usage.video": "/video [name (optional)]",
   "ui.chat.slash.video.alreadyRunning": "A video is already being made for this chat.",
+  "ui.chat.slash.video.ambiguousCharacter": "More than one character matches {{name}}: {{matches}}\nType the full name.",
   "ui.chat.slash.video.characterNotFound": "Character not found: {{name}}\nAvailable: {{available}}",
   "ui.chat.slash.video.failed": "Video generation failed.",
   "ui.chat.slash.video.noCharacters": "Add a character to this conversation before sending a video.",

@@ -489,14 +489,15 @@ try {
   assert.doesNotMatch(recallConversations.join("\n"), /WHISPERED|HIDDEN_PENDANT/u);
   await replyAs("pantalone");
   assert.deepEqual(embeddingInputs, [[smallTalk[1], "HIDDEN_PENDANT chain"]], "Pantalone's span is his own");
-  // At most the six latest user messages.
+  // At most the six latest user messages with text; an image alone has none to search with.
   const notes = Array.from({ length: 8 }, (_, index) => `Rope note ${index + 1}.`);
   await chats.createMessagesBatch(span.id, [
     { role: "assistant", characterId: "maukie", content: "Maukie nods." },
     ...notes.map((content) => ({ role: "user" as const, content })),
+    { role: "user", content: "", extra: { attachments: [{ type: "image", url: "/rope.png" }] } },
   ]);
   await replyAs("maukie");
-  assert.deepEqual(embeddingInputs, [notes.slice(-6)], "the six latest user messages");
+  assert.deepEqual(embeddingInputs, [notes.slice(-6)], "the six latest user messages with text");
   vector = conceptVector;
 
   // After-reply vector upkeep and Reindex use only records Reindex accepts, and a failed Reindex keeps old vectors.

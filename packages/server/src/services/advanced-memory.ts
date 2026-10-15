@@ -5078,7 +5078,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     )
       spanStart--;
     const lastUser = [...visible].reverse().find((message) => message.role === "user");
-    const spanUser = spanStart > 0 ? visible.slice(spanStart).filter((message) => message.role === "user") : [];
+    const spanUser =
+      spanStart > 0
+        ? visible.slice(spanStart).filter((message) => message.role === "user" && message.content.trim())
+        : [];
     const queryMessages = spanUser.length ? spanUser.slice(-RECALL_QUERY_MESSAGES) : lastUser ? [lastUser] : [];
     // Word matching and the Decision model read the last 4 messages, and back to the span's start within 6000
     // characters, the newest kept.
@@ -5099,7 +5102,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     // unrelated question lifted every scene over the 0.45 floor below and a paraphrase reached a 24-scene shortlist
     // far less often. A record scores its best match; see bestOverQueries for the long turns among them.
     const vectorQueries = queryMessages.length
-      ? queryMessages.map((message) => message.content.slice(0, 6000))
+      ? queryMessages.map((message) => message.content.slice(0, 6000) || query)
       : [visible.at(-1)?.content.slice(0, 6000) || query];
     const recallDiagnostics: AdvancedMemoryDecisionDiagnostics | undefined =
       ctx.settings.decisionEnabled && !input.readOnly

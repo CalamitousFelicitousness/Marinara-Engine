@@ -64,6 +64,16 @@ assert.deepEqual(
 assert.deepEqual(bindings.sad, { target: "crying", source: "sprite-label", confidence: 1 });
 assert.deepEqual(bindings.angry, { target: null, source: "missing", confidence: 0 });
 assert.deepEqual(Object.keys(bindings).sort(), [...AVATAR_EMOTIONS].sort(), "every emotion gets a binding");
+assert.deepEqual(
+  detectSpriteEmotionBindings(["love", "relaxed", "Happy", "smile"]).relaxed,
+  { target: "relaxed", source: "sprite-label", confidence: 1 },
+  "a face named after the feeling wins over an earlier label of the same strength",
+);
+assert.equal(
+  detectSpriteEmotionBindings(["smile", "Happy"]).happy?.target,
+  "Happy",
+  "the named face keeps its spelling",
+);
 
 // ── avatar.json ──
 const owner = { ownerType: "character", ownerId: "V1StGXR8_Z5jdHi6B-myT" } as const;

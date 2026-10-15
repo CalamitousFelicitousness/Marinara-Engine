@@ -27,6 +27,8 @@ const { createAgentsStorage } = await import("../../packages/server/src/services
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
+const { createGameSceneVideosStorage } =
+  await import("../../packages/server/src/services/storage/game-scene-videos.storage.js");
 const { parseCharacterCommands } =
   await import("../../packages/server/src/services/conversation/character-commands.js");
 const { filterEnabledConversationCommands } =
@@ -289,6 +291,29 @@ try {
   const fellBack = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
   assert.equal((await videoAttachments(roleplay.id)).filter((item) => item.messageId === fellBack?.id).length, 0);
   assert.equal((await imagesOn(fellBack?.id)).length, 1, "a failed clip leaves its picture in the reply");
+
+  // Clips only with no picture: a clip that names the persona is tagged with them, so it shows in their gallery.
+  const jamie = await createCharactersStorage(db).createPersona("Jamie", "The player.");
+  assert.ok(jamie);
+  const withPersona = await chats.create({
+    name: "Roleplay with persona",
+    mode: "roleplay",
+    characterIds: [aster.id],
+    personaId: jamie.id,
+    connectionId: text.id,
+    promptPresetId: preset.id,
+  });
+  assert.ok(withPersona);
+  await saveChatSettings(withPersona.id, {
+    ...roleplayMeta,
+    illustratorVideoMode: "clips_only",
+    sceneVideoFirstFrame: "prompt_only",
+  });
+  illustratorReply = { shouldGenerate: true, prompt: "Aster hands Jamie a lantern", characters: ["Aster", "Jamie"] };
+  await generate(withPersona.id, "Aster finds Jamie in the rain.");
+  const [personaClip] = await createGameSceneVideosStorage(db).listByChatId(withPersona.id);
+  assert.ok(personaClip, "the clip is saved");
+  assert.deepEqual(JSON.parse(String(personaClip.characterIds)).sort(), [aster.id, jamie.id].sort());
 
   // ── Conversation [video] ──
   const convo = await chats.create({

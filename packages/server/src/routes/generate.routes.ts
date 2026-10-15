@@ -4709,7 +4709,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           );
           const base64 = cast.referenceImages[index];
           return {
-            characterIds: cast.characterIds,
+            // The persona too when the clip names them, so it shows in their gallery.
+            characterIds: cast.personaId ? [...cast.characterIds, cast.personaId] : cast.characterIds,
             appearanceBlock: cast.appearanceBlock,
             avatar: base64 ? { base64, name: cast.referenceNames[index] ?? "" } : null,
           };

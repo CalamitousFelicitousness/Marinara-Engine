@@ -1421,11 +1421,12 @@ export function HomeProfessorMariChat({
   useEffect(() => {
     const ended = timelineRunActiveRef.current && !workspaceTimelineActive;
     timelineRunActiveRef.current = workspaceTimelineActive;
-    if (!ended || !chatId) return;
+    // A send in flight reloads the thread itself (and its failure recovery needs that reload to land).
+    if (!ended || !chatId || sending) return;
     void loadMessages(chatId, { restoreFocus: false, shouldApply: () => activeChatIdRef.current === chatId }).catch(
       () => undefined,
     );
-  }, [workspaceTimelineActive, chatId, loadMessages]);
+  }, [workspaceTimelineActive, chatId, loadMessages, sending]);
   const emptyStateReady =
     omnibarMode && messages.length === 0 && !isBusy && chatId !== null && loadedMessagesChatId === chatId;
   // D1: an arrival door (⌘J, the pull, the drag, Home's "Ask Professor Mari") opened into a chat that
@@ -2303,10 +2304,16 @@ export function HomeProfessorMariChat({
     let runChatId: string | null = null;
     // Your newest question the server holds now: a different one after the failure means it saved this one
     // (an id, not a count, because the thread loads only its newest page).
-    const lastSavedUserId = messagesRef.current.findLast(isSavedUserMessage)?.id;
+    let lastSavedUserId = messagesRef.current.findLast(isSavedUserMessage)?.id;
     try {
       const chat = await ensureProfessorMariChat(effectiveConnectionId);
       runChatId = chat.id;
+      // The thread was still loading when you sent: ask the server, or a failed send cannot tell it was never saved.
+      if (lastSavedUserId === undefined && loadedMessagesChatId !== chat.id) {
+        lastSavedUserId = (await fetchMariThreadMessages(chat.id).catch(() => [] as Message[])).findLast(
+          isSavedUserMessage,
+        )?.id;
+      }
       // A retry or a chip sends its own text: leave whatever you have typed since in the composer.
       if (overrideText === undefined) setDraft("");
       setMariChips(chat.id, []);

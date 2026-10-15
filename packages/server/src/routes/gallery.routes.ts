@@ -17,6 +17,7 @@ import {
   normalizeVideoGenerationUserSettings,
 } from "@marinara-engine/shared";
 import { createGalleryStorage } from "../services/storage/gallery.storage.js";
+import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
@@ -844,10 +845,21 @@ export async function galleryRoutes(app: FastifyInstance) {
             appearance: getCharacterAppearance(data).appearance,
           });
         }
+        // The persona joins when the direction names them; a character played as the user is already listed.
+        const identity = await resolveChatUserIdentity(characters, chat);
         const references = await resolveIllustratorCharacterReferences({
           charactersStore: characters,
           chatCharacters,
-          persona: null,
+          persona:
+            identity?.source === "persona"
+              ? {
+                  id: identity.id,
+                  name: identity.name,
+                  avatarPath: identity.avatarPath,
+                  appearance: identity.appearance,
+                  appearanceOverride: identity.imageAppearanceOverride || null,
+                }
+              : null,
           requestedNames: [],
           promptText: promptDraft,
           fallbackToChatCharacters: false,

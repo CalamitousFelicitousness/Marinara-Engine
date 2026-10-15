@@ -66,7 +66,9 @@ const provider = createServer(async (request, response) => {
         {
           message: {
             role: "assistant",
-            content: roleplayDirector ? JSON.stringify({ narrationBeat: "Aster turns to the window" }) : "Aster waves",
+            content: roleplayDirector
+              ? JSON.stringify({ narrationBeat: "Aster turns to Jamie at the window" })
+              : "Aster waves",
           },
           finish_reason: "stop",
         },
@@ -170,10 +172,16 @@ try {
   assert.equal(videos.inputs?.image, png.toString("base64"));
 
   // ── Roleplay ──
+  // The user's persona, named in the direction, gets an Appearance line too.
+  const jamie = await createCharactersStorage(db).createPersona("Jamie", "The player.", undefined, {
+    appearance: "short red hair, denim jacket",
+  });
+  assert.ok(jamie);
   const roleplay = await chats.create({
     name: "RP",
     mode: "roleplay",
     characterIds: [aster.id],
+    personaId: jamie.id,
     connectionId: text.id,
   });
   assert.ok(roleplay);
@@ -195,8 +203,13 @@ try {
     assert.equal(response.statusCode, 200, response.body);
     return (response.json() as { prompt: string }).prompt;
   };
-  assert.doesNotMatch(await preview({ illustratorIncludeCharacterAppearance: true }), APPEARANCE);
-  assert.match(await preview({ illustratorVideoIncludeCharacterAppearance: true }), APPEARANCE);
+  const PERSONA_APPEARANCE = /Jamie's Appearance: short red hair, denim jacket/u;
+  const imageSettingOnly = await preview({ illustratorIncludeCharacterAppearance: true });
+  assert.doesNotMatch(imageSettingOnly, APPEARANCE);
+  assert.doesNotMatch(imageSettingOnly, PERSONA_APPEARANCE);
+  const withAppearance = await preview({ illustratorVideoIncludeCharacterAppearance: true });
+  assert.match(withAppearance, APPEARANCE);
+  assert.match(withAppearance, PERSONA_APPEARANCE);
   console.log("media-reference-scope regression passed");
 } finally {
   await app.close();

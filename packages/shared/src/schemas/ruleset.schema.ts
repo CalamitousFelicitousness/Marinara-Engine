@@ -3778,7 +3778,27 @@ export interface RulesetCatalogApplies {
   harmsPerCostStep?: { dice?: string; flat?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
   value?: RulesetValueRef;
+  targetHolds?: RulesetTargetHolds;
+  endsOnTarget?: string[];
+  harmsPuller?: { dice?: string; flat?: number; type?: string };
 }
+
+/** Whom an action may be pointed at by what they hold (1.235): one of `conditions`, or one of
+ *  `fromSelf` that its maker put on them. A vampire's Bite: grappled by it, incapacitated or
+ *  restrained. */
+export interface RulesetTargetHolds {
+  conditions?: string[];
+  fromSelf?: string[];
+}
+const targetHoldsSchema: z.ZodType<RulesetTargetHolds, z.ZodTypeDef, unknown> = z
+  .object({
+    conditions: z.array(sheetId).min(1).max(8).optional(),
+    fromSelf: z.array(sheetId).min(1).max(8).optional(),
+  })
+  .strict()
+  .refine((holds) => holds.conditions || holds.fromSelf, {
+    message: '"targetHolds" names "conditions", "fromSelf" or both',
+  });
 
 /** How strong a creature a failed save destroys outright, by its threat tier (1.266). */
 export interface RulesetDestroysUpTo {
@@ -3904,9 +3924,42 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  1.274), for the condition's `temporary` to give: 5e's Heroism, its caster's spellcasting
      *  modifier. */
     value: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** It goes on only a target that already holds one of these, from anybody (`conditions`) or
+     *  from whoever applies it (`fromSelf`), read as it goes on (Capability API 1.354), so one put on
+     *  earlier in the same list counts. A kraken's Bite swallows only a creature the kraken grapples;
+     *  the bite itself lands on anybody. */
+    targetHolds: targetHoldsSchema.optional(),
+    /** Conditions whoever applies it had put on the target, taken off once it is on (Capability API
+     *  1.354): a purple worm's swallow, after which "the grapple ends". */
+    endsOnTarget: z
+      .array(sheetId)
+      .min(1)
+      .max(8)
+      .refine((ends) => new Set(ends).size === ends.length, { message: "A condition is named once" })
+      .optional(),
+    /** What a creature that tries to pull its holder out takes, win or lose, from whoever applied it
+     *  (Capability API 1.354), with a contest that `pulls`: a gelatinous cube's 10 (3d6) acid. */
+    harmsPuller: z
+      .object({
+        dice: catalogDice.optional(),
+        flat: z.number().int().min(0).max(1000).optional(),
+        type: promptSafeText(40).optional(),
+      })
+      .strict()
+      .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+        message: "What it harms with names dice, a flat amount, or both",
+      })
+      .optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
+    if (applies.endsOnTarget?.includes(applies.condition)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsOnTarget"],
+        message: "A condition does not end itself as it goes on",
+      });
+    }
     if (applies.endsWith !== undefined && applies.endsWith === applies.condition) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -4354,23 +4407,6 @@ const reducesMaxSchema: z.ZodType<RulesetReducesMax, z.ZodTypeDef, unknown> = z
         message: 'A lowered maximum rolls its own "save" or follows the entry\'s, not both',
       });
     }
-  });
-
-/** Whom an action may be pointed at by what they hold (1.235): one of `conditions`, or one of
- *  `fromSelf` that its maker put on them. A vampire's Bite: grappled by it, incapacitated or
- *  restrained. */
-export interface RulesetTargetHolds {
-  conditions?: string[];
-  fromSelf?: string[];
-}
-const targetHoldsSchema: z.ZodType<RulesetTargetHolds, z.ZodTypeDef, unknown> = z
-  .object({
-    conditions: z.array(sheetId).min(1).max(8).optional(),
-    fromSelf: z.array(sheetId).min(1).max(8).optional(),
-  })
-  .strict()
-  .refine((holds) => holds.conditions || holds.fromSelf, {
-    message: '"targetHolds" names "conditions", "fromSelf" or both',
   });
 
 /** Where a teleport goes (Capability API 1.276). Typed by hand, to keep the definition's type small. */
@@ -9408,6 +9444,14 @@ const combatConditionSchema = z
      *  along wherever they go, until it ends and they are set down beside them: a gelatinous cube's
      *  engulfed. */
     inside: conditionInsideSchema.optional(),
+    /** Its holder takes this share of the damage dealt to whoever put it on, and they take only the
+     *  rest, rounded down, while it holds (Capability API 1.354): a rug of smothering's Damage
+     *  Transfer, `{"share": 0.5}` on what its Smother puts on. Read after their resistances; the
+     *  share is then read against the holder's own. */
+    takesSourceHarm: z
+      .object({ share: z.number().gt(0).lt(1) })
+      .strict()
+      .optional(),
     /** What its holder regains as each of their own turns starts (Capability API 1.346). */
     regenerates: regenerationSchema.optional(),
     /** Left at 1 instead of dropping to 0 while it holds (Capability API 1.347): Relentless Rage. */
@@ -9711,6 +9755,12 @@ const combatContestBaseSchema = z
     targetHolds: sheetId.optional(),
     /** Offered only on a target that is dying and not yet stable (Capability API 1.193). */
     targetDying: z.literal(true).optional(),
+    /** Pulls the one `targetHolds` keeps inside another creature out (Capability API 1.354): it
+     *  reaches through the holder's body to them, measured to the holder, and is rolled against the
+     *  escape DC that hold names, else `difficulty`. Whoever tries takes the hold's `harmsPuller`,
+     *  win or lose. 5e's "a creature within 5 feet of the cube can take an action to pull a creature
+     *  or object out of the cube", with `onWin.ends` taking off what holds them inside. */
+    pulls: z.literal(true).optional(),
     /** Who takes a tie. */
     ties: z.enum(["defender", "attacker"]).default("defender"),
     /** Aimed only at whoever put this condition on the actor, and offered only while it holds: how
@@ -9756,9 +9806,19 @@ const combatContestBaseSchema = z
       }),
   })
   .strict()
-  .refine((contest) => (contest.defender === undefined) !== (contest.difficulty === undefined), {
-    message: 'A contest is rolled against a "defender" or a fixed "difficulty": one of them',
-    path: ["difficulty"],
+  .refine(
+    (contest) =>
+      contest.pulls
+        ? contest.defender === undefined
+        : (contest.defender === undefined) !== (contest.difficulty === undefined),
+    {
+      message: 'A contest is rolled against a "defender" or a fixed "difficulty": one of them',
+      path: ["difficulty"],
+    },
+  )
+  .refine((contest) => !contest.pulls || (contest.targetHolds !== undefined && contest.from === undefined), {
+    message: 'A contest that "pulls" names the hold it pulls out of in "targetHolds", and breaks no hold "from"',
+    path: ["pulls"],
   });
 
 /** Named, so the whole definition's inferred type stays short enough for the compiler to write. */
@@ -13124,6 +13184,18 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       if (contest.from) conditionId(contest.from.holding, [...path, "from", "holding"]);
       if (contest.targetHolds) conditionId(contest.targetHolds, [...path, "targetHolds"]);
+      // Pulled out of a creature (1.354): the hold is one that keeps them inside it, and on a pool
+      // fight's dice there is no number to meet.
+      if (
+        contest.pulls &&
+        contest.targetHolds &&
+        !combat.conditions?.some((one) => one.condition === contest.targetHolds && one.inside)
+      ) {
+        issue([...path, "targetHolds"], `"${contest.targetHolds}" keeps nobody inside a creature to be pulled out of`);
+      }
+      if (contest.pulls && resolution.kind === "dice-pool") {
+        issue([...path, "pulls"], "A pool fight counts successes, so it has no escape DC to pull against");
+      }
       // A fixed number is met on the fight's own dice, which a pool fight does not add up (1.193).
       if (contest.difficulty !== undefined && resolution.kind === "dice-pool") {
         issue(
@@ -14677,6 +14749,9 @@ function escapeDcIssues(
     escapeChecks?: string[];
     endsWhenHolder?: { casts?: string[] };
     checkEnds?: { check: string };
+    targetHolds?: RulesetTargetHolds;
+    endsOnTarget?: string[];
+    harmsPuller?: { type?: string };
   },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
@@ -14687,6 +14762,24 @@ function escapeDcIssues(
   }
   // What ends it when its holder casts (1.180) is cast from the ruleset's own catalogs.
   castsIssues(definition, applies.endsWhenHolder?.casts, [...at, "endsWhenHolder", "casts"], add);
+  // What it asks the target to hold, and ends on them (1.354), are the sheet's own conditions.
+  targetHoldsIssues(definition, applies.targetHolds, [...at, "targetHolds"], add);
+  const known = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  applies.endsOnTarget?.forEach((condition, index) => {
+    if (!known.has(condition)) add([...at, "endsOnTarget", index], `Unknown condition "${condition}"`);
+  });
+  // Only somebody who pulls them out takes it, and only out of a hold that keeps them inside.
+  if (
+    applies.harmsPuller &&
+    !definition.combat?.conditions?.some((one) => one.condition === applies.condition && one.inside)
+  ) {
+    add([...at, "harmsPuller"], `"${applies.condition}" keeps nobody inside a creature to be pulled out of`);
+  }
+  const pullerType = applies.harmsPuller?.type;
+  const damageTypes = definition.combat?.damageTypes?.map((type) => type.trim().toLowerCase());
+  if (pullerType && damageTypes && !damageTypes.includes(pullerType.trim().toLowerCase())) {
+    add([...at, "harmsPuller", "type"], `Unknown damage type "${pullerType}"`);
+  }
   // The checks that may break it (1.175) are contest checks, and only mean something with an escape DC.
   applies.escapeChecks?.forEach((check, index) => {
     if (!definition.combat?.checks?.some((one) => one.id === check)) {
@@ -14698,7 +14791,13 @@ function escapeDcIssues(
   }
   if (applies.escapeDc === undefined) return;
   const combat = definition.combat;
-  if (!combat?.contests?.some((contest) => contest.from?.holding === applies.condition)) {
+  // Broken free of, or pulled out of (1.354).
+  if (
+    !combat?.contests?.some(
+      (contest) =>
+        contest.from?.holding === applies.condition || (contest.pulls && contest.targetHolds === applies.condition),
+    )
+  ) {
     add([...at, "escapeDc"], `No contest breaks free of "${applies.condition}" for an escape DC to be rolled against`);
   } else if (combat.kind === "dice-pool") {
     add([...at, "escapeDc"], 'A "dice-pool" fight counts successes, so it has no escape DC to meet');

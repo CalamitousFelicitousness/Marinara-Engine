@@ -177,6 +177,7 @@ import {
   rulesetUncompelledOptions,
   rulesetContestCheck,
   rulesetEscapeDc,
+  rulesetHoldsFor,
   rulesetCostSteps,
   rulesetActionUses,
   rulesetPaidLevel,
@@ -725,6 +726,11 @@ function applyDamage(
   if (input.leavesAtLeast !== undefined) {
     dealt = Math.max(0, Math.min(dealt, before.value + before.temp - input.leavesAtLeast));
   }
+  // Somebody it holds by a condition that takes a share of what it is dealt (1.354): a rug of
+  // smothering's Damage Transfer, half of it onto whom it smothers.
+  const sharer = dealt > 0 ? harmSharer(ctx, target) : undefined;
+  const passed = sharer ? dealt - Math.floor(dealt * (1 - sharer.share)) : 0;
+  dealt -= passed;
   const toTemp = Math.min(before.temp, dealt);
   if (dealt > 0 && target.shape?.health) {
     // A form with health of its own takes the blow (1.342); run out, the shape ends and the rest of
@@ -781,6 +787,17 @@ function applyDamage(
     ...(input.pool ? { pool: input.pool } : {}),
     ...(input.floor !== undefined ? { floor: input.floor } : {}),
   });
+  if (sharer && passed > 0) {
+    const shared = applyDamage(ctx, sharer.holder, {
+      ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+      label: sharer.label,
+      ...(input.damageType ? { damageType: input.damageType } : {}),
+      rolls: [],
+      flat: passed,
+      amount: passed,
+    });
+    afterBlow(ctx, sharer.holder, shared, false);
+  }
   if (dealt > 0) {
     const kinds = ctx.blowTypes.get(target.id) ?? new Set<string>();
     kinds.add(type ?? "");
@@ -804,6 +821,25 @@ function applyDamage(
     target.insideHurt = hurt;
   }
   return dealt;
+}
+
+/** Whom `target` holds by a condition that takes a share of its harm (1.354), and that share. */
+function harmSharer(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+): { holder: RulesetCombatant; share: number; label: string } | undefined {
+  for (const one of ctx.state.combatants) {
+    if (one.id === target.id || one.defeated) continue;
+    for (const entry of one.tracked) {
+      if (entry.source !== target.id) continue;
+      const share = ctx.combat.conditions?.find((rule) => rule.condition === entry.condition)?.takesSourceHarm?.share;
+      if (share === undefined) continue;
+      const label =
+        ctx.definition.sheet.live.conditions.find((c) => c.id === entry.condition)?.label ?? entry.condition;
+      return { holder: one, share, label };
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -2042,6 +2078,9 @@ function applyConditionId(
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
+  // Only on a target already holding what it asks, as it stands now (1.354): a kraken's swallow.
+  if (applies.targetHolds && !rulesetHoldsFor(ctx.definition, target, extra.sourceId ?? "", applies.targetHolds))
+    return;
   if (
     rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state, putter) ||
     // Nothing reaches through a sphere (1.314): a zone's, or a harm's.
@@ -2157,6 +2196,7 @@ function applyConditionId(
       : {}),
     ...(stacks !== undefined ? { stacks } : {}),
     ...(applies.endsWith ? { endsWith: applies.endsWith } : {}),
+    ...(applies.harmsPuller ? { harmsPuller: { ...applies.harmsPuller } } : {}),
     ...(extra.harmsMore ? { harmsMore: { ...extra.harmsMore } } : {}),
     ...(extra.value !== undefined ? { value: extra.value } : {}),
     ...(extra.level !== undefined ? { level: extra.level } : {}),
@@ -2175,6 +2215,14 @@ function applyConditionId(
     // How it climbs out once they have fallen (1.352).
     const corpse = rule.inside === true ? undefined : rule.inside.corpse;
     if (corpse) target.insideCorpse = { ...corpse };
+  }
+  // What its applier had on them ends now it is on (1.354): the grapple, once swallowed.
+  for (const ended of applies.endsOnTarget ?? []) {
+    if (ended === condition) continue;
+    const held = target.tracked.find(
+      (entry) => entry.condition === ended && (extra.sourceId === undefined || entry.source === extra.sourceId),
+    );
+    if (held) removeCondition(ctx, target, ended, "linked");
   }
   endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
@@ -5373,7 +5421,11 @@ function resolveContest(
   const attacker = thrown(actor, mine.check, mine.modifier);
   // Breaking free of a hold that names its escape DC (1.103): nobody throws for the holder, and the
   // actor wins on meeting the number.
-  const escapeDc = rulesetEscapeDc(actor, contest);
+  const escapeDc = rulesetEscapeDc(actor, contest, target);
+  // What keeps the one pulled out inside (1.354), and what it does to whoever pulls.
+  const pulledFrom = contest.pulls
+    ? target.tracked.find((entry) => entry.condition === contest.targetHolds)
+    : undefined;
   const theirs = escapeDc === undefined ? rulesetContestCheck(target, contest, "defender") : null;
   const defender = theirs
     ? thrown(target, theirs.check, theirs.modifier)
@@ -5455,6 +5507,10 @@ function resolveContest(
     ...(escapeDc !== undefined ? (contest.from ? { escapeDc } : { difficulty: escapeDc }) : {}),
     winner,
   });
+  // Reaching in hurts, win or lose (1.354): the cube's acid on whoever pulls.
+  if (pulledFrom?.harmsPuller) {
+    conditionHarm(ctx, actor, pulledFrom.condition, pulledFrom.source, pulledFrom.harmsPuller, 1);
+  }
   if (winner !== "actor") return;
   for (const entry of contest.ends ?? []) {
     const on = entry.on === "actor" ? actor : target;

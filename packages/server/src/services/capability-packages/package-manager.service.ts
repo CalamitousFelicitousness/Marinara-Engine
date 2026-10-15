@@ -2180,6 +2180,25 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
 }
 
 /** A floor under defense (1.353): a modifier to defense with `atLeast`. */
+/** Swallow follow-ups (1.354): what a condition put on asks the target to hold, ends on them, or does
+ *  to whoever pulls them out; a contest that pulls somebody out; and a condition taking a share of
+ *  its source's harm. */
+function carriesPullOut354(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPullOut354(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.pulls === true || (typeof record.condition === "string" && record.takesSourceHarm !== undefined))
+    return true;
+  if (
+    typeof record.condition === "string" &&
+    record.duration !== undefined &&
+    (record.targetHolds !== undefined || record.endsOnTarget !== undefined || record.harmsPuller !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesPullOut354(one, depth + 1));
+}
+
 function carriesDefenseFloor353(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDefenseFloor353(one, depth + 1));
@@ -5325,6 +5344,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Swallow follow-ups: a rider on a held target, a hold ended, a pull out and what it costs, 1.354.
+  if (
+    !declaresApi(354) &&
+    (carriesPullOut354(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPullOut354(document)))
+  ) {
+    return "A ruleset that pulls somebody out of a creature, puts a condition on only a held target or ends one with it, or shares a holder's harm (a contest's pulls, targetHolds, endsOnTarget or harmsPuller on what an action puts on, or a condition's takesSourceHarm), requires schemaVersion 2 and capabilityApi 1.354 or newer";
+  }
   // A floor under defense, 1.353.
   if (
     !declaresApi(353) &&

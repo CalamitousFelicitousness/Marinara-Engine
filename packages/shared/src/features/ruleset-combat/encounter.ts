@@ -3947,6 +3947,7 @@ function contestActions(
         ...(contest.difficulty !== undefined ? { difficulty: contest.difficulty } : {}),
         ...(contest.targetHolds ? { targetHolds: contest.targetHolds } : {}),
         ...(contest.targetDying ? { targetDying: true as const } : {}),
+        ...(contest.pulls ? { pulls: true as const } : {}),
         ...(contest.onWin.stabilizes ? { stabilizes: true as const } : {}),
         ties: contest.ties,
         ...(contest.from ? { from: contest.from.holding } : {}),

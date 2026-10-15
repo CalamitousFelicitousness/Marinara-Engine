@@ -43924,6 +43924,81 @@
                               ]
                             }
                           },
+                          "targetHolds": {
+                            "type": "object",
+                            "properties": {
+                              "conditions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "fromSelf": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
+                          "endsOnTarget": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 8
+                          },
+                          "harmsPuller": {
+                            "type": "object",
+                            "properties": {
+                              "dice": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                              },
+                              "flat": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000
+                              },
+                              "type": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false,
+                            "allOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "required": [
+                                      "dice"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "flat"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
                           "$comment": {}
                         },
                         "required": [
@@ -44879,6 +44954,81 @@
                                 "liveTrack"
                               ]
                             }
+                          },
+                          "targetHolds": {
+                            "type": "object",
+                            "properties": {
+                              "conditions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "fromSelf": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
+                          "endsOnTarget": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 8
+                          },
+                          "harmsPuller": {
+                            "type": "object",
+                            "properties": {
+                              "dice": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                              },
+                              "flat": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000
+                              },
+                              "type": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false,
+                            "allOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "required": [
+                                      "dice"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "flat"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
                           },
                           "$comment": {}
                         },
@@ -49175,6 +49325,81 @@
                                     ]
                                   }
                                 },
+                                "targetHolds": {
+                                  "type": "object",
+                                  "properties": {
+                                    "conditions": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "fromSelf": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "endsOnTarget": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "harmsPuller": {
+                                  "type": "object",
+                                  "properties": {
+                                    "dice": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                    },
+                                    "flat": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 1000
+                                    },
+                                    "type": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false,
+                                  "allOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "required": [
+                                            "dice"
+                                          ]
+                                        },
+                                        {
+                                          "required": [
+                                            "flat"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -50442,6 +50667,81 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "targetHolds": {
+                                      "type": "object",
+                                      "properties": {
+                                        "conditions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "fromSelf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "endsOnTarget": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "harmsPuller": {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "flat": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false,
+                                      "allOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "required": [
+                                                "dice"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "flat"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
                                     },
                                     "$comment": {}
                                   },
@@ -54025,6 +54325,81 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "targetHolds": {
+                                      "type": "object",
+                                      "properties": {
+                                        "conditions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "fromSelf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "endsOnTarget": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "harmsPuller": {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "flat": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false,
+                                      "allOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "required": [
+                                                "dice"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "flat"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
                                     },
                                     "$comment": {}
                                   },
@@ -61572,6 +61947,81 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "targetHolds": {
+                                      "type": "object",
+                                      "properties": {
+                                        "conditions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "fromSelf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "endsOnTarget": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "harmsPuller": {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "flat": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false,
+                                      "allOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "required": [
+                                                "dice"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "flat"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
                                     },
                                     "$comment": {}
                                   },
@@ -69243,6 +69693,81 @@
                                   ]
                                 }
                               },
+                              "targetHolds": {
+                                "type": "object",
+                                "properties": {
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "fromSelf": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "endsOnTarget": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "harmsPuller": {
+                                "type": "object",
+                                "properties": {
+                                  "dice": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                  },
+                                  "flat": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "type": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false,
+                                "allOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "required": [
+                                          "dice"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "flat"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -70198,6 +70723,81 @@
                                     "liveTrack"
                                   ]
                                 }
+                              },
+                              "targetHolds": {
+                                "type": "object",
+                                "properties": {
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "fromSelf": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "endsOnTarget": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "harmsPuller": {
+                                "type": "object",
+                                "properties": {
+                                  "dice": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                  },
+                                  "flat": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "type": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false,
+                                "allOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "required": [
+                                          "dice"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "flat"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
                               },
                               "$comment": {}
                             },
@@ -79904,6 +80504,81 @@
                                         ]
                                       }
                                     },
+                                    "targetHolds": {
+                                      "type": "object",
+                                      "properties": {
+                                        "conditions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "fromSelf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "endsOnTarget": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "harmsPuller": {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "flat": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false,
+                                      "allOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "required": [
+                                                "dice"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "flat"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -80859,6 +81534,81 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "targetHolds": {
+                                      "type": "object",
+                                      "properties": {
+                                        "conditions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "fromSelf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "endsOnTarget": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "harmsPuller": {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "flat": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false,
+                                      "allOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "required": [
+                                                "dice"
+                                              ]
+                                            },
+                                            {
+                                              "required": [
+                                                "flat"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
                                     },
                                     "$comment": {}
                                   },
@@ -94192,6 +94942,21 @@
                   }
                 ]
               },
+              "takesSourceHarm": {
+                "type": "object",
+                "properties": {
+                  "share": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "exclusiveMaximum": 1
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "share"
+                ],
+                "additionalProperties": false
+              },
               "regenerates": {
                 "type": "object",
                 "properties": {
@@ -95581,6 +96346,81 @@
                               "liveTrack"
                             ]
                           }
+                        },
+                        "targetHolds": {
+                          "type": "object",
+                          "properties": {
+                            "conditions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "fromSelf": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "endsOnTarget": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "harmsPuller": {
+                          "type": "object",
+                          "properties": {
+                            "dice": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                            },
+                            "flat": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "type": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false,
+                          "allOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "required": [
+                                    "dice"
+                                  ]
+                                },
+                                {
+                                  "required": [
+                                    "flat"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
                         },
                         "$comment": {}
                       },
@@ -96999,6 +97839,81 @@
                                   ]
                                 }
                               },
+                              "targetHolds": {
+                                "type": "object",
+                                "properties": {
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "fromSelf": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "endsOnTarget": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "harmsPuller": {
+                                "type": "object",
+                                "properties": {
+                                  "dice": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                  },
+                                  "flat": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "type": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false,
+                                "allOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "required": [
+                                          "dice"
+                                        ]
+                                      },
+                                      {
+                                        "required": [
+                                          "flat"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -97975,6 +98890,81 @@
                                         "liveTrack"
                                       ]
                                     }
+                                  },
+                                  "targetHolds": {
+                                    "type": "object",
+                                    "properties": {
+                                      "conditions": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "fromSelf": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "endsOnTarget": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "harmsPuller": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 1000
+                                      },
+                                      "type": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false,
+                                    "allOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "required": [
+                                              "dice"
+                                            ]
+                                          },
+                                          {
+                                            "required": [
+                                              "flat"
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
                                   },
                                   "$comment": {}
                                 },
@@ -99177,6 +100167,81 @@
                               "liveTrack"
                             ]
                           }
+                        },
+                        "targetHolds": {
+                          "type": "object",
+                          "properties": {
+                            "conditions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "fromSelf": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "endsOnTarget": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "harmsPuller": {
+                          "type": "object",
+                          "properties": {
+                            "dice": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                            },
+                            "flat": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "type": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false,
+                          "allOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "required": [
+                                    "dice"
+                                  ]
+                                },
+                                {
+                                  "required": [
+                                    "flat"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
                         },
                         "$comment": {}
                       },
@@ -101111,6 +102176,10 @@
                 "pattern": "^[a-z][a-z0-9_]*$"
               },
               "targetDying": {
+                "type": "boolean",
+                "const": true
+              },
+              "pulls": {
                 "type": "boolean",
                 "const": true
               },

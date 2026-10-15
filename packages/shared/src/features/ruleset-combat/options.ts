@@ -535,7 +535,10 @@ export function rulesetTargetRefusal(
   const grid = state.board?.grid;
   if (!from || !to || !grid) return null;
   if (actorId === targetId) return null;
-  const target = rulesetCombatant(state, targetId);
+  const aimed = rulesetCombatant(state, targetId);
+  // Somebody inside another creature is reached at that creature (1.354): a cube's engulfed.
+  const holder = aimed?.insideOf !== undefined ? rulesetCombatant(state, aimed.insideOf) : undefined;
+  const target = holder && rulesetPositionOf(holder) ? holder : aimed;
   // Height counts where somebody is up in the air (1.114).
   const away = target ? rulesetCombatantDistance(state, rulesetCombatant(state, actorId)!, target) : 0;
   // A shot carries further down from higher ground when the ruleset says so (combat C6b).
@@ -1332,7 +1335,7 @@ export function rulesetContestChance(
   const mine = contestTotals(definition, combat, actor, rulesetContestCheck(actor, contest, "attacker"), state);
   // Breaking free of a hold that names its escape DC is a roll against that number, which the
   // actor meets to win (1.103).
-  const escapeDc = rulesetEscapeDc(actor, contest);
+  const escapeDc = rulesetEscapeDc(actor, contest, target);
   if (mine && escapeDc !== undefined) {
     return mine.reduce((win, [total, chance]) => (total >= escapeDc ? win + chance : win), 0);
   }
@@ -1409,7 +1412,16 @@ function keptDistribution(count: number, sides: number, mode: RulesetCombatRollM
 
 /** What breaking free is rolled against, when what holds the actor names it (1.103). Only a summed
  *  fight has one: the schema refuses it in a pool fight. */
-export function rulesetEscapeDc(actor: RulesetCombatant, contest: RulesetCombatContest): number | undefined {
+export function rulesetEscapeDc(
+  actor: RulesetCombatant,
+  contest: RulesetCombatContest,
+  /** Whom a contest that pulls (1.354) pulls out: their hold's escape DC, else the contest's own. */
+  target?: RulesetCombatant,
+): number | undefined {
+  if (contest.pulls) {
+    const hold = target?.tracked.find((entry) => entry.condition === contest.targetHolds);
+    return hold?.escapeDc ?? contest.difficulty;
+  }
   if (!contest.from) return contest.difficulty;
   return actor.tracked.find((entry) => entry.condition === contest.from)?.escapeDc;
 }
@@ -1598,6 +1610,12 @@ function rulesetCureReaches(
   const contest = action.contest;
   if (contest?.targetHolds && !combatant.tracked.some((entry) => entry.condition === contest.targetHolds)) return false;
   if (contest?.targetDying && !(combatant.dying && !combatant.stable && !combatant.defeated)) return false;
+  // Pulled out (1.354) only from inside somebody, and only with a number to meet.
+  if (
+    contest?.pulls &&
+    (combatant.insideOf === undefined || rulesetEscapeDc(combatant, contest, combatant) === undefined)
+  )
+    return false;
   // A track moved down or sealed health given back cures too (1.201); one moved up harms.
   const lowers = action.tracks?.filter((entry) => entry.by < 0) ?? [];
   if (!action.ends && !action.stabilizes && !lowers.length && !action.unseals) return true;
@@ -1628,7 +1646,7 @@ export function rulesetPutOnBy(
 
 /** Whether this one holds a condition an action names (1.235): one of `conditions` from anybody, or
  *  one of `fromSelf` that the actor put on them. */
-function rulesetHoldsFor(
+export function rulesetHoldsFor(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   actorId: string,
@@ -1717,8 +1735,9 @@ export function rulesetOptionTargets(
           const size = rulesetSizeRank(combat, combatant);
           if (size !== undefined && size > most) return false;
         }
-        // A sphere between them (1.314), but for what breaks it, aimed at the one inside.
-        if (rulesetSealedApart(definition, state, actor, combatant)) {
+        // A sphere between them (1.314), but for what breaks it, aimed at the one inside, or a hand
+        // reaching into the creature that holds them (1.354).
+        if (rulesetSealedApart(definition, state, actor, combatant) && !(contest?.pulls && combatant.insideOf)) {
           const sealed = rulesetSealed(definition, combatant, state);
           if (!(sealed && cure?.entry && sealed.brokenBy?.includes(cure.entry))) return false;
         }

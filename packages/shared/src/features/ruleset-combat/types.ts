@@ -174,6 +174,12 @@ export interface RulesetCombatApplies {
   destroysUpTo?: Array<{ tier: string; when?: RulesetSheetBounds }>;
   /** A number off its applier's sheet, fixed as it goes on, for the condition's `temporary` (1.274). */
   value?: RulesetValueRef;
+  /** It goes on only a target holding one of these, read as it goes on (1.354): a kraken's swallow. */
+  targetHolds?: { conditions?: string[]; fromSelf?: string[] };
+  /** What its applier had put on the target, taken off once it is on (1.354): the swallow's grapple. */
+  endsOnTarget?: string[];
+  /** What a creature trying to pull its holder out takes, win or lose (1.354): the cube's acid. */
+  harmsPuller?: { dice?: string; flat?: number; type?: string };
 }
 
 /** A value read off a sheet and the bounds it must stand within: one bound or both. */
@@ -1188,6 +1194,9 @@ export interface RulesetCombatContest {
   targetDying?: true;
   /** Winning stabilizes a dying target (1.193). */
   stabilizes?: true;
+  /** Pulls the one `targetHolds` keeps inside another creature out (1.354), measured to the holder
+   *  and rolled against the hold's escape DC, else `difficulty`. */
+  pulls?: true;
 }
 
 /** Engulf (1.350): the actor moves through creatures no bigger than `upToSize`; each one entered
@@ -1301,6 +1310,8 @@ export interface RulesetTrackedCondition {
   escapeDc?: number;
   /** The contest checks that may break it (1.175). */
   escapeChecks?: string[];
+  /** What somebody trying to pull its holder out takes, from its source (1.354). */
+  harmsPuller?: { dice?: string; flat?: number; type?: string };
   /** The condition put on with it that it ends with (1.202). */
   endsWith?: string;
   /** A check its holder may spend the standard budget on to end it (1.313): Maze's way out. */

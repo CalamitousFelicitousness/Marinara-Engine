@@ -9,9 +9,11 @@
  *   - the packed .mavatar passes mesh-avatar's archive validator and the Engine's strict ZIP reader, and
  *     carries no partial sprites.json (mesh-avatar would switch its own eyelids and mouth off);
  *   - a sprite edit goes through the existing image generation path (an edit request with the sprite as
- *     reference, padded to the canvas the model is asked for, without a see-through background), its
- *     prompt reaches the debug log, and an edit that keeps the picture in place comes back lined up with
- *     the sprite at its exact size, with the sprite's own outline;
+ *     the only reference, padded to the canvas the model is asked for, a cut-out shown on white, without a
+ *     see-through background), its prompt reaches the debug log, and an edit that keeps the picture in
+ *     place comes back lined up with the sprite at its exact size, with the sprite's own outline;
+ *   - a blink or talk prompt is the agent's template as written: never cut down to tags by the sprite
+ *     prompt compiler, so "open the mouth" and "keep the framing" reach the model and "full body" doesn't;
  *   - kept PNGTuber pictures merge into the owner's setup without mixing pictures drawn for other bases,
  *     an avatar still showing plain sprites keeps all of them, and full-body sprites stay out of a
  *     portrait setup;
@@ -54,8 +56,13 @@ const { buildMeshAvatarLayers, meshWorkScale, packMeshAvatar } =
 const { generateMeshRig, requestMeshRigLayout } =
   await import("../../packages/server/src/services/avatars/generation/mesh-rig.js");
 const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
-const { mergePngtuberVariants, pngtuberSpriteFamily, pngtuberVariantFilePath, spriteBuiltPngtuber } =
-  await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
+const {
+  avatarVariantPrompt,
+  mergePngtuberVariants,
+  pngtuberSpriteFamily,
+  pngtuberVariantFilePath,
+  spriteBuiltPngtuber,
+} = await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
 
 const sharp = await getSharp();
@@ -428,6 +435,18 @@ async function dotCentre(png: Buffer) {
       !requests[0]!.body.includes('name="background"'),
       "no see-through background is asked for (GPT Image 2 has none; the sprite's outline is used)",
     );
+    const sentStart = requests[0]!.body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const sent = requests[0]!.body.subarray(sentStart, requests[0]!.body.indexOf(Buffer.from("IEND"), sentStart) + 8);
+    assert.deepEqual(
+      await rgbaAt(sent, 5, 5),
+      [255, 255, 255, 255],
+      "a cut-out is shown on plain white, not on the black its see-through pixels read as",
+    );
+    assert.deepEqual(
+      (await rgbaAt(sent, 512, 153 + Math.round(300 * (1229 / 720)))).slice(0, 3),
+      SKIN,
+      "the sprite itself is sent as it is",
+    );
     const meta = await sharp(edited).metadata();
     assert.deepEqual([meta.width, meta.height], [600, 720], "the variant is the sprite's exact size");
     assert.equal((await rgbaAt(edited, 5, 5))[3], 0, "a cut-out sprite keeps its own outline");
@@ -472,6 +491,30 @@ async function dotCentre(png: Buffer) {
     (logger as { warn: unknown }).warn = warn;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+}
+
+// ── Blink and talk prompts ──
+{
+  const template =
+    'Edit the attached sprite of ${characterName}, which shows the "${expression}" expression.\n' +
+    'Open the mouth as if saying a clear "ah". Do not crop, zoom, recentre or redraw the character.\n' +
+    "Appearance notes: ${appearance}";
+  const context = { name: "Mira", appearance: "tall, ripped jeans and combat boots", template: () => template };
+  const prompt = avatarVariantPrompt(context, "very_happy", "mouth-open");
+  assert.equal(
+    prompt.prompt,
+    'Edit the attached sprite of Mira, which shows the "very happy" expression.\n' +
+      'Open the mouth as if saying a clear "ah". Do not crop, zoom, recentre or redraw the character.\n' +
+      "Appearance notes: tall, ripped jeans and combat boots",
+    "the template is sent as written, not cut down to tags",
+  );
+  assert.equal(prompt.negativePrompt, "", "no style profile adds negative tags to an edit");
+  assert.doesNotMatch(prompt.prompt, /full[ -]body/iu);
+  assert.deepEqual(
+    avatarVariantPrompt(context, "happy", "eyes-closed", { id: "x", prompt: " Close the eyes. ", negativePrompt: "" }),
+    { prompt: "Close the eyes.", negativePrompt: "" },
+    "a reviewed prompt replaces the template",
+  );
 }
 
 // ── PNGTuber setups ──

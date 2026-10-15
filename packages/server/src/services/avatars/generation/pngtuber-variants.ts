@@ -2,9 +2,9 @@
 // Avatar generation: PNGTuber blink and talk variants (lane: generation)
 // ──────────────────────────────────────────────
 // One click from a sprite: edit it into "eyes closed" and "mouth open" variants with the existing
-// image generation (services/image, the same provider routing, fallback connection and style settings
-// as sprite generation), using the 2D agent's `avatar-pngtuber-eyes-closed` / `avatar-pngtuber-mouth-open`
-// templates. Generating returns drafts and stores nothing, so the avatar stays as it was until the user
+// image generation (services/image, the same provider routing and fallback connection as sprite
+// generation), using the 2D agent's `avatar-pngtuber-eyes-closed` / `avatar-pngtuber-mouth-open`
+// templates, sent as written with the sprite as the only reference. Generating returns drafts and stores nothing, so the avatar stays as it was until the user
 // keeps a picture; saving stores the kept pictures as PNGTuber layers through services/avatars/storage.ts,
 // merged into the stored setup inside its per-owner queue. Pictures are drawn from the sprite as it is; a
 // picture drawn from a see-through sprite takes its outline (applyAvatarSourceOutline).
@@ -37,7 +37,6 @@ import {
   AvatarGenerationError,
   avatarGenerationDebug,
   avatarImageRequestSize,
-  compileAvatarImagePrompt,
   drawAvatarImageEdit,
   listAvatarSourceSprites,
   plainErrorText,
@@ -48,7 +47,6 @@ import {
   resolveAvatarImageConnection,
   withAvatarGenerationJob,
   type AvatarAgentSettings,
-  type AvatarImageConnection,
   type AvatarOwnerInfo,
   type AvatarSourceSprite,
 } from "./generation-context.js";
@@ -248,25 +246,24 @@ export interface AvatarVariantPromptContext extends AvatarOwnerInfo {
 }
 
 /** The provider prompt for one variant of one sprite: the reviewed prompt when the user edited it, else
- *  the agent's template rendered with the owner's card text and compiled like a sprite prompt. */
-export async function avatarVariantPrompt(
-  db: DB,
-  image: AvatarImageConnection,
+ *  the agent's template rendered with the owner's card text. It is sent as written, never through the
+ *  sprite prompt compiler or style profiles: those cut an edit instruction down to tags, dropping "open
+ *  the mouth" and "keep the framing" and adding "full body", so the model redrew the whole character. */
+export function avatarVariantPrompt(
   context: AvatarVariantPromptContext,
   label: string,
   variant: AvatarPngtuberVariant,
   override?: AvatarPromptOverride,
-): Promise<{ prompt: string; negativePrompt: string }> {
+): { prompt: string; negativePrompt: string } {
   const id = VARIANT_TEMPLATE_IDS[variant];
   const rendered = renderAvatarPromptTemplate(context.template(id), id, {
     characterName: context.name || "the character",
     appearance: context.appearance,
     expression: label.replace(/[_-]+/gu, " "),
   });
-  const compiled = await compileAvatarImagePrompt(db, image, rendered);
   return resolveReviewedImagePromptSubmission({
-    generatedPrompt: compiled.prompt,
-    generatedNegativePrompt: compiled.negativePrompt,
+    generatedPrompt: rendered,
+    generatedNegativePrompt: "",
     promptOverride: override?.prompt,
     negativePromptOverride: override?.negativePrompt,
   });
@@ -315,7 +312,7 @@ export async function previewPngtuberVariantPrompts(
     const source = await readAvatarSourceSprite(request.owner.ownerId, label);
     const size = avatarImageRequestSize(source.width, source.height, image.conn.model || "");
     for (const variant of request.variants) {
-      const prompt = await avatarVariantPrompt(db, image, { template: agent.template, ...owner }, label, variant);
+      const prompt = avatarVariantPrompt({ template: agent.template, ...owner }, label, variant);
       items.push({
         id: variantPromptId(label, variant),
         kind: "sprite",
@@ -352,9 +349,7 @@ export async function generatePngtuberVariants(
       for (const variant of request.variants) {
         if (signal.aborted) throw signal.reason ?? new Error("Cancelled");
         try {
-          const prompt = await avatarVariantPrompt(
-            db,
-            image,
+          const prompt = avatarVariantPrompt(
             { template: agent.template, ...owner },
             label,
             variant,

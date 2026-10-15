@@ -46,9 +46,10 @@ const rows: Array<{
     expected: { text: "She nods. <ooc>Brb.</ooc>", changed: false },
   },
   {
+    // Roleplay: the conversation envelope strip would also remove the prefix and hide a broken strip.
     name: "individual group: the responder's name prefix is stripped",
     text: "Alice: Hello there.",
-    o: individual,
+    o: { ...individual, chatMode: "roleplay" },
     expected: { text: "Hello there.", changed: true },
   },
   {

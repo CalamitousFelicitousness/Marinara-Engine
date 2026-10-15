@@ -515,6 +515,11 @@ const generateRouteSource = readFileSync(
   new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
   "utf8",
 );
+// The tool-call rounds live in their own module (#7573).
+const toolRoundsSource = readFileSync(
+  new URL("../../packages/server/src/routes/generate/tool-rounds.ts", import.meta.url),
+  "utf8",
+);
 
 // The condition moved into a named const so the GM format reminder can read the same
 // fact (#6215): the prompt line that describes roll_dice and the attachment
@@ -541,7 +546,7 @@ assert.match(
   "the tool choice must be told whether the user's toggle is on, not just what the chat metadata holds",
 );
 assert.match(
-  generateRouteSource,
+  toolRoundsSource,
   /\.\.\.\(rolled \? \{ diceRollResult: rolled \} : \{\}\)/u,
   "the tool_result event must carry the parsed roll, or no card can show while the turn runs",
 );
@@ -551,12 +556,12 @@ assert.match(
   "all Game rolls must be saved on the swipe, including retained continuation rolls",
 );
 assert.match(
-  generateRouteSource,
+  toolRoundsSource,
   /geminiResponseParts = appendRoundGeminiParts\(geminiResponseParts, result\.providerMetadata\)/u,
   "every tool round must fold its Gemini parts into the ones the message is saved with",
 );
 assert.match(
-  generateRouteSource,
+  toolRoundsSource,
   /geminiResponseParts = appendRoundGeminiParts\(geminiResponseParts, finalResult\.providerMetadata\)/u,
   "the final tool follow-up must fold its parts in too, rather than replacing the rounds before it",
 );

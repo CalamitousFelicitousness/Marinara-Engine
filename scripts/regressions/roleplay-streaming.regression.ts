@@ -100,6 +100,11 @@ const generateRouteSource = readSourceText(
   new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
   "utf8",
 );
+// The tool-call rounds live in their own module (#7573).
+const toolRoundsSource = readSourceText(
+  new URL("../../packages/server/src/routes/generate/tool-rounds.ts", import.meta.url),
+  "utf8",
+);
 const useGenerateSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
@@ -112,13 +117,13 @@ assert.match(
   "Buffered text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
-  generateRouteSource,
-  /fullResponse \+= chunk;[\s\S]{0,200}await streamOutput\.write\(chunk\);/u,
+  toolRoundsSource,
+  /const onToken = async \(chunk: string\) => \{[\s\S]{0,200}text \+= chunk;[\s\S]{0,200}await stream\.write\(chunk\);/u,
   "Tool-streamed text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
-  generateRouteSource,
-  /if \(holdForTextRewrite\) streamOutput\.roleplayCommandFilter\?\.push\(chunk\);\s*await streamOutput\.write\(chunk\);\s*if \(roleplayRollEnabled && streamOutput\.roleplayCommandFilter\?\.rollRequested\)/u,
+  toolRoundsSource,
+  /if \(stream\.holdForTextRewrite\) stream\.roleplayCommandFilter\?\.push\(chunk\);\s*await stream\.write\(chunk\);\s*if \(roleplayRollEnabled && stream\.roleplayCommandFilter\?\.rollRequested\)/u,
   "A held tool-round stream must still feed the command filter so a roll request is detected",
 );
 assert.match(

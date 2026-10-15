@@ -56040,6 +56040,7 @@
                               "own-attacks-disadvantage",
                               "attacks-against-advantage",
                               "attacks-against-disadvantage",
+                              "attacks-against-no-advantage",
                               "attacks-against-adjacent-advantage",
                               "attacks-against-far-disadvantage",
                               "attacks-from-adjacent-critical",
@@ -57338,6 +57339,7 @@
                               "own-attacks-disadvantage",
                               "attacks-against-advantage",
                               "attacks-against-disadvantage",
+                              "attacks-against-no-advantage",
                               "attacks-against-adjacent-advantage",
                               "attacks-against-far-disadvantage",
                               "attacks-from-adjacent-critical",
@@ -58823,6 +58825,7 @@
                                     "own-attacks-disadvantage",
                                     "attacks-against-advantage",
                                     "attacks-against-disadvantage",
+                                    "attacks-against-no-advantage",
                                     "attacks-against-adjacent-advantage",
                                     "attacks-against-far-disadvantage",
                                     "attacks-from-adjacent-critical",
@@ -96231,6 +96234,7 @@
                     "own-attacks-disadvantage",
                     "attacks-against-advantage",
                     "attacks-against-disadvantage",
+                    "attacks-against-no-advantage",
                     "attacks-against-adjacent-advantage",
                     "attacks-against-far-disadvantage",
                     "attacks-from-adjacent-critical",
@@ -97180,6 +97184,7 @@
                         "own-attacks-disadvantage",
                         "attacks-against-advantage",
                         "attacks-against-disadvantage",
+                        "attacks-against-no-advantage",
                         "attacks-against-adjacent-advantage",
                         "attacks-against-far-disadvantage",
                         "attacks-from-adjacent-critical",
@@ -98439,6 +98444,52 @@
                   "temporary"
                 ],
                 "additionalProperties": false
+              },
+              "notWhile": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "own-attacks-advantage",
+                        "own-attacks-disadvantage",
+                        "attacks-against-advantage",
+                        "attacks-against-disadvantage",
+                        "attacks-against-no-advantage",
+                        "attacks-against-adjacent-advantage",
+                        "attacks-against-far-disadvantage",
+                        "attacks-from-adjacent-critical",
+                        "cannot-act",
+                        "cannot-react",
+                        "speed-zero",
+                        "half-move-to-stand",
+                        "ends-on-damage",
+                        "own-saves-advantage",
+                        "own-saves-disadvantage",
+                        "own-checks-advantage",
+                        "own-checks-disadvantage",
+                        "resist-all",
+                        "cannot-target-source",
+                        "cannot-target-source-side",
+                        "cannot-approach-source",
+                        "cannot-heal",
+                        "cannot-heal-nonmagical"
+                      ]
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 12
+              },
+              "whenSeen": {
+                "type": "boolean",
+                "const": true
               },
               "temporary": {
                 "type": "object",
@@ -103757,6 +103808,7 @@
                     "own-attacks-disadvantage",
                     "attacks-against-advantage",
                     "attacks-against-disadvantage",
+                    "attacks-against-no-advantage",
                     "attacks-against-adjacent-advantage",
                     "attacks-against-far-disadvantage",
                     "attacks-from-adjacent-critical",
@@ -105220,6 +105272,52 @@
                   "temporary"
                 ],
                 "additionalProperties": false
+              },
+              "notWhile": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "own-attacks-advantage",
+                        "own-attacks-disadvantage",
+                        "attacks-against-advantage",
+                        "attacks-against-disadvantage",
+                        "attacks-against-no-advantage",
+                        "attacks-against-adjacent-advantage",
+                        "attacks-against-far-disadvantage",
+                        "attacks-from-adjacent-critical",
+                        "cannot-act",
+                        "cannot-react",
+                        "speed-zero",
+                        "half-move-to-stand",
+                        "ends-on-damage",
+                        "own-saves-advantage",
+                        "own-saves-disadvantage",
+                        "own-checks-advantage",
+                        "own-checks-disadvantage",
+                        "resist-all",
+                        "cannot-target-source",
+                        "cannot-target-source-side",
+                        "cannot-approach-source",
+                        "cannot-heal",
+                        "cannot-heal-nonmagical"
+                      ]
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 12
+              },
+              "whenSeen": {
+                "type": "boolean",
+                "const": true
               },
               "defeats": {
                 "type": "boolean",

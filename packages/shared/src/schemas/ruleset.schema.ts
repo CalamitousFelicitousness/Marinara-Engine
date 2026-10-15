@@ -8564,6 +8564,9 @@ const combatConditionEffectSchema = z.enum([
   "own-attacks-disadvantage",
   "attacks-against-advantage",
   "attacks-against-disadvantage",
+  /** No attack roll against the holder has advantage, whatever gave it, while the holder can act
+   *  (Capability API 1.364); a disadvantage still counts: 5e's Elusive. */
+  "attacks-against-no-advantage",
   /** By distance, so they wait for the slice that gives a fight positions. */
   "attacks-against-adjacent-advantage",
   "attacks-against-far-disadvantage",
@@ -8942,6 +8945,17 @@ const combatLevelSchema = z
     /** Temporary points as a foe its holder harmed last drops (Capability API 1.359): 5e's Dark
      *  One's Blessing on a fiend warlock's level. See `fellsGrantSchema`. */
     fellsGrant: fellsGrantSchema.optional(),
+    /** Held off while its holder has any of these (Capability API 1.364): a condition by its id, or
+     *  what a condition does by its effect, so `"cannot-act"` is incapacitated by anything. 5e's
+     *  Danger Sense, `["blinded", "deafened", "cannot-act"]`. */
+    notWhile: z
+      .array(z.union([sheetId, combatConditionEffectSchema]))
+      .min(1)
+      .max(12)
+      .optional(),
+    /** Its save effects count only on a save against something its holder can see, and a save with
+     *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
+    whenSeen: z.literal(true).optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9680,6 +9694,17 @@ const combatConditionSchema = z
     /** Temporary points as a foe its holder harmed last drops, while it holds (Capability API
      *  1.359). See `fellsGrantSchema`. */
     fellsGrant: fellsGrantSchema.optional(),
+    /** Held off while its holder has any of these (Capability API 1.364): a condition by its id, or
+     *  what a condition does by its effect, so `"cannot-act"` is incapacitated by anything. 5e's
+     *  Danger Sense, `["blinded", "deafened", "cannot-act"]`. */
+    notWhile: z
+      .array(z.union([sheetId, combatConditionEffectSchema]))
+      .min(1)
+      .max(12)
+      .optional(),
+    /** Its save effects count only on a save against something its holder can see, and a save with
+     *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
+    whenSeen: z.literal(true).optional(),
     /** Temporary points its holder gains as each of their turns starts or ends (Capability API
      *  1.274), lost as it ends where it says so: 5e's Heroism. */
     temporary: conditionTemporarySchema.optional(),
@@ -13650,6 +13675,22 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "temporary"], "Temporary points need health in points, not a wound track");
       checkRef(grant.temporary, [...path, "temporary"], derivedIds);
     };
+    // Held off while (1.364): conditions it names are declared ones, and whenSeen has saves to scope.
+    const notWhileIssues = (
+      entry: { notWhile?: string[]; whenSeen?: true; effects: string[]; modifiers?: Array<{ to: string }> },
+      path: (string | number)[],
+    ) => {
+      entry.notWhile?.forEach((one, index) => {
+        if (!(RULESET_COMBAT_CONDITION_EFFECTS as readonly string[]).includes(one) && !conditions.has(one))
+          issue([...path, "notWhile", index], `Unknown condition "${one}"`);
+      });
+      if (
+        entry.whenSeen &&
+        !entry.effects.some((one) => (RULESET_SAVE_SCOPED_EFFECTS as readonly string[]).includes(one)) &&
+        !entry.modifiers?.some((one) => one.to === "saves")
+      )
+        issue([...path, "whenSeen"], '"whenSeen" scopes save effects or modifiers to saves, so it needs one beside it');
+    };
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {
       const path = at("conditions", index);
@@ -13719,6 +13760,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
       if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
+      notWhileIssues(entry, path);
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {
         if ("track" in combat.health)
@@ -13965,6 +14007,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       levelled.add(key);
       rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
       if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
+      notWhileIssues(entry, path);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);

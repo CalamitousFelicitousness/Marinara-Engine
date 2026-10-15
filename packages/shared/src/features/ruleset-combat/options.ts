@@ -2884,7 +2884,9 @@ export function rulesetAttackMode(
       if (marked) leans.add(rule.mode);
     }
   }
-  const up = advantage || leans.has("advantage");
+  // Nothing gives an attack on them advantage while they can act (1.364): Elusive.
+  const elusive = theirs.has("attacks-against-no-advantage") && !theirs.has("cannot-act");
+  const up = !elusive && (advantage || leans.has("advantage"));
   const down = disadvantage || leans.has("disadvantage");
   if (up === down) return "normal";
   return up ? "advantage" : "disadvantage";

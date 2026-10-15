@@ -587,7 +587,11 @@ export function rulesetActiveConditions(
     ...(source.light ? { light: { ...source.light } } : {}),
     ...(source.alerts ? { alerts: source.alerts } : {}),
   }));
-  return [...conditions, ...levels, ...items, ...zoned];
+  const all = [...conditions, ...levels, ...items, ...zoned];
+  // Held off while its holder has something it names (1.364), a condition or what one does.
+  if (!all.some((entry) => entry.notWhile)) return all;
+  const has = new Set<string>([...active, ...all.flatMap((entry) => entry.effects)]);
+  return all.filter((entry) => !entry.notWhile?.some((one) => has.has(one)));
 }
 
 /** The standing zones whose cells this combatant is in now, or that hold them off a board (1.179). */
@@ -878,6 +882,8 @@ function activeLevels(
         ...(level.hangsOn ? { hangsOn: level.hangsOn } : {}),
         ...(level.rerollsFace ? { rerollsFace: level.rerollsFace } : {}),
         ...(level.fellsGrant ? { fellsGrant: level.fellsGrant } : {}),
+        ...(level.notWhile ? { notWhile: level.notWhile } : {}),
+        ...(level.whenSeen ? { whenSeen: true as const } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
@@ -1045,11 +1051,15 @@ export function rulesetSaveMode(
   against?: RulesetSaveAgainst,
   /** What the save itself says about who rolls it twice (1.185): Sunbeam, against an undead. */
   lean?: "advantage" | "disadvantage",
+  /** Whether its holder can see what the save is against (1.364); a save with no source is seen. */
+  seen = true,
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
   let advantage = lean === "advantage";
   let disadvantage = lean === "disadvantage";
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
+    // Only against what its holder can see (1.364): Danger Sense.
+    if (entry.whenSeen && !seen) continue;
     // A change to saves that rolls twice counts like the effect, narrowed by its own saves first.
     for (const modifier of entry.modifiers ?? []) {
       const saves = modifier.saves ?? entry.saves;

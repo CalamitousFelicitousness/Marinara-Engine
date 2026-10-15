@@ -2179,6 +2179,18 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** Held off while its holder has something (notWhile), save effects only against what is seen
+ *  (whenSeen), and attacks against its holder never with advantage (1.364): Danger Sense, Elusive. */
+function carriesUnseenGuard364(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUnseenGuard364(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.notWhile) || record.whenSeen === true) return true;
+  if (Array.isArray(record.effects) && record.effects.includes("attacks-against-no-advantage")) return true;
+  return featureValues(record).some((one) => carriesUnseenGuard364(one, depth + 1));
+}
+
 /** A missile caught and thrown back, and a reaction needing a free slot (1.363): Deflect Missiles. */
 function carriesCaught363(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5443,6 +5455,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Held off while, seen saves, no advantage against, 1.364.
+  if (
+    !declaresApi(364) &&
+    (carriesUnseenGuard364(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUnseenGuard364(document)))
+  ) {
+    return "A ruleset whose conditions or levels are held off by others (notWhile), make saves only against what is seen (whenSeen), or keep advantage off attacks against them (attacks-against-no-advantage) requires schemaVersion 2 and capabilityApi 1.364 or newer";
+  }
   // A missile caught and thrown back, 1.363.
   if (
     !declaresApi(363) &&

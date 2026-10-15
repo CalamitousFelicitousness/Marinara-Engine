@@ -1684,7 +1684,9 @@ function throwSave(
       : 0;
   if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
   const modifier = own + cover;
-  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against, lean);
+  // What it is against is seen, or it has no source to see (1.364): Danger Sense.
+  const seen = !source || source.id === combatant.id || rulesetCanSee(ctx.definition, ctx.state, combatant, source);
+  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against, lean, seen);
   if (rulesetCombatIsPool(ctx.combat)) {
     // The save's number is its pool, and its difficulty the successes it needs, never fewer than one.
     const bonuses = rollBonuses(

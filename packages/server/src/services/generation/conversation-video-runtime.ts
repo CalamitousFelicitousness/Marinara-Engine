@@ -581,12 +581,13 @@ export function startConversationVideoCommand(args: {
       // The clip is saved by now, so it counts as made: failing to add it to the message only logs.
       let messageId: string | null = null;
       try {
-        await attachVideoToMessage(
+        const attached = await attachVideoToMessage(
           createChatsStorage(args.db),
           { messageId: args.messageId, swipeIndex: args.swipeIndex ?? 0 },
           buildChatVideoAttachment(result.video, result.characterName),
         );
-        messageId = args.messageId;
+        // Reported on the message only when the clip landed (the message may have been deleted meanwhile).
+        if (attached) messageId = args.messageId;
       } catch (attachErr) {
         logger.warn(attachErr, "[commands] Saved video %s but could not attach it", result.video.id);
       }

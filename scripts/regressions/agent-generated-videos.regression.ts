@@ -333,6 +333,17 @@ try {
   assert.doesNotMatch(unattachedStream, /video_error/u);
   assert.doesNotMatch(unattachedStream, /"type":"illustration"/u, "no stand-in picture");
 
+  // The reply deleted while its clip is made: the clip still counts, and is reported with no message.
+  beforeVideo = async () => {
+    const latest = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
+    assert.ok(latest);
+    await chats.removeMessage(latest.id);
+  };
+  const deletedStream = await generate(roleplay.id, "Aster turns away.");
+  assert.equal(beforeVideo, null, "the clip reached the video service");
+  assert.match(deletedStream, /"type":"video","data":\{"messageId":null/u, "no message to show the clip on");
+  assert.doesNotMatch(deletedStream, /video_error/u);
+
   // Clips only with no picture: a clip that names the persona is tagged with them, so it shows in their gallery.
   const jamie = await createCharactersStorage(db).createPersona("Jamie", "The player.");
   assert.ok(jamie);

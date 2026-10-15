@@ -13634,12 +13634,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ) => {
                 let attachedTo: string | null = null;
                 try {
-                  await attachVideoToMessage(
+                  const attached = await attachVideoToMessage(
                     chats,
                     { messageId: clipMessageId, swipeIndex },
                     buildChatVideoAttachment(video),
                   );
-                  attachedTo = clipMessageId;
+                  // Reported on the reply only when the clip landed (the reply may have been deleted meanwhile).
+                  if (attached) attachedTo = clipMessageId;
                 } catch (attachErr) {
                   logger.warn(attachErr, "[illustrator] Saved clip %s but could not attach it", video.id);
                 }

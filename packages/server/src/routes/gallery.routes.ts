@@ -53,7 +53,6 @@ import {
   resolveReviewedImagePromptSubmission,
 } from "../services/image/image-prompt-review.js";
 import { buildBackgroundProviderPrompt } from "../services/game/game-asset-generation.js";
-import { runImageGenerationRequest } from "../services/image/image-generation-queue.js";
 import { generateIllustratorImageVariants } from "../services/image/illustrator-image-variants.js";
 import { persistGeneratedImageToEntityGalleries } from "../services/image/generated-image-entity-gallery.js";
 import { deleteChatGalleryImageEverywhere } from "../services/image/chat-gallery-cascade-deletion.js";
@@ -1511,29 +1510,22 @@ export async function galleryRoutes(app: FastifyInstance) {
     }
 
     try {
-      const imageConnectionQueueKey = imageConn.id?.trim() || `${imageServiceHint}:${imageBaseUrl}:${imageModel}`;
       const imageResults = await generateIllustratorImageVariants({
         count: meta.illustratorImagesPerGeneration,
         generate: () =>
-          runImageGenerationRequest({
-            connectionKey: imageConnectionQueueKey,
-            queue: input.queueImageGenerationRequests,
+          generateImage(imageSource, imageBaseUrl, imageConn.apiKey || "", imageServiceHint, {
+            prompt: providerPrompt,
+            negativePrompt: providerNegativePrompt || undefined,
+            model: imageModel,
+            width,
+            height,
+            imageEndpointId: imageConn.imageEndpointId || undefined,
+            comfyWorkflow: imageConn.comfyuiWorkflow || undefined,
+            imageDefaults,
+            quality: resolveConnectionImageQuality(imageConn),
+            referenceImages,
             signal: selfieAbortSignal,
-            task: () =>
-              generateImage(imageSource, imageBaseUrl, imageConn.apiKey || "", imageServiceHint, {
-                prompt: providerPrompt,
-                negativePrompt: providerNegativePrompt || undefined,
-                model: imageModel,
-                width,
-                height,
-                imageEndpointId: imageConn.imageEndpointId || undefined,
-                comfyWorkflow: imageConn.comfyuiWorkflow || undefined,
-                imageDefaults,
-                quality: resolveConnectionImageQuality(imageConn),
-                referenceImages,
-                signal: selfieAbortSignal,
-                fallback: imageFallback,
-              }),
+            fallback: imageFallback,
           }),
         onVariantError: (error, index) =>
           logger.warn(error, "[gallery/selfie] Variant %d failed for chat %s", index + 1, chatId),
@@ -1670,34 +1662,25 @@ export async function galleryRoutes(app: FastifyInstance) {
     let savedFilePath: string | null = null;
     let metadataSaved = false;
     try {
-      const connectionKey =
-        context.imageConnection.id?.trim() ||
-        `${context.imageServiceHint}:${context.imageBaseUrl}:${context.imageModel}`;
-      const generated = await runImageGenerationRequest({
-        connectionKey,
-        queue: true,
-        signal,
-        task: () =>
-          generateImage(
-            context.imageSource,
-            context.imageBaseUrl,
-            context.imageConnection.apiKey || "",
-            context.imageServiceHint,
-            {
-              prompt: compiledPrompt.prompt,
-              negativePrompt: compiledPrompt.negativePrompt || undefined,
-              model: context.imageModel,
-              width: compiledPrompt.width,
-              height: compiledPrompt.height,
-              imageEndpointId: context.imageConnection.imageEndpointId || undefined,
-              comfyWorkflow: context.imageConnection.comfyuiWorkflow || undefined,
-              imageDefaults: context.imageDefaults,
-              quality: resolveConnectionImageQuality(context.imageConnection),
-              signal,
-              fallback: context.imageFallback,
-            },
-          ),
-      });
+      const generated = await generateImage(
+        context.imageSource,
+        context.imageBaseUrl,
+        context.imageConnection.apiKey || "",
+        context.imageServiceHint,
+        {
+          prompt: compiledPrompt.prompt,
+          negativePrompt: compiledPrompt.negativePrompt || undefined,
+          model: context.imageModel,
+          width: compiledPrompt.width,
+          height: compiledPrompt.height,
+          imageEndpointId: context.imageConnection.imageEndpointId || undefined,
+          comfyWorkflow: context.imageConnection.comfyuiWorkflow || undefined,
+          imageDefaults: context.imageDefaults,
+          quality: resolveConnectionImageQuality(context.imageConnection),
+          signal,
+          fallback: context.imageFallback,
+        },
+      );
       const filePath = saveImageToDisk(chatId, generated.base64, generated.ext);
       savedFilePath = filePath;
       const image = await storage.create({

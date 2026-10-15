@@ -39,7 +39,12 @@ import {
   supportsNovelAiCharacterPrompts,
 } from "./character-prompts.js";
 import { isImageLocalUrlsEnabled } from "../../config/runtime-config.js";
-import { runMediaGenerationRequest } from "./image-generation-queue.js";
+import {
+  mediaProviderLaneGapMs,
+  mediaProviderLaneKey,
+  runInMediaProviderLane,
+  runMediaGenerationRequest,
+} from "./image-generation-queue.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -217,28 +222,17 @@ export function imageAdmissionKey(normalizedBaseUrl: string, resolvedSource: str
  * point — game assets, sprites, avatars, storyboards, Mari images — instead of
  * relying on per-caller wiring. Callers that additionally wrap in
  * runImageGenerationRequest for the per-connection FIFO are safe: the nested
- * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard), as
- * does this function's own fallback-connection recursion. Batch/automatic work
+ * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard). Batch/automatic work
  * (admissionMode "background") never occupies the last permit ahead of
  * interactive requests.
+ *
+ * With "Queue media generation requests" on, every call also waits its turn in
+ * the provider lane for this endpoint and API key (#7662), so agents, trackers,
+ * capability packages and routes all share one line per provider account.
+ * Only the primary attempt holds the lane and permit: the fallback connection
+ * queues after both are released, so opposite fallbacks never wait on each other.
  */
 export async function generateImage(
-  source: string,
-  baseUrl: string,
-  apiKey: string,
-  serviceHint: string,
-  request: ImageGenRequest,
-): Promise<ImageGenResult> {
-  return runMediaGenerationRequest({
-    connectionKey: `image:${baseUrl || source}`,
-    queue: false,
-    signal: request.signal,
-    priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
-    task: () => generateImageUncapped(source, baseUrl, apiKey, serviceHint, request),
-  });
-}
-
-async function generateImageUncapped(
   source: string,
   baseUrl: string,
   apiKey: string,
@@ -342,11 +336,22 @@ async function generateImageUncapped(
     // ponytail: image work keys on the endpoint URL while text work keys on the connection
     // id, so the two do not hold each other off on a connection used for both. Unify the
     // key if that overlap ever shows up in practice.
-    const primaryResult = await withConnectionAdmission(
-      imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId),
-      primaryMode,
-      physicalRequest,
-    );
+    // The provider lane comes first and the global permit second, so requests waiting
+    // their turn at one account never hold permits other providers could use.
+    const admissionKey = imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId);
+    const primaryResult = await runInMediaProviderLane({
+      laneKey: mediaProviderLaneKey(admissionKey, apiKey),
+      gapMs: mediaProviderLaneGapMs(resolvedSource),
+      signal: request.signal,
+      task: () =>
+        runMediaGenerationRequest({
+          connectionKey: `image:${baseUrl || source}`,
+          queue: false,
+          signal: request.signal,
+          priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+          task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
+        }),
+    });
     outcome = "completed";
     return flattenedPrompt
       ? { ...primaryResult, effectivePrompt: primaryResult.effectivePrompt ?? flattenedPrompt }
@@ -2628,6 +2633,30 @@ export function buildNovelAiV4CharacterPromptPayload(
   };
 }
 
+export const PROVIDER_BUSY_RETRY_DELAYS_MS = [2_000, 4_000] as const;
+
+/**
+ * NovelAI answers 429 while another generation on the account is still running
+ * ("Concurrent generation is locked"), including ones started outside Marinara.
+ * Wait and retry a couple of times instead of failing the image; the caller
+ * still holds its provider lane, so nothing else in Marinara jumps ahead.
+ */
+export async function retryOnProviderBusy(
+  send: () => Promise<Response>,
+  signal?: AbortSignal,
+  delaysMs: readonly number[] = PROVIDER_BUSY_RETRY_DELAYS_MS,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt += 1) {
+    const resp = await send();
+    if (resp.status !== 429 || attempt >= delaysMs.length || signal?.aborted) return resp;
+    const delayMs = delaysMs[attempt] ?? 0;
+    await resp.body?.cancel().catch(() => undefined);
+    logger.warn("[image] Provider is busy (429); retrying in %dms", delayMs);
+    // Re-checks the signal first: an abort while the body was cancelled must not wait.
+    await sleepWithAbort(delayMs, signal);
+  }
+}
+
 async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   // Only use the native NovelAI API format when hitting the actual NovelAI domain.
   // Proxies (linkapi.ai, etc.) expose OpenAI-compatible chat completions that return
@@ -2744,18 +2773,22 @@ async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGe
   const effectivePrompt = getNovelAiDisplayPrompt(body);
 
   const hasReferences = directorReferenceImages.length > 0;
-  const resp = await imageFetch(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        ...(hasReferences ? {} : { "Content-Type": "application/json" }),
-      },
-      body: hasReferences ? buildNovelAiReferenceFormData(body, directorReferenceImages) : JSON.stringify(body),
-      signal: imageRequestSignal(request),
-    },
-    { allowLocal: request.allowLocalUrls, allowedOrigins: [nativeUrl.origin] },
+  const resp = await retryOnProviderBusy(
+    () =>
+      imageFetch(
+        url,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            ...(hasReferences ? {} : { "Content-Type": "application/json" }),
+          },
+          body: hasReferences ? buildNovelAiReferenceFormData(body, directorReferenceImages) : JSON.stringify(body),
+          signal: imageRequestSignal(request),
+        },
+        { allowLocal: request.allowLocalUrls, allowedOrigins: [nativeUrl.origin] },
+      ),
+    imageRequestSignal(request),
   );
 
   if (!resp.ok) {

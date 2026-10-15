@@ -118,6 +118,11 @@ assert.match(
 );
 assert.match(
   generateRouteSource,
+  /if \(holdForTextRewrite\) streamOutput\.roleplayCommandFilter\?\.push\(chunk\);\s*await streamOutput\.write\(chunk\);\s*if \(roleplayRollEnabled && streamOutput\.roleplayCommandFilter\?\.rollRequested\)/u,
+  "A held tool-round stream must still feed the command filter so a roll request is detected",
+);
+assert.match(
+  generateRouteSource,
   /fullResponse \+= result\.value;[\s\S]{0,200}await streamOutput\.write\(result\.value\);/u,
   "Generator-streamed text-rewrite responses must still capture reasoning duration",
 );

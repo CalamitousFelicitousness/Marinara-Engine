@@ -429,7 +429,7 @@ try {
   const spanRecords = (await memory.status(span.id)).records;
   const spanScene = (index: number) =>
     spanRecords.find((record) => record.kind === "scene" && record.content === summaries[index])!;
-  const replyAs = async (responder: string) => {
+  const replyAs = async (responder: string, continueMessageId?: string) => {
     recallRequests.length = 0;
     recallConversations.length = 0;
     embeddingInputs.length = 0;
@@ -438,6 +438,7 @@ try {
       messages: await chats.listMessages(span.id),
       audienceCharacterIds: [responder],
       budgetTokens: 50000,
+      continueMessageId,
     });
   };
   // Mari's case: the question was the first of three user messages to Pantalone, and Maukie replies.
@@ -467,6 +468,15 @@ try {
   await replyAs("colombina");
   assert.deepEqual(embeddingInputs, [[smallTalk[1]]], "a first reply reads the latest user message");
   assert.doesNotMatch(recallConversations[0] ?? "", /pendant/u, "and the last four messages");
+  // Continuing Maukie's reply reads what it answered, as when it began, not from after the reply itself.
+  const [partialReplyId] = await chats.createMessagesBatch(span.id, [
+    { role: "assistant", characterId: "maukie", content: "Maukie starts to answer." },
+  ]);
+  const continued = await replyAs("maukie", partialReplyId);
+  assert.deepEqual(embeddingInputs, [[cue, ...smallTalk]], "a continuation reads the same user messages");
+  assert.match(recallConversations[0]!, /pendant on its chain/u, "and the Decision model reads the question");
+  assert.deepEqual(continued.receipt.recalledSceneIds, [spanScene(LOCKET_SCENE).sceneId]);
+  await chats.removeMessage(partialReplyId!);
   // What Maukie may not read never joins his query: a whisper to Pantalone, a message hidden from Maukie.
   await chats.createMessagesBatch(span.id, [
     {
@@ -498,6 +508,25 @@ try {
   ]);
   await replyAs("maukie");
   assert.deepEqual(embeddingInputs, [notes.slice(-6)], "the six latest user messages with text");
+  // An embedder that rejects one long earlier message fails the whole request: the latest message is then
+  // embedded alone, so the question still finds the locket by meaning.
+  const question = "Do you remember the pendant on its chain?";
+  await new Promise((resolve) => setTimeout(resolve, 20)); // after the notes' timestamps
+  await chats.createMessagesBatch(span.id, [
+    { role: "assistant", characterId: "maukie", content: "Maukie listens." },
+    { role: "user", content: `LONG_TURN ${"The storm rolls over the hills. ".repeat(60)}` },
+    { role: "assistant", characterId: "pantalone", content: "Pantalone shrugs." },
+    { role: "user", content: question },
+  ]);
+  await memory.updateSettings(span.id, { decisionEnabled: false });
+  rejectedEmbedding = /LONG_TURN/u;
+  requests = embeddingRequests;
+  const rejectedTurn = await replyAs("maukie");
+  rejectedEmbedding = null;
+  await memory.updateSettings(span.id, { decisionEnabled: true });
+  assert.equal(embeddingRequests - requests, 2, "the span's messages, then the latest alone");
+  assert.deepEqual(embeddingInputs, [[question]]);
+  assert.deepEqual(rejectedTurn.receipt.recalledSceneIds, [spanScene(LOCKET_SCENE).sceneId]);
   vector = conceptVector;
 
   // After-reply vector upkeep and Reindex use only records Reindex accepts, and a failed Reindex keeps old vectors.

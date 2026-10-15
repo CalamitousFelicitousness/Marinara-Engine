@@ -8514,6 +8514,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 .slice(-4)
                 .map((message) => message.content)
                 .join("\n"),
+              continueMessageId: input.continueMessageId ?? undefined,
               signal: generationSignal,
               debugMode: requestDebug,
               blocking: true,

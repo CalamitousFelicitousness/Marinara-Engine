@@ -70,6 +70,7 @@ export async function prepareAdvancedMemoryContext(
     tools?: LLMToolDefinition[];
     query?: string;
     readOnly?: boolean;
+    continueMessageId?: string;
     /** Oldest swipe first; legacy replies acquire a snapshot on their next generation. */
     cachedSnapshots?: readonly unknown[];
     toProviderMessages: (messages: GenerationPromptMessage[]) => ChatMessage[];
@@ -137,6 +138,7 @@ export async function prepareAdvancedMemoryContext(
       budgetTokens,
       query: input.query,
       readOnly: input.readOnly,
+      continueMessageId: input.continueMessageId,
       decisionDeadline,
       signal: input.signal,
       debugMode: input.debugMode,

@@ -178,6 +178,8 @@ export interface PrepareAdvancedMemoryInput extends AdvancedMemoryOperationOptio
   budgetTokens: number;
   query?: string;
   readOnly?: boolean;
+  /** The reply a continuation extends, last in `messages`; recall reads what it answered, as when it began. */
+  continueMessageId?: string;
   /**
    * When Decision recall must be done, as a `Date.now()` time. Preparing again for the same reply passes the
    * first attempt's, so retries share the reply's limit instead of each getting a new one.
@@ -5069,9 +5071,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     // The caller's generic group query may contain a hidden speaker; construct the actual query from this audience's source view.
     // The responders answer what the user said since one of them last spoke, in a group also to another character,
     // as when Maukie replies after the user talked with Pantalone (#7699). A first reply, or one with no user
-    // message since, reads the latest user message.
+    // message since, reads the latest user message. A continuation reads past the reply it extends.
     const responderIds = new Set(audience.length ? audience : ctx.characterIds);
-    let spanStart = visible.length;
+    let spanStart =
+      visible.length - (input.continueMessageId && visible.at(-1)?.id === input.continueMessageId ? 1 : 0);
     while (
       spanStart > 0 &&
       (visible[spanStart - 1]!.role === "user" || !responderIds.has(visible[spanStart - 1]!.characterId ?? ""))
@@ -5139,13 +5142,18 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         ) {
           const timeoutMs = 1500;
           const timeoutSignal = AbortSignal.timeout(timeoutMs);
-          queryVectors = await withLlmRequestTimeout(timeoutMs, () =>
-            embedMemoryRecallTexts(vectorQueries, {
+          const embed = (texts: string[]) =>
+            embedMemoryRecallTexts(texts, {
               ...(embeddingSource ? { embeddingSource } : {}),
               inputType: "query",
               signal: input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal,
-            }),
-          );
+            });
+          // One text the embedder rejects fails the request, as llama-server does with one over its batch size;
+          // the latest message alone still gets its vector.
+          queryVectors = await withLlmRequestTimeout(timeoutMs, async () => {
+            const vectors = await embed(vectorQueries);
+            return vectors.length || vectorQueries.length === 1 ? vectors : embed(vectorQueries.slice(-1));
+          });
         }
       } catch (error) {
         abortIfNeeded(input.signal);
@@ -5180,7 +5188,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       bestOverQueries(cueQueries.map((words) => scoreRecallTerms(words, documents, cueNames)));
     const cueScores = cueScoresFor(candidateWords);
     const compared = candidates.flatMap((record, index) =>
-      queryVectors.length === vectorQueries.length &&
+      queryVectors.length > 0 &&
       candidateTexts[index] === record.content &&
       record.embedding?.length === queryVectors[0]!.length &&
       record.embeddingSpaceId === vectorSpace

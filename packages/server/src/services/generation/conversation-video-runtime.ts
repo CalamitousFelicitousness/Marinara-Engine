@@ -578,17 +578,24 @@ export function startConversationVideoCommand(args: {
         serviceTier: args.serviceTier,
       });
       if (!("video" in result)) return;
-      await attachVideoToMessage(
-        createChatsStorage(args.db),
-        { messageId: args.messageId, swipeIndex: args.swipeIndex ?? 0 },
-        buildChatVideoAttachment(result.video, result.characterName),
-      );
+      // The clip is saved by now, so it counts as made: failing to add it to the message only logs.
+      let messageId: string | null = null;
+      try {
+        await attachVideoToMessage(
+          createChatsStorage(args.db),
+          { messageId: args.messageId, swipeIndex: args.swipeIndex ?? 0 },
+          buildChatVideoAttachment(result.video, result.characterName),
+        );
+        messageId = args.messageId;
+      } catch (attachErr) {
+        logger.warn(attachErr, "[commands] Saved video %s but could not attach it", result.video.id);
+      }
       args.sendEvent({
         type: "video",
         data: {
           characterId,
           characterName: result.characterName,
-          messageId: args.messageId,
+          messageId,
           videoUrl: result.video.url,
           videoId: result.video.id,
         },

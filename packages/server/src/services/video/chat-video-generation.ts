@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import {
   VIDEO_GENERATION_SETTINGS_KEY,
   normalizeVideoFirstFrame,
+  ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME,
   normalizeVideoGenerationUserSettings,
   type GeneratedSceneVideo,
   type VideoReferenceImage,
@@ -208,8 +209,12 @@ export async function animateGalleryImage(
 export function roleplayVideoFirstFrame(
   chatMeta: Record<string, unknown>,
   hasImageConnection: boolean,
+  /** A picture of this moment already exists (Illustrator just drew it). */
+  pictureMade = false,
 ): "picture" | "avatar" | "avatar_or_none" | "none" {
-  const mode = normalizeVideoFirstFrame(chatMeta.sceneVideoFirstFrame);
+  // With no First frame chosen, a clip uses a picture that already exists and never draws one for itself.
+  if (pictureMade && chatMeta.sceneVideoFirstFrame == null) return "picture";
+  const mode = normalizeVideoFirstFrame(chatMeta.sceneVideoFirstFrame, ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME);
   // Send Avatar References for videos: a clip with no picture of its own starts from the avatar when there is one.
   if (mode === "prompt_only") return chatMeta.illustratorVideoUseAvatarReferences === true ? "avatar_or_none" : "none";
   return mode === "picture" || (mode === "picture_or_avatar" && hasImageConnection) ? "picture" : "avatar";

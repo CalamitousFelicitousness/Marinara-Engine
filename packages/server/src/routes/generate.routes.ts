@@ -13625,6 +13625,34 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const fallbackIllustratorAgent = resolvedAgents.find((agent) => agent.type === "illustrator");
               const imagePromptAgent =
                 resultAgent ?? (result.agentType === "illustrator" ? fallbackIllustratorAgent : undefined);
+              // A saved clip counts as made: failing to add it to the reply only logs, so the clip stays in the
+              // Gallery and no error or stand-in picture is shown for it.
+              const attachClipToReply = async (
+                video: Parameters<typeof buildChatVideoAttachment>[0],
+                clipMessageId: string,
+                swipeIndex: number,
+              ) => {
+                let attachedTo: string | null = null;
+                try {
+                  await attachVideoToMessage(
+                    chats,
+                    { messageId: clipMessageId, swipeIndex },
+                    buildChatVideoAttachment(video),
+                  );
+                  attachedTo = clipMessageId;
+                } catch (attachErr) {
+                  logger.warn(attachErr, "[illustrator] Saved clip %s but could not attach it", video.id);
+                }
+                sendSseEvent(reply, {
+                  type: "video",
+                  data: {
+                    messageId: attachedTo,
+                    videoUrl: video.url,
+                    videoId: video.id,
+                    characterName: imagePromptAgent?.name ?? "Illustrator",
+                  },
+                });
+              };
               const usesChatIllustratorSettings =
                 resultAgent?.type === "illustrator" || (!resultAgent && result.agentType === "illustrator");
               const illustratorBackgroundAgent =
@@ -13814,20 +13842,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           queue: true,
                           debugMode: input.debugMode,
                         });
-                        await attachVideoToMessage(
-                          chats,
-                          { messageId, swipeIndex: targetSwipeIndex },
-                          buildChatVideoAttachment(video),
-                        );
-                        sendSseEvent(reply, {
-                          type: "video",
-                          data: {
-                            messageId,
-                            videoUrl: video.url,
-                            videoId: video.id,
-                            characterName: imagePromptAgent?.name ?? "Illustrator",
-                          },
-                        });
+                        await attachClipToReply(video, messageId, targetSwipeIndex);
                       } catch (videoErr) {
                         logger.warn(videoErr, "[illustrator] Clip failed");
                         sendSseEvent(reply, {
@@ -13848,6 +13863,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   // Keep earlier images alive when automatic and command requests share a turn.
                   if (pendingIllustration) pendingRoleplayMedia.push(pendingIllustration);
                   pendingIllustration = (async () => {
+                    // Clips only holds back saved pictures for the clip; a later failure still shows them.
+                    const pictureShows: Array<() => Promise<void>> = [];
                     try {
                       const imgConnFull = resolvedImageConnection;
                       const { generateImage, saveImageToDisk } = await import("../services/image/image-generation.js");
@@ -14099,7 +14116,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       const clipsOnly =
                         chatMode === "roleplay" &&
                         normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode) === "clips_only";
-                      const pictureShows: Array<() => Promise<void>> = [];
                       let firstGalleryImageId: string | null = null;
                       for (const [variantIndex, imageResult] of imageResults.entries()) {
                         const renderedPrompt = imageResult.effectivePrompt ?? fullPrompt;
@@ -14207,12 +14223,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       const wantsVideo =
                         clipsOnly || (videoMode === "pictures_and_clips" && illData.generateVideo === true);
                       // Every clip starts from the chat's First frame.
-                      const videoFirstFrame = roleplayVideoFirstFrame(chatMeta, true);
+                      const videoFirstFrame = roleplayVideoFirstFrame(chatMeta, true, true);
                       const videoPrompt =
                         (typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "") ||
                         "Subtle, natural motion brings the moment to life while the camera slowly pushes in.";
                       const showPicturesInstead = async () => {
-                        for (const show of pictureShows) await show();
+                        for (const show of pictureShows.splice(0)) await show();
                       };
                       if (wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay") {
                         try {
@@ -14244,25 +14260,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                     videoFirstFrame === "none"
                                       ? null
                                       : (await resolveClipCast(illCharacters, imagePrompt, true)).avatar,
-                                  characterIds: referenceResolution.characterIds,
+                                  characterIds: referenceResolution.personaId
+                                    ? [...referenceResolution.characterIds, referenceResolution.personaId]
+                                    : referenceResolution.characterIds,
                                   appearanceBlock,
                                   queue: true,
                                   debugMode: input.debugMode,
                                 });
-                          await attachVideoToMessage(
-                            chats,
-                            { messageId, swipeIndex: targetSwipeIndex },
-                            buildChatVideoAttachment(video),
-                          );
-                          sendSseEvent(reply, {
-                            type: "video",
-                            data: {
-                              messageId,
-                              videoUrl: video.url,
-                              videoId: video.id,
-                              characterName: imagePromptAgent?.name ?? "Illustrator",
-                            },
-                          });
+                          await attachClipToReply(video, messageId, targetSwipeIndex);
                         } catch (videoErr) {
                           logger.warn(videoErr, "[illustrator] Generated video failed");
                           sendSseEvent(reply, {
@@ -14277,6 +14282,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       }
                     } catch (illErr) {
                       logger.error(illErr, "[illustrator] Image generation failed");
+                      for (const show of pictureShows.splice(0)) await show().catch(() => undefined);
                       sendSseEvent(reply, {
                         type: "agent_error",
                         data: {

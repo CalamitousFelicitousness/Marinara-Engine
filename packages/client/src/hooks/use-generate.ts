@@ -2895,8 +2895,13 @@ export function useGenerate() {
             }
 
             case "video": {
-              const videoData = event.data as { characterName: string; messageId: string };
-              toast(translate("generation.video.sent", { name: videoData.characterName }));
+              const videoData = event.data as { characterName: string; messageId: string | null };
+              // A clip that was saved but couldn't join its message is still made; it waits in the Gallery.
+              toast(
+                videoData.messageId
+                  ? translate("generation.video.sent", { name: videoData.characterName })
+                  : translate("ui.chat.chatarea.videoSavedToGalleryOnly"),
+              );
               void qc.invalidateQueries({ queryKey: ["gallery", "scene-videos", params.chatId] });
               // A clip usually lands after "done"; one that beats the streamed reply waits for the final refresh.
               if (sawDoneEvent || (!streamingEnabled && !isGameGeneration)) {

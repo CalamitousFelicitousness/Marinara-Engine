@@ -125,6 +125,7 @@ import {
   getRelevantCardVariables,
   hasOnboardingContent,
   readCardOnboarding,
+  ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME,
   ILLUSTRATOR_VIDEO_MODES,
   normalizeIllustratorVideoMode,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
@@ -9121,7 +9122,10 @@ export function ChatSettingsDrawer({
                                 {localizeUi("ui.chat.chatsettingsdrawer.roleplayVideoFirstFrameHelp")}
                               </span>
                               <select
-                                value={normalizeVideoFirstFrame(metadata.sceneVideoFirstFrame)}
+                                value={normalizeVideoFirstFrame(
+                                  metadata.sceneVideoFirstFrame,
+                                  ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME,
+                                )}
                                 onChange={(e) =>
                                   updateMeta.mutate({
                                     id: chat.id,

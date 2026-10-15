@@ -57,6 +57,8 @@ const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), 
 
 let mainReply = "";
 let failVideo = false;
+// Runs once when the next clip reaches the video service (after the reply is saved).
+let beforeVideo: (() => Promise<void>) | null = null;
 let illustratorReply: Record<string, unknown> = {
   shouldGenerate: true,
   prompt: "1girl, lantern, rain",
@@ -81,6 +83,9 @@ const provider = createServer(async (request, response) => {
       return json({ error: "ComfyUI is down" });
     }
     comfyPrompts.push(body);
+    const hook = beforeVideo;
+    beforeVideo = null;
+    if (hook) await hook();
     return json({ prompt_id: "job" });
   }
   if (url.includes("/history/")) {
@@ -274,8 +279,29 @@ try {
       });
   assert.equal((await imagesOn(lastAssistant?.id)).length, 1, "the picture is shown with its clip");
 
-  // Clips only: every picture becomes a clip without the agent asking, and only the clip is shown.
+  // Clips only with no First frame chosen: no picture is drawn; the clip is written from the scene alone.
   await saveChatSettings(roleplay.id, { ...roleplayMeta, illustratorVideoMode: "clips_only" });
+  illustratorReply = {
+    shouldGenerate: true,
+    prompt: "1girl, lantern, rain",
+    videoPrompt: "The lantern swings as Aster opens the door",
+  };
+  await generate(roleplay.id, "Aster reaches the door.");
+  const noPicture = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
+  assert.equal((await videoAttachments(roleplay.id)).filter((item) => item.messageId === noPicture?.id).length, 1);
+  assert.equal((await imagesOn(noPicture?.id)).length, 0);
+  assert.notEqual(
+    JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.image,
+    png.toString("base64"),
+    "no picture is drawn for the clip",
+  );
+
+  // Clips only from a new picture: every picture becomes a clip without the agent asking, and only the clip is shown.
+  await saveChatSettings(roleplay.id, {
+    ...roleplayMeta,
+    illustratorVideoMode: "clips_only",
+    sceneVideoFirstFrame: "picture",
+  });
   illustratorReply = { shouldGenerate: true, prompt: "1girl, lantern, rain" };
   await generate(roleplay.id, "Aster opens the door.");
   assert.match(agentRequests.at(-1) ?? "", /shows short video clips instead of pictures/u);
@@ -291,6 +317,21 @@ try {
   const fellBack = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
   assert.equal((await videoAttachments(roleplay.id)).filter((item) => item.messageId === fellBack?.id).length, 0);
   assert.equal((await imagesOn(fellBack?.id)).length, 1, "a failed clip leaves its picture in the reply");
+
+  // Clips only, clip saved but not attached (the reply's stored data breaks meanwhile): the clip still counts as
+  // made, so there is no error and no stand-in picture.
+  const { messageSwipes } = await import("../../packages/server/src/db/schema/index.js");
+  const { eq } = await import("../../packages/server/src/db/file-query.js");
+  beforeVideo = async () => {
+    const latest = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
+    assert.ok(latest);
+    await db.update(messageSwipes).set({ extra: "{not json" }).where(eq(messageSwipes.messageId, latest.id));
+  };
+  const unattachedStream = await generate(roleplay.id, "Aster looks back.");
+  assert.equal(beforeVideo, null, "the clip reached the video service");
+  assert.match(unattachedStream, /"type":"video"/u, "the saved clip is reported as made");
+  assert.doesNotMatch(unattachedStream, /video_error/u);
+  assert.doesNotMatch(unattachedStream, /"type":"illustration"/u, "no stand-in picture");
 
   // Clips only with no picture: a clip that names the persona is tagged with them, so it shows in their gallery.
   const jamie = await createCharactersStorage(db).createPersona("Jamie", "The player.");
@@ -314,6 +355,24 @@ try {
   const [personaClip] = await createGameSceneVideosStorage(db).listByChatId(withPersona.id);
   assert.ok(personaClip, "the clip is saved");
   assert.deepEqual(JSON.parse(String(personaClip.characterIds)).sort(), [aster.id, jamie.id].sort());
+  // Pictures and clips, starting from no picture: the clip that follows the picture is tagged with the persona too.
+  await saveChatSettings(withPersona.id, {
+    ...roleplayMeta,
+    illustratorVideoMode: "pictures_and_clips",
+    sceneVideoFirstFrame: "prompt_only",
+  });
+  illustratorReply = {
+    shouldGenerate: true,
+    prompt: "Aster hands Jamie a lantern",
+    characters: ["Aster", "Jamie"],
+    generateVideo: true,
+    videoPrompt: "The lantern swings between them",
+  };
+  await generate(withPersona.id, "Jamie takes the lantern.");
+  const afterPicture = await createGameSceneVideosStorage(db).listByChatId(withPersona.id);
+  assert.equal(afterPicture.length, 2, "a second clip is saved");
+  const pictureClip = afterPicture.find((video) => video.id !== personaClip.id);
+  assert.deepEqual(JSON.parse(String(pictureClip?.characterIds)).sort(), [aster.id, jamie.id].sort());
 
   // ── Conversation [video] ──
   const convo = await chats.create({

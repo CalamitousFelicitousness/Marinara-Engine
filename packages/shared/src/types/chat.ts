@@ -55,9 +55,18 @@ export interface KnowledgeAgentSourceSettings {
 export const VIDEO_FIRST_FRAMES = ["picture_or_avatar", "picture", "avatar", "prompt_only"] as const;
 export type VideoFirstFrame = (typeof VIDEO_FIRST_FRAMES)[number];
 
-export function normalizeVideoFirstFrame(value: unknown): VideoFirstFrame {
-  return VIDEO_FIRST_FRAMES.includes(value as VideoFirstFrame) ? (value as VideoFirstFrame) : "picture_or_avatar";
+export function normalizeVideoFirstFrame(
+  value: unknown,
+  fallback: VideoFirstFrame = "picture_or_avatar",
+): VideoFirstFrame {
+  return VIDEO_FIRST_FRAMES.includes(value as VideoFirstFrame) ? (value as VideoFirstFrame) : fallback;
 }
+
+/**
+ * A Roleplay clip with no First frame chosen never draws a picture for itself: it animates a picture Illustrator
+ * just made, or else is written from the recent story alone (see roleplayVideoFirstFrame).
+ */
+export const ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME: VideoFirstFrame = "prompt_only";
 
 /** What a Roleplay Illustrator makes. Clips only draws a picture solely as a clip's first frame. */
 export const ILLUSTRATOR_VIDEO_MODES = ["pictures", "pictures_and_clips", "clips_only"] as const;

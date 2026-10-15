@@ -14228,7 +14228,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         (typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "") ||
                         "Subtle, natural motion brings the moment to life while the camera slowly pushes in.";
                       const showPicturesInstead = async () => {
-                        for (const show of pictureShows.splice(0)) await show();
+                        // One picture that can't be added doesn't hold back the others.
+                        for (const show of pictureShows.splice(0)) {
+                          await show().catch((err) => logger.warn(err, "[illustrator] Could not show a picture"));
+                        }
                       };
                       if (wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay") {
                         try {

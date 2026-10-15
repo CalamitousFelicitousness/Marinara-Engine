@@ -12,8 +12,17 @@ export async function startRoleplayVideoHarness(name: string) {
   const fixtureDir = mkdtempSync(join(tmpdir(), `marinara-${name}-`));
   // Undone in reverse by close(), or right away when setup itself fails, so a failed setup leaks nothing.
   const teardown: Array<() => unknown> = [() => rmSync(fixtureDir, { recursive: true, force: true })];
+  // Every step runs even if an earlier one fails; the first failure is reported afterwards.
   const runTeardown = async () => {
-    for (const step of teardown.splice(0).reverse()) await step();
+    const failures: unknown[] = [];
+    for (const step of teardown.splice(0).reverse()) {
+      try {
+        await step();
+      } catch (err) {
+        failures.push(err);
+      }
+    }
+    if (failures.length) throw failures[0];
   };
   try {
     process.env.DATA_DIR = fixtureDir;

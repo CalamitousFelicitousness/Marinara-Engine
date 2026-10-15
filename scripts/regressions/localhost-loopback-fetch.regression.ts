@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { promises as dns } from "node:dns";
+import dnsModule, { promises as dns } from "node:dns";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { safeFetch } from "../../packages/server/src/utils/security.js";
@@ -20,9 +20,21 @@ async function listen(host: string): Promise<Server | null> {
   }
 }
 
+// Both lookup forms: the URL guard uses the promise API, while a plain undici dispatcher connects
+// through the callback API.
 const originalLookup = dns.lookup;
+const originalCallbackLookup = dnsModule.lookup;
 (dns as { lookup: unknown }).lookup = async (hostname: string, options: unknown) =>
   hostname === "localhost" ? [{ address: "::1", family: 6 }] : originalLookup(hostname, options as never);
+(dnsModule as { lookup: unknown }).lookup = (
+  hostname: string,
+  options: { all?: boolean },
+  callback: (...args: unknown[]) => void,
+) => {
+  if (hostname !== "localhost") return originalCallbackLookup(hostname, options as never, callback as never);
+  if (options?.all) callback(null, [{ address: "::1", family: 6 }]);
+  else callback(null, "::1", 6);
+};
 
 const policies = {
   "local URLs off": { allowLoopback: true, allowedProtocols: ["http:"] },
@@ -48,6 +60,7 @@ try {
   }
 } finally {
   (dns as { lookup: unknown }).lookup = originalLookup;
+  (dnsModule as { lookup: unknown }).lookup = originalCallbackLookup;
 }
 
 console.log("localhost loopback fetch regression passed");

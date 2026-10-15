@@ -109,6 +109,38 @@ async function findMissingUsedKeys(keys) {
   return missing;
 }
 
+// Every searchable settings control names its label and description in English, and the keys must resolve to
+// that same text, so the search registry cannot drift from what the Settings panel shows.
+async function findRegistryKeyProblems(messages) {
+  const source = await readFile(join(ROOT, "packages", "client", "src", "lib", "settings-registry.ts"), "utf8");
+  const controls = source.slice(source.indexOf("export const SETTINGS_SEARCHABLE_CONTROLS"));
+  // Prettier leaves a string single-quoted when it contains double quotes.
+  const string = String.raw`("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`;
+  const parse = (literal) =>
+    literal.startsWith("'")
+      ? JSON.parse(`"${literal.slice(1, -1).replace(/\\'/gu, "'").replace(/"/gu, '\\"')}"`)
+      : JSON.parse(literal);
+  const entry = new RegExp(
+    String.raw`\n    id: ([^\n]+),\n    sectionId: [^\n]+,\n    labelKey: ${string},\n    label:\s*${string},\n    description:\s*${string},\n    descriptionKey: ${string},`,
+    "gu",
+  );
+  const problems = [];
+  let found = 0;
+  for (const [, id, labelKey, label, description, descriptionKey] of controls.matchAll(entry)) {
+    found += 1;
+    for (const [field, key, english] of [
+      ["labelKey", parse(labelKey), parse(label)],
+      ["descriptionKey", parse(descriptionKey), parse(description)],
+    ]) {
+      if (messages[key] === undefined) problems.push(`${id}: ${field} ${key} is not in en.json`);
+      else if (messages[key] !== english) problems.push(`${id}: ${field} ${key} no longer matches the registry English`);
+    }
+  }
+  const total = [...controls.matchAll(/\n    id: /gu)].length;
+  if (found !== total) problems.push(`${total - found} settings-registry control(s) lack labelKey/descriptionKey`);
+  return problems;
+}
+
 async function main() {
   // Community packs and their coverage/token validator live on docs-i18n/ui.
   const canonical = await readLocale(`${DEFAULT_LOCALE}.json`);
@@ -121,6 +153,10 @@ async function main() {
   const missing = await findMissingUsedKeys(canonicalKeys);
   if (missing.length > 0) {
     throw new Error(`keys used in the client are missing from ${canonical.filename}:\n${missing.join("\n")}`);
+  }
+  const registryProblems = await findRegistryKeyProblems(canonical.messages);
+  if (registryProblems.length > 0) {
+    throw new Error(`settings-registry.ts keys are out of sync with ${canonical.filename}:\n${registryProblems.join("\n")}`);
   }
   console.info(`[localization] en: ${canonicalKeys.length} canonical keys`);
 }

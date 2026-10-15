@@ -7552,10 +7552,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
     }
-    if (use.kind === "utility" && !use.teleport && !use.clears && (!use.zone || !use.area)) {
+    if (use.kind === "utility" && !use.teleport && !use.clears && !use.calls && (!use.zone || !use.area)) {
       issue(
         "kind",
-        "A utility use leaves an area standing, clears growth or teleports, so it has an area and a zone, clears, or a teleport",
+        "A utility use leaves an area standing, clears growth, teleports or calls creatures, so it has an area and a zone, clears, a teleport or calls",
       );
     }
     // A scroll's or a wand's beams and darts (Capability API 1.308), as the spell's own (1.305).

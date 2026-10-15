@@ -21,13 +21,16 @@ import {
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetSheetBuildSchema,
+  rulesetItemUseSchema,
   supportedCapabilityApi,
   type RulesetCatalogEntriesById,
+  type RulesetCatalogItem,
   type RulesetCatalogEntry,
   type RulesetCombatChoice,
   type RulesetCombatEvent,
   type RulesetDefinition,
   type RulesetEncounterState,
+  type RulesetSheetItem,
 } from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-catalog-calls-"));
@@ -310,6 +313,73 @@ try {
     assert.equal(who(clubbed.state, "post").defeated, true);
     assert.ok(!who(clubbed.state, "post").dying, "never dying");
     assert.equal(of(clubbed.events, "defeated").length, 1);
+  }
+
+  // ── An item's use that calls, a utility use with nothing else: a Figurine of Wondrous Power ──
+  {
+    const use = {
+      kind: "utility",
+      targets: "self",
+      budget: "action",
+      calls: { creature: "creatures/dire-wolf", count: { flat: 1 }, initiative: "after", rounds: 600 },
+    };
+    const checked = rulesetItemUseSchema.safeParse(use);
+    assert.ok(checked.success, checked.success ? "" : JSON.stringify(checked.error.issues));
+    const withItems = parsed(
+      document([], (doc) => {
+        doc.items = { categories: [{ id: "gear", label: "Gear" }], slots: [{ id: "hands", label: "Hands", count: 2 }] };
+        doc.catalogs.push({
+          id: "magic_items",
+          label: "Magic items",
+          holds: "items",
+          entries: [{ id: "figurine", label: "Ebony Fly", item: { category: "gear", use } }],
+        });
+      }),
+    );
+    const figurine: RulesetSheetItem = {
+      name: "Ebony Fly",
+      quantity: 1,
+      worn: true,
+      item: { category: "gear", use } as unknown as RulesetCatalogItem,
+    };
+    const state = createRulesetEncounter({
+      definition: withItems,
+      seed: 1,
+      roller: roll,
+      bestiary: { creatures: withItems.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries! },
+      combatants: [
+        {
+          id: "druid",
+          name: "Druid",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { str: 10, dex: 12, con: 10, int: 10, wis: 18, cha: 10 },
+            fields: { level: 5, ac: 12, speed: 30, hp_max: 40 },
+          }),
+          live: {},
+          items: [figurine],
+        },
+        {
+          id: "brute",
+          name: "Brute",
+          side: "enemy",
+          block: { health: 10, defense: 10, initiativeModifier: 0, speed: 30, actions: [] },
+        },
+      ],
+    });
+    state.order = ["druid", "brute"];
+    state.turn = 0;
+    const option = rulesetCombatOptions(withItems, state, "druid").find((one) => one.label.includes("Ebony Fly"));
+    assert.ok(
+      option,
+      rulesetCombatOptions(withItems, state, "druid")
+        .map((one) => one.label)
+        .join(", "),
+    );
+    const taken = step(withItems, state, { actorId: "druid", optionId: option.id, targetIds: [] });
+    const [called] = of(taken.events, "called");
+    assert.equal(called?.ids.length, 1);
+    assert.deepEqual(who(taken.state, called!.ids[0]!).creature, { catalogId: "creatures", entryId: "dire-wolf" });
   }
 
   // ── Refused shapes ──

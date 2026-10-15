@@ -8603,6 +8603,14 @@ const combatModifierSchema = z
      *  shield and without armor); a creature without a sheet reads a `const` or an `abilityMod` off
      *  its block's abilities, and nothing else. */
     atLeast: z.union([z.number().int().min(0).max(1000), rulesetValueRefSchema]).optional(),
+    /** A value read off the holder's sheet added to damage dealt or taken, beside any dice and taken
+     *  away with them under `minus` (Capability API 1.360): Deflect Missiles' 1d10 + Dexterity
+     *  modifier + monk level. A creature without a sheet reads a `const` or an `abilityMod` off its
+     *  block. */
+    add: rulesetValueRefSchema.optional(),
+    /** Damage taken from a fall only, and no other (Capability API 1.360): Slow Fall's five times
+     *  the monk's level. A condition whose modifier lessens a fall is spent by it. */
+    falls: z.literal(true).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
@@ -8624,11 +8632,12 @@ const combatModifierSchema = z
       modifier.times === undefined &&
       modifier.diceTimes === undefined &&
       modifier.criticalDice === undefined &&
+      modifier.add === undefined &&
       modifier.mode === undefined
     ) {
       add(
         "to",
-        "A modifier changes its number by a flat amount, by dice, for speed, health-max or damage by times, or for checks and saves by a mode",
+        "A modifier changes its number by a flat amount, by dice, for speed, health-max or damage by times, or for checks and saves by a mode (or damage by a value off the sheet with add)",
       );
     }
     if (modifier.skills !== undefined && modifier.to !== "checks" && modifier.to !== "checks-taken")
@@ -8689,7 +8698,15 @@ const combatModifierSchema = z
     if (modifier.dice !== undefined && !RULESET_ROLLED_MODIFIER_TARGETS.includes(modifier.to)) {
       add("dice", `Dice are rolled, so they change ${RULESET_ROLLED_MODIFIER_TARGETS.join(", ")} and nothing else`);
     }
-    if (modifier.minus && modifier.dice === undefined) add("minus", '"minus" takes dice away, so it needs "dice"');
+    if (modifier.minus && modifier.dice === undefined && modifier.add === undefined)
+      add("minus", '"minus" takes dice away, or a value off the sheet, so it needs "dice" or "add"');
+    if (modifier.add !== undefined && !damage) add("add", '"add" changes damage dealt or taken only');
+    if (modifier.falls) {
+      if (modifier.to !== "damage-taken") add("falls", '"falls" narrows damage taken only');
+      for (const key of ["attacks", "blow", "ability", "fromSource", "times"] as const) {
+        if (modifier[key] !== undefined) add(key, `A fall is no blow, so "falls" goes without "${key}"`);
+      }
+    }
     if (modifier.times !== undefined && modifier.to !== "speed" && modifier.to !== "health-max" && !damage) {
       add("times", '"times" changes speed, the health maximum and damage only');
     }
@@ -15381,6 +15398,7 @@ function effectNameIssues(
       against?: { conditions?: string[]; damage?: string[]; from?: RulesetTargetIs };
       from?: RulesetTargetIs;
       atLeast?: number | RulesetValueRef;
+      add?: RulesetValueRef;
     }>;
   },
   skills: ReadonlySet<string>,
@@ -15404,6 +15422,13 @@ function effectNameIssues(
       const names = rulesetSheetNames(definition.sheet, definition.items);
       for (const found of rulesetValueRefIssues(modifier.atLeast, names, names.derived)) {
         add([...at, "modifiers", index, "atLeast", found.key], found.message);
+      }
+    }
+    // What a modifier adds off the holder's sheet (1.360).
+    if (modifier.add) {
+      const names = rulesetSheetNames(definition.sheet, definition.items);
+      for (const found of rulesetValueRefIssues(modifier.add, names, names.derived)) {
+        add([...at, "modifiers", index, "add", found.key], found.message);
       }
     }
     if (modifier.ability !== undefined && !abilities.has(modifier.ability)) {

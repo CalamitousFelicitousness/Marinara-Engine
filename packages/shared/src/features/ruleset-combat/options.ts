@@ -962,7 +962,7 @@ export function rulesetDefenseAgainst(
   let floor: { value: number; from: (typeof modifiers)[number] } | undefined;
   for (const one of modifiers) {
     if (one.modifier.atLeast === undefined) continue;
-    const value = rulesetDefenseFloor(definition, target, one.modifier.atLeast);
+    const value = rulesetHolderValue(definition, target, one.modifier.atLeast);
     if (value !== undefined && (!floor || value > floor.value)) floor = { value, from: one };
   }
   if (floor && floor.value > defense) {
@@ -987,7 +987,9 @@ export function rulesetDefenseAgainst(
 
 /** A floor under defense (1.353): its number, or what it reads off the holder's sheet; a creature
  *  without one reads a `const` or an `abilityMod` off its block. Undefined where nothing can be read. */
-function rulesetDefenseFloor(
+/** A number, or a value read off its holder's sheet (a creature without one reads a `const` or an
+ *  `abilityMod` off its block): a defense floor (1.353), or what a modifier adds (1.360). */
+export function rulesetHolderValue(
   definition: RulesetDefinition,
   target: RulesetCombatant,
   atLeast: number | RulesetValueRef,
@@ -2187,6 +2189,8 @@ export function rulesetDamageModifiers(
   if (!holder) return [];
   return rulesetConditionModifiers(definition, combat, holder, taken ? "damage-taken" : "damage", state).filter(
     ({ condition, level, item, modifier }) => {
+      // Only a fall's own damage (1.360): Slow Fall.
+      if (modifier.falls) return false;
       if (modifier.attacks && modifier.attacks !== "any" && modifier.attacks !== (weapon ? "weapon" : "spell"))
         return false;
       if (modifier.blow && modifier.blow !== rulesetBlowKind(state, actor, target ?? actor, action)) return false;

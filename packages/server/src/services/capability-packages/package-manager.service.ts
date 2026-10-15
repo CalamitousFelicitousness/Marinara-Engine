@@ -2179,6 +2179,18 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** A damage modifier adding a value off the sheet, or lessening a fall (1.360): Deflect Missiles and
+ *  Slow Fall. */
+function carriesLessenedHarm360(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLessenedHarm360(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if ((record.to === "damage" || record.to === "damage-taken") && (record.add !== undefined || record.falls === true))
+    return true;
+  return featureValues(record).some((one) => carriesLessenedHarm360(one, depth + 1));
+}
+
 /** Temporary points as a foe drops (1.359): a condition's or a level's `fellsGrant`. */
 function carriesFellsGrant359(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5395,6 +5407,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A damage modifier off the sheet, or on a fall, 1.360.
+  if (
+    !declaresApi(360) &&
+    (carriesLessenedHarm360(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLessenedHarm360(document)))
+  ) {
+    return "A ruleset whose damage modifier adds a value off the sheet (add) or lessens a fall (falls) requires schemaVersion 2 and capabilityApi 1.360 or newer";
+  }
   // Temporary points as a foe drops, 1.359.
   if (
     !declaresApi(359) &&

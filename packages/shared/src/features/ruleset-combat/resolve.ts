@@ -147,6 +147,7 @@ import {
   rulesetLegendaryMoveCells,
   rulesetLentMovement,
   rulesetDamageModifiers,
+  rulesetHolderValue,
   rulesetWeaponBlow,
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
@@ -5746,6 +5747,37 @@ function hasFallingAnswer(ctx: RulesetCombatContext): boolean {
   );
 }
 
+/** What the faller's conditions take off a fall's own damage (1.360), each condition that did spent
+ *  by it: Slow Fall's five times the monk's level, put on as the answer to the fall. */
+function lessenFall(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  harm: { rolls: number[]; flat: number; amount: number },
+  damageType: string | undefined,
+): void {
+  const lessening = rulesetConditionModifiers(ctx.definition, ctx.combat, target, "damage-taken", ctx.state).filter(
+    ({ modifier }) =>
+      modifier.falls && (!modifier.damageType || modifier.damageType.toLowerCase() === damageType?.toLowerCase()),
+  );
+  if (lessening.length === 0) return;
+  for (const { modifier } of lessening) {
+    const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+    const rolled = rollAmount(ctx, dice ?? { count: 0, sides: 0, flat: 0 });
+    const sign = modifier.minus ? -1 : 1;
+    const added = modifier.add ? (rulesetHolderValue(ctx.definition, target, modifier.add) ?? 0) : 0;
+    harm.flat += (modifier.flat ?? 0) + sign * (rolled.flat + added);
+    harm.amount += (modifier.flat ?? 0) + sign * (rolled.total + added);
+    harm.rolls.push(...rolled.rolls.map((face) => sign * face));
+  }
+  harm.amount = Math.max(0, harm.amount);
+  const spent = new Set(lessening.flatMap((one) => (one.level === undefined && !one.item ? [one.condition] : [])));
+  spendOneUse(
+    ctx,
+    target,
+    target.tracked.filter((entry) => spent.has(entry.condition)),
+  );
+}
+
 function landFall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
   ctx.events.push({ type: "fell", targetId: target.id, levels });
   if (rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.fallsSafely)) return;
@@ -5763,6 +5795,7 @@ function landFall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: Ru
           const rolls = rollRulesetDice(ctx.roll, count, falling.dice.sides);
           return { rolls, flat: 0, amount: sumOf(rolls) };
         })();
+    lessenFall(ctx, target, harm, falling.type);
     const dealt = applyDamage(ctx, target, {
       sourceId: actor.id,
       label: "fall",
@@ -9757,10 +9790,8 @@ function resolveActionBody(
     const takes = style?.takes ? { from: target.initiative, taken: 0 } : null;
     // A damage-only save is tested once for this holder and blow, including clauses and riders (1.129).
     const damageSaves = new Set<RulesetTrackedCondition>();
-    const modifiers = [
-      ...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target),
-      ...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target, true),
-    ];
+    const takenModifiers = rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target, true);
+    const modifiers = [...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target), ...takenModifiers];
     const parts: RulesetDamageInput[] = [];
     // What the blow's draining clauses dealt, which its maker gains as temporary points (1.187).
     let drained = 0;
@@ -10034,7 +10065,8 @@ function resolveActionBody(
       }
     }
     if (parts.length) {
-      for (const { modifier } of modifiers) {
+      for (const one of modifiers) {
+        const { modifier } = one;
         // The blow's own dice again, as many more times as it says (1.197), its flat part left be.
         const own = action.damage;
         // On a critical only, more of the blow's own dice, not doubled (1.247): Brutal Critical.
@@ -10047,13 +10079,17 @@ function resolveActionBody(
             : modifier.dice
               ? parseRulesetCombatDice(modifier.dice)
               : null;
-        if (!dice && modifier.flat === undefined) continue;
+        if (!dice && modifier.flat === undefined && modifier.add === undefined) continue;
         const amount = dice ?? { count: 0, sides: 0, flat: 0 };
         const rolled = rollAmount(ctx, amount);
         const bonus = critical && !onCritical ? criticalExtra(ctx, amount) : { rolls: [], flat: 0 };
         const sign = modifier.minus ? -1 : 1;
-        const flat = (modifier.flat ?? 0) + sign * (rolled.flat + bonus.flat);
-        const addition = (modifier.flat ?? 0) + sign * (rolled.total + sumOf(bonus.rolls) + bonus.flat);
+        // A value off its holder's sheet (1.360): Deflect Missiles' Dexterity modifier + monk level.
+        const added = modifier.add
+          ? (rulesetHolderValue(ctx.definition, takenModifiers.includes(one) ? target : actor, modifier.add) ?? 0)
+          : 0;
+        const flat = (modifier.flat ?? 0) + sign * (rolled.flat + bonus.flat + added);
+        const addition = (modifier.flat ?? 0) + sign * (rolled.total + sumOf(bonus.rolls) + bonus.flat + added);
         const damageType = modifier.damageType ?? action.damage?.type;
         const matching = parts.find((part) => part.damageType?.toLowerCase() === damageType?.toLowerCase());
         if (matching) {

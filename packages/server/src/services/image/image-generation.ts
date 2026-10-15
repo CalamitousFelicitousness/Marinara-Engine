@@ -222,45 +222,17 @@ export function imageAdmissionKey(normalizedBaseUrl: string, resolvedSource: str
  * point — game assets, sprites, avatars, storyboards, Mari images — instead of
  * relying on per-caller wiring. Callers that additionally wrap in
  * runImageGenerationRequest for the per-connection FIFO are safe: the nested
- * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard), as
- * does this function's own fallback-connection recursion. Batch/automatic work
+ * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard). Batch/automatic work
  * (admissionMode "background") never occupies the last permit ahead of
  * interactive requests.
  *
  * With "Queue media generation requests" on, every call also waits its turn in
  * the provider lane for this endpoint and API key (#7662), so agents, trackers,
  * capability packages and routes all share one line per provider account.
+ * Only the primary attempt holds the lane and permit: the fallback connection
+ * queues after both are released, so opposite fallbacks never wait on each other.
  */
 export async function generateImage(
-  source: string,
-  baseUrl: string,
-  apiKey: string,
-  serviceHint: string,
-  request: ImageGenRequest,
-): Promise<ImageGenResult> {
-  // The provider lane comes first and the global permit second, so requests waiting
-  // their turn at one account never hold permits other providers could use.
-  const resolvedSource = resolveImageBackend(source, baseUrl, serviceHint, request.model);
-  const laneKey = mediaProviderLaneKey(
-    imageAdmissionKey(normalizeImageUrl(baseUrl), resolvedSource, request.imageEndpointId),
-    apiKey,
-  );
-  return runInMediaProviderLane({
-    laneKey,
-    gapMs: mediaProviderLaneGapMs(resolvedSource),
-    signal: request.signal,
-    task: () =>
-      runMediaGenerationRequest({
-        connectionKey: `image:${baseUrl || source}`,
-        queue: false,
-        signal: request.signal,
-        priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
-        task: () => generateImageUncapped(source, baseUrl, apiKey, serviceHint, request),
-      }),
-  });
-}
-
-async function generateImageUncapped(
   source: string,
   baseUrl: string,
   apiKey: string,
@@ -364,11 +336,22 @@ async function generateImageUncapped(
     // ponytail: image work keys on the endpoint URL while text work keys on the connection
     // id, so the two do not hold each other off on a connection used for both. Unify the
     // key if that overlap ever shows up in practice.
-    const primaryResult = await withConnectionAdmission(
-      imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId),
-      primaryMode,
-      physicalRequest,
-    );
+    // The provider lane comes first and the global permit second, so requests waiting
+    // their turn at one account never hold permits other providers could use.
+    const admissionKey = imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId);
+    const primaryResult = await runInMediaProviderLane({
+      laneKey: mediaProviderLaneKey(admissionKey, apiKey),
+      gapMs: mediaProviderLaneGapMs(resolvedSource),
+      signal: request.signal,
+      task: () =>
+        runMediaGenerationRequest({
+          connectionKey: `image:${baseUrl || source}`,
+          queue: false,
+          signal: request.signal,
+          priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+          task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
+        }),
+    });
     outcome = "completed";
     return flattenedPrompt
       ? { ...primaryResult, effectivePrompt: primaryResult.effectivePrompt ?? flattenedPrompt }

@@ -8,7 +8,8 @@
 // server mirror of the synced `ui` setting, and the real generateImage path against a
 // local fixture provider reached through two different "connections". Also pinned:
 // the gap a lane keeps after each request for providers that need it (NovelAI), and the
-// retry when a provider still answers 429 because another generation is running.
+// retry when a provider still answers 429 because another generation is running, and
+// that a fallback to another account queues only after the primary lane is released.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 
@@ -249,12 +250,17 @@ idle();
 let inFlight = 0;
 let providerPeak = 0;
 const server = createServer(async (request, response) => {
-  for await (const _chunk of request) void _chunk;
+  let body = "";
+  for await (const chunk of request) body += chunk;
   inFlight += 1;
   providerPeak = Math.max(providerPeak, inFlight);
   await sleep(40);
   inFlight -= 1;
   response.setHeader("content-type", "application/json");
+  if (body.includes("primary-fails")) {
+    response.statusCode = 500;
+    return response.end(JSON.stringify({ error: { message: "primary down" } }));
+  }
   response.end(JSON.stringify({ data: [{ b64_json: png }] }));
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -287,6 +293,36 @@ try {
   ]);
   assert.equal(providerPeak, 2, "with the toggle off only the global ceiling applies");
   applyMediaQueueUiSettingsValue(null);
+  await tick();
+  idle();
+
+  // Opposite cross-account fallbacks at once (A falls back to B while B falls back to A)
+  // must both finish: a primary that kept its lane while queueing for the fallback lane
+  // would wait on the other request forever.
+  const fallbackTo = (apiKey: string) => ({
+    connectionId: `fallback-${apiKey}`,
+    connectionName: "Fallback",
+    provider: "image_generation",
+    source: "openai",
+    baseUrl,
+    apiKey,
+    serviceHint: "openai",
+    model: "flux-2-pro",
+    prompt: "a lighthouse",
+  });
+  const crossed = (primaryKey: string, fallbackKey: string) =>
+    generateImage("openai", baseUrl, primaryKey, "openai", {
+      ...request,
+      prompt: "primary-fails",
+      fallback: fallbackTo(fallbackKey),
+      onFallback: () => undefined,
+    });
+  const crossedResults = await Promise.race([
+    Promise.all([crossed("account-a", "account-b"), crossed("account-b", "account-a")]),
+    sleep(2_000).then(() => "deadlock" as const),
+  ]);
+  assert.notEqual(crossedResults, "deadlock", "opposite fallbacks must not wait on each other");
+  assert.ok(Array.isArray(crossedResults) && crossedResults.every((result) => result.base64 === png));
   await tick();
   idle();
 } finally {

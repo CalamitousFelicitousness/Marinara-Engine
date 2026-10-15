@@ -35,6 +35,9 @@ interface SpriteGenerationModalProps {
   /** Expressions offered instead of the full list, in order; grids larger than the list are hidden. The
    *  default 6 (2×3) grid needs at least six. */
   expressionChoices?: readonly string[];
+  /** Faces for a 2D avatar's talking head: every face is drawn with open eyes and a closed mouth, so its
+   *  blink and talk pictures can close and open them. */
+  talkingHeadFaces?: boolean;
 }
 
 interface SlicedCell {
@@ -571,6 +574,7 @@ export function SpriteGenerationModal({
   defaultAvatarUrl,
   onSpritesGenerated,
   expressionChoices,
+  talkingHeadFaces = false,
 }: SpriteGenerationModalProps) {
   const { t: localizeUi } = useUiTranslation();
   // Step: 0 = configure, 1 = generating, 2 = preview & label
@@ -999,6 +1003,7 @@ export function SpriteGenerationModal({
               .filter((sprite) => expressions.includes(sprite.expression))
               .map((sprite) => ({ expression: sprite.expression, image: sprite.url }))
           : undefined,
+        ...(talkingHeadFaces ? { talkingHeadFaces: true } : {}),
       };
 
       if (reviewImagePromptsBeforeSend) {
@@ -1039,6 +1044,7 @@ export function SpriteGenerationModal({
       openPromptReview,
       reviewImagePromptsBeforeSend,
       spriteType,
+      talkingHeadFaces,
     ],
   );
 

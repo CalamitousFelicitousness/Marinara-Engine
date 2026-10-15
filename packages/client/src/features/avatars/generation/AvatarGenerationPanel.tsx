@@ -227,8 +227,10 @@ export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSe
             existingExpressionSprites={portraitSprites}
             defaultAppearance={seed.appearance}
             defaultAvatarUrl={seed.avatarUrl}
-            // The avatar's six feelings, so each gets its own face.
+            // The avatar's six feelings, so each gets its own face, with open eyes and a closed mouth for its
+            // blink and talk pictures to change.
             expressionChoices={AVATAR_EMOTIONS}
+            talkingHeadFaces
             onSpritesGenerated={() => void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) })}
           />
         ) : null}

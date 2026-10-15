@@ -460,15 +460,18 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
     // An owner without a saved setup shows the one built from the sprites; start from it.
     const built = spriteBuiltPngtuber(allSprites);
     const saved = current?.kinds.pngtuber ?? built;
-    // A sprite face added since the setup was saved starts from its sprite-built set, so the `_blink` or
-    // `_talk` sprite it already has stays next to the new picture.
+    // Each face being saved starts from its sprite-built set under its saved one, so a `_blink` or `_talk`
+    // sprite added since (or a face added since) stays next to the new picture; a saved picture wins over a
+    // sprite. Sprite pictures never reach another base: keepOthers below drops them with the old set.
     const start = saved && {
       ...saved,
       layers: {
-        ...Object.fromEntries(
-          [...sets.keys()].flatMap((key) => (built?.layers[key] ? [[key, built.layers[key]]] : [])),
-        ),
         ...saved.layers,
+        ...Object.fromEntries(
+          [...sets.keys()].flatMap((key) =>
+            built?.layers[key] ? [[key, { ...built.layers[key], ...saved.layers[key] }]] : [],
+          ),
+        ),
       },
     };
     const kept = [...sets.values()].map((set) => {

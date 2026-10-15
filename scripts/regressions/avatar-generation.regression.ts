@@ -717,6 +717,26 @@ async function dotCentre(png: Buffer) {
     assert.deepEqual(relaxed?.eyesClosed, { source: "sprite", label: "relaxed_blink" }, "its blink sprite stays");
     assert.deepEqual(relaxed?.mouthOpen, { source: "file", path: "pngtuber/relaxed-mouth-open.png" });
     assert.ok((await readAvatarConfig(later))?.kinds.pngtuber?.layers.neutral?.eyesClosed, "the earlier face stays");
+    // A talk sprite added to a saved face stays when another picture of that face is saved; the saved
+    // picture of the same slot wins over a sprite.
+    writeFileSync(join(dir, "neutral_talk.png"), sourcePng);
+    writeFileSync(join(dir, "neutral_blink.png"), sourcePng);
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "relaxed", variant: "mouth-open", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    assert.equal(
+      (await readAvatarConfig(later))?.kinds.pngtuber?.layers.neutral?.mouthOpen,
+      undefined,
+      "other faces as saved",
+    );
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "neutral", variant: "eyes-closed", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    const neutral = (await readAvatarConfig(later))?.kinds.pngtuber?.layers.neutral;
+    assert.deepEqual(neutral?.mouthOpen, { source: "sprite", label: "neutral_talk" }, "its new talk sprite joins it");
+    assert.deepEqual(neutral?.eyesClosed, { source: "file", path: "pngtuber/neutral-eyes-closed.png" });
   }
   const garbage = await post("/mesh-rig/save", { owner, archive: Buffer.from("not a zip").toString("base64") });
   assert.equal(garbage.statusCode, 422, "a kept archive is checked by the 2D importer like an upload");

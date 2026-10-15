@@ -2179,6 +2179,25 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** Calls read from a catalog, capped or scaled by cost, and attack modes on melee alone (1.349). */
+function carriesCalls349(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCalls349(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls) {
+    if (plainRecord(calls.from) || calls.timesPerSteps !== undefined) return true;
+    if (Array.isArray(calls.options) && calls.options.some((one) => plainRecord(plainRecord(one)?.from)))
+      return true;
+  }
+  if (Array.isArray(record.attackModes) && record.attackModes.some((one) => plainRecord(one)?.melee !== undefined))
+    return true;
+  const creature = plainRecord(record.creature);
+  if (creature && carriesCalls349(creature, depth + 1)) return true;
+  return featureValues(record).some((one) => carriesCalls349(one, depth + 1));
+}
+
 /** Shape forms read from a catalog (1.348). */
 function carriesShapeCatalogs(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5226,6 +5245,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Calls read from a catalog or scaled by cost, and melee-only attack modes, 1.349.
+  if (
+    !declaresApi(349) &&
+    (carriesCalls349(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCalls349(document)))
+  ) {
+    return "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.349 or newer";
   }
   // Shape forms read from a catalog, 1.348.
   if (

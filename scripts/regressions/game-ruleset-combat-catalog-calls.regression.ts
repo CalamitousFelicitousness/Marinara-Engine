@@ -75,7 +75,9 @@ try {
   };
   const document = (entries: unknown[], edit: (doc: Record<string, any>) => void = () => {}) => {
     const doc = JSON.parse(fiveEText);
-    doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures").entries.push(wolf);
+    doc.catalogs
+      .find((catalog: { holds?: string }) => catalog.holds === "creatures")
+      .entries.push(structuredClone(wolf));
     doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries });
     edit(doc);
     return doc;
@@ -98,7 +100,7 @@ try {
   const roll = (sides: number) => Math.min(sides, queued.shift() ?? 10);
   const of = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T) =>
     events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
-  const fight = (definition: RulesetDefinition) => {
+  const fight = (definition: RulesetDefinition, fields: Record<string, unknown> = {}) => {
     const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
     const bestiary: RulesetCatalogEntriesById = {
       creatures: definition.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries!,
@@ -115,7 +117,7 @@ try {
           side: "party",
           build: rulesetSheetBuildSchema.parse({
             abilities: { str: 10, dex: 12, con: 10, int: 10, wis: 18, cha: 10 },
-            fields: { level: 5, ac: 12, speed: 30, hp_max: 40 },
+            fields: { level: 5, ac: 12, speed: 30, hp_max: 40, ...fields },
             lists: { spells: entries.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row)) },
           }),
           live: {},
@@ -253,6 +255,100 @@ try {
     assert.equal(of(taken.events, "called")[0]?.ids.length, 4, "a d4 thrown at its most");
   }
 
+  // ── Read from a catalog (1.349): any beast, capped by challenge, picked as it is cast ──
+  {
+    const ranked = (calls: Record<string, unknown>) =>
+      parsed(
+        document([conjure(calls)], (doc) => {
+          const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
+          creatures.filters.push({ id: "cr", label: "Challenge rating", type: "number" });
+          creatures.entries.find((one: { id: string }) => one.id === "cinder-hound").filters.cr = 1;
+          creatures.entries.find((one: { id: string }) => one.id === "dire-wolf").filters.cr = 2;
+        }),
+      );
+    const banded = ranked({
+      options: [
+        {
+          from: { catalog: "creatures", filters: { kind: "beast" } },
+          upTo: { filter: "cr", at: 2 },
+          count: { flat: 1 },
+          label: "One of CR 2",
+        },
+        {
+          from: { catalog: "creatures", filters: { kind: "Beast" } },
+          upTo: { filter: "cr", at: 1 },
+          count: { flat: 2 },
+        },
+      ],
+      initiative: "after",
+    });
+    const { option, taken } = cast(banded, fight(banded), "call-1-cinder-hound");
+    assert.deepEqual(
+      option.modes?.map((one) => [one.id, one.label]),
+      [
+        ["call-0-cinder-hound", "One of CR 2: Cinder Hound ×1"],
+        ["call-0-dire-wolf", "One of CR 2: Dire Wolf ×1"],
+        ["call-1-cinder-hound", "Cinder Hound ×2"],
+      ],
+      "the wolf is above the second band",
+    );
+    const [called] = of(taken.events, "called");
+    assert.equal(called?.ids.length, 2);
+    assert.deepEqual(who(taken.state, called!.ids[0]!).creature, { catalogId: "creatures", entryId: "cinder-hound" });
+    // One band, without options.
+    const any = ranked({
+      from: { catalog: "creatures", notFilters: { kind: ["Plant", "Undead", "Construct", "Humanoid"] } },
+      count: { flat: 1 },
+    });
+    assert.deepEqual(
+      cast(any, fight(any), "call-dire-wolf").option.modes?.map((one) => one.id),
+      ["call-cinder-hound", "call-dire-wolf"],
+    );
+    refused(
+      document([conjure({ creature: "creatures/dire-wolf", upTo: { filter: "cr", at: 1 }, count: { flat: 1 } })]),
+      /"upTo" caps/,
+    );
+    refused(
+      document([
+        conjure({
+          options: [
+            { creature: "creatures/dire-wolf", from: { catalog: "creatures" }, count: { flat: 1 } },
+            { creature: "creatures/dire-wolf", count: { flat: 1 } },
+          ],
+        }),
+      ]),
+      /An option names one "creature" or reads "from" a catalog/,
+    );
+  }
+
+  // ── Twice as many with a 5th-level slot, three times with 7th (1.349) ──
+  {
+    const upcast = conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, timesPerSteps: 2 });
+    const scaled = parsed(
+      document([{ ...upcast, mechanics: { ...upcast.mechanics, cost: [{ pool: "slots_3", amount: 1 }] } }]),
+    );
+    const wolves = (payWith: string | undefined) => {
+      const state = fight(scaled, {
+        level: 17,
+        spellcasting_ability: "wis",
+        slots_max_3: 3,
+        slots_max_5: 2,
+        slots_max_7: 1,
+      });
+      const option = rulesetCombatOptions(scaled, state, "druid").find((one) => one.label === "Conjure Animals")!;
+      const taken = step(scaled, state, {
+        actorId: "druid",
+        optionId: option.id,
+        targetIds: [],
+        ...(payWith ? { payWith } : {}),
+      });
+      return of(taken.events, "called")[0]?.ids.length;
+    };
+    assert.equal(wolves(undefined), 1, "its own 3rd-level slot");
+    assert.equal(wolves("slots_5"), 2);
+    assert.equal(wolves("slots_7"), 3);
+  }
+
   // ── A bestiary creature or a stat block beside the party, built as an opponent is ──
   {
     const allied = createRulesetEncounter({
@@ -385,10 +481,10 @@ try {
   // ── Refused shapes ──
   {
     refused(document([conjure({ creature: "creatures/dire-wolf" })]), /says its "count"/);
-    refused(document([conjure({ count: { flat: 1 } })]), /one "creature" or a list of "options"/);
+    refused(document([conjure({ count: { flat: 1 } })]), /reads "from" a catalog, or lists "options"/);
     refused(
       document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, options: options.options })]),
-      /one "creature" or a list of "options"/,
+      /reads "from" a catalog, or lists "options"/,
     );
     refused(document([conjure({ ...options, count: { flat: 2 } })]), /its own "count"/);
     refused(document([conjure({ creature: "dire-wolf", count: { flat: 1 } })]), /<catalogId>\/<entryId>/);
@@ -426,6 +522,18 @@ try {
         calls: { creature: "creatures/cinder-hound", count: { flat: 1 } },
       });
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(343) as never, creatureCall), gate);
+    // Read from a catalog or scaled by cost: 1.349.
+    const later =
+      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.349 or newer";
+    for (const calls of [
+      { from: { catalog: "creatures" }, count: { flat: 1 } },
+      { creature: "creatures/dire-wolf", count: { flat: 1 }, timesPerSteps: 2 },
+      { options: [{ from: { catalog: "creatures" }, count: { flat: 1 } }] },
+    ]) {
+      assert.equal(getCapabilityPackageInstallIssue(manifest(348) as never, document([conjure(calls)])), later);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(349) as never, document([conjure(calls)])), later);
+    }
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(348) as never, document([conjure(options)])), later);
   }
 
   console.log(

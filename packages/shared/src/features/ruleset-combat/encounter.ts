@@ -16,6 +16,7 @@ import {
   type RulesetCatalogItem,
   type RulesetCatalogMechanics,
   type RulesetCatalogCalls,
+  type RulesetCatalogFrom,
   type RulesetRegeneration,
   type RulesetHangsOn,
   type RulesetCatalogZone,
@@ -4221,6 +4222,27 @@ export function rulesetBoardProps(grid: TacticalGrid, props: RulesetBoardPropInp
  *  its user's catalogs, kept to what its user's sheet allows them now. */
 /** A catalog entry's or an item use's call (1.344), found in `catalogs`: its one creature, or its
  *  options as modes. One nobody can find calls nobody, and an option nobody can find is not offered. */
+/** The `"<catalogId>/<entryId>"` of every entry of a catalog that a `from` matches (1.348, 1.349), in
+ *  the catalog's order: all of its `filters`, none of its `notFilters`. An entry's value matches any
+ *  of what is wanted, without regard to case; a value that is itself a list, any of its own. */
+export function rulesetCatalogMatches(catalogs: RulesetCatalogEntriesById, from: RulesetCatalogFrom): string[] {
+  const plain = (one: string | number) => String(one).trim().toLowerCase();
+  const wanted = (value: string | number | string[] | undefined, want: string | number | Array<string | number>) => {
+    if (value === undefined) return false;
+    const have = (Array.isArray(value) ? value : [value]).map(plain);
+    return (Array.isArray(want) ? want : [want]).some((one) => have.includes(plain(one)));
+  };
+  // Each once: a catalog the fight's bestiary and the ruleset both carry lists its entries twice.
+  const refs = new Set<string>();
+  for (const entry of catalogs[from.catalog] ?? []) {
+    const filters = entry.filters ?? {};
+    if (Object.entries(from.filters ?? {}).some(([id, want]) => !wanted(filters[id], want))) continue;
+    if (Object.entries(from.notFilters ?? {}).some(([id, want]) => wanted(filters[id], want))) continue;
+    refs.add(`${from.catalog}/${entry.id}`);
+  }
+  return [...refs];
+}
+
 function fillCatalogCalls(
   definition: RulesetDefinition,
   action: RulesetCombatAction,
@@ -4244,6 +4266,7 @@ function fillCatalogCalls(
       count,
       ...(calls.initiative === "after" ? { after: true as const } : {}),
       ...(calls.rounds ? { rounds: calls.rounds } : {}),
+      ...(calls.timesPerSteps ? { timesPerSteps: calls.timesPerSteps } : {}),
     };
   };
   if (calls.creature && calls.count) {
@@ -4251,11 +4274,38 @@ function fillCatalogCalls(
     if (call) action.calls = call;
     return;
   }
+  // Read from a catalog (1.349): each match no higher than `upTo` is one mode to pick among.
+  const matching = (from: RulesetCatalogFrom, upTo: { filter: string; at: number } | undefined) =>
+    rulesetCatalogMatches(catalogs, from).filter((ref) => {
+      if (!upTo) return true;
+      const [catalogId, entryId] = ref.split("/");
+      const entry = findRulesetCreatureEntry(catalogs, { catalogId: catalogId!, entryId: entryId! });
+      const rank = entry?.filters?.[upTo.filter];
+      return typeof rank !== "number" || rank <= upTo.at;
+    });
+  const many = (count: RulesetCatalogCalls["count"]) => (count?.dice ? count.dice : String(count?.flat ?? 1));
+  if (calls.from && calls.count) {
+    const count = calls.count;
+    action.modes = matching(calls.from, calls.upTo).flatMap((ref) => {
+      const call = found(ref, count);
+      return call ? [{ id: `call-${ref.split("/")[1]}`, label: `${call.name} ×${many(count)}`, call }] : [];
+    });
+    return;
+  }
   action.modes = (calls.options ?? []).flatMap((option, index) => {
-    const call = found(option.creature, option.count);
+    if (option.from) {
+      return matching(option.from, option.upTo).flatMap((ref) => {
+        const call = found(ref, option.count);
+        if (!call) return [];
+        const label = `${call.name} ×${many(option.count)}`;
+        return [
+          { id: `call-${index}-${ref.split("/")[1]}`, label: option.label ? `${option.label}: ${label}` : label, call },
+        ];
+      });
+    }
+    const call = option.creature ? found(option.creature, option.count) : null;
     if (!call) return [];
-    const many = option.count.dice ? option.count.dice : String(option.count.flat ?? 1);
-    return [{ id: `call-${index}`, label: option.label ?? `${call.name} ×${many}`, call }];
+    return [{ id: `call-${index}`, label: option.label ?? `${call.name} ×${many(option.count)}`, call }];
   });
 }
 
@@ -4286,21 +4336,8 @@ function fillShapeForms(
   const modes: RulesetCombatMode[] = [];
   // Named ones first, then every match of the catalog `from` reads (1.348), each once.
   const refs = [...(forms.into ?? [])];
-  if (forms.from) {
-    // An entry's value matches any of what is wanted; a value that is itself a list, any of its own.
-    const plain = (one: string | number) => String(one).trim().toLowerCase();
-    const wanted = (value: string | number | string[] | undefined, want: string | number | Array<string | number>) => {
-      if (value === undefined) return false;
-      const have = (Array.isArray(value) ? value : [value]).map(plain);
-      return (Array.isArray(want) ? want : [want]).some((one) => have.includes(plain(one)));
-    };
-    for (const entry of catalogs[forms.from.catalog] ?? []) {
-      const filters = entry.filters ?? {};
-      if (Object.entries(forms.from.filters ?? {}).some(([id, want]) => !wanted(filters[id], want))) continue;
-      if (Object.entries(forms.from.notFilters ?? {}).some(([id, want]) => wanted(filters[id], want))) continue;
-      const ref = `${forms.from.catalog}/${entry.id}`;
-      if (!refs.includes(ref)) refs.push(ref);
-    }
+  for (const ref of forms.from ? rulesetCatalogMatches(catalogs, forms.from) : []) {
+    if (!refs.includes(ref)) refs.push(ref);
   }
   for (const ref of refs) {
     const [catalogId, entryId] = ref.split("/");

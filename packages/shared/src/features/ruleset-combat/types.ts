@@ -939,6 +939,8 @@ export interface RulesetCombatAction {
     after?: true;
     /** They leave once this many rounds have passed, at their caller's turn (1.344). */
     rounds?: number;
+    /** Their count once over again for each this many steps of higher cost paid (1.349). */
+    timesPerSteps?: number;
   };
   /** A burst centred on its user, never aimed (1.282): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
@@ -1985,7 +1987,12 @@ export interface RulesetCheckModeRule {
 /** A creature's own attack rolls rolled twice (1.293), only where it says, as a mode on its checks
  *  holds: 5e's Sunlight Sensitivity (seeing, in sunlight). `allyAdjacent` and `targetHurt` (1.343)
  *  read the target as well: Pack Tactics, Blood Frenzy. */
-export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills"> & { allyAdjacent?: true; targetHurt?: true };
+export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills"> & {
+  allyAdjacent?: true;
+  targetHurt?: true;
+  /** Melee attacks only (1.349). */
+  melee?: true;
+};
 
 /**
  * A thing standing on the board that may be broken (Capability API 1.316): a jar, a lantern, a

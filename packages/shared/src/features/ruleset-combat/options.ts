@@ -2760,6 +2760,13 @@ export function rulesetAttackMode(
     // Pack Tactics and Blood Frenzy (1.343): who stands beside the target, and how hurt it is.
     if (rule.allyAdjacent && !rulesetAllyBeside(definition, combat, where?.state, actor, target)) continue;
     if (rule.targetHurt && !rulesetCombatHurt(definition, combat, target)) continue;
+    // Melee attacks only (1.349): a sahuagin's Blood Frenzy, never its thrown spear.
+    if (
+      rule.melee &&
+      blow &&
+      (where ? rulesetBlowKind(where.state, actor, target, blow) : blow.range ? "ranged" : "melee") !== "melee"
+    )
+      continue;
     leans.add(rule.mode);
   }
   // Another weapon's mark still standing (1.192): an oathbow's disadvantage with every other weapon

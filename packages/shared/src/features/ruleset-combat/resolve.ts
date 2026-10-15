@@ -6251,9 +6251,12 @@ function callCreatures(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   cells?: RulesetCombatCell[],
+  /** Steps of higher cost it was paid with (1.349): Conjure Animals at 5th level calls twice as many. */
+  steps = 0,
 ): void {
   if (!action.calls) return;
-  const count = rollAmount(ctx, action.calls.count).total;
+  const per = action.calls.timesPerSteps;
+  const count = rollAmount(ctx, action.calls.count).total * (per ? 1 + Math.floor(steps / per) : 1);
   const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells);
   // Kept by what called them (1.344): its concentration, and its rounds.
   for (const id of ids) {
@@ -7203,6 +7206,11 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
             grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
           })
         : undefined,
+      action.innate
+        ? Math.max(0, action.innate.level - action.innate.baseLevel)
+        : resume.payWith
+          ? rulesetCostSteps(ctx.definition, action, resume.payWith, actor)
+          : 0,
     );
   }
   // Fire landing on a web with nobody in it sets it alight all the same (1.183).
@@ -8005,7 +8013,12 @@ function resolveAction(
   if (action.calls && !action.area && !action.damage) {
     // Held by its concentration (1.344): Conjure Animals.
     if (action.concentration && !held) startConcentration(ctx, actor, action);
-    callCreatures(ctx, actor, action);
+    const steps = action.innate
+      ? Math.max(0, action.innate.level - action.innate.baseLevel)
+      : payWith
+        ? rulesetCostSteps(ctx.definition, action, payWith, actor)
+        : 0;
+    callCreatures(ctx, actor, action, undefined, steps);
     return null;
   }
   // A legendary Detect (1.287): the looking, and nothing else.

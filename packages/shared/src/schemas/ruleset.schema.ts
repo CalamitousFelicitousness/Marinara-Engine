@@ -4342,6 +4342,33 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
     path: ["carriesSeen"],
   });
 
+const catalogFilterValues = z.union([
+  z.number().finite(),
+  z.string().max(80),
+  z
+    .array(z.union([z.number().finite(), z.string().max(80)]))
+    .min(1)
+    .max(32),
+]);
+/** Every entry of a bestiary catalog that matches (Capability API 1.348 for shape forms, 1.349 for
+ *  calls): `filters` each entry must match (any of a list, without regard to case), `notFilters`
+ *  none it may. A list-valued filter, such as tags, matches on any of its own. */
+export interface RulesetCatalogFrom {
+  catalog: string;
+  filters?: Record<string, string | number | Array<string | number>>;
+  notFilters?: Record<string, string | number | Array<string | number>>;
+}
+const catalogFromSchema: z.ZodType<RulesetCatalogFrom, z.ZodTypeDef, unknown> = z
+  .object({
+    catalog: z
+      .string()
+      .trim()
+      .regex(/^[^/\s]{1,80}$/, "A catalog id"),
+    filters: z.record(sheetId, catalogFilterValues).optional(),
+    notFilters: z.record(sheetId, catalogFilterValues).optional(),
+  })
+  .strict();
+
 /** The forms a shape change offers (Capability API 1.342), each a bestiary entry as
  *  `"<catalogId>/<entryId>"`, from this ruleset's catalogs or the fight's bestiary, or every match
  *  of a catalog's `from` (1.348): what its user picks
@@ -4352,14 +4379,6 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
  *  challenge by druid level, Polymorph's "equal or less than the target's". `without` keeps out the
  *  forms that move a way `speed` names unless `unless` reads above nought on the user's sheet: no
  *  flying before druid level 8. */
-const shapeFilterValues = z.union([
-  z.number().finite(),
-  z.string().max(80),
-  z
-    .array(z.union([z.number().finite(), z.string().max(80)]))
-    .min(1)
-    .max(32),
-]);
 export const shapeFormsSchema = z
   .object({
     into: z
@@ -4377,17 +4396,7 @@ export const shapeFormsSchema = z
      *  names: `filters` each entry must match (any of a list), `notFilters` none it may. 5e's Wild
      *  Shape is `{"catalog": "creatures", "filters": {"type": "Beast"}}`, Shapechange
      *  `{"catalog": "creatures", "notFilters": {"type": ["Construct", "Undead"]}}`. */
-    from: z
-      .object({
-        catalog: z
-          .string()
-          .trim()
-          .regex(/^[^/\s]{1,80}$/, "A catalog id"),
-        filters: z.record(sheetId, shapeFilterValues).optional(),
-        notFilters: z.record(sheetId, shapeFilterValues).optional(),
-      })
-      .strict()
-      .optional(),
+    from: catalogFromSchema.optional(),
     upTo: z
       .object({
         filter: sheetId,
@@ -4417,6 +4426,9 @@ export const shapeFormsSchema = z
   });
 export type RulesetShapeForms = z.infer<typeof shapeFormsSchema>;
 
+/** The highest a called creature's bestiary `filter` may read (Capability API 1.349): Conjure
+ *  Animals' "challenge rating 2 or lower". */
+const calledUpTo = z.object({ filter: sheetId, at: z.number().finite() }).strict();
 const calledCreatureRef = z
   .string()
   .trim()
@@ -4439,22 +4451,57 @@ export const catalogCallsSchema = z
   .object({
     creature: calledCreatureRef.optional(),
     count: calledCount.optional(),
+    /** Or any one creature of a bestiary catalog that matches (Capability API 1.349), picked as it
+     *  is used, no higher than `upTo`. */
+    from: catalogFromSchema.optional(),
+    upTo: calledUpTo.optional(),
     options: z
       .array(
-        z.object({ creature: calledCreatureRef, count: calledCount, label: promptSafeText(80).optional() }).strict(),
+        z
+          .object({
+            creature: calledCreatureRef.optional(),
+            from: catalogFromSchema.optional(),
+            upTo: calledUpTo.optional(),
+            count: calledCount,
+            label: promptSafeText(80).optional(),
+          })
+          .strict()
+          .refine((option) => (option.creature === undefined) !== (option.from === undefined), {
+            message: 'An option names one "creature" or reads "from" a catalog',
+          })
+          .refine((option) => !option.upTo || option.from !== undefined, {
+            message: '"upTo" caps what is read "from" a catalog',
+            path: ["upTo"],
+          }),
       )
-      .min(2)
+      .min(1)
       .max(8)
       .optional(),
     initiative: z.enum(["roll", "after"]).optional(),
     rounds: z.number().int().min(1).max(14400).optional(),
+    /** Its count once over again for each this many steps of higher cost it is paid with (Capability
+     *  API 1.349): 5e's Conjure Animals, twice as many with a 5th-level slot, three times with 7th
+     *  and four times with 9th, is `2`. */
+    timesPerSteps: z.number().int().min(1).max(20).optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
-    if ((calls.creature === undefined) === (calls.options === undefined))
-      ctx.addIssue({ code: "custom", message: 'A call names one "creature" or a list of "options", not both' });
-    if (calls.creature !== undefined && !calls.count)
-      ctx.addIssue({ code: "custom", path: ["count"], message: 'A call of one "creature" says its "count"' });
+    const ways = [calls.creature, calls.from, calls.options].filter((one) => one !== undefined).length;
+    if (ways !== 1)
+      ctx.addIssue({
+        code: "custom",
+        message: 'A call names one "creature", reads "from" a catalog, or lists "options": one of them',
+      });
+    if (calls.options && calls.options.length < 2 && !calls.options[0]?.from)
+      ctx.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: 'A list of "options" has two at least, or one read "from" a catalog',
+      });
+    if (calls.upTo && !calls.from)
+      ctx.addIssue({ code: "custom", path: ["upTo"], message: '"upTo" caps what is read "from" a catalog' });
+    if ((calls.creature !== undefined || calls.from !== undefined) && !calls.count)
+      ctx.addIssue({ code: "custom", path: ["count"], message: 'A call of one creature says its "count"' });
     if (calls.options && calls.count)
       ctx.addIssue({ code: "custom", path: ["count"], message: 'Each of the "options" says its own "count"' });
   });
@@ -6229,7 +6276,8 @@ const creatureFields = {
    *  5e's Sunlight Sensitivity `{ "mode": "disadvantage", "sight": true, "light": ["sunlight"] }`.
    *  `allyAdjacent` (Capability API 1.343): only while one of its allies who can act stands beside
    *  the target, Pack Tactics. `targetHurt` (1.343): only at a target below its most health, Blood
-   *  Frenzy. Everything it names must hold. */
+   *  Frenzy. `melee` (1.349): melee attacks only, Blood Frenzy's "melee attack rolls". Everything it
+   *  names must hold. */
   attackModes: z
     .array(
       z
@@ -6244,11 +6292,15 @@ const creatureFields = {
           terrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
           allyAdjacent: z.literal(true).optional(),
           targetHurt: z.literal(true).optional(),
+          melee: z.literal(true).optional(),
         })
         .strict()
-        .refine((rule) => rule.sight || rule.light || rule.terrain || rule.allyAdjacent || rule.targetHurt, {
-          message: "A mode on attacks says where it holds: sight, light, terrain, allyAdjacent or targetHurt",
-        }),
+        .refine(
+          (rule) => rule.sight || rule.light || rule.terrain || rule.allyAdjacent || rule.targetHurt || rule.melee,
+          {
+            message: "A mode on attacks says where it holds: sight, light, terrain, allyAdjacent, targetHurt or melee",
+          },
+        ),
     )
     .min(1)
     .max(8)

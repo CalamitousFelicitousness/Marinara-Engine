@@ -72,7 +72,22 @@ try {
   const cleric = creature("cleric", {
     riders: [{ id: "divine", name: "Divine Strike", on: "hit", oncePer: "own-turn", amount: { flat: 6 } }],
   });
-  const beasts = [wolf, shark, ranger, cleric];
+  // Blood Frenzy on melee attacks only (1.349): its thrown spear never has it.
+  const sahuagin = creature("sahuagin", {
+    attackModes: [{ mode: "advantage", targetHurt: true, melee: true }],
+    actions: [
+      {
+        id: "spear",
+        name: "Spear",
+        budget: "action",
+        toHit: 3,
+        damage: { flat: 4 },
+        reach: 5,
+        range: { normal: 20, long: 60 },
+      },
+    ],
+  });
+  const beasts = [wolf, shark, ranger, cleric, sahuagin];
   const fiveE = (edit: (doc: Record<string, any>) => void = () => {}): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures").entries.push(...structuredClone(beasts));
@@ -183,6 +198,20 @@ try {
     assert.equal(mode(state, "shark", "hero"), "advantage", "one point down is enough");
   }
 
+  // ── Blood Frenzy on melee attacks only (1.349) ──
+  {
+    const state = fight("sahuagin");
+    who(state, "hero").health!.value = 29;
+    const spear = (at: RulesetEncounterState) =>
+      rulesetAttackMode(definition, definition.combat!, who(at, "sahuagin"), who(at, "hero"), {
+        state: at,
+        optionId: who(at, "sahuagin").actions.find((action) => action.label === "Spear")?.id ?? "",
+      });
+    assert.equal(spear(state), "advantage", "stabbed beside it");
+    who(state, "hero").x = 4;
+    assert.equal(spear(state), "normal", "thrown from 15 feet off");
+  }
+
   // ── Colossus Slayer ──
   {
     const strike = (hurt: boolean) => {
@@ -280,7 +309,10 @@ try {
       withBeast(creature("odd", { attackModes: [{ mode: "advantage", allyAdjacent: false }] })),
       /attackModes/,
     );
-    refusedDoc(withBeast(creature("odd", { attackModes: [{ mode: "advantage" }] })), /allyAdjacent or targetHurt/);
+    refusedDoc(
+      withBeast(creature("odd", { attackModes: [{ mode: "advantage" }] })),
+      /allyAdjacent, targetHurt or melee/,
+    );
     refusedDoc(
       withBeast(
         creature("odd", { riders: [{ id: "r", name: "R", on: "hit", oncePer: "own-round", amount: { flat: 1 } }] }),
@@ -306,13 +338,22 @@ try {
     });
     const gate =
       "A ruleset with a creature attack mode by an ally beside or a hurt target, a rider on a hurt target, or a rider once on its holder's own turn, requires schemaVersion 2 and capabilityApi 1.343 or newer";
-    for (const beast of beasts) {
+    for (const beast of beasts.filter((one) => one !== sahuagin)) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures").entries.push(structuredClone(beast));
       assert.equal(getCapabilityPackageInstallIssue(manifest(342) as never, doc), gate, beast.id);
       assert.notEqual(getCapabilityPackageInstallIssue(manifest(343) as never, doc), gate, beast.id);
     }
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(342) as never, JSON.parse(fiveEText)), gate);
+    // Melee alone is 1.349's.
+    const melee = JSON.parse(fiveEText) as Record<string, any>;
+    melee.catalogs
+      .find((catalog: { id: string }) => catalog.id === "creatures")
+      .entries.push(structuredClone(sahuagin));
+    const meleeGate =
+      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.349 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(348) as never, melee), meleeGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(349) as never, melee), meleeGate);
   }
 
   console.log(

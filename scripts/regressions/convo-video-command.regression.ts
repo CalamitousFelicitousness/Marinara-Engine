@@ -479,6 +479,16 @@ try {
   await slashVideo.execute("Bob", slashContext as never);
   await slashVideo.execute("alice smith", slashContext as never);
   assert.deepEqual(videoTargets, ["bob", "alice"], "a unique partial or exact name still picks its character");
+  // Two characters with the very same name: an exact match is ambiguous too.
+  const twins = await slashVideo.execute("Aster", {
+    ...slashContext,
+    characters: [
+      { id: "aster-1", name: "Aster" },
+      { id: "aster-2", name: "Aster" },
+    ],
+  } as never);
+  assert.equal(twins.feedback, "ui.chat.slash.video.ambiguousCharacter", "two identical names pick no one");
+  assert.deepEqual(videoTargets, ["bob", "alice"], "and make no clip");
   console.log("convo-video-command regression passed");
 } finally {
   await app.close();

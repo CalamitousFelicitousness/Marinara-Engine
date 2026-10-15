@@ -1417,14 +1417,18 @@ const COMMANDS: SlashCommand[] = [
             : await translateSlash("ui.chat.slash.video.noCharacters"),
         };
       }
-      // A partial name several characters share picks no one, so a paid clip never goes to the wrong character.
-      // ponytail: /video only; the other commands still take the first partial match. Upgrade path: make
-      // findSceneCharacter itself refuse ambiguous partial names (changes /selfie, /emote and the rest).
-      const requestedLookup = normalizeLookup(requestedCharacter);
-      if (target && normalizeLookup(target.name) !== requestedLookup) {
-        const matches = (ctx.characters ?? []).filter((character) =>
-          normalizeLookup(character.name).includes(requestedLookup),
-        );
+      // A name that fits more than one character (an exact name two share, or else a shared partial name) picks
+      // no one, so a paid clip never goes to the wrong character.
+      // ponytail: /video only; the other commands still take the first match. Upgrade path: make
+      // findSceneCharacter itself refuse ambiguous names (changes /selfie, /emote and the rest).
+      if (target) {
+        const requestedLookup = normalizeLookup(requestedCharacter);
+        const characters = ctx.characters ?? [];
+        const exact = characters.filter((character) => normalizeLookup(character.name) === requestedLookup);
+        const matches =
+          exact.length > 0
+            ? exact
+            : characters.filter((character) => normalizeLookup(character.name).includes(requestedLookup));
         if (matches.length > 1) {
           return {
             handled: true,

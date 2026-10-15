@@ -74,6 +74,7 @@ import { registerParameterPreviewRoute } from "./generate/parameter-preview-rout
 import { GenerationStreamOutput } from "./generate/generation-stream-output.js";
 import { parseConversationReplyCommands, parseRoleplayDmReplyCommands } from "./generate/reply-commands.js";
 import { cleanGeneratedReply } from "./generate/reply-text-cleanup.js";
+import { buildGenerationInfoExtra } from "./generate/saved-message-extra.js";
 import { runToolRounds } from "./generate/tool-rounds.js";
 // ──────────────────────────────────────────────
 // Routes: Generation (SSE Streaming with Tool Use + Agent Pipeline)
@@ -337,7 +338,6 @@ import {
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
 import {
-  GAME_MARKET_PLACE_EXTRA,
   gameMarketDayFor,
   gameMarketWorldPlace,
   gameRepliesBefore,
@@ -10791,65 +10791,40 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               chatMode === "game" && turnMarket && !turnKitItems && turnReplies && typeof savedMsg.content === "string"
                 ? gameMarketWorldPlace(turnReplies.scoped, savedMsg.content, turnPlace)
                 : undefined;
-            const extraUpdate: Record<string, unknown> = {
-              ...(chatMode === "game" ? { gameOutcomeNarrationFailed } : {}),
-              // Set, or cleared on a regeneration at a place a tag named.
-              ...(chatMode === "game" ? { [GAME_MARKET_PLACE_EXTRA]: marketWorldPlace ?? null } : {}),
-              ...(gameToolPlan && gameToolConnection
-                ? {
-                    gameToolPlanning: {
-                      connectionId: gameToolConnection.id,
-                      model: gameToolConnection.model,
-                      provider: gameToolConnection.provider,
-                      usage: gameToolPlan.usage ?? null,
-                    },
-                  }
-                : {}),
-              generationInfo: {
-                model: generationProviderOrigin.model,
-                provider: generationProviderOrigin.provider,
-                temperature: temperature ?? null,
-                maxTokens: effectiveMaxTokensForSend ?? null,
-                maxContext: suppressModelParameters ? null : (effectiveMaxContext ?? connectionMaxContext ?? null),
-                showThoughts: showThoughts ?? null,
-                reasoningEffort: resolvedEffort ?? reasoningEffort ?? null,
-                verbosity: verbosity ?? null,
-                serviceTier,
-                assistantPrefill: assistantPrefill || null,
-                assistantReasoningPrefill: assistantReasoningPrefill || null,
-                customParameters: Object.keys(customParameters).length > 0 ? customParameters : null,
-                tokensPrompt: usage?.promptTokens ?? null,
-                tokensContext,
-                tokensLastRequestInput,
-                requestCount,
-                tokensCompletion: usage?.completionTokens ?? null,
-                tokensVisibleCompletion: getVisibleCompletionTokens(usage) ?? null,
-                tokensReasoning: usage?.completionReasoningTokens ?? null,
-                tokensCompletionAudio: usage?.completionAudioTokens ?? null,
-                tokensRejectedPrediction: usage?.rejectedPredictionTokens ?? null,
-                tokensAcceptedPrediction: usage?.acceptedPredictionTokens ?? null,
-                tokensCachedPrompt: usage?.cachedPromptTokens ?? null,
-                tokensCacheWritePrompt: usage?.cacheWritePromptTokens ?? null,
-                durationMs,
-                reasoningDurationMs: streamOutput.reasoningDurationMs,
-                finishReason: finishReason ?? null,
-                contextFit: lastContextFit ?? null,
-              },
-            };
-            if (fullThinking) extraUpdate.thinking = fullThinking;
-            else extraUpdate.thinking = null;
-            // Store Gemini response parts (thought signatures + summaries) for multi-turn continuity
-            if (geminiResponseParts) extraUpdate.geminiParts = geminiResponseParts;
-            else extraUpdate.geminiParts = null;
-            // Store Chat Completions reasoning fields for providers that require replay (DeepSeek/OpenRouter)
-            if (chatCompletionsReasoning) extraUpdate.chatCompletionsReasoning = chatCompletionsReasoning;
-            else extraUpdate.chatCompletionsReasoning = null;
-            // Store OpenAI Responses API encrypted reasoning items for multi-turn continuity
-            if (encryptedReasoningItems?.length) extraUpdate.encryptedReasoning = encryptedReasoningItems;
-            else extraUpdate.encryptedReasoning = null;
-            // Cache the exact prompt injections used for this swipe so future
-            // regenerations and swipe switches replay the same guidance.
-            extraUpdate.contextInjections = contextInjections.length > 0 ? contextInjections : null;
+            const extraUpdate = buildGenerationInfoExtra({
+              chatMode,
+              gameOutcomeNarrationFailed,
+              marketWorldPlace,
+              gameToolPlan,
+              gameToolConnection,
+              generationProviderOrigin,
+              temperature,
+              effectiveMaxTokensForSend,
+              suppressModelParameters,
+              effectiveMaxContext,
+              connectionMaxContext,
+              showThoughts,
+              resolvedEffort,
+              reasoningEffort,
+              verbosity,
+              serviceTier,
+              assistantPrefill,
+              assistantReasoningPrefill,
+              customParameters,
+              usage,
+              tokensContext,
+              tokensLastRequestInput,
+              requestCount,
+              durationMs,
+              reasoningDurationMs: streamOutput.reasoningDurationMs,
+              finishReason,
+              lastContextFit,
+              fullThinking,
+              geminiResponseParts,
+              chatCompletionsReasoning,
+              encryptedReasoningItems,
+              contextInjections,
+            });
             // Continuing extends this swipe; a new or regenerated reply owns a fresh reference snapshot.
             if (
               chatMode === "roleplay" &&

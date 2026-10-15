@@ -131,15 +131,19 @@ assert.match(
   /fullResponse \+= result\.value;[\s\S]{0,200}await streamOutput\.write\(result\.value\);/u,
   "Generator-streamed text-rewrite responses must still capture reasoning duration",
 );
-const generationInfoPersistenceSource =
-  /const extraUpdate: Record<string, unknown> = \{[\s\S]*?generationInfo: \{[\s\S]*?\n\s*\},\s*\};/u.exec(
-    generateRouteSource,
-  )?.[0];
+const generationInfoPersistenceSource = /const extraUpdate = buildGenerationInfoExtra\(\{[\s\S]*?\n\s*\}\);/u.exec(
+  generateRouteSource,
+)?.[0];
 assert.ok(generationInfoPersistenceSource, "The committed generation metadata block must remain available");
 assert.match(
   generationInfoPersistenceSource,
-  /durationMs,\s*reasoningDurationMs: streamOutput\.reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
+  /durationMs,\s*reasoningDurationMs: streamOutput\.reasoningDurationMs,\s*finishReason,/u,
   "Committed generation metadata must retain the reasoning-only duration",
+);
+assert.match(
+  readSourceText(new URL("../../packages/server/src/routes/generate/saved-message-extra.ts", import.meta.url), "utf8"),
+  /generationInfo: \{[\s\S]*?durationMs,\s*reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
+  "The saved generation metadata must store the reasoning-only duration",
 );
 assert.match(
   generateRouteSource,

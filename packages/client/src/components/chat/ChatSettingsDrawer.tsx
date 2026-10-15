@@ -620,6 +620,11 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
     description: "Let characters request a generated selfie.",
   },
   {
+    id: "video",
+    label: "Videos",
+    description: "Let characters send short video messages.",
+  },
+  {
     id: "memory",
     label: "Memories",
     description: "Let characters create memories for other characters.",
@@ -705,6 +710,8 @@ function isConversationCommandToggleEnabled(
   toggles: Partial<Record<ConversationCommandKey, boolean>>,
   command: ConversationCommandKey,
 ): boolean {
+  // Videos is opt-in, unlike the other commands: each video message is a video request.
+  if (command === "video") return toggles.video === true;
   return toggles[command] !== false;
 }
 

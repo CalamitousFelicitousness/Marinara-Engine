@@ -186,6 +186,7 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
   { id: "schedule_update", label: "Schedule Updates", description: "Let characters change their current status." },
   { id: "cross_post", label: "Cross-Post", description: "Let characters redirect a message into another chat." },
   { id: "selfie", label: "Selfies", description: "Let characters request generated selfies." },
+  { id: "video", label: "Videos", description: "Let characters send short video messages." },
   { id: "memory", label: "Memories", description: "Let characters create memories for other characters." },
   { id: "scene", label: "Scenes", description: "Let characters start an immersive scene." },
   { id: "music", label: "Music", description: "Let characters play songs through the active Music Player." },
@@ -424,6 +425,8 @@ function isConversationCommandToggleEnabled(
   toggles: Partial<Record<ConversationCommandKey, boolean>>,
   command: ConversationCommandKey,
 ): boolean {
+  // Videos is opt-in, unlike the other commands: each video message is a video request.
+  if (command === "video") return toggles.video === true;
   return toggles[command] !== false;
 }
 

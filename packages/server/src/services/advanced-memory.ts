@@ -177,6 +177,11 @@ export interface PrepareAdvancedMemoryInput extends AdvancedMemoryOperationOptio
   budgetTokens: number;
   query?: string;
   readOnly?: boolean;
+  /**
+   * When Decision recall must be done, as a `Date.now()` time. Preparing again for the same reply passes the
+   * first attempt's, so retries share the reply's limit instead of each getting a new one.
+   */
+  decisionDeadline?: number;
 }
 
 type StoredRecord = Omit<AdvancedMemoryRecord, "startIndex" | "endIndex" | "embeddingStatus"> & {
@@ -448,7 +453,7 @@ function preparationPolicyRevision(ctx: Context): string {
   // Automatic message visibility changes no prepared memory; keep existing snapshots reusable.
   const { autoMessageVisibility: _visibility, ...settings } = ctx.settings;
   return hash([
-    "scene-timeframe-constants-v27", // Invalidate reusable contexts without rebuilding valid source archives.
+    "scene-timeframe-constants-v28", // Invalidate reusable contexts without rebuilding valid source archives.
     policyFingerprint(ctx),
     settings,
     ctx.metadata.summaryEntries,
@@ -3961,10 +3966,13 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     await finishRecollections(chatId, { failed: 0 }, options);
   }
 
+  /** Records an embedder rejected on their own, by embedding model and text, which upkeep skips from then on. */
+  const unembeddable = new Set<string>();
+
   /**
-   * After a reply: vectors for a few summaries and excerpts that have none, summaries first, the newest scenes
-   * first. Scenes archived in Decision mode before #7699 have none; Reindex does them all at once, and also
-   * replaces vectors from another embedding model, which this leaves alone. Only the vector is written, and only
+   * After a reply: vectors for a few summaries and excerpts that have none from the current embedding model,
+   * summaries first, the newest scenes first. Scenes archived in Decision mode before #7699 have none, and an
+   * embedding model change leaves old ones; Reindex does them all at once. Only the vector is written, and only
    * while its record still has the text it was made from, so nothing else is checked again.
    */
   async function upkeepVectors(chatId: string, options: AdvancedMemoryOperationOptions) {
@@ -3976,6 +3984,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       connectionId: ctx.connectionId,
     });
     const space = embeddingSource?.spaceId ?? "local-default";
+    const key = (record: StoredRecord) => `${space}\n${record.id}\n${hash(record.content)}`;
     const order = new Map(ctx.messages.map((message, index) => [message.id, index]));
     const missing = (await operationRecords(ctx))
       .filter(
@@ -3985,7 +3994,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           record.content &&
           record.enabled &&
           order.has(record.startMessageId) &&
-          !record.embedding?.length,
+          !(record.embedding?.length && record.embeddingSpaceId === space) &&
+          !unembeddable.has(key(record)) &&
+          embeddingText(record).trim(),
       )
       .sort(
         (a, b) =>
@@ -3994,18 +4005,31 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       )
       .slice(0, VECTOR_UPKEEP_RECORDS);
     if (!missing.length) return;
-    try {
-      const vectors = await embedMemoryRecallTexts(missing.map(embeddingText), {
+    const embed = (batch: StoredRecord[]) =>
+      embedMemoryRecallTexts(batch.map(embeddingText), {
         ...(embeddingSource ? { embeddingSource } : {}),
         signal: options.signal,
         inputType: "document",
       });
-      for (const [index, record] of missing.entries()) {
-        if (!vectors[index]?.length) continue;
-        await db
-          .update(advancedMemoryRecords)
-          .set({ embedding: JSON.stringify(vectors[index]), embeddingSpaceId: space })
-          .where(and(eq(advancedMemoryRecords.id, record.id), eq(advancedMemoryRecords.content, record.content)));
+    const save = (record: StoredRecord, vector: number[]) =>
+      db
+        .update(advancedMemoryRecords)
+        .set({ embedding: JSON.stringify(vector), embeddingSpaceId: space })
+        .where(and(eq(advancedMemoryRecords.id, record.id), eq(advancedMemoryRecords.content, record.content)));
+    try {
+      const vectors = await embed(missing);
+      if (vectors.length === missing.length) {
+        for (const [index, record] of missing.entries()) await save(record, vectors[index]!);
+        return;
+      }
+      // One text the embedder rejects, such as a long excerpt, fails the whole request. Each alone then, the
+      // shortest first: when even that fails the embedder is down, and the rest wait for the next reply.
+      const shortestFirst = [...missing].sort((a, b) => embeddingText(a).length - embeddingText(b).length);
+      for (const [index, record] of shortestFirst.entries()) {
+        const [vector] = await embed([record]);
+        if (vector?.length) await save(record, vector);
+        else if (index === 0) return;
+        else unembeddable.add(key(record));
       }
     } catch (error) {
       abortIfNeeded(options.signal);
@@ -5138,8 +5162,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const conversation = logMessages(ctx, visible.slice(-4));
     // Set only when the scene pass answered; the message pass runs only after it.
     let decisionThreshold: number | null = null;
-    // Both passes share one total limit, and each has its own within it.
-    const recallStarted = Date.now();
+    // Both passes share one total limit, and each has its own within it. Preparing again for the same reply keeps
+    // the first attempt's, so a prompt-overflow retry never starts a new one; with no time left, ordinary recall.
+    const recallDeadline = input.decisionDeadline ?? Date.now() + MEMORY_DECISION_RECALL_TOTAL_MS;
+    const passClock = () =>
+      memoryDecisionClock(input.signal, Math.min(MEMORY_DECISION_RECALL_MAX_MS, recallDeadline - Date.now()));
     if (ctx.settings.decisionEnabled && recalling) {
       if (input.readOnly) receipt.reasons.push("decision-recall-preview");
       else {
@@ -5158,15 +5185,20 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             indexes.get(recalledSceneRecords.get(a)!.startMessageId)! -
             indexes.get(recalledSceneRecords.get(b)!.startMessageId)!,
         );
+        // Until nearly every scene has a vector, the few that do would take ranks their similarity never earned,
+        // so the order stays ordinary recall's. An archive from before #7699 gets its vectors a few per reply,
+        // and a scene whose text differs for this reader never gets a similarity, so 90% rather than all.
         const shortlist = withFollowingScenes(
-          fuseRecallRanks(sceneWords, sceneVectors),
+          sceneVectors.size >= sceneWords.size * 0.9
+            ? fuseRecallRanks(sceneWords, sceneVectors)
+            : [...sceneRelevance.keys()],
           (sceneId) => chronological[chronological.indexOf(sceneId) + 1],
           Math.max(MEMORY_DECISION_BATCH_SIZE, ctx.settings.retrieveMaxScenes),
         ).map((sceneId) => recalledSceneRecords.get(sceneId)!);
         let sceneScores: Map<string, number | null> | null = null;
-        const clock = memoryDecisionClock(input.signal, MEMORY_DECISION_RECALL_MAX_MS);
+        const clock = passClock();
         try {
-          const backend = await memoryDecisionBackend(ctx, { ...input, signal: clock.signal });
+          const backend = clock.maxMs > 0 ? await memoryDecisionBackend(ctx, { ...input, signal: clock.signal }) : null;
           if (backend && !backend.deferPreGeneration) {
             sceneScores = await rankDecisionMemories(
               backend,
@@ -5304,12 +5336,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         return messages.some(fits) ? messages : [];
       });
       if (judged.length) {
-        const clock = memoryDecisionClock(
-          input.signal,
-          Math.min(MEMORY_DECISION_RECALL_MAX_MS, MEMORY_DECISION_RECALL_TOTAL_MS - (Date.now() - recallStarted)),
-        );
+        const clock = passClock();
         try {
-          const backend = await memoryDecisionBackend(ctx, { ...input, signal: clock.signal });
+          const backend = clock.maxMs > 0 ? await memoryDecisionBackend(ctx, { ...input, signal: clock.signal }) : null;
           // The scene pass may have taught the backend that this model reasons, which defers it now.
           if (backend && !backend.deferPreGeneration)
             messageScores = await rankDecisionMemories(

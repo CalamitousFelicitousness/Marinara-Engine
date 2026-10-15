@@ -17,8 +17,11 @@ process.env.MARINARA_LITE = "true";
 
 // The fake embedder counts concept words, so a paraphrase shares a direction with its scene but no word.
 const CONCEPTS = [/\b(?:locket|pendant|chain)\b/giu, /\brope\b/giu];
-const vector = (text: string) => [...CONCEPTS.map((concept) => (text.match(concept) ?? []).length), 0.1];
+let vector = (text: string) => [...CONCEPTS.map((concept) => (text.match(concept) ?? []).length), 0.1];
 const embeddingInputs: string[][] = [];
+let embeddingRequests = 0;
+// An embedder that rejects some inputs, as llama-server does with a text over its batch size, fails the request.
+let rejectedEmbedding: RegExp | null = null;
 const recallRequests: Array<Array<{ id: string; text: string }>> = [];
 const decisionBodies: string[] = [];
 let embeddingsDown = false;
@@ -59,7 +62,8 @@ const provider = createServer(async (request, response) => {
     return;
   }
   if (request.url === "/v1/embeddings") {
-    if (embeddingsDown) {
+    embeddingRequests++;
+    if (embeddingsDown || body.input.some((text: string) => rejectedEmbedding?.test(text))) {
       response.statusCode = 500;
       response.end("{}");
       return;
@@ -76,7 +80,7 @@ const provider = createServer(async (request, response) => {
       ? body.messages[1].content.includes("TARGET_SCENE")
         ? "TARGET_SCENE: The old oath concerned Cobalt refuge."
         : "Lantern soup was served."
-      : summaries[Number(scene)];
+      : sceneSummaries[Number(scene)];
   response.end(
     JSON.stringify({
       choices: [
@@ -102,6 +106,7 @@ const summaries = Array.from({ length: 30 }, (_, index) =>
         ? "They walked back at sunrise and slept until noon."
         : `Mari and Kaito bought rope${" and more rope".repeat(index % 3)} with ${chores[index % chores.length]} at the market.`,
 );
+let sceneSummaries = summaries;
 
 const { createFileNativeDB } = await import("../../packages/server/src/db/file-backed-store.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
@@ -254,6 +259,18 @@ try {
   assert(rows.filter((row) => answered!.some(({ id }) => id === row.id)).every((row) => row.score !== undefined));
   assert.equal(partial.receipt.decisionRecall!.fallback, true);
 
+  // Preparing again for the same reply keeps its Decision time limit: with none left, ordinary recall.
+  recallRequests.length = 0;
+  const late = await memory.prepare({
+    chatId: chat.id,
+    messages: await chats.listMessages(chat.id),
+    audienceCharacterIds: ["kaito"],
+    budgetTokens: 50000,
+    decisionDeadline: Date.now() - 1,
+  });
+  assert.equal(recallRequests.length, 0, "no Decision request once the reply's limit has passed");
+  assert(late.receipt.reasons.includes("decision-recall-fallback"), late.receipt.reasons.join(", "));
+
   // Vectors missing from a Decision-mode archive are filled in after replies, a bounded few at a time:
   // summaries first, the newest scenes first.
   const backfill = await chats.create({
@@ -301,6 +318,31 @@ try {
   await memory.checkScenesAfterGeneration(backfill.id);
   assert.equal((await vectorized()).length, 60, "the next reply goes on");
 
+  // Another embedding model's vectors are replaced the same way. A text the embedder rejects no longer fails
+  // the others: they are sent one at a time, and the rejected one is skipped from then on.
+  await connections.update(helper.id, { embeddingModel: "fixture-2" });
+  rejectedEmbedding = /\[scene 29\]/u;
+  embeddingInputs.length = 0;
+  await memory.checkScenesAfterGeneration(backfill.id);
+  assert.equal(embeddingInputs.flat().length, 31, "all but the rejected excerpt get the new model's vectors");
+  assert(
+    embeddingInputs.every((batch) => batch.length === 1),
+    "one text per request once the batch failed",
+  );
+  let requests = embeddingRequests;
+  embeddingInputs.length = 0;
+  await memory.checkScenesAfterGeneration(backfill.id);
+  assert.equal(embeddingRequests - requests, 1, "the rejected text is not sent again");
+  assert.equal(embeddingInputs.flat().length, 28, "the fill moves on to the other excerpts");
+  rejectedEmbedding = null;
+  // With the embedder down, a reply sends the batch and its shortest text, not every text alone.
+  await connections.update(helper.id, { embeddingModel: "fixture-3" });
+  embeddingsDown = true;
+  requests = embeddingRequests;
+  await memory.checkScenesAfterGeneration(backfill.id);
+  embeddingsDown = false;
+  assert.equal(embeddingRequests - requests, 2);
+
   // The line placing a scene uses only what the reader saw: a message hidden from them gives no date.
   const group = await chats.create({
     name: "Dates",
@@ -340,6 +382,74 @@ try {
   assert.match(oathLine, /^Messages #1–#2; story time: Spring 3; speakers: User, Character$/u);
   assert(estimateChatSummaryTokens(oathLine) <= 25);
   assert.doesNotMatch(decisionBodies.join("\n"), /Autumn 1|Winter 9|PRIVATE_SECRET/u, "nothing the reader missed");
+
+  // Until nearly every scene has a vector, the shortlist keeps ordinary recall's order. Vectors come to the newest
+  // scenes first, and fused with so few, their unrelated similarities would push word matches out (#7699).
+  const cues =
+    "amber basil cedar delta ember flint grove harbor ivory juniper kelp lilac maple nectar olive pebble quartz raven sable thistle umber velvet willow yarrow zinnia".split(
+      " ",
+    );
+  // Scene i < 24 shares 25 - i of the question's words, so it ranks i + 1st by words; later scenes share one.
+  sceneSummaries = Array.from(
+    { length: 40 },
+    (_, index) => `Scene ${index} notes: ${cues.slice(0, index < 24 ? 25 - index : 1).join(" ")}.`,
+  );
+  // Every summary's similarity is low and unrelated to the question, as with a plain local embedder.
+  vector = (text: string) =>
+    text.includes("Remember")
+      ? [1, 0, 1]
+      : [0, 1, ([...text].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 997, 0) / 997) * 0.3];
+  const coverage = await chats.create({
+    name: "Coverage",
+    mode: "roleplay",
+    characterIds: ["kaito"],
+    connectionId: helper.id,
+  });
+  assert(coverage);
+  await memory.updateSettings(coverage.id, decisionSettings);
+  await chats.createMessagesBatch(coverage.id, [
+    ...sceneSummaries.flatMap((_, index) => sceneMessages(index)),
+    ...liveMessages.slice(0, -1),
+    { role: "user", content: `Remember ${cues.join(" ")}?` },
+  ]);
+  embeddingsDown = true;
+  await memory.initialize(coverage.id);
+  embeddingsDown = false;
+  const coverageRecords = (await memory.status(coverage.id)).records;
+  const coveragePass = async () => {
+    recallRequests.length = 0;
+    await memory.prepare({
+      chatId: coverage.id,
+      messages: await chats.listMessages(coverage.id),
+      audienceCharacterIds: ["kaito"],
+      budgetTokens: 50000,
+    });
+    return recallRequests[0]!.map(({ id }) =>
+      sceneSummaries.indexOf(coverageRecords.find((r) => r.id === id)!.content!),
+    );
+  };
+  const wordsOnly = await coveragePass();
+  assert.deepEqual(
+    [...wordsOnly].sort((a, b) => a - b),
+    Array.from({ length: 24 }, (_, index) => index),
+    "with no vectors, the 24 best word matches",
+  );
+  await memory.checkScenesAfterGeneration(coverage.id);
+  assert.equal(
+    (await memory.status(coverage.id)).records.filter(
+      (record) => record.kind === "scene" && record.embeddingStatus === "vectorized",
+    ).length,
+    32,
+    "one reply gives the newest 32 of 40 summaries vectors",
+  );
+  const partlyVectored = await coveragePass();
+  assert.deepEqual(
+    [...partlyVectored].sort((a, b) => a - b),
+    [...wordsOnly].sort((a, b) => a - b),
+    "no word match is pushed out",
+  );
+  assert.deepEqual(partlyVectored, wordsOnly, "in the word-match order");
+  sceneSummaries = summaries;
 
   // The pass is sized to its backend: the expected time with headroom, at least 10 s, at most its cap, and
   // a backend too slow for every statement judges fewer, the best ranked first.
@@ -382,6 +492,25 @@ try {
   );
   assert.deepEqual(pass.limits, [20 * 800 * 1.5]);
   assert(pass.limits[0]! <= 25_000, "within the cap");
+  assert.deepEqual(
+    asked.map((batch) => batch.length),
+    [10, 10],
+    "requests of at most 8 s, so a time limit keeps those that finished",
+  );
+  // A chat model's speed is unknown: it is asked every candidate in short requests, and a fast one answers all.
+  backend.requestMs = undefined;
+  asked.length = 0;
+  pass = sized(25_000);
+  assert.equal(
+    (await rankDecisionMemories(backend, "Remember?", [], candidates.slice(0, 24), undefined, undefined, pass.clock))
+      ?.size,
+    24,
+  );
+  assert.deepEqual(
+    asked.map((batch) => batch.length),
+    [8, 8, 8],
+  );
+  assert.deepEqual(pass.limits, [25_000]);
   // A System One connection answers a request's statements together; its per-statement limit is not its cost.
   backend.requestMs = () => 4000;
   pass = sized(15_000);

@@ -85,8 +85,10 @@ const FUSION_K = 3;
 /**
  * Scene ids by reciprocal rank fusion of their word-match and vector-similarity scores (#7699), so a scene that
  * shares no word with the question can still rank by meaning, however modest its similarity. Equal scores share
- * the middle of the ranks they span. A scene without a vector counts its word rank twice, so a vector still missing neither helps nor hurts
- * it. Ties keep the order of `words`, which with no vectors at all is exactly the word-match order.
+ * the middle of the ranks they span. A scene without a vector counts its word rank twice. Vectors are ranked only
+ * among the scenes that have one, so when only some do, those few take the top vector ranks whatever their
+ * similarity and push word matches out: fuse only once nearly every scene has a vector. Ties keep the order of
+ * `words`, which with no vectors at all is exactly the word-match order.
  */
 export function fuseRecallRanks(words: ReadonlyMap<string, number>, vectors: ReadonlyMap<string, number>): string[] {
   const ranks = (scores: ReadonlyMap<string, number>) => {

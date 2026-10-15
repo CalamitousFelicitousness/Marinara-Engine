@@ -21,12 +21,18 @@ export const MEMORY_DECISION_RECALL_TIMEOUT_MS = 10_000;
 /**
  * At most this per pass, and both passes together at most `MEMORY_DECISION_RECALL_TOTAL_MS`, since the reply
  * waits for them. 25 s lets Open-Jev 9B (800 ms a statement) judge 20 summaries with that headroom; 40 s keeps
- * the worst case of both passes at twice the 20 s they could take before. A pass that cannot fit its
- * statements judges fewer, the best ranked first.
+ * the worst case of both passes at twice the 20 s they could take before, for each reply. A pass that cannot
+ * fit its measured statements judges fewer, the best ranked first.
  */
 export const MEMORY_DECISION_RECALL_MAX_MS = 25_000;
 export const MEMORY_DECISION_RECALL_TOTAL_MS = 40_000;
 const MEMORY_DECISION_RECALL_HEADROOM = 1.5;
+/**
+ * Within a time limit, a request expected to take longer is split, so the requests that finish in time still
+ * count when the pass runs out. A System One connection's request costs the same at any size and never splits;
+ * Open-Jev 9B still fills its runtime batch of 8.
+ */
+const MEMORY_DECISION_REQUEST_MS = 8_000;
 /**
  * Scene cuts are asked in small groups, each after the messages just before it. Five candidates after three
  * earlier messages is the shape measured on hosted Jev against a real chat, where a fixed 0.8 cut-off and
@@ -138,6 +144,7 @@ export function memoryDecisionClock(cancel: AbortSignal | undefined, maxMs: numb
 /**
  * Judge the supplied candidates, best ranked first; the caller has already enforced its character's access.
  * With a clock, only as many as its pass can expect to answer in time are asked, and the pass gets that time.
+ * A backend whose cost is only guessed is asked them all, and what it answers in time counts.
  * Each id maps to its score, or to null when its request failed, timed out or it was too large to send:
  * those use ordinary recall, and the answers of the other requests still count. Ids not asked are left out.
  * Null when no request answered. Only the caller's own cancellation throws.
@@ -178,10 +185,15 @@ export async function rankDecisionMemories(
       continue;
     }
     const last = batches.at(-1);
-    const joins = !!last && last.length < MEMORY_DECISION_BATCH_SIZE && fits([...last, candidate]);
+    const joins =
+      !!last &&
+      last.length < MEMORY_DECISION_BATCH_SIZE &&
+      (!clock || requestMs(last.length + 1) <= MEMORY_DECISION_REQUEST_MS) &&
+      fits([...last, candidate]);
     const next = expectedMs + (joins ? requestMs(last.length + 1) - requestMs(last.length) : requestMs(1));
-    // Judge fewer, the best ranked first, rather than run the whole pass out of time.
-    if (clock && next * MEMORY_DECISION_RECALL_HEADROOM > clock.maxMs) break;
+    // Judge fewer, the best ranked first, rather than run the whole pass out of time. A guessed cost is no
+    // reason to leave any out: a fast model answers them all, and a slow one keeps what finished in time.
+    if (clock && backend.requestMs && next * MEMORY_DECISION_RECALL_HEADROOM > clock.maxMs) break;
     expectedMs = next;
     if (joins) last.push(candidate);
     else batches.push([candidate]);

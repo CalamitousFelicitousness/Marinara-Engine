@@ -57,9 +57,9 @@ export interface DecisionBackend {
    */
   deferPreGeneration: boolean;
   /**
-   * The expected time of one request carrying this many statements, for sizing a pass of many requests:
-   * measured where the model is known, otherwise a deliberately slow guess. Not a time limit. Absent, each
-   * statement counts `DECISION_UNMEASURED_STATEMENT_MS`.
+   * The expected time of one request carrying this many statements, measured where the model is known, for
+   * sizing a pass of many requests. Not a time limit. Absent, the time is unknown: each statement counts
+   * `DECISION_UNMEASURED_STATEMENT_MS`, and a pass asks every statement rather than judge fewer on a guess.
    */
   requestMs?: (statements: number) => number;
   ask: (state: unknown, questions: NoulQuestion[]) => Promise<Map<string, number> | null>;
@@ -168,10 +168,7 @@ async function chatBackend(
     // answers on the ordinary scale.
     calibration: DEFAULT_DECISION_CALIBRATION,
     deferPreGeneration: thinks && !(await deps.getThinkingPreGeneration()),
-    // One request per statement, one at a time; a connection whose own limit is shorter is that fast at most.
-    requestMs: (statements) =>
-      statements *
-      Math.min(target.connection?.timeoutMs ?? DECISION_UNMEASURED_STATEMENT_MS, DECISION_UNMEASURED_STATEMENT_MS),
+    // No requestMs: a chat model's speed is not measured, so a recall pass asks every statement (#7699).
     ask: async (state, questions) =>
       askSidecarNoulQuestions({
         slot: target,
@@ -243,6 +240,7 @@ export async function resolveDecisionBackend(
       // it is not a truncation, it is a 422 and a failed gate on every long scene.
       const limit = resolved.maxLengthTokens ?? decisionSlotContextSize(slot);
       const maxStateTokens = Math.max(256, limit - SIDECAR_STATE_HEADROOM_TOKENS);
+      const perQuestionMs = resolved.perQuestionMs;
       // Local and on loopback, but a model still has to run: the sidecar's limit for the
       // first answer, then its measured cost for each further one. A model with no
       // measured cost gets the full limit for every answer. Never one limit for the
@@ -280,8 +278,9 @@ export async function resolveDecisionBackend(
         calibration,
         // It scores candidates in one pass and never reasons, so nothing is deferred.
         deferPreGeneration: false,
-        // Each statement re-reads the scene, so a request costs its measured time per statement.
-        requestMs: (statements) => statements * (resolved.perQuestionMs ?? DECISION_UNMEASURED_STATEMENT_MS),
+        // Each statement re-reads the scene, so a request costs its measured time per statement. A pasted
+        // checkpoint has none measured.
+        requestMs: perQuestionMs ? (statements) => statements * perQuestionMs : undefined,
         ask: async (state, questions) => (await askSidecar(state, questions)).answers,
         askMixed: askSidecar,
       };

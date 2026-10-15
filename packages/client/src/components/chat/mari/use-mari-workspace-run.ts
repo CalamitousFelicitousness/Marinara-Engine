@@ -111,7 +111,8 @@ export function useMariWorkspaceRun({
       // F15: the server already saved this failure on the message; without a reload the local copy
       // still lacks mariRunError, so an OLDER failure in the same session loses its quiet line until
       // the next full reload.
-      if (chatId) void loadMessages(chatId, { restoreFocus: false });
+      // Returns the reload so the caller can tell whether the server saved the message at all.
+      return chatId ? loadMessages(chatId, { restoreFocus: false }).catch(() => undefined) : undefined;
     },
     [chatId, loadMessages, setRecovery],
   );

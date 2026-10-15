@@ -401,6 +401,8 @@ export type ProfessorMariRecovery = {
   detail?: string;
   /** The optimistic bubble of the failed message, replaced when you retry. */
   localMessageId?: string;
+  /** The server never saved the message, so it went back to the composer: Retry sends the composer. */
+  inComposer?: boolean;
 };
 
 export function classifyProfessorMariFailure(error: unknown): ProfessorMariRecovery["kind"] {

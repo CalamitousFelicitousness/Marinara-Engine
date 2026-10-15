@@ -183,6 +183,7 @@ import {
 import {
   WorkspaceTimelineItem,
   appendTextTimeline,
+  findSavedUserMessage,
   getMessageRunError,
   getMessageRunTime,
   getMessageWorkspaceActionResults,
@@ -2310,14 +2311,7 @@ export function HomeProfessorMariChat({
       let existingUserMessageId: string | undefined;
       if (overrideRecovery?.reuseSavedMessage) {
         const loaded = await loadMessages(chat.id, { restoreFocus: false }).catch(() => undefined);
-        // F3: when a later round failed, the newest message is her partial reply (mariRunError set), not
-        // your question — look past it for the user message it answers, or Retry sends a duplicate.
-        const newest = loaded?.at(-1);
-        const saved =
-          newest && getMessageRunError(newest, { includeDismissed: true })
-            ? loaded?.findLast((message) => message.role === "user")
-            : newest;
-        if (saved?.role === "user" && saved.content === messageText) existingUserMessageId = saved.id;
+        existingUserMessageId = findSavedUserMessage(loaded, messageText)?.id;
       }
       if (existingUserMessageId) {
         setTurnStartMessageId(existingUserMessageId);
@@ -2357,11 +2351,18 @@ export function HomeProfessorMariChat({
       // Like Claude: your message stays where you sent it and one error card with Retry sits under the turn.
       // No toast over her header, and the text is not pushed back into the composer as a duplicate.
       if (!isProfessorMariAbortError(error)) setHandoffContext(submittedContext);
-      failRun(error, {
+      void failRun(error, {
         text: messageText,
         attachments: submittedAttachments,
         context: submittedContext,
         localMessageId,
+      })?.then((loaded) => {
+        if (!localMessageId || !loaded || findSavedUserMessage(loaded, messageText)) return;
+        // The server refused before it saved your message (no admin secret, a 401/403, a dead connection),
+        // so the reload took your bubble away. Give it back in the composer to edit or send again.
+        setDraft((current) => (current.trim() ? current : text));
+        setAttachments((current) => (current.length > 0 ? current : submittedAttachments));
+        setRecoveryState((current) => current && { ...current, inComposer: true });
       });
     } finally {
       setSending(false);
@@ -2455,6 +2456,11 @@ export function HomeProfessorMariChat({
     const target = recovery ?? (savedRunError ? retryOf(lastUserMessage) : null);
     if (!target?.text) return;
     setHandoffContext(target.context);
+    // Your message went back to the composer: send it from there, edits included.
+    if (recovery?.inComposer) {
+      void handleSubmit(undefined, undefined, target.context);
+      return;
+    }
     void handleSubmit(target.text, { ...target, reuseSavedMessage: true });
   };
   const retryRunEvent = useEffectEvent(retryRun);

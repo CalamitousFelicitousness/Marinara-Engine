@@ -11,6 +11,7 @@ import {
   AVATAR_CONFIG_VERSION,
   AVATAR_EXPRESSION_BINDING_SOURCES,
   AVATAR_EXPRESSION_SLOTS,
+  AVATAR_EXTRA_FEELINGS,
   AVATAR_KINDS,
   AVATAR_OWNER_ID_PATTERN,
   AVATAR_OWNER_TYPES,
@@ -20,6 +21,8 @@ import {
   type AvatarConfig,
   type AvatarConfigUpdate,
   type AvatarExpressionMap,
+  type AvatarExtraFeeling,
+  type AvatarFeelingMap,
   type AvatarMeshRigRequest,
   type AvatarPngtuberVariantsRequest,
   type AvatarVrmModelRequest,
@@ -58,6 +61,14 @@ export const avatarExpressionMapSchema = z
   )
   .strict() satisfies z.ZodType<AvatarExpressionMap>;
 
+export const avatarFeelingMapSchema = z
+  .object(
+    Object.fromEntries(
+      AVATAR_EXTRA_FEELINGS.map((feeling) => [feeling, avatarExpressionBindingSchema.optional()]),
+    ) as Record<AvatarExtraFeeling, z.ZodOptional<typeof avatarExpressionBindingSchema>>,
+  )
+  .strict() satisfies z.ZodType<AvatarFeelingMap>;
+
 const avatarImageRefSchema = z.discriminatedUnion("source", [
   z.object({ source: z.literal("sprite"), label: z.string().regex(SPRITE_LABEL_KEY_PATTERN) }).strict(),
   z.object({ source: z.literal("file"), path: avatarFilePathSchema }).strict(),
@@ -80,6 +91,9 @@ const pngtuberAvatarDataSchema = z
         message: `A PNGTuber setup holds at most ${MAX_PNGTUBER_LAYER_SETS} layer sets.`,
       }),
     expressionMap: avatarExpressionMapSchema,
+    // Optional and additive, so no AVATAR_CONFIG_VERSION or STORAGE_VERSION bump: avatar.json lives outside the
+    // file-backed store, and no release has read it yet.
+    feelingMap: avatarFeelingMapSchema.optional(),
     motion: z
       .object({
         bounceOnTalk: z.boolean(),

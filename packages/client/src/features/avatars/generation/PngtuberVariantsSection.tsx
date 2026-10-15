@@ -1,5 +1,6 @@
 // Blink and talk pictures for the talking head (PNGTuber avatar): one row per face it shows for the six
-// feelings, with that face's own blink and talk pictures, made or provided (lane: generation).
+// feelings and for extra feelings with a face of their own, with that face's own blink and talk pictures, made
+// or provided (lane: generation).
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -18,6 +19,7 @@ import { useUIStore } from "../../../stores/ui.store";
 import type { ImagePromptOverride, ImagePromptReviewItem } from "../../../components/ui/ImagePromptReviewModal";
 import { AVATAR_EMOTION_LABEL_KEYS } from "../renderers/pngtuber/PngtuberSetupPanel";
 import {
+  AVATAR_FEELING_LABEL_KEYS,
   buildPngtuberLayersFromSprites,
   pngtuberSpriteFamily,
   talkingHeadFaces,
@@ -237,7 +239,10 @@ export function PngtuberVariantsSection({
             >
               <div>
                 <p className="text-xs font-medium text-[var(--foreground)]">
-                  {face.emotions.map((emotion) => t(AVATAR_EMOTION_LABEL_KEYS[emotion])).join(", ")}
+                  {[
+                    ...face.emotions.map((emotion) => t(AVATAR_EMOTION_LABEL_KEYS[emotion])),
+                    ...face.feelings.map((feeling) => t(AVATAR_FEELING_LABEL_KEYS[feeling])),
+                  ].join(", ")}
                 </p>
                 {!face.label && (
                   <p className="text-[0.625rem] text-[var(--muted-foreground)]">

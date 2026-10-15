@@ -1,14 +1,17 @@
 // PNGTuber setup on the 2D Avatars agent page (lane: 2D): reuse the owner's sprites, pick a face for each
-// feeling, tune the hop and blink, and import a PNGTuber Plus `.save`.
+// feeling (the six, and under "More feelings" the 23 extra ones), tune the hop and blink, and import a
+// PNGTuber Plus `.save`.
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Loader2, Trash2, Upload, Wand2 } from "lucide-react";
+import { ChevronRight, Loader2, Trash2, Upload, Wand2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   AVATAR_EMOTIONS,
+  AVATAR_FACE_GROUPS,
   PNGTUBER_DEFAULT_MOTION,
   type AvatarEmotion,
-  type AvatarExpressionMap,
+  type AvatarExpressionBinding,
+  type AvatarExtraFeeling,
   type PngtuberAvatarData,
   type PngtuberMotion,
 } from "@marinara-engine/shared";
@@ -23,7 +26,7 @@ import {
 } from "../../../../components/panels/settings/SettingControls";
 import type { AvatarKindSetupPanelProps } from "../../contract";
 import { resolveAvatarImage } from "../../stage/avatar-stage-logic";
-import { buildPngtuberLayersFromSprites } from "./pngtuber-layers";
+import { AVATAR_FEELING_LABEL_KEYS, buildPngtuberLayersFromSprites } from "./pngtuber-layers";
 
 /** Labels of the six feelings, shared with the mesh avatar panel. */
 export const AVATAR_EMOTION_LABEL_KEYS: Readonly<Record<AvatarEmotion, string>> = {
@@ -48,16 +51,20 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
 }
 
-/** Keeps the user's own picks whose face still exists; everything else comes from the fresh detection. */
-function keepUserBindings(previous: AvatarExpressionMap, next: PngtuberAvatarData): AvatarExpressionMap {
-  const map = { ...next.expressionMap };
-  for (const emotion of AVATAR_EMOTIONS) {
-    const binding = previous[emotion];
-    if (binding?.source === "user" && (binding.target === null || Object.hasOwn(next.layers, binding.target))) {
-      map[emotion] = binding;
+/** Keeps the user's own picks whose face still exists; everything else comes from the fresh detection. Works
+ *  for the six feelings' map and the extra feelings' map alike. */
+function keepUserBindings<M extends Partial<Record<string, AvatarExpressionBinding>>>(
+  previous: M | undefined,
+  next: M | undefined,
+  layers: PngtuberAvatarData["layers"],
+): M {
+  const map: Partial<Record<string, AvatarExpressionBinding>> = { ...next };
+  for (const [slot, binding] of Object.entries(previous ?? {})) {
+    if (binding?.source === "user" && (binding.target === null || Object.hasOwn(layers, binding.target))) {
+      map[slot] = binding;
     }
   }
-  return map;
+  return map as M;
 }
 
 export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
@@ -91,7 +98,8 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
         ? {
             ...spritesApply,
             motion: stored.motion,
-            expressionMap: keepUserBindings(stored.expressionMap, spritesApply),
+            expressionMap: keepUserBindings(stored.expressionMap, spritesApply.expressionMap, spritesApply.layers),
+            feelingMap: keepUserBindings(stored.feelingMap, spritesApply.feelingMap, spritesApply.layers),
           }
         : spritesApply,
     );
@@ -104,6 +112,17 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
       expressionMap: {
         ...shown.expressionMap,
         [emotion]: { target: target || null, source: "user", confidence: 1 },
+      },
+    });
+  };
+
+  const chooseFeelingFace = (feeling: AvatarExtraFeeling, target: string) => {
+    if (!shown) return;
+    store({
+      ...shown,
+      feelingMap: {
+        ...shown.feelingMap,
+        [feeling]: { target: target || null, source: "user", confidence: 1 },
       },
     });
   };
@@ -226,6 +245,48 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
               </label>
             ))}
           </div>
+          <details className="group pt-1" data-avatar-more-feelings>
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.6875rem] font-semibold marker:hidden">
+              <ChevronRight
+                size="0.75rem"
+                className="shrink-0 text-[var(--muted-foreground)] transition-transform group-open:rotate-90"
+                aria-hidden="true"
+              />
+              {t("avatars.pngtuber.moreFeelings")}
+            </summary>
+            <p className="mt-1 text-[0.625rem] text-[var(--marinara-chat-chrome-panel-muted)]">
+              {t("avatars.pngtuber.moreFeelingsHelp")}
+            </p>
+            {AVATAR_FACE_GROUPS.map(([emotion, ...feelings]) => (
+              <div key={emotion} className="mt-2">
+                <div className="mb-1 text-[0.625rem] font-semibold text-[var(--muted-foreground)]">
+                  {t(AVATAR_EMOTION_LABEL_KEYS[emotion])}
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {feelings.map((feeling) => (
+                    <label key={feeling} className="flex flex-col gap-1 text-[0.6875rem]">
+                      <span>{t(AVATAR_FEELING_LABEL_KEYS[feeling])}</span>
+                      <select
+                        value={shown.feelingMap?.[feeling]?.target ?? ""}
+                        onChange={(event) => chooseFeelingFace(feeling, event.target.value)}
+                        className={AVATAR_SETUP_SELECT_CLASS}
+                        data-avatar-feeling={feeling}
+                      >
+                        <option value="">
+                          {t("avatars.pngtuber.usesFeelingFace", { feeling: t(AVATAR_EMOTION_LABEL_KEYS[emotion]) })}
+                        </option>
+                        {faceKeys.map((key) => (
+                          <option key={key} value={key}>
+                            {key}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </details>
         </fieldset>
       )}
 

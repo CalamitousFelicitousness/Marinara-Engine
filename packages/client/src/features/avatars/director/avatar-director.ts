@@ -6,7 +6,10 @@
 // model where the server has one; never an LLM), at most once every 1.2 s, with a cache per sentence. Faces change
 // with hysteresis: a new emotion needs a score of 0.45 and a 0.15 lead over the current one, a face holds for at
 // least 2 s, and going back to neutral takes two neutral sentences. 4 s after the reply ends the face relaxes,
-// unless the Expression Engine has settled it. Game: the Game Master's per-line expression for the line on screen.
+// unless the Expression Engine has settled it. A more specific feeling inside the same emotion (amusement inside
+// happy) changes on a 0.45 score and holds 2 s on its own clock, so the emotion's timing is the same with or
+// without feelings; only a talking head with a face for the feeling shows it. Game: the Game Master's per-line
+// expression for the line on screen.
 // Either way an Expression Engine pick for this reply's message is the final face for that reply.
 // A reply ends when its generation does (after the typewriter has shown it all). With streaming off it arrives whole
 // (assistant_message_ready), is classified once and spoken within 8 s.
@@ -18,14 +21,17 @@
 import {
   AVATAR_API_PREFIXES,
   AVATAR_CLASSIFY_LIMITS,
+  AVATAR_FEELING_EMOTIONS,
   AVATAR_NEUTRAL_FRAME,
   classifyExpressionKeywords,
   mapSpriteExpressionToAvatarEmotion,
+  mapSpriteExpressionToAvatarFeeling,
   normalizeGroupChatMode,
   type AvatarClassification,
   type AvatarClassifyRequest,
   type AvatarClassifyResponse,
   type AvatarEmotion,
+  type AvatarExtraFeeling,
   type AvatarFrameInput,
   type AvatarState,
 } from "@marinara-engine/shared";
@@ -97,6 +103,10 @@ interface OwnerState {
   weight: number;
   label: string | null;
   switchedAt: number;
+  /** The more specific feeling inside `emotion`, with its own hold clock and waiting change. */
+  feeling: AvatarExtraFeeling | null;
+  feelingSwitchedAt: number;
+  pendingFeeling: AvatarExtraFeeling | null;
   neutralStreak: number;
   /** A result that passed the score rules while the face was still holding. */
   pending: AvatarClassification | null;
@@ -144,6 +154,9 @@ function newOwner(participant: AvatarParticipant): OwnerState {
     weight: 1,
     label: null,
     switchedAt: -Infinity,
+    feeling: null,
+    feelingSwitchedAt: -Infinity,
+    pendingFeeling: null,
     neutralStreak: 0,
     pending: null,
     settled: false,
@@ -231,7 +244,19 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     paragraphs.at(-1)?.ownerId ??
     null;
 
-  const switchTo = (owner: OwnerState, emotion: AvatarEmotion, weight: number, label: string | null) => {
+  const setFeeling = (owner: OwnerState, feeling: AvatarExtraFeeling | null) => {
+    owner.feeling = feeling;
+    owner.feelingSwitchedAt = now;
+    owner.pendingFeeling = null;
+  };
+
+  const switchTo = (
+    owner: OwnerState,
+    emotion: AvatarEmotion,
+    weight: number,
+    label: string | null,
+    feeling: AvatarExtraFeeling | null = null,
+  ) => {
     owner.emotion = emotion;
     owner.weight = clamp01(weight);
     owner.label = label;
@@ -239,6 +264,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     owner.pending = null;
     owner.neutralStreak = 0;
     owner.decayFrom = null;
+    setFeeling(owner, feeling);
   };
 
   const applyClassification = (owner: OwnerState, result: AvatarClassification) => {
@@ -246,8 +272,18 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     if (result.emotion === owner.emotion) {
       owner.weight = clamp01((owner.weight + result.weight) / 2);
       owner.pending = null;
+      owner.pendingFeeling = null;
       owner.neutralStreak = 0;
       owner.decayFrom = null;
+      // No feeling keeps the current one; a new one follows the same score and hold rules as a new emotion.
+      const feeling = result.feeling ?? null;
+      if (!feeling || feeling === owner.feeling || result.weight < T.switchScore) return;
+      if (now - owner.feelingSwitchedAt < T.minDwellMs) owner.pendingFeeling = feeling;
+      else {
+        // A face picked by label (an earlier reply's Expression Engine pick) gives way to the newer feeling.
+        owner.label = null;
+        setFeeling(owner, feeling);
+      }
       return;
     }
     if (result.emotion === "neutral") {
@@ -261,7 +297,15 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       owner.pending = result;
       return;
     }
-    switchTo(owner, result.emotion, result.weight, null);
+    switchTo(owner, result.emotion, result.weight, null, result.feeling ?? null);
+  };
+
+  /** A sprite label's emotion, and its feeling when that belongs to the same emotion. */
+  const switchToLabel = (owner: OwnerState, label: string) => {
+    const mapped = mapSpriteExpressionToAvatarEmotion(label) ?? { emotion: "neutral" as const, weight: 1 };
+    const feeling = mapSpriteExpressionToAvatarFeeling(label);
+    const ownFeeling = feeling && AVATAR_FEELING_EMOTIONS[feeling].emotion === mapped.emotion ? feeling : null;
+    switchTo(owner, mapped.emotion, mapped.weight, label, ownFeeling);
   };
 
   const startTurn = () => {
@@ -285,6 +329,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     for (const owner of owners.values()) {
       owner.settled = false;
       owner.pending = null;
+      owner.pendingFeeling = null;
       owner.neutralStreak = 0;
       if (!owner.audio) owner.clock.clear();
     }
@@ -430,13 +475,22 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     sendQueued();
     for (const owner of owners.values()) {
       if (owner.pending && now - owner.switchedAt >= T.minDwellMs) {
-        const { emotion, weight } = owner.pending;
-        switchTo(owner, emotion, weight, null);
+        const { emotion, weight, feeling } = owner.pending;
+        switchTo(owner, emotion, weight, null, feeling ?? null);
+      }
+      if (owner.pendingFeeling && now - owner.feelingSwitchedAt >= T.minDwellMs) {
+        owner.label = null;
+        setFeeling(owner, owner.pendingFeeling);
       }
       if (mode !== "roleplay" || generating || streamEndedAt === null || owner.settled || owner.speaking) continue;
-      if (owner.emotion === "neutral") continue;
+      if (owner.emotion === "neutral" && !owner.feeling) continue;
       const since = now - Math.max(streamEndedAt, owner.switchedAt) - T.settleAfterMs;
       if (since < 0) continue;
+      if (owner.emotion === "neutral") {
+        // A calm face with a feeling (curiosity) relaxes to the plain one; the emotion and its weight stay as they are.
+        if (since >= T.decayMs) setFeeling(owner, null);
+        continue;
+      }
       owner.decayFrom ??= owner.weight;
       owner.weight = owner.decayFrom * Math.max(0, 1 - since / T.decayMs);
       if (since >= T.decayMs) switchTo(owner, "neutral", 1, null);
@@ -495,11 +549,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       for (const pick of picks) {
         const owner = owners.get(pick.ownerId) ?? ownerByName(pick.ownerId);
         if (!owner) continue;
-        const mapped = mapSpriteExpressionToAvatarEmotion(pick.expression) ?? {
-          emotion: "neutral" as const,
-          weight: 1,
-        };
-        switchTo(owner, mapped.emotion, mapped.weight, pick.expression);
+        switchToLabel(owner, pick.expression);
         owner.settled = true;
       }
     },
@@ -508,13 +558,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       lineShownThisTurn = true;
       const owner = (line.ownerId ? owners.get(line.ownerId) : null) ?? ownerByName(line.speakerName);
       if (!owner) return;
-      if (line.expression) {
-        const mapped = mapSpriteExpressionToAvatarEmotion(line.expression) ?? {
-          emotion: "neutral" as const,
-          weight: 1,
-        };
-        switchTo(owner, mapped.emotion, mapped.weight, line.expression);
-      }
+      if (line.expression) switchToLabel(owner, line.expression);
       if (!owner.audio?.isPlaying()) owner.clock.speakAll(cleanTTSInputText(line.text), T.wholeSpeechMaxMs);
     },
     setAudioSource(ownerId: string, source: AvatarAudioLevelSource | null) {
@@ -548,6 +592,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
         emotion: owner.emotion,
         emotionWeight: owner.weight,
         label: owner.label,
+        feeling: owner.feeling,
         viseme,
         mouthOpen,
         state: stateOf(owner),

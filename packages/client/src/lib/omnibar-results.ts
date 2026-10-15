@@ -47,7 +47,11 @@ import {
   type OmnibarSearchData,
   type OmnibarSurface,
 } from "./omnibar-search";
-import { getOmnibarSettingsDestinations } from "./omnibar-settings";
+import {
+  getOmnibarSettingsDestinations,
+  localizeOmnibarSettingDescription,
+  localizeOmnibarSettingTitle,
+} from "./omnibar-settings";
 import { SETTINGS_SEARCHABLE_CONTROLS, settingsLocationPath } from "./settings-registry";
 import { OMNIBAR_SETTINGS_TOGGLE_BINDINGS } from "./omnibar-settings-toggle-bindings";
 import type { ChatResourceDragKind } from "./chat-resource-drag";
@@ -409,14 +413,15 @@ export function buildOmnibarControlResults({
   ] as const satisfies readonly (readonly [string, string, string, boolean, (value: boolean) => void, string | null])[];
   const settingsDestinations = getOmnibarSettingsDestinations().map((setting) => {
     const binding = setting.controlId ? OMNIBAR_SETTINGS_TOGGLE_BINDINGS[setting.controlId] : undefined;
-    const title = localize(setting.title);
+    const title = localizeOmnibarSettingTitle(setting, localize, t);
     return {
       id: setting.id,
       title,
       category: "settings" as const,
       // A named control outranks the section and tab rows that contain it.
       score: setting.controlId ? 165 : setting.sectionId ? 160 : 155,
-      aliases: setting.aliases.map(localize),
+      // A translated control title also stays searchable by its English name.
+      aliases: [...setting.aliases.map(localize), ...(setting.title === title ? [] : [setting.title])],
       keywords: setting.keywords?.map(localize),
       target: {
         kind: "settings" as const,
@@ -433,7 +438,7 @@ export function buildOmnibarControlResults({
         const path =
           (setting.controlId && setting.sectionId ? settingsLocationPath(setting.sectionId, localize) : null) ??
           localize(setting.sectionLabel);
-        const explanation = localize(setting.description);
+        const explanation = localizeOmnibarSettingDescription(setting, localize, t);
         return explanation === title ? path : `${path} · ${explanation}`;
       })(),
       kind: "settings" as const,

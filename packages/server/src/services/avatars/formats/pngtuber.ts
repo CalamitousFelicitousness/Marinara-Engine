@@ -16,10 +16,13 @@ import {
   AVATAR_IMPORT_EXTENSIONS,
   AvatarImportError,
   PNGTUBER_DEFAULT_MOTION,
+  detectSpriteFeelingBindings,
   mapSpriteExpressionToAvatarEmotion,
   type AvatarEmotionWeight,
   type AvatarExpressionMap,
   type AvatarExtractedFile,
+  type AvatarExtraFeeling,
+  type AvatarFeelingMap,
   type AvatarFormatImporter,
   type PngtuberAvatarData,
   type PngtuberLayerSet,
@@ -376,13 +379,18 @@ export function distinctPngtuberCostumes(placed: readonly PlacedSprite[]): Pngtu
   return costumes;
 }
 
-/** Feelings named by the sprites only one costume shows (`happy_eyes.png` in costume 2, say). */
+/** Names of the sprites a costume shows that not every costume shows (`happy_eyes.png` in costume 2, say). */
+function ownSpriteNames(costume: PngtuberCostume, all: readonly PngtuberCostume[]): string[] {
+  return costume.members
+    .filter((node) => !all.every((other) => other.members.includes(node)))
+    .map((node) => node.sprite.name);
+}
+
+/** The emotion a costume's own sprites name most strongly. */
 function costumeEmotion(costume: PngtuberCostume, all: readonly PngtuberCostume[]): AvatarEmotionWeight | null {
-  if (all.length < 2) return null;
   let best: AvatarEmotionWeight | null = null;
-  for (const node of costume.members) {
-    if (all.every((other) => other.members.includes(node))) continue;
-    const mapped = mapSpriteExpressionToAvatarEmotion(node.sprite.name);
+  for (const name of ownSpriteNames(costume, all)) {
+    const mapped = mapSpriteExpressionToAvatarEmotion(name);
     if (mapped && (!best || mapped.weight > best.weight)) best = mapped;
   }
   return best;
@@ -390,6 +398,7 @@ function costumeEmotion(costume: PngtuberCostume, all: readonly PngtuberCostume[
 
 export function bindPngtuberCostumes(costumes: readonly PngtuberCostume[]): {
   expressionMap: AvatarExpressionMap;
+  feelingMap: AvatarFeelingMap;
   unbound: number;
 } {
   const expressionMap: AvatarExpressionMap = {};
@@ -408,8 +417,26 @@ export function bindPngtuberCostumes(costumes: readonly PngtuberCostume[]): {
             { target: costumeKey(costumes[0]), source: "preset", confidence: 1 }
           : { target: null, source: "missing", confidence: 0 };
   }
-  const targets = new Set(Object.values(expressionMap).map((binding) => binding?.target));
-  return { expressionMap, unbound: costumes.filter((costume) => !targets.has(costumeKey(costume))).length };
+  // Extra feelings: the costume whose own sprites name the feeling best (`scared eyes.png` → fear).
+  const feelingMap: AvatarFeelingMap = {};
+  for (const costume of costumes) {
+    for (const [feeling, found] of Object.entries(detectSpriteFeelingBindings(ownSpriteNames(costume, costumes)))) {
+      const current = feelingMap[feeling as AvatarExtraFeeling];
+      if (found && (!current || found.confidence > current.confidence)) {
+        feelingMap[feeling as AvatarExtraFeeling] = {
+          target: costumeKey(costume),
+          source: "name-match",
+          confidence: found.confidence,
+        };
+      }
+    }
+  }
+  const targets = new Set([...Object.values(expressionMap), ...Object.values(feelingMap)].map((b) => b?.target));
+  return {
+    expressionMap,
+    feelingMap,
+    unbound: costumes.filter((costume) => !targets.has(costumeKey(costume))).length,
+  };
 }
 
 function costumeKey(costume: PngtuberCostume): string {
@@ -670,7 +697,7 @@ export const pngtuberImporter: AvatarFormatImporter<"pngtuber", ValidatedPngtube
       refuse("A picture inside this PNGTuber Plus save is damaged.");
     }
 
-    const { expressionMap, unbound } = bindPngtuberCostumes(costumes);
+    const { expressionMap, feelingMap, unbound } = bindPngtuberCostumes(costumes);
     const warnings: string[] = [];
     if (validated.skippedWithoutImage > 0) {
       warnings.push("Some layers had no picture saved in the file, so they were left out.");
@@ -688,6 +715,7 @@ export const pngtuberImporter: AvatarFormatImporter<"pngtuber", ValidatedPngtube
     const data: PngtuberAvatarData = {
       layers,
       expressionMap,
+      feelingMap,
       motion: { ...PNGTUBER_DEFAULT_MOTION },
       source: "pngtuber-plus",
     };

@@ -5,11 +5,16 @@
 // scripts/regressions/avatar-2d-renderers.regression.ts.
 import {
   AVATAR_EMOTIONS,
+  AVATAR_EXTRA_FEELINGS,
+  AVATAR_FEELING_EMOTIONS,
   PNGTUBER_DEFAULT_MOTION,
   SPRITE_EXPRESSION_LABELS,
   detectSpriteEmotionBindings,
+  detectSpriteFeelingBindings,
   normalizeSpriteExpressionKey,
   type AvatarEmotion,
+  type AvatarExpressionBinding,
+  type AvatarExtraFeeling,
   type AvatarFrameInput,
   type AvatarImageRef,
   type PngtuberAvatarData,
@@ -28,6 +33,33 @@ const LAYER_KEY = /^[\p{L}\p{N}_]{1,64}$/u;
 const FULL_BODY = /^full[_\s-]+/iu;
 const MOUTH_OPEN_SUFFIXES = ["mouth_open", "open_mouth", "talking", "talk", "speaking", "speak"];
 const EYES_CLOSED_SUFFIXES = ["eyes_closed", "closed_eyes", "eyes_shut", "blinking", "blink"];
+
+/** Names of the extra feelings (the six have AVATAR_EMOTION_LABEL_KEYS in PngtuberSetupPanel.tsx). */
+export const AVATAR_FEELING_LABEL_KEYS: Readonly<Record<AvatarExtraFeeling, string>> = {
+  curiosity: "avatars.pngtuber.emotionCuriosity",
+  admiration: "avatars.pngtuber.emotionAdmiration",
+  amusement: "avatars.pngtuber.emotionAmusement",
+  desire: "avatars.pngtuber.emotionDesire",
+  embarrassment: "avatars.pngtuber.emotionEmbarrassment",
+  excitement: "avatars.pngtuber.emotionExcitement",
+  gratitude: "avatars.pngtuber.emotionGratitude",
+  optimism: "avatars.pngtuber.emotionOptimism",
+  pride: "avatars.pngtuber.emotionPride",
+  annoyance: "avatars.pngtuber.emotionAnnoyance",
+  disapproval: "avatars.pngtuber.emotionDisapproval",
+  disgust: "avatars.pngtuber.emotionDisgust",
+  disappointment: "avatars.pngtuber.emotionDisappointment",
+  grief: "avatars.pngtuber.emotionGrief",
+  nervousness: "avatars.pngtuber.emotionNervousness",
+  remorse: "avatars.pngtuber.emotionRemorse",
+  approval: "avatars.pngtuber.emotionApproval",
+  caring: "avatars.pngtuber.emotionCaring",
+  love: "avatars.pngtuber.emotionLove",
+  relief: "avatars.pngtuber.emotionRelief",
+  confusion: "avatars.pngtuber.emotionConfusion",
+  fear: "avatars.pngtuber.emotionFear",
+  realization: "avatars.pngtuber.emotionRealization",
+};
 
 export interface SpriteLike {
   expression: string;
@@ -75,8 +107,9 @@ export function pngtuberSpriteFamily<T extends SpriteLike>(sprites: readonly T[]
 }
 
 /** A PNGTuber setup built from an owner's expression sprites: one layer set per face, with `_talk` and
- *  `_blink` sprites (and their spelling variants) as its mouth-open and eyes-closed pictures. Null when the
- *  owner has no usable sprite. */
+ *  `_blink` sprites (and their spelling variants) as its mouth-open and eyes-closed pictures, and a face for each
+ *  extra feeling a sprite is named after. The suggested labels and the feelings' names come first, so the
+ *  64-face cap never drops them. Null when the owner has no usable sprite. */
 export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): PngtuberAvatarData | null {
   const layers = new Map<string, PngtuberLayerSet>();
   const variants: { base: string; key: string; mouthOpen: boolean; eyesClosed: boolean }[] = [];
@@ -94,7 +127,7 @@ export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): 
       variant.mouthOpen && variant.eyesClosed ? "eyesClosedMouthOpen" : variant.mouthOpen ? "mouthOpen" : "eyesClosed";
     set[slot] ??= { source: "sprite", label: variant.key };
   }
-  const known: readonly string[] = SPRITE_EXPRESSION_LABELS;
+  const known: readonly string[] = [...SPRITE_EXPRESSION_LABELS, ...AVATAR_EXTRA_FEELINGS];
   const rank = (key: string) => (known.includes(key) ? known.indexOf(key) : known.length);
   const keys = [...layers.keys()]
     .sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
@@ -103,20 +136,27 @@ export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): 
   return {
     layers: Object.fromEntries(keys.map((key) => [key, layers.get(key)!])),
     expressionMap: detectSpriteEmotionBindings(keys),
+    feelingMap: detectSpriteFeelingBindings(keys),
     motion: { ...PNGTUBER_DEFAULT_MOTION },
     source: "sprites",
   };
 }
 
 /** The layer set a frame shows: the exact sprite label when the setup has it (an Expression Engine or
- *  Game Master pick), else the set bound to the frame's emotion, else the resting face. */
+ *  Game Master pick), else the face of the frame's feeling when it belongs to the frame's emotion, else the set
+ *  bound to the frame's emotion, else the resting face. */
 export function pickPngtuberLayerKey(
-  data: Pick<PngtuberAvatarData, "layers" | "expressionMap">,
-  frame: Pick<AvatarFrameInput, "emotion" | "label">,
+  data: Pick<PngtuberAvatarData, "layers" | "expressionMap" | "feelingMap">,
+  frame: Pick<AvatarFrameInput, "emotion" | "label" | "feeling">,
 ): string | null {
   const has = (key: string | null | undefined): key is string => !!key && Object.hasOwn(data.layers, key);
   const label = frame.label ? normalizeSpriteExpressionKey(frame.label) : null;
   if (has(label)) return label;
+  const feeling =
+    frame.feeling && AVATAR_FEELING_EMOTIONS[frame.feeling]?.emotion === frame.emotion
+      ? data.feelingMap?.[frame.feeling]?.target
+      : null;
+  if (has(feeling)) return feeling;
   const bound = data.expressionMap[frame.emotion]?.target;
   if (has(bound)) return bound;
   const neutral = data.expressionMap.neutral?.target;
@@ -129,15 +169,19 @@ export function pickPngtuberLayerKey(
 export interface TalkingHeadFace {
   key: string;
   emotions: AvatarEmotion[];
+  /** Extra feelings with this face of their own. */
+  feelings: AvatarExtraFeeling[];
   set: PngtuberLayerSet;
   /** The sprite new pictures are drawn from; null when the face has none (an imported or deleted one). */
   label: string | null;
 }
 
-/** The faces the talking head shows for the six feelings, in feeling order, each once with every feeling
- *  that shows it: the face the renderer picks (pickPngtuberLayerKey), or, while a setup made from sprites has
- *  no face for a feeling the user didn't choose, the sprite face made for it since (saving its pictures adds
- *  it). A PNGTuber Plus import keeps its own faces: sprites never join it this way.
+/** The faces the talking head shows for the six feelings, in feeling order, then the faces of extra feelings
+ *  that have one of their own, each once with every feeling that shows it: the face the renderer picks
+ *  (pickPngtuberLayerKey), or, while a setup made from sprites has no face for a feeling the user didn't choose,
+ *  the sprite face made for it since (saving its pictures adds it). An extra feeling without its own face shows
+ *  its emotion's, so its emotion's row covers it. A PNGTuber Plus import keeps its own faces: sprites never join
+ *  it this way.
  *  ponytail: faces reached only by an exact Expression Engine or Game Master label aren't listed; a collapsed
  *  "Other faces" group is the upgrade. */
 export function talkingHeadFaces(
@@ -147,22 +191,35 @@ export function talkingHeadFaces(
 ): TalkingHeadFace[] {
   if (!shown) return [];
   const faces = new Map<string, TalkingHeadFace>();
-  for (const emotion of AVATAR_EMOTIONS) {
-    const binding = shown.expressionMap[emotion];
-    const fresh = fromSprites?.expressionMap[emotion]?.target;
-    const unbound =
-      shown.source !== "pngtuber-plus" &&
-      binding?.source !== "user" &&
-      !(binding?.target && Object.hasOwn(shown.layers, binding.target));
-    const key =
-      unbound && fresh && Object.hasOwn(fromSprites!.layers, fresh) ? fresh : pickPngtuberLayerKey(shown, { emotion });
-    if (!key) continue;
-    const face = faces.get(key);
-    if (face) face.emotions.push(emotion);
-    else {
+  const faceFor = (key: string) => {
+    let face = faces.get(key);
+    if (!face) {
       const set = Object.hasOwn(shown.layers, key) ? shown.layers[key]! : fromSprites!.layers[key]!;
-      faces.set(key, { key, emotions: [emotion], set, label: labelFor(key) });
+      face = { key, emotions: [], feelings: [], set, label: labelFor(key) };
+      faces.set(key, face);
     }
+    return face;
+  };
+  /** The sprite face made for a slot since the setup was saved, when the setup has none the user chose. */
+  const freshFace = (binding: AvatarExpressionBinding | undefined, fresh: string | null | undefined) =>
+    shown.source !== "pngtuber-plus" &&
+    binding?.source !== "user" &&
+    !(binding?.target && Object.hasOwn(shown.layers, binding.target)) &&
+    fresh &&
+    Object.hasOwn(fromSprites!.layers, fresh)
+      ? fresh
+      : null;
+  for (const emotion of AVATAR_EMOTIONS) {
+    const key =
+      freshFace(shown.expressionMap[emotion], fromSprites?.expressionMap[emotion]?.target) ??
+      pickPngtuberLayerKey(shown, { emotion });
+    if (key) faceFor(key).emotions.push(emotion);
+  }
+  for (const feeling of AVATAR_EXTRA_FEELINGS) {
+    const binding = shown.feelingMap?.[feeling];
+    const own = binding?.target && Object.hasOwn(shown.layers, binding.target) ? binding.target : null;
+    const key = own ?? freshFace(binding, fromSprites?.feelingMap?.[feeling]?.target);
+    if (key) faceFor(key).feelings.push(feeling);
   }
   return [...faces.values()];
 }

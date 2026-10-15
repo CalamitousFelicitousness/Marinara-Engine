@@ -10,7 +10,7 @@ import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wand2 } from "lucide-react";
-import { isChatProvider, readImageAppearanceOverride, type Persona } from "@marinara-engine/shared";
+import { AVATAR_EMOTIONS, isChatProvider, readImageAppearanceOverride, type Persona } from "@marinara-engine/shared";
 import { useConnections } from "../../../hooks/use-connections";
 import {
   spriteKeys,
@@ -73,7 +73,7 @@ function spriteGeneratorSeed(
   };
 }
 
-export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanelProps) {
+export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
   const { data: spriteList, isLoading } = useCharacterSprites(owner.ownerId);
   const { data: capabilities } = useSpriteCapabilities();
@@ -195,7 +195,8 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
           )}
           <PngtuberVariantsSection
             owner={owner}
-            sprites={sprites}
+            config={config}
+            spriteList={spriteList ?? []}
             imageConnectionId={imageConnectionId}
             reviewPrompts={reviewPrompts}
             onChanged={onChanged}
@@ -226,6 +227,8 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
             existingExpressionSprites={portraitSprites}
             defaultAppearance={seed.appearance}
             defaultAvatarUrl={seed.avatarUrl}
+            // The avatar's six feelings, so each gets its own face.
+            expressionChoices={AVATAR_EMOTIONS}
             onSpritesGenerated={() => void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) })}
           />
         ) : null}

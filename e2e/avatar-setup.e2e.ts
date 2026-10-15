@@ -147,12 +147,20 @@ test("2D Avatars shows a character's sprites as its avatar and saves them as a P
     await expect(setup.getByText("An example avatar. Set one up to see yours.")).toHaveCount(0);
     await expect(setup.getByRole("img", { name: "Preview" })).toBeVisible();
     await expect(setup.getByRole("checkbox", { name: /Show this avatar in chats/u })).toBeChecked();
-    // Making an avatar from a sprite offers faces only, never their talk pictures.
-    await expect(setup.getByRole("group", { name: "Sprites", exact: true }).getByRole("button")).toHaveText([
-      "neutral",
-      "happy",
-      "crying",
-    ]);
+    // Making an avatar from a sprite offers faces only, never their talk pictures: blink and talk pictures are
+    // made for the talking head's faces, and a face's own talk sprite shows as its open mouth.
+    await expect
+      .poll(() =>
+        setup
+          .getByRole("group", { name: /: Face$/u })
+          .evaluateAll((groups) => groups.map((group) => group.getAttribute("aria-label"))),
+      )
+      .toEqual(["neutral: Face", "happy: Face", "crying: Face"]);
+    await expect(
+      setup
+        .getByRole("group", { name: "neutral: Mouth open", exact: true })
+        .getByRole("img", { name: "neutral: Mouth open", exact: true }),
+    ).toBeVisible();
     await expect(setup.getByRole("group", { name: "Sprite to use", exact: true }).getByRole("button")).toHaveText([
       "neutral",
       "happy",
@@ -555,6 +563,10 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
     );
     await expect(dialog.getByRole("checkbox", { name: "Transparent sprite background" })).toBeChecked();
     await expect(dialog.locator("textarea").first()).toHaveValue(OVERRIDE_LOOK);
+    // The faces offered are the avatar's six feelings, all chosen, in grids they can fill.
+    await expect(dialog.getByRole("button", { name: "6 (2×3)", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByRole("button", { name: "9 (3×3)", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "smirk", exact: true })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("avatar-faces-generator.png"), animations: "disabled" });
     await dialog.getByRole("button", { name: "Generate Sheet", exact: true }).click();
     await expect.poll(() => sheets.length).toBe(1);
@@ -564,20 +576,19 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
       referenceImages: [characterAvatar],
       spriteType: "expressions",
       noBackground: true,
+      expressions: ["neutral", "happy", "angry", "sad", "relaxed", "surprised"],
     });
     await dialog.getByRole("button", { name: /^Save \d+ Sprites?$/u }).click();
     await expect(dialog).toBeHidden();
     // The saved faces are the character's sprites, and the panel offers them at once.
     await expect(setup.getByText("Make faces from the avatar first, then add blinking and talking.")).toHaveCount(0);
-    await expect(
-      setup.getByRole("group", { name: "Sprites", exact: true }).getByRole("button", { name: "neutral" }),
-    ).toBeVisible();
+    await expect(setup.getByRole("group", { name: "neutral: Face", exact: true })).toBeVisible();
     const saved = (await (await request.get(`/api/sprites/${character.id}`)).json()) as Array<{ expression: string }>;
     expect(saved.map((sprite) => sprite.expression)).toContain("neutral");
 
     // ── A persona with sprites ──
     await setup.getByLabel("Character or persona").selectOption(`persona:${persona.id}`);
-    await expect(setup.getByRole("group", { name: "Sprites", exact: true })).toBeVisible({
+    await expect(setup.getByRole("group", { name: "neutral: Face", exact: true })).toBeVisible({
       timeout: FIRST_LOAD_TIMEOUT_MS,
     });
     await makeFaces.click();

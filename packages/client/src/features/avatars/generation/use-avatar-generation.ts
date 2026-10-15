@@ -17,6 +17,7 @@ import {
 } from "@marinara-engine/shared";
 import { useAvatarModelChanged } from "../../../hooks/use-avatar-models";
 import { api } from "../../../lib/api-client";
+import { translate } from "../../../localization/i18n";
 import { useUIStore } from "../../../stores/ui.store";
 import type { ImagePromptOverride, ImagePromptReviewItem } from "../../../components/ui/ImagePromptReviewModal";
 
@@ -54,6 +55,12 @@ export interface VariantJobItem {
   draft?: PngtuberVariantDraft;
   error?: string;
   kept: boolean;
+}
+
+/** One picture to make: a sprite and which variant of it. */
+export interface VariantPair {
+  label: string;
+  variant: AvatarPngtuberVariant;
 }
 
 export interface GenerationRunOptions {
@@ -130,11 +137,13 @@ export function previewVariantPrompts(
 
 /** Makes blink and talk pictures one at a time, so each can be checked, kept or tried again, and Cancel
  *  stops the picture being made, on the server too, and drops the ones not started. A second start while one
- *  runs does nothing. Pictures already made stay: a new start makes only the missing ones, and a failed or
- *  cancelled try keeps the picture it was replacing. */
+ *  runs does nothing. Pictures already made stay: a new start makes only the chosen ones not made yet, and a
+ *  failed or cancelled try keeps the picture it was replacing (a failed one says so in a toast too).
+ *  `progress` counts the pictures of the run going on. */
 export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const [items, setItems] = useState<VariantJobItem[]>([]);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const runningRef = useRef(false);
   const jobRef = useRef<RunningJob | null>(null);
 
@@ -148,6 +157,14 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const update = useCallback((id: string, patch: Partial<VariantJobItem>) => {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }, []);
+  /** A failed try of a picture already made keeps showing that picture, so the failure is a toast too. */
+  const failed = useCallback(
+    (item: VariantJobItem, error: string) => {
+      update(item.id, { status: "failed", error });
+      if (item.draft) toast.error(error || translate("avatars.generation.failed"));
+    },
+    [update],
+  );
 
   const run = useCallback(
     async (queue: VariantJobItem[], options: GenerationRunOptions) => {
@@ -158,8 +175,9 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
       jobRef.current = { controller, owner };
       try {
         await pendingCancel;
-        for (const item of queue) {
+        for (const [index, item] of queue.entries()) {
           if (controller.signal.aborted) break;
+          setProgress({ current: index + 1, total: queue.length });
           update(item.id, { status: "running", error: undefined });
           try {
             const response = await api.post<PngtuberDraftsResponse>(
@@ -176,40 +194,37 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
               { signal: controller.signal },
             );
             const draft = response.drafts[0];
-            update(
-              item.id,
-              draft
-                ? { status: "done", draft, kept: false, error: undefined }
-                : { status: "failed", error: response.failed[0]?.error ?? "" },
-            );
+            if (draft) update(item.id, { status: "done", draft, kept: false, error: undefined });
+            else failed(item, response.failed[0]?.error ?? "");
           } catch (error) {
             if (controller.signal.aborted || isAbort(error)) {
               update(item.id, { status: item.draft ? "done" : "waiting" });
               break;
             }
-            update(item.id, { status: "failed", error: errorMessage(error) });
+            failed(item, errorMessage(error));
           }
         }
       } finally {
         if (jobRef.current?.controller === controller) jobRef.current = null;
         runningRef.current = false;
         setRunning(false);
+        setProgress(null);
       }
     },
-    [owner, update],
+    [failed, owner, update],
   );
 
   const start = useCallback(
-    (labels: string[], variants: AvatarPngtuberVariant[], options: GenerationRunOptions) => {
+    (pairs: readonly VariantPair[], options: GenerationRunOptions) => {
       if (runningRef.current) return;
-      const made = items.filter((item) => item.draft);
-      const queue = labels.flatMap((label) =>
-        variants.flatMap((variant): VariantJobItem[] => {
-          const id = variantJobId(label, variant);
-          return made.some((item) => item.id === id) ? [] : [{ id, label, variant, status: "waiting", kept: false }];
-        }),
-      );
-      setItems([...made, ...queue]);
+      const queue = pairs.flatMap(({ label, variant }): VariantJobItem[] => {
+        const id = variantJobId(label, variant);
+        return items.some((item) => item.id === id && item.draft)
+          ? []
+          : [{ id, label, variant, status: "waiting", kept: false }];
+      });
+      const queued = new Set(queue.map((item) => item.id));
+      setItems([...items.filter((item) => !queued.has(item.id)), ...queue]);
       void run(queue, options);
     },
     [items, run],
@@ -247,7 +262,7 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
     [],
   );
 
-  return { items, running, start, retry, cancel, setKept, keepAll, removeSaved };
+  return { items, running, progress, start, retry, cancel, setKept, keepAll, removeSaved };
 }
 
 /** Builds one mesh avatar draft. A second start while one runs does nothing. */

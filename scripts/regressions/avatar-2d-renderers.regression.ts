@@ -109,6 +109,61 @@ assert.equal(
   "b",
   "else the first face",
 );
+// ── The talking head's faces on the generation panel ──
+// One row per face the six feelings show, in feeling order, with every feeling that shows it.
+{
+  const set = (label: string) => ({ base: { source: "sprite" as const, label } });
+  const bind = (target: string | null, source: "sprite-label" | "user" = "sprite-label") => ({
+    target,
+    source,
+    confidence: 1,
+  });
+  const labelFor = (key: string) => (key === "imported" ? null : `${key}_sprite`);
+  const saved = {
+    layers: {
+      neutral: set("neutral"),
+      smile: set("smile"),
+      glare: set("glare"),
+      imported: set("imported"),
+    },
+    expressionMap: {
+      neutral: bind("neutral"),
+      happy: bind("smile"),
+      angry: bind(null, "user"),
+      sad: bind("gone"),
+      relaxed: bind("smile"),
+      surprised: bind("imported"),
+    },
+    motion: { bounceOnTalk: true, bounceHeight: 0.06, blinkIntervalSeconds: 4.5 },
+    source: "generated" as const,
+  };
+  // Sprites made after the setup was saved: a sad face, and an angry one the user chose not to use.
+  const fresh = layers.buildPngtuberLayersFromSprites(["neutral", "sad", "angry"].map(sprite));
+  const faces = layers.talkingHeadFaces(saved, fresh, labelFor);
+  assert.deepEqual(
+    faces.map((entry) => [entry.key, entry.emotions, entry.label]),
+    [
+      ["neutral", ["neutral", "angry"], "neutral_sprite"],
+      ["smile", ["happy", "relaxed"], "smile_sprite"],
+      ["sad", ["sad"], "sad_sprite"],
+      ["imported", ["surprised"], null],
+    ],
+    "two feelings on one face share a row; the user's resting choice stays; unbound faces (glare) are left out",
+  );
+  assert.equal(faces[0]!.set, saved.layers.neutral, "a saved face shows its saved pictures");
+  assert.deepEqual(faces[2]!.set, fresh!.layers.sad, "a face made for a feeling the setup lacks is offered");
+  assert.deepEqual(
+    layers.talkingHeadFaces(fresh, fresh, labelFor).map((entry) => [entry.key, entry.emotions]),
+    [
+      ["neutral", ["neutral", "happy", "relaxed", "surprised"]],
+      ["angry", ["angry"]],
+      ["sad", ["sad"]],
+    ],
+    "without a saved setup the sprites are the talking head, feelings without a face on the resting face",
+  );
+  assert.deepEqual(layers.talkingHeadFaces(null, null, labelFor), [], "no setup and no sprites, no faces");
+}
+
 const happy = data.layers.happy!;
 assert.equal(layers.pickPngtuberPicture(happy, true, true), happy.eyesClosedMouthOpen);
 assert.equal(layers.pickPngtuberPicture(data.layers.sad!, true, true), data.layers.sad!.mouthOpen, "talking wins");

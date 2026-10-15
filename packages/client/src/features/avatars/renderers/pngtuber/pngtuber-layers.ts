@@ -4,10 +4,12 @@
 // Pure functions (no DOM), shared by the renderer and the setup panel and pinned by
 // scripts/regressions/avatar-2d-renderers.regression.ts.
 import {
+  AVATAR_EMOTIONS,
   PNGTUBER_DEFAULT_MOTION,
   SPRITE_EXPRESSION_LABELS,
   detectSpriteEmotionBindings,
   normalizeSpriteExpressionKey,
+  type AvatarEmotion,
   type AvatarFrameInput,
   type AvatarImageRef,
   type PngtuberAvatarData,
@@ -121,6 +123,44 @@ export function pickPngtuberLayerKey(
   if (has(neutral)) return neutral;
   if (has("neutral")) return "neutral";
   return Object.keys(data.layers)[0] ?? null;
+}
+
+/** One face of the talking head, with the feelings that show it. */
+export interface TalkingHeadFace {
+  key: string;
+  emotions: AvatarEmotion[];
+  set: PngtuberLayerSet;
+  /** The sprite new pictures are drawn from; null when the face has none (an imported or deleted one). */
+  label: string | null;
+}
+
+/** The faces the talking head shows for the six feelings, in feeling order, each once with every feeling
+ *  that shows it: the face the renderer picks (pickPngtuberLayerKey), or, while the saved setup has no face
+ *  for a feeling the user didn't choose, the sprite face made for it since (saving its pictures adds it).
+ *  ponytail: faces reached only by an exact Expression Engine or Game Master label aren't listed; a collapsed
+ *  "Other faces" group is the upgrade. */
+export function talkingHeadFaces(
+  shown: PngtuberAvatarData | null,
+  fromSprites: PngtuberAvatarData | null,
+  labelFor: (key: string) => string | null,
+): TalkingHeadFace[] {
+  if (!shown) return [];
+  const faces = new Map<string, TalkingHeadFace>();
+  for (const emotion of AVATAR_EMOTIONS) {
+    const binding = shown.expressionMap[emotion];
+    const fresh = fromSprites?.expressionMap[emotion]?.target;
+    const unbound = binding?.source !== "user" && !(binding?.target && Object.hasOwn(shown.layers, binding.target));
+    const key =
+      unbound && fresh && Object.hasOwn(fromSprites!.layers, fresh) ? fresh : pickPngtuberLayerKey(shown, { emotion });
+    if (!key) continue;
+    const face = faces.get(key);
+    if (face) face.emotions.push(emotion);
+    else {
+      const set = Object.hasOwn(shown.layers, key) ? shown.layers[key]! : fromSprites!.layers[key]!;
+      faces.set(key, { key, emotions: [emotion], set, label: labelFor(key) });
+    }
+  }
+  return [...faces.values()];
 }
 
 /** The picture of a layer set for the mouth and eyes right now; a missing variant falls back to one the set

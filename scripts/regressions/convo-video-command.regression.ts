@@ -454,6 +454,38 @@ try {
   );
   assert.equal(formatSentVideoNotes([{ type: "video", prompt: "scene" }]), "");
 
+  // Attaching reports whether the clip landed: a message deleted meanwhile gets nothing and reports false.
+  const { attachVideoToMessage, buildChatVideoAttachment } =
+    await import("../../packages/server/src/services/video/chat-video-messages.js");
+  const attachChat = await chats.create({ name: "Attach", mode: "conversation", characterIds: [], connectionId: null });
+  assert.ok(attachChat);
+  const live = await chats.createMessage({
+    chatId: attachChat.id,
+    role: "assistant",
+    characterId: null,
+    content: "hi",
+  });
+  const gone = await chats.createMessage({
+    chatId: attachChat.id,
+    role: "assistant",
+    characterId: null,
+    content: "bye",
+  });
+  assert.ok(live && gone);
+  await chats.removeMessage(gone.id);
+  const clip = buildChatVideoAttachment({
+    id: "clip",
+    url: "/api/gallery/scene-videos/file/x/clip.mp4",
+    filePath: "x/clip.mp4",
+    prompt: "",
+    durationSeconds: 5,
+    aspectRatio: "16:9",
+  } as never);
+  assert.equal(await attachVideoToMessage(chats, { messageId: gone.id, swipeIndex: 0 }, clip), false);
+  assert.equal(await attachVideoToMessage(chats, { messageId: live.id, swipeIndex: 0 }, clip), true);
+  const liveExtra = (await chats.getMessage(live.id))?.extra;
+  assert.match(typeof liveExtra === "string" ? liveExtra : JSON.stringify(liveExtra), /"videoId":"clip"/u);
+
   // /video with a partial name several characters share picks no one; an exact or unique name still works.
   const { matchSlashCommand } = await import("../../packages/client/src/lib/slash-commands.js");
   const slashVideo = matchSlashCommand("/video", {

@@ -2608,6 +2608,8 @@ export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetComba
   if (!action.catalog || !alter.catalogs.includes(action.catalog) || action.alters || action.reaction) return false;
   // Only the entries its filter reads so (1.361).
   if (alter.entries && !alter.entries.includes(action.entry ?? "")) return false;
+  // Only damage to maximize (1.362).
+  if (alter.maximizes && !action.damage) return false;
   const own = action.targets.side === "self" && !action.area;
   if (alter.spares !== undefined && !(alter.spares > 0 && action.save)) return false;
   if (alter.range && !(action.range || (alter.range.touch !== undefined && action.reach !== undefined && !own))) {
@@ -2639,6 +2641,17 @@ export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetComba
     return false;
   }
   return true;
+}
+
+/** Whether an alteration that maximizes fits an entry paid at this level (1.362): Overchannel's 1st
+ *  through 5th. */
+export function rulesetAlterLevelFits(alter: RulesetCombatAlter, level: number): boolean {
+  const range = alter.maximizes;
+  if (!range) return true;
+  return (
+    (range.fromLevel === undefined || level >= range.fromLevel) &&
+    (range.upToLevel === undefined || level <= range.upToLevel)
+  );
 }
 
 /** The action as its alterations change it (1.253). What they leave for it to do as it resolves is
@@ -2688,6 +2701,7 @@ export function rulesetAlteredAction(
     }
     if (alter.rerolls) altered.rerolls = Math.max(altered.rerolls ?? 0, alter.rerolls);
     if (alter.heightens) altered.heightens = true;
+    if (alter.maximizes) altered.maximizes = true;
   }
   // As many more as the level it is paid at (1.361) are counted as it resolves.
   if (spared && altered.spares) altered.spared = altered.sparesByLevel ? [...spared] : spared.slice(0, altered.spares);
@@ -2729,6 +2743,7 @@ export function rulesetAlterOffers(
   return actor.actions.flatMap((one) => {
     const alter = one.alters;
     if (!alter || !rulesetAlterFits(alter, action) || !rulesetActionAvailable(actor, one, state, definition)) return [];
+    if (!rulesetAlterLevelFits(alter, level)) return [];
     if (!planRulesetAlterCost(definition, actor, one, action)) return [];
     return [
       {

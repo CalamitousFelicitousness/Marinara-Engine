@@ -2748,6 +2748,8 @@ function mechanicsAction(
       ...(alters.where ? { where: { ...alters.where } } : {}),
       ...(alters.sparesWhole ? { sparesWhole: true as const } : {}),
       ...(alters.sparesByLevel ? { sparesByLevel: true as const } : {}),
+      ...(alters.maximizes ? { maximizes: { ...alters.maximizes } } : {}),
+      ...(alters.backlash ? { backlash: { ...alters.backlash } } : {}),
     };
   }
   if (mechanics.usesSpentByLevel) action.usesSpentByLevel = true;
@@ -3777,6 +3779,8 @@ function sheetCombatant(
         if (amend.halfOnSave && action.damage && action.save?.onSuccess === "negates") {
           action.save = { ...action.save, onSuccess: "half" };
         }
+        // Healing at its most (1.362): Supreme Healing.
+        if (amend.maxHeal && action.heal) action.healsMax = true;
         // More of its own type on a hit (1.306): Lifedrinker.
         if (amend.damagePlus && action.damage) {
           const added = Math.round(resolveRulesetValueRef(definition, build, amend.damagePlus.add, evaluated));

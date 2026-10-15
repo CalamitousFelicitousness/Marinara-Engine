@@ -774,7 +774,11 @@ export interface RulesetCombatAction {
     /** Those it spares take nothing (1.361), and as many more as the level it is paid at. */
     sparesWhole?: true;
     sparesByLevel?: true;
+    /** Its damage at its most (1.362): Overchannel. */
+    maximizes?: true;
   };
+  /** Its healing at its most (1.362): Supreme Healing. */
+  healsMax?: true;
   /** Added to one damage roll of each use (1.361): Empowered Evocation. */
   damageOnce?: number;
   /** A miss deals half its damage, and nothing else it does on a hit (1.255). */
@@ -2920,6 +2924,10 @@ export interface RulesetCombatAlter {
   sparesWhole?: true;
   /** It spares as many more as the level it is paid at (1.361). */
   sparesByLevel?: true;
+  /** Its damage at its most, paid within these levels (1.362): Overchannel. */
+  maximizes?: { fromLevel?: number; upToLevel?: number };
+  /** Harm to its user past the first `free` uses of its counter (1.362): Overchannel. */
+  backlash?: { free: number; dice: string; grows?: string; type?: string; unblockable?: true };
 }
 
 /** What an entry spends itself on once its holder's own roll has failed (1.249): rolled again, a

@@ -4207,6 +4207,8 @@ export interface RulesetCatalogAlters {
   where?: RulesetCatalogWhere;
   sparesWhole?: true;
   sparesByLevel?: true;
+  maximizes?: { fromLevel?: number; upToLevel?: number };
+  backlash?: { free: number; dice: string; grows?: string; type?: string; unblockable?: true };
 }
 
 const catalogAltersSchema: z.ZodType<RulesetCatalogAlters, z.ZodTypeDef, unknown> = z
@@ -4243,9 +4245,43 @@ const catalogAltersSchema: z.ZodType<RulesetCatalogAlters, z.ZodTypeDef, unknown
     /** It spares as many more as the level the entry is paid at (Capability API 1.361): Sculpt
      *  Spells' 1 + the spell's level. */
     sparesByLevel: z.literal(true).optional(),
+    /** Its damage dealt at its most, every die at its top face, for an entry paid at a level from
+     *  `fromLevel` up to `upToLevel` (Capability API 1.362): Overchannel, 1st through 5th. */
+    maximizes: z
+      .object({
+        fromLevel: z.number().int().min(0).max(20).optional(),
+        upToLevel: z.number().int().min(0).max(20).optional(),
+      })
+      .strict()
+      .optional(),
+    /** Harm to its user as it is used, past the first `free` uses of its counter since that counter
+     *  last came back (Capability API 1.362): `dice` for each level the entry is paid at, and `grows`
+     *  more for each use past the first that harms. `unblockable` passes resistance and immunity.
+     *  Overchannel: `{"free": 1, "dice": "2d12", "grows": "1d12", "type": "necrotic",
+     *  "unblockable": true}`. */
+    backlash: z
+      .object({
+        free: z.number().int().min(0).max(20).default(0),
+        dice: catalogDice,
+        grows: catalogDice.optional(),
+        type: z.string().trim().min(1).max(80).optional(),
+        unblockable: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((alters, ctx) => {
+    if (
+      alters.maximizes?.fromLevel !== undefined &&
+      alters.maximizes.upToLevel !== undefined &&
+      alters.maximizes.fromLevel > alters.maximizes.upToLevel
+    )
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["maximizes"],
+        message: '"fromLevel" is above "upToLevel", so it maximizes nothing',
+      });
     for (const key of ["sparesWhole", "sparesByLevel"] as const) {
       if (alters[key] && alters.spares === undefined)
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `"${key}" changes "spares", so it has one` });
@@ -4888,6 +4924,9 @@ const catalogMechanicsObject = z
             /** A save that `negates` it leaves half its damage instead, and nothing else it does
              *  (Capability API 1.361): Potent Cantrip. */
             halfOnSave: z.literal(true).optional(),
+            /** Its healing at its most, every die at its top face (Capability API 1.362): Supreme
+             *  Healing. */
+            maxHeal: z.literal(true).optional(),
             /** More damage of its own type on a hit (Capability API 1.306), at least `atLeast`:
              *  Lifedrinker's necrotic equal to the Charisma modifier, minimum 1. */
             damagePlus: z
@@ -4912,12 +4951,13 @@ const catalogMechanicsObject = z
               amend.damagePlus !== undefined ||
               amend.damageOnce !== undefined ||
               amend.halfOnSave !== undefined ||
+              amend.maxHeal !== undefined ||
               amend.range !== undefined ||
               amend.push !== undefined ||
               amend.strikes !== undefined,
             {
               message:
-                'An amend changes something: "damageAdd", "damagePlus", "damageOnce", "halfOnSave", "range", "push" or "strikes"',
+                'An amend changes something: "damageAdd", "damagePlus", "damageOnce", "halfOnSave", "maxHeal", "range", "push" or "strikes"',
             },
           )
           .refine((amend) => (amend.entry === undefined) !== (amend.catalogs === undefined), {
@@ -5413,9 +5453,18 @@ const catalogMechanicsSchema: z.ZodType<
       !alters.heightens &&
       !alters.budget &&
       !alters.drops?.length &&
-      !alters.twins
+      !alters.twins &&
+      !alters.maximizes
     ) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["alters"], message: '"alters" changes something' });
+    }
+    // Backlash counts the uses of a counter (1.362).
+    if (alters.backlash && !mechanics.usesOf) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["alters", "backlash"],
+        message: '"backlash" counts the uses of a counter, so the entry spends one with "usesOf"',
+      });
     }
     if (mechanics.kind !== "utility" || mechanics.reaction !== undefined) {
       ctx.addIssue({
@@ -17399,6 +17448,14 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.alters) {
       const alters = mechanics.alters;
       const path = [index, "mechanics", "alters"];
+      // Backlash of a kind of harm the fight has (1.362).
+      const backlashType = alters.backlash?.type?.trim().toLowerCase();
+      if (
+        backlashType &&
+        definition.combat?.damageTypes &&
+        !definition.combat.damageTypes.some((one) => one.trim().toLowerCase() === backlashType)
+      )
+        add([...path, "backlash", "type"], `Unknown damage type "${alters.backlash!.type}"`);
       alters.catalogs.forEach((catalogId, catalogIndex) => {
         const catalog = definition.catalogs?.find((one) => one.id === catalogId);
         if (!catalog) {

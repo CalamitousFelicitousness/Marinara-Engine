@@ -161,6 +161,7 @@ import {
   planRulesetCombatCost,
   rulesetChosenUsesMax,
   rulesetAlterFits,
+  rulesetAlterLevelFits,
   rulesetAlteredAction,
   planRulesetAlterCost,
   rulesetActionAvailable,
@@ -255,6 +256,7 @@ import type {
   RulesetCombatZone,
   RulesetCombatZoneRule,
   RulesetCombatant,
+  RulesetCombatAlter,
   RulesetConditionBonus,
   RulesetConditionEnding,
   RulesetContestSide,
@@ -337,6 +339,14 @@ interface RulesetCombatContext {
   /** The window between turns a legendary cast was bought in (1.284): every window opened while it
    *  resolves holds it, to be asked on from once they have all closed. */
   outer?: RulesetCombatWindow;
+  /** Harm to its user an alteration deals once the step is done (1.362): Overchannel. */
+  backlash?: Array<{
+    actorId: string;
+    backlash: NonNullable<RulesetCombatAlter["backlash"]>;
+    level: number;
+    spentBefore: number;
+    label: string;
+  }>;
 }
 
 /** Set while a legendary cast (1.284) resolves as its maker's turn would, so each step begun inside
@@ -372,6 +382,12 @@ function begin(
     finish: () => {
       for (const target of next.combatants) endImmuneConditions(ctx, target);
       for (const end of ctx.harmEndings.splice(0)) end();
+      // What an alteration costs its user's health, once what it changed was cast (1.362).
+      for (const one of ctx.backlash?.splice(0) ?? []) {
+        backlashOn(ctx, one);
+        for (const end of ctx.harmEndings.splice(0)) end();
+        noteOutcome(ctx);
+      }
       let landed = false;
       while (!next.window && next.pendingFalls?.length) {
         const held = next.pendingFalls.shift()!;
@@ -638,6 +654,8 @@ interface RulesetDamageInput {
   lasting?: true;
   /** Passed on by a condition (1.354, 1.356), so never passed on again. */
   passedOn?: true;
+  /** Neither resistance nor immunity counts against it (1.362): Overchannel's necrotic. */
+  unblockable?: true;
   /** It never takes the target below this much health (1.235): Harm's 1. */
   leavesAtLeast?: number;
 }
@@ -685,10 +703,11 @@ function applyDamage(
   } else {
     const resistant =
       !input.ignoresResistance &&
+      !input.unblockable &&
       (!!(type && hide && matches(hide.resist, type, input.qualities)) ||
         rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all"));
     const vulnerable = !!(type && hide && matches(hide.vulnerable, type));
-    if (type && hide && matches(hide.immune, type, input.qualities)) {
+    if (type && hide && !input.unblockable && matches(hide.immune, type, input.qualities)) {
       dealt = 0;
       adjust = "immune";
     } else if (resistant && !vulnerable) {
@@ -4360,6 +4379,11 @@ function applyAlteredChoice(
     return refusal(state, choice.actorId, "bad-alter", choice.optionId);
   }
   const chosen = alters as RulesetCombatAction[];
+  // At the level it is paid at (1.362): Overchannel only from 1st to 5th.
+  const paidLevel = rulesetPaidLevel(definition, actor, own, choice.payWith);
+  if (chosen.some((alter) => !rulesetAlterLevelFits(alter.alters!, paidLevel))) {
+    return refusal(state, choice.actorId, "bad-alter", choice.optionId);
+  }
   // Who it spares (1.254): only with an alteration that spares some, no more than it spares, each
   // once and each of its user's side.
   const spares = choice.spares;
@@ -4979,8 +5003,19 @@ function applyChoice(
   }
   // And what it was altered with (1.253), each at the level it was paid at.
   for (const alter of alters ?? []) {
+    // Its counter's uses already spent since it came back, before this one (1.362).
+    const spentBefore = alter.alters?.backlash ? counterSpent(definition, working, alter) : 0;
     const price = planRulesetAlterCost(definition, working, alter, action, choice.payWith);
     if (!price) return refusal(state, choice.actorId, "insufficient", option.id);
+    if (alter.alters?.backlash) {
+      (ctx.backlash ??= []).push({
+        backlash: alter.alters.backlash,
+        actorId: working.id,
+        level: rulesetPaidLevel(definition, working, action, choice.payWith),
+        spentBefore,
+        label: alter.label,
+      });
+    }
     if (price.live && working.sheet) working.sheet.live = price.live;
     countRulesetSpend(working, price.cost);
     for (const entry of price.cost) {
@@ -5109,6 +5144,44 @@ function applyChoice(
 
 /** Who stands in for a wall's section while a blow is struck at it (1.200). */
 const SECTION_ID = "wall-section";
+
+/** How many of an alteration's counter's uses are spent since it last came back (1.362). */
+function counterSpent(definition: RulesetDefinition, holder: RulesetCombatant, alter: RulesetCombatAction): number {
+  const name = alter.use?.name;
+  if (!holder.sheet || !name) return 0;
+  const wanted = `counters:${name.trim().toLowerCase()}`;
+  const pool = readRulesetLive(definition, holder.sheet.build, holder.sheet.live).pools.find(
+    (one) => one.key === wanted || one.label.trim().toLowerCase() === name.trim().toLowerCase(),
+  );
+  return pool ? Math.max(0, pool.max - pool.value) : 0;
+}
+
+/** An alteration's harm to its user (1.362): past the first `free` uses, `dice` for each level the
+ *  entry was paid at, and `grows` more for each use past the first that harms. Overchannel. */
+function backlashOn(ctx: RulesetCombatContext, one: NonNullable<RulesetCombatContext["backlash"]>[number]): void {
+  const holder = rulesetCombatant(ctx.state, one.actorId);
+  const { backlash, level, spentBefore } = one;
+  if (!holder || holder.defeated || level <= 0 || spentBefore < backlash.free) return;
+  const base = parseRulesetCombatDice(backlash.dice);
+  const grows = backlash.grows ? parseRulesetCombatDice(backlash.grows) : null;
+  if (!base) return;
+  const past = spentBefore - backlash.free;
+  const rolled = rollAmount(ctx, { count: base.count * level, sides: base.sides, flat: base.flat * level });
+  const more =
+    grows && past > 0
+      ? rollAmount(ctx, { count: grows.count * level * past, sides: grows.sides, flat: grows.flat * level * past })
+      : { rolls: [], flat: 0, total: 0 };
+  const dealt = applyDamage(ctx, holder, {
+    sourceId: holder.id,
+    label: one.label,
+    ...(backlash.type ? { damageType: backlash.type } : {}),
+    rolls: [...rolled.rolls, ...more.rolls],
+    flat: rolled.flat + more.flat,
+    amount: rolled.total + more.total,
+    ...(backlash.unblockable ? { unblockable: true as const } : {}),
+  });
+  afterBlow(ctx, holder, dealt, false);
+}
 
 /** A wall's section or a prop (1.200, 1.316) standing in as a creature for one blow or one area: its
  *  defense, its health, what it shrugs off or suffers double, on the side against whoever strikes it. */
@@ -9332,8 +9405,16 @@ function resolveActionBody(
     for (const die of low) rolls[die.index] = rollRulesetDice(ctx.roll, 1, die.sides)[0]!;
     return { ...bonus, rolls };
   };
+  // At its most (1.362): Overchannel, every die at its top face.
+  const maximized = !!action.altered?.maximizes;
+  // One shared roll for everybody it does not roll to hit, as any other.
+  let maxedShared: Rolled | null = null;
   const rollDamage =
-    empowered > 0 && action.damage ? () => hitFor(true).sets[0]! : once(action.damage, action.damage?.reroll);
+    maximized && action.damage
+      ? () => (perTarget ? maxAmount(action.damage!, extra) : (maxedShared ??= maxAmount(action.damage!, extra)))
+      : empowered > 0 && action.damage
+        ? () => hitFor(true).sets[0]!
+        : once(action.damage, action.damage?.reroll);
   // Added to the first damage roll of the use (1.361): every target of a roll they share, the first
   // of one rolled for each. Empowered Evocation.
   let onceLeft = action.damageOnce ?? 0;
@@ -9370,15 +9451,16 @@ function resolveActionBody(
   // One roller per clause, read the same way: an ability that lands on several targets without
   // rolling to hit rolls every clause once and everybody takes those numbers.
   const clauses = (action.damage?.plus ?? []).map((clause, index) =>
-    empowered > 0 ? () => hitFor(false).sets[index + 1]! : once(clause)!,
+    maximized ? () => maxAmount(clause, extra) : empowered > 0 ? () => hitFor(false).sets[index + 1]! : once(clause)!,
   );
   // As many times over as the uses its user chose (1.251): Lay on Hands.
   const times = action.usesChosen ? (ctx.chosenAmount ?? 1) : 1;
-  const heal = once(
+  const healing =
     action.heal && times > 1
       ? { ...action.heal, count: action.heal.count * times, flat: action.heal.flat * times }
-      : action.heal,
-  );
+      : action.heal;
+  // At its most (1.362): Supreme Healing.
+  const heal = action.healsMax && healing ? () => maxAmount(healing, extra) : once(healing);
   const temporary = once(action.temporary);
   const restore = once(action.restore?.amount);
 

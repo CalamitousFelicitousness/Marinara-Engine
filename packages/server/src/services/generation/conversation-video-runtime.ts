@@ -64,7 +64,6 @@ export interface ConversationVideoResult {
 const VIDEO_PROMPT_WRITER_MAX_TOKENS = 8_196;
 const SELFIE_CONTEXT_MAX_CHARS = 2_000;
 const PICTURE_PROMPT_MAX_CHARS = 1_500;
-const VIDEO_COMMAND_CONTEXT_MAX_CHARS = 2_000;
 const UNCLOSED_THINKING_RE = /^<(?:think|thinking|reasoning)\b/iu;
 
 type PromptCharacter = Parameters<typeof handleConversationSelfieCommand>[0]["charInfo"][number];
@@ -562,12 +561,9 @@ export function startConversationVideoCommand(args: {
   args.sendEvent({ type: "video_started", data: { characterId, messageId: args.messageId } });
   return (async () => {
     try {
-      // A bare [video] still has the reply around it, which is what the character is showing.
-      const context =
-        args.command.context?.trim() ||
-        String((await createChatsStorage(args.db).getMessage(args.messageId))?.content ?? "")
-          .trim()
-          .slice(0, VIDEO_COMMAND_CONTEXT_MAX_CHARS);
+      // A bare [video] reads the recent conversation, as /video does: the user's request and the reply around it,
+      // so a clip the user asked for shows what they asked for even when the reply jokes around it.
+      const context = args.command.context?.trim() || undefined;
       const result = await generateConversationVideo({
         db: args.db,
         chatId: args.chatId,

@@ -321,12 +321,17 @@ try {
   assert.match(body, /"type":"video"/u);
   assert.match(videoWriterRequests.at(-1) ?? "", /Context for the video message: waving from the bus/u);
 
-  // A bare [video] gives the writer the reply it came in, so the clip shows what the character described.
+  // A bare [video] gives the writer the recent conversation, as /video does: the user's request and the reply.
   mainReply = "Here are the pinkish haloarchaea under my microscope! [video]";
   await chats.patchMetadata(convo.id, { illustratorVideoRunInterval: 1 });
-  await generate(convo.id, "Show me the microscope!");
+  await generate(convo.id, "Show me the microscope dancing!");
   assert.equal((await videoAttachments(convo.id)).length, 2);
-  assert.match(videoWriterRequests.at(-1) ?? "", /Context for the video message: Here are the pinkish haloarchaea/u);
+  assert.match(
+    videoWriterRequests.at(-1) ?? "",
+    /Recent conversation:[\s\S]*Show me the microscope dancing![\s\S]*pinkish haloarchaea/u,
+    "the user's request and the reply both reach the writer",
+  );
+  assert.doesNotMatch(videoWriterRequests.at(-1) ?? "", /Context for the video message/u);
   console.log("agent-generated-videos regression passed");
 } finally {
   await app.close();

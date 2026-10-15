@@ -136,7 +136,8 @@ async function findRegistryKeyProblems(messages) {
       ["descriptionKey", parse(descriptionKey), parse(description)],
     ]) {
       if (messages[key] === undefined) problems.push(`${id}: ${field} ${key} is not in en.json`);
-      else if (messages[key] !== english) problems.push(`${id}: ${field} ${key} no longer matches the registry English`);
+      else if (messages[key] !== english)
+        problems.push(`${id}: ${field} ${key} no longer matches the registry English`);
     }
   }
   const total = [...controls.matchAll(/\n    id: /gu)].length;
@@ -159,7 +160,9 @@ async function main() {
   }
   const registryProblems = await findRegistryKeyProblems(canonical.messages);
   if (registryProblems.length > 0) {
-    throw new Error(`settings-registry.ts keys are out of sync with ${canonical.filename}:\n${registryProblems.join("\n")}`);
+    throw new Error(
+      `settings-registry.ts keys are out of sync with ${canonical.filename}:\n${registryProblems.join("\n")}`,
+    );
   }
   console.info(`[localization] en: ${canonicalKeys.length} canonical keys`);
 }

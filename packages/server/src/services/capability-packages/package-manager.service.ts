@@ -5308,6 +5308,13 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
   }
+  const live = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.live);
+  const pools = new Set(
+    (Array.isArray(live?.pools) ? live.pools : []).flatMap((one) => {
+      const id = plainRecord(one)?.id;
+      return typeof id === "string" ? [id] : [];
+    }),
+  );
   // Swallowing: room inside, let out on blows, out of a corpse, and all-hit or typed creature actions, 1.352.
   if (
     !declaresApi(352) &&
@@ -5318,13 +5325,6 @@ export function getCapabilityPackageInstallIssue(
   }
   // Hanging on off a list row's pool or while holding a condition, and better-of shapes, 1.351.
   if (!declaresApi(351)) {
-    const live = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.live);
-    const pools = new Set(
-      (Array.isArray(live?.pools) ? live.pools : []).flatMap((one) => {
-        const id = plainRecord(one)?.id;
-        return typeof id === "string" ? [id] : [];
-      }),
-    );
     if (
       carriesHangsOnRows351(ruleset, pools) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesHangsOnRows351(document, pools))
@@ -6311,7 +6311,8 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with zones that go off later or burn away requires schemaVersion 2 and capabilityApi 1.183 or newer";
   }
-  if (carriesCreatureSpellcasting) {
+  // A hang-on off a list row's pool (1.351) names a row a catalog file may write (1.352).
+  if (carriesCreatureSpellcasting || carriesHangsOnRows351(ruleset, pools)) {
     // The references can only be checked once the catalog files are beside their headers.
     const complete = {
       ...ruleset,

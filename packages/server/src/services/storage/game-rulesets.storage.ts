@@ -20,6 +20,7 @@ import {
   communityRulesetId,
   isCommunityRulesetId,
   parseRulesetCatalogFile,
+  rulesetHangsOnRowIssues,
   rulesetCatalogEntryIssues,
   type RulesetCatalogEntriesById,
   parseRulesetDefinition,
@@ -192,6 +193,9 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
       entries: [...(entriesById[catalog.id] ?? catalog.entries ?? [])],
     })),
   };
+  // The pools hang-ons name off list rows, now every catalog's rows are here (1.352).
+  const rowIssues = rulesetHangsOnRowIssues(complete);
+  if (rowIssues.length) throw new RulesetRefusedError(`The ruleset is not usable: ${rowIssues.slice(0, 5).join("; ")}`);
   for (const catalog of complete.catalogs ?? []) {
     // What names entries of other catalogs: a creature's spells, an entry's amends (1.302), the
     // weapons it conjures (1.306).

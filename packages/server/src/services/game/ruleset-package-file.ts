@@ -21,6 +21,7 @@ import {
   capabilityPackageManifestSchema,
   isRulesetCatalogAssetPath,
   parseRulesetCatalogFile,
+  rulesetHangsOnRowIssues,
   rulesetCatalogEntryIssues,
   type RulesetCatalogEntriesById,
   parseRulesetDefinition,
@@ -251,6 +252,9 @@ function readPackage(value: unknown): RulesetPackageRead {
       entries: [...(entriesById[catalog.id] ?? catalog.entries ?? [])],
     })),
   };
+  // The pools hang-ons name off list rows, now every catalog's rows are here (1.352).
+  const rowIssues = rulesetHangsOnRowIssues(complete);
+  if (rowIssues.length) return refused(...rowIssues.slice(0, 10).map((issue) => `ruleset.json ${issue}`));
   for (const catalog of complete.catalogs ?? []) {
     // What names entries of other catalogs: a creature's spells, an entry's amends (1.302), the
     // weapons it conjures (1.306).

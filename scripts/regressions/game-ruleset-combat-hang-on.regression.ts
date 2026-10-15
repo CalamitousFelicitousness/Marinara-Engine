@@ -9,6 +9,7 @@
  *   - A level's hang-on, the log line with no count, refusals and the install gate.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -261,47 +262,48 @@ try {
     assert.deepEqual(of(gritted.events, "hangsOn"), [{ type: "hangsOn", actorId: "orc", label: "Grit", left: 0 }]);
   }
 
+  /** The rows the half-orc's and the barbarian's features write, and the hang-ons that name them. */
+  const rowsEdit = (doc: Record<string, any>) => {
+    // The rows the half-orc's and the barbarian's features write.
+    doc.catalogs.push({
+      id: "traits",
+      label: "Traits",
+      feeds: ["counters"],
+      entries: [
+        {
+          id: "relentless-endurance",
+          label: "Relentless Endurance",
+          rows: [{ list: "counters", values: { name: "Relentless Endurance", max: 1, recharge: "long" } }],
+        },
+        {
+          id: "relentless-rage",
+          label: "Relentless Rage",
+          rows: [{ list: "counters", values: { name: "Relentless Rage", max: 5, recharge: "short" } }],
+        },
+      ],
+    });
+    doc.sheet.live.conditions.push(
+      { id: "endurance_row", label: "Relentless Endurance" },
+      { id: "rage_feat", label: "Relentless Rage" },
+    );
+    doc.combat.conditions.push(
+      { condition: "endurance_row", effects: [], hangsOn: { spends: "Relentless Endurance" } },
+      {
+        condition: "rage_feat",
+        effects: [],
+        hangsOn: {
+          whileHolding: ["raging"],
+          save: { save: "con_save", difficulty: 10, raisedBy: 5, tally: "Relentless Rage" },
+        },
+      },
+    );
+    // The rage condition itself no longer hangs on: the feature's does, while it holds.
+    delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "raging").hangsOn;
+  };
+
   // ── A list row's pool, and only while raging (1.351) ──
   {
-    const rows = parsed(
-      document((doc) => {
-        // The rows the half-orc's and the barbarian's features write.
-        doc.catalogs.push({
-          id: "traits",
-          label: "Traits",
-          feeds: ["counters"],
-          entries: [
-            {
-              id: "relentless-endurance",
-              label: "Relentless Endurance",
-              rows: [{ list: "counters", values: { name: "Relentless Endurance", max: 1, recharge: "long" } }],
-            },
-            {
-              id: "relentless-rage",
-              label: "Relentless Rage",
-              rows: [{ list: "counters", values: { name: "Relentless Rage", max: 5, recharge: "short" } }],
-            },
-          ],
-        });
-        doc.sheet.live.conditions.push(
-          { id: "endurance_row", label: "Relentless Endurance" },
-          { id: "rage_feat", label: "Relentless Rage" },
-        );
-        doc.combat.conditions.push(
-          { condition: "endurance_row", effects: [], hangsOn: { spends: "Relentless Endurance" } },
-          {
-            condition: "rage_feat",
-            effects: [],
-            hangsOn: {
-              whileHolding: ["raging"],
-              save: { save: "con_save", difficulty: 10, raisedBy: 5, tally: "Relentless Rage" },
-            },
-          },
-        );
-        // The rage condition itself no longer hangs on: the feature's does, while it holds.
-        delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "raging").hangsOn;
-      }),
-    );
+    const rows = parsed(document(rowsEdit));
     const orc = (amount: number, conditions: string[], counters: Array<Record<string, unknown>>) => {
       const state = createRulesetEncounter({
         definition: rows,
@@ -380,6 +382,60 @@ try {
       }),
       /Unknown condition "furious"/,
     );
+  }
+
+  // ── Rows written by catalogs in files of their own (1.352): checked once the files are beside it ──
+  {
+    const { readRulesetPackageFile } = await import("../../packages/server/src/services/game/ruleset-package-file.js");
+    for (const fault of [false, true]) {
+      const doc = document(rowsEdit);
+      if (fault) doc.combat.conditions.at(-2).hangsOn = { spends: "Relentless Resolve" };
+      const traits = doc.catalogs.find((catalog: { id: string }) => catalog.id === "traits");
+      const file = JSON.stringify({ schemaVersion: 1, catalog: "traits", entries: traits.entries });
+      delete traits.entries;
+      traits.asset = "catalogs/traits.json";
+      // Read on its own, the ruleset file cannot see the rows and takes the names on trust.
+      parsed(doc);
+      const documents = { "ruleset.json": JSON.stringify(doc), "catalogs/traits.json": file };
+      const declared = {
+        schemaVersion: 2,
+        capabilityApi: { major: 1, minor: 352 },
+        builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+        id: "ruleset-rows",
+        name: "Rows",
+        version: "0.1.0",
+        description: "Rows.",
+        engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+        kind: ["ruleset"],
+        entrypoints: {},
+        contributions: { assets: { paths: Object.keys(documents) } },
+        files: Object.entries(documents).map(([path, text]) => ({
+          path,
+          bytes: Buffer.byteLength(text),
+          sha256: createHash("sha256").update(text).digest("hex"),
+        })),
+        permissions: [],
+        restartRequired: false,
+      };
+      const result = readRulesetPackageFile({
+        format: "marinara-ruleset",
+        version: 1,
+        manifest: declared,
+        files: Object.fromEntries(
+          Object.entries(documents).map(([path, text]) => [path, Buffer.from(text).toString("base64")]),
+        ),
+      });
+      assert.equal(result.ok, !fault, JSON.stringify(result));
+      if (!result.ok) assert.match(result.issues.join("; "), /Unknown pool "Relentless Resolve"/);
+      // And installed as a capability package, its catalog file beside it.
+      const installed = getCapabilityPackageInstallIssue(
+        declared as never,
+        doc,
+        new Map([["catalogs/traits.json", JSON.parse(file)]]),
+      );
+      if (fault) assert.match(installed ?? "", /Unknown pool "Relentless Resolve"/);
+      else assert.doesNotMatch(installed ?? "", /Unknown pool/);
+    }
   }
 
   // ── Refusals ──

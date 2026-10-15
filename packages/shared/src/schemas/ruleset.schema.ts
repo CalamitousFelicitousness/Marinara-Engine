@@ -15403,6 +15403,47 @@ function itemHideIssues(
 
 /** Hanging on at 1 (1.347): health in points, harm the ruleset has, and on a sheet its own saves and
  *  pools. A creature's block has no sheet, so it neither spends nor tallies. */
+/** A hang-on's `spends` and `tally` (1.351): a declared pool by id, or a list row's pool by its name,
+ *  a row some catalog entry writes into a list that keeps pools. */
+function hangsOnNameIssues(
+  definition: RulesetDefinition,
+  hangs: RulesetHangsOn,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const pools = new Set(definition.sheet.live.pools.map((pool) => pool.id));
+  const rowNames = new Set<string>();
+  for (const list of definition.sheet.lists) {
+    if (!list.pools) continue;
+    for (const catalog of definition.catalogs ?? [])
+      for (const entry of catalog.entries ?? [])
+        for (const row of entry.rows ?? []) {
+          const name = row.list === list.id ? row.values?.[list.pools.nameColumn] : undefined;
+          if (typeof name === "string") rowNames.add(name.trim().toLowerCase());
+        }
+  }
+  const known = (name: string) => pools.has(name) || rowNames.has(name.trim().toLowerCase());
+  if (hangs.spends !== undefined && !known(hangs.spends)) add([...at, "spends"], `Unknown pool "${hangs.spends}"`);
+  if (hangs.save?.tally !== undefined && !known(hangs.save.tally))
+    add([...at, "save", "tally"], `Unknown pool "${hangs.save.tally}"`);
+}
+
+/** The pools hang-ons name (1.351), checked against a ruleset with every catalog's entries joined to it
+ *  (1.352): a package's catalog files read beside its ruleset file. */
+export function rulesetHangsOnRowIssues(definition: RulesetDefinition): string[] {
+  const issues: string[] = [];
+  // Borrowed from another ruleset, its rows are not here to read.
+  if (definition.catalogs?.some((catalog) => catalog.from && !catalog.entries?.length)) return issues;
+  const add = (path: (string | number)[], message: string) => issues.push(`${path.join(".")}: ${message}`);
+  definition.combat?.conditions?.forEach((entry, index) => {
+    if (entry.hangsOn) hangsOnNameIssues(definition, entry.hangsOn, ["combat", "conditions", index, "hangsOn"], add);
+  });
+  definition.combat?.levels?.forEach((entry, index) => {
+    if (entry.hangsOn) hangsOnNameIssues(definition, entry.hangsOn, ["combat", "levels", index, "hangsOn"], add);
+  });
+  return issues;
+}
+
 function hangsOnIssues(
   definition: RulesetDefinition,
   hangs: RulesetHangsOn,
@@ -15426,23 +15467,10 @@ function hangsOnIssues(
     if (hangs.save?.tally !== undefined) add([...at, "save", "tally"], 'A creature has no sheet to keep "tally" on');
     return;
   }
-  // A declared pool by id, or a list row's pool by its name (1.351): a row some catalog entry writes
-  // into a list that keeps pools.
-  const pools = new Set(definition.sheet.live.pools.map((pool) => pool.id));
-  const rowNames = new Set<string>();
-  for (const list of definition.sheet.lists) {
-    if (!list.pools) continue;
-    for (const catalog of definition.catalogs ?? [])
-      for (const entry of catalog.entries ?? [])
-        for (const row of entry.rows ?? []) {
-          const name = row.list === list.id ? row.values?.[list.pools.nameColumn] : undefined;
-          if (typeof name === "string") rowNames.add(name.trim().toLowerCase());
-        }
-  }
-  const known = (name: string) => pools.has(name) || rowNames.has(name.trim().toLowerCase());
-  if (hangs.spends !== undefined && !known(hangs.spends)) add([...at, "spends"], `Unknown pool "${hangs.spends}"`);
-  if (hangs.save?.tally !== undefined && !known(hangs.save.tally))
-    add([...at, "save", "tally"], `Unknown pool "${hangs.save.tally}"`);
+  // A list row's pool, where some catalog's entries are in files of their own, is checked once they
+  // are joined to it (`rulesetHangsOnRowIssues`), not on the ruleset file alone (1.352).
+  const unseen = definition.catalogs?.some((catalog) => (catalog.asset && !catalog.entries) || catalog.from);
+  if (!unseen) hangsOnNameIssues(definition, hangs, at, add);
   if (hangs.save && !definition.sheet.saves.some((save) => save.id === hangs.save!.save))
     add([...at, "save", "save"], `Unknown save "${hangs.save.save}"`);
 }

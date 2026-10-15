@@ -359,9 +359,23 @@ try {
   const mp4 = Buffer.from("00000018667479706d703432000000006d70343269736f6d", "hex");
   let videosInFlight = 0;
   let videoPeak = 0;
+  let brokenWaiting = 0;
+  const bothBroken = deferred();
   const swarm = createServer(async (request, response) => {
-    for await (const _chunk of request) void _chunk;
+    let body = "";
+    for await (const chunk of request) {
+      body += chunk;
+      if (body.length > MAX_FIXTURE_BODY) return response.writeHead(413).end();
+    }
     if (request.url === "/API/GetNewSession") return response.end(JSON.stringify({ session_id: "session" }));
+    if (request.url === "/API/GenerateText2Image" && body.includes("broken-model")) {
+      // Hold both primaries until both are in flight, so each holds its lane at once.
+      brokenWaiting += 1;
+      if (brokenWaiting === 2) bothBroken.resolve();
+      await bothBroken.promise;
+      response.statusCode = 500;
+      return response.end(JSON.stringify({ error: "primary down" }));
+    }
     if (request.url === "/API/GenerateText2Image") {
       videosInFlight += 1;
       videoPeak = Math.max(videoPeak, videosInFlight);
@@ -387,6 +401,35 @@ try {
     // Two connection rows for one server: the legacy per-connection queue would let both through.
     await Promise.all([video("scene-video"), video("game-video")]);
     assert.equal(videoPeak, 1, "one provider account must never render two videos at once");
+    await tick();
+    idle();
+
+    // Crossed fallbacks: each primary fails while holding its lane, then falls back onto
+    // the other's account. The fallback must start after the primary leaves its lane.
+    const withVideoFallbackTo = (apiKey: string) =>
+      generateVideo("swarmui", base, apiKey === "video-b" ? "video-a" : "video-b", "swarmui", {
+        prompt: "A wave",
+        model: "broken-model",
+        durationSeconds: 4,
+        aspectRatio: "16:9",
+        comfyWorkflow: "{}",
+        onFallback: async () => undefined,
+        fallback: {
+          connectionId: `fallback-${apiKey}`,
+          connectionName: "Backup",
+          source: "swarmui",
+          baseUrl: base,
+          apiKey,
+          serviceHint: "swarmui",
+          model: "working-model",
+          comfyWorkflow: "{}",
+        },
+      });
+    const crossedVideos = await Promise.race([
+      Promise.all([withVideoFallbackTo("video-b"), withVideoFallbackTo("video-a")]),
+      sleep(3_000).then(() => "stuck" as const),
+    ]);
+    assert.notEqual(crossedVideos, "stuck", "crossed video fallbacks must not wait on each other's lanes");
     await tick();
     idle();
   } finally {

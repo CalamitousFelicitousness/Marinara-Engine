@@ -75,7 +75,7 @@ export function buildChatVideoAttachment(video: GeneratedSceneVideo, characterNa
 /** Put the video on its swipe, and on the message too while that swipe is still the one shown. */
 export async function attachVideoToMessage(
   chats: {
-    appendSwipeAttachment(messageId: string, swipeIndex: number, attachment: Record<string, unknown>): Promise<unknown>;
+    appendSwipeAttachment(messageId: string, swipeIndex: number, attachment: Record<string, unknown>): Promise<boolean>;
     appendMessageAttachmentForActiveSwipe(
       messageId: string,
       swipeIndex: number,
@@ -84,8 +84,10 @@ export async function attachVideoToMessage(
   },
   anchor: ChatVideoAnchor,
   attachment: MessageAttachment,
-): Promise<void> {
+): Promise<boolean> {
   const record = attachment as unknown as Record<string, unknown>;
-  await chats.appendSwipeAttachment(anchor.messageId, anchor.swipeIndex, record);
+  // The swipe row is the lasting record; the message row only mirrors it while that swipe is shown.
+  if (!(await chats.appendSwipeAttachment(anchor.messageId, anchor.swipeIndex, record))) return false;
   await chats.appendMessageAttachmentForActiveSwipe(anchor.messageId, anchor.swipeIndex, record);
+  return true;
 }

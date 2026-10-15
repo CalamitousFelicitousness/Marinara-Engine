@@ -1143,8 +1143,8 @@ export async function galleryRoutes(app: FastifyInstance) {
       try {
         const anchor = chatMode === "game" ? null : resolveChatVideoAnchor(await chats.listMessages(input.chatId));
         if (anchor) {
-          await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video));
-          messageId = anchor.messageId;
+          // Reported only when the clip really landed on the reply (it may have been deleted meanwhile).
+          if (await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video))) messageId = anchor.messageId;
         }
       } catch (attachErr) {
         logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", video.id);
@@ -1239,11 +1239,13 @@ export async function galleryRoutes(app: FastifyInstance) {
         if (anchor) {
           // Only a video message the character sent names it; an animated picture under someone's reply doesn't, so
           // later prompts never credit the character with a clip it didn't send.
-          await attachVideoToMessage(
+          const attached = await attachVideoToMessage(
             chats,
             anchor,
             buildChatVideoAttachment(result.video, input.galleryImageId ? undefined : result.characterName),
           );
+          // The message vanished before the clip landed: handled like a failed attach (an empty new message goes).
+          if (!attached) throw new Error(`Message ${anchor.messageId} no longer has the swipe for this video`);
           messageId = anchor.messageId;
         }
       } catch (attachErr) {

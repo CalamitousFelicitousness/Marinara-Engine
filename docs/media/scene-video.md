@@ -128,7 +128,7 @@ Both **Roleplay** and **Game Mode** chats can make scene videos from the **Galle
 
 The Gallery has an **Images** tab and a **Videos** tab, each with a count. Still pictures live under **Images**. Finished clips live under **Videos**.
 
-In **Roleplay**, **Video** in the action row at the top of the Gallery makes a clip of the **latest reply**, the same as typing `/video`. What it starts from follows Illustrator's **First frame** setting: a new Illustrator picture of the latest reply (drawn first, then animated), the character's avatar or sprite, or no picture at all. Add a description after `/video` to say what the clip should show. The AI writing the clip reads as many recent messages as Illustrator does for a picture (its **Agent Budget** context size), so it shows what is happening now.
+In **Roleplay**, **Video** in the action row at the top of the Gallery makes a clip of the **latest reply**, the same as typing `/video`. What it starts from follows Illustrator's **First frame** setting: a new Illustrator picture of the latest reply (drawn first, then animated), the character's avatar or sprite, or no picture at all. Add a description after `/video` to say what the clip should show. The AI writing the clip reads as many recent messages as Illustrator does for a picture (its **Agent Budget** context size), so it shows what is happening now. When the clip starts from no picture or an avatar, it describes the scene itself; its instructions are **Roleplay Clip Director** under **Settings**, **Generations**, **Video Generation Prompt Overrides**.
 
 In **Game Mode**, **Video** animates the newest picture:
 

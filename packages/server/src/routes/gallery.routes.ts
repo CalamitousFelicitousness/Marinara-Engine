@@ -740,6 +740,8 @@ export async function galleryRoutes(app: FastifyInstance) {
     sourceExchange: string;
     referenceImagePrompt: string;
     characterNames: string[];
+    /** The clip has no picture of this moment, so the director describes the scene (Roleplay Clip Director). */
+    withoutPicture?: boolean;
     debugMode?: boolean;
     signal?: AbortSignal;
   }): Promise<string> {
@@ -774,6 +776,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       characterNames: args.characterNames,
       setting: buildRoleplayVideoSettingLine(args.chat, args.meta, args.videoRuntime.promptLimits.artStyle),
       videoPromptInstructions: args.videoConn.videoPromptInstructions,
+      withoutPicture: args.withoutPicture,
     });
     const [systemMessage, userMessage] = directionMessages;
     const debugOverrideEnabled = args.debugMode === true || isDebugAgentsEnabled();
@@ -1437,6 +1440,8 @@ export async function galleryRoutes(app: FastifyInstance) {
           .filter(Boolean)
           .join("\n\n"),
         referenceImagePrompt: "",
+        // /video never animates a picture here (that path asks for one first), so the director describes the scene.
+        withoutPicture: true,
         characterNames: await collectChatSceneCharacterNames(chat),
         debugMode: input.debugMode,
         signal: createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Roleplay video"),

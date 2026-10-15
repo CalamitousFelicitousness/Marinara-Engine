@@ -43,6 +43,11 @@ try {
   };
   await animate();
   assert.match(lastDirector(), /Aster rests\.[\s\S]*Aster smiles\./u, "the picture's exchange");
+  assert.match(
+    lastDirector(),
+    /supplied reference image is the exact first frame/u,
+    "animating keeps the picture director",
+  );
   assert.doesNotMatch(lastDirector(), /Aster hums\./u, "nothing after the picture");
   assert.doesNotMatch(lastDirector(), /Aster turns around\./u, "nothing older than the context size (2)");
   await h.setIllustratorContext(4);
@@ -78,6 +83,9 @@ try {
   assert.equal(slashClip.statusCode, 200, slashClip.body);
   assert.equal((slashClip.json() as { messageId: string }).messageId, pairReply?.id, "under the newest reply");
   assert.match(lastDirector(), /Requested clip: Bottles explode off the shelf/u);
+  // No picture shows this moment, so the director describes the scene instead of continuing an image.
+  assert.match(lastDirector(), /No picture of this moment exists/u, "the no-picture director writes the clip");
+  assert.doesNotMatch(lastDirector(), /reference image|first frame/iu);
   // It reads as many recent messages as Illustrator does (its context size, 2 here), the latest reply last.
   assert.match(lastDirector(), /Once more\.[\s\S]*Bram laughs\./u);
   assert.doesNotMatch(lastDirector(), /James throws a beaker\./u);

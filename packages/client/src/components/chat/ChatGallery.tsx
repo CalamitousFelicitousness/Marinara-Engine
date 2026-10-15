@@ -591,6 +591,24 @@ export function ChatGallery({
     }
   }, [activeTab, sceneVideosEnabled, videoLightbox]);
 
+  // Who sends a selfie or a video message: one picker, shown under Selfie, or under Video when selfies are off.
+  const renderCharacterPicker = () =>
+    selfieCharacters.length > 1 ? (
+      <select
+        value={selectedSelfieCharacterId}
+        onChange={(event) => setSelectedSelfieCharacterId(event.target.value)}
+        disabled={isGeneratingSelfie || isGeneratingVideo}
+        className="min-w-0 rounded-lg bg-[var(--secondary)] px-2 py-1.5 text-[0.6875rem] text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] disabled:cursor-wait disabled:opacity-70"
+        aria-label={localizeUi("ui.chat.chatgallery.messageCharacter")}
+      >
+        {selfieCharacters.map((character) => (
+          <option key={character.id} value={character.id}>
+            {character.name}
+          </option>
+        ))}
+      </select>
+    ) : null;
+
   return (
     <>
       <div className="flex flex-col gap-3">
@@ -681,25 +699,9 @@ export function ChatGallery({
                       : localizeUi("ui.chat.chatgallery.selfie")}
                   </span>
                 </button>
+                {renderCharacterPicker()}
               </div>
             )}
-            {/* One picker for who sends a selfie or a video message, so it shows whenever either is available. */}
-            {selfieCharacters.length > 1 &&
-              (onGenerateSelfie || (mode === "conversation" && (onGenerateVideo || onAnimateImage))) && (
-                <select
-                  value={selectedSelfieCharacterId}
-                  onChange={(event) => setSelectedSelfieCharacterId(event.target.value)}
-                  disabled={isGeneratingSelfie || isGeneratingVideo}
-                  className="min-w-0 self-start rounded-lg bg-[var(--secondary)] px-2 py-1.5 text-[0.6875rem] text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] disabled:cursor-wait disabled:opacity-70"
-                  aria-label={localizeUi("ui.chat.chatgallery.messageCharacter")}
-                >
-                  {selfieCharacters.map((character) => (
-                    <option key={character.id} value={character.id}>
-                      {character.name}
-                    </option>
-                  ))}
-                </select>
-              )}
             {onGenerateStoryboard && (
               <button
                 type="button"
@@ -721,24 +723,28 @@ export function ChatGallery({
               </button>
             )}
             {sceneVideosEnabled && onGenerateVideo && (
-              <button
-                type="button"
-                onClick={() => void handleGenerateVideo()}
-                disabled={isGeneratingVideo}
-                aria-busy={isGeneratingVideo}
-                className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary)]/15 px-3 py-3 text-xs font-medium text-[var(--primary)] transition-all hover:bg-[var(--primary)]/25 disabled:cursor-wait disabled:opacity-75"
-              >
-                {isGeneratingVideo ? (
-                  <Loader2 size="1rem" className="shrink-0 animate-spin" />
-                ) : (
-                  <Film size="1rem" className="shrink-0" />
-                )}
-                <span className="min-w-0 truncate">
-                  {isGeneratingVideo
-                    ? localizeUi("ui.chat.summarypopover.generating")
-                    : localizeUi("ui.chat.chatgallery.video")}
-                </span>
-              </button>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateVideo()}
+                  disabled={isGeneratingVideo}
+                  aria-busy={isGeneratingVideo}
+                  className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary)]/15 px-3 py-3 text-xs font-medium text-[var(--primary)] transition-all hover:bg-[var(--primary)]/25 disabled:cursor-wait disabled:opacity-75"
+                >
+                  {isGeneratingVideo ? (
+                    <Loader2 size="1rem" className="shrink-0 animate-spin" />
+                  ) : (
+                    <Film size="1rem" className="shrink-0" />
+                  )}
+                  <span className="min-w-0 truncate">
+                    {isGeneratingVideo
+                      ? localizeUi("ui.chat.summarypopover.generating")
+                      : localizeUi("ui.chat.chatgallery.video")}
+                  </span>
+                </button>
+                {/* With Selfie hidden (selfies off), the picker for who sends the video sits under Video instead. */}
+                {!onGenerateSelfie && mode === "conversation" && renderCharacterPicker()}
+              </div>
             )}
             {onGenerateBackground && (
               <button

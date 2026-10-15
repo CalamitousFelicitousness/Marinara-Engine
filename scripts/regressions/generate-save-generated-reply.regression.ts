@@ -80,6 +80,35 @@ try {
   assert.equal(split.savedMsg.id, split.replyParts.at(-1)!.message.id);
   assert.equal((await chats.listMessages(chat.id)).length, 4);
 
+  // A repeated part starts after the part before it, not at its first match.
+  const repeated = "Same.\n\n---\n\nSame.\n\n---\n\nSame.";
+  const twice = await saveGeneratedReply(context({ advancedMemoryEnabled: true }), repeated);
+  assert.deepEqual(
+    twice.replyParts!.map((part) => part.start),
+    [0, 7, 19],
+  );
+  for (const part of twice.replyParts!) await chats.removeMessage(part.message.id);
+
+  // A continue of a message that can no longer be read starts from the message read before generation.
+  const fallback = await saveGeneratedReply(
+    context({
+      chats: { ...chats, getMessage: async () => null, updateMessageContent: async (_id, content) => ({ content }) },
+      input: { ...context().input, continueMessageId: "gone" },
+      continueTargetMessage: { content: "Before." },
+    }),
+    " After.",
+  );
+  assert.equal(fallback.continuedSource, "Before. After.");
+  assert.equal(fallback.savedSwipeIndex, 0);
+
+  // An impersonated reply is one user message without a character, never split.
+  const persona = await saveGeneratedReply(
+    context({ input: { ...context().input, impersonate: true }, targetCharId: "char_1", advancedMemoryEnabled: true }),
+    "Me.\n\n***\n\nMe again.",
+  );
+  assert.deepEqual([persona.savedMsg.role, persona.savedMsg.characterId, persona.replyParts], ["user", null, null]);
+  await chats.removeMessage(persona.savedMsg.id);
+
   // A split save that fails on part 2 removes part 1 and rethrows.
   let creates = 0;
   const failing = {
@@ -112,8 +141,26 @@ try {
   );
 
   // An owner turn already applied is recovered: its saved content replaces the reply, before the commit event.
+  // A committed owner turn is saved at swipe 0 and announced with its location.
+  let unregister = registerCapabilityService("hierarchical-maps:owner-turn", {
+    commitSpatialOwnerTurn: async () => ({
+      message: { id: "msg_owner", content: "I walk." },
+      snapshot: { currentLocationId: "loc_b", definitionRevision: 2 },
+    }),
+  });
+  events.length = 0;
+  const committed = await saveGeneratedReply(context({ input: ownerInput }), "I walk.");
+  unregister();
+  assert.deepEqual([committed.savedMsg.id, committed.savedSwipeIndex], ["msg_owner", 0]);
+  assert.deepEqual(events, [
+    {
+      type: "spatial_transition_committed",
+      data: { chatId: chat.id, commandId: "cmd_1", currentLocationId: "loc_b", definitionRevision: 2 },
+    },
+  ]);
+
   const applied = await chats.createMessage({ chatId: chat.id, role: "user", characterId: null, content: "I walked." });
-  const unregister = registerCapabilityService("hierarchical-maps:owner-turn", {
+  unregister = registerCapabilityService("hierarchical-maps:owner-turn", {
     commitSpatialOwnerTurn: async () => {
       throw new SpatialOwnerTurnError("spatial_transition_already_applied", "Already applied.", 409, {
         messageId: applied.id,
@@ -127,11 +174,18 @@ try {
   assert.equal(recovered.recoveredSpatialTurn, true);
   assert.equal(recovered.savedMsg.id, applied.id);
   assert.equal(recovered.fullResponse, "I walked.");
+  assert.equal(recovered.savedSwipeIndex, 0);
   assert.deepEqual(
     events.map((event) => event.type),
     ["content_replace", "spatial_transition_committed"],
   );
   assert.equal(events[0]!.data, "I walked.");
+  assert.deepEqual(events[1]!.data, {
+    chatId: chat.id,
+    commandId: "cmd_1",
+    currentLocationId: "loc_b",
+    definitionRevision: 2,
+  });
 } finally {
   await closeDB();
   rmSync(dir, { recursive: true, force: true });

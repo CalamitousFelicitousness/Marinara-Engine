@@ -2886,30 +2886,34 @@ export async function charactersRoutes(app: FastifyInstance) {
       })),
     );
     const sceneClips = sceneVideoGroups.flatMap(({ chat, videos }) =>
-      videos.map((video) => {
-        const filename = video.filePath.split("/").pop() ?? "";
-        const routePrefix = chat.mode === "game" ? "/api/game" : "/api/gallery";
-        return {
-          id: `scene:${video.id}`,
-          source: chat.mode === "game" ? ("game-scene" as const) : ("scene-video" as const),
-          label: chat.mode === "game" ? "Game scene" : "Scene video",
-          prompt: video.prompt,
-          status: "ready" as const,
-          url: `${routePrefix}/scene-videos/file/${encodeURIComponent(chat.id)}/${encodeURIComponent(filename)}`,
-          createdAt: video.createdAt,
-          updatedAt: video.createdAt,
-          origin: null,
-          durationSeconds: video.durationSeconds,
-          trimStartSeconds: null,
-          trimEndSeconds: null,
-          aspectRatio: video.aspectRatio,
-          provider: video.provider,
-          model: video.model,
-          chatId: chat.id,
-          chatName: chat.name,
-          clipKind: null,
-        };
-      }),
+      videos
+        // A Conversation clip names who it shows; it reaches the persona's gallery only when the persona is one of
+        // them. Untagged clips (older ones, Roleplay and Game Mode) keep belonging to the whole chat.
+        .filter((video) => parseSceneVideoCharacterIds(video.characterIds)?.includes(req.params.id) ?? true)
+        .map((video) => {
+          const filename = video.filePath.split("/").pop() ?? "";
+          const routePrefix = chat.mode === "game" ? "/api/game" : "/api/gallery";
+          return {
+            id: `scene:${video.id}`,
+            source: chat.mode === "game" ? ("game-scene" as const) : ("scene-video" as const),
+            label: chat.mode === "game" ? "Game scene" : "Scene video",
+            prompt: video.prompt,
+            status: "ready" as const,
+            url: `${routePrefix}/scene-videos/file/${encodeURIComponent(chat.id)}/${encodeURIComponent(filename)}`,
+            createdAt: video.createdAt,
+            updatedAt: video.createdAt,
+            origin: null,
+            durationSeconds: video.durationSeconds,
+            trimStartSeconds: null,
+            trimEndSeconds: null,
+            aspectRatio: video.aspectRatio,
+            provider: video.provider,
+            model: video.model,
+            chatId: chat.id,
+            chatName: chat.name,
+            clipKind: null,
+          };
+        }),
     );
     const uploadedVideoClips = await listGalleryVideoClips(PERSONA_GALLERY_VIDEO_ROOT, req.params.id, "persona");
 

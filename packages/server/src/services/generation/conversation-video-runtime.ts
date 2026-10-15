@@ -15,6 +15,7 @@ import { resolveGalleryImagePath } from "../image/gallery-image-path.js";
 import {
   readPreferredCharacterReferenceImage,
   resolveIllustratorCharacterReferences,
+  type IllustratorPersonaReference,
 } from "../image/illustrator-references.js";
 import { CONVERSATION_VIDEO, loadPrompt } from "../prompt-overrides/index.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
@@ -98,6 +99,8 @@ export async function generateConversationVideo(args: {
   characterId: string;
   /** Every character in the chat, for the selfie first frame. */
   charInfo: PromptCharacter[];
+  /** The chat's persona: a clip that names it is filed in the persona's gallery too. */
+  persona?: IllustratorPersonaReference | null;
   /** The chat's own text connection (null for the built-in local model); the Prompt Model override wins. */
   promptConnection: IllustratorPromptConnection | null;
   promptConnectionId: string | null;
@@ -333,14 +336,17 @@ async function resolveVideoCharacterIds(
       avatarPath: character.avatarPath,
       appearance: character.appearance,
     })),
-    persona: null,
+    persona: args.persona ?? null,
     requestedNames,
     promptText: [args.characterName, args.context ?? "", args.prompt].join("\n"),
     fallbackToChatCharacters: false,
     includeReferenceImages: false,
     maxReferences: 12,
   });
-  return Array.from(new Set([args.characterId, ...resolution.characterIds]));
+  // The persona is listed too when the clip names it, so it reaches the persona's gallery only when it is in it.
+  return Array.from(
+    new Set([args.characterId, ...resolution.characterIds, ...(resolution.personaId ? [resolution.personaId] : [])]),
+  );
 }
 
 type SelfieArgs = Parameters<typeof generateConversationVideo>[0] & { selfieContext: string };

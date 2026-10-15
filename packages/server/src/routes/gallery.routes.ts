@@ -1197,6 +1197,10 @@ export async function galleryRoutes(app: FastifyInstance) {
         chatMeta: parseChatMetadata(chat.metadata),
         characterId: input.characterId,
         charInfo,
+        persona: await (async () => {
+          const persona = chat.personaId ? await characters.getPersona(chat.personaId) : null;
+          return persona ? { id: persona.id, name: persona.name, avatarPath: persona.avatarPath ?? null } : null;
+        })(),
         promptConnection: storedPromptConnectionId
           ? await createConnectionsStorage(app.db).getWithKey(storedPromptConnectionId)
           : null,

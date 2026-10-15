@@ -1,6 +1,7 @@
 // A Conversation video is filed under the characters it shows: in a group chat, a clip Aster sends that
-// names Bob appears in Aster's and Bob's gallery clips but not Carol's. Older videos, which were never
-// tagged, keep appearing for every character in their chat.
+// names Bob appears in Aster's and Bob's gallery clips but not Carol's, and in the persona's gallery only when it
+// names the persona. Older videos, which were never tagged, keep appearing for every character and the persona
+// of their chat.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
@@ -28,6 +29,8 @@ const { createGameSceneVideosStorage } =
 const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
 
 const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(12)]);
+// What the fake prompt writer says the clip shows.
+let writerReply = "Aster pulls Bob into the frame";
 const provider = createServer(async (request, response) => {
   for await (const _chunk of request) void _chunk;
   const url = request.url ?? "";
@@ -49,7 +52,7 @@ const provider = createServer(async (request, response) => {
   }
   response.end(
     JSON.stringify({
-      choices: [{ message: { role: "assistant", content: "Aster pulls Bob into the frame" }, finish_reason: "stop" }],
+      choices: [{ message: { role: "assistant", content: writerReply }, finish_reason: "stop" }],
       usage: { total_tokens: 20 },
     }),
   );
@@ -89,6 +92,8 @@ try {
     ["Aster", "Bob", "Carol"].map((name) => characters.create(characterDataSchema.parse({ name }))),
   );
   assert.ok(aster && bob && carol);
+  const jamie = await characters.createPersona("Jamie", "The player.");
+  assert.ok(jamie);
 
   const chats = createChatsStorage(db);
   const group = await chats.create({
@@ -96,6 +101,7 @@ try {
     mode: "conversation",
     characterIds: [aster.id, bob.id, carol.id],
     connectionId: text.id,
+    personaId: jamie.id,
   });
   assert.ok(group);
   await chats.patchMetadata(group.id, { sceneVideoConnectionId: video.id, sceneVideoFirstFrame: "prompt_only" });
@@ -134,6 +140,29 @@ try {
   for (const clips of [asterClips, bobClips, carolClips]) {
     assert.ok(clips.includes(`scene:${legacy.id}`), "an untagged video still belongs to everyone in the chat");
   }
+
+  // The persona's gallery lists a Conversation clip only when the clip shows the persona.
+  writerReply = "Aster films Jamie dancing badly in the kitchen";
+  const withPersona = await app.inject({
+    method: "POST",
+    url: `/api/gallery/${group.id}/video`,
+    payload: { characterId: aster.id },
+  });
+  assert.equal(withPersona.statusCode, 200, withPersona.body);
+  const personaVideoId = (withPersona.json() as { video: { id: string } }).video.id;
+  const personaResponse = await app.inject({
+    method: "GET",
+    url: `/api/characters/personas/${jamie.id}/gallery/clips`,
+  });
+  assert.equal(personaResponse.statusCode, 200, personaResponse.body);
+  const personaClips = (personaResponse.json() as { clips: Array<{ id: string }> }).clips.map((clip) => clip.id);
+  assert.ok(
+    !personaClips.includes(`scene:${videoId}`),
+    "a clip that doesn't show the persona stays out of its gallery",
+  );
+  assert.ok(personaClips.includes(`scene:${personaVideoId}`), "a clip that names the persona is in its gallery");
+  assert.ok(personaClips.includes(`scene:${legacy.id}`), "an untagged video still belongs to the persona's chat");
+  assert.ok(!(await clipIds(bob.id)).includes(`scene:${personaVideoId}`), "naming the persona doesn't add Bob");
   console.log("convo-video-character-galleries regression passed");
 } finally {
   await app.close();

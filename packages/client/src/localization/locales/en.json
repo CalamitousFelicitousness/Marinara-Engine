@@ -5333,7 +5333,7 @@
   "ui.agents.agenteditor.seconds": "seconds",
   "ui.agents.agenteditor.secretPlot": "Secret Plot",
   "ui.agents.agenteditor.secretPlotPrompt": "Secret Plot Prompt",
-  "ui.agents.agenteditor.secretPlotPromptHelp": "Instructions for writing and updating the hidden arc. The built-in prompt is used until you copy it to edit. Keep the JSON reply format at the end: an overarchingArc object with description, protagonistArc, characterArc (optional) and completed. Without it, the arc can't be read.",
+  "ui.agents.agenteditor.secretPlotPromptHelp": "Keep the JSON reply format at the end (an overarchingArc with description, protagonistArc, optional characterArc and completed), or the arc can't be read.",
   "ui.agents.agenteditor.selectALorebook": "Select a lorebook",
   "ui.agents.agenteditor.selected": "selected",
   "ui.agents.agenteditor.selectedCustomMusicFolder": "Selected custom music folder.",

@@ -2158,6 +2158,7 @@
   "game.combat.ruleset.event.relit": "{{actor}} lights {{label}} again.",
   "game.combat.ruleset.event.reload": "{{actor}} reloads {{label}}: {{loaded}} of {{of}} loaded.",
   "game.combat.ruleset.event.reloadDrew": "{{actor}} loads {{drew}} into {{label}}: {{loaded}} of {{of}} loaded.",
+  "game.combat.ruleset.event.rerolled": "{{actor}} rolls a {{face}}, and {{label}} rolls it again: {{to}}.",
   "game.combat.ruleset.event.rescuedDie": "{{actor}} uses {{label}} and adds a die.",
   "game.combat.ruleset.event.rescuedReroll": "{{actor}} uses {{label}} and rolls again.",
   "game.combat.ruleset.event.rescuedSuccess": "{{actor}} uses {{label}} and succeeds instead.",

@@ -95265,6 +95265,34 @@
                 },
                 "additionalProperties": false
               },
+              "rerollsFace": {
+                "type": "object",
+                "properties": {
+                  "face": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "rolls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "attacks",
+                        "saves",
+                        "checks"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 3
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "face"
+                ],
+                "additionalProperties": false
+              },
               "temporary": {
                 "type": "object",
                 "properties": {
@@ -101644,6 +101672,34 @@
                   },
                   "$comment": {}
                 },
+                "additionalProperties": false
+              },
+              "rerollsFace": {
+                "type": "object",
+                "properties": {
+                  "face": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "rolls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "attacks",
+                        "saves",
+                        "checks"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 3
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "face"
+                ],
                 "additionalProperties": false
               },
               "defeats": {

@@ -2753,6 +2753,8 @@ export type RulesetCombatEvent =
       by: number;
       total: number;
     }
+  /** A face of its maker's own roll rolled again by what they hold (1.355): a halfling's Lucky. */
+  | { type: "rerolled"; actorId: string; label: string; face: number; to: number }
   /** A failed roll rolled again or turned into a success by what its maker spent (1.249). */
   | { type: "rescued"; actorId: string; optionId: string; label: string; by: RulesetCombatRescue["by"] }
   /** Sent out of the fight (1.236): for good, or for as long as `while` holds. */

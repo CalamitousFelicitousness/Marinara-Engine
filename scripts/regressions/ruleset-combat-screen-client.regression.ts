@@ -800,6 +800,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         alters: ["Careful Spell", "Empowered Spell"],
       }),
     ],
+    ["rerolled", say({ type: "rerolled", actorId: "brenna", label: "Lucky", face: 1, to: 14 })],
     [
       "rescued",
       say({ type: "rescued", actorId: "brenna", optionId: "ability:0:1", label: "Indomitable", by: "reroll" }),
@@ -1171,6 +1172,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("slain"), "Brenna's Mace of Disruption destroys Thorn Lurker outright.");
   assert.equal(printed.get("dropped"), "Brenna's Quivering Palm drops Thorn Lurker to 0.");
+  assert.equal(printed.get("rerolled"), "Brenna rolls a 1, and Lucky rolls it again: 14.");
   assert.equal(printed.get("rescued"), "Brenna uses Indomitable and rolls again.");
   assert.equal(printed.get("lowered"), "Brenna's Cutting Words takes 4 off Thorn Lurker's Bite, to 12.");
   const lowered = {

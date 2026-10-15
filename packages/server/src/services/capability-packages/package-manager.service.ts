@@ -2180,6 +2180,16 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
 }
 
 /** A floor under defense (1.353): a modifier to defense with `atLeast`. */
+/** A face rolled again (1.355): a condition's or a level's `rerollsFace`. */
+function carriesRerollsFace355(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRerollsFace355(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.rerollsFace !== undefined) return true;
+  return featureValues(record).some((one) => carriesRerollsFace355(one, depth + 1));
+}
+
 /** Swallow follow-ups (1.354): what a condition put on asks the target to hold, ends on them, or does
  *  to whoever pulls them out; a contest that pulls somebody out; and a condition taking a share of
  *  its source's harm. */
@@ -5344,6 +5354,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A face rolled again, 1.355.
+  if (
+    !declaresApi(355) &&
+    (carriesRerollsFace355(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRerollsFace355(document)))
+  ) {
+    return "A ruleset that rolls a face again (a condition's or a level's rerollsFace) requires schemaVersion 2 and capabilityApi 1.355 or newer";
+  }
   // Swallow follow-ups: a rider on a held target, a hold ended, a pull out and what it costs, 1.354.
   if (
     !declaresApi(354) &&

@@ -2537,6 +2537,25 @@ export interface RulesetRegeneration {
   notAtZero?: true;
   keepsUp?: true;
 }
+/** A face of the fight's own dice its holder rolls again, once, on their own rolls of these kinds
+ *  (Capability API 1.355), keeping the new face: a halfling's Lucky, `{"face": 1}`. Every kind when
+ *  `rolls` is left out. Typed by hand, to keep the definition's type small. */
+export interface RulesetRerollsFace {
+  face: number;
+  rolls?: Array<"attacks" | "saves" | "checks">;
+}
+export const rerollsFaceSchema: z.ZodType<RulesetRerollsFace, z.ZodTypeDef, unknown> = z
+  .object({
+    face: z.number().int().min(1).max(1000),
+    rolls: z
+      .array(z.enum(["attacks", "saves", "checks"]))
+      .min(1)
+      .max(3)
+      .refine((rolls) => new Set(rolls).size === rolls.length, { message: "A kind of roll is named once" })
+      .optional(),
+  })
+  .strict();
+
 export const regenerationSchema: z.ZodType<RulesetRegeneration, z.ZodTypeDef, unknown> = z
   .object({
     flat: z.number().int().min(0).max(1000).optional(),
@@ -8733,6 +8752,9 @@ const combatLevelSchema = z
     /** Left at 1 instead of dropping to 0 (Capability API 1.347): 5e's Relentless Endurance on a
      *  half-orc's level, spending its pool. */
     hangsOn: hangsOnSchema.optional(),
+    /** A face of the fight's own dice rolled again (Capability API 1.355): 5e's Lucky on a
+     *  halfling's level. See `rerollsFaceSchema`. */
+    rerollsFace: rerollsFaceSchema.optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -8764,13 +8786,16 @@ const combatLevelSchema = z
       !entry.resist &&
       !entry.vulnerable &&
       !entry.immune &&
-      !entry.conditionImmunities
+      !entry.conditionImmunities &&
+      !entry.regenerates &&
+      !entry.hangsOn &&
+      !entry.rerollsFace
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "A level does something: effects, modifiers, saves it fails, defeating its holder, or harm or conditions it keeps off",
+          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, or a face it rolls again",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -9456,6 +9481,9 @@ const combatConditionSchema = z
     regenerates: regenerationSchema.optional(),
     /** Left at 1 instead of dropping to 0 while it holds (Capability API 1.347): Relentless Rage. */
     hangsOn: hangsOnSchema.optional(),
+    /** A face of the fight's own dice its holder rolls again while it holds (Capability API 1.355).
+     *  See `rerollsFaceSchema`. */
+    rerollsFace: rerollsFaceSchema.optional(),
     /** Temporary points its holder gains as each of their turns starts or ends (Capability API
      *  1.274), lost as it ends where it says so: 5e's Heroism. */
     temporary: conditionTemporarySchema.optional(),
@@ -13487,6 +13515,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (entry.inside.corpse && !combat.distance)
           issue([...path, "inside", "corpse"], "Climbing out costs movement, so the fight has a distance");
       }
+      rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {
         if ("track" in combat.health)
@@ -13731,6 +13760,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const key = `${entry.derived !== undefined ? "derived" : "track"}:${read}@${entry.at}`;
       if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${read}" is given twice`);
       levelled.add(key);
+      rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
@@ -14739,6 +14769,22 @@ function castsIssues(
   catalogs?.forEach((catalog, index) => {
     if (!known.has(catalog)) add([...at, index], `Unknown catalog "${catalog}"`);
   });
+}
+
+/** A face rolled again (1.355) is one the fight's own single die can show. */
+function rerollsFaceIssues(
+  definition: RulesetDefinition,
+  rerolls: RulesetRerollsFace | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (!rerolls) return;
+  const dice = definition.combat?.attackRoll?.dice;
+  if (!dice) {
+    add(at, "A face is rolled again on the fight's own attack dice, which this fight does not roll");
+  } else if (rerolls.face > dice.sides) {
+    add([...at, "face"], `The fight's d${dice.sides} never shows ${rerolls.face}`);
+  }
 }
 
 function escapeDcIssues(

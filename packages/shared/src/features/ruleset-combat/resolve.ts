@@ -1648,8 +1648,8 @@ function throwSave(
   // no way says nothing about how it was made, so a fight with no such condition logs what it
   // always logged.
   const dice = ctx.combat.attackRoll!.dice;
-  const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
-  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
+  const first = throwOwnDice(ctx, combatant, "saves", dice.count, dice.sides);
+  const second = mode === "normal" ? null : throwOwnDice(ctx, combatant, "saves", dice.count, dice.sides);
   const kept = second
     ? mode === "advantage"
       ? Math.max(sumOf(first), sumOf(second))
@@ -1708,6 +1708,36 @@ function throwSave(
   return success;
 }
 
+/** The fight's own dice for one of `who`'s own rolls, any face a condition or level of theirs rolls
+ *  again (1.355) rolled again once, the new face kept: a halfling's Lucky on a natural 1. */
+function throwOwnDice(
+  ctx: RulesetCombatContext,
+  who: RulesetCombatant,
+  roll: "attacks" | "saves" | "checks",
+  count: number,
+  sides: number,
+): number[] {
+  const rolls = rollRulesetDice(ctx.roll, count, sides);
+  const again = rulesetActiveConditions(ctx.definition, ctx.combat, who, ctx.state).find(
+    (entry) =>
+      entry.rerollsFace &&
+      (!entry.rerollsFace.rolls || entry.rerollsFace.rolls.includes(roll)) &&
+      rolls.includes(entry.rerollsFace.face),
+  );
+  if (!again) return rolls;
+  const face = again.rerollsFace!.face;
+  const sheet = ctx.definition.sheet;
+  const label =
+    [...sheet.live.conditions, ...sheet.derived, ...sheet.live.tracks].find((one) => one.id === again.condition)
+      ?.label ?? again.condition;
+  return rolls.map((rolled) => {
+    if (rolled !== face) return rolled;
+    const to = rollRulesetDice(ctx.roll, 1, sides)[0]!;
+    ctx.events.push({ type: "rerolled", actorId: who.id, label, face, to });
+    return to;
+  });
+}
+
 /** An item's gate, rolled by its user as a check: the fight's own dice (a pool in a pool fight) with
  *  the sheet's number read as the fight began, what their conditions add to checks (and to the skill
  *  it names), and the lean they give it. Logged as a save is. */
@@ -1760,8 +1790,8 @@ function passesGate(
     return success;
   }
   const dice = ctx.combat.attackRoll!.dice;
-  const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
-  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
+  const first = throwOwnDice(ctx, actor, "checks", dice.count, dice.sides);
+  const second = mode === "normal" ? null : throwOwnDice(ctx, actor, "checks", dice.count, dice.sides);
   const kept = second
     ? mode === "advantage"
       ? Math.max(sumOf(first), sumOf(second))
@@ -5388,8 +5418,8 @@ function throwCheck(
     };
   }
   const { count, sides } = ctx.combat.attackRoll!.dice;
-  const first = rollRulesetDice(ctx.roll, count, sides);
-  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, count, sides);
+  const first = throwOwnDice(ctx, who, "checks", count, sides);
+  const second = mode === "normal" ? null : throwOwnDice(ctx, who, "checks", count, sides);
   const kept = second
     ? mode === "advantage"
       ? Math.max(sumOf(first), sumOf(second))
@@ -6251,8 +6281,8 @@ function reachesHeld(
   }
   const mode = rulesetCheckMode(ctx.definition, ctx.combat, answering, ctx.state);
   const dice = ctx.combat.attackRoll!.dice;
-  const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
-  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
+  const first = throwOwnDice(ctx, answering, "checks", dice.count, dice.sides);
+  const second = mode === "normal" ? null : throwOwnDice(ctx, answering, "checks", dice.count, dice.sides);
   const kept = second
     ? mode === "advantage"
       ? Math.max(sumOf(first), sumOf(second))
@@ -9409,8 +9439,8 @@ function resolveActionBody(
         }
       } else {
         const dice = ctx.combat.attackRoll!.dice;
-        const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
-        const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
+        const first = throwOwnDice(ctx, actor, "attacks", dice.count, dice.sides);
+        const second = mode === "normal" ? null : throwOwnDice(ctx, actor, "attacks", dice.count, dice.sides);
         const kept = second
           ? mode === "advantage"
             ? Math.max(sumOf(first), sumOf(second))

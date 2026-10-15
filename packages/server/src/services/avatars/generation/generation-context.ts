@@ -14,7 +14,6 @@ import {
   AVATAR_PROMPT_TEMPLATE_SETTINGS_KEY,
   AVATAR_PROMPT_TEMPLATE_VARIABLES,
   LOCAL_SIDECAR_CONNECTION_ID,
-  compileImagePrompt,
   isChatProvider,
   isOpenAIGptImageModel,
   mergeBuiltInAgentSettings,
@@ -34,7 +33,6 @@ import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
 } from "../../image/image-generation-defaults.js";
-import { loadImageGenerationUserSettings } from "../../image/image-generation-settings.js";
 import { generateImage } from "../../image/image-generation.js";
 import { renderTemplate } from "../../prompt-overrides/template.js";
 import { getSharp } from "../../image/sharp-runtime.js";
@@ -337,32 +335,12 @@ export interface AvatarImageEditRequest {
   image: AvatarImageConnection;
   prompt: string;
   negativePrompt?: string;
-  /** The sprite the picture is drawn for; a cut-out gives the picture its outline. */
+  /** The sprite the picture is drawn from; a see-through sprite gives the picture its outline. */
   source: AvatarSourceSprite;
-  /** The same sprite as the image model sees it, when that isn't `source`: the sprite with its background
-   *  (some image services drop see-through pixels, and a model edits a whole picture best). */
-  shown?: AvatarSourceSprite;
   signal?: AbortSignal;
   debug: boolean;
   /** Short name for the debug log, e.g. "pngtuber happy eyes-closed". */
   logLabel: string;
-}
-
-/** The provider prompt for an edit: the template text compiled with the user's image style settings,
- *  exactly like sprite generation. */
-export async function compileAvatarImagePrompt(
-  db: DB,
-  image: AvatarImageConnection,
-  prompt: string,
-): Promise<{ prompt: string; negativePrompt: string }> {
-  const settings = await loadImageGenerationUserSettings(db);
-  const compiled = compileImagePrompt({
-    kind: "sprite",
-    prompt,
-    styleProfiles: settings.styleProfiles,
-    imageDefaults: resolveConnectionImageDefaults(image.conn),
-  });
-  return { prompt: compiled.prompt, negativePrompt: compiled.negativePrompt };
 }
 
 /** Where the sprite sits on a canvas of another shape: scaled to fit and centred, never stretched. */
@@ -377,28 +355,44 @@ export function avatarCanvasPlacement(
 }
 
 /** Edits a sprite through the image connection (with its fallback) and returns a PNG of exactly the
- *  sprite's size. The provider gets the sprite (`shown`) already on a canvas of the size it is asked for, with
- *  see-through or repeated edges around it, so an edit that keeps the picture where it is comes back
- *  lined up with the sprite whatever canvas shapes the model accepts. No see-through background is asked
- *  for: some models can't make one (GPT Image 2), and a cut-out gets the sprite's own outline back. */
+ *  sprite's size. The provider gets only the sprite, already on a canvas of the size it is asked for (a
+ *  cut-out on white, an opaque sprite with repeated edges), so an edit that keeps the picture where it is
+ *  comes back lined up with the sprite whatever canvas shapes the model accepts. No see-through background
+ *  is asked for: some models can't make one (GPT Image 2), and a cut-out gets the sprite's own outline back. */
 export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Promise<Buffer> {
   const { conn, fallback } = request.image;
   const model = conn.model || "";
   const size = avatarImageRequestSize(request.source.width, request.source.height, model);
   const place = avatarCanvasPlacement(request.source, size);
-  const shown = request.shown ?? request.source;
   const sharp = await getSharp();
-  const reference = await sharp(shown.png)
+  const placed = await sharp(request.source.png)
     .resize(place.width, place.height, { fit: "fill" })
     .extend({
       top: place.top,
       bottom: size.height - place.height - place.top,
       left: place.left,
       right: size.width - place.width - place.left,
-      ...(shown.transparent ? { background: { r: 0, g: 0, b: 0, alpha: 0 } } : { extendWith: "copy" as const }),
+      ...(request.source.transparent
+        ? { background: { r: 0, g: 0, b: 0, alpha: 0 } }
+        : { extendWith: "copy" as const }),
     })
     .png()
     .toBuffer();
+  // A cut-out goes on plain white: providers read its see-through pixels as black, which hides dark
+  // clothes and hair and gets the whole picture redrawn. Only the mostly see-through pixels turn white;
+  // the others keep their own colour, since blending a soft inside pixel with white would come back
+  // lighter than the face it swaps with. Its own outline is put back afterwards.
+  // ponytail: white hides a very pale outline the same way; pick the backdrop from the sprite's colours if
+  // that shows up.
+  let reference = placed;
+  if (request.source.transparent) {
+    const { data, info } = await sharp(placed).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (let index = 0; index < data.length; index += 4) if (data[index + 3]! < 128) data.fill(255, index, index + 3);
+    reference = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+      .removeAlpha()
+      .png()
+      .toBuffer();
+  }
   logDebugOverride(
     request.debug,
     "[debug/avatar-generation] %s image prompt (%dx%d):\n%s\nnegative: %s",
@@ -420,6 +414,7 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
       width: size.width,
       height: size.height,
       referenceImage: reference.toString("base64"),
+      referenceIsCanvas: true,
       imageEndpointId: conn.imageEndpointId || undefined,
       comfyWorkflow: conn.comfyuiWorkflow || undefined,
       imageDefaults: resolveConnectionImageDefaults(conn),

@@ -283,6 +283,12 @@ export type AvatarExpressionMap = Partial<Record<AvatarExpressionSlot, AvatarExp
 export function detectSpriteEmotionBindings(labels: readonly string[]): AvatarExpressionMap {
   const map: AvatarExpressionMap = {};
   for (const emotion of AVATAR_EMOTIONS) {
+    // A face named after the feeling itself ("relaxed") is that feeling's face, even beside "love".
+    const named = labels.find((label) => normalizeSpriteLookupToken(label) === emotion);
+    if (named !== undefined) {
+      map[emotion] = { target: named, source: "sprite-label", confidence: 1 };
+      continue;
+    }
     let best: AvatarExpressionBinding = { target: null, source: "missing", confidence: 0 };
     for (const label of labels) {
       const mapped = mapSpriteExpressionToAvatarEmotion(label);

@@ -718,11 +718,322 @@ try {
   assert.equal(since(mark, "recollect").length, 2, "one request per scene, each paid for once");
   const kept10 = await recollections(claude.id);
   assert.equal(kept10.length, 4);
-  assert(kept10.every((record) => record.content), "every recollection is written");
+  assert(
+    kept10.every((record) => record.content),
+    "every recollection is written",
+  );
   mark = calls.length;
   await memory.initialize(claude.id);
   assert.equal(since(mark).length, 0, "nothing is asked again");
   finishReason = "stop";
+
+  /** A merged chat of Ada and Bram with one summarized scene per marker, recollections off unless asked. */
+  const summarizedChat = async (
+    name: string,
+    markers: string[],
+    characterRecollections = false,
+    onProgress?: (job: {
+      stage: string;
+      completed: number;
+      total: number;
+      part?: { completed: number } | null;
+    }) => void,
+  ) => {
+    const created = await chats.create({
+      name,
+      mode: "roleplay",
+      characterIds: ["ada", "bram"],
+      connectionId: connection.id,
+    });
+    assert(created);
+    await chats.patchMetadata(created.id, {
+      groupChatMode: "merged",
+      advancedMemory: { ...settings, characterRecollections, narratorCharacterId: null, knowledgeStarts: {} },
+    });
+    await chats.createMessagesBatch(created.id, [
+      ...markers.flatMap((marker, index) => [
+        {
+          role: "user" as const,
+          content: `${index ? "SCENE_CHANGE " : ""}${marker} Ada and Bram meet.`,
+          extra: persona,
+        },
+        { role: "assistant" as const, characterId: index % 2 ? "bram" : "ada", content: `They talk about ${marker}.` },
+      ]),
+      // A new conversation start, so the scenes before it are recalled.
+      { role: "user", content: "SCENE_CHANGE A new day.", extra: { ...persona, isConversationStart: true } },
+    ]);
+    await memory.initialize(created.id, onProgress ? { onProgress } : undefined);
+    assert.equal((await summaries(created.id)).length, markers.length);
+    return created;
+  };
+  const recollectionOf = async (chatId: string, marker: string, characterId: string) => {
+    const scene = (await summaries(chatId)).find((record) => record.content.includes(marker))!;
+    return (await recollections(chatId)).find(
+      (record) => record.sceneId === scene.sceneId && record.audienceCharacterIds[0] === characterId,
+    );
+  };
+
+  // ── 11. A deleted recollection leaves prompts and is never written again, until one is typed in ──
+  const deleted = await summarizedChat("Deleted recollection", ["BACKFILL_F", "BACKFILL_G"], true);
+  assert.equal((await recollections(deleted.id)).filter((record) => record.content).length, 4);
+  const sceneF = (await summaries(deleted.id)).find((record) => record.content.includes("BACKFILL_F"))!;
+  const adaF = (await recollectionOf(deleted.id, "BACKFILL_F", "ada"))!;
+  const recalledFor = async (chatId: string) =>
+    (
+      await memory.prepare({
+        chatId,
+        messages: await chats.listMessages(chatId),
+        audienceCharacterIds: ["ada", "bram"],
+        budgetTokens: 50_000,
+        readOnly: true,
+      })
+    ).recalledScenes ?? "";
+  assert((await recalledFor(deleted.id)).includes(line("Ada", adaF.content)), "recalled before it is deleted");
+  await assert.rejects(
+    memory.updateRecord(deleted.id, sceneF.id, { content: " " }),
+    /Memory text must contain between 1 and 500000 characters/u,
+    "only a recollection can be saved empty",
+  );
+  await memory.updateRecord(deleted.id, adaF.id, { content: "" });
+  const stillDeleted = async (chatId: string, label: string) => {
+    const record = await recollectionOf(chatId, "BACKFILL_F", "ada");
+    assert.deepEqual([record?.content, record?.manualOverride], ["", true], label);
+    const recalled = await recalledFor(chatId);
+    assert(recalled.includes("BACKFILL_F"), `${label}: the scene is still recalled`);
+    assert.doesNotMatch(
+      recalled,
+      /Ada's personal recollections from this scene: \*[^*]*BACKFILL_F/u,
+      `${label}: without Ada's`,
+    );
+  };
+  await stillDeleted(deleted.id, "a deleted recollection stays as an empty hand-edited one, left out of prompts");
+  const bramF = (await recollectionOf(deleted.id, "BACKFILL_F", "bram"))!;
+  assert((await recalledFor(deleted.id)).includes(line("Bram", bramF.content)), "the others are still recalled");
+  mark = calls.length;
+  await memory.checkScenesAfterGeneration(deleted.id, {});
+  assert.equal(since(mark, "recollect").length, 0, "upkeep after a reply doesn't write it again");
+  await stillDeleted(deleted.id, "after upkeep");
+  await memory.initialize(deleted.id);
+  assert.equal(since(mark, "recollect").length, 0, "neither does Prepare");
+  await stillDeleted(deleted.id, "after Prepare");
+  await memory.updateRecord(deleted.id, sceneF.id, { content: "SUMMARY_BACKFILL_F_HAND Ada and Bram met at noon." });
+  await memory.maintain(deleted.id);
+  assert.deepEqual(
+    since(mark, "recollect").map((call) => rosterOf(call.system)),
+    [["Bram"]],
+    "a changed summary rewrites only the generated one",
+  );
+  await stillDeleted(deleted.id, "after the summary changed");
+  await memory.updateSettings(deleted.id, { characterRecollections: false });
+  mark = calls.length;
+  await memory.updateSettings(deleted.id, { characterRecollections: true });
+  assert.equal((await settle(deleted.id)).status, "ready");
+  assert.equal(since(mark, "recollect").length, 0, "turning the setting off and on doesn't write it again");
+  await stillDeleted(deleted.id, "after the setting was turned off and on");
+  // Export and import, and a branch, keep it deleted.
+  const deletedMessages = await chats.listMessages(deleted.id);
+  const copyOf = async (name: string) => {
+    const created = await chats.create({
+      name,
+      mode: "roleplay",
+      characterIds: ["ada", "bram"],
+      connectionId: connection.id,
+    });
+    assert(created);
+    await chats.patchMetadata(created.id, {
+      groupChatMode: "merged",
+      advancedMemory: { ...settings, narratorCharacterId: null, knowledgeStarts: {} },
+    });
+    await chats.createMessagesBatch(
+      created.id,
+      deletedMessages.map((message) => ({
+        role: message.role as "user" | "assistant",
+        content: message.content,
+        characterId: message.characterId ?? undefined,
+        extra: typeof message.extra === "string" ? JSON.parse(message.extra) : message.extra,
+      })),
+    );
+    return created;
+  };
+  const importedCopy = await copyOf("Deleted recollection copy");
+  await memory.importMemory(importedCopy.id, await memory.exportMemory(deleted.id));
+  const branched = await copyOf("Deleted recollection branch");
+  const branchedMessages = await chats.listMessages(branched.id);
+  await copyAdvancedMemoryRecords({
+    db,
+    chatId: branched.id,
+    records: await memory.exportTransferRecords(deleted.id),
+    sourceMessages: deletedMessages,
+    messageIds: new Map(deletedMessages.map((message, index) => [message.id, branchedMessages[index]!.id])),
+    characterIds: ["ada", "bram"],
+    metadata: {},
+  });
+  for (const [copied, label] of [
+    [importedCopy, "an imported copy"],
+    [branched, "a branch"],
+  ] as const) {
+    assert.equal((await recollections(copied.id)).length, 4, `${label} has every recollection`);
+    await stillDeleted(copied.id, `${label} keeps it deleted`);
+    mark = calls.length;
+    await memory.initialize(copied.id);
+    assert.equal(since(mark, "recollect").length, 0, `Prepare in ${label} doesn't write it again`);
+    await stillDeleted(copied.id, `${label} after Prepare`);
+  }
+  // Typing one into the empty field saves it as hand-edited, and it is recalled again.
+  await memory.updateRecord(deleted.id, adaF.id, { content: "ADA_NEW I remember the tea going cold." });
+  const retyped = (await recollectionOf(deleted.id, "BACKFILL_F", "ada"))!;
+  assert.deepEqual([retyped.content, retyped.manualOverride], ["ADA_NEW I remember the tea going cold.", true]);
+  assert((await recalledFor(deleted.id)).includes(line("Ada", "ADA_NEW I remember the tea going cold.")));
+  mark = calls.length;
+  await memory.maintain(deleted.id);
+  assert.equal(since(mark, "recollect").length, 0);
+  assert.equal(
+    (await recollectionOf(deleted.id, "BACKFILL_F", "ada"))!.content,
+    "ADA_NEW I remember the tea going cold.",
+  );
+
+  // ── 12. A paid reply is kept when the run is cancelled or fails after it arrived: Resume doesn't pay again ──
+  /** Storage that runs `after` once, right after the first recollection of `chatId` is saved. */
+  const onFirstRecollection = (chatId: string, after: () => void) => {
+    let armed = true;
+    return new Proxy(db, {
+      get(target, key, receiver) {
+        if (key !== "insert") return Reflect.get(target, key, receiver);
+        return (table: Parameters<typeof db.insert>[0]) => {
+          const builder = target.insert(table);
+          return {
+            ...builder,
+            values: (row: Record<string, unknown>) =>
+              Promise.resolve(builder.values(row as never)).then((value) => {
+                if (armed && row.kind === "recollection" && row.chatId === chatId) {
+                  armed = false;
+                  after();
+                }
+                return value;
+              }),
+          };
+        };
+      },
+    });
+  };
+  // Cancelled while the first scene's reply is being saved: Ada's is saved, Bram's must not be lost with it.
+  const cancelled = await summarizedChat("Cancelled while saving", ["BACKFILL_J", "BACKFILL_K"]);
+  const cancelling = createAdvancedMemoryService(
+    onFirstRecollection(cancelled.id, () => cancelling.cancelActiveOperation(cancelled.id)),
+  );
+  mark = calls.length;
+  await cancelling.updateSettings(cancelled.id, { characterRecollections: true });
+  assert.equal((await settle(cancelled.id)).status, "cancelled");
+  assert.equal(since(mark, "recollect").length, 1, "the run stopped after the first scene's reply");
+  mark = calls.length;
+  await memory.initialize(cancelled.id);
+  assert.equal((await memory.status(cancelled.id)).job.status, "ready");
+  assert.deepEqual(
+    since(mark, "recollect").map((call) => /BACKFILL_[A-Z]/u.exec(call.user)?.[0]),
+    ["BACKFILL_K"],
+    "Resume asks only for the scene that had no reply; the paid one isn't asked again",
+  );
+  for (const characterId of ["ada", "bram"])
+    assert.match((await recollectionOf(cancelled.id, "BACKFILL_J", characterId))?.content ?? "", /_BACKFILL_J /u);
+  // The same when the recollections came with the scene's summary: no request of their own pays for them again.
+  const withSummary = await chats.create({
+    name: "Cancelled while saving a summary",
+    mode: "roleplay",
+    characterIds: ["ada", "bram"],
+    connectionId: connection.id,
+  });
+  assert(withSummary);
+  await chats.patchMetadata(withSummary.id, {
+    groupChatMode: "merged",
+    advancedMemory: { ...settings, narratorCharacterId: null, knowledgeStarts: {} },
+  });
+  await chats.createMessagesBatch(withSummary.id, [
+    { role: "user", content: "SCENE_TWO Ada and Bram walk down to the harbor.", extra: persona },
+    { role: "assistant", characterId: "bram", content: "Bram watches the tide roll in." },
+    { role: "user", content: "SCENE_CHANGE A new day.", extra: { ...persona, isConversationStart: true } },
+  ]);
+  const summaryCancelling = createAdvancedMemoryService(
+    onFirstRecollection(withSummary.id, () => summaryCancelling.cancelActiveOperation(withSummary.id)),
+  );
+  await assert.rejects(summaryCancelling.initialize(withSummary.id), /cancelled/u);
+  mark = calls.length;
+  await memory.initialize(withSummary.id);
+  assert.equal((await memory.status(withSummary.id)).job.status, "ready");
+  assert.equal(since(mark, "summary").length + since(mark, "recollect").length, 0, "nothing paid is asked again");
+  assert.deepEqual((await recollections(withSummary.id)).map((record) => record.content.split(" ")[0]).sort(), [
+    "ADA_TWO",
+    "BRAM_TWO",
+  ]);
+  // A failed save after the reply arrived: the run stops with an error, and Resume uses the saved reply.
+  const failedSave = await summarizedChat("Failed while saving", ["BACKFILL_L", "BACKFILL_M"]);
+  const failing = createAdvancedMemoryService(
+    onFirstRecollection(failedSave.id, () => {
+      throw new Error("Unexpected storage failure");
+    }),
+  );
+  mark = calls.length;
+  await failing.updateSettings(failedSave.id, { characterRecollections: true });
+  const failedJob = await settle(failedSave.id);
+  assert.equal(failedJob.status, "error");
+  assert.match(failedJob.error ?? "", /Unexpected storage failure/u);
+  assert.equal(since(mark, "recollect").length, 2);
+  mark = calls.length;
+  await memory.initialize(failedSave.id);
+  assert.equal((await memory.status(failedSave.id)).job.status, "ready");
+  assert.equal(since(mark, "recollect").length, 0, "Resume reuses the reply that arrived before the failure");
+  for (const characterId of ["ada", "bram"])
+    assert.match((await recollectionOf(failedSave.id, "BACKFILL_L", characterId))?.content ?? "", /_BACKFILL_L /u);
+
+  // ── 13. A recollection run's progress counts scenes, never the parts of one scene's request ──
+  const counted = await summarizedChat("Counted", ["BACKFILL_N", "BACKFILL_O"]);
+  await chats.patchMetadata(counted.id, {
+    advancedMemory: { ...settings, narratorCharacterId: null, knowledgeStarts: {} },
+  });
+  const events: Array<{ stage: string; completed: number; total: number }> = [];
+  await memory.initialize(counted.id, { recollectionsOnly: true, onProgress: (job) => events.push(job) });
+  const recollecting = events.filter((job) => job.stage === "recollecting");
+  assert(recollecting.length > 0);
+  assert.deepEqual(
+    [...new Set(recollecting.map((job) => `${job.completed}/${job.total}`))],
+    ["0/2", "1/2", "2/2"],
+    "the counter goes scene by scene",
+  );
+
+  // ── 14. Prepare's summary counter counts scenes too, never the parts of one scene's summary ──
+  const prepared: Array<{ stage: string; completed: number; total: number; part?: { completed: number } | null }> = [];
+  await summarizedChat("Prepared", ["BACKFILL_P", "BACKFILL_Q", "BACKFILL_R"], true, (job) => prepared.push(job));
+  const summarizing = prepared
+    .filter((job) => job.stage === "summarizing")
+    .map((job) => `${job.completed}/${job.total}`);
+  const totals = new Set(prepared.filter((job) => job.stage === "summarizing").map((job) => job.total));
+  assert(summarizing.length > 0);
+  assert(totals.size === 1 && [...totals][0]! >= 3, `the counter stays on the scenes: ${summarizing.join(", ")}`);
+  assert.equal(prepared.at(-1)?.part ?? null, null, "a finished Prepare shows no request part");
+
+  // ── 15. A scene summarized again asks no recollection of whoever has a hand-edited or deleted one ──
+  const resummarized = await summarizedChat("Summarized again", ["BACKFILL_S", "BACKFILL_T"], true);
+  const adaS = (await recollectionOf(resummarized.id, "BACKFILL_S", "ada"))!;
+  await memory.updateRecord(resummarized.id, adaS.id, { content: "" });
+  // One of the scene's messages is gone, so its generated summary is written again.
+  const messageS = (await chats.listMessages(resummarized.id)).find(
+    (message) => message.content === "They talk about BACKFILL_S.",
+  )!;
+  await chats.removeMessage(messageS.id);
+  mark = calls.length;
+  await memory.initialize(resummarized.id);
+  const summaryS = since(mark, "summary").filter((call) => call.user.includes("BACKFILL_S"));
+  assert(summaryS.length > 0, "the changed scene is summarized again");
+  assert.deepEqual(
+    summaryS.map((call) => cardsOf(call.system).map((card) => card.name)),
+    summaryS.map(() => ["Bram"]),
+    "only the generated recollection's character is asked for one",
+  );
+  assert(
+    summaryS.every((call) => call.system.includes('this list (IDs and names): [{"name":"Bram","id":"bram"}]')),
+    "and the instruction asks only Bram for one",
+  );
+  const adaSAfter = await recollectionOf(resummarized.id, "BACKFILL_S", "ada");
+  assert.deepEqual([adaSAfter?.content, adaSAfter?.manualOverride], ["", true], "Ada's stays deleted");
   console.log("advanced-memory-recollections regression passed");
 } finally {
   provider.close();

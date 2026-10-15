@@ -2,12 +2,12 @@
 // Avatar generation: PNGTuber blink and talk variants (lane: generation)
 // ──────────────────────────────────────────────
 // One click from a sprite: edit it into "eyes closed" and "mouth open" variants with the existing
-// image generation (services/image, the same provider routing, fallback connection and style settings
-// as sprite generation), using the 2D agent's `avatar-pngtuber-eyes-closed` / `avatar-pngtuber-mouth-open`
-// templates. Generating returns drafts and stores nothing, so the avatar stays as it was until the user
+// image generation (services/image, the same provider routing and fallback connection as sprite
+// generation), using the 2D agent's `avatar-pngtuber-eyes-closed` / `avatar-pngtuber-mouth-open`
+// templates, sent as written with the sprite as the only reference. Generating returns drafts and stores nothing, so the avatar stays as it was until the user
 // keeps a picture; saving stores the kept pictures as PNGTuber layers through services/avatars/storage.ts,
-// merged into the stored setup inside its per-owner queue. Pictures are drawn from the sprite's cut-out
-// (services/avatars/cutouts.ts) and take its outline, so every stored picture has no background.
+// merged into the stored setup inside its per-owner queue. Pictures are drawn from the sprite as it is; a
+// picture drawn from a see-through sprite takes its outline (applyAvatarSourceOutline).
 // The final prompt is logged with logDebugOverride (debugMode / DEBUG_AGENTS) before it reaches the provider.
 import { createHash } from "node:crypto";
 import {
@@ -32,14 +32,11 @@ import type { DB } from "../../../db/connection.js";
 import { isAllowedImageBuffer } from "../../../utils/security.js";
 import { resolveReviewedImagePromptSubmission } from "../../image/image-prompt-review.js";
 import { getSharp } from "../../image/sharp-runtime.js";
-import { avatarSpriteCutout } from "../cutouts.js";
 import { readAvatarConfig, readAvatarFile, updateAvatarConfig, writeAvatarFiles } from "../storage.js";
 import {
   AvatarGenerationError,
-  applyAvatarSourceOutline,
   avatarGenerationDebug,
   avatarImageRequestSize,
-  compileAvatarImagePrompt,
   drawAvatarImageEdit,
   listAvatarSourceSprites,
   plainErrorText,
@@ -50,7 +47,6 @@ import {
   resolveAvatarImageConnection,
   withAvatarGenerationJob,
   type AvatarAgentSettings,
-  type AvatarImageConnection,
   type AvatarOwnerInfo,
   type AvatarSourceSprite,
 } from "./generation-context.js";
@@ -250,25 +246,24 @@ export interface AvatarVariantPromptContext extends AvatarOwnerInfo {
 }
 
 /** The provider prompt for one variant of one sprite: the reviewed prompt when the user edited it, else
- *  the agent's template rendered with the owner's card text and compiled like a sprite prompt. */
-export async function avatarVariantPrompt(
-  db: DB,
-  image: AvatarImageConnection,
+ *  the agent's template rendered with the owner's card text. It is sent as written, never through the
+ *  sprite prompt compiler or style profiles: those cut an edit instruction down to tags, dropping "open
+ *  the mouth" and "keep the framing" and adding "full body", so the model redrew the whole character. */
+export function avatarVariantPrompt(
   context: AvatarVariantPromptContext,
   label: string,
   variant: AvatarPngtuberVariant,
   override?: AvatarPromptOverride,
-): Promise<{ prompt: string; negativePrompt: string }> {
+): { prompt: string; negativePrompt: string } {
   const id = VARIANT_TEMPLATE_IDS[variant];
   const rendered = renderAvatarPromptTemplate(context.template(id), id, {
     characterName: context.name || "the character",
     appearance: context.appearance,
     expression: label.replace(/[_-]+/gu, " "),
   });
-  const compiled = await compileAvatarImagePrompt(db, image, rendered);
   return resolveReviewedImagePromptSubmission({
-    generatedPrompt: compiled.prompt,
-    generatedNegativePrompt: compiled.negativePrompt,
+    generatedPrompt: rendered,
+    generatedNegativePrompt: "",
     promptOverride: override?.prompt,
     negativePromptOverride: override?.negativePrompt,
   });
@@ -317,7 +312,7 @@ export async function previewPngtuberVariantPrompts(
     const source = await readAvatarSourceSprite(request.owner.ownerId, label);
     const size = avatarImageRequestSize(source.width, source.height, image.conn.model || "");
     for (const variant of request.variants) {
-      const prompt = await avatarVariantPrompt(db, image, { template: agent.template, ...owner }, label, variant);
+      const prompt = avatarVariantPrompt({ template: agent.template, ...owner }, label, variant);
       items.push({
         id: variantPromptId(label, variant),
         kind: "sprite",
@@ -350,15 +345,11 @@ export async function generatePngtuberVariants(
     const response: PngtuberVariantsDraftResponse = { drafts: [], failed: [] };
     for (const label of labels) {
       pngtuberLayerKey(label); // refuse a label that can't be stored before paying for a picture
-      // The model is shown the sprite as it is; the picture it draws takes the cut-out's outline.
-      const sprite = await readAvatarSourceSprite(request.owner.ownerId, label);
-      const source = await spriteCutout(request.owner, sprite);
+      const source = await readAvatarSourceSprite(request.owner.ownerId, label);
       for (const variant of request.variants) {
         if (signal.aborted) throw signal.reason ?? new Error("Cancelled");
         try {
-          const prompt = await avatarVariantPrompt(
-            db,
-            image,
+          const prompt = avatarVariantPrompt(
             { template: agent.template, ...owner },
             label,
             variant,
@@ -368,7 +359,6 @@ export async function generatePngtuberVariants(
             image,
             ...prompt,
             source,
-            shown: sprite,
             signal,
             debug,
             logLabel: `pngtuber ${label} ${variant}`,
@@ -395,19 +385,6 @@ export async function generatePngtuberVariants(
   return withAvatarGenerationJob(request.owner, "pngtuber", job, options.signal);
 }
 
-/** The sprite's cut-out (avatarSpriteCutout), with a failure as a plain refusal. */
-export async function spriteCutout(owner: AvatarOwnerRef, sprite: AvatarSourceSprite): Promise<AvatarSourceSprite> {
-  try {
-    return await avatarSpriteCutout(owner, sprite);
-  } catch (error) {
-    throw new AvatarGenerationError(
-      500,
-      `The background of the sprite "${sprite.label}" couldn't be removed: ${plainErrorText(error, "unknown error")}`,
-      { cause: error },
-    );
-  }
-}
-
 function decodeDataUrl(value: string): Buffer {
   const comma = value.startsWith("data:") ? value.indexOf(",") : -1;
   return Buffer.from(comma >= 0 ? value.slice(comma + 1) : value, "base64");
@@ -432,11 +409,11 @@ async function keptPicturePng(image: string, source: AvatarSourceSprite): Promis
   return data;
 }
 
-/** Stores the kept pictures as PNGTuber layers and returns the saved setup. The cut-out of the sprite each
- *  picture was made from is copied next to it and every picture takes its outline, so the base and its
- *  variants always line up without a background; a sprite replaced since its pictures were made is refused.
- *  The files are written first and the setup is merged inside the owner's queue, so a change saved
- *  meanwhile (another tab, an import) is kept, not overwritten.
+/** Stores the kept pictures as PNGTuber layers and returns the saved setup. The sprite each picture was
+ *  made from is copied next to it as it is, and each kept picture is stored as drawn (one from a see-through
+ *  sprite already has its outline), so the base and its variants always line up; a sprite replaced since its pictures were made is refused. The
+ *  files are written first and the setup is merged inside the owner's queue, so a change saved meanwhile
+ *  (another tab, an import) is kept, not overwritten.
  *  ponytail: pictures of a replaced imported set stay on disk until the next PNGTuber import or removal
  *  tidies the folder; storage has no queued "tidy" call for generation to use. */
 export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest): Promise<AvatarGenerationResponse> {
@@ -453,10 +430,7 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
       if (!family.includes(entry.label)) {
         throw new AvatarGenerationError(400, `"${entry.label}" isn't one of the PNGTuber avatar's sprites.`);
       }
-      const source = await spriteCutout(
-        request.owner,
-        await readAvatarSourceSprite(request.owner.ownerId, entry.label),
-      );
+      const source = await readAvatarSourceSprite(request.owner.ownerId, entry.label);
       set = { key, label: entry.label, source, variants: [], keepOthers: false, sameBase: false };
       sets.set(key, set);
     }
@@ -466,11 +440,9 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
         `The sprite "${entry.label}" changed after its pictures were made. Make them again.`,
       );
     }
-    const kept = await keptPicturePng(entry.image, set.source);
-    files.set(
-      pngtuberVariantFilePath(key, entry.variant),
-      set.source.transparent ? await applyAvatarSourceOutline(kept, set.source) : kept,
-    );
+    // Drawing already gave a picture from a see-through sprite its outline; giving it again would lay it over
+    // the sprite once more and show the sprite through a soft mask.
+    files.set(pngtuberVariantFilePath(key, entry.variant), await keptPicturePng(entry.image, set.source));
     if (!set.variants.includes(entry.variant)) set.variants.push(entry.variant);
   }
   for (const set of sets.values()) {
@@ -486,7 +458,22 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
   );
   const config = await updateAvatarConfig(request.owner, (current) => {
     // An owner without a saved setup shows the one built from the sprites; start from it.
-    const start = current?.kinds.pngtuber ?? spriteBuiltPngtuber(allSprites);
+    const built = spriteBuiltPngtuber(allSprites);
+    const saved = current?.kinds.pngtuber ?? built;
+    // Each face being saved starts from its sprite-built set under its saved one, so a `_blink` or `_talk`
+    // sprite added since (or a face added since) stays next to the new picture; a saved picture wins over a
+    // sprite. Sprite pictures never reach another base: keepOthers below drops them with the old set.
+    const start = saved && {
+      ...saved,
+      layers: {
+        ...saved.layers,
+        ...Object.fromEntries(
+          [...sets.keys()].flatMap((key) =>
+            built?.layers[key] ? [[key, { ...built.layers[key], ...saved.layers[key] }]] : [],
+          ),
+        ),
+      },
+    };
     const kept = [...sets.values()].map((set) => {
       const existing = start?.layers[set.key]?.base;
       const keepOthers =

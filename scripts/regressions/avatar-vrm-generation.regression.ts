@@ -14,7 +14,8 @@
  *     the balance before spending, stops before the paid skeleton when Tripo can't rig the model, refuses an
  *     arms-down model before anything is saved, and the route streams progress and plain errors;
  *   - the key is saved on the 3D Avatars page, encrypted: its routes only say whether one is saved, it never
- *     reaches a log or a profile export, and a missing key is a plain refusal; Tripo is no longer a provider
+ *     reaches a log or a profile export, Clear data's Connections scope removes it, and a missing key is a
+ *     plain refusal; Tripo is no longer a provider
  *     in Connections, and the boot migration moves an old Tripo connection's key there and deletes the
  *     connection (and what pointed to it), once.
  * Tripo is mocked; the model is built here, so no Tripo file is committed and no credit is spent.
@@ -66,6 +67,7 @@ const { TRIPO_API_KEY_SETTING, migrateTripoConnectionsToApiKey, readTripoApiKey,
 const { AvatarGenerationError, cancelAvatarGenerationJob } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
+const { adminRoutes } = await import("../../packages/server/src/routes/admin.routes.js");
 
 const sharp = await getSharp();
 const KEY = "tsk_regression_key_7f3a9c";
@@ -1031,6 +1033,7 @@ try {
   const app = Fastify();
   app.decorate("db", db);
   await app.register(avatarGenerationRoutes);
+  await app.register(adminRoutes, { prefix: "/api/admin" });
   const routeLog: string[] = [];
   const loud = { info: logger.info, warn: logger.warn, error: logger.error, debug: logger.debug };
   for (const level of ["info", "warn", "error", "debug"] as const) {
@@ -1079,6 +1082,18 @@ try {
     const removed = await app.inject({ method: "DELETE", url: "/tripo-key" });
     assert.deepEqual(removed.json(), { saved: false });
     assert.equal(await readTripoApiKey(db), "");
+    assert.deepEqual((await app.inject({ method: "GET", url: "/tripo-key" })).json(), { saved: false });
+
+    // Clear data's Connections scope removes the key too, as it did while Tripo was a connection.
+    await app.inject({ method: "PUT", url: "/tripo-key", payload: { apiKey: KEY } });
+    assert.equal(await readTripoApiKey(db), KEY);
+    const expunged = await app.inject({
+      method: "POST",
+      url: "/api/admin/expunge",
+      payload: { confirm: true, scopes: ["connections"] },
+    });
+    assert.equal(expunged.statusCode, 200, expunged.body);
+    assert.equal(await settings.get(TRIPO_API_KEY_SETTING), null, "clearing Connections removes the Tripo API key");
     assert.deepEqual((await app.inject({ method: "GET", url: "/tripo-key" })).json(), { saved: false });
 
     const cancelled = await app.inject({ method: "POST", url: "/cancel", payload: { owner: runOwner, kind: "vrm" } });

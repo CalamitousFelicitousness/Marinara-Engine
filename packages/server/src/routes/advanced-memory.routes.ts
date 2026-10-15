@@ -18,7 +18,8 @@ const operationSchema = z.object({
 });
 const recordPatchSchema = z
   .object({
-    content: z.string().min(1).max(500_000).optional(),
+    // An empty recollection deletes it; the service refuses empty text for everything else.
+    content: z.string().max(500_000).optional(),
     timeline: z.string().max(2000).optional(),
     enabled: z.boolean().optional(),
     audienceCharacterIds: z.array(z.string().min(1)).max(100).optional(),

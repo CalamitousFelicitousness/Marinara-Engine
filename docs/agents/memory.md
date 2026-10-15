@@ -169,7 +169,7 @@ Turn on **Character recollections** in Advanced Memory to give each character th
 - They count toward **Summary and recall budget**: scene summaries come first, then recollections, then excerpts. When space runs short, excerpts shrink first, then whole recollections are left out. A recollection is never cut short.
 - Recollections are never copied into **Chat Summaries** or used to choose which scenes are recalled.
 - When a scene's summary changes, because you edited it or it was written again, its generated recollections are out of date and left out of prompts. After each reply, once the Chat Summaries are up to date, the recollections of up to three scenes are written again, the newest scenes first; **Prepare**, **Re-scan scenes** and **Resume** do all of them. A scene whose request failed after a reply waits for **Prepare** or **Resume**.
-- In **Access memories for this chat**, open a scene to read and edit each character's recollection under **Character recollections**. An edited recollection is marked **Manually edited** and is never replaced.
+- In **Access memories for this chat**, open a scene to read and edit each character's recollection under **Character recollections**. An edited recollection is marked **Manually edited** and is never replaced. **Delete** takes a recollection out of prompts and it is never written again; you can still type a new one into its empty field.
 - Turning the setting off keeps saved recollections but leaves them out of prompts. Turning it on again in a chat whose recollection run stopped starts that run again. Export, import and branches include them.
 
 ### While chatting

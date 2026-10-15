@@ -103,9 +103,19 @@ try {
   assert.match(edit.prompt, /Target canvas: landscape, 16:9 aspect ratio/u);
   assert.ok(!JSON.stringify(logs).includes(png), "Reference image data stays out of the logs");
 
+  // An in-place edit (a blink picture) keeps its reference's canvas: no request to compose a new picture.
+  await generateChatGPTImage(
+    { prompt: "close the eyes", referenceImage: png, referenceIsCanvas: true, width: 1024, height: 1024 },
+    fetchFixture,
+  );
+  assert.equal(
+    sent().prompt,
+    "close the eyes\n\nTarget canvas: square, 1:1 aspect ratio (nominal size 1024 x 1024 pixels).",
+  );
+
   // A single reference also edits; no size means no canvas line.
   await generateChatGPTImage({ prompt: "make it night", referenceImage: png }, fetchFixture);
-  assert.match(calls[2]!.url, /\/images\/edits$/u);
+  assert.match(calls.at(-1)!.url, /\/images\/edits$/u);
   assert.equal(sent().images.length, 1);
   assert.equal(sent().prompt, "make it night");
 

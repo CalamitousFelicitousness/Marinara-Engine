@@ -195,10 +195,7 @@ try {
   assert.equal(JSON.parse(made.body).drafts.length, 1, "the next picture comes back");
   const folder = join(avatarOwnerDir(owner), "pngtuber");
   const stored = existsSync(folder) ? readdirSync(folder) : [];
-  assert.ok(
-    stored.every((name) => name.startsWith("cutout-")),
-    `nothing is stored for the cancelled picture (only the sprite's cut-out): ${stored.join(", ")}`,
-  );
+  assert.deepEqual(stored, [], "nothing is stored for the cancelled picture");
   assert.ok(!existsSync(join(avatarOwnerDir(owner), "avatar.json")), "the avatar's setup is untouched");
 
   // ── The mesh avatar: the vision request is cancelled the same way ──

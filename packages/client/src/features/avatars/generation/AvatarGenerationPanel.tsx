@@ -4,11 +4,21 @@
 // PNGTuber blink/talk pictures and a mesh avatar from the owner's sprites, through /api/avatar-generation.
 // The base lane's setup mounts this through AVATAR_GENERATION_PANEL for the chosen character or persona.
 // Results stay in the browser until the user keeps them, so the owner's avatar does not change before that.
-import { useCallback, useMemo, useRef, useState } from "react";
+// Faces without a background come from sprite generation (SpriteGenerationModal, as in the character and
+// persona editors): it draws them from the avatar on a plain colour, removes it and saves them as sprites.
+import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { isChatProvider } from "@marinara-engine/shared";
+import { useQueryClient } from "@tanstack/react-query";
+import { Wand2 } from "lucide-react";
+import { AVATAR_EMOTIONS, isChatProvider, readImageAppearanceOverride, type Persona } from "@marinara-engine/shared";
 import { useConnections } from "../../../hooks/use-connections";
-import { useCharacterSprites, useSpriteCapabilities } from "../../../hooks/use-characters";
+import {
+  spriteKeys,
+  useCharacter,
+  useCharacterSprites,
+  usePersona,
+  useSpriteCapabilities,
+} from "../../../hooks/use-characters";
 import { useUIStore } from "../../../stores/ui.store";
 import {
   ImagePromptReviewModal,
@@ -22,17 +32,67 @@ import { avatarSourceSprites } from "./SpritePicker";
 
 type ConnectionRow = ConnectionOption & { defaultForAgents?: boolean | string };
 
-export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanelProps) {
+const SpriteGenerationModal = lazy(() =>
+  import("../../../components/ui/SpriteGenerationModal").then((m) => ({ default: m.SpriteGenerationModal })),
+);
+
+function cardRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      return cardRecord(JSON.parse(value));
+    } catch {
+      return {};
+    }
+  }
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/** The avatar and look the character and persona editors give the sprite generator (the image appearance
+ *  when it is on), from the owner's loaded card: the row from `/characters/:id` or the persona. Null until
+ *  it has loaded. */
+function spriteGeneratorSeed(
+  character: unknown,
+  persona: Persona | undefined,
+): { avatarUrl: string | null; appearance: string } | null {
+  if (persona) {
+    const { imageAppearanceEnabled, imageAppearance } = persona;
+    const look = persona.appearance || persona.description;
+    return {
+      avatarUrl: persona.avatarPath,
+      appearance: readImageAppearanceOverride({ imageAppearanceEnabled, imageAppearance }, look) ?? "",
+    };
+  }
+  if (!character) return null;
+  const row = cardRecord(character);
+  const data = cardRecord(row.data);
+  const extensions = cardRecord(data.extensions);
+  const look = typeof extensions.appearance === "string" ? extensions.appearance : data.description;
+  return {
+    avatarUrl: typeof row.avatarPath === "string" && row.avatarPath ? row.avatarPath : null,
+    appearance: readImageAppearanceOverride(extensions, typeof look === "string" ? look : null) ?? "",
+  };
+}
+
+export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
   const { data: spriteList, isLoading } = useCharacterSprites(owner.ownerId);
   const { data: capabilities } = useSpriteCapabilities();
   const { data: connectionList } = useConnections();
+  const queryClient = useQueryClient();
+  const character = useCharacter(owner.ownerType === "character" ? owner.ownerId : null);
+  const persona = usePersona(owner.ownerType === "persona" ? owner.ownerId : null);
+  const [facesOpen, setFacesOpen] = useState(false);
   const [chosenImageConnectionId, setChosenImageConnectionId] = useState<string | null>(null);
   const [reviewItems, setReviewItems] = useState<ImagePromptReviewItem[]>([]);
   const reviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
   // Talk and blink pictures belong to another face, so they are never offered as a source.
   const sprites = useMemo(() => avatarSourceSprites(spriteList), [spriteList]);
+  const portraitSprites = useMemo(
+    () => (spriteList ?? []).filter((sprite) => !sprite.expression.toLowerCase().startsWith("full_")),
+    [spriteList],
+  );
+  const seed = useMemo(() => spriteGeneratorSeed(character.data, persona.data), [character.data, persona.data]);
   const { imageConnections, languageConnections } = useMemo(() => {
     const rows = (connectionList ?? []) as ConnectionRow[];
     return {
@@ -78,6 +138,26 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("avatars.generation.description")}</p>
       </div>
 
+      {unavailable ? null : (
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            // Opened once the card is loaded, so its avatar is the reference from the start.
+            disabled={!seed?.avatarUrl}
+            onClick={() => setFacesOpen(true)}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary)]/85 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Wand2 size="0.875rem" aria-hidden />
+            {t("avatars.generation.facesFromAvatar")}
+          </button>
+          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+            {t(
+              seed && !seed.avatarUrl ? "avatars.generation.facesNeedAvatar" : "avatars.generation.facesFromAvatarHelp",
+            )}
+          </p>
+        </div>
+      )}
+
       {unavailable ? (
         <p className="text-xs text-[var(--muted-foreground)]">{t("avatars.generation.unavailable")}</p>
       ) : isLoading ? null : sprites.length === 0 ? (
@@ -115,7 +195,8 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
           )}
           <PngtuberVariantsSection
             owner={owner}
-            sprites={sprites}
+            config={config}
+            spriteList={spriteList ?? []}
             imageConnectionId={imageConnectionId}
             reviewPrompts={reviewPrompts}
             onChanged={onChanged}
@@ -136,6 +217,22 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
         onCancel={() => closeReview(null)}
         onConfirm={(overrides) => closeReview(overrides)}
       />
+      <Suspense fallback={null}>
+        {facesOpen && seed?.avatarUrl ? (
+          <SpriteGenerationModal
+            open
+            onClose={() => setFacesOpen(false)}
+            entityId={owner.ownerId}
+            initialSpriteType="expressions"
+            existingExpressionSprites={portraitSprites}
+            defaultAppearance={seed.appearance}
+            defaultAvatarUrl={seed.avatarUrl}
+            // The avatar's six feelings, so each gets its own face.
+            expressionChoices={AVATAR_EMOTIONS}
+            onSpritesGenerated={() => void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) })}
+          />
+        ) : null}
+      </Suspense>
     </section>
   );
 }

@@ -41,7 +41,7 @@ for (const theme of ["light", "dark"] as const) {
       const { default: React } = await import(url("react"));
       const { default: ReactDOM } = await import(url("react-dom_client"));
       const { QueryClient, QueryClientProvider } = await import(url("@tanstack_react-query"));
-      const { NanoGptUsageWidget } = await import("/src/components/connections/NanoGptUsageWidget.tsx" as string);
+      const { SubscriptionUsageWidget } = await import("/src/components/connections/SubscriptionUsageWidget.tsx" as string);
       const mount = document.createElement("div");
       mount.style.cssText =
         "position:fixed;inset:0;z-index:99999;overflow:auto;background:var(--background);padding:12px;color:var(--foreground)";
@@ -60,7 +60,7 @@ for (const theme of ["light", "dark"] as const) {
                 "data-testid": variant,
                 style: { width: "100%", maxWidth: "320px", marginBottom: "16px" },
               },
-              React.createElement(NanoGptUsageWidget, { connectionId: "nano-usage", variant }),
+              React.createElement(SubscriptionUsageWidget, { connectionId: "nano-usage", variant }),
             ),
           ),
         ),

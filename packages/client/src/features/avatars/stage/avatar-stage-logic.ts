@@ -9,7 +9,6 @@ import {
   createAvatarConfig,
   normalizeSpriteExpressionKey,
   avatarModelFileUrl,
-  avatarModelPath,
   type AvatarAgentId,
   type AvatarConfig,
   type AvatarFeatureFlags,
@@ -172,13 +171,8 @@ export interface AvatarSpriteRef {
   url: string;
 }
 
-/** Sprites the server can cut out (an SVG sprite is shown as it is). */
-const RASTER_SPRITE_URL = /\.(?:png|jpe?g|webp|avif|gif)$/iu;
-
 /** URL of a PNGTuber image: a stored file (with the config's save time, so a replaced file reloads), or
- *  the owner's sprite with that label, without its background: the server's cut-out, carrying the sprite's
- *  own version so a replaced sprite never shows an old cut-out. Expression sprites win over full-body ones
- *  with the same label. */
+ *  the owner's sprite with that label. Expression sprites win over full-body ones with the same label. */
 export function resolveAvatarImage(
   owner: AvatarOwnerRef,
   config: Pick<AvatarConfig, "updatedAt">,
@@ -192,13 +186,7 @@ export function resolveAvatarImage(
   if (!label || !sprites?.length) return null;
   const matches = sprites.filter((sprite) => normalizeSpriteExpressionKey(sprite.expression) === label);
   const expressionSprite = matches.find((sprite) => !/^full[_\s-]/iu.test(sprite.expression));
-  const sprite = expressionSprite ?? matches[0];
-  if (!sprite) return null;
-  const query = sprite.url.indexOf("?");
-  const path = query < 0 ? sprite.url : sprite.url.slice(0, query);
-  if (!RASTER_SPRITE_URL.test(path)) return sprite.url;
-  const version = query < 0 ? "" : sprite.url.slice(query);
-  return `/api${avatarModelPath(owner)}/sprite-cutouts/${encodeURIComponent(sprite.expression)}${version}`;
+  return (expressionSprite ?? matches[0])?.url ?? null;
 }
 
 /** A chat's avatar participants: its characters in chat order, then the user's persona. A persona that is a

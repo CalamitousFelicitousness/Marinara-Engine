@@ -1,6 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { seedUIState } from "./ui-state-fixture.js";
 
 // #7537 (base lane): a character with expression sprites already has a PNGTuber avatar in a Roleplay chat
@@ -11,7 +10,9 @@ import { seedUIState } from "./ui-state-fixture.js";
 // source, and Arrange mode drags full-body sprites and avatars with one shared gesture. The 3D Avatars page
 // links the guide to getting a 3D model and copies a prompt with only the owner's name and look. The 2D and
 // 3D Avatars pages leave out the agent pipeline's settings, which never run for them; 2D keeps its
-// connection, which the Mesh Avatar Layout uses to look at the sprite.
+// connection, which the Mesh Avatar Layout uses to look at the sprite. On the 2D page, "Make faces from the
+// avatar" opens sprite generation with the owner's avatar as the checked reference and the background
+// removal on, also for an owner without sprites, and the faces it saves become the owner's sprites.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -74,12 +75,6 @@ async function preparePage(page: Page, characterId: string, ui: Record<string, u
         filename: `${expression}.png`,
         url: "/sprites/avatar-demo/base.png",
       })),
-    }),
-  );
-  // The avatar shows each sprite face as the server's cut-out of it; the demo picture stands in.
-  await page.route(`**/api/avatar-models/character/${characterId}/sprite-cutouts/*`, (route) =>
-    route.fulfill({
-      path: fileURLToPath(new URL("../packages/client/public/sprites/avatar-demo/base.png", import.meta.url)),
     }),
   );
   await seedUIState(page, {
@@ -152,12 +147,20 @@ test("2D Avatars shows a character's sprites as its avatar and saves them as a P
     await expect(setup.getByText("An example avatar. Set one up to see yours.")).toHaveCount(0);
     await expect(setup.getByRole("img", { name: "Preview" })).toBeVisible();
     await expect(setup.getByRole("checkbox", { name: /Show this avatar in chats/u })).toBeChecked();
-    // Making an avatar from a sprite offers faces only, never their talk pictures.
-    await expect(setup.getByRole("group", { name: "Sprites", exact: true }).getByRole("button")).toHaveText([
-      "neutral",
-      "happy",
-      "crying",
-    ]);
+    // Making an avatar from a sprite offers faces only, never their talk pictures: blink and talk pictures are
+    // made for the talking head's faces, and a face's own talk sprite shows as its open mouth.
+    await expect
+      .poll(() =>
+        setup
+          .getByRole("group", { name: /: Face$/u })
+          .evaluateAll((groups) => groups.map((group) => group.getAttribute("aria-label"))),
+      )
+      .toEqual(["neutral: Face", "happy: Face", "crying: Face"]);
+    await expect(
+      setup
+        .getByRole("group", { name: "neutral: Mouth open", exact: true })
+        .getByRole("img", { name: "neutral: Mouth open", exact: true }),
+    ).toBeVisible();
     await expect(setup.getByRole("group", { name: "Sprite to use", exact: true }).getByRole("button")).toHaveText([
       "neutral",
       "happy",
@@ -460,6 +463,155 @@ test("3D Avatars links the 3D model guide and copies a prompt with the owner's n
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
     await request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined);
     await request.delete(`/api/characters/personas/${overridePersona.id}`).catch(() => undefined);
+  }
+});
+
+test("2D Avatars makes faces from the avatar with sprite generation, also for an owner without sprites", async ({
+  page,
+  request,
+}, info) => {
+  const picture = readFileSync(new URL("../packages/client/public/sprites/avatar-demo/base.png", import.meta.url));
+  const avatar = { avatar: `data:image/png;base64,${picture.toString("base64")}`, filename: "faces.png" };
+  const OVERRIDE_LOOK = "1girl, short red hair, green eyes, black coat";
+  const characterResponse = await request.post("/api/characters", {
+    data: {
+      data: {
+        name: "Faces fixture",
+        description: "A description the image appearance replaces.",
+        extensions: {
+          appearance: "An appearance the image appearance replaces.",
+          imageAppearanceEnabled: true,
+          imageAppearance: OVERRIDE_LOOK,
+        },
+      },
+    },
+  });
+  expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string };
+  const personaResponse = await request.post("/api/characters/personas", {
+    data: { name: "Faces persona", appearance: "Tall, silver hair, grey coat." },
+  });
+  expect(personaResponse.ok(), await personaResponse.text()).toBeTruthy();
+  const persona = (await personaResponse.json()) as { id: string };
+  const noAvatarResponse = await request.post("/api/characters/personas", {
+    data: { name: "Faceless persona", appearance: "Short, brown hair." },
+  });
+  expect(noAvatarResponse.ok(), await noAvatarResponse.text()).toBeTruthy();
+  const noAvatar = (await noAvatarResponse.json()) as { id: string };
+  const connectionResponse = await request.post("/api/connections", {
+    data: {
+      name: `Faces image ${info.project.name}`,
+      provider: "image_generation",
+      imageGenerationSource: "openai",
+      imageService: "openai",
+      model: "gpt-image-1",
+      baseUrl: "http://127.0.0.1:9/v1",
+      apiKey: "fixture",
+    },
+  });
+  expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
+  const connection = (await connectionResponse.json()) as { id: string };
+
+  try {
+    const avatarPath = async (path: string) => {
+      const uploaded = await request.post(`/api/characters/${path}/avatar`, { data: avatar });
+      expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
+      const owner = await request.get(`/api/characters/${path}`);
+      return ((await owner.json()) as { avatarPath: string }).avatarPath;
+    };
+    const characterAvatar = await avatarPath(character.id);
+    const personaAvatar = await avatarPath(`personas/${persona.id}`);
+    // The persona has the demo sprites; the character has none.
+    await preparePage(page, persona.id, { agentDetailId: "2d-avatars", reviewImagePromptsBeforeSend: false });
+    const sheets: Array<Record<string, unknown>> = [];
+    await page.route("**/api/sprites/generate-sheet", async (route) => {
+      const body = route.request().postDataJSON() as { expressions: string[] } & Record<string, unknown>;
+      sheets.push(body);
+      // The drawn, cleaned faces as the sprite pipeline returns them.
+      await route.fulfill({
+        json: {
+          sheetBase64: "",
+          cells: body.expressions.map((expression) => ({ expression, base64: picture.toString("base64") })),
+        },
+      });
+    });
+    await page.goto("/");
+    const setup = page.locator('[data-avatar-setup="2d-avatars"]');
+    await expect(setup).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    const dialog = page.getByRole("dialog", { name: "Generate Sprites" });
+    const reference = dialog.getByRole("checkbox", { name: "Use current avatar as a reference image" });
+    const makeFaces = setup.getByRole("button", { name: "Make faces from the avatar", exact: true });
+
+    // ── A character without sprites ──
+    await setup.getByLabel("Character or persona").selectOption(`character:${character.id}`);
+    await expect(setup.getByText("Make faces from the avatar first, then add blinking and talking.")).toBeVisible({
+      timeout: FIRST_LOAD_TIMEOUT_MS,
+    });
+    await expect(
+      setup.getByText(
+        "Draws new faces from the avatar, removes their background, and saves them as this character's or persona's sprites.",
+      ),
+    ).toBeVisible();
+    await expect(makeFaces).toBeEnabled();
+    await setup.screenshot({ path: info.outputPath("avatar-faces-action.png"), animations: "disabled" });
+    await makeFaces.click();
+    await expect(dialog).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    await expect(reference).toBeChecked();
+    await expect(dialog.getByRole("img", { name: "Current avatar reference" }).first()).toHaveAttribute(
+      "src",
+      characterAvatar,
+    );
+    await expect(dialog.getByRole("checkbox", { name: "Transparent sprite background" })).toBeChecked();
+    await expect(dialog.locator("textarea").first()).toHaveValue(OVERRIDE_LOOK);
+    // The faces offered are the avatar's six feelings, all chosen, in grids they can fill.
+    await expect(dialog.getByRole("button", { name: "6 (2×3)", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByRole("button", { name: "9 (3×3)", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "smirk", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("avatar-faces-generator.png"), animations: "disabled" });
+    await dialog.getByRole("button", { name: "Generate Sheet", exact: true }).click();
+    await expect.poll(() => sheets.length).toBe(1);
+    expect(sheets[0]).toMatchObject({
+      connectionId: expect.any(String),
+      appearance: OVERRIDE_LOOK,
+      referenceImages: [characterAvatar],
+      spriteType: "expressions",
+      noBackground: true,
+      expressions: ["neutral", "happy", "angry", "sad", "relaxed", "surprised"],
+    });
+    await dialog.getByRole("button", { name: /^Save \d+ Sprites?$/u }).click();
+    await expect(dialog).toBeHidden();
+    // The saved faces are the character's sprites, and the panel offers them at once.
+    await expect(setup.getByText("Make faces from the avatar first, then add blinking and talking.")).toHaveCount(0);
+    await expect(setup.getByRole("group", { name: "neutral: Face", exact: true })).toBeVisible();
+    const saved = (await (await request.get(`/api/sprites/${character.id}`)).json()) as Array<{ expression: string }>;
+    expect(saved.map((sprite) => sprite.expression)).toContain("neutral");
+
+    // ── A persona with sprites ──
+    await setup.getByLabel("Character or persona").selectOption(`persona:${persona.id}`);
+    await expect(setup.getByRole("group", { name: "neutral: Face", exact: true })).toBeVisible({
+      timeout: FIRST_LOAD_TIMEOUT_MS,
+    });
+    await makeFaces.click();
+    await expect(reference).toBeChecked();
+    await expect(dialog.getByRole("img", { name: "Current avatar reference" }).first()).toHaveAttribute(
+      "src",
+      personaAvatar,
+    );
+    await expect(dialog.locator("textarea").first()).toHaveValue("Tall, silver hair, grey coat.");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    // ── Without an avatar there is nothing to draw the faces from ──
+    await setup.getByLabel("Character or persona").selectOption(`persona:${noAvatar.id}`);
+    await expect(setup.getByText("Add an avatar to this character or persona first.")).toBeVisible({
+      timeout: FIRST_LOAD_TIMEOUT_MS,
+    });
+    await expect(makeFaces).toBeDisabled();
+  } finally {
+    await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
+    await request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined);
+    await request.delete(`/api/characters/personas/${noAvatar.id}`).catch(() => undefined);
+    await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
   }
 });
 

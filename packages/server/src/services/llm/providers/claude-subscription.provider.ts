@@ -95,7 +95,7 @@ const CUSTOMIZABLE_SDK_OPTION_KEYS = [
  */
 type SdkModule = typeof import("@anthropic-ai/claude-agent-sdk");
 let cachedSdk: Promise<SdkModule> | null = null;
-function loadSdk(): Promise<SdkModule> {
+export function loadSdk(): Promise<SdkModule> {
   if (!cachedSdk) {
     cachedSdk = import("@anthropic-ai/claude-agent-sdk").catch((err) => {
       cachedSdk = null;

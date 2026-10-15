@@ -1,7 +1,8 @@
 // Making a 2D avatar from a sprite, end to end against the real server with local image and vision models
 // that hold their answers: Cancel aborts the picture or mesh avatar being made (the model's request closes)
-// and leaves the panel idle with only finished pictures, and a sprite drawn on a flat background comes out
-// as a cut-out, in the blink picture and in the saved mesh avatar.
+// and leaves the panel idle with only finished pictures, Try again shows the picture being redone, and a
+// sprite drawn on a flat background is used as it is: nothing is cut out of the blink picture or the saved
+// mesh avatar.
 import { expect, test, type Page } from "@playwright/test";
 import AdmZip from "adm-zip";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -126,7 +127,7 @@ async function mountGenerationPanel(page: Page, ownerId: string) {
   return page.locator("[data-avatar-generation]");
 }
 
-test("Cancel stops the picture being made, and avatars made from a sprite have no background", async ({
+test("Cancel stops the picture being made, and avatars made from a sprite keep it as it is", async ({
   page,
   request,
 }, testInfo) => {
@@ -137,7 +138,7 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
   const created: string[] = [];
   let characterId = "";
   try {
-    const character = await request.post("/api/characters", { data: { data: { name: "Cutout fixture" } } });
+    const character = await request.post("/api/characters", { data: { data: { name: "Sprite fixture" } } });
     expect(character.ok(), await character.text()).toBeTruthy();
     characterId = ((await character.json()) as { id: string }).id;
     const sprite = await request.post(`/api/sprites/${characterId}`, {
@@ -173,7 +174,11 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
     await panel.getByLabel("Image connection").selectOption(imageId);
 
     // ── Cancel while a blink picture is being drawn ──
-    await panel.getByRole("group", { name: "Sprites", exact: true }).getByRole("button", { name: "neutral" }).click();
+    // Every feeling shows the one neutral face, so it is the only row, with its blink and talk slots empty.
+    await expect(panel.locator("[data-talking-head-face]")).toHaveCount(1);
+    await expect(panel.locator('[data-talking-head-face="neutral"]')).toContainText(
+      "Neutral, Happy, Angry, Sad, Relaxed, Surprised",
+    );
     await panel.getByRole("button", { name: "Make 2 pictures" }).click();
     await expect.poll(() => models.state.held.length).toBe(1);
     expect(models.state.held[0]!.url).toMatch(/\/images\/edits$/u);
@@ -194,10 +199,11 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
       .poll(() => models.state.closed, { message: "the image request in flight is aborted" })
       .toEqual([models.state.held[0]!.url]);
 
-    // ── The next picture starts at once, the late cancel doesn't stop it, and it has no background ──
-    await panel.getByRole("checkbox", { name: "Mouth open" }).uncheck();
-    await panel.getByRole("button", { name: "Make 1 picture" }).click();
+    // ── The next picture starts at once, the late cancel doesn't stop it, and nothing is cut out of it ──
+    const blink = panel.getByRole("group", { name: "neutral: Eyes closed", exact: true });
+    await blink.getByRole("button", { name: "Make neutral: Eyes closed", exact: true }).click();
     await expect.poll(() => models.state.held.length).toBe(2);
+    await expect(panel.getByRole("status")).toHaveText("Making picture 1 of 1…");
     await expect.poll(() => cancelDelivered).toBe(true);
     expect(models.state.closed, "the late cancel left the new picture alone").toHaveLength(1);
     await models.state.held[1]!.respond();
@@ -205,9 +211,35 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
     await expect(drawn).toBeVisible({ timeout: 30_000 });
     const src = await drawn.getAttribute("src");
     const picture = Buffer.from(src!.slice(src!.indexOf(",") + 1), "base64");
-    expect(await alphaAt(picture, 3, 3), "the white background is gone").toBe(0);
+    expect(await alphaAt(picture, 3, 3), "the sprite's white background stays").toBe(255);
     expect(await alphaAt(picture, 300, 330), "the face stays").toBe(255);
     await page.screenshot({ path: testInfo.outputPath("pngtuber-picture.png"), animations: "disabled" });
+
+    // ── Try again shows the picture being redone, not a picture that seems done ──
+    const retry = blink.getByRole("button", { name: "Try neutral: Eyes closed again", exact: true });
+    await retry.click();
+    await expect.poll(() => models.state.held.length).toBe(3);
+    await expect(blink).toHaveAttribute("aria-busy", "true");
+    await expect(drawn).toBeVisible();
+    await expect(blink.getByRole("button", { name: "Keep", exact: true })).toHaveCount(0);
+    await expect(retry).toHaveCount(0);
+    await expect(panel.getByRole("status")).toHaveText("Making picture 1 of 1…");
+    await page.screenshot({ path: testInfo.outputPath("pngtuber-redo.png"), animations: "disabled" });
+    await models.state.held[2]!.respond();
+    await expect(blink).toHaveAttribute("aria-busy", "false", { timeout: 30_000 });
+    await expect(retry).toBeVisible();
+    await expect(panel.getByRole("status")).toHaveCount(0);
+
+    // ── A kept picture is stored in the PNGTuber avatar ──
+    await blink.getByRole("button", { name: "Keep", exact: true }).click();
+    await expect(blink.getByRole("button", { name: "Kept", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await panel.getByRole("button", { name: "Save kept pictures (1)" }).click();
+    await expect
+      .poll(async () => {
+        const config = await request.get(`/api/avatar-models/character/${characterId}`);
+        return config.ok() ? (await config.json()).kinds?.pngtuber?.layers?.neutral?.eyesClosed : undefined;
+      })
+      .toMatchObject({ source: "file", path: expect.stringMatching(/^pngtuber\/.+\.png$/u) });
 
     // ── Cancel while the vision model looks at the sprite for the mesh avatar ──
     await panel.getByLabel("Chat connection that can see pictures").selectOption(visionId);
@@ -216,14 +248,14 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
       panel.getByRole("group", { name: "Sprite to use" }).getByRole("button", { name: "neutral" }),
     ).toHaveAttribute("aria-pressed", "true");
     await panel.getByRole("button", { name: "Make mesh avatar" }).click();
-    await expect.poll(() => models.state.held.length).toBe(3);
-    expect(models.state.held[2]!.url).toMatch(/\/chat\/completions$/u);
+    await expect.poll(() => models.state.held.length).toBe(4);
+    expect(models.state.held[3]!.url).toMatch(/\/chat\/completions$/u);
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.poll(() => models.state.closed.length, { message: "the vision request is aborted" }).toBe(2);
     await expect(panel.getByText("Building the mesh avatar…")).toHaveCount(0);
     await expect(panel.getByRole("alert")).toHaveCount(0);
 
-    // ── The mesh avatar is built from the sprite's cut-out ──
+    // ── The mesh avatar is built from the sprite as it is ──
     models.state.hold = false;
     await panel.getByRole("button", { name: "Make mesh avatar" }).click();
     await panel.getByRole("button", { name: "Save as mesh avatar" }).click({ timeout: 30_000 });
@@ -237,7 +269,7 @@ test("Cancel stops the picture being made, and avatars made from a sprite have n
       .toMatch(/^mesh-avatar\/.+\.mavatar$/u);
     const archive = await request.get(`/api/avatar-models/character/${characterId}/files/${file}`);
     const base = new AdmZip(Buffer.from(await archive.body())).getEntry("built/base.png")!.getData();
-    expect(await alphaAt(base, 3, 3), "the mesh avatar has no background").toBe(0);
+    expect(await alphaAt(base, 3, 3), "the mesh avatar keeps the sprite's background").toBe(255);
     expect(await alphaAt(base, 300, 600), "its body stays").toBe(255);
   } finally {
     for (const response of models.state.open) response.destroy();

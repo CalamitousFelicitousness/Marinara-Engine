@@ -45,7 +45,7 @@ function setup(steps: Step[], overrides: Partial<ToolRoundsContext> = {}) {
     toolChoice: () => "auto" as ChatOptions["toolChoice"],
     debugMode: true,
     allowedToolNames: new Set(["lookup", "roll_dice"]),
-    usageProvider: "openai",
+    usageProvider: () => "openai",
     fit: async (messages) => messages,
     rememberPromptPreview: () => {},
     logPrompt: () => {},

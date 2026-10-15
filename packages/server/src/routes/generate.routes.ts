@@ -8892,7 +8892,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     : undefined,
                 debugMode: requestDebug,
                 allowedToolNames: chatResolvedToolNames,
-                usageProvider: generationProviderOrigin.provider,
+                usageProvider: () => generationProviderOrigin.provider,
                 fit: fitPromptForSend,
                 rememberPromptPreview: rememberMainPromptPreviewForAgents,
                 logPrompt: logPromptSentToModel,

@@ -44,7 +44,8 @@ export interface ToolRoundsContext {
   debugMode: boolean;
   allowedToolNames: Set<string>;
   /** The provider name usage is read for. */
-  usageProvider: string;
+  /** Read per request: a failover during a round changes it. */
+  usageProvider: () => string;
   fit: (messages: ChatMessage[], followUp?: { tools: ChatOptions["tools"] }) => Promise<ChatMessage[]>;
   rememberPromptPreview: (messages: ChatMessage[]) => void;
   logPrompt: (messages: ChatMessage[], label?: string) => void;
@@ -202,7 +203,7 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
     if (!gameToolPlan) {
       ctx.recordUsage(result.usage, addedToLostPrompt());
       const usageLostAtRoll =
-        rollRequestAbort?.signal.aborted && getRequestInputTokens(result.usage, ctx.usageProvider) === null;
+        rollRequestAbort?.signal.aborted && getRequestInputTokens(result.usage, ctx.usageProvider()) === null;
       if (!usageLostAtRoll) lostPromptLength = null;
       else if (round === 0) lostPromptLength = loopMessages.length;
     }

@@ -95,6 +95,24 @@ try {
   assert.equal(repaired.error, undefined, "a slightly broken JSON plan is repaired");
   assert.equal(repaired.plan?.name, "Scene: Library");
   assert.equal(repaired.plan?.scenario, "Find a book.");
+  // Dialogue in plain quotes inside a one-line value ("firstMessage": ""Hi," she says."): the quotes are kept as text.
+  providerContent = [
+    "{",
+    '  "name": "Scene: Library",',
+    '  "scenario": "Find a book.",',
+    '  "firstMessage": "So. You came back.", The librarian smiles. "Again?",',
+    '  "description": "A library."',
+    "}",
+  ].join("\n");
+  const quoted = await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+    promptPreferences: { pov: "third_person", tense: "past", ...selected },
+  });
+  assert.equal(quoted.error, undefined, "dialogue quotes inside a value are repaired");
+  assert.equal(quoted.plan?.firstMessage, 'So. You came back.", The librarian smiles. "Again?');
+  assert.equal(quoted.plan?.description, "A library.");
   providerContent = JSON.stringify(plan);
   const sent = requests
     .at(-1)!

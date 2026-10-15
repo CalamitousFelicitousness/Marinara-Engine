@@ -35,6 +35,23 @@ function closeOpenJsonContainers(raw: string): string | null {
   );
 }
 
+/**
+ * Models often write dialogue in plain quotes inside a JSON string ("firstMessage": ""Hi," she says.",). When each
+ * property sits on its own line, every quote between a string value's opening and closing quote belongs to the text,
+ * so it is escaped. Lines that aren't a single `"key": "value"` are left as they are.
+ */
+function escapeQuotesInsideLineValues(raw: string): string {
+  return raw
+    .split("\n")
+    .map((line) =>
+      line.replace(
+        /^(\s*"[^"\n]+"\s*:\s*")(.*)("\s*,?\s*)$/u,
+        (_, open: string, value: string, close: string) => `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
+      ),
+    )
+    .join("\n");
+}
+
 /** Return a valid JSON string after applying the same conservative repair waterfall everywhere. */
 export function repairJsonText(raw: string): string | null {
   let repaired: string | null = null;
@@ -45,6 +62,17 @@ export function repairJsonText(raw: string): string | null {
   }
 
   const candidates = [raw, repaired, closeOpenJsonContainers(raw), repaired && closeOpenJsonContainers(repaired)];
+  // Last resort, only when nothing above parses: quotes inside one-line string values.
+  const lineEscaped = (() => {
+    const escaped = escapeQuotesInsideLineValues(raw);
+    if (escaped === raw) return null;
+    try {
+      return jsonrepair(escaped);
+    } catch {
+      return escaped;
+    }
+  })();
+  candidates.push(lineEscaped);
   for (const candidate of candidates) {
     if (!candidate) continue;
     try {

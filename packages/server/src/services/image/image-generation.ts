@@ -2652,17 +2652,8 @@ export async function retryOnProviderBusy(
     const delayMs = delaysMs[attempt] ?? 0;
     await resp.body?.cancel().catch(() => undefined);
     logger.warn("[image] Provider is busy (429); retrying in %dms", delayMs);
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
-        clearTimeout(timer);
-        reject(signal?.reason instanceof Error ? signal.reason : new Error("Image generation aborted"));
-      };
-      const timer = setTimeout(() => {
-        signal?.removeEventListener("abort", onAbort);
-        resolve();
-      }, delayMs);
-      signal?.addEventListener("abort", onAbort, { once: true });
-    });
+    // Re-checks the signal first: an abort while the body was cancelled must not wait.
+    await sleepWithAbort(delayMs, signal);
   }
 }
 

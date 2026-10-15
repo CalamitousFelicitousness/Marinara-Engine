@@ -208,7 +208,9 @@ idle();
 }
 
 // ── 6c) A busy provider (429) is retried after a wait, then reported as-is ──
-{
+// The production wait unrefs its timer, so hold the event loop open while it runs.
+const keepAlive = setInterval(() => undefined, 1_000);
+try {
   const statuses = [429, 429, 200];
   let calls = 0;
   const ok = await retryOnProviderBusy(async () => new Response("x", { status: statuses[calls++] }), undefined, [5, 5]);
@@ -244,14 +246,37 @@ idle();
   await tick();
   controller.abort(new Error("user cancelled"));
   await assert.rejects(aborted, /user cancelled/u, "an abort ends the wait at once");
+
+  // An abort that lands while the busy response's body is being cancelled must not wait either.
+  const late = new AbortController();
+  const busyBody = () =>
+    new Response(new ReadableStream({ cancel: () => late.abort(new Error("cancelled mid-cleanup")) }), {
+      status: 429,
+    });
+  const lateAbort = retryOnProviderBusy(async () => busyBody(), late.signal, [10_000]);
+  const settled = await Promise.race([
+    lateAbort.then(
+      () => "resolved",
+      (error: Error) => error.message,
+    ),
+    sleep(1_000).then(() => "still waiting"),
+  ]);
+  assert.equal(settled, "cancelled mid-cleanup", "an abort during body cleanup skips the retry wait");
+} finally {
+  clearInterval(keepAlive);
 }
 
 // ── 7) Real generateImage path: two "connections" to one provider account ──
 let inFlight = 0;
 let providerPeak = 0;
+// A fixed cap, never taken from the request.
+const MAX_FIXTURE_BODY = 64_000;
 const server = createServer(async (request, response) => {
   let body = "";
-  for await (const chunk of request) body += chunk;
+  for await (const chunk of request) {
+    body += chunk;
+    if (body.length > MAX_FIXTURE_BODY) return response.writeHead(413).end();
+  }
   inFlight += 1;
   providerPeak = Math.max(providerPeak, inFlight);
   await sleep(40);

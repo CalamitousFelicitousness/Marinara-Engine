@@ -88,6 +88,8 @@ export async function startRoleplayVideoHarness(name: string) {
       comfy: [] as string[],
       images: 0,
     };
+    // beforeVideo runs once when the next clip reaches the video service (after the reply is saved).
+    const hooks: { beforeVideo: (() => Promise<void>) | null } = { beforeVideo: null };
     const provider = createServer(async (request, response) => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -99,6 +101,9 @@ export async function startRoleplayVideoHarness(name: string) {
       };
       if (url.endsWith("/prompt")) {
         requests.comfy.push(body);
+        const hook = hooks.beforeVideo;
+        hooks.beforeVideo = null;
+        if (hook) await hook();
         return json({ prompt_id: "job" });
       }
       if (url.includes("/history/")) {
@@ -242,6 +247,7 @@ export async function startRoleplayVideoHarness(name: string) {
       characters,
       replies,
       requests,
+      hooks,
       png,
       avatarPng,
       text,

@@ -115,6 +115,33 @@ try {
   assert.doesNotMatch(requests.planner.at(-1) ?? "", /If motion is the point of this moment/u);
   assert.equal((await h.attachments(roleplay.id, "video")).length, 3);
 
+  // A clip saved but not attached (the reply's stored data breaks meanwhile) still counts as made: no error.
+  const unattached = await h.createRoleplay("Unattached");
+  await h.saveChatSettings(unattached.id, {
+    enableAgents: true,
+    activeAgentIds: ["illustrator"],
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { video: true },
+    illustratorVideoRunInterval: 1,
+    sceneVideoConnectionId: h.video.id,
+    sceneVideoFirstFrame: "prompt_only",
+    automaticSummaryEnabled: false,
+  });
+  const { messageSwipes } = await import("../../packages/server/src/db/schema/index.js");
+  const { eq } = await import("../../packages/server/src/db/file-query.js");
+  h.hooks.beforeVideo = async () => {
+    const latest = (await h.chats.listMessages(unattached.id)).filter((message) => message.role === "assistant").at(-1);
+    assert.ok(latest);
+    await h.db.update(messageSwipes).set({ extra: "{not json" }).where(eq(messageSwipes.messageId, latest.id));
+  };
+  replies.main = `Aster waits. ${command}`;
+  const unattachedStream = await h.generate(unattached.id, "Aster looks outside.");
+  assert.equal(h.hooks.beforeVideo, null, "the clip reached the video service");
+  assert.match(unattachedStream, /"type":"video"/u, "the saved clip is reported as made");
+  assert.match(unattachedStream, /"messageId":null/u, "reported as not attached");
+  assert.match(unattachedStream, /"videoId":"[^"]+"/u, "with the saved clip's id");
+  assert.doesNotMatch(unattachedStream, /video_error/u);
+
   console.log("roleplay-video-tag regression passed");
 } finally {
   await h.close();

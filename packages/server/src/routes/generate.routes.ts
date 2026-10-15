@@ -12537,18 +12537,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         queue: true,
                         debugMode: input.debugMode,
                       });
-                      await attachVideoToMessage(
-                        chats,
-                        { messageId: request.messageId, swipeIndex: request.swipeIndex },
-                        buildChatVideoAttachment(video),
-                      );
-                      await chats.patchMetadata(input.chatId, () => ({
-                        lastAutomaticVideoMessageId: request.messageId,
-                      }));
+                      // The clip is saved by now, so it counts as made: failing to add it to the reply only logs,
+                      // and the Video Run Interval counts from this reply either way.
+                      let attachedTo: string | null = null;
+                      try {
+                        await attachVideoToMessage(
+                          chats,
+                          { messageId: request.messageId, swipeIndex: request.swipeIndex },
+                          buildChatVideoAttachment(video),
+                        );
+                        attachedTo = request.messageId;
+                      } catch (attachErr) {
+                        logger.warn(attachErr, "[roleplay/commands] Saved clip %s but could not attach it", video.id);
+                      }
+                      await chats
+                        .patchMetadata(input.chatId, () => ({ lastAutomaticVideoMessageId: request.messageId }))
+                        .catch((err) =>
+                          logger.warn(err, "[roleplay/commands] Could not record the clip for the run interval"),
+                        );
                       sendSseEvent(reply, {
                         type: "video",
                         data: {
-                          messageId: request.messageId,
+                          messageId: attachedTo,
                           videoUrl: video.url,
                           videoId: video.id,
                           characterName: cast.avatar?.name || agent.name,

@@ -337,15 +337,17 @@ export function mediaProviderLanesEnabled(): boolean {
   return providerLanesEnabled;
 }
 
-// API keys are interned to opaque per-process account numbers, so lane keys never
-// carry a key (or anything derived from it) and nothing secret is hashed.
+// API keys are interned to opaque account numbers, so lane keys never carry a key
+// (or anything derived from it) and nothing secret is hashed. The numbers only need
+// to be stable while a lane is in use, so the map is emptied whenever every lane
+// goes idle: no key outlives the requests that brought it in.
 const mediaProviderAccountIds = new Map<string, number>();
 
 /** One lane per provider endpoint and account. */
 export function mediaProviderLaneKey(endpointKey: string, apiKey: string): string {
   const key = apiKey.trim();
   let account = 0;
-  if (key) {
+  if (key && providerLanesEnabled) {
     account = mediaProviderAccountIds.get(key) ?? mediaProviderAccountIds.size + 1;
     mediaProviderAccountIds.set(key, account);
   }
@@ -399,11 +401,16 @@ export async function runInMediaProviderLane<T>(args: {
     else releaseCurrent();
     void queuedTail.finally(() => {
       if (providerLaneTails.get(laneKey) === queuedTail) providerLaneTails.delete(laneKey);
+      if (providerLaneTails.size === 0) mediaProviderAccountIds.clear();
     });
   }
 }
 
 /** Test-only: lanes with a holder or waiters. */
 export function inspectMediaProviderLanesForTests() {
-  return { activeLanes: providerLaneTails.size, enabled: providerLanesEnabled };
+  return {
+    activeLanes: providerLaneTails.size,
+    internedAccounts: mediaProviderAccountIds.size,
+    enabled: providerLanesEnabled,
+  };
 }

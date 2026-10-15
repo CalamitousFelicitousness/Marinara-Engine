@@ -57,7 +57,11 @@ function concurrencyProbe() {
   };
 }
 
-const idle = () => assert.equal(inspectMediaProviderLanesForTests().activeLanes, 0, "no lane may stay behind");
+const idle = () => {
+  const lanes = inspectMediaProviderLanesForTests();
+  assert.equal(lanes.activeLanes, 0, "no lane may stay behind");
+  assert.equal(lanes.internedAccounts, 0, "no API key may outlive the requests that used it");
+};
 
 // ── 1) The synced `ui` setting drives the toggle; only an explicit false turns it off ──
 applyMediaQueueUiSettingsValue(null);

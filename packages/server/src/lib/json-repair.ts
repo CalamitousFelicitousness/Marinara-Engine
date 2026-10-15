@@ -57,8 +57,7 @@ function escapeQuotesInsideLineValues(raw: string): string {
         ? line
         : line.replace(
             /^(\s*"[^"\n]+"\s*:\s*")(.*)("\s*,?\s*)$/u,
-            (_, open: string, value: string, close: string) =>
-              `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
+            (_, open: string, value: string, close: string) => `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
           ),
     )
     .join("\n");

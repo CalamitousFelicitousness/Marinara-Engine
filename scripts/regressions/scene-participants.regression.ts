@@ -115,10 +115,11 @@ try {
   assert.equal(quoted.plan?.description, "A library.");
   // The shared repair keeps valid lines as they are: two properties on one valid line stay two properties.
   const { tryParseJsonRecord } = await import("../../packages/server/src/lib/json-repair.js");
-  assert.deepEqual(
-    tryParseJsonRecord('{\n  "a": "x", "b": "y",\n  "c": "He said "hi" twice",\n}'),
-    { a: "x", b: "y", c: 'He said "hi" twice' },
-  );
+  assert.deepEqual(tryParseJsonRecord('{\n  "a": "x", "b": "y",\n  "c": "He said "hi" twice",\n}'), {
+    a: "x",
+    b: "y",
+    c: 'He said "hi" twice',
+  });
   providerContent = JSON.stringify(plan);
   const sent = requests
     .at(-1)!

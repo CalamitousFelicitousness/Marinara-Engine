@@ -179,6 +179,7 @@ import {
   ProfessorMariMobilePortal,
   MARI_PANEL_SLOT_CLASS,
   retryOf,
+  isSavedUserMessage,
 } from "./mari/mari-chat-helpers";
 import {
   WorkspaceTimelineItem,
@@ -2299,6 +2300,8 @@ export function HomeProfessorMariChat({
     // under her answer once the thread has a message.
     handledArrivalAppendRequestRef.current = arrivalAppendRequestRef.current;
     let localMessageId: string | undefined;
+    // How many of your questions the server holds now: one more after the failure means it saved this one.
+    const savedUserCount = messagesRef.current.filter(isSavedUserMessage).length;
     try {
       const chat = await ensureProfessorMariChat(effectiveConnectionId);
       // A retry or a chip sends its own text: leave whatever you have typed since in the composer.
@@ -2351,14 +2354,14 @@ export function HomeProfessorMariChat({
       // Like Claude: your message stays where you sent it and one error card with Retry sits under the turn.
       // No toast over her header, and the text is not pushed back into the composer as a duplicate.
       if (!isProfessorMariAbortError(error)) setHandoffContext(submittedContext);
-      void failRun(error, {
+      // Awaited so `sending` holds until the reload lands: a new send cannot start under it.
+      await failRun(error, {
         text: messageText,
         attachments: submittedAttachments,
         context: submittedContext,
         localMessageId,
       })?.then((loaded) => {
-        // Your newest saved question, even behind a reply the server saved after the stream dropped.
-        if (!localMessageId || !loaded || loaded.findLast((m) => m.role === "user")?.content === messageText) return;
+        if (!localMessageId || !loaded || loaded.filter(isSavedUserMessage).length > savedUserCount) return;
         // The server refused before it saved your message (no admin secret, a 401/403, a dead connection),
         // so the reload took your bubble away. Give it back in the composer, ahead of anything typed since.
         setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));

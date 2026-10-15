@@ -300,6 +300,13 @@ export function isProfessorMariChatActive(chat: ProfessorMariChatSummary) {
   }
 }
 
+const LOCAL_MESSAGE_ID_PREFIX = "__professor_mari_local_";
+
+/** A question the server holds, not the optimistic bubble of one still in flight. */
+export function isSavedUserMessage(message: Message) {
+  return message.role === "user" && !message.id.startsWith(LOCAL_MESSAGE_ID_PREFIX);
+}
+
 export function createLocalUserMessage(
   chatId: string,
   content: string,
@@ -307,7 +314,7 @@ export function createLocalUserMessage(
   context: ProfessorMariAskContext | null = null,
 ): Message {
   return {
-    id: `__professor_mari_local_${Date.now()}`,
+    id: `${LOCAL_MESSAGE_ID_PREFIX}${Date.now()}`,
     chatId,
     role: "user",
     characterId: null,

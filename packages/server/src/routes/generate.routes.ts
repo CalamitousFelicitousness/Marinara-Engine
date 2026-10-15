@@ -73,6 +73,7 @@ import {
 import { registerParameterPreviewRoute } from "./generate/parameter-preview-route.js";
 import { GenerationStreamOutput } from "./generate/generation-stream-output.js";
 import { parseConversationReplyCommands, parseRoleplayDmReplyCommands } from "./generate/reply-commands.js";
+import { cleanGeneratedReply } from "./generate/reply-text-cleanup.js";
 import { runToolRounds } from "./generate/tool-rounds.js";
 // ──────────────────────────────────────────────
 // Routes: Generation (SSE Streaming with Tool Use + Agent Pipeline)
@@ -491,7 +492,6 @@ import { buildImpersonateInstruction } from "../services/conversation/impersonat
 import {
   isRepeatedConversationResponse,
   stripConversationPromptTimestamps,
-  stripConversationResponseEnvelope,
 } from "../services/conversation/transcript-sanitize.js";
 import { normalizePromptTimeZone, toZonedWallClockDate } from "../services/conversation/timezone.js";
 import { countConversationMessagesAfterSummaryAnchor } from "../services/conversation/auto-summary.service.js";
@@ -777,7 +777,6 @@ import {
   getRequestContextTokens,
   getRequestInputTokens,
   stripSpacesBeforeLineBreaks,
-  trimIncompleteModelEnding,
 } from "../services/generation/generation-text-utils.js";
 import {
   formatSmartGroupCandidates,
@@ -9250,149 +9249,26 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (parsed.changed) contentReplaced = true;
           }
 
-          // ── Extract <ooc> tags from roleplay responses and post to connected conversation ──
-          let oocMessages: string[] = [];
-          if (chatMode === "roleplay" && !input.impersonate && chat.connectedChatId) {
-            const OOC_RE = /<ooc>([\s\S]*?)<\/ooc>/gi;
-            for (const match of fullResponse.matchAll(OOC_RE)) {
-              const text = match[1]!.trim();
-              if (text) oocMessages.push(text);
-            }
-            if (oocMessages.length > 0) {
-              fullResponse = fullResponse
-                .replace(OOC_RE, "")
-                .replace(/\n{3,}/g, "\n\n")
-                .trim();
-              contentReplaced = true;
-              logger.info(
-                `[generate] Extracted ${oocMessages.length} OOC message(s) for conversation ${chat.connectedChatId}`,
-              );
-            }
-          }
-
-          // ── Strip character name prefix in individual group mode ──
-          // LLMs often prefix the response with the character name even when told not to.
-          // Also strip any leftover <speaker> tags from individual mode responses.
-          if (isGroupChat && usesIndividualGroupGeneration && targetCharId) {
-            const charRow = charInfo.find((c) => c.id === targetCharId);
-            if (charRow) {
-              const cName = charRow.name;
-              const escapedName = cName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              if (chatMode === "conversation") {
-                const beforeTimestampStrip = fullResponse;
-                fullResponse = fullResponse
-                  .replace(/^(\s*\[\d{1,2}[:.]\d{2}\]\s*)+/g, "")
-                  .replace(/^(\s*\[\d{1,2}\.\d{1,2}\.\d{4}\]\s*)+/g, "")
-                  .trimStart();
-                if (fullResponse !== beforeTimestampStrip) contentReplaced = true;
-              }
-              // Strip <speaker="Name">...</speaker> wrapper if present
-              const speakerWrap = new RegExp(`^\\s*<speaker="${escapedName}">[\\s\\S]*?<\\/speaker>\\s*$`, "i");
-              const speakerMatch = fullResponse.match(speakerWrap);
-              if (speakerMatch) {
-                fullResponse = fullResponse
-                  .replace(/<speaker="[^"]*">/gi, "")
-                  .replace(/<\/speaker>/gi, "")
-                  .trim();
-                contentReplaced = true;
-              }
-              // Strip plain name prefixes: "Dottore: text" or "Dottore\ntext".
-              const beforeNamePrefixStrip = fullResponse;
-              const targetPrefix = new RegExp(`^\\s*${escapedName}\\s*:\\s*`, "i");
-              const targetLinePrefix = new RegExp(`^\\s*${escapedName}\\s*\\n+`, "i");
-              const stripTargetPrefix = () => {
-                fullResponse = fullResponse.replace(targetPrefix, "").replace(targetLinePrefix, "").trimStart();
-              };
-              const otherNames = charInfo
-                .filter((character) => character.id !== targetCharId)
-                .map((character) => character.name)
-                .filter((name): name is string => Boolean(name))
-                .filter((name) => name.trim().toLocaleLowerCase() !== cName.trim().toLocaleLowerCase())
-                .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-              const otherSpeakerPrefix =
-                otherNames.length > 0 ? new RegExp(`^\\s*(?:${otherNames.join("|")})\\s*:\\s*`, "i") : null;
-
-              stripTargetPrefix();
-              let prunePasses = 0;
-              while (otherSpeakerPrefix?.test(fullResponse) && prunePasses++ < 6) {
-                const embeddedTargetPrefix = new RegExp(`(?:^|\\n\\s*\\n)\\s*${escapedName}\\s*:\\s*`, "i");
-                const targetMatch = fullResponse.match(embeddedTargetPrefix);
-                if (targetMatch?.index != null && targetMatch.index > 0) {
-                  fullResponse = fullResponse.slice(targetMatch.index).trimStart();
-                  stripTargetPrefix();
-                  continue;
-                }
-                const paragraphBreak = fullResponse.search(/\n(?:\s*\n)?/);
-                if (paragraphBreak < 0) {
-                  logger.warn(
-                    {
-                      chatId: input.chatId,
-                      targetCharId,
-                      targetName: cName,
-                      responsePreview: fullResponse.slice(0, 240),
-                    },
-                    "[generate] Dropping wrong-speaker-only individual group response",
-                  );
-                  sendSseEvent(reply, { type: "content_replace", data: "" });
-                  return null;
-                }
-                fullResponse = fullResponse.slice(paragraphBreak).trimStart();
-                stripTargetPrefix();
-              }
-              if (chatMode === "conversation" && otherNames.length > 0) {
-                const nextSpeakerPrefix = new RegExp(`\\n\\s*(?:${otherNames.join("|")})\\s*:\\s*`, "i");
-                const nextSpeakerMatch = fullResponse.match(nextSpeakerPrefix);
-                if (nextSpeakerMatch?.index != null) {
-                  fullResponse = fullResponse.slice(0, nextSpeakerMatch.index).trimEnd();
-                }
-              }
-              if (fullResponse !== beforeNamePrefixStrip) {
-                contentReplaced = true;
-              }
-            }
-          }
-
-          // ── Strip leaked timestamps/speaker envelopes from Conversation responses ──
-          // Models sometimes echo prompt-only metadata such as
-          // `[11.07 15:53] Character: Hello!`. Keep merged group speaker
-          // boundaries, but store single/individual replies as content only.
-          if (chatMode === "conversation" && !input.impersonate) {
-            const beforeStrip = fullResponse;
-            const conversationSpeakerName = targetCharId
-              ? (charInfo.find((character) => character.id === targetCharId)?.name ?? null)
-              : null;
-            fullResponse = stripConversationResponseEnvelope(fullResponse, {
-              speakerName: conversationSpeakerName,
-              speakerNames: charInfo.map((character) => character.name),
-              preserveSpeakerPrefix: isGroupChat && !usesIndividualGroupGeneration,
-            });
-            if (fullResponse !== beforeStrip) {
-              contentReplaced = true;
-            }
-          }
-
           // A defined intro was written, not cut off: it is kept whole.
-          if (input.trimIncompleteModelOutput && !input.impersonate && definedIntro?.mode !== "defined") {
-            const beforeTrim = fullResponse;
-            fullResponse = trimIncompleteModelEnding(fullResponse);
-            if (fullResponse !== beforeTrim) {
-              contentReplaced = true;
-              logger.debug(
-                "[generate] Trimmed incomplete model ending for chat %s (%d -> %d chars)",
-                input.chatId,
-                beforeTrim.length,
-                fullResponse.length,
-              );
-            }
+          const cleanedReply = cleanGeneratedReply(fullResponse, {
+            chatId: input.chatId,
+            chatMode,
+            impersonate: input.impersonate,
+            connectedChatId: chat.connectedChatId,
+            isGroupChat,
+            usesIndividualGroupGeneration,
+            targetCharId,
+            charInfo,
+            trimIncompleteEnding:
+              input.trimIncompleteModelOutput && !input.impersonate && definedIntro?.mode !== "defined",
+          });
+          if ("dropped" in cleanedReply) {
+            sendSseEvent(reply, { type: "content_replace", data: "" });
+            return null;
           }
-
-          if (chatMode === "roleplay") {
-            const beforeRoleplayWhitespace = fullResponse;
-            fullResponse = stripSpacesBeforeLineBreaks(fullResponse).trim();
-            if (fullResponse !== beforeRoleplayWhitespace) {
-              contentReplaced = true;
-            }
-          }
+          fullResponse = cleanedReply.text;
+          if (cleanedReply.changed) contentReplaced = true;
+          const oocMessages = cleanedReply.oocMessages;
 
           // The outcome rewrite must see the commands it is asked to retain or reject.
           const gameDraftWithCommands = fullResponse;

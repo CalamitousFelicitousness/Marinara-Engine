@@ -158,7 +158,13 @@ try {
   const of = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T) =>
     events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
 
-  const fight = (definition: RulesetDefinition, entries: RulesetCatalogEntry[], level = 8) => {
+  const fight = (
+    definition: RulesetDefinition,
+    entries: RulesetCatalogEntry[],
+    level = 8,
+    /** Proficiencies, and a better Dexterity, for `betterOf` (1.352). */
+    trained?: { saves: Record<string, string>; skills: Record<string, string>; dex: number },
+  ) => {
     const bestiary: RulesetCatalogEntriesById = {
       creatures: definition.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries!,
     };
@@ -173,8 +179,9 @@ try {
           name: "Druid",
           side: "party",
           build: rulesetSheetBuildSchema.parse({
-            abilities: { str: 10, dex: 12, con: 14, int: 10, wis: 18, cha: 10 },
+            abilities: { str: 10, dex: trained?.dex ?? 12, con: 14, int: 10, wis: 18, cha: 10 },
             fields: { level, ac: 12, speed: 30, hp_max: 40 },
+            ...(trained ? { saves: trained.saves, skills: trained.skills } : {}),
             lists: { spells: entries.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row)) },
           }),
           live: {},
@@ -274,7 +281,9 @@ try {
       "a way back",
     );
     assert.equal(wolfDruid.saves.wis_save, ownSaves.wis_save, "its own wisdom save, kept");
-    // Each the better of the druid's own and the wolf's (1.351).
+    // Where the druid is proficient (1.351, 1.352), the better of the wolf's own and the wolf's ability
+    // with the druid's proficiency (+3 at 8th level); everything else the wolf's, a better Dexterity
+    // of the druid's own included.
     {
       const better = parsed(
         document([wolfOnly, polymorph], (doc) => {
@@ -284,22 +293,26 @@ try {
       );
       const betterEntries = better.catalogs!.find((catalog) => catalog.id === "spells")!
         .entries! as RulesetCatalogEntry[];
-      const start = fight(better, betterEntries);
-      const own = structuredClone(who(start, "druid").saves);
+      const start = fight(better, betterEntries, 8, {
+        saves: { con_save: "proficient" },
+        skills: { athletics: "proficient", acrobatics: "none" },
+        dex: 18,
+      });
+      const own = structuredClone(who(start, "druid"));
+      assert.equal(own.saves.dex_save, 4, "Dex 18, not proficient");
       const turned = step(better, start, {
         actorId: "druid",
         optionId: optionFor(better, start, "druid", "Wild Shape").id,
         targetIds: ["druid"],
         mode: "form-creatures-dire-wolf",
       });
-      const saves = who(turned.state, "druid").saves;
-      let higher = 0;
-      for (const id of new Set([...Object.keys(own), ...Object.keys(wolfDruid.saves)])) {
-        const want = Math.max(wolfDruid.saves[id] ?? own[id]!, own[id] ?? wolfDruid.saves[id]!);
-        assert.equal(saves[id], want, id);
-        if ((own[id] ?? -99) > (wolfDruid.saves[id] ?? -99)) higher += 1;
-      }
-      assert.ok(higher > 0, "some save of the druid's own beats the wolf's");
+      const shaped = who(turned.state, "druid");
+      assert.equal(shaped.saves.con_save, 2 + 3, "the wolf's Con 15 with the druid's proficiency");
+      assert.equal(shaped.saves.dex_save, wolfDruid.saves.dex_save, "the wolf's Dexterity save, not the druid's +4");
+      assert.equal(shaped.saves.str_save, wolfDruid.saves.str_save, "not proficient: the wolf's");
+      assert.equal(shaped.saves.wis_save, own.saves.wis_save, "kept: its own");
+      assert.equal(shaped.checks?.might, 3 + 3, "Athletics: the wolf's Str 17 with the druid's proficiency");
+      assert.equal(shaped.checks?.agility, wolfDruid.checks?.agility, "Acrobatics, not proficient: the wolf's");
     }
     assert.deepEqual(wolfDruid.creature, { catalogId: "creatures", entryId: "dire-wolf" }, "drawn as the wolf");
     assert.deepEqual(health(definition, wolfDruid), { value: 30, max: 30, temp: 0 }, "the wolf's health");

@@ -9241,9 +9241,12 @@ const combatConditionSchema = z
         keepsChecks: uniqueIds(32).optional(),
         keeps: z.array(z.string().trim().min(1).max(200)).max(24).optional(),
         revert: sheetId.optional(),
-        /** Each save and check the better of their own and the form's (Capability API 1.351):
-         *  Wild Shape's and Shapechange's "if ... the bonus in its stat block is higher than yours,
-         *  use the creature's bonus instead of yours". What they keep is still their own. */
+        /** Each save and contest check its holder's sheet is proficient in (by the skill a check
+         *  reads) is the better of the form's own and the form's ability with the holder's proficiency
+         *  (Capability API 1.351, read this way since 1.352); everything else is the form's. Wild
+         *  Shape's "you retain all of your skill and saving throw proficiencies ... if the bonus in its
+         *  stat block is higher than yours, use the creature's bonus instead of yours". What they keep
+         *  is still their own. */
         betterOf: z.literal(true).optional(),
       })
       .strict()

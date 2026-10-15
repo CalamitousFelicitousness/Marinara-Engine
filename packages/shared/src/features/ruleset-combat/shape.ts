@@ -10,7 +10,7 @@
 import { createRulesetEncounter } from "./encounter.js";
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { evaluateRulesetSheetLive } from "../rulesets/live-state.js";
-import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
+import { resolveRulesetValueRef, roundRulesetNumber, rulesetAbilityModifier } from "../rulesets/sheet-math.js";
 import {
   RULESET_SHAPE_KEYS,
   type RulesetCombatAction,
@@ -45,6 +45,35 @@ export function rulesetFormAllowed(
     most = target.ranks?.[cap.filter];
   }
   return most === undefined || !Number.isFinite(most) || rank <= most;
+}
+
+/**
+ * The saves and contest checks `target`'s sheet is proficient in (1.352), each with the ability it
+ * reads and what its proficiency adds: a check by the skill its value reads. Nothing without a sheet.
+ */
+function rulesetProficiencies(
+  definition: RulesetDefinition,
+  target: RulesetCombatant,
+): { saves: Map<string, { ability?: string; rank: number }>; checks: Map<string, { ability?: string; rank: number }> } {
+  const saves = new Map<string, { ability?: string; rank: number }>();
+  const checks = new Map<string, { ability?: string; rank: number }>();
+  if (!target.sheet) return { saves, checks };
+  const evaluated = evaluateRulesetSheetLive(definition, target.sheet.build, target.sheet.live, target.sheet.items);
+  const rankOf = (tierId: string | undefined) => {
+    const tier = definition.resolution.proficiencyTiers.find((entry) => entry.id === tierId);
+    return tier ? roundRulesetNumber(tier.multiplier * evaluated.proficiencyBonus, tier.round) + tier.flat : 0;
+  };
+  for (const save of definition.sheet.saves) {
+    const rank = rankOf(evaluated.saveTiers[save.id]);
+    if (rank > 0) saves.set(save.id, { ability: save.ability, rank });
+  }
+  for (const check of definition.combat?.checks ?? []) {
+    const skillId = check.value.skillMod;
+    const skill = skillId !== undefined ? definition.sheet.skills.find((one) => one.id === skillId) : undefined;
+    const rank = skill ? rankOf(evaluated.skillTiers[skill.id]) : 0;
+    if (skill && rank > 0) checks.set(check.id, { ability: skill.ability, rank });
+  }
+  return { saves, checks };
 }
 
 /**
@@ -106,15 +135,28 @@ export function rulesetTakeShape(
   target.speed = built.speed;
   const pick = (from: Record<string, number> | undefined, ids: readonly string[] | undefined) =>
     Object.fromEntries(Object.entries(from ?? {}).filter(([id]) => ids?.includes(id)));
-  // Each the better of their own and the form's (1.351), where the rule says so.
-  const better = (form: Record<string, number> | undefined, own: Record<string, number> | undefined) => {
-    if (!rule.betterOf) return { ...(form ?? {}) };
-    const out = { ...(form ?? {}) };
-    for (const [id, value] of Object.entries(own ?? {})) out[id] = Math.max(out[id] ?? value, value);
+  // Where the rule says so (1.351, 1.352), each save and check its holder is proficient in is the
+  // better of the form's own and the form's ability with the holder's proficiency.
+  const proficient = rule.betterOf ? rulesetProficiencies(definition, target) : undefined;
+  const better = (
+    shaped: Record<string, number> | undefined,
+    own: Record<string, number> | undefined,
+    ranks: ReadonlyMap<string, { ability?: string; rank: number }> | undefined,
+  ) => {
+    const out = { ...(shaped ?? {}) };
+    for (const [id, { ability, rank }] of ranks ?? []) {
+      const score = ability !== undefined ? form.block.abilities?.[ability] : undefined;
+      // A form with no score for that ability: the better of the two as they stand.
+      if (score === undefined) out[id] = Math.max(out[id] ?? own?.[id] ?? 0, own?.[id] ?? 0);
+      else out[id] = Math.max(out[id] ?? -Infinity, rulesetAbilityModifier(definition, score) + rank);
+    }
     return out;
   };
-  target.saves = { ...better(built.saves, was.saves), ...pick(was.saves, rule.keepsSaves) };
-  const checks = { ...better(built.checks, was.checks), ...pick(was.checks, rule.keepsChecks) };
+  target.saves = { ...better(built.saves, was.saves, proficient?.saves), ...pick(was.saves, rule.keepsSaves) };
+  const checks = {
+    ...better(built.checks, was.checks, proficient?.checks),
+    ...pick(was.checks, rule.keepsChecks),
+  };
   if (Object.keys(checks).length) target.checks = checks;
   else delete target.checks;
   for (const key of ["speeds", "hover", "senses", "size", "span", "riders", "block", "soak", "hardness"] as const) {

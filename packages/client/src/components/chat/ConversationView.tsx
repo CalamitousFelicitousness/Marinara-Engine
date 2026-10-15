@@ -13,6 +13,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { Loader2, ChevronUp, Puzzle } from "lucide-react";
@@ -24,7 +25,7 @@ import { CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS, getChatToolbarButtonClass } fr
 import { CHAT_CONTROL_WINDOW_IDS, ChatControlWindow } from "./ChatControlWindow";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
 import { PendingTypingDots } from "./PendingTypingDots";
-import { TranscriptWindowControls } from "./TranscriptWindowControls";
+import { HISTORY_PAGER_BUTTON_CLASS, TranscriptWindowControls } from "./TranscriptWindowControls";
 import { PinnedImageOverlay } from "./PinnedImageOverlay";
 import { useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
@@ -87,6 +88,12 @@ interface ConversationViewProps {
   onRegenerate: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
   onFinalizeMultiSwipe?: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void;
+  failedReplyMessageId?: string | null;
+  failedReplyReason?: string;
+  onRetryFailedReply?: () => void;
+  /** R2: the reply that gets the checkup's quiet line, and the line itself. */
+  replyCheckupMessageId?: string | null;
+  replyCheckup?: ReactNode;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleHiddenFromAI: (messageId: string, current: boolean) => void;
   onPeekPrompt: (messageId?: string) => void;
@@ -103,6 +110,7 @@ interface ConversationViewProps {
     variant: "origin" | "scene";
     sceneChatId?: string;
     sceneChatName?: string;
+    repliesAllowed?: boolean;
     originChatId?: string;
     packageOrigin?: ScenePackageOrigin | null;
     description?: string;
@@ -386,6 +394,11 @@ export function ConversationView({
   onRegenerate,
   onFinalizeMultiSwipe,
   onEdit,
+  failedReplyMessageId,
+  failedReplyReason,
+  onRetryFailedReply,
+  replyCheckupMessageId,
+  replyCheckup,
   onSetActiveSwipe,
   onToggleHiddenFromAI,
   onPeekPrompt,
@@ -1303,11 +1316,7 @@ export function ConversationView({
         {/* Load More */}
         {hasNextPage && (
           <div className="mari-chat-load-more flex justify-center py-3">
-            <button
-              onClick={handleLoadMore}
-              disabled={isFetchingNextPage}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition-all hover:bg-[var(--accent)] disabled:opacity-50"
-            >
+            <button onClick={handleLoadMore} disabled={isFetchingNextPage} className={HISTORY_PAGER_BUTTON_CLASS}>
               {isFetchingNextPage ? <Loader2 size="0.75rem" className="animate-spin" /> : <ChevronUp size="0.75rem" />}
               {localizeUi("ui.chat.chatroleplaysurface.loadMore")}
             </button>
@@ -1416,6 +1425,10 @@ export function ConversationView({
                 onRegenerate={onRegenerate}
                 onFinalizeMultiSwipe={onFinalizeMultiSwipe}
                 onEdit={onEdit}
+                failedReply={msg.id === failedReplyMessageId}
+                failedReplyReason={failedReplyReason}
+                onRetryFailedReply={onRetryFailedReply}
+                replyCheckup={msg.id === replyCheckupMessageId ? replyCheckup : undefined}
                 onSetActiveSwipe={onSetActiveSwipe}
                 onToggleHiddenFromAI={onToggleHiddenFromAI}
                 onPeekPrompt={() => onPeekPrompt(msg.id)}
@@ -1545,7 +1558,12 @@ export function ConversationView({
 
         {/* Scene banner — inline at bottom of messages (origin variant only); hidden during a turn-game */}
         {sceneInfo?.variant === "origin" && (
-          <SceneBanner variant="origin" sceneChatId={sceneInfo.sceneChatId} sceneChatName={sceneInfo.sceneChatName} />
+          <SceneBanner
+            variant="origin"
+            sceneChatId={sceneInfo.sceneChatId}
+            sceneChatName={sceneInfo.sceneChatName}
+            repliesAllowed={sceneInfo.repliesAllowed}
+          />
         )}
 
         <div ref={messagesEndRef} className="h-1" />

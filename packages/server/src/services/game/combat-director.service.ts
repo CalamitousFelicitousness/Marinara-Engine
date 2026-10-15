@@ -2,12 +2,15 @@ import {
   normalizeGameDifficulty,
   combatAiScoreNoise,
   type CombatWeather,
+  type WorldElementSet,
   forecastTacticalAttack,
+  hasLineOfSight,
 } from "@marinara-engine/shared";
 import {
   assignCombatTactics,
   combatAiHash,
   createTacticalCombat,
+  currentTacticalActor,
   getMovementRange,
   validateTacticalUnitAction,
   performTacticalUnitAction,
@@ -27,6 +30,9 @@ import {
   type CombatMechanic,
   type CombatItemEffect,
   type TacticalBattlefieldBrief,
+  type TacticalMadeBattlefield,
+  type TacticalTurnOrder,
+  type RulesetCombatBoard,
 } from "@marinara-engine/shared";
 import { chooseClassicAction, estimateClassicAttack } from "./combat-ai.service.js";
 import { resolveCombatRound, rollInitiative, canCombatantAct } from "./combat.service.js";
@@ -66,6 +72,8 @@ export interface CombatDirectorState extends DirectedCombatView {
   gm: boolean;
   difficulty: string;
   weather?: CombatWeather;
+  /** The game's elements (worldgen W6c); the classic six when absent. */
+  elements?: WorldElementSet;
   seed: number;
   serial: number;
   tasks: Task[];
@@ -120,6 +128,12 @@ function log(
   s.log.push({ id: ++s.serial, text, kind, actorId, source, message });
   s.log = s.log.slice(-240);
 }
+/** What the Game Master is told of a ruleset fight's board: as a tactical one, its scene when painted. */
+function rulesetBoardSummary(board: RulesetCombatBoard | undefined, seed: number): string | undefined {
+  if (!board?.battlefield) return undefined;
+  const scene = board.battlefield.kind === "hand-made" ? board.battlefield.scene : undefined;
+  return summarizeTacticalBattlefield({ ...board, seed, ...(scene ? { environment: scene } : {}) });
+}
 function sync(s: CombatDirectorState) {
   if (s.tactical) {
     const convert = (u: TacticalUnit): Combatant => ({ ...u, side: side(u) === "party" ? "player" : "enemy" });
@@ -138,7 +152,10 @@ function sync(s: CombatDirectorState) {
     s.summary = {
       outcome: s.outcome,
       rounds: s.round,
-      battlefieldSummary: s.tactical ? (summarizeTacticalBattlefield(s.tactical) ?? undefined) : undefined,
+      // The board fought on, either style's: a ruleset's is the tactical style's own board.
+      battlefieldSummary: s.tactical
+        ? (summarizeTacticalBattlefield(s.tactical) ?? undefined)
+        : rulesetBoardSummary(s.rulesetFight?.encounter.board, s.seed),
       party: s.party.map((u) => ({
         name: u.name,
         hp: u.hp,
@@ -205,10 +222,15 @@ export function createCombatDirector(input: {
   gm: boolean;
   difficulty: string;
   weather?: CombatWeather;
+  elements?: WorldElementSet;
   seed: number;
   environment?: string;
   formation?: string;
   battlefield?: TacticalBattlefieldBrief;
+  /** A board painted for the fight's place (worldgen W9g), fought on as painted. */
+  made?: TacticalMadeBattlefield;
+  /** One unit at a time in a rolled order (combat C6c); by side when absent. */
+  turnOrder?: TacticalTurnOrder;
   itemEffects?: CombatItemEffect[];
   mechanics?: CombatMechanic[];
   inventory?: CombatDirectorState["inventory"];
@@ -235,6 +257,7 @@ export function createCombatDirector(input: {
     gm: input.gm,
     difficulty: normalizeGameDifficulty(input.difficulty),
     weather: input.weather,
+    ...(input.elements ? { elements: input.elements } : {}),
     seed: input.seed,
     serial: 0,
     tasks: [],
@@ -255,9 +278,12 @@ export function createCombatDirector(input: {
       seed: s.seed,
       difficulty: s.difficulty,
       weather: s.weather,
+      ...(s.elements ? { elements: s.elements } : {}),
       environment: input.environment,
       formation: input.formation,
       battlefield: input.battlefield,
+      ...(input.made ? { made: input.made } : {}),
+      ...(input.turnOrder ? { turnOrder: input.turnOrder } : {}),
     });
   for (const u of directorUnits(s))
     s.budgets[u.id] = { legendary: side(u) === "enemy" ? (u.boss?.points ?? 0) : 0, reaction: 1 };
@@ -426,6 +452,7 @@ function options(s: CombatDirectorState, u: Unit, legendary = false): Candidate[
           s.round,
           s.difficulty,
           s.weather,
+          s.elements,
         );
     if (t && !legendary && (expected.type === "wait" || expected.type === "move")) {
       return [
@@ -513,10 +540,12 @@ function declare(s: CombatDirectorState, action: Action, source: Source, reactio
       item.quantity--;
       s.itemSpends[itemName] = (s.itemSpends[itemName] ?? 0) + 1;
     }
-    // The route rolled its gate for its user and says here when they failed it (#6909).
-    const failed = (action.classic ?? action.tactical) as { failed?: string } | undefined;
+    // The route rolled its gate for its user and says here when they failed it (#6909), and what the use
+    // truly does when it comes out of a fake (1.79).
+    const failed = (action.classic ?? action.tactical) as { failed?: string; truly?: CombatItemEffect } | undefined;
+    const does = failed?.truly ?? effect;
     if (action.classic?.type === "item")
-      action.classic.itemEffect = failed?.failed ? { ...effect, failed: failed.failed } : effect;
+      action.classic.itemEffect = failed?.failed ? { ...does, failed: failed.failed } : does;
   }
   const id = `p${++s.serial}`;
   s.pending[id] = {
@@ -558,7 +587,9 @@ function threatenedTargets(s: CombatDirectorState, p: Pending): Unit[] {
     return living(s).filter(
       (u) =>
         (skill.friendlyFire || side(u) !== side(caster)) &&
-        Math.abs((u as TacticalUnit).x - center.x) + Math.abs((u as TacticalUnit).y - center.y) <= skill.areaRadius!,
+        Math.abs((u as TacticalUnit).x - center.x) + Math.abs((u as TacticalUnit).y - center.y) <= skill.areaRadius! &&
+        // The blast spreads only as far as it sees from where it lands, as the engine resolves it.
+        hasLineOfSight(s.tactical!.grid, center, u as TacticalUnit),
     );
   }
   return [target];
@@ -583,17 +614,8 @@ function reactionOptions(s: CombatDirectorState, u: Unit, p: Pending): Candidate
         const a = u as TacticalUnit,
           b = target as TacticalUnit;
         if (Math.abs(a.x - b.x) + Math.abs(a.y - b.y) > (k.range ?? 2)) continue;
-        // Reactions require an unobstructed grid ray; ordinary ranged attacks retain legacy rules.
-        const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-        let blocked = false;
-        for (let i = 1; i < steps; i++)
-          if (
-            s.tactical.grid.tiles[Math.round(a.y + ((b.y - a.y) * i) / steps)]?.[
-              Math.round(a.x + ((b.x - a.x) * i) / steps)
-            ] === "wall"
-          )
-            blocked = true;
-        if (blocked) continue;
+        // A reaction needs sight of its target, by the Engine's one sight test (combat C6).
+        if (!hasLineOfSight(s.tactical.grid, a, b)) continue;
       }
       choices.push({
         id: String(choices.length),
@@ -638,16 +660,21 @@ function reactionThreat(
     } else if (skill?.type === "buff" || skill?.type === "debuff") {
       value += (allied === (skill.type === "debuff") ? 1 : -1) * 0.5;
     } else {
+      // An area's cover is read from where it lands, as the engine rolls it.
+      const action = p.action.tactical;
+      const aimed =
+        skill?.areaRadius && action && "targetId" in action && action.targetId ? get(s, action.targetId) : undefined;
       const forecast = s.tactical
         ? forecastTacticalAttack(s.tactical, caster as TacticalUnit, target as TacticalUnit, caster as TacticalUnit, {
             power: skill ? Math.max(1, skill.power) : 1,
             element: skill?.element ?? caster.element,
             traits: skill ?? caster,
+            ...(aimed ? { coverFrom: { x: (aimed as TacticalUnit).x, y: (aimed as TacticalUnit).y } } : {}),
           })
         : undefined;
       const estimate = forecast
         ? { damage: forecast.damage, hitProbability: forecast.hitChance / 100 }
-        : estimateClassicAttack(caster, target, skill, s.difficulty, s.weather);
+        : estimateClassicAttack(caster, target, skill, s.difficulty, s.weather, s.elements);
       value += (allied ? 1 : -1) * Math.min(2, estimate.damage / Math.max(1, target.hp)) * estimate.hitProbability;
       lethal ||= allied && estimate.damage >= target.hp && estimate.hitProbability > 0;
     }
@@ -667,6 +694,7 @@ export function chooseDirectorFallback(s: CombatDirectorState): string {
           s.round,
           s.difficulty,
           s.weather,
+          s.elements,
         );
     const match = s.choices.find(
       (c) =>
@@ -783,13 +811,15 @@ function effect(s: CombatDirectorState, p: Pending) {
       }
     } else if (s.tactical && p.action.tactical?.type === "item") {
       const action = p.action.tactical;
-      const effect = s.itemEffects.find((i) => i.name === action.itemName);
-      const failed = (action as { failed?: string }).failed;
+      const effect =
+        (action as { truly?: CombatItemEffect }).truly ?? s.itemEffects.find((i) => i.name === action.itemName);
+      // A gate failed, or a fake that does nothing a fight can use (1.79): spent, and the log says why.
+      const failed = (action as { failed?: string }).failed ?? effect?.failed;
       const combatants = s.tactical.units.map((c) => ({
         ...c,
         side: side(c) === "party" ? ("player" as const) : ("enemy" as const),
       }));
-      resolveCombatRound(combatants, s.round, s.difficulty, undefined, undefined, undefined, undefined, undefined, {
+      resolveCombatRound(combatants, s.round, s.difficulty, s.elements, undefined, undefined, undefined, undefined, {
         weather: s.weather,
         actorId: u.id,
         action: {
@@ -833,7 +863,7 @@ function effect(s: CombatDirectorState, p: Pending) {
           [...s.party, ...s.enemies],
           s.round,
           s.difficulty,
-          undefined,
+          s.elements,
           undefined,
           undefined,
           undefined,
@@ -902,16 +932,18 @@ export function advanceCombatDirector(s: CombatDirectorState) {
     if (!task) {
       s.actorId = undefined;
       if (s.tactical) {
+        // By initiative (combat C6c) the next unit is the order's, whoever commands it; by side the
+        // party chooses among its own first, then everybody else goes by speed.
         const remaining = living(s).filter((u) => !(u as TacticalUnit).hasActed);
         const party = remaining.filter((u) => side(u) === "party");
-        if (!s.skipParty && party.some((u) => manual(s, u))) {
+        if (!s.tactical.initiative && !s.skipParty && party.some((u) => manual(s, u))) {
           s.tactical.phase = "player";
           s.stage = "select";
           return;
         }
-        const next = (party.length ? party : remaining).sort(
-          (a, b) => b.speed - a.speed || a.id.localeCompare(b.id),
-        )[0];
+        const next = s.tactical.initiative
+          ? currentTacticalActor(s.tactical)
+          : (party.length ? party : remaining).sort((a, b) => b.speed - a.speed || a.id.localeCompare(b.id))[0];
         if (next) {
           s.tasks.push({ kind: "activate", unitId: next.id });
           continue;
@@ -933,7 +965,7 @@ export function advanceCombatDirector(s: CombatDirectorState) {
           [...s.party, ...s.enemies],
           s.round,
           s.difficulty,
-          undefined,
+          s.elements,
           undefined,
           s.mechanics,
           undefined,
@@ -997,7 +1029,12 @@ export function advanceCombatDirector(s: CombatDirectorState) {
     }
     const u = get(s, task.unitId);
     if (!u || !canAct(u)) {
-      if (task.kind === "activate" && u && s.tactical) (u as TacticalUnit).hasActed = true;
+      if (task.kind === "activate" && u && s.tactical) {
+        (u as TacticalUnit).hasActed = true;
+        // Its turn came and went: a guard lasts until its holder's own turn, taken or not (combat C6c).
+        (u as TacticalUnit).defending = false;
+        s.defending = s.defending.filter((id) => id !== u.id);
+      }
       continue;
     }
     if (task.kind === "activate") {
@@ -1050,6 +1087,7 @@ export function advanceCombatDirector(s: CombatDirectorState) {
               s.round,
               s.difficulty,
               s.weather,
+              s.elements,
             ) as CombatPlayerAction,
           };
       try {
@@ -1112,7 +1150,8 @@ export function commandCombatDirector(s: CombatDirectorState, command: DirectedC
     s.tasks.push({ kind: "activate", unitId: u.id });
   } else if (command.type === "tactical" && command.action.type === "endTurn") {
     if (s.window) throw new Error("Resolve the interruption first.");
-    s.skipParty = true;
+    // By side it ends the party's phase; by initiative only the turn of the unit whose turn it is.
+    if (!s.tactical?.initiative) s.skipParty = true;
     if (s.actorId) declare(s, asAction(s, get(s, s.actorId)!, "wait"), "manual");
   } else if (command.type === "classic" || command.type === "tactical") {
     if (s.stage !== "action" || s.window || !s.actorId) throw new Error("Wait for the active unit.");

@@ -155,6 +155,7 @@ const FeaturedCharacterCardSlot = memo(function FeaturedCharacterCardSlot({
   dockedThoughtsAlwaysVisible,
   deleteMode,
   addMode,
+  onGeneratePortrait,
   ...callbacks
 }: {
   character: PresentCharacter;
@@ -173,8 +174,13 @@ const FeaturedCharacterCardSlot = memo(function FeaturedCharacterCardSlot({
   dockedThoughtsAlwaysVisible: boolean;
   deleteMode: boolean;
   addMode: boolean;
+  onGeneratePortrait?: (index: number, includeOutfit: boolean) => Promise<void>;
 } & CharacterCardSlotCallbacks) {
   const slot = useCharacterSlotCallbacks(characterIndex, cardKey, callbacks);
+  const generatePortrait = useCallback(
+    (includeOutfit: boolean) => onGeneratePortrait?.(characterIndex, includeOutfit) ?? Promise.resolve(),
+    [characterIndex, onGeneratePortrait],
+  );
   return (
     <div className={CHARACTER_CARD_RENDER_CONTAINMENT_CLASS}>
       <FeaturedCharacterTrackerCard
@@ -193,6 +199,7 @@ const FeaturedCharacterCardSlot = memo(function FeaturedCharacterCardSlot({
         characterIndex={characterIndex}
         deleteMode={deleteMode}
         addMode={addMode}
+        onGeneratePortrait={onGeneratePortrait ? generatePortrait : undefined}
         {...slot}
       />
     </div>
@@ -221,6 +228,7 @@ export function CharacterTrackerPanel({
   onToggleFeatured,
   onToggleCharacterCollapsed,
   onUploadAvatar,
+  onGeneratePortrait,
   deleteMode,
   addMode,
   action,
@@ -248,6 +256,7 @@ export function CharacterTrackerPanel({
   onToggleFeatured: (key: string) => void;
   onToggleCharacterCollapsed: (key: string) => void;
   onUploadAvatar: (index: number) => void;
+  onGeneratePortrait?: (index: number, includeOutfit: boolean) => Promise<void>;
   deleteMode: boolean;
   addMode: boolean;
   action?: ReactNode;
@@ -362,6 +371,7 @@ export function CharacterTrackerPanel({
           onToggleFeatured={onToggleFeatured}
           onToggleCharacterCollapsed={onToggleCharacterCollapsed}
           onUploadAvatar={onUploadAvatar}
+          onGeneratePortrait={onGeneratePortrait}
         />
       );
 

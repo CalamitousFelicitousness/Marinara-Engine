@@ -4,6 +4,7 @@
 import { useState, useMemo } from "react";
 import { X, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { generationLevelLabel } from "../../lib/generation-level-label";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import {
   NEUTRAL_PANEL_HEADER,
@@ -21,10 +22,13 @@ import {
   type ParameterTraceEntry,
   type ParameterTraceKey,
   type ParameterTraceLayer,
+  type ReplyCheckupFinding,
+  type ReplyCheckupLink,
 } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
 import { useUIStore, type ParameterTraceView } from "../../stores/ui.store";
 import { DecisionDebugPanel } from "./DecisionDebugPanel";
+import { ReplyCheckupFacts } from "./ReplyCheckup";
 
 const PROMPT_TAG_CLASS =
   "border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-highlight-text)]";
@@ -74,6 +78,8 @@ interface PeekPromptModalProps {
     gameToolPlanning?: GameToolPlanningInfo | null;
     agentNote?: string;
     decisions?: { unanswered: string[]; dropped?: string[]; decisionModelSet: boolean };
+    /** R2: the checkup of the reply this prompt produced. */
+    checkup?: { findings: ReplyCheckupFinding[]; onLink: (link: ReplyCheckupLink) => void };
   };
   onClose: () => void;
 }
@@ -91,7 +97,7 @@ function sourceBadgeClass(data: PeekPromptModalProps["data"]): string {
 }
 
 function prettifyTag(tag: string): string {
-  return tag.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return tag.replace(/[_-]/g, " ").replace(/(?<![\p{L}\p{M}\p{N}])\p{L}/gu, (c) => c.toUpperCase());
 }
 
 // ═══════════════════════════════════════════════
@@ -153,7 +159,7 @@ function conversationHistoryDisplayRole(role: string, content: string): string {
 function parseXmlSections(content: string, fallbackLabel: string): SectionBlock[] {
   const blocks: SectionBlock[] = [];
   // Match <tag_name>\n...\n</tag_name> where both tags sit on their own line.
-  const tagRegex = /(?:^|\n)(<([a-z_][a-z0-9_-]*)>\n[\s\S]*?\n<\/\2>)(?:\n|$)/gi;
+  const tagRegex = /(?:^|\n)(<([\p{L}_][\p{L}\p{M}\p{N}_-]*)>\n[\s\S]*?\n<\/\2>)(?:\n|$)/giu;
   let lastIndex = 0;
 
   for (const match of content.matchAll(tagRegex)) {
@@ -779,8 +785,9 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
       if (gen.temperature != null) pills.push({ label: "Temperature", value: String(gen.temperature) });
       if (gen.maxTokens != null) pills.push({ label: "Max Output Tokens", value: fmtTokens(gen.maxTokens) });
       if (gen.showThoughts) pills.push({ label: "Thinking", value: "On" });
-      if (gen.reasoningEffort) pills.push({ label: "Reasoning", value: gen.reasoningEffort });
-      if (gen.verbosity) pills.push({ label: "Verbosity", value: gen.verbosity });
+      if (gen.reasoningEffort)
+        pills.push({ label: "Reasoning", value: generationLevelLabel(gen.reasoningEffort, localizeUi) });
+      if (gen.verbosity) pills.push({ label: "Verbosity", value: generationLevelLabel(gen.verbosity, localizeUi) });
       if (gen.serviceTier) pills.push({ label: "Service Tier", value: gen.serviceTier });
       if (gen.assistantPrefill) pills.push({ label: "Assistant Prefill", value: "On" });
     } else if (params) {
@@ -795,13 +802,15 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
       if (params.presencePenalty != null && params.presencePenalty !== 0)
         pills.push({ label: "Pres Penalty", value: String(params.presencePenalty) });
       if (params.showThoughts) pills.push({ label: "Thinking", value: "On" });
-      if (params.reasoningEffort) pills.push({ label: "Reasoning", value: String(params.reasoningEffort) });
-      if (params.verbosity) pills.push({ label: "Verbosity", value: String(params.verbosity) });
+      if (params.reasoningEffort)
+        pills.push({ label: "Reasoning", value: generationLevelLabel(String(params.reasoningEffort), localizeUi) });
+      if (params.verbosity)
+        pills.push({ label: "Verbosity", value: generationLevelLabel(String(params.verbosity), localizeUi) });
       if (params.serviceTier) pills.push({ label: "Service Tier", value: String(params.serviceTier) });
       if (params.assistantPrefill) pills.push({ label: "Assistant Prefill", value: "On" });
     }
     return pills;
-  }, [gen, params]);
+  }, [gen, params, localizeUi]);
 
   const sectionRoleColor = (role: string, label: string) => {
     if (/last.?message/i.test(label) || role === "assistant") return PROMPT_TAG_ACTIVE_CLASS;
@@ -849,6 +858,14 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
             <X size="1rem" />
           </button>
         </div>
+        {!showTest && originalData.checkup && originalData.checkup.findings.length > 0 && (
+          <div className={cn(NEUTRAL_PANEL_HEADER, "mari-reply-checkup shrink-0 px-5 pb-3")} data-peek-checkup>
+            <p className="mb-1 font-medium text-[var(--foreground)]">
+              {localizeUi("chat.replyCheckup.peekTitle", "Reply checkup")}
+            </p>
+            <ReplyCheckupFacts findings={originalData.checkup.findings} onLink={originalData.checkup.onLink} />
+          </div>
+        )}
         <div className={cn(NEUTRAL_PANEL_SCROLL_AREA, "min-h-0 flex-1 overflow-y-auto p-4 space-y-2")}>
           {originalData.chatId && (
             <DecisionDebugPanel

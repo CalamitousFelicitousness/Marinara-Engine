@@ -82,7 +82,7 @@ export function resolveStoredChatOptions(
     reasoningEffort:
       parameters.enabledParameters?.reasoningEffort === false
         ? undefined
-        : parameters.reasoningEffort === null
+        : parameters.reasoningEffort === null && !reasoningEffort
           ? "none"
           : (reasoningEffort ?? undefined),
     verbosity: parameters.verbosity ?? undefined,
@@ -344,7 +344,9 @@ export function collectPastReasoningMetadata(
     const message = messages[index]!;
     if (message.role !== "assistant") continue;
     const extra = parseExtra(message.extra);
-    if (extra.hiddenFromAI === true || extra.roleplayPrivateContext === true) continue;
+    // An earlier part of a split reply (#7481) holds reasoning about later parts that may be hidden from this reader.
+    if (extra.hiddenFromAI === true || extra.roleplayPrivateContext === true || extra.continuesAfterSceneBreak === true)
+      continue;
     const metadata: Record<string, unknown> = {};
     if (
       (provider === "google" || provider === "google_vertex") &&
@@ -414,6 +416,12 @@ export function appendRoundGeminiParts(
 /**
  * Whether the connection uses the OpenAI-style message shape that can carry a partial reasoning prefill. Mistral is
  * left out: its messages have no reasoning_content or partial field.
+ *
+ * DeepSeek is left out too, and for a different reason: it only accepts a reasoning prefill through chat prefix
+ * completion, which requires the `/beta` base URL and a `prefix: true` flag on the final assistant message. The
+ * default `/v1` endpoint we ship has neither, so a prefill built here would be sent in a format DeepSeek rejects.
+ * Adding it back is a real option — DeepSeek's own docs cover it — but it means the beta endpoint and the flag,
+ * not just this allowlist.
  */
 export function supportsAssistantReasoningPrefill(provider: string): boolean {
   return ["openai", "openrouter", "nanogpt", "xai", "cohere", "arli", "zai", "custom"].includes(provider);

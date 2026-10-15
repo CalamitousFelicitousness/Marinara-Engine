@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   advancedMemoryProblems,
@@ -19,9 +19,12 @@ import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { AdvancedMemoryProgress } from "./AdvancedMemoryProgress";
 import { useConnections } from "../../hooks/use-connections";
+import { useChatMessageCount } from "../../hooks/use-chats";
 
 const fieldClass = "mari-chrome-field w-full rounded-lg px-3 py-2 text-xs disabled:opacity-50";
 const actionClass = "mari-chrome-control min-h-9 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50";
+// Side by side, a label that wraps pushes only its own text up, so both inputs share one row.
+const pairedFieldClass = "flex flex-col justify-between text-xs";
 // Scenes with unclear participants are listed with the other scene problems in the Fix box.
 const warningKeys: Record<string, string> = {
   "decision-connection-unavailable": "chat.advancedMemory.warning.decisionConnectionUnavailable",
@@ -52,6 +55,7 @@ export function AdvancedMemorySettings({
   variant?: "drawer" | "wizard";
 }) {
   const { t } = useTranslation();
+  const excerptHelpId = useId();
   const status = useAdvancedMemoryStatus(chatId);
   const action = useAdvancedMemoryAction(chatId);
   const savedConnections = useConnections();
@@ -66,6 +70,7 @@ export function AdvancedMemorySettings({
   const [knowledgeCharacterIds, setKnowledgeCharacterIds] = useState<string[]>([]);
   const [knowledgeChoices, setKnowledgeChoices] = useState<Record<string, string>>({});
   const [knowledgeCursors, setKnowledgeCursors] = useState<Array<string | undefined>>([undefined]);
+  const [rescanDraft, setRescanDraft] = useState<{ chatId: string; start?: number; end?: number }>({ chatId });
   const knowledgePanelRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!settings.enabled) setConfirmKnowledge(false);
@@ -131,6 +136,29 @@ export function AdvancedMemorySettings({
   const canFix = fixIds.length > 0 && !knowledgeBlocked && !running && !action.isPending;
   const fixPending = action.isPending && action.variables?.action === "initialize" && !!action.variables.fixAll;
   const fix = () => action.mutate({ action: "initialize", fixAll: true, debugMode: useUIStore.getState().debugMode });
+  // Re-scan starts on the ongoing scene, or the latest one when every scene has ended, never on the whole chat.
+  const sceneRecords = (status.data?.records ?? []).filter((record) => record.kind === "scene");
+  const openScenes = sceneRecords.filter((record) => record.status === "open");
+  const latestStart = Math.max(
+    1,
+    ...(openScenes.length ? openScenes : sceneRecords).map((record) => record.startIndex),
+  );
+  // A range typed for another chat does not carry over.
+  const rescanRange = rescanDraft.chatId === chatId ? rescanDraft : { chatId };
+  const messageCount = useChatMessageCount(settings.enabled && variant === "drawer" ? chatId : null);
+  const lastMessage = Math.max(1, messageCount.data?.count ?? 0);
+  const rescanStart = Math.min(rescanRange.start ?? latestStart, lastMessage);
+  const rescanEnd = Math.max(rescanStart, Math.min(rescanRange.end ?? lastMessage, lastMessage));
+  const showRescan =
+    variant === "drawer" &&
+    sceneRecords.length > 0 &&
+    !["idle", "needs_confirmation"].includes(status.data?.job.status ?? "idle");
+  const rescan = () =>
+    action.mutate({
+      action: "initialize",
+      range: { start: rescanStart, end: rescanEnd },
+      debugMode: useUIStore.getState().debugMode,
+    });
   const openScene = (sceneId: string) => useUIStore.getState().setAdvancedMemoryRequest({ chatId, sceneId });
   const showFix = variant === "drawer" && settings.enabled && (fixIds.length > 0 || reviewIds.length > 0 || showResult);
   // Re-render when a request arrives; the effect below takes it.
@@ -283,7 +311,7 @@ export function AdvancedMemorySettings({
               variant === "drawer" ? "grid grid-cols-1 gap-3 @lg:grid-cols-2" : "grid grid-cols-1 gap-3 sm:grid-cols-2"
             }
           >
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.contextCap")}</span>
               <DraftNumberInput
                 value={settings.maxContextTokens}
@@ -300,7 +328,7 @@ export function AdvancedMemorySettings({
                 className={fieldClass}
               />
             </label>
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.memoryBudget")}</span>
               <DraftNumberInput
                 value={settings.summaryBudgetTokens}
@@ -317,7 +345,9 @@ export function AdvancedMemorySettings({
               />
             </label>
           </div>
-          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("chat.advancedMemory.budgetHelp")}</p>
+          <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+            {t("chat.advancedMemory.budgetHelp")}
+          </p>
           <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
             {t("chat.advancedMemory.memoryAllocationHelp")}
           </p>
@@ -457,8 +487,8 @@ export function AdvancedMemorySettings({
               {t("chat.advancedMemory.maximumScenesHelp")}
             </span>
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-xs">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.minimumMessages")}</span>
               <DraftNumberInput
                 value={settings.retrieveMinMessages}
@@ -472,10 +502,11 @@ export function AdvancedMemorySettings({
                   }))
                 }
                 ariaLabel={t("chat.advancedMemory.minimumMessages")}
+                ariaDescribedBy={excerptHelpId}
                 className={fieldClass}
               />
             </label>
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.maximumMessages")}</span>
               <DraftNumberInput
                 value={settings.retrieveMaxMessages}
@@ -489,10 +520,34 @@ export function AdvancedMemorySettings({
                   }))
                 }
                 ariaLabel={t("chat.advancedMemory.maximumMessages")}
+                ariaDescribedBy={excerptHelpId}
                 className={fieldClass}
               />
             </label>
+            <p
+              id={excerptHelpId}
+              className="col-span-2 text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]"
+            >
+              {t("chat.advancedMemory.excerptMessagesHelp")}
+            </p>
           </div>
+          <SettingsSwitch
+            label={t("chat.advancedMemory.characterRecollections")}
+            description={t("chat.advancedMemory.characterRecollectionsHelp")}
+            checked={settings.characterRecollections}
+            disabled={disabled}
+            // Turning it on for a prepared chat starts writing recollections for its scenes.
+            onChange={(characterRecollections) =>
+              action.mutate({
+                action: "settings",
+                settings: { characterRecollections },
+                debugMode: useUIStore.getState().debugMode,
+              })
+            }
+            labelPosition="start"
+            className="justify-between rounded-md bg-[var(--secondary)] px-3 py-2.5 text-left"
+            labelClassName="text-xs font-medium"
+          />
           <label className="block space-y-1 text-xs">
             <span>{t("chat.advancedMemory.initialModel")}</span>
             <select
@@ -538,6 +593,50 @@ export function AdvancedMemorySettings({
               className="justify-between rounded-md bg-[var(--secondary)] px-3 py-2.5 text-left"
               labelClassName="text-xs font-medium"
             />
+          )}
+          {showRescan && (
+            <section
+              aria-label={t("chat.advancedMemory.rescan.title")}
+              data-component="AdvancedMemoryRescan"
+              className="space-y-2 rounded-lg bg-[var(--secondary)] p-3 text-xs"
+            >
+              <h4 className="font-medium">{t("chat.advancedMemory.rescan.title")}</h4>
+              <p className="leading-relaxed text-[var(--muted-foreground)]">{t("chat.advancedMemory.rescan.help")}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span>{t("chat.advancedMemory.rescan.from")}</span>
+                  <DraftNumberInput
+                    value={rescanStart}
+                    min={1}
+                    max={lastMessage}
+                    disabled={numberInputsDisabled}
+                    onCommit={(start) => setRescanDraft({ ...rescanRange, chatId, start })}
+                    ariaLabel={t("chat.advancedMemory.rescan.from")}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span>{t("chat.advancedMemory.rescan.to")}</span>
+                  <DraftNumberInput
+                    value={rescanEnd}
+                    min={1}
+                    max={lastMessage}
+                    disabled={numberInputsDisabled}
+                    onCommit={(end) => setRescanDraft({ ...rescanRange, chatId, end })}
+                    ariaLabel={t("chat.advancedMemory.rescan.to")}
+                    className={fieldClass}
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                className={`${actionClass} w-full`}
+                disabled={disabled || !messageCount.data}
+                onClick={rescan}
+              >
+                {t("chat.advancedMemory.rescan.action")}
+              </button>
+            </section>
           )}
           {individual && (
             <button type="button" className={`${actionClass} w-full`} disabled={disabled} onClick={reviewKnowledge}>

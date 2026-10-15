@@ -22,6 +22,7 @@ export const apiConnections = fileTable("api_connections", {
       "xai",
       "arli",
       "zai",
+      "deepseek",
       "custom",
       "image_generation",
       "video_generation",
@@ -37,8 +38,11 @@ export const apiConnections = fileTable("api_connections", {
    * subscription usage widget. Cannot authenticate inference endpoints.
    */
   managementTokenEncrypted: text("management_token_encrypted").notNull().default(""),
-  /** NanoGPT: whether the subscription usage widget is shown for this connection. */
+  /** NanoGPT, Claude (Subscription) and OpenAI (ChatGPT): whether the subscription usage widget is shown. */
   showUsageWidget: text("show_usage_widget").notNull().default("false"),
+  /** Claude (Subscription) and OpenAI (ChatGPT): which plan windows the usage widget shows. */
+  showUsageFiveHour: text("show_usage_five_hour").notNull().default("true"),
+  showUsageWeekly: text("show_usage_weekly").notNull().default("true"),
   /** Imported endpoints stay unavailable until the user reviews and saves them locally. */
   profileImportReviewRequired: text("profile_import_review_required").notNull().default("false"),
   model: text("model").notNull().default(""),
@@ -91,6 +95,8 @@ export const apiConnections = fileTable("api_connections", {
   videoGenerationSource: text("video_generation_source"),
   /** Video generation: explicitly selected service ID. */
   videoService: text("video_service"),
+  /** Instructions for the language model that writes video prompts for this connection. */
+  videoPromptInstructions: text("video_prompt_instructions"),
   /** Audio backend for audio connections (openai | elevenlabs | pockettts | xai). */
   audioSource: text("audio_source"),
   decisionSource: text("decision_source"),

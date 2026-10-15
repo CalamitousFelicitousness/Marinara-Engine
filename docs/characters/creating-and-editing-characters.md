@@ -35,10 +35,11 @@ At the top right you have these buttons:
 
 If you try to leave with unsaved work, a banner reads `You have unsaved changes. Close without saving?` It gives you **Keep editing**, **Discard & close**, and **Save & close**.
 
-The editor is split into tabs. On a wide screen the tabs run down the left side. On a narrow screen they become a scrollable strip across the top. The tabs, in order, are **Metadata**, **Card**, **Convo**, **Lorebook**, **Sprites**, **Gallery**, **Colors**, **Voice**, **Stats**, and **Advanced**.
+The editor is split into tabs. On a wide screen the tabs run down the left side. On a narrow screen they become a scrollable strip across the top. The tabs, in order, are **Metadata**, **Card**, **Onboarding**, **Convo**, **Lorebook**, **Sprites**, **Gallery**, **Colors**, **Voice**, **Stats**, and **Advanced**.
 
 This guide covers **Metadata**, **Card**, **Voice**, and **Advanced**, plus avatars and version history. The other tabs have their own guides:
 
+- **Onboarding**: [Interactive Onboarding](interactive-onboarding.md).
 - **Convo**: [Conversation Mode Profiles](../conversation/profiles.md).
 - **Lorebook**: [Linking Lorebooks to Characters](../lorebooks/linking-to-characters.md).
 - **Sprites**: [Character Sprites](sprites.md).
@@ -72,8 +73,8 @@ The **Card** tab is the main writing workspace. It holds the fields the AI reads
 
 The **Dialogue & Greetings** section sets how a chat opens and how the character sounds:
 
-- **First Message**. The opening message shown when a new chat starts.
-- **Alternate Greetings**. Extra opening messages. When you start a chat you can pick which one to use. Use the up and down controls to reorder them, and the X to remove one.
+- **First Message**. The opening message shown when a new Roleplay chat starts. Conversation and Game chats do not start with a greeting.
+- **Alternate Greetings**. Extra opening messages. When you start a Roleplay chat you can pick which one to use. Use the up and down controls to reorder them, and the X to remove one.
 - **Example Dialogue**. Sample exchanges that teach the character's voice. Use `<START>` to separate exchanges. Use `{{user}}` and `{{char}}` as placeholders.
 
 Greetings and example messages can also display images from the character's Gallery; see [Character galleries → Reuse a gallery image in messages and greetings](galleries.md#reuse-a-gallery-image-in-messages-and-greetings).
@@ -175,6 +176,7 @@ If the underlying text changed since the proposal was made, the app warns you be
 ## Related guides
 
 - [User Personas: Creating and Editing](personas.md)
+- [Interactive Onboarding](interactive-onboarding.md)
 - [Character Sprites](sprites.md)
 - [Character and Persona Galleries](galleries.md)
 - [Importing and Exporting Character Cards](import-export.md)

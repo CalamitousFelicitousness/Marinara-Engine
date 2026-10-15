@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState, type ChangeEvent } from "react";
+import { useTranslation as useUiTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type {
   CharacterStat,
   CustomTrackerField,
@@ -18,6 +20,7 @@ import { api } from "../../../lib/api-client";
 import { randomStatColor } from "../../../lib/random-stat-color";
 import { shallowRecordEqual } from "../../../lib/shallow-record-equal";
 import { useGameStateStore } from "../../../stores/game-state.store";
+import { useUIStore } from "../../../stores/ui.store";
 import type { GameStatePatchField } from "../../../hooks/use-game-state-patcher";
 import { getCharacterFeatureKey, resolveCharacterTargetIndex } from "../lib/character-tracker-data";
 import { useTrackerFieldLockUpdater } from "./use-tracker-field-lock-updater";
@@ -115,6 +118,7 @@ export function useTrackerMutations({
   removeFeaturedCharacterCard: (key: string) => void;
   removeCollapsedCharacterCard: (key: string) => void;
 }) {
+  const { t: localizeUi } = useUiTranslation();
   const [avatarUpload, setAvatarUpload] = useState<{ characterId: string; index: number } | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const avatarUploadSerialRef = useRef(0);
@@ -169,6 +173,20 @@ export function useTrackerMutations({
     [readPresentCharacters],
   );
 
+  /** Point the character at a saved portrait, unless a newer upload or generation took over. */
+  const saveAvatarPath = useCallback(
+    (characterId: string, fallbackIndex: number, token: number, avatarPath: string) => {
+      if (avatarUploadTokenByCharacterRef.current.get(characterId) !== token) return;
+      const latestCharacters = readPresentCharacters();
+      const targetIndex = resolveCharacterTargetIndex(latestCharacters, characterId, fallbackIndex);
+      if (targetIndex < 0) return;
+      const nextCharacters = [...latestCharacters];
+      nextCharacters[targetIndex] = { ...latestCharacters[targetIndex]!, avatarPath };
+      patchField("presentCharacters", nextCharacters);
+    },
+    [patchField, readPresentCharacters],
+  );
+
   const handleAvatarUpload = useCallback(
     (characterId: string, fallbackIndex: number, file: File) => {
       if (!activeChatId) return;
@@ -197,15 +215,7 @@ export function useTrackerMutations({
             name: character.name,
             avatar: dataUrl,
           });
-          if (avatarUploadTokenByCharacterRef.current.get(characterId) !== uploadToken) return;
-
-          const latestCharacters = readPresentCharacters();
-          const targetIndex = resolveCharacterTargetIndex(latestCharacters, characterId, fallbackIndex);
-          if (targetIndex < 0) return;
-
-          const nextCharacters = [...latestCharacters];
-          nextCharacters[targetIndex] = { ...latestCharacters[targetIndex]!, avatarPath: response.avatarPath };
-          patchField("presentCharacters", nextCharacters);
+          saveAvatarPath(characterId, fallbackIndex, uploadToken, response.avatarPath);
         } catch {
           // Match the original HUD widget behavior: failed avatar uploads leave tracker data unchanged.
         } finally {
@@ -221,7 +231,42 @@ export function useTrackerMutations({
       };
       reader.readAsDataURL(file);
     },
-    [activeChatId, patchField, readPresentCharacters],
+    [activeChatId, readPresentCharacters, saveAvatarPath],
+  );
+
+  /** A new tracker portrait from the look, and the outfit when asked; the old one stays if this fails. */
+  const generateAvatar = useCallback(
+    async (index: number, includeOutfit: boolean) => {
+      const characterId = presentCharacters[index]?.characterId ?? readPresentCharacters()[index]?.characterId;
+      if (!activeChatId || !characterId) return;
+      const currentCharacters = readPresentCharacters();
+      const character = currentCharacters[resolveCharacterTargetIndex(currentCharacters, characterId, index)];
+      if (!character) return;
+
+      const token = avatarUploadSerialRef.current + 1;
+      avatarUploadSerialRef.current = token;
+      avatarUploadTokenByCharacterRef.current.set(characterId, token);
+      try {
+        const response = await api.post<{ avatarPath: string }>(`/avatars/npc/${activeChatId}/generate`, {
+          name: character.name,
+          // Tracker fields are raw model output; send only text.
+          appearance: typeof character.appearance === "string" ? character.appearance : null,
+          outfit: typeof character.outfit === "string" ? character.outfit : null,
+          includeOutfit,
+          debugMode: useUIStore.getState().debugMode,
+        });
+        saveAvatarPath(characterId, index, token, response.avatarPath);
+      } catch (error) {
+        toast.error(localizeUi("ui.trackerPanel.featuredcharacterportrait.newPortraitFailed"), {
+          description: error instanceof Error ? error.message : undefined,
+        });
+      } finally {
+        if (avatarUploadTokenByCharacterRef.current.get(characterId) === token) {
+          avatarUploadTokenByCharacterRef.current.delete(characterId);
+        }
+      }
+    },
+    [activeChatId, localizeUi, presentCharacters, readPresentCharacters, saveAvatarPath],
   );
 
   const handleAvatarFileInputChange = useCallback(
@@ -402,6 +447,7 @@ export function useTrackerMutations({
     addPersonaStat,
     addQuest,
     avatarFileInputRef,
+    generateAvatar,
     handleAvatarFileInputChange,
     openAvatarUpload,
     removeCharacter,

@@ -50,7 +50,9 @@ export function isStandaloneCharacterProfileBlock(content: string, characterName
 
 function nameToMarkdownHeadingForMatch(name: string): string {
   return normalizeTextForMatch(name)
-    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+    .replace(/[^\p{L}\p{M}\p{N}\s_-]/gu, "")
+    .replace(/[\p{Variation_Selector}\u20E3]/gu, "")
+    .replace(/\s+/gu, " ")
     .trim();
 }
 
@@ -289,6 +291,25 @@ export function keptWindowStart<T>(
   let start = messages.findIndex(isKept);
   while (start > 0 && !isDropped(messages[start - 1]!)) start--;
   return start;
+}
+
+/** Drop history messages from a prepared prompt in place, moving its chat history wrappers to what is left. */
+export function dropPromptHistoryMessages(
+  messages: GenerationPromptMessage[],
+  drop: (message: GenerationPromptMessage) => boolean,
+): void {
+  const kept = messages.filter((message) => message.contextKind !== "history" || !drop(message));
+  if (kept.length === messages.length) return;
+  reassignHistoryLastMessageWrapper(kept, messages);
+  // Only history entries can be left empty here; other messages, such as a reasoning-only prefill, stay.
+  messages.splice(
+    0,
+    messages.length,
+    ...kept.filter(
+      (message) =>
+        message.contextKind !== "history" || message.content.trim() || message.images?.length || message.files?.length,
+    ),
+  );
 }
 
 /** Select durable history without dropping synthetic current input or rerunning prompt assembly. */

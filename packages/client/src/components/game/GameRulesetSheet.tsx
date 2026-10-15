@@ -13,13 +13,20 @@ import { useMemo, useState } from "react";
 import { Minus, Pencil, Plus } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
+  rulesetConditionIcons,
+  rulesetItemEffectFacts,
   applyRulesetSheetOp,
+  rulesetPartyDefinition,
+  readRulesetPartySheet,
   readResolvedSheetCommandTags,
-  createRulesetSheetEnvelope,
+  rulesetSheetStamp,
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
+  rulesetCheckSources,
+  rulesetHideLines,
   rulesetSectionGroups,
   type EvaluatedRulesetSheet,
   type ResolvedRulesetLive,
@@ -32,8 +39,12 @@ import {
   type RulesetSheetOp,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
+import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
+import { stalePartySheet, useSavePartySheet } from "../../hooks/use-party-sheet";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
+import { rulesetPoolGroupLabel, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { DraftTextarea } from "../ui/DraftTextarea";
 
@@ -50,6 +61,7 @@ const chipClass =
  *  Engine does not know (a newer one's, a hand-edited transcript) falls back to a generic line
  *  rather than showing the player a bare code. */
 const SHEET_REFUSAL_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  "unknown-sheet": "game.ruleset.sheet.refusal.unknownSheet",
   "unknown-pool": "game.ruleset.sheet.refusal.unknownPool",
   "ambiguous-pool": "game.ruleset.sheet.refusal.ambiguousPool",
   insufficient: "game.ruleset.sheet.refusal.insufficient",
@@ -67,6 +79,7 @@ const SHEET_REFUSAL_KEYS: Readonly<Record<string, string>> = Object.freeze({
   "unknown-entry": "game.ruleset.sheet.refusal.unknownEntry",
   "ambiguous-entry": "game.ruleset.sheet.refusal.ambiguousEntry",
   "bad-pool": "game.ruleset.sheet.refusal.badPool",
+  "cannot-heal": "game.ruleset.sheet.refusal.cannotHeal",
   malformed: "game.ruleset.sheet.refusal.malformed",
   "unknown-character": "game.ruleset.sheet.refusal.unknownCharacter",
   "ambiguous-character": "game.ruleset.sheet.refusal.ambiguousCharacter",
@@ -81,7 +94,10 @@ export function describeRefusedSheetCommands(content: string, t: TFunction): str
   const list = refused
     .map((entry) =>
       t("game.ruleset.sheet.refusal.entry", {
-        who: entry.who || t("game.ruleset.sheet.refusal.someone"),
+        who:
+          entry.sheet === "party"
+            ? t("game.ruleset.party.title")
+            : entry.who || t("game.ruleset.sheet.refusal.someone"),
         reason: t(SHEET_REFUSAL_KEYS[entry.reason ?? ""] ?? "game.ruleset.sheet.refusal.other"),
       }),
     )
@@ -293,6 +309,12 @@ export interface GameRulesetSheetProps {
   onLiveChange: (next: RulesetLiveState) => void;
   onEnvelopeSave: (next: RulesetSheetEnvelope) => Promise<void> | void;
   readOnly?: boolean;
+  /** The sheet can be edited, but its live state is played elsewhere (the party's shared sheet). */
+  buildOnly?: boolean;
+  /** A note shown above the editor while a draft is open. */
+  draftNotice?: string | null;
+  /** A new draft was opened, so a note about an earlier one no longer applies. */
+  onDraftStart?: () => void;
   /** What the character holds, which a value reading their items (`itemStat`) shows. */
   items?: ReadonlyArray<RulesetSheetItem>;
   /** A rest taken by the game rather than here: the sheet and what the character carries change
@@ -309,10 +331,14 @@ export function GameRulesetSheet({
   live,
   onLiveChange,
   onEnvelopeSave,
-  readOnly = false,
+  readOnly: locked = false,
+  buildOnly = false,
+  draftNotice,
+  onDraftStart,
   items,
   onRest,
 }: GameRulesetSheetProps) {
+  const readOnly = locked || buildOnly;
   const { t: localizeUi } = useUiTranslation();
   const [draft, setDraft] = useState<RulesetSheetEnvelope | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -329,6 +355,21 @@ export function GameRulesetSheet({
   const evaluated = useMemo(
     () => evaluateRulesetSheet(definition, build, items ? { ...resolved, items } : resolved),
     [definition, build, items, resolved],
+  );
+
+  const checkSources = useMemo(
+    () => rulesetCheckSources(definition, build, live, items),
+    [definition, build, live, items],
+  );
+  const hideLines = useMemo(
+    () => rulesetHideLines(definition, checkSources, localizeUi),
+    [definition, checkSources, localizeUi],
+  );
+  const saveModifiers = checkSources.flatMap((source) =>
+    rulesetItemEffectFacts(definition, {
+      modifiers: source.modifiers?.filter((one) => one.against),
+      saves: source.saves ? [...source.saves] : undefined,
+    }),
   );
 
   /** Every change a player makes takes the same route a Game Master command does. */
@@ -360,9 +401,7 @@ export function GameRulesetSheet({
     return groups;
   }, [resolved.pools]);
 
-  const summary = definition.gm.sheetSummary;
-  const summaryFields = definition.sheet.fields.filter((field) => summary.fields.includes(field.id));
-  const summaryDerived = definition.sheet.derived.filter((entry) => summary.derived.includes(entry.id));
+  const { fields: summaryFields, derived: summaryDerived } = rulesetSheetSummaryShown(definition, build);
   const untrainedTier = definition.resolution.proficiencyTiers[0]?.id;
   const trained = [
     ...definition.sheet.skills.map((skill) => ({
@@ -382,8 +421,11 @@ export function GameRulesetSheet({
   ].filter((entry) => entry.tier !== undefined && entry.tier !== untrainedTier);
 
   const startEditing = () => {
-    setDraft(createRulesetSheetEnvelope(definition, build));
+    // Labelled with this layout, and never older than the sheet already was. Everything else the
+    // envelope carries (the guided builder's choices) goes along, or re-picking would grant twice.
+    setDraft({ ...envelope, v: rulesetSheetStamp(definition, envelope), build });
     setRestNotice(null);
+    onDraftStart?.();
   };
 
   const saveDraft = async () => {
@@ -414,7 +456,7 @@ export function GameRulesetSheet({
               : definition.name}
           </p>
         </div>
-        {!readOnly && !draft && (
+        {!locked && !draft && (
           <button
             type="button"
             onClick={startEditing}
@@ -428,6 +470,14 @@ export function GameRulesetSheet({
 
       {draft ? (
         <div className="space-y-3">
+          {draftNotice && (
+            <p
+              role="alert"
+              className="rounded-lg border border-[var(--marinara-app-accent-static)] bg-[var(--secondary)] p-2 text-[0.6875rem] text-[var(--foreground)]"
+            >
+              {draftNotice}
+            </p>
+          )}
           <RulesetSheetEditor
             definition={definition}
             layerOptions={layerOptions}
@@ -459,7 +509,7 @@ export function GameRulesetSheet({
         <>
           {poolGroups.map((group) => (
             <div key={group.id || "ungrouped"} className="space-y-1.5">
-              {group.id && <p className={labelClass}>{group.id}</p>}
+              {group.id && <p className={labelClass}>{rulesetPoolGroupLabel(group.id)}</p>}
               {group.pools.map((pool) => (
                 <div key={pool.key} className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${cardClass}`}>
                   <span
@@ -624,6 +674,18 @@ export function GameRulesetSheet({
             </div>
           )}
 
+          {hideLines.map((line) => (
+            <p key={line} className="break-words text-xs text-[var(--muted-foreground)]">
+              {line}
+            </p>
+          ))}
+          {saveModifiers.length > 0 && (
+            <div className="space-y-1 text-xs text-[var(--muted-foreground)]">
+              {saveModifiers.map((fact, index) => (
+                <p key={index}>{rulesetEffectPhrase(fact, localizeUi)}</p>
+              ))}
+            </div>
+          )}
           {resolved.conditions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {resolved.conditions.map((condition) => (
@@ -639,12 +701,29 @@ export function GameRulesetSheet({
                       : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                   }`}
                 >
+                  <ArtIcon
+                    ids={rulesetConditionIcons(definition, condition.id)}
+                    className="mr-1 h-4 w-4 align-[-0.2em]"
+                  />
                   {condition.label}
                 </button>
               ))}
             </div>
           )}
 
+          {checkSources.flatMap((source, index) => {
+            const modifiers = source.modifiers?.filter((one) => one.to === "damage");
+            return modifiers?.length ? (
+              <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">
+                {source.name}:{" "}
+                {rulesetItemEffectFacts(definition, { modifiers })
+                  .map((fact) => rulesetEffectPhrase(fact, localizeUi))
+                  .join("; ")}
+              </p>
+            ) : (
+              []
+            );
+          })}
           {definition.rests.length > 0 && (
             <div className="space-y-1.5">
               <div className="flex flex-wrap gap-1.5">
@@ -757,5 +836,72 @@ export function GameRulesetSheet({
         </>
       )}
     </div>
+  );
+}
+
+/** The shared sheet sits beside the party portraits. A ruleset that sets the party up through a
+ *  guided builder (1.163) lets any player edit it, saved on the revision it was opened at: a save
+ *  opened before someone else's landed is refused, the draft stays open, and saving again replaces theirs. */
+export function GameRulesetPartySheet({
+  definition,
+  stored,
+  live,
+  chatId,
+  revision,
+  memberBuilds,
+}: {
+  definition: RulesetDefinition;
+  stored: unknown;
+  live: RulesetLiveState | undefined;
+  chatId?: string | null;
+  revision?: number;
+  /** The party's characters' builds, which the fields read off them follow. */
+  memberBuilds?: readonly RulesetSheetBuild[];
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const [conflict, setConflict] = useState(false);
+  const savePartySheet = useSavePartySheet();
+  const party = useMemo(() => rulesetPartyDefinition(definition), [definition]);
+  const envelope = useMemo(
+    () => readRulesetPartySheet(definition, stored, memberBuilds),
+    [definition, stored, memberBuilds],
+  );
+  if (!party || !definition.party) return null;
+  const editable = Boolean(chatId && (definition.party.builder || definition.party.lists?.length));
+  const save = async (sheet: RulesetSheetEnvelope) => {
+    try {
+      await savePartySheet.mutateAsync({ chatId: chatId!, sheet, revision: revision ?? 0 });
+      setConflict(false);
+    } catch (error) {
+      // Theirs is shown as saved; this draft stays open, and saving it again replaces theirs.
+      if (stalePartySheet(error)) setConflict(true);
+      else toast.error(error instanceof Error ? error.message : localizeUi("game.ruleset.party.saveFailed"));
+      throw error;
+    }
+  };
+  return (
+    <details className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+      <summary className="cursor-pointer break-words text-xs font-semibold text-[var(--foreground)]">
+        {definition.party.label}
+      </summary>
+      <div className="mt-3 max-h-80 overflow-y-auto">
+        {envelope ? (
+          <GameRulesetSheet
+            definition={party}
+            cardName={definition.party.label}
+            envelope={envelope}
+            live={live}
+            readOnly={!editable}
+            buildOnly={editable}
+            draftNotice={conflict ? localizeUi("game.ruleset.party.conflict") : null}
+            onDraftStart={() => setConflict(false)}
+            onLiveChange={() => undefined}
+            onEnvelopeSave={save}
+          />
+        ) : (
+          <p className="text-xs text-[var(--muted-foreground)]">{localizeUi("game.ruleset.party.unreadable")}</p>
+        )}
+      </div>
+    </details>
   );
 }

@@ -19,6 +19,7 @@ export type APIProvider =
   | "xai"
   | "arli"
   | "zai"
+  | "deepseek"
   | "custom"
   | "image_generation"
   | "video_generation"
@@ -138,6 +139,8 @@ export interface APIConnection {
   videoGenerationSource: string | null;
   /** Explicitly selected video generation service ID. Overrides URL/model inference when set. */
   videoService: string | null;
+  /** Instructions for the language model that writes video prompts for this video connection. */
+  videoPromptInstructions: string | null;
   /** Audio backend for audio connections (e.g. "elevenlabs"). Null for non-audio providers. */
   audioSource: AudioGenerationSource | null;
   /** System One backend; absent on older connections. */
@@ -176,8 +179,11 @@ export interface APIConnection {
   treatAsLocalEndpoint: boolean;
   /** Folder this connection belongs to (null = root/unfiled). */
   folderId: string | null;
-  /** NanoGPT only: whether the subscription usage widget is shown. */
+  /** NanoGPT, Claude (Subscription) and OpenAI (ChatGPT): whether the subscription usage widget is shown. */
   showUsageWidget: boolean;
+  /** Claude (Subscription) and OpenAI (ChatGPT): which plan windows the usage widget shows. */
+  showUsageFiveHour: boolean;
+  showUsageWeekly: boolean;
   /** Manual sort order within a folder (lower = higher). 0 = use default sort. */
   sortOrder: number;
   createdAt: string;
@@ -228,4 +234,39 @@ export interface ConnectionTestResult {
   logprobs?: boolean;
   /** A chat-model Decision connection: whether the model answered without thinking first. */
   answersDirectly?: boolean;
+}
+
+/**
+ * App-wide default embedding source: a connection id, or LOCAL_SIDECAR_CONNECTION_ID.
+ *
+ * Used only when the connection in play sets neither an embedding model nor an Embedding
+ * Connection of its own, so per-connection settings keep winning. Empty means no default:
+ * those connections fall back to the built-in local embedder as before.
+ */
+export const DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY = "default-embedding-connection";
+
+export type PlanUsageWindowId = "five_hour" | "seven_day";
+
+/**
+ * One rate-limit window of a subscription plan, in the shape the NanoGPT quota
+ * windows use so the usage widget draws both with one bar. Plans report
+ * percentages only, so `used` and `remaining` are always null.
+ */
+export interface PlanUsageWindow {
+  id: PlanUsageWindowId;
+  used: null;
+  remaining: null;
+  /** A fraction, not a percentage. Null means the plan did not report it. */
+  percentUsed: number | null;
+  /** UNIX epoch milliseconds. */
+  resetAt: number | null;
+  degraded: false;
+}
+
+/** The rate-limit windows of the plan behind a Claude (Subscription) or OpenAI (ChatGPT) connection. */
+export interface PlanUsage {
+  provider: "claude_subscription" | "openai_chatgpt";
+  /** The plan name the provider reports ("pro", "plus", ...), or null. */
+  plan: string | null;
+  windows: PlanUsageWindow[];
 }

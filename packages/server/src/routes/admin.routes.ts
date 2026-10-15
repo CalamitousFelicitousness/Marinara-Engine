@@ -33,6 +33,8 @@ import {
   mutateAvatarReferencesAndCleanup,
   scanAbandonedAvatarFiles,
 } from "../services/image/avatar-file-lifecycle.js";
+import { removeAvatarOwnersOfType } from "../services/avatars/storage.js";
+import { TRIPO_API_KEY_SETTING } from "../services/avatars/generation/tripo-key.js";
 
 type ExpungeScope =
   "chats" | "characters" | "personas" | "lorebooks" | "presets" | "connections" | "automation" | "media" | "trackers";
@@ -200,6 +202,15 @@ export async function adminRoutes(app: FastifyInstance) {
         tablesCleared[name] = tablesCleared[name] ?? 0;
       }
     };
+    // Avatar models belong to their character or persona, so they go with it (Media & Assets clears them all).
+    const removeAvatarModels = async (ownerType: "character" | "persona", keepOwnerIds: string[] = []) => {
+      try {
+        const removed = await removeAvatarOwnersOfType(ownerType, keepOwnerIds);
+        filesDeleted.avatarModels = (filesDeleted.avatarModels ?? 0) + removed;
+      } catch (err) {
+        logger.warn(err, "Failed to remove the %s avatar models", ownerType);
+      }
+    };
 
     // Tracker snapshots only. Narrower than "chats" on purpose: retiring a
     // tracker schema needs the snapshots gone, because each run merges over
@@ -251,6 +262,7 @@ export async function adminRoutes(app: FastifyInstance) {
         cleanupFiles: !requestedScopes.includes("media"),
       });
       filesDeleted.avatars = (filesDeleted.avatars ?? 0) + cleanup.filesDeleted;
+      await removeAvatarModels("character", [PROFESSOR_MARI_ID]);
     }
 
     if (requestedScopes.includes("personas")) {
@@ -270,6 +282,7 @@ export async function adminRoutes(app: FastifyInstance) {
         cleanupFiles: !requestedScopes.includes("media"),
       });
       filesDeleted.avatars = (filesDeleted.avatars ?? 0) + cleanup.filesDeleted;
+      await removeAvatarModels("persona");
     }
 
     if (requestedScopes.includes("lorebooks")) {
@@ -335,6 +348,10 @@ export async function adminRoutes(app: FastifyInstance) {
       await runDelete("app_settings", () =>
         db.delete(schema.appSettings).where(eq(schema.appSettings.key, SPEECH_TO_TEXT_SETTINGS_KEY)).run(),
       );
+      // The Tripo API key was a connection until it moved to the 3D Avatars page, so it is cleared here too.
+      await runDelete("app_settings", () =>
+        db.delete(schema.appSettings).where(eq(schema.appSettings.key, TRIPO_API_KEY_SETTING)).run(),
+      );
     }
 
     if (requestedScopes.includes("automation")) {
@@ -360,6 +377,7 @@ export async function adminRoutes(app: FastifyInstance) {
       filesDeleted.gameSceneVideos = clearDirectory(join(DATA_DIR, "game-scene-videos"));
       filesDeleted.avatars = clearDirectory(join(DATA_DIR, "avatars"));
       filesDeleted.sprites = clearDirectory(join(DATA_DIR, "sprites"));
+      filesDeleted.avatarModels = clearDirectory(join(DATA_DIR, "avatar-models"));
       filesDeleted.gallery = clearDirectory(join(DATA_DIR, "gallery"));
       filesDeleted.fonts = clearDirectory(join(DATA_DIR, "fonts"));
       filesDeleted.knowledgeSources = clearDirectory(join(DATA_DIR, "knowledge-sources"));

@@ -131,11 +131,11 @@ The format must serve rulesets nobody has written yet, many of which will be dra
 - **The asset path is derived, never chosen.** `asset` must equal `catalogs/<the catalog's id>.json`, so the route finds the file from the ruleset alone and no catalog can name another one's file.
 - **One helper decides what a list can hold.** `rulesetListRowIssues(list, values)` is exported from the shared package and is the single answer to "could this row be stored": the schema runs it over every inline entry, `parseRulesetCatalogFile` runs it over an asset's entries at read time, and the client runs it again over the rows a player picked. A catalog therefore cannot write something the editor would then refuse. `rulesetCatalogEntryIssues(definition, catalog, entries)` is the shared wrapper both validation paths call.
 - **Copy at pick, like copy at setup.** `rowsFromCatalogEntry` returns the rows with one reserved key, `RULESET_CATALOG_ROW_KEY = "_catalog"`, holding `<catalogId>/<entryId>`. Column ids must start with a letter, so it can never collide with one. The rows are copies: the player edits them, the sheet stays readable while its ruleset is uninstalled, and a new ruleset version never rewrites a character.
-- **Caps.** 12 catalogs per ruleset, 8 feeds and 8 filters per catalog, 2000 entries per catalog inline or asset, 6 rows per entry, and `RULESET_CATALOG_MAX_BYTES = 1 MB` per asset, checked against the manifest's declared `files[].bytes` before the file is read.
+- **Caps.** 12 catalogs per ruleset, 8 feeds and 8 filters per catalog, 2000 entries per catalog inline or asset, 6 rows per entry, and `RULESET_CATALOG_MAX_BYTES = 2 MB` per asset (1 MB before 1.340), checked against the manifest's declared `files[].bytes` before the file is read.
 - **The list stays small.** `GET /api/capability-packages/rulesets` strips inline `entries` and reports `entryCount` instead, because the list is read whenever a sheet editor opens. A ruleset without catalogs is listed byte for byte as before. `GET /api/capability-packages/rulesets/catalog?rulesetId=&catalogId=&version=` serves one catalog: inline entries, or the parsed and validated asset. It has no privileged gate, for the same reason `/rulesets` has none, and it is registered ahead of the `/:id/...` routes so a package id cannot shadow it. An unknown ruleset, version or catalog is a 404 with a code; an asset the Engine will not read is a 422 with the author's own issue lines.
 - **Capability API 1.21, with two halves.** Declaring a `catalogs/<id>.json` asset requires 1.21 and the `ruleset.json` beside it. Catalogs also live INSIDE the ruleset file, which the manifest cannot show, so install reads the verified bytes and refuses a `catalogs` key under a lower declaration. An unparseable ruleset does not fail the install: that stays the registry's report, with a log line.
 - **`mechanics` is validated, and partly consumed.** The optional block (kind, range, area, targets, friendly fire, amount, damage type, attack roll, save, cost, per-cost step, concentration, reaction) is a closed strict vocabulary so a typo surfaces now rather than when something finally reads it. Slice 8a only validated it and showed one compact line in the picker. The combat bridge consumes kind, range, area, friendly fire, amount, damage type, cost and reaction (to leave reaction entries out). Attack roll, save, concentration and per-cost step are still read by nothing.
-- **Known ceiling: community catalogs are inline only.** A ruleset imported as a single file, or received from a GitHub repository, carries its catalogs inside the one file, and therefore inside the existing 256 KB cap. Separate catalog files for community rulesets (`rulesets/<id>/catalogs/*.json`) were left out on purpose: the repository lane reads direct children of `rulesets/` only, and the single-file lane has one file by definition. A community author with a list too long for 256 KB publishes a package instead. If that becomes a real limit, it is its own slice.
+- **Known ceiling: community catalogs are inline only.** A ruleset imported as a single file, or received from a GitHub repository, carries its catalogs inside the one file, and therefore inside the 512 KB cap (256 KB before 1.340). Separate catalog files for community rulesets (`rulesets/<id>/catalogs/*.json`) were left out on purpose: the repository lane reads direct children of `rulesets/` only, and the single-file lane has one file by definition. A community author with a list too long for 512 KB publishes a package instead. If that becomes a real limit, it is its own slice.
 - **The proof is a second non-d20 ruleset.** `docs/examples/rulesets/ember-roads.json` grew a `knacks` list, a `tricks` list whose rows are pools, and a catalog feeding both, with an entry that writes two rows and entries carrying `mechanics`. Nothing in the format is 5e-shaped, and the regressions read that file rather than the 5e one.
 
 ## What the combat bridge settled
@@ -726,8 +726,8 @@ C4a is the board, on the shared and server sides. C4b is the screen that draws i
 - **Proven** in `scripts/regressions/game-ruleset-combat-grid.regression.ts` (hand-drawn boards,
   scripted dice, both example rulesets, and the byte-for-byte comparison), plus positioned cases in
   `ruleset-combat-director.regression.ts` and `ruleset-combat-director-route.regression.ts`.
-- **Left for later**: three-quarter and total cover, elevation, flying over obstacles, squeezing,
-  hiding and forced movement. The reaction window itself is C5b.
+- **Left for later**: flying over obstacles, squeezing, hiding and forced movement (cover by degrees
+  came with combat C6a-2, height with C6b). The reaction window itself is C5b.
 
 ### What C4b settled
 
@@ -966,8 +966,9 @@ Capability API 1.48, for #6740. The second Storyteller slice: initiative as a nu
   condition on (from the source, when there is one) and starts `crashedTurns`; rising above it takes
   it off. `recoverAfter` counts the crashed one's own turn starts and resets them to `base`. An
   opening at the line crashes before the first turn, and every crash is lifted when the fight ends
-  (`liftRulesetCrashes`, from `pushOutcome`, which every outcome goes through, and from fleeing), so a
-  sheet never keeps it.
+  (`liftRulesetFightEffects`, from `pushOutcome`, which every outcome goes through, and from fleeing),
+  so a sheet never keeps it. The same function lifts every condition the fight put on with a clock,
+  an `endsAfter` or a concentration (combat C6d), without its `onEnd`, and ends the concentration.
 - **Order and windows.** As each round begins the order is re-sorted by the numbers, with no dice,
   and the pause at the end of a round names nobody next, as a round that throws again does.
 - **Menu and picker.** `option.styles` carries each style's forecast: a taking style what it would
@@ -1705,7 +1706,9 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
   the buyer's sheet as a gate's `unless` is). An item may carry its own `sold` place, and a `service`
   mark for something bought and never carried. `market.ts` works everything out: a place by id or
   label, the rank an item is sold from, the sellers at a rank, the price (worked out in the smallest
-  coin, rounded there and said in the largest coin the layers leave that pays it exactly, as
+  coin, rounded there and said in the coin its cost is written in where that pays it exactly, else
+  in the largest coin the layers leave that does (1.69 added the first half; before it, a 5e potion
+  of 50 gp read as 5 platinum pieces), as
   `itemPrice` says a cost), the quoter a buy is answered with, and the Game Master's block.
 - **The place comes from the chat, not from stored state.** The Game Master's `[place:]` tag is
   answered in place (`game-place-tag.ts`), and the place in force is the last one answered in the
@@ -1715,8 +1718,9 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
 - **A buy is a payment and an add, or neither.** The `buy` action quotes, pays with
   `payGameInventoryCoins` out of the buyer's bag, then adds on the paid stacks; a refused add, or one
   that fits only some of what was bought, leaves the stacks as they were. A service is refused by the
-  add itself (`service`), so nothing puts one in a bag, and the picker leaves services out. The market is built once per turn (`loadGameMarket`) and kept on the
-  inventory turn, so the preview and the save answer alike. `only` is checked against the buyer's own
+  add itself (`service`), so nothing puts one in a bag, and the picker leaves services out. The market's maker is built once per turn (`loadGameMarket`) and kept on the
+  inventory turn, and makes a fresh market for the preview and another for the save (1.69: a market
+  counts what the reply buys and sells), so the two answer alike. `only` is checked against the buyer's own
   card (the player's for no name or the player's own; a blank sheet for a member with none), with
   what they carry at that tag (the stacks the reply's earlier tags left) and the turn's own live state, the one its items are used with (never a replaced
   telling's row).
@@ -1724,6 +1728,53 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
   MARKET block listing each seller present with a dozen wares, cheapest first.
 - **Proven** by `scripts/regressions/game-ruleset-markets.regression.ts` and
   `e2e/game-ruleset-markets.e2e.ts`, with 61 deliberate breaks each caught.
+
+### What market days settled
+
+Capability API 1.69: slice I9-2 of the ruleset items plan (#6934).
+
+- **A day is read off the chat, like the place.** `answeredGamePlaces` lists every place tag the
+  Engine answered, with where it stands; `gameMarketDayStart` finds the one that began the day the
+  last is in: another place (a name in any case, or a size) or the same one said again with
+  `day="new"`. The day is named by the chat, that tag's count among place tags, and the place, and
+  that name seeds everything rolled for it, so the prompt, the preview and the save of a reply, and
+  every later turn, roll the same shelf. `gameMarketDayFor` reads the day before a reply (and the
+  reply's own place tags), with the buys and sales the Engine answered after the tag that began it,
+  read back off the answered tags (`stock="true"`, `seller`, `price`). Nothing is stored, so swipes,
+  regenerations and branches need nothing of their own.
+- **The shelf** (`rulesetMarketShelf`): each seller's `stock` table rolled for the day (items only,
+  never coins) and each `limited` count rolled for the day per item. A buy takes the place's own
+  wares first, as many as the limit leaves, then a seller's stock (that seller alone, `only` still
+  checked); a buy of either past what is left is refused `sold-out`. An item's place and its limit
+  each come from its own `sold`, else the first rule that names one.
+- **A sale is a take and a payment, or neither.** `sell` needs a `buyBack` share and a seller here
+  who sells that kind of thing; it is priced at the default level times the share, counted against
+  the place's `purse` in that purse's coin family, takes the item out of the seller's own bag (all
+  of it or none; a bound cursed item never) and adds its coins largest first, or leaves the stacks
+  as they were when the coins will not fit. The journal lists it as sold.
+- **A market counts what the reply does** (`record`), so a second buy of the one pistol in the same
+  reply is refused; hence the maker on the inventory turn.
+- **Said to the Game Master**: each seller's stock today and how many are left of a limited item,
+  and a selling line with today's purse left, in the purse's own coin when that says it exactly; the
+  place line teaches `day="new"`, and a sell line is taught where the market buys back.
+- **Proven** by `scripts/regressions/game-ruleset-markets.regression.ts` (with the 1.65 market kept
+  as its own variant, so the earlier sections do not move with the day's dice) and
+  `e2e/game-ruleset-markets.e2e.ts`, with 78 deliberate breaks each caught.
+
+### What riders on held weapons settled
+
+Capability API 1.70, ahead of the 5e package's weapons as items (P1).
+
+- **A rider reads rows, so a held weapon never qualified.** `riderActionIds` turned `sources` and
+  `requires` into the ids of the attack rows that qualify, and a weapon held from the bag is an
+  `item:<n>` action, so a 5e Sneak Attack would have stopped firing the day the package's weapons
+  became items. A rider's `weapons: { tags }` adds the held weapons carrying any of those tags, and
+  their off-hand strike where they have one; a rider naming only rows still fires on no held weapon,
+  and one naming nothing on any hit, as before.
+- **Checked at import** (each tag is one the items block declares) and **gated at 1.70**, inline and
+  in a catalog file.
+- **Proven** by the rider section of `scripts/regressions/game-ruleset-weapons.regression.ts`, with 11
+  deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 
@@ -2022,7 +2073,7 @@ Written once by game creation, like `gameExperienceId`. `gameRuleset` is declare
 
 ### `ruleset.json` (Capability API 1.20)
 
-A package lists `ruleset.json` in `contributions.assets.paths`, hash-pinned in `files[]`. Discovery is by that reserved filename, as with `gm-verbs.json`. The Engine refuses it on declared bytes above 256 KB before reading, validates it with a strict shared zod schema, and drops it with one log line if unusable. A ruleset package is useless without the seam, so it declares 1.20 and older Engines refuse the install cleanly.
+A package lists `ruleset.json` in `contributions.assets.paths`, hash-pinned in `files[]`. Discovery is by that reserved filename, as with `gm-verbs.json`. The Engine refuses it on declared bytes above 512 KB (256 KB before 1.340) before reading, validates it with a strict shared zod schema, and drops it with one log line if unusable. A ruleset package is useless without the seam, so it declares 1.20 and older Engines refuse the install cleanly.
 
 Top-level shape (see the draft file): `id`, `version`, `name`, `edition`, `license`, `coverage`, `resolution`, `sheet`, `rests`, `gm`.
 
@@ -2090,7 +2141,7 @@ Not yet verified: that the Compatible JSON and PNG exporters leave unknown exten
 | B. Engine tracks the number      | Enforced bookkeeping, no fiction adjudicated | HP and temp HP, hit dice, spell slots 1st–9th, Pact Magic slots, named class counters with short or long recharge, death saves, exhaustion, the fourteen SRD conditions, concentration, short and long rests          |
 | C. Engine stores it, GM reads it | Structured lists                             | Spells (level, prepared, ritual, concentration, notes), attacks, features and traits, other proficiencies and languages, class, subclass, race, background, alignment, XP                                             |
 
-Deliberately out of v1: class and subclass tables (slot maxima and HP are entered, not derived), multiclass slot calculation, a structured spell compendium, armour-derived AC, automated level-up, enemy and NPC sheets, attack rolls and critical hits (combat adapter), tool checks.
+Deliberately out of v1: class and subclass tables (slot maxima and HP are entered, not derived), multiclass slot calculation, a structured spell compendium, armour-derived AC, automated level-up, enemy and NPC sheets, attack rolls and critical hits (combat adapter), tool checks. Most of these came later: the 5e package works its slot maxima out from a level per class with the Multiclass Spellcaster table (0.18.0, on `sheet.migrations` and the shared rest of Capability API 1.77), derives Armor Class from what is worn, ships spell and creature catalogs, and fights by its own combat block; HP and level-up stay entered by hand.
 
 Spells are tier C on purpose. Out of combat the GM adjudicates the effect; the Engine guarantees the spell is on the sheet and the slot is really spent. The combat adapter later gives a small supported spell list mechanical definitions, and at that point battle slots come from the sheet instead of from encounter generation.
 
@@ -2122,7 +2173,7 @@ All community lanes sit behind **Allow custom Agent imports**. Nothing executes,
 
 - Official ids are bare (`5e-2014`). Community ids are namespaced by source (`<owner>/<id>` for a repository, `local/<id>` for a file), so two authors' `v20` never collide and nothing can shadow an official ruleset.
 - Definitions are stored by id and version. An update adds a version and never rewrites one. A game keeps resolving the version it pinned; the same version arriving with different bytes is refused with a message telling the author to bump it.
-- A sheet is read tolerantly against its ruleset's current schema: unknown fields are kept, missing fields take defaults, out-of-range values are clamped on edit, never on read. There are no migration scripts.
+- A sheet is read tolerantly against its ruleset's current schema: unknown fields are kept, missing fields take defaults, out-of-range values are clamped on edit, never on read. A layout that moves values to new ids declares `sheet.migrations` (Capability API 1.77, C6e-0), applied on read: builds by `readRulesetSheetEnvelope` (gated by the stored `v`, every step copying, a stamp never below the stored `v` via `rulesetSheetStamp`), live state inside the one stored-live reader (`readStoredLiveState`), which readers and writers share.
 - A community `RulesetRef` carries its source URL. A shared setup file or a dormant sheet can therefore tell the recipient where the missing ruleset came from, instead of only that it is missing.
 
 Characters travel on their own. A card exported with a community sheet keeps it, a recipient without that ruleset keeps it dormant, and it becomes live the moment they add the author's repository.
@@ -2145,7 +2196,7 @@ Status: the format, the route, Capability API 1.21 and the sheet editor's picker
 
 ## Slices and exit evidence
 
-Each slice is one PR against `staging`, with a draft PR opened when work starts, a `CHANGELOG.md` `[Unreleased]` entry, localized copy, docs, a `[docs-i18n]` follow-up, and unchecked manual-verification boxes. Proofs are `*.regression.ts`; no `.test.ts` stays in the tree.
+Each slice is one PR against `staging`, with a draft PR opened when work starts, localized copy, docs, a `[docs-i18n]` follow-up, and unchecked manual-verification boxes. Proofs are `*.regression.ts`; no `.test.ts` stays in the tree.
 
 | #   | Repo            | Work                                                                                                                                                                | Smallest useful proof                                                                                                                                                                                                                                                                                     |
 | --- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -175,6 +175,7 @@ Generation errors appear as a toast at the bottom of the screen. If a connection
 - **No API connection configured for this chat**: the chat has no connection selected. Open the **Connections** panel, create one, then pick it for the chat. See [Connecting to an AI Provider](connections/connecting-to-a-provider.md). An API key is a secret code from a provider that lets Marinara use their models.
 - The model does not accept a parameter: the toast tells you which one. Open **Chat Settings** > **Advanced Parameters**, find that parameter, and set it to **Off**. To stop sending it in every chat on the connection, turn off its Send switch in the connection's custom defaults instead.
 - The model says a parameter is required: find that parameter the same way and set it to **Override**, or turn its Send switch on in the connection's custom defaults.
+- **This model's chat template needs user and assistant messages to take turns**: some local models, such as Mistral-based models served by llama.cpp, only accept messages that alternate between you and the AI. Marinara already merges back-to-back messages for these models and tries once more. If you still see this, open **Chat Settings** > **Advanced Parameters**, set **Post-Processing Messages** to **Override**, then choose **Single User Message**, or serve the model with a less strict chat template.
 - **The AI returned an empty response. Try sending your message again.**: send your message again. If it keeps happening, try a different model or connection.
 - **A generation is already in progress for this chat**: one reply is still streaming. Wait for it to finish or click the Stop button, then try again.
 - **No connections are marked for the random pool**: you turned on random connection routing but marked no connections for the pool. Add at least one connection to the pool, or turn random routing off.
@@ -266,6 +267,7 @@ Game Mode Storyboards turn a completed GM narration into keyframe images and opt
 - Keyframe images need an image connection. Clips also need a video connection.
 - If a custom prompt works better with all characters combined, turn off **Use NovelAI Character Prompts**.
 - Slow providers can hit a timeout. Raise `IMAGE_GEN_TIMEOUT_MS` or `VIDEO_GEN_TIMEOUT_MS` in `.env`, then restart Marinara. The server only reads these values at startup.
+- By default, an image provider response larger than 30 MiB fails with `Outbound response exceeded 31457280 bytes`. Local ComfyUI output files that embed the workflow and reference images as metadata can reach this size. Raise `IMAGE_GEN_MAX_RESPONSE_BYTES` in `.env` and restart Marinara, or turn off metadata in ComfyUI.
 
 See the [Storyboard Agent Guide](game/storyboard.md) for both workflows and [Game Mode: Getting Started](game/getting-started.md) for Game setup.
 
@@ -347,6 +349,12 @@ Docker and Podman keep data in the `marinara-data` volume, so run the command in
 ### Backup or Export returns 403
 
 Loopback sessions can make backups without an admin secret. From another device, a network address, or Docker, backups and profile exports need more. Set `ADMIN_SECRET` on the server and save the same value in **Settings** > **Advanced** > **Admin Access**. If you want loopback to require the secret too, set `MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK=true`.
+
+### Import says the file is not a readable ZIP archive
+
+Marinara reads `.charx` cards, `.marinara` packages, Agent packages and custom Agent repositories as ZIP archives. It refuses an archive that is damaged or whose contents do not match its own file list, and shows **The file is not a readable ZIP archive** (or **Could not read .marinara package** for a `.marinara` package). A partial download is the usual cause, so download the file again. If you made the archive yourself, create it again with a standard tool such as your system's compress option, `zip`, or 7-Zip. Zero padding or a line break added after the archive during a transfer is fine.
+
+**Package contains too many files** means an Agent package or custom repository holds more than 8,192 files. **.marinara package has too many entries** means a `.marinara` package holds more than 8 files. These limits are not new. Remove the extra files and try again.
 
 ## Android and Docker
 

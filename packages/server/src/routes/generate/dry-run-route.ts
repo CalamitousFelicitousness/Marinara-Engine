@@ -33,10 +33,15 @@ import {
   parseRoleplayUserCommands,
   prepareUserRoleplayCommands,
   roleplayHiddenWhisperMessageIds,
+  latestRoleplayUserInput,
 } from "../../services/generation/roleplay-commands.js";
 import { randomUUID } from "crypto";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
-import { createAdvancedMemoryService, selectAdvancedMemoryMessages } from "../../services/advanced-memory.js";
+import {
+  createAdvancedMemoryService,
+  selectAdvancedMemoryMessages,
+  selectAdvancedMemoryWhisperOnlyIds,
+} from "../../services/advanced-memory.js";
 import { prepareAdvancedMemoryContext } from "../../services/generation/advanced-memory-context.js";
 import {
   ADVANCED_MEMORY_MARKER_TYPES,
@@ -880,14 +885,23 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         ? roleplayHiddenWhisperMessageIds(chatMessages.slice(Math.max(0, conversationStart)), whisperViewerId)
         : new Set<string>();
     if (advancedMemoryEnabled) {
-      const allowedIds = new Set(
-        selectAdvancedMemoryMessages(
+      // Impersonation reads memory as its owner, without one character's knowledge range, as the live route does.
+      const individualMemoryReader = dryRunGroupChatMode === "individual" && audienceCharacterIds.length > 0;
+      // Memory's own preparation below narrows whisper-only messages to its window, as in the live route.
+      const allowedIds = new Set([
+        ...selectAdvancedMemoryMessages(
           advancedMemorySourceMessages,
           advancedMemorySettings,
           audienceCharacterIds.length ? audienceCharacterIds : characterIds,
-          dryRunGroupChatMode === "individual",
+          individualMemoryReader,
         ).map((message) => message.id),
-      );
+        ...selectAdvancedMemoryWhisperOnlyIds(
+          advancedMemorySourceMessages,
+          advancedMemorySettings,
+          audienceCharacterIds.length ? audienceCharacterIds : characterIds,
+          individualMemoryReader,
+        ),
+      ]);
       // A hidden message keeps its whisper inside the same window as in the live prompt,
       // where only messages shown before memory selection can end it.
       const globallyHidden = new Set(chatMessages.filter(isMessageHiddenFromAI).map((message) => message.id));
@@ -1071,7 +1085,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       personaName,
       personaDescription,
       personaFields,
-      lastInput: [...mappedMessages].reverse().find((message) => message.role === "user")?.content,
+      lastInput:
+        chatMode === "roleplay"
+          ? latestRoleplayUserInput(mappedMessages, chatMessages)
+          : [...mappedMessages].reverse().find((message) => message.role === "user")?.content,
       model: conn.model,
       lastGenerationType: promptLastGenerationType,
       idleDuration: promptIdleDuration,
@@ -1299,7 +1316,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         characterNamesById,
       });
     }
-    promptMacroContext.lastInput = [...mappedMessages].reverse().find((message) => message.role === "user")?.content;
+    promptMacroContext.lastInput =
+      chatMode === "roleplay"
+        ? latestRoleplayUserInput(mappedMessages, chatMessages)
+        : [...mappedMessages].reverse().find((message) => message.role === "user")?.content;
 
     const usePromptParts = !!promptParts;
     if (!usePromptParts && chatMode === "conversation" && effectivePreset) {
@@ -2296,7 +2316,11 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       return reply.status(500).send({ error: message });
     }
     const fit = advancedContext
-      ? { messages: advancedContext.providerMessages, maxTokensForSend: advancedContext.maxTokens }
+      ? {
+          messages: advancedContext.providerMessages,
+          maxTokensForSend: advancedContext.maxTokens,
+          contextFit: undefined,
+        }
       : fitMessagesForModelAccess({
           messages: limitPastReasoningMetadata(toProviderMessages(finalMessages as any), chatMeta),
           policy: { ...modelAccessPolicy, effectiveMaxContext },
@@ -2352,6 +2376,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             ...(message.providerMetadata ? { providerMetadata: message.providerMetadata } : {}),
           })),
           wrapFormat,
+          contextFit: fit.contextFit ?? null,
           ...(decisionUnanswered.size > 0 || decisionDropped.size > 0
             ? {
                 decisions: {

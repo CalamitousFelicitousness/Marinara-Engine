@@ -38,6 +38,8 @@ You will see two terms often:
 
 **Google Gemini** runs the Gemini models through Google AI Studio. This is the simpler of the two Google options.
 
+Marinara turns off Google's adjustable safety filters on both Google options, except for any category you set yourself in **Custom Parameters**, but Google's core protections, such as child safety, still apply.
+
 ## Google Vertex AI
 
 - Credential docs: `https://cloud.google.com/vertex-ai/docs/authentication`
@@ -50,6 +52,10 @@ The **API Key** field accepts any one of these three credential types, and Marin
 1. A service-account JSON key.
 2. An OAuth access token, for example from `gcloud auth print-access-token`.
 3. A Vertex API key.
+
+**Gemini 4 Argon** runs only in the `global`, `us` and `eu` locations, not in a single region such as `us-central1`. To use it, set the **Base URL** to `https://aiplatform.googleapis.com/v1/projects/YOUR_PROJECT_ID/locations/global`. With any other location, Google returns an error and Marinara shows it.
+
+Argon can take several minutes to answer, on either Google connection. If chat replies time out, raise `CHAT_GENERATION_TIMEOUT_MS`. If agent calls time out, raise `AGENT_CALL_TIMEOUT_MS` (see [Configuration](../CONFIGURATION.md)). Google suggests allowing at least 15 minutes, which is `900000`.
 
 ## Mistral
 
@@ -98,9 +104,11 @@ The widget reads NanoGPT's usage endpoint and shows your weekly and daily input-
 - **Management Token** (recommended): create one at `https://nano-gpt.com/settings#management-api-tokens` with the **Usage only** scope. It can read your quotas but cannot run models or spend your balance, so it is the safer choice for a quota display. Marinara stores it encrypted and sends it only to NanoGPT's management endpoint.
 - **Your API key**: used automatically when no management token is saved. This works, but it means quota reads use the same credential that can spend your balance.
 
+Under each bar the widget says what is left and when the window resets, for example `42M remaining · resets in 4d`.
+
 A quota NanoGPT cannot report right now shows as **unknown** rather than as unused, and an inactive subscription is called out instead of being drawn as full quota. The widget refreshes on demand with its refresh button.
 
-The same meter appears under the context indicator in a chat's connection picker and in the chat's **Connection** settings, so you can watch your quota without leaving a chat. It follows the active connection: it shows only when that connection is a NanoGPT one with **Show subscription usage** turned on, and it does not appear for **Random**, which has no single connection to read. In the picker it is drawn to match the context bar above it, and it reads the same way — used against the weekly allowance, for example `8.9M / 60M tokens`.
+The same meter appears under the context indicator in a chat's connection picker and in the chat's **Connection** settings, so you can watch your quota without leaving a chat. It follows the active connection: it shows only when that connection is a NanoGPT one with **Show subscription usage** turned on, and it does not appear for **Random**, which has no single connection to read. In the picker it is drawn to match the context bar above it, and it reads the same way — used against the weekly allowance, for example `8.9M / 60M tokens`, with the reset time beside the percentage.
 
 ## xAI / Grok
 
@@ -123,6 +131,19 @@ The same meter appears under the context indicator in a chat's connection picker
 
 **Z.AI** serves the GLM models (GLM 5.3, GLM 5.3 Flash, and earlier) on their own API. The **Model** dropdown lists the current GLM models, and **Fetch Models from API** refreshes it from your account. GLM 5.3 models always reason: the **Reasoning Effort** in your preset is mapped onto the three levels Z.AI accepts (Low, High, Maximum), and leaving it unset uses Z.AI's default (Maximum). The default base URL is the pay-as-you-go endpoint. Z.AI's Coding Plan uses a different endpoint that their usage policy reserves for the tools on their list, so a Coding Plan key is not expected to work here.
 
+## DeepSeek
+
+- Where to get a key: `https://platform.deepseek.com/api_keys`
+- Default base URL: `https://api.deepseek.com/v1`
+
+**DeepSeek** serves its own chat models, `deepseek-flash` and `deepseek-v4-pro`. After you paste your key, the **Model** dropdown lists them, and **Fetch Models from API** refreshes the list from your account.
+
+DeepSeek thinks by default. Its **Reasoning Effort** uses DeepSeek's own levels — **Low**, **High** and **Maximum** — and **Off** turns thinking off for that request. There is no **Medium**: DeepSeek serves a medium request as High, so Marinara offers High instead of a second button that would do the same thing. Its thinking appears in the reply with the usual thought display.
+
+Some settings in the parameter panel do not apply to DeepSeek, so the panel leaves them out rather than pretending they work. **Verbosity**, **Top K** and the penalties are among them: DeepSeek has retired these and ignores them. **Temperature** and **Top P** are a pair — DeepSeek only uses one at a time, depending on whether it is thinking — so you see **Temperature** when thinking is off and **Top P** when it is on.
+
+Connect DeepSeek here rather than pointing the **OpenAI** provider at DeepSeek's URL. The OpenAI provider expects OpenAI's own models, so with a DeepSeek model it hides the generation controls and sends almost none of your settings.
+
 ## Claude (Subscription)
 
 - API key: none. You sign in to a local tool instead.
@@ -131,6 +152,24 @@ The same meter appears under the context indicator in a chat's connection picker
 
 Install and login steps are in [Claude, ChatGPT, and Grok Subscription Connections](subscription-clis.md).
 
+### Plan usage
+
+This connection can show how much of your Claude plan's rate limits is used:
+
+1. Turn on **Show subscription usage** in the connection editor.
+2. Leave **5-hour window** and **Weekly window** checked, or uncheck the one you do not want to see.
+3. Save the connection.
+
+Each window gets a bar with the percentage used and when the window resets, for example `58% · resets in 2h`. The same bars appear under the context indicator in a chat's connection picker and in the chat's **Connection** settings while this connection is active. They do not appear for **Random**, which has no single connection to read.
+
+Things to know:
+
+- The bars count everything on your Claude plan, such as Claude Code and claude.ai, not only Marinara.
+- Claude reports a percentage for each window and no token counts, so none are shown.
+- A reading asks the Claude Code tool on the Marinara host for the same data its `/usage` command shows. It sends no message to Claude and uses none of your plan. It takes a second or two, and the refresh button reads it again.
+- The plan name next to the title, such as **Pro**, is the one Claude reports for the signed-in account.
+- Claude Code marks this usage data as experimental. If a future version changes it, the bars show an error with a retry button instead of a wrong number.
+
 ## OpenAI (ChatGPT)
 
 - API key: none. You sign in to a local tool instead.
@@ -138,6 +177,17 @@ Install and login steps are in [Claude, ChatGPT, and Grok Subscription Connectio
 **OpenAI (ChatGPT)** uses your ChatGPT account through the Codex tool. The tool runs on the computer that hosts the Marinara server, and you sign in once. The **API Key** and **Base URL** fields are hidden for this provider. It does not offer embeddings (see the Embeddings section below). Its thinking level is the **Reasoning Effort** in the connection's or the chat's parameters; until you pick one, Codex uses its own default for the model.
 
 Install and login steps are in [Claude, ChatGPT, and Grok Subscription Connections](subscription-clis.md).
+
+### Plan usage
+
+This connection can show how much of your ChatGPT plan's Codex limits is used. It works like the Claude (Subscription) one above: turn on **Show subscription usage**, keep or uncheck **5-hour window** and **Weekly window**, and save. The bars appear in the connection editor, in a chat's connection picker and in the chat's **Connection** settings.
+
+Things to know:
+
+- The bars count all Codex use on your ChatGPT plan, such as the Codex CLI, not only Marinara. Chats on chatgpt.com have their own limits and are not part of these bars.
+- ChatGPT reports a percentage for each window and no token counts, so none are shown.
+- A reading asks ChatGPT for the same data the Codex CLI shows as its limits, using the Codex login on the Marinara host. It sends no message to a model and uses none of your plan.
+- A plan with only one of the two windows shows one bar.
 
 ## Grok CLI (Subscription)
 

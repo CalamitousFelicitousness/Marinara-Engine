@@ -29,17 +29,18 @@ import { useGenerate } from "../../hooks/use-generate";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { useCreateMessage, useDeleteMessage, useUpdateMessageExtra, useChat, chatKeys } from "../../hooks/use-chats";
 import { useConnections } from "../../hooks/use-connections";
-import { characterKeys } from "../../hooks/use-characters";
+import { characterKeys, ensureCharacterAndPersonaLists } from "../../hooks/use-characters";
 import {
   matchSlashCommand,
   shouldExecuteQuickPostAsCommand,
   getSlashCompletions,
   getSlashCommandUsage,
+  withComposerReplyAndAttachments,
   type ConversationGameSlashContribution,
   type SlashCommand,
   type SlashCommandContext,
 } from "../../lib/slash-commands";
-import { createInputMacroResolverForChat, isPromptPreviewMacro } from "../../lib/chat-macros";
+import { isPromptPreviewMacro, prepareUserInputMessage } from "../../lib/chat-macros";
 import { parseChatMetadata } from "../../lib/chat-display";
 import type { AvatarCrop } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
@@ -959,6 +960,23 @@ export function ConversationInput({
   // useCallback body; adding a parameter reindents the whole function, which
   // would conflict on every upstream sync of this file.
   const nextSendCandidateCountRef = useRef<number | null>(null);
+  const prepareUserMessage = useCallback(
+    async (text: string, onTranslationError: () => void) => {
+      const chat = useChatStore.getState().activeChat;
+      // Only typed macros wait for the lists, so a plain message never waits on a slow first load.
+      // ponytail: a macro that a regex script or translation adds still falls back to "User" on that
+      // first load; also check the chat's regex replacements here if that case ever matters.
+      if (text.includes("{{")) await ensureCharacterAndPersonaLists(qc);
+      return prepareUserInputMessage(text, {
+        chat,
+        characters: qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list()),
+        personas: qc.getQueryData<Persona[]>(characterKeys.personas),
+        applyToUserInput,
+        onTranslationError,
+      });
+    },
+    [applyToUserInput, qc],
+  );
 
   const handleSend = useCallback(async () => {
     const requestedCandidates = nextSendCandidateCountRef.current;
@@ -1015,6 +1033,10 @@ export function ConversationInput({
           await createMessage.mutateAsync(data);
           requestChatScrollToBottom({ chatId: activeChatId, behavior: "auto" });
         },
+        prepareUserMessage: (text) =>
+          prepareUserMessage(text, () =>
+            toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+          ),
         invalidate: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
         invalidateCharacter: (characterId) => qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) }),
         characterNames: activeCharacterNames,
@@ -1046,7 +1068,10 @@ export function ConversationInput({
       setMentionQuery(null);
       setMentionCompletions([]);
       try {
-        const result = await matched.command.execute(matched.args, slashCtx);
+        const result = await matched.command.execute(
+          matched.args,
+          withComposerReplyAndAttachments(slashCtx, { replyTo: replyDraft, attachments: submittedInput.attachments }),
+        );
         if (result.feedback) {
           setFeedback(result.feedback);
         }
@@ -1075,30 +1100,9 @@ export function ConversationInput({
       }
     }
 
-    const activeChat = useChatStore.getState().activeChat;
-    const cachedCharacters = qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list());
-    const cachedPersonas = qc.getQueryData<Persona[]>(characterKeys.personas);
-    const resolveInputMacros = createInputMacroResolverForChat(activeChat, cachedCharacters, cachedPersonas, raw);
-    const chatMeta = parseChatMetadata(activeChat?.metadata);
-    // First pass: resolve macros against raw input, so {{input}} uses the pre-translation text.
-    let message = applyToUserInput(raw, {
-      resolveMacros: resolveInputMacros,
-      scopedMode: chatMeta.scopedRegexMode,
-    });
-
-    // Input translation: translate user's message before sending
-    if (chatMeta.translateInput && message.trim()) {
-      try {
-        const { translateText } = await import("../../lib/translate-text");
-        const translated = await translateText(message, "input");
-        if (translated.trim()) message = translated;
-      } catch {
-        toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessageSendingOriginal"));
-      }
-    }
-
-    // Final pass: resolve macros introduced by translation while {{input}} still points to raw.
-    message = resolveInputMacros(message);
+    const message = await prepareUserMessage(raw, () =>
+      toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessageSendingOriginal")),
+    );
 
     const submittedInput: SubmittedConversationInput = {
       chatId: activeChatId,
@@ -1179,7 +1183,7 @@ export function ConversationInput({
     isSendBlocked,
     delayedCharacterInfo,
     generate,
-    applyToUserInput,
+    prepareUserMessage,
     extractMentions,
     clearInputDraft,
     createDurableMessageWithRollback,
@@ -1244,6 +1248,10 @@ export function ConversationInput({
           await createMessage.mutateAsync(data);
           requestChatScrollToBottom({ chatId: submittingChatId, behavior: "auto" });
         },
+        prepareUserMessage: (text) =>
+          prepareUserMessage(text, () =>
+            toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+          ),
         invalidate: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
         invalidateCharacter: (characterId) => qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) }),
         characterNames: activeCharacterNames,
@@ -1303,6 +1311,7 @@ export function ConversationInput({
       _mentionQuery,
       mentionCompletions,
       createMessage,
+      prepareUserMessage,
       generate,
       latestAssistantMessage,
       onIllustrate,
@@ -1344,27 +1353,9 @@ export function ConversationInput({
       draftTimerRef.current = null;
     }
 
-    const activeChatData = useChatStore.getState().activeChat;
-    const cachedCharacters = qc.getQueryData<Array<{ id: string; data: unknown }>>(characterKeys.list());
-    const cachedPersonas = qc.getQueryData<Persona[]>(characterKeys.personas);
-    const resolveInputMacros = createInputMacroResolverForChat(activeChatData, cachedCharacters, cachedPersonas, raw);
-    const chatMeta = parseChatMetadata(activeChatData?.metadata);
-    let message = applyToUserInput(raw, {
-      resolveMacros: resolveInputMacros,
-      scopedMode: chatMeta.scopedRegexMode,
-    });
-
-    if (chatMeta.translateInput && message.trim()) {
-      try {
-        const { translateText } = await import("../../lib/translate-text");
-        const translated = await translateText(message, "input");
-        if (translated.trim()) message = translated;
-      } catch {
-        toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal"));
-      }
-    }
-
-    message = resolveInputMacros(message);
+    const message = await prepareUserMessage(raw, () =>
+      toast.error(localizeUi("ui.chat.chatinput.failedToTranslateMessagePostingOriginal")),
+    );
     const submittedInput: SubmittedConversationInput = {
       chatId: submittingChatId,
       replyTo: replyDraft,
@@ -1409,8 +1400,7 @@ export function ConversationInput({
     completions,
     _mentionQuery,
     mentionCompletions,
-    applyToUserInput,
-    qc,
+    prepareUserMessage,
     clearInputDraft,
     createDurableMessageWithRollback,
     syncInputState,
@@ -2214,6 +2204,7 @@ export function ConversationInput({
           dragging: isDragging,
           hasContent: hasInput || attachments.length > 0,
           layout: "conversation",
+          className: isProfessorMariChat ? "mari-professor-composer" : undefined,
         })}
       >
         {/* Attach button */}
@@ -2229,6 +2220,7 @@ export function ConversationInput({
           }}
         />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           className={cn(
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all active:scale-90 sm:h-8 sm:w-8",
@@ -2237,6 +2229,7 @@ export function ConversationInput({
               : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
           )}
           title={t("chat.input.attachFiles")}
+          aria-label={t("chat.input.attachFiles")}
         >
           <Paperclip size="1rem" />
         </button>

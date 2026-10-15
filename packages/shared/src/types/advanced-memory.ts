@@ -13,6 +13,7 @@ export const ADVANCED_MEMORY_SCENE_AUDIENCE_UNRESOLVED = {
 export const advancedMemorySettingsSchema = z.object({
   enabled: z.boolean().default(false),
   maxContextTokens: z.number().int().min(1024).max(10_000_000).default(65_000),
+  /** Saved settings without a budget keep 4,096. New settings start at 10% of the context (see the defaults below). */
   summaryBudgetTokens: z.number().int().min(64).max(131_072).default(4096),
   helperConnectionId: z.string().nullable().default(null),
   decisionEnabled: z.boolean().default(false),
@@ -26,17 +27,25 @@ export const advancedMemorySettingsSchema = z.object({
   narratorCharacterId: z.string().nullable().default(null),
   /** Individual group chats only: hide each new message from characters the memory model finds absent. */
   autoMessageVisibility: z.boolean().default(false),
+  /** Each scene participant's short first-person memory of a recalled scene. Off keeps saved ones, unused. */
+  characterRecollections: z.boolean().default(false),
   /** A null value explicitly confirms knowledge from the beginning. Missing means unconfirmed. */
   knowledgeStarts: z.record(z.string().nullable()).default({}),
   knowledgeConfirmed: z.boolean().default(false),
 });
 
 export type AdvancedMemorySettings = z.infer<typeof advancedMemorySettingsSchema>;
-export const DEFAULT_ADVANCED_MEMORY_SETTINGS: AdvancedMemorySettings = advancedMemorySettingsSchema.parse({});
+const parsedDefaults = advancedMemorySettingsSchema.parse({});
+/** Settings for a chat with none saved: the summary and recall budget is 10% of the context limit. */
+export const DEFAULT_ADVANCED_MEMORY_SETTINGS: AdvancedMemorySettings = {
+  ...parsedDefaults,
+  summaryBudgetTokens: Math.round(parsedDefaults.maxContextTokens / 10),
+};
 
 export function normalizeAdvancedMemorySettings(value: unknown): AdvancedMemorySettings {
-  const parsed = advancedMemorySettingsSchema.safeParse(value ?? {});
-  return parsed.success ? parsed.data : { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, knowledgeStarts: {} };
+  // Nothing saved yet means new settings; saved ones keep their own values.
+  const parsed = value == null ? null : advancedMemorySettingsSchema.safeParse(value);
+  return parsed?.success ? parsed.data : { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, knowledgeStarts: {} };
 }
 
 /** Compact, saved evidence from actual memory decisions, never a new preview call. */
@@ -51,7 +60,7 @@ export const advancedMemoryDecisionDiagnosticsSchema = z.object({
     .array(
       z.object({
         id: z.string(),
-        kind: z.enum(["scene", "excerpt", "message", "scene_end"]),
+        kind: z.enum(["scene", "excerpt", "message", "scene_end", "scene_start"]),
         text: z.string().max(160),
         score: z.number().min(0).max(1).optional(),
         binary: z.boolean().optional(),
@@ -70,9 +79,11 @@ export interface AdvancedMemoryJob {
   /** Explicit user pause; ordinary interruptions and correction recovery may also be cancelled. */
   paused?: boolean;
   status: "idle" | "running" | "ready" | "cancelled" | "error" | "needs_confirmation";
-  stage: "idle" | "classifying" | "summarizing" | "indexing" | "compacting" | "ready";
+  stage: "idle" | "classifying" | "summarizing" | "recollecting" | "indexing" | "compacting" | "ready";
   completed: number;
   total: number;
+  /** Parts of the current scene's request, when it is sent in parts; `completed` and `total` count scenes. */
+  part?: { completed: number; total: number } | null;
   error: string | null;
   reviewRecordId?: string | null;
   processedMessageId?: string | null;
@@ -105,7 +116,8 @@ export interface AdvancedMemoryRecord {
   id: string;
   chatId: string;
   sceneId: string;
-  kind: "scene" | "continuity" | "temporary" | "excerpt";
+  /** A recollection is one character's (`audienceCharacterIds[0]`) first-person memory of a summarized scene. */
+  kind: "scene" | "continuity" | "temporary" | "excerpt" | "recollection";
   status: "open" | "closed";
   startMessageId: string;
   endMessageId: string;

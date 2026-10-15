@@ -1,4 +1,11 @@
-import type { Message, AvatarCrop, AgentParameterTrace, ParameterTrace } from "@marinara-engine/shared";
+import type {
+  Message,
+  AvatarCrop,
+  AgentParameterTrace,
+  ParameterTrace,
+  ReplyCheckupFinding,
+  ReplyCheckupLink,
+} from "@marinara-engine/shared";
 
 export type CharacterMap = Map<
   string,
@@ -79,6 +86,8 @@ export type PeekPromptData = {
   } | null;
   agentTraces?: AgentParameterTrace[] | null;
   agentNote?: string;
+  /** R2: the checkup of the reply this prompt produced, shown in the Peek header. */
+  checkup?: { findings: ReplyCheckupFinding[]; onLink: (link: ReplyCheckupLink) => void };
 };
 
 export type MessageWithSwipes = Message & {

@@ -14,11 +14,15 @@ import {
   takeTypewriterCharacters,
 } from "../../packages/client/src/lib/generation-stream-policy.js";
 import { reconcilePersistedMessages } from "../../packages/client/src/lib/message-cache-reconciliation.js";
-import { resolveMessageRewriteVersions } from "../../packages/client/src/lib/message-rewrite-versions.js";
+import {
+  applyMessageTextRewrite,
+  resolveMessageRewriteVersions,
+} from "../../packages/client/src/lib/message-rewrite-versions.js";
 import { resolveMessageReasoningDisplay } from "../../packages/client/src/lib/message-reasoning.js";
 import { shouldFormatTextareaQuotes } from "../../packages/client/src/lib/textarea-quotes.js";
 import {
   findLatestTTSAutoplayMessage,
+  findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
 } from "../../packages/client/src/lib/tts-autoplay.js";
@@ -96,39 +100,50 @@ const generateRouteSource = readSourceText(
   new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
   "utf8",
 );
+// The tool-call rounds live in their own module (#7573).
+const toolRoundsSource = readSourceText(
+  new URL("../../packages/server/src/routes/generate/tool-rounds.ts", import.meta.url),
+  "utf8",
+);
 const useGenerateSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
 );
+// The reasoning clock itself is pinned behaviourally in generation-stream-output.regression.ts;
+// these pin that every reply path routes its text through it.
 assert.match(
   generateRouteSource,
-  /const recordReasoningDuration = \(text: string\) => \{[\s\S]{0,300}text\.trim\(\)[\s\S]{0,300}reasoningDurationMs = Math\.max\(1, Date\.now\(\) - generationStartedAt\);[\s\S]{0,80}\};/u,
-  "The server must capture reasoning duration only when visible output begins",
-);
-assert.match(
-  generateRouteSource,
-  /const writeContentChunked = async \(text: string\) => \{\s*fullResponse \+= text;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(text\);/u,
+  /const writeContentChunked = async \(text: string\) => \{\s*fullResponse \+= text;\s*await streamOutput\.write\(text\);/u,
   "Buffered text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
-  generateRouteSource,
-  /fullResponse \+= chunk;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(chunk\);/u,
+  toolRoundsSource,
+  /const onToken = async \(chunk: string\) => \{[\s\S]{0,200}text \+= chunk;[\s\S]{0,200}await stream\.write\(chunk\);/u,
   "Tool-streamed text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
+  toolRoundsSource,
+  /if \(stream\.holdForTextRewrite\) stream\.roleplayCommandFilter\?\.push\(chunk\);\s*await stream\.write\(chunk\);\s*if \(roleplayRollEnabled && stream\.roleplayCommandFilter\?\.rollRequested\)/u,
+  "A held tool-round stream must still feed the command filter so a roll request is detected",
+);
+assert.match(
   generateRouteSource,
-  /const val = result\.value;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(val\);/u,
+  /fullResponse \+= result\.value;[\s\S]{0,200}await streamOutput\.write\(result\.value\);/u,
   "Generator-streamed text-rewrite responses must still capture reasoning duration",
 );
-const generationInfoPersistenceSource =
-  /const extraUpdate: Record<string, unknown> = \{[\s\S]*?generationInfo: \{[\s\S]*?\n\s*\},\s*\};/u.exec(
-    generateRouteSource,
-  )?.[0];
+const generationInfoPersistenceSource = /const extraUpdate = buildGenerationInfoExtra\(\{[\s\S]*?\n\s*\}\);/u.exec(
+  generateRouteSource,
+)?.[0];
 assert.ok(generationInfoPersistenceSource, "The committed generation metadata block must remain available");
 assert.match(
   generationInfoPersistenceSource,
-  /durationMs,\s*reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
+  /durationMs,\s*reasoningDurationMs: streamOutput\.reasoningDurationMs,\s*finishReason,/u,
   "Committed generation metadata must retain the reasoning-only duration",
+);
+assert.match(
+  readSourceText(new URL("../../packages/server/src/routes/generate/saved-message-extra.ts", import.meta.url), "utf8"),
+  /generationInfo: \{[\s\S]*?durationMs,\s*reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
+  "The saved generation metadata must store the reasoning-only duration",
 );
 assert.match(
   generateRouteSource,
@@ -455,16 +470,26 @@ const reducedAmbientEffectsHookSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-reduced-ambient-effects.ts", import.meta.url),
   "utf8",
 );
+// Slice 82: the send loop and the settle helper moved into components/chat/mari/.
+const professorMariRunSource = readSourceText(
+  new URL("../../packages/client/src/components/chat/mari/use-mari-workspace-run.ts", import.meta.url),
+  "utf8",
+);
+const professorMariHelpersSource = readSourceText(
+  new URL("../../packages/client/src/components/chat/mari/mari-chat-helpers.tsx", import.meta.url),
+  "utf8",
+);
 const professorMariTokenBranch =
-  professorMariHomeSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
+  professorMariRunSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
 const roleplayTrackerSettingsBranch =
   chatSettingsDrawerSource.match(
     /activeInCat\.map\(\(agent\) => \{[\s\S]*?\{\/\* Available agents to add \*\//u,
   )?.[0] ?? "";
 assert.match(professorMariHomeSource, /rafThrottle<void>\(appendPendingWorkspaceText\)/u);
+assert.ok(professorMariTokenBranch, "the token branch must exist for the check below");
 assert.doesNotMatch(professorMariTokenBranch, /setWorkspaceTimeline/u);
 assert.match(professorMariHomeSource, /void refreshAfterWorkspaceRun\(chat\.id, runId\)/u);
-assert.match(professorMariHomeSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
+assert.match(professorMariHelpersSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
 assert.doesNotMatch(personalExtensionsHookSource, /refetchInterval/u);
 assert.match(chatSettingsDrawerSource, /active && agent\.id !== "illustrator"[\s\S]*?<AgentPromptTemplateSelect/u);
 assert.match(
@@ -955,6 +980,82 @@ assert.match(
   /addEventListener\(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady\)/u,
   "TTS autoplay must listen for finalized text without waiting for the full agent stream to close",
 );
+// #7481: a reply split at scene breaks is read part by part, and a held rewrite keeps the live reply empty.
+assert.match(
+  generateHookSource,
+  /const splitPartsBefore = \(id: string\) =>\s*\(splitPartIdsBefore\.get\(id\) \?\? \[\]\)\.flatMap\(\(partId\) => persistedMessages\.get\(partId\) \?\? \[\]\)/u,
+  "split parts must resolve to their latest saved rows",
+);
+assert.match(
+  generateHookSource,
+  /case "assistant_message_ready": \{[\s\S]{0,500}earlierMessages: splitPartsBefore\(message\.id\) \}/u,
+  "the ready event must carry the earlier parts of a split reply",
+);
+assert.match(
+  chatAreaSource,
+  /Promise\.all\(\s*\[\.\.\.earlierMessages, lastMsg\]\.map\([\s\S]{0,1200}ttsService\.speakSequence\(\s*parts\.flatMap/u,
+  "autoplay must read a split reply's earlier parts before its last part, as one sequence",
+);
+assert.match(
+  generateRouteSource,
+  /type: "message_saved",\s*data: heldForRewrite\(savedPart \?\? part\.message\),\s*remainingContent: holdForTextRewrite\s*\?\s*""/u,
+  "while a rewrite agent holds the reply, an earlier part must show the placeholder and not type out the unrewritten rest",
+);
+// Every part of a split reply is rewritten (#7481): each rewrite names its part, and an earlier part's rewrite
+// updates that part's row instead of the live reply, which only the last part holds.
+assert.match(
+  generateHookSource,
+  /case "text_rewrite": \{[\s\S]{0,1200}const splitPart =\s*rw\.messageId && isSplitPart\(rw\.messageId\) \? persistedMessages\.get\(rw\.messageId\) : undefined;\s*if \(splitPart\) \{\s*const rewrittenPart = applyMessageTextRewrite\(splitPart, rewrittenText, rewriteOriginalText\);\s*persistedMessages\.set\(rewrittenPart\.id, rewrittenPart\);[\s\S]{0,200}upsertPersistedMessages\(qc, params\.chatId, \[rewrittenPart\]\);\s*break;\s*\}\s*\/\/ Post-processing rewrites the complete stored message/u,
+  "an earlier part's rewrite must update its own row before anything touches the live reply",
+);
+assert.match(
+  generateHookSource,
+  /if \(\s*remainingContent === null &&\s*savedMessage\.role === "assistant" &&\s*pendingPostProcessing &&/u,
+  "a held earlier part must keep its own row instead of becoming the held live reply",
+);
+{
+  const held = {
+    id: "part",
+    content: "Prose Guardian is working!",
+    extra: JSON.stringify({ postProcessingPending: { agentType: "prose-guardian" }, continuesAfterSceneBreak: true }),
+  };
+  const rewritten = applyMessageTextRewrite(held, "***\n\nREWRITTEN", "***\n\nORIGINAL");
+  const rewrittenExtra = rewritten.extra as Record<string, unknown>;
+  assert.equal(rewritten.content, "***\n\nREWRITTEN");
+  assert.equal(rewrittenExtra.postProcessingPending, undefined, "the placeholder is gone");
+  assert.equal(rewrittenExtra.continuesAfterSceneBreak, true, "the part stays an earlier part");
+  assert.deepEqual(
+    resolveMessageRewriteVersions(rewritten.content, rewrittenExtra, false).alternateText,
+    "***\n\nORIGINAL",
+    "a built-in rewrite of a part can be toggled back to the part as written",
+  );
+  const released = applyMessageTextRewrite(rewritten, "***\n\nORIGINAL", null);
+  assert.equal((released.extra as Record<string, unknown>).proseGuardianOriginalText, undefined);
+}
+{
+  const part = (id: string, characterId: string, extra: unknown) => ({
+    id,
+    role: "assistant",
+    content: id,
+    characterId,
+    extra,
+  });
+  const history = [
+    part("other", "cyno", { continuesAfterSceneBreak: true }),
+    part("first", "mari", { continuesAfterSceneBreak: true }),
+    part("second", "mari", JSON.stringify({ continuesAfterSceneBreak: true })),
+    part("last", "mari", {}),
+  ];
+  assert.deepEqual(
+    findSplitReplyEarlierParts(history, history[3]!).map((message) => message.id),
+    ["first", "second"],
+    "stream-end autoplay must find a split reply's earlier parts from the saved rows",
+  );
+  assert.match(
+    chatAreaSource,
+    /speakTTSAutoplayMessage\(lastMsg, activeChatId, generation, findSplitReplyEarlierParts\(msgs, lastMsg\)\)/u,
+  );
+}
 const galleryCreateIndex = generateRouteSource.indexOf("const galleryEntry = await galleryStore.create");
 const illustrationMessageLookupIndex = generateRouteSource.indexOf(
   "const msgRow = await chats.getMessage(messageId)",

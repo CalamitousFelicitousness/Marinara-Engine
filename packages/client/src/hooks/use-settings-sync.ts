@@ -35,6 +35,10 @@ import {
   normalizeTrackerThoughtBubbleDisplay,
   normalizeScenePromptPreferences,
   normalizeConversationBackgroundImageOpacity,
+  normalizeMariWindowHeightRem,
+  normalizeMariWindowWidthRem,
+  normalizeOmnibarWindowWidthRem,
+  normalizeOmnibarWindowHeightRem,
   pickSyncedSettings,
   useUIStore,
 } from "../stores/ui.store";
@@ -67,6 +71,18 @@ export function omitLocalOnlySettings(settings: ParsedSettings): ParsedSettings 
     sanitized.conversationBackgroundImageOpacity = normalizeConversationBackgroundImageOpacity(
       sanitized.conversationBackgroundImageOpacity,
     );
+  }
+  if ("mariWindowHeightRem" in sanitized) {
+    sanitized.mariWindowHeightRem = normalizeMariWindowHeightRem(sanitized.mariWindowHeightRem);
+  }
+  if ("mariWindowWidthRem" in sanitized) {
+    sanitized.mariWindowWidthRem = normalizeMariWindowWidthRem(sanitized.mariWindowWidthRem);
+  }
+  if ("omnibarWindowWidthRem" in sanitized) {
+    sanitized.omnibarWindowWidthRem = normalizeOmnibarWindowWidthRem(sanitized.omnibarWindowWidthRem);
+  }
+  if ("omnibarWindowHeightRem" in sanitized) {
+    sanitized.omnibarWindowHeightRem = normalizeOmnibarWindowHeightRem(sanitized.omnibarWindowHeightRem);
   }
   return sanitized;
 }

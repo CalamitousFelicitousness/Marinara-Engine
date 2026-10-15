@@ -293,7 +293,8 @@ function CommandNotice({
   restore: () => Promise<unknown>;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  // A private tag that failed has lost its place in the message, so show why and the original text right away.
+  const [open, setOpen] = useState(!!item.error && (item.command.type === "whisper" || item.command.type === "notes"));
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");

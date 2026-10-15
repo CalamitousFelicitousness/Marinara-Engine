@@ -50,6 +50,17 @@ so a second merge would only have re-conflicted the hot files. Five read-only
 subagents, one per collision area, previewed the merge from the simulated tree
 before anything was touched; their reports named every silent loss later fixed.
 
+On 2026-10-15: 2479 commits in six days, still v2.5.0, 101 overlapping files,
+35 conflicts. Upstream split `generate.routes.ts` into `generate/*` modules and
+moved Professor Mari and the settings search catalog into new files, so the
+dangerous hunks were the ones where "take upstream" is right and the fork's
+patch has to follow the code to a file git never shows. Two traps from
+resolving: keeping both sides of a hunk drops a closing brace when both sides
+end mid-block (the shared `}` sits outside the markers), so read every
+keep-both result; and fork lanes that pin source shape with a bounded regex
+(`roleplay-streaming`'s `{0,1200}`) fail when a fork block lands between the
+pinned anchors.
+
 ## Merge, never rebase
 
 The remote layout assumes a merge. `staging` tracks `upstream/staging` for

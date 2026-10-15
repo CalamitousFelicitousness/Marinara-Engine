@@ -1,3 +1,5 @@
+import type { RulesetCheckSource } from "./rulesets/check-effects.js";
+import type { RulesetItemEffectFact } from "./rulesets/item-book.js";
 import type { CombatWeather } from "./combat-conditions.js";
 import { z } from "zod";
 import type { Combatant, CombatPlayerAction, CombatSummary } from "../types/game.js";
@@ -7,7 +9,12 @@ import type {
   RulesetCombatSide,
   RulesetEncounterSummary,
 } from "./ruleset-combat/types.js";
-import type { TacticalAction, TacticalCombatState, TacticalTerrain } from "./tactical-combat/types.js";
+import type {
+  TacticalAction,
+  TacticalCombatState,
+  TacticalEnvironment,
+  TacticalTerrain,
+} from "./tactical-combat/types.js";
 
 /** Explicit capabilities: names and prose never grant interrupts or boss privileges. */
 export const combatBossSchema = z.object({
@@ -48,6 +55,24 @@ export type DirectedCommand =
       mode?: string;
       to?: { x: number; y: number };
       at?: { x: number; y: number };
+      /** How a wall is laid from `at` (1.177): the way it runs, the side it faces, or as a ring. */
+      toward?: { x: number; y: number };
+      side?: "near" | "far";
+      ring?: boolean;
+      /** Where further copies of an area that allows them are set down (1.178). */
+      also?: Array<{ x: number; y: number }>;
+      /** A wall's section struck at instead of a creature (1.200): one of the option's `walls`. */
+      wall?: { x: number; y: number };
+      /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
+      carries?: string[];
+      /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
+      amount?: number;
+      /** The alterations it is used with (1.253), from the option's `alters`: Metamagic. */
+      alters?: string[];
+      /** Who of its user's side an alteration that spares some spares (1.254): Careful Spell. */
+      spares?: string[];
+      /** Who an alteration that heightens gives disadvantage (1.255): Heightened Spell. */
+      heightens?: string;
     }
   | { type: "choose"; candidateId: string }
   | { type: "continue" }
@@ -75,6 +100,11 @@ export interface CombatDecisionOption {
   /** Where a ruleset fight's own shape is aimed. `to` above is where the actor walks first, which
    *  a positioned candidate may carry too. */
   at?: { x: number; y: number };
+  /** Where a zone its actor moves or turns goes (1.173, 1.182): the choice's own `to`, never the
+   *  walk `to` above. */
+  zoneTo?: { x: number; y: number };
+  /** The altering actions a ruleset candidate is used with (1.253). */
+  alters?: string[];
 }
 export interface CombatDecisionWindow {
   id: string;
@@ -99,18 +129,30 @@ export interface DirectedRulesetCombatant {
   id: string;
   name: string;
   side: RulesetCombatSide;
+  /** The bestiary entry an opponent was made from: what its art is found by (design-game-creature-art.md). */
+  creature?: { catalogId: string; entryId: string };
   initiative: number;
   health: { value: number; max: number; temp: number };
   /** What an attack is rolled against. Sent for both sides: every option's forecast already carries
    *  the chance it would land against this combatant, so the number is not a secret to keep. */
   defense: number;
   conditions: Array<{ id: string; label: string; rounds?: number }>;
+  /** All active typed defenses, including exceptions (Capability API 1.132). */
+  hides?: Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">;
+  /** Active damage dealt/taken sources (Capability API 1.133), also read by the Game Master. */
+  damageModifiers?: Array<{ name: string; facts: RulesetItemEffectFact[] }>;
   /** What is left of each budget this turn, keyed by budget id. */
   budgets: Record<string, number>;
   down: boolean;
   dying: boolean;
   stable: boolean;
   defeated: boolean;
+  /** Sent out of the fight, alive (1.236): off the board until it comes back, if it does. */
+  away?: true;
+  /** Gone of its own accord, by a teleport that leaves the fight (1.279). */
+  left?: true;
+  /** Caught unaware (1.237): their first turn is only ended, and they answer nothing until then. */
+  surprised?: true;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */
   deathTrack?: { successes: number; failures: number; successesMax: number; failuresMax: number };
   /** What this combatant is holding together, when the ruleset has concentration. */
@@ -118,12 +160,20 @@ export interface DirectedRulesetCombatant {
   /** An opponent's rung of the threat scale, and the lines the Game Master is shown. */
   tier?: string;
   traits?: Array<{ name: string; text: string }>;
+  /** What it is, in the ruleset's words (1.168): its creature type and tags, read by target tests. */
+  kind?: { type?: string; tags?: string[] };
+  /** Active save modifiers narrowed by what the roll is against (1.134). */
+  saveModifiers?: RulesetItemEffectFact[];
   /** Where they stand and how many cells of this turn's allowance they have left. Present exactly
    *  when the fight is on a board, and then on everybody at once. */
   x?: number;
   y?: number;
   movement?: number;
   movementLeft?: number;
+  /** The level a flier is up at (1.114), present only while it is off the ground. */
+  altitude?: number;
+  /** How many cells a side it fills (1.194), `x`/`y` the top-left one. Absent for one cell. */
+  span?: number;
 }
 /**
  * What a ruleset fight's log holds: everything the resolver did, plus the few things the DIRECTOR
@@ -148,11 +198,57 @@ export interface DirectedRulesetView {
   /** The board, when the fight is on one, with what this ruleset calls one cell's worth of
    *  distance. Absent from a fight that is theatre of the mind, which is every fight until a
    *  ruleset declares `combat.distance` and the game asks for a positioned one. */
-  grid?: { width: number; height: number; tiles: TacticalTerrain[][]; distance: { label: string; perCell: number } };
+  grid?: {
+    width: number;
+    height: number;
+    tiles: TacticalTerrain[][];
+    /** How high each cell stands (combat C6b), elevation[y][x]; absent on a flat board. */
+    elevation?: number[][];
+    /** Cells standing walls close (1.177), by "x,y": 1 movement, 2 sight, 3 both. */
+    walls?: Record<string, number>;
+    /** Growth and seasons on its cells (1.318), by "x,y". */
+    ground?: Record<string, { growth?: true; season?: string }>;
+    distance: { label: string; perCell: number };
+    /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
+    scene?: TacticalEnvironment;
+    /** The board pack it is drawn with (1.333), by library id, and the environment whose pack it falls
+     *  back to. */
+    pack?: string;
+    environment?: string;
+    /** The light on each cell that is not bright, by "x,y"; absent when the whole board is bright. */
+    light?: Record<string, "sunlight" | "dim" | "dark">;
+    /** The cells a fog or haze covers, by "x,y": heavy unless it only lightly obscures. */
+    fog?: Record<string, "light" | "heavy">;
+  };
   actorId?: string;
   /** Who plays the actor whose turn it is. */
   controller: "manual" | "ai" | "gm";
   combatants: DirectedRulesetCombatant[];
+  /** The areas spells left standing (1.172): whose, what, how many of its caster's turns are left,
+   *  and the cells it covers now (none off a board). */
+  zones?: Array<{
+    casterId: string;
+    label: string;
+    rounds: number;
+    cells: Array<{ x: number; y: number }>;
+    /** A wall's chosen side (1.177), the cells that catch beside it. */
+    side?: Array<{ x: number; y: number }>;
+    /** A wall's sections (1.200): their cells and the health each has left; one at 0 is broken. */
+    sections?: Array<{ cells: Array<{ x: number; y: number }>; health: number; max: number }>;
+    /** How it looks (1.333): a `bz_` tile of the board's pack. */
+    art?: string;
+  }>;
+  /** What stands on the board that may be broken (1.316): its cells, and what it has left of what;
+   *  one at 0 is broken. */
+  props?: Array<{
+    id: string;
+    label: string;
+    cells: Array<{ x: number; y: number }>;
+    health: number;
+    max: number;
+    /** Its sprite in the board's pack (1.333). */
+    art?: string;
+  }>;
   /** The legal menu, present only while a human controls the one being asked: the actor whose turn
    *  it is, or, while a window holds the fight open, whoever that window is asking. */
   options?: DirectedRulesetOption[];
@@ -162,7 +258,8 @@ export interface DirectedRulesetView {
     id: string;
     kind: "reaction" | "signature";
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
-    moment?: "aimed" | "hit" | "harmed" | "used";
+    moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start";
+    targetIds?: string[];
     label?: string;
     /** For a held hit: what the roll came to, and what it was made against. */
     total?: number;

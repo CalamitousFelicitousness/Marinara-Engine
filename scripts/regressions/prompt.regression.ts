@@ -63,6 +63,7 @@ import {
   hasDeferredRelocationConditionals,
   normalizeGameStoryboardKeyframeCount,
   parseDeferredConditionalPayload,
+  attachConditionalLineBreaks,
   resolveDeferredCharacterMacros,
   resolveCharacterScopedMacros,
   selectConditionalPayloadBranch,
@@ -70,6 +71,7 @@ import {
   normalizeInventoryTrackerRows,
   normalizeInventoryTrackerPlayerStats,
   findInvalidInventoryTrackerRow,
+  nameToXmlTag,
 } from "../../packages/shared/src/index.js";
 import { replaceBuiltInAgentDefinitions as replaceBuiltInAgentDefinitionsDist } from "../../packages/shared/dist/index.js";
 import { buildInventoryTrackerEditPatch } from "../../packages/client/src/features/tracker-panel/lib/inventory-tracker-edit.js";
@@ -680,7 +682,9 @@ import {
 import {
   formatConversationDateHistoryMessages,
   formatConversationGroupOutputFormat,
+  formatSentSelfieNotes,
 } from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
+import { captionSentSelfies } from "../../packages/server/src/services/generation/image-captioning-runtime.js";
 import {
   buildConversationCurrentContextBlock,
   replaceConversationContextBlockForTarget,
@@ -754,7 +758,9 @@ import {
 import {
   buildRuntimeAgentSectionEligibleTypesForTest,
   clearUnusedRuntimeAgentSectionsForTest,
+  formatAgentInjections,
   makeRuntimeAgentSectionTokens,
+  pruneEmptyPromptWrappers,
   splitRuntimeHandledAgentInjectionsForTest,
 } from "../../packages/server/src/services/generation/runtime-agent-sections.js";
 import {
@@ -764,7 +770,8 @@ import {
   TEXT_REWRITE_PENDING_MESSAGE,
 } from "../../packages/server/src/services/generation/prose-guardian-settings.js";
 import type { DB } from "../../packages/server/src/db/connection.js";
-import { passThroughLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
+import { passThroughLeaf, sanitizePromptLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
+import { wrapContent } from "../../packages/server/src/services/prompt/format-engine.js";
 import {
   escapeStandaloneGameNarrationAngleLines,
   hasVisibleGameNarrationText,
@@ -855,7 +862,10 @@ import {
   extractDialogueUtterances,
   resolveTTSVoiceForSpeaker,
 } from "../../packages/client/src/lib/tts-dialogue.js";
-import { resolveCharacterAdvancedPromptIds } from "../../packages/server/src/services/prompt/macro-context.js";
+import {
+  resolveCharacterAdvancedPromptIds,
+  resolveChatSummaryMacros,
+} from "../../packages/server/src/services/prompt/macro-context.js";
 import {
   illustratorPromptRequestsRenderedText,
   illustratorPromptTemplateOwnsComposition,
@@ -4012,7 +4022,7 @@ const cases: RegressionCase[] = [
       );
       assert.match(chatsRouteSource, /const customPrompt = resolveGameGmPromptTemplate\(chatMeta, setupConfig\);/u);
       assert.match(editorSource, /StoryboardAgentSettingsPanel/u);
-      assert.match(editorSource, /\{!isStoryboardAgent && \(\s*<FieldGroup[\s\S]*?agentBudget/u);
+      assert.match(editorSource, /\{!isStoryboardAgent && !isAvatarAgent && \(\s*<FieldGroup[\s\S]*?agentBudget/u);
       assert.doesNotMatch(
         editorSource,
         /\.\.\.\(localContextSize !== "" \? \{ contextSize: Number\(localContextSize\) \} : \{\}\)/u,
@@ -4129,7 +4139,7 @@ const cases: RegressionCase[] = [
       assert.doesNotMatch(editorSource, /StoryboardAdvancedPromptLibrary|storyboardPromptLibraryOpen/u);
       assert.match(
         editorSource,
-        /\{!isStoryboardAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
+        /\{!isStoryboardAgent && !isAvatarAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
         "Storyboard should not render a second global prompt library below its numbered stages",
       );
       assert.match(editorSource, /onPlannerPromptChange=\{setLocalPrompt\}/u);
@@ -5154,6 +5164,111 @@ const cases: RegressionCase[] = [
         }),
         ["Maukie"],
       );
+    },
+  },
+  {
+    name: "A character's sent selfie reaches later prompt history, Illustrator images do not",
+    run() {
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_1.png",
+            prompt: "Maukie grins at the camera,\n  holding a coffee\n\nAppearance notes: auburn hair",
+          },
+          { type: "image", filename: "illustration_1.png", prompt: "A dark forest." },
+          { type: "image/png", filename: "selfie_upload.png", prompt: null },
+        ]),
+        "\n[Sent a selfie: Maukie grins at the camera, holding a coffee]",
+      );
+      assert.equal(formatSentSelfieNotes([{ type: "image", filename: "selfie_maukie_2.png" }]), "\n[Sent a selfie]");
+      // Merged group replies hold several speakers, so the note names who sent each selfie.
+      assert.equal(
+        formatSentSelfieNotes([
+          { type: "image", filename: "selfie_maukie_1.png", prompt: "A mirror selfie.", characterName: "Maukie" },
+          { type: "image", filename: "selfie_dottore_1.png", prompt: "A lab selfie.", characterName: "Dottore" },
+        ]),
+        "\n[Maukie sent a selfie: A mirror selfie.]\n[Dottore sent a selfie: A lab selfie.]",
+      );
+      assert.equal(formatSentSelfieNotes(undefined), "");
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_3.png",
+            prompt: "Prompt text.",
+            imageCaption: "Maukie  in a\nred scarf.",
+            characterName: "Maukie",
+          },
+        ]),
+        "\n[Maukie sent a selfie: Maukie in a red scarf.]",
+      );
+    },
+  },
+  {
+    name: "Selfie captions are made once, cached, and never stop the turn",
+    async run() {
+      const calls: string[] = [];
+      const runtime = {
+        enabled: true,
+        connectionId: "cap-conn",
+        connection: { id: "cap-conn", provider: "openai", model: "vision-1" },
+        provider: {
+          chatComplete: async () => {
+            calls.push("caption");
+            return { content: "A smiling selfie." };
+          },
+        },
+        prompt: null,
+      } as any;
+      const readImageDataUrl = async () => "data:image/png;base64,AAAA";
+      const signal = new AbortController().signal;
+      const attachments = [
+        { type: "image", filename: "selfie_maukie_1.png", galleryId: "g1", prompt: "A selfie." },
+        { type: "image", filename: "illustration_1.png", galleryId: "g2" },
+      ];
+
+      const captioned = await captionSentSelfies({ attachments, imageCaptioning: runtime, readImageDataUrl, signal });
+      assert.ok(Array.isArray(captioned));
+      assert.equal(captioned[0]!.imageCaption, "A smiling selfie.");
+      assert.equal(captioned[0]!.imageCaptionConnectionId, "cap-conn");
+      assert.equal(captioned[1]!.imageCaption, undefined);
+      assert.equal(calls.length, 1);
+
+      assert.equal(
+        await captionSentSelfies({ attachments: captioned, imageCaptioning: runtime, readImageDataUrl, signal }),
+        null,
+      );
+      assert.equal(calls.length, 1);
+
+      const failingRuntime = {
+        ...runtime,
+        provider: {
+          chatComplete: async () => {
+            throw new Error("vision model down");
+          },
+        },
+      };
+      assert.equal(
+        await captionSentSelfies({ attachments, imageCaptioning: failingRuntime, readImageDataUrl, signal }),
+        null,
+      );
+
+      const disabledReads: string[] = [];
+      const disabledRuntime = { ...runtime, enabled: false };
+      assert.equal(
+        await captionSentSelfies({
+          attachments,
+          imageCaptioning: disabledRuntime,
+          readImageDataUrl: async () => {
+            disabledReads.push("read");
+            return null;
+          },
+          signal,
+        }),
+        null,
+      );
+      assert.equal(disabledReads.length, 0);
     },
   },
   {
@@ -10297,6 +10412,147 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
+    // Mari, 2026-10-14: a section for a character who is not replying is replaced with nothing, not an empty line.
+    name: "Chat Summary sections for someone who is not replying leave no empty line",
+    async run() {
+      const ctx = (char: string): MacroContext => ({ user: "Mari", char, characters: [char], variables: {} });
+      const section = (name: string, text: string) => `{{#if char == "${name}"}}\n${text}\n{{/if}}`;
+      const summary = `Shared opening.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\n${section("Tighnari", "Tighnari found the herb.")}\n\nShared closing.`;
+      const tighnari = "Shared opening.\n\nTighnari found the herb.\n\nShared closing.";
+      const nobody = "Shared opening.\n\nShared closing.";
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Tighnari")), tighnari, "one responder");
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Maukie")), nobody, "a responder with no section");
+      // Individual replies in a Roleplay group defer the sections until each responder is known.
+      const deferred = resolveChatSummaryMacros(summary, ctx("Narrator"), { deferCharacterMacros: "all" });
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Tighnari" }), tighnari, "deferred, a reader");
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Maukie" }), nobody, "deferred, not a reader");
+      // A merged reply reads the summary for everyone present and marks who knows what.
+      assert.equal(
+        resolveChatSummaryMacros(summary, ctx("Narrator"), undefined, [{ name: "Tighnari" }, { name: "Maukie" }]),
+        "Shared opening.\n\n[Known only to Tighnari: Tighnari found the herb.]\n\nShared closing.",
+        "merged readers",
+      );
+
+      // Every reading agrees: now, or deferred and filled in for the responder.
+      const read = (template: string, who: string) => {
+        const now = resolveChatSummaryMacros(template, ctx(who), { trimResult: false });
+        const later = resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(template, ctx("Narrator"), { deferCharacterMacros: "all", trimResult: false }),
+          { name: who },
+        );
+        assert.equal(later, now, `${who} reads ${JSON.stringify(template)} the same now and deferred`);
+        return now;
+      };
+      const elseChain = `A\n{{#if char == "Cyno"}}\nc\n{{else if char == "Tighnari"}}\nt\n{{else}}\no\n{{/if}}\nB`;
+      const nested = `A\n\n{{#if char == "Cyno" || char == "Tighnari"}}\nBoth know.\n${section("Tighnari", "Tighnari more.")}\n{{/if}}\n\nB`;
+      const list = `List:\n  {{#if char == "Cyno"}}- c{{/if}}\n  {{#if char == "Tighnari"}}- t{{/if}}\n  {{#if char == "Cyno"}}\n  - standalone\n  {{/if}}\nEnd`;
+      const cases: Array<[string, Record<string, string>]> = [
+        [summary, { Cyno: "Shared opening.\n\nCyno alone saw the ruins.\n\nShared closing.", Maukie: nobody }],
+        // Sections written inline on lines of their own.
+        [
+          `A\n{{#if char == "Cyno"}}x{{/if}}\n{{#if char == "Tighnari"}}y{{/if}}\nB`,
+          { Tighnari: "A\ny\nB", Maukie: "A\nB" },
+        ],
+        // Tags on lines of their own, in a paragraph that goes on after a blank line.
+        [`A\n${section("Cyno", "x")}\n\nB`, { Cyno: "A\nx\n\nB", Maukie: "A\n\nB" }],
+        // Hidden at the start and at the end of the text, where deferred sections are filled in after the trim.
+        [
+          `${section("Cyno", "x")}\n\nMiddle.\n\n${section("Tighnari", "y")}`,
+          { Cyno: "x\n\nMiddle.", Tighnari: "Middle.\n\ny", Maukie: "Middle." },
+        ],
+        [elseChain, { Cyno: "A\nc\nB", Tighnari: "A\nt\nB", Maukie: "A\no\nB" }],
+        [`A\n{{#if char == "Cyno"}}{{else}}Not Cyno.{{/if}}\nB`, { Cyno: "A\nB", Maukie: "A\nNot Cyno.\nB" }],
+        [nested, { Cyno: "A\n\nBoth know.\n\nB", Tighnari: "A\n\nBoth know.\nTighnari more.\n\nB", Maukie: "A\n\nB" }],
+        [list, { Cyno: "List:\n  - c\n  - standalone\nEnd", Tighnari: "List:\n  - t\nEnd" }],
+        // A section that starts with a blank line keeps it.
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, { Cyno: "P\n\n\nx\n\nQ", Maukie: "P\n\nQ" }],
+        // A section at the top of another that is not a paragraph keeps the blank line written after it.
+        [
+          `A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "Tighnari note.")}\n\nShared by both.\n{{/if}}\nB`,
+          { Cyno: "A\n\nShared by both.\nB", Tighnari: "A\nTighnari note.\n\nShared by both.\nB", Maukie: "A\nB" },
+        ],
+        // A section that is all another one holds goes with that one's line break.
+        [`A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "t")}\n{{/if}}\nB`, { Cyno: "A\nB" }],
+        [
+          `A\n{{#if char == "Cyno"}}\nx\n{{#if char == "Tighnari"}}\nt\n{{else}}\n\no\n{{/if}}\n{{/if}}\nB`,
+          { Cyno: "A\nx\n\no\nB", Maukie: "A\nB" },
+        ],
+        // A comment line reads the same now and deferred.
+        [`A\n\n${section("Cyno", "c")}\n{{// note}}\n\nB`, { Cyno: "A\n\nc\n\n\nB", Maukie: "A\n\n\nB" }],
+        // A group block keeps its `[` and `]` lines, and the sections around and in it lose their lines too.
+        [
+          `A\n\n${section("Cyno", "c")}\n\n[\n{{char}}:\n${section("Cyno", "g")}\n]\nB`,
+          { Cyno: "A\n\nc\n\n[\nCyno:\ng\n]\nB", Maukie: "A\n\n[\nMaukie:\n]\nB" },
+        ],
+        // A section sharing its line with other text stays as written.
+        [`A {{#if char == "Cyno"}}x{{/if}} B\nC`, { Cyno: "A x B\nC", Maukie: "A  B\nC" }],
+      ];
+      for (const [template, expected] of cases) {
+        for (const [who, text] of Object.entries(expected))
+          assert.equal(read(template, who), text, `${who}: ${template}`);
+        const attached = attachConditionalLineBreaks(template);
+        assert.equal(attachConditionalLineBreaks(attached), attached, `rewriting is idempotent: ${template}`);
+      }
+      assert.equal(attachConditionalLineBreaks(cases.at(-1)![0]), cases.at(-1)![0], "a shared line is untouched");
+      // A section that renders reads exactly as before when nothing around it is hidden.
+      for (const [template, who] of [
+        [`A\n${section("Cyno", "x")}\n\nB`, "Cyno"],
+        [`Shared.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\nEnd.`, "Cyno"],
+        [`A\n  {{#if char == "Cyno"}}\n  x\n  {{/if}}\nB`, "Cyno"],
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, "Cyno"],
+        ...["Cyno", "Tighnari", "Maukie"].map((who) => [elseChain, who]),
+        [nested, "Tighnari"],
+      ])
+        assert.equal(read(template!, who!), resolveMacros(template!, ctx(who!), { trimResult: false }), template);
+      const merged = (template: string) =>
+        resolveChatSummaryMacros(template, ctx("Narrator"), undefined, [{ name: "Cyno" }, { name: "Maukie" }]);
+      assert.equal(
+        merged(elseChain),
+        "A\n[Known only to Cyno: c]\n[Known only to Maukie: o]\nB",
+        "each reader's version of a section keeps its own line",
+      );
+      assert.equal(
+        merged(`T\n{{#if char == "Cyno"}}c{{else}}o{{/if}}`),
+        "T\n[Known only to Cyno: c]\n[Known only to Maukie: o]",
+        "at the end of the text too",
+      );
+      assert.equal(
+        merged(`T\n\n  {{#if char == "Cyno"}}\n  s\n  {{else}}\n  o\n  {{/if}}`),
+        "T\n\n  [Known only to Cyno: s]\n\n  [Known only to Maukie: o]",
+        "an indented section keeps its indent once",
+      );
+      // Windows line endings read as the same lines.
+      const windows = summary.replace(/\n/gu, "\r\n");
+      assert.equal(resolveChatSummaryMacros(windows, ctx("Tighnari")), tighnari, "Windows line endings");
+      assert.equal(
+        resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(windows, ctx("Narrator"), { deferCharacterMacros: "all" }),
+          { name: "Maukie" },
+        ),
+        nobody,
+        "Windows line endings, deferred",
+      );
+      // Filled in after the wrapper, the line after a section still starts its own line: Markdown escapes a
+      // heading there and XML indents it, whether the section shows or not.
+      const rules = `Shared.\n${section("Cyno", "Cyno saw the ruins.")}\n# Rules\nObey.`;
+      const wrapped = (format: "markdown" | "xml", who: string) =>
+        resolveDeferredCharacterMacros(
+          wrapContent(
+            sanitizePromptLeaf(
+              resolveChatSummaryMacros(rules, ctx("Narrator"), { deferCharacterMacros: "all" }),
+              format,
+            ),
+            "Chat Summary",
+            format,
+          ),
+          { name: who },
+        );
+      assert.equal(wrapped("markdown", "Cyno"), "## Chat Summary\nShared.\nCyno saw the ruins.\n\\# Rules\nObey.");
+      assert.equal(wrapped("markdown", "Maukie"), "## Chat Summary\nShared.\n\\# Rules\nObey.");
+      assert.equal(wrapped("xml", "Maukie"), "<chat_summary>\n    Shared.\n    # Rules\n    Obey.\n</chat_summary>");
+    },
+  },
+  {
     name: "lorebook markers preserve authored angle-bracket markup",
     async run() {
       const lorebookScanResult = {
@@ -10984,6 +11240,131 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.doesNotMatch(scoped[0]?.content ?? "", /Pantalone card only\./u);
       assert.equal(scoped[1]?.role, "user");
       assert.match(scoped[1]?.content ?? "", /Pantalone spoke earlier/u);
+    },
+  },
+  {
+    name: "non-Latin names stay in prompt XML tags and Markdown headings",
+    run() {
+      assert.equal(nameToXmlTag("World Info (Before)"), "world_info_before");
+      assert.equal(nameToXmlTag("홍길동"), "홍길동");
+      assert.equal(nameToXmlTag("Dr. 김 철수"), "dr_김_철수");
+      assert.equal(nameToXmlTag("Amélie"), "amélie");
+      assert.equal(nameToXmlTag("राम"), "राम");
+      assert.equal(nameToXmlTag("\u0301Ana"), "ana");
+      assert.equal(nameToXmlTag("★\u0301Ana"), "ana");
+      assert.equal(wrapContent("Card.", "홍길동", "xml"), "<홍길동>\n    Card.\n</홍길동>");
+      assert.equal(wrapContent("Card.", "Dr. 김 철수", "markdown"), "## Dr 김 철수\nCard.");
+      assert.equal(
+        formatAgentInjections([{ agentType: "custom-memory", agentName: "기억 관리자", text: "Note." }], "xml"),
+        "<기억_관리자>\nNote.\n</기억_관리자>",
+      );
+
+      const messages = [{ content: "<홍길동>\n</홍길동>" }, { content: "<홍길동>\nCard.\n</홍길동>" }];
+      pruneEmptyPromptWrappers(messages);
+      assert.deepEqual(messages, [{ content: "<홍길동>\nCard.\n</홍길동>" }]);
+    },
+  },
+  {
+    name: "emoji in names leave no invisible marks in prompt tags",
+    run() {
+      assert.equal(nameToXmlTag("Luna ❤️"), "luna");
+      assert.equal(nameToXmlTag("1️⃣ Ana"), "1_ana");
+      assert.equal(nameToXmlTag("สมศักดิ์"), "สมศักดิ์");
+      assert.equal(wrapContent("Card.", "Luna ❤️", "markdown"), "## Luna\nCard.");
+      assert.equal(
+        formatAgentInjections(
+          [
+            { agentType: "affection", agentName: "❤️ Affection Tracker", text: "Note." },
+            { agentType: "weather", agentName: "☀️", text: "Sunny." },
+          ],
+          "xml",
+        ),
+        "<affection_tracker>\nNote.\n</affection_tracker>\n\n<weather>\nSunny.\n</weather>",
+      );
+
+      const combatTag = nameToXmlTag("⚔️ Combat");
+      const messages = [{ content: `<${combatTag}>\n</${combatTag}>` }];
+      pruneEmptyPromptWrappers(messages);
+      assert.deepEqual(messages, []);
+
+      for (const format of ["xml", "markdown"] as const) {
+        const scoped = scopeIndividualGroupMessagesForTarget(
+          [
+            {
+              role: "system",
+              content: [
+                wrapContent("Hong card only.", "홍길동", format, 1),
+                wrapContent("Luna card only.", "Luna ❤️ Star", format, 1),
+              ].join("\n"),
+              contextKind: "prompt",
+            },
+          ],
+          "hong",
+          [
+            { id: "hong", name: "홍길동" },
+            { id: "luna", name: "Luna ❤️ Star" },
+          ],
+        );
+
+        assert.match(scoped[0]?.content ?? "", /Hong card only\./u, format);
+        assert.doesNotMatch(scoped[0]?.content ?? "", /Luna card only\./u, format);
+      }
+    },
+  },
+  {
+    name: "individual group turns drop other cards with non-Latin names",
+    run() {
+      for (const format of ["xml", "markdown"] as const) {
+        const scoped = scopeIndividualGroupMessagesForTarget(
+          [
+            {
+              role: "system",
+              content: [
+                wrapContent("Hong card only.", "홍길동", format, 1),
+                wrapContent("Kim card only.", "김 철수", format, 1),
+                wrapContent("Ram card only.", "Dr. राम", format, 1),
+              ].join("\n"),
+              contextKind: "prompt",
+            },
+          ],
+          "hong",
+          [
+            { id: "hong", name: "홍길동" },
+            { id: "kim", name: "김 철수" },
+            { id: "ram", name: "Dr. राम" },
+          ],
+        );
+
+        const content = scoped[0]?.content ?? "";
+        assert.match(content, /Hong card only\./u, format);
+        assert.doesNotMatch(content, /Kim card only\./u, format);
+        assert.doesNotMatch(content, /Ram card only\./u, format);
+      }
+    },
+  },
+  {
+    name: "a non-Latin character card does not hide a non-Latin persona",
+    run() {
+      const messages: ChatMLMessage[] = [
+        { role: "system", content: wrapContent("Hong card only.", "홍길동", "xml", 1) },
+        { role: "user", content: "Hello." },
+      ];
+
+      injectIdentityFallbackMessages({
+        messages,
+        charInfo: [],
+        promptTargetCharacterId: null,
+        promptMacroContext: { user: "김철수", char: "홍길동", characters: ["홍길동"], variables: {} },
+        wrapFormat: "xml",
+        personaName: "김철수",
+        personaDescription: "Kim persona only.",
+        personaFields: {},
+        persona: null,
+        resolvePromptMacros: (value) => value,
+      });
+
+      const promptText = messages.map((message) => message.content).join("\n");
+      assert.match(promptText, /<김철수>[\s\S]*Kim persona only\.[\s\S]*<\/김철수>/u);
     },
   },
   {
@@ -12974,6 +13355,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "Updated.",
         "Edit applied.",
         "Done!",
+        "Before you ask: I created the entry.",
       ]) {
         assert.equal(workspaceTextClaimsMutationCompletion(claim), true, claim);
       }
@@ -12986,6 +13368,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "Set its type to Constant",
         "Added fields appear",
         "Removed entries cannot be restored",
+        // Slice 68: feature descriptions from a docs answer are not completion claims.
+        "A chunk needs at least 5 new messages before it's created.",
+        "It is enabled by default in Conversation chats.",
       ]) {
         assert.equal(workspaceTextClaimsMutationCompletion(text), false, text);
       }
@@ -13105,19 +13490,25 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "staged",
       );
       // ── Loop wiring pins: the pure function is only half the contract ────
-      const agentSourceForPins = readFileSync(
-        new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
-        "utf8",
+      const agentSourceForPins = (
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
+          "utf8",
+        ) +
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-round-review.ts", import.meta.url),
+          "utf8",
+        )
       ).replace(/\s+/gu, " ");
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(action, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(action, args.commandResultsForContinuity, { auditFrom: state.claimAuditWatermark, hadPassedClaimAudit: state.hadPassedClaimAudit, })",
         ),
         "the loop audits against the live watermark, never from zero",
       );
       assert.ok(
         agentSourceForPins.includes(
-          "if (claimAudit.advanceWatermark) { claimAuditWatermark = commandResultsForContinuity.length; hadPassedClaimAudit = true; }",
+          "if (claimAudit.advanceWatermark) { state.claimAuditWatermark = args.commandResultsForContinuity.length; state.hadPassedClaimAudit = true; }",
         ),
         "a passing audit consumes its evidence and arms the summary allowance",
       );
@@ -13127,7 +13518,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: reviewState.claimAuditWatermark, hadPassedClaimAudit: reviewState.hadPassedClaimAudit, })",
         ),
         "the command-limit audit shares the run's scope state",
       );

@@ -4,12 +4,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { ChatSidebar } from "./ChatSidebar";
 import { TopBar } from "./TopBar";
+import { GlobalOmnibar } from "./GlobalOmnibarHost";
 import { SpotifyMobileWidget } from "../spotify/SpotifyMiniPlayer";
 import { YouTubeMobileWidget } from "../chat/YouTubePlayer";
 import { LocalMusicMobileWidget } from "../chat/LocalMusicPlayer";
-import { ProfessorMariFloatingAssistantHost } from "../chat/ProfessorMariFloatingAssistantHost";
 import { ChatResourceMobileDropDock } from "../chat/ChatResourceMobileDropDock";
-import { hasProfessorMariFloatingFollowup } from "../chat/professor-mari-floating-events";
 import {
   isMobileShellViewport,
   MOBILE_SHELL_MEDIA_QUERY,
@@ -893,14 +892,6 @@ export function AppShell({
     setTrackerPanelHost(createTrackerPanelHost());
   }, [trackerPanelDetached]);
 
-  const professorMariFloatingActive =
-    hasProfessorMariFloatingFollowup() &&
-    (Boolean(activeChatId) ||
-      hasDetailView ||
-      botBrowserOpen ||
-      gameAssetsBrowserOpen ||
-      (shellOverlayMode && Boolean(mobileNavigationPanel)));
-
   // The overlay Tracker Panel hides the chat control that opened it (globals.css), so keyboard focus moves into the panel.
   useEffect(() => {
     if (!shellOverlayMode || !trackerPanelVisible) return;
@@ -908,6 +899,7 @@ export function AppShell({
       overlayTrackerPanelRef.current?.focus({ preventScroll: true });
     }
   }, [shellOverlayMode, trackerPanelVisible]);
+
   useEffect(() => {
     restoreTrackerPanelOpenForChat(activeChatId);
   }, [activeChatId, restoreTrackerPanelOpenForChat, trackerPanelEnabled]);
@@ -1382,8 +1374,6 @@ export function AppShell({
           shellOverlayMode && hasDetailView && "z-50",
         )}
       >
-        {/* Keep the status-bar inset on the same opaque backing as the page. */}
-        <div className="flex-shrink-0 md:hidden h-[env(safe-area-inset-top)] bg-[var(--marinara-page-backing,var(--background))]" />
         <TopBar mobileTopbarNavigation={shellOverlayMode} />
         <div className="mari-app-background-paint relative flex flex-1 flex-col overflow-hidden">
           {/* Browser — kept mounted once opened so state persists across close/reopen */}
@@ -1646,7 +1636,7 @@ export function AppShell({
           <OnboardingTutorial />
         </Suspense>
       )}
-      <ProfessorMariFloatingAssistantHost active={professorMariFloatingActive} />
+      <GlobalOmnibar />
       <div data-component="MobileMusicWidgetLayer" className="contents">
         {isMobile && musicDjInstalled ? (
           <>

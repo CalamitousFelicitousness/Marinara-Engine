@@ -17,6 +17,7 @@ import { resolveSelfCardAssets } from "../../lib/card-asset-links";
 import { cn } from "../../lib/utils";
 import { formatEstimatedTokens } from "../../lib/character-token-count";
 import { handleTextareaTab } from "../../lib/textarea-editing";
+import { isBrowserExtensionUi } from "../../lib/chat-floating-ui-events";
 import { DecisionStatementNote } from "./DecisionStatementNote";
 import { Trans, useTranslation as useUiTranslation } from "react-i18next";
 
@@ -72,6 +73,8 @@ interface ExpandedMacroEditorProps {
   maxLength?: number;
   showTokenCount?: boolean;
   formatOnChange?: (textarea: HTMLTextAreaElement, inputEvent: InputEvent) => string;
+  /** Font class for the expanded textarea, so it matches the inline field. */
+  fontClassName: string;
 }
 
 function ExpandedMacroEditor({
@@ -85,6 +88,7 @@ function ExpandedMacroEditor({
   maxLength,
   showTokenCount = false,
   formatOnChange,
+  fontClassName,
 }: ExpandedMacroEditorProps) {
   const { t: localizeUi } = useUiTranslation();
   const [localValue, setLocalValue] = useState(value);
@@ -108,7 +112,8 @@ function ExpandedMacroEditor({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      // Escape in a browser extension's card (Grammarly's) closes that card, not this editor.
+      if (event.key === "Escape" && !isBrowserExtensionUi(event.target)) {
         if (!readOnly) onChange(localValue);
         onClose();
       }
@@ -138,7 +143,7 @@ function ExpandedMacroEditor({
         data-component="ExpandedMacroEditor"
         data-macro-modal="true"
         className={cn(
-          "fixed inset-0 z-[10050] flex items-center justify-center bg-black/70 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4",
+          "fixed inset-0 z-(--mari-layer-omnibar) flex items-center justify-center bg-black/70 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4",
           EDITOR_MODAL_SURFACE_VARIABLES,
         )}
       >
@@ -178,7 +183,10 @@ function ExpandedMacroEditor({
             placeholder={placeholder}
             readOnly={readOnly}
             maxLength={maxLength}
-            className="min-h-0 flex-1 resize-none bg-[var(--sidebar)] p-4 font-mono text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+            className={cn(
+              "min-h-0 flex-1 resize-none bg-[var(--sidebar)] p-4 text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]",
+              fontClassName,
+            )}
             spellCheck={false}
           />
         </div>
@@ -219,7 +227,7 @@ function MacrosReferenceModal({ open, onClose }: MacrosReferenceModalProps) {
         data-component="MacroReference"
         data-macro-modal="true"
         className={cn(
-          "fixed inset-0 z-[10050] flex items-center justify-center bg-black/70 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4",
+          "fixed inset-0 z-(--mari-layer-omnibar) flex items-center justify-center bg-black/70 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4",
           EDITOR_MODAL_SURFACE_VARIABLES,
         )}
       >
@@ -526,6 +534,7 @@ export function MacroTextarea({
         maxLength={maxLength}
         showTokenCount={showTokenCount}
         formatOnChange={formatOnChange}
+        fontClassName={className?.split(/\s+/).includes("mari-prompt-font") ? "mari-prompt-font" : "font-mono"}
       />
       <MacrosReferenceModal open={showMacroRef} onClose={() => setShowMacroRef(false)} />
     </>

@@ -128,7 +128,7 @@ import {
   resolveScopedRegexMode,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
-import { showAlertDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
+import { showAlertDialog, showChoiceDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { MacroTextarea } from "../ui/MacroTextarea";
 import { Modal } from "../ui/Modal";
@@ -219,7 +219,7 @@ import {
   getChatExcludedLorebookIds,
   type ActiveLorebookView,
 } from "../../lib/chat-lorebooks";
-import { getConnectedChatDisplayName } from "../../lib/chat-display";
+import { getConnectedChatDisplayName, parseChatMetadata } from "../../lib/chat-display";
 import { getChatCharacterIds } from "../../lib/chat-macros";
 import { getTouchReorderDropIndex } from "../../lib/touch-reorder";
 import {
@@ -252,6 +252,7 @@ import {
   useUpdateChatPreset,
   useDeleteChatPreset,
   useApplyChatPreset,
+  useApplyChatPresetToFollowers,
   useImportChatPreset,
   useSetActiveChatPreset,
 } from "../../hooks/use-chat-presets";
@@ -277,6 +278,7 @@ import type {
 import {
   MAX_ILLUSTRATOR_IMAGES_PER_GENERATION,
   MAX_ILLUSTRATOR_RUN_INTERVAL,
+  chatFollowsChatPreset,
   customAgentHasCapability,
   normalizeIllustratorImagesPerGeneration,
   normalizeIllustratorRunInterval,
@@ -421,7 +423,17 @@ interface ChatSettingsDrawerProps {
   anchor?: ChatToolbarFloatingPanelAnchor;
   /** Show the Help Layout button beside the title (chats that mount the Help overlay). */
   showHelpLayout?: boolean;
-  initialSection?: "autonomous" | "memory-recall" | "multiplayer" | "summary" | null;
+  initialSection?:
+    | "autonomous"
+    | "memory-recall"
+    | "multiplayer"
+    | "summary"
+    | "active-context"
+    | "message-search"
+    // R2: the reply checkup's links to Max output tokens and the lorebook token budget.
+    | "advanced-parameters"
+    | "lorebooks"
+    | null;
   /**
    * Chat Branches, Search, Active Context, Gallery and the drawers in `ChatSettingsTools`. Regular chats
    * pass it; multiplayer hosting does not.
@@ -1396,18 +1408,33 @@ export function ChatSettingsDrawer({
     return () => window.cancelAnimationFrame(frame);
   }, [initialSection, isRoleplayMode, open]);
   useEffect(() => {
-    if (!open || initialSection !== "summary") return;
-    const frame = window.requestAnimationFrame(() =>
-      panelRef.current
-        ?.querySelector(`[data-chat-settings-section="${chatMode}-chat-summary"]`)
-        ?.scrollIntoView({ block: "start" }),
-    );
+    const sectionId =
+      initialSection === "summary"
+        ? "chat-summary"
+        : initialSection === "active-context"
+          ? "active-context"
+          : initialSection === "message-search"
+            ? "message-search"
+            : null;
+    if (!open || !sectionId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const section = panelRef.current?.querySelector(`[data-chat-settings-section="${chatMode}-${sectionId}"]`);
+      section?.scrollIntoView({ block: "start" });
+      // The omnibar's "Search this chat" lands in the search field, ready to type.
+      if (sectionId === "message-search") section?.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [chatMode, initialSection, open]);
   useEffect(() => {
-    if (!open || initialSection !== "multiplayer") return;
+    if (
+      !open ||
+      (initialSection !== "multiplayer" && initialSection !== "advanced-parameters" && initialSection !== "lorebooks")
+    )
+      return;
     const frame = window.requestAnimationFrame(() =>
-      panelRef.current?.querySelector('[data-chat-settings-section="multiplayer"]')?.scrollIntoView({ block: "start" }),
+      panelRef.current
+        ?.querySelector(`[data-chat-settings-section="${initialSection}"]`)
+        ?.scrollIntoView({ block: "start" }),
     );
     return () => window.cancelAnimationFrame(frame);
   }, [initialSection, open]);
@@ -2086,6 +2113,12 @@ export function ChatSettingsDrawer({
     (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
     (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined) ??
     "classic";
+  // A missing choice is by side: every game before turn order was a choice played that way (combat C6c).
+  const effectiveTurnOrder: "side" | "initiative" =
+    ((metadata.gameTacticalTurnOrder ?? metadata.gameSetupConfig?.tacticalTurnOrder) as string | undefined) ===
+    "initiative"
+      ? "initiative"
+      : "side";
   // Whether this game's battles are the ruleset's own. Read from the block the file declares and
   // from the director being on, never from the coverage flag the file claims.
   const gameRuleset = useGameRuleset(isGame ? metadata : null);
@@ -4007,6 +4040,7 @@ export function ChatSettingsDrawer({
   const renameChatPreset = useUpdateChatPreset();
   const deleteChatPreset = useDeleteChatPreset();
   const applyChatPreset = useApplyChatPreset();
+  const applyChatPresetToFollowers = useApplyChatPresetToFollowers();
   const importChatPreset = useImportChatPreset();
   const setActiveChatPreset = useSetActiveChatPreset();
   const presetList = useMemo(() => (chatPresets ?? []) as ChatPreset[], [chatPresets]);
@@ -4558,9 +4592,52 @@ export function ChatSettingsDrawer({
     setActiveChatPreset.mutate(selectedChatPreset.id);
   };
 
-  const handleSaveIntoPreset = () => {
+  const handleSaveIntoPreset = async () => {
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
-    saveChatPreset.mutate({ id: selectedChatPreset.id, settings: snapshotCurrentPresetSettings() });
+    const profileId = selectedChatPreset.id;
+    const settings = snapshotCurrentPresetSettings();
+    // Count from a fresh list so chats changed in another window are included. One try without
+    // retries, so a failing list falls back to the loaded one at once.
+    const chatList = await api.get<Chat[]>("/chats").catch(() => allChats ?? []);
+    const followerCount = chatList.filter(
+      (other) =>
+        other.id !== chat.id &&
+        other.mode === chat.mode &&
+        chatFollowsChatPreset(parseChatMetadata(other.metadata), profileId),
+    ).length;
+    const choice =
+      followerCount > 0
+        ? await showChoiceDialog({
+            title: localizeUi("chat.settingsProfile.saveChoice.title"),
+            message: localizeUi("chat.settingsProfile.saveChoice.message"),
+            choices: [
+              { key: "profile", label: localizeUi("chat.settingsProfile.saveChoice.profileOnly") },
+              {
+                key: "chats",
+                label: localizeUi("chat.settingsProfile.saveChoice.updateChats", { count: followerCount }),
+              },
+            ],
+            cancelLabel: localizeUi("chat.settingsProfile.saveChoice.cancel"),
+          })
+        : "profile";
+    if (choice !== "profile" && choice !== "chats") return;
+    try {
+      await saveChatPreset.mutateAsync({ id: profileId, settings });
+    } catch {
+      toast.error(localizeUi("chat.settingsProfile.saveFailed"));
+      return;
+    }
+    if (choice === "profile") return;
+    try {
+      const { updated, failed } = await applyChatPresetToFollowers.mutateAsync({
+        presetId: profileId,
+        exceptChatId: chat.id,
+      });
+      if (failed > 0) toast.error(localizeUi("chat.settingsProfile.saveChoice.updateFailed", { count: failed }));
+      else toast.success(localizeUi("chat.settingsProfile.saveChoice.updated", { count: updated }));
+    } catch {
+      toast.error(localizeUi("chat.settingsProfile.saveChoice.updateFailed", { count: followerCount }));
+    }
   };
 
   const handleStartRenamePreset = () => {
@@ -5366,6 +5443,7 @@ export function ChatSettingsDrawer({
               icon={<Search size="0.875rem" />}
               help={localizeUi("chat.settings.searchMessagesHelp")}
               style={{ order: CHAT_SETTINGS_ORDER.search }}
+              forceOpen={initialSection === "message-search"}
               contentClassName="pt-0"
             >
               <div data-chat-settings-search>
@@ -5489,6 +5567,8 @@ export function ChatSettingsDrawer({
               rulesetResolvesFights={rulesetResolvesFights}
               rulesetHasPositions={rulesetHasPositions}
               onCombatStyleChange={(gameCombatStyle) => updateMeta.mutate({ id: chat.id, gameCombatStyle })}
+              turnOrder={effectiveTurnOrder}
+              onTurnOrderChange={(gameTacticalTurnOrder) => updateMeta.mutate({ id: chat.id, gameTacticalTurnOrder })}
             />
           )}
 
@@ -7631,6 +7711,7 @@ export function ChatSettingsDrawer({
 
           <div style={{ order: CHAT_SETTINGS_ORDER.lorebooks }}>
             <LorebooksSection
+              forceOpen={initialSection === "lorebooks"}
               chatId={chat.id}
               activeLorebooks={activeLorebooks}
               lorebooks={(lorebooks ?? []) as Lorebook[]}
@@ -7695,6 +7776,7 @@ export function ChatSettingsDrawer({
               label={localizeUi("chat.settings.activeContext")}
               icon={<ScanText size="0.875rem" />}
               help={localizeUi("chat.settings.activeContextHelp")}
+              forceOpen={initialSection === "active-context"}
             >
               {chatTools.activeContext ?? (
                 <Suspense fallback={<ChatToolLoading />}>
@@ -10035,6 +10117,7 @@ export function ChatSettingsDrawer({
           <div style={{ order: CHAT_SETTINGS_ORDER.advancedParameters }}>
             <AdvancedParametersSection
               chatId={chat.id}
+              forceOpen={initialSection === "advanced-parameters"}
               metadata={metadata}
               isConversation={isConversation}
               connectionId={chat.connectionId ?? null}

@@ -2,7 +2,8 @@
 // Quick Switcher Mobile — single chevron opens
 // a tabbed menu with Connections + Personas
 // (with persona group support). Tapping a
-// connection opens its models as a second step.
+// connection switches to it; its arrow opens
+// the connection's models as a second step.
 // ──────────────────────────────────────────────
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
@@ -27,16 +28,16 @@ import { useSidecarStore } from "../../stores/sidecar.store";
 import {
   appendLocalSidecarConnectionOption,
   isLocalSidecarConnectionOption,
-  resolveNanoGptUsageConnection,
+  resolveUsageConnection,
 } from "../../lib/connection-filters";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { getCharacterTitle, parseCharacterDisplayData } from "../../lib/character-display";
 import { buildCharacterIdentityGroups, type CharacterIdentityChoice } from "../../lib/character-identity-groups";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { LOCAL_SIDECAR_CONNECTION_ID, type CharacterGroup, type Persona } from "@marinara-engine/shared";
+import type { CharacterGroup, Persona } from "@marinara-engine/shared";
 import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
 import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
-import { NanoGptUsageWidget } from "../connections/NanoGptUsageWidget";
+import { SubscriptionUsageWidget } from "../connections/SubscriptionUsageWidget";
 import { ConnectionModelPicker } from "../connections/ConnectionModelPicker";
 
 interface PersonaGroupRow {
@@ -52,8 +53,6 @@ interface ParsedGroup {
   memberIds: string[];
   members: Persona[];
 }
-
-const UNGROUPED_PERSONA_GROUP_ID = "__ungrouped-personas__";
 
 export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: ProfessorMariContextBudget | null }) {
   const { t: localizeUi } = useUiTranslation();
@@ -113,7 +112,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
 
   // Mirrors the desktop switcher: the NanoGPT quota follows the selected
   // connection, and Random has no single connection to read a quota from.
-  const usageConnection = resolveNanoGptUsageConnection(sortedConnections, activeConnectionId);
+  const usageConnection = resolveUsageConnection(sortedConnections, activeConnectionId);
 
   const sortedPersonas = (rawPersonas ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
   const normalizedSearch = search.trim().toLocaleLowerCase();
@@ -129,7 +128,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     return map;
   }, [sortedPersonas]);
 
-  const { groups } = useMemo(() => {
+  const { groups, ungroupedPersonas } = useMemo(() => {
     const groupRows = (rawPersonaGroups ?? []) as PersonaGroupRow[];
     const allGroupedIds = new Set<string>();
     const parsedGroups: ParsedGroup[] = [];
@@ -155,17 +154,14 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     }
 
     parsedGroups.sort((a, b) => a.name.localeCompare(b.name));
-    const ungroupedList = visiblePersonas.filter((p) => !allGroupedIds.has(p.id));
-    if (ungroupedList.length > 0) {
-      parsedGroups.push({
-        id: UNGROUPED_PERSONA_GROUP_ID,
-        name: localizeUi("ui.chat.personapicker.ungrouped"),
-        memberIds: ungroupedList.map((p) => p.id),
-        members: ungroupedList,
-      });
-    }
-    return { groups: parsedGroups };
-  }, [localizeUi, normalizedSearch, rawPersonaGroups, personaMap, visiblePersonas]);
+    // F9 (O5): personas in no named group are not wrapped in their own
+    // "Ungrouped" folder - that folder served no purpose (everyone already
+    // starts expanded/collapsed the same way a real folder would), it just
+    // added a tap for a persona that has no group at all. Flat rows instead,
+    // matching the desktop QuickPersonaSwitcher fix from slice 50.
+    const ungroupedPersonas = visiblePersonas.filter((p) => !allGroupedIds.has(p.id));
+    return { groups: parsedGroups, ungroupedPersonas };
+  }, [normalizedSearch, rawPersonaGroups, personaMap, visiblePersonas]);
 
   const visibleCharacterGroups = useMemo(
     () =>
@@ -201,9 +197,9 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     (connId: string) => {
       if (!activeChatId) return;
       if (connId !== activeConnectionId) updateChat.mutate({ id: activeChatId, connectionId: connId });
-      // The built-in Local Model has no model list, so it closes the menu as before.
-      if (connId === LOCAL_SIDECAR_CONNECTION_ID) setOpen(false);
-      else setModelsStep(connId);
+      // Tapping a row only switches; the row's arrow opens the model list (picking a model there switches too).
+      setOpen(false);
+      btnRef.current?.focus();
     },
     [activeChatId, activeConnectionId, updateChat],
   );
@@ -497,7 +493,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                   )}
                   {usageConnection && (
                     <div className="px-2 pt-1">
-                      <NanoGptUsageWidget connectionId={usageConnection.id} variant="inline" />
+                      <SubscriptionUsageWidget connectionId={usageConnection.id} variant="inline" />
                     </div>
                   )}
                   <button
@@ -553,14 +549,10 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                     }
                     const hasModels = !isLocalSidecarConnectionOption(conn);
                     return (
-                      <button
+                      <div
                         key={conn.id}
-                        type="button"
-                        data-connection-option={conn.id}
-                        aria-current={isActive ? "true" : undefined}
-                        onClick={() => handleSwitchConnection(conn.id)}
                         className={cn(
-                          "relative flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs transition-colors hover:bg-foreground/10",
+                          "relative flex min-h-11 w-full items-stretch rounded-lg text-xs",
                           isActive && "bg-foreground/[0.07] text-foreground font-semibold",
                         )}
                       >
@@ -570,21 +562,46 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                             className="pointer-events-none absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-[var(--marinara-chat-chrome-accent)]"
                           />
                         )}
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate">{conn.name || conn.id}</span>
-                          {isActive && conn.model && (
-                            <span className="truncate text-[0.625rem] font-normal text-foreground/50">
-                              {conn.model}
-                            </span>
+                        <button
+                          type="button"
+                          data-connection-option={conn.id}
+                          aria-current={isActive ? "true" : undefined}
+                          onClick={() => handleSwitchConnection(conn.id)}
+                          className={cn(
+                            "flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-foreground/10",
+                            hasModels ? "rounded-l-lg" : "rounded-lg",
                           )}
-                        </span>
-                        {isActive && (
-                          <Check size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-accent)]" />
-                        )}
+                        >
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate">{conn.name || conn.id}</span>
+                            {isActive && conn.model && (
+                              <span className="truncate text-[0.625rem] font-normal text-foreground/50">
+                                {conn.model}
+                              </span>
+                            )}
+                          </span>
+                          {isActive && (
+                            <Check size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-accent)]" />
+                          )}
+                        </button>
                         {hasModels && (
-                          <ChevronRight size="0.875rem" className="shrink-0 text-foreground/40" aria-hidden />
+                          <button
+                            type="button"
+                            data-connection-models={conn.id}
+                            onClick={() => setModelsStep(conn.id)}
+                            aria-label={localizeUi("connections.modelPicker.showModels", {
+                              connection: conn.name || conn.id,
+                            })}
+                            title={localizeUi("connections.modelPicker.showModels", {
+                              connection: conn.name || conn.id,
+                            })}
+                            className="relative flex w-12 shrink-0 items-center justify-center rounded-r-lg text-foreground/40 transition-colors hover:bg-foreground/10 hover:text-foreground/70"
+                          >
+                            <span aria-hidden className="absolute inset-y-2.5 left-0 border-l border-foreground/15" />
+                            <ChevronRight size="0.875rem" aria-hidden />
+                          </button>
                         )}
-                      </button>
+                      </div>
                     );
                   })}
                   {sortedConnections.length === 0 && (
@@ -680,6 +697,8 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                       </div>
                     );
                   })}
+                  {/* F9: personas in no named group: flat rows, no folder to tap through. */}
+                  {ungroupedPersonas.map((persona) => renderPersonaRow(persona, false))}
                   {sortedPersonas.length > 0 && visiblePersonas.length === 0 && !hasVisibleCharacterChoices && (
                     <div className="px-3 py-4 text-center text-[0.6875rem] italic text-foreground/45">
                       {localizeUi("ui.chat.personapicker.noMatchingPersonas")}

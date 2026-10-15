@@ -48,6 +48,8 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 interface AdvancedParametersSectionProps {
   chatId: string;
+  /** Open on arrival (the reply checkup's "Max output tokens" link). */
+  forceOpen?: boolean;
   metadata: Record<string, unknown>;
   isConversation: boolean;
   connectionId: string | null;
@@ -72,6 +74,7 @@ interface AdvancedParametersSectionProps {
 
 export function AdvancedParametersSection({
   chatId,
+  forceOpen,
   metadata,
   isConversation,
   connectionId,
@@ -97,6 +100,10 @@ export function AdvancedParametersSection({
   const imageCaptioningDefaults = parseConnectionImageCaptioningDefaults(conn?.defaultParameters);
   const saveDefaults = useSaveConnectionDefaults();
   const [expanded, setExpanded] = useState(false);
+  // Explicit navigation opens once; a later user collapse still wins.
+  useEffect(() => {
+    if (forceOpen) setExpanded(true);
+  }, [forceOpen]);
   const contentVisible = useDrawerContentVisible("advanced-parameters", expanded);
   const overrides = useMemo(
     () => effectiveChatParameterOverrides(metadata.chatParameters, metadata.chatParameterOverrides),

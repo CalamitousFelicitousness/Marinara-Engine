@@ -4,7 +4,7 @@ This guide explains how to change the whole look of Marinara Engine with a custo
 
 ## Ready-made chat window styles
 
-For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls icy blue instrument frames, pale metal edges and cut corners. **Mari** adds gold-trimmed storybook frames, gemstone blues and Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
+For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls icy blue instrument frames, pale metal edges and cut corners. **Prof. Mari** adds gold-trimmed storybook frames, gemstone blues and Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
 
 The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style.
 
@@ -20,11 +20,13 @@ Use **Reset color** beside a control to follow the preset's light or dark colors
 
 To carry the look into the rest of the chat, use the three switches below the color pickers:
 
-- **Apply preset font** uses the selected widget font for messages, input boxes and chat controls, including Game Mode's HUD widgets, map panel, side remarks and character sheets.
-- **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, side remarks, HUD widgets, map panel and character sheets, input boxes and controls. Conversation messages keep their own shape.
+- **Apply preset font** uses the selected widget font for messages, input boxes and chat controls.
+- **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, input boxes and controls. Conversation messages keep their own shape.
 - **Apply preset colors** uses the widget's border, background and text colors for those areas, including Conversation messages. Your custom colors and gradients apply too. Quoted dialogue keeps each Character's or Persona's own Dialogue Highlight Color.
 
-Each switch starts off and works independently. For example, you can use Mari's lettering while keeping the chat's usual colors. Turning a switch off restores that part of the usual chat styling. Choosing another preset keeps your switch choices. Professor Mari can create custom themes for these areas too.
+In Game Mode, the switches also cover side remarks, HUD widgets, the map panel, character sheets, logs, the Inventory, combat panels and dialogs.
+
+Each switch starts off and works independently. For example, you can use Professor Mari's lettering while keeping the chat's usual colors. Turning a switch off restores that part of the usual chat styling. Choosing another preset keeps your switch choices. Professor Mari can create custom themes for these areas too.
 
 Custom CSS themes can still override these presets. The public window and drawer variables below take precedence over the preset colors. Use `--mari-window-font-family` for window lettering, `--mari-drawer-radius` for section corners, and `--mari-window-ornament: none` to hide the title ornament. To remove all preset decoration, choose **Default** first.
 
@@ -220,6 +222,8 @@ The three **Apply preset** switches also let a custom theme use the widget desig
 | Part | Class |
 | --- | --- |
 | Roleplay and Game message boxes, Game side remarks, HUD widgets, map panel and character sheets, and chat input boxes | `.mari-chat-style-surface` |
+| Game logs, Inventory, combat panels, choices and dialogs; the panels also have `data-game-section` with their name, such as `logs`, `inventory` or `combat-actions` | `.mari-game-section.mari-chat-style-surface` |
+| Game content in a window, such as the Journal, which follows the window's colors | `.mari-game-section` |
 | Conversation messages (font and colors only) | `.mari-chat-style-conversation` |
 | Unboxed Conversation message text | `.mari-chat-style-text` |
 | Chat controls, including Calls and Conversation group controls | `.mari-chat-style-control` |

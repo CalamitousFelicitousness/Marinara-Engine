@@ -214,6 +214,28 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
+### Regression suite: 935/943, as of 2026-10-15
+
+**Measured after the 2026-10-15 sync, app stopped.** The six known failures
+(`launcher/update` by fork design, the four Windows-only lanes and
+`multiplayer-peer-server-security`) plus two new upstream lanes that cannot run
+on Windows:
+
+- `mari-appearance-pack.regression.mjs` hands `new URL(...).pathname`
+  (`/F:/...`) to `sharp`, which reports the sprite missing.
+- `zip-reader.regression.ts` runs git with `GIT_CONFIG_GLOBAL` set to
+  `os.devNull`; Git for Windows cannot open `\\.\nul` and `git init` exits 128.
+
+Two more fail only under full-suite load and pass alone:
+`capability-agent-runtime` (a 5 ms deadline assertion) and
+`ruleset-combat-director`, which needs about 170 s of its 180 s budget alone.
+Rerun both by themselves before chasing them.
+
+Playwright: `Roleplay users send and edit private whispers and notes in Manual
+group chats` (`e2e/roleplay-commands.e2e.ts:845`) fails at line 980: a malformed
+private whisper shows only `Mari used whisper command!`, never the "could not be
+read" notice. Identical on a clean `upstream/staging` worktree (`c7a34b8cf`).
+
 ### Regression suite: 592/598, as of 2026-10-09
 
 **Measured after the 2026-10-09 sync, app stopped.** Five of the six failures

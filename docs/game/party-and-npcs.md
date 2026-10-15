@@ -119,7 +119,9 @@ The Game Master charges and pays the party in these coins, and a won fight or a 
 
 A variant of the ruleset can leave a coin out, such as a long night in which no crowns reach the barrows. Nobody is paid in that coin or pays with it then, and a price named in it is shown in the coins left, at the same worth.
 
-A ruleset can also have markets, so what you can buy depends on where you are. The Game Master says which place a scene is in and how big it is, a hamlet or a city in the ruleset's own words, and a small place sells less: rare things may only be found in a town, and some sellers keep shop only in bigger places or serve only some buyers, such as a chapel that sells only to the faithful. When you buy something, the Engine works out the price from the item's cost and how cheap or dear the deal is, takes it from the buyer's purse and puts the item in their bag. Lodging, passage and other services are only paid for. A notification shows what was bought and for how much, and a purchase the place, the seller or the purse cannot make is refused, and the Game Master is told why.
+A ruleset can also have markets, so what you can buy depends on where you are. The Game Master says which place a scene is in and how big it is, a hamlet or a city in the ruleset's own words, and a small place sells less: rare things may only be found in a town, and some sellers keep shop only in bigger places or serve only some buyers, such as a chapel that sells only to the faithful. When you buy something, the Engine works out the price from the item's cost and how cheap or dear the deal is, takes it from the buyer's purse and puts the item in their bag. Lodging, passage and other services are only paid for. A notification shows what was bought and for how much, and a purchase the place, the seller or the purse cannot make is refused, and the Game Master is told why. A ruleset can also make each day at a place different: a place may keep only a few of something rare, a seller may turn up something unusual that day, and you can sell things back to a seller who deals in them, at a share of the price, until the place's sellers have spent what they pay out in a day. A new day at the same place, which the Game Master starts when the party stays on, fills the shelves and the purse again.
+
+A game without a ruleset has money and a market too when its setting kit has them: every starter kit does, such as copper, silver and gold in high fantasy, copper cash and taels of silver in wuxia, dollars and cents in modern day, and credits in cyberpunk and space opera. The kit's shop lists the everyday things its setting sells, each with a price and the smallest place that sells it, so a village has a café but only a town has a first-aid kit. You can change the money and the shop under the kit's **Change its words**, or remove the money altogether. Buying, paying and earning then work as above, in the setting's own coins.
 
 ## Recruiting and removing party members
 
@@ -141,6 +143,15 @@ Open **Session** (see [Opening Session](sessions-and-saves.md#opening-session)),
 - **Items**: a log of items you acquired, used, lost, or removed.
 - **Library**: in-world notes and books the Game Master has shown you, saved so you can read them again.
 - **Notes**: your own free-text notepad.
+- **World**: in a game with a generated world, the world as your party knows it. It shows:
+  - where you are, and how well known the party is
+  - the party's standing with each group it has dealt with
+  - what the party has done
+  - news that has reached it, with rumours marked
+  - trouble brewing that it has heard of
+  - the past any local would tell
+
+  It shows only what the party could know. Secrets only the Game Master knows stay hidden. It follows the story through swipes and branches.
 
 ### Player notes
 
@@ -154,15 +165,15 @@ The **NPCs** tab of the Adventure Journal tracks how each NPC feels about you. E
 
 The reputation label changes as you act in the story. It is one of these seven, from best to worst:
 
-| Label | Meaning |
-|---|---|
-| **Devoted** | Deeply loyal to you |
-| **Allied** | Strong ally |
-| **Friendly** | Positive |
-| **Neutral** | No strong feeling |
-| **Unfriendly** | Negative |
-| **Hostile** | Turned against you |
-| **Enemy** | Actively opposed |
+| Label          | Meaning             |
+| -------------- | ------------------- |
+| **Devoted**    | Deeply loyal to you |
+| **Allied**     | Strong ally         |
+| **Friendly**   | Positive            |
+| **Neutral**    | No strong feeling   |
+| **Unfriendly** | Negative            |
+| **Hostile**    | Turned against you  |
+| **Enemy**      | Actively opposed    |
 
 A label appears only after an NPC's reputation has moved away from the starting point. A brand-new NPC with unchanged reputation shows no label yet.
 

@@ -6,6 +6,7 @@
 // ──────────────────────────────────────────────
 
 import {
+  attachConditionalLineBreaks,
   CHARACTER_REFERENCE_ID_PATTERN,
   DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE,
   hasDeferredRelocationConditionals,
@@ -984,6 +985,8 @@ export function resolveChatSummaryMacros(
   options?: ResolveMacroOptions,
   readers?: readonly CharacterMacroProfile[],
 ): string {
+  // A section for someone who is not replying leaves no empty line: its line breaks go with it.
+  summary = attachConditionalLineBreaks(summary);
   // ponytail: splitting a group block (`[` … `]`) at a condition would undo its per-character repeat, so a
   // summary with one keeps the single reading. Expand group blocks before scoping if that ever matters.
   if (!readers?.length || /^[ \t]*\[[ \t]*\r?$/mu.test(summary)) return resolveMacros(summary, macroCtx, options);

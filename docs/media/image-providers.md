@@ -41,6 +41,7 @@ The table below shows each service at a glance. Details and quirks follow in the
 | Z.AI | Yes | Cloud |
 | Atlas Cloud | Yes | Cloud |
 | fal.ai | Yes | Cloud |
+| SpicyAPI | Yes | Cloud |
 | NanoGPT | Yes | Cloud |
 | Block Entropy | Yes | Cloud |
 | RunPod Serverless (ComfyUI) | Yes | Cloud |
@@ -106,6 +107,16 @@ Cloud service with the default Base URL `https://api.atlascloud.ai/api/v1`. It n
 Cloud service with the default **Base URL** `https://fal.run`. Create an API key at [fal.ai](https://fal.ai/dashboard/keys), then select **fal.ai** in the image service grid. The starter **Model** list offers `fal-ai/flux/schnell` and `fal-ai/flux/dev`; you can type another text-to-image endpoint ID with a compatible input/output schema. **Test Connection** checks the configuration only. **Test Image** sends a real generation request and uses your fal.ai credits.
 
 Marinara sends the prompt and requested dimensions, then downloads the first returned image into its existing image workflow. Negative prompts are appended as text instructions. Use **Custom Parameters** for model-specific options such as `seed`, `num_inference_steps`, or `image_size`. This integration uses synchronous text-to-image requests; it does not send reference images or resume interrupted jobs. Check the selected model's [API reference](https://fal.ai/models/fal-ai/flux/schnell/api) for its supported inputs.
+
+## SpicyAPI
+
+Cloud service with the default **Base URL** `https://api.spicyapi.ai/api/v1`. Create an API key in the [SpicyAPI console](https://spicyapi.ai/console/keys), then select **SpicyAPI** in the image service grid. Marinara fills in the model `alibaba/z-image-spicy-pro/text-to-image`. Click **Fetch Models from API** to load every SpicyAPI text-to-image and edit model, or type a model ID such as `bytedance/seedream-5.0-pro/text-to-image`. **Test Connection** checks your key by reading the model list, so it costs nothing. **Test Image** makes a real image and uses your SpicyAPI balance.
+
+Pick the **SpicyAPI** service. Don't use **OpenAI (DALL-E)** or a **Custom (OAI-Compatible)** connection with a SpicyAPI address. SpicyAPI's OpenAI-style address only handles text, so those can't make images.
+
+Each SpicyAPI model takes its own settings. Marinara asks SpicyAPI which ones the chosen model accepts and sends only those. It picks the closest shape the model offers, such as an aspect ratio, a width and height, or a fixed size. If the model has no negative prompt field, the negative prompt is added to the end of the prompt as text. Use **Custom Parameters** for other model options, such as `seed`, `resolution`, or `loras`.
+
+SpicyAPI runs each image as a task. Marinara waits for the task to finish, checks back if it takes more than about a minute, and then downloads the result. If the connection drops, Marinara picks up the same task instead of paying for a new one. Edit models (IDs that end in `/edit`) receive your reference images. SpicyAPI takes reference images up to 1 MB each and 2 MB per request, so Marinara shrinks larger images and leaves out extra ones that don't fit.
 
 ## NanoGPT
 
@@ -208,6 +219,7 @@ A **reference image** is an existing picture you send along with your prompt. It
 | Venice.ai | Not supported for text-to-image generation |
 | Z.AI | Not supported in the current text-to-image integration |
 | Atlas Cloud | First image for compatible image-to-image, edit, or Kontext model IDs |
+| SpicyAPI | Edit models only, up to the model's limit; larger images are shrunk to fit |
 | NanoGPT | Up to 3 |
 | Stability AI | First image only, used as image to image |
 | Arli AI | First image only, used as image to image |

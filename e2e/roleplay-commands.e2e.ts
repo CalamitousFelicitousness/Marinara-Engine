@@ -88,6 +88,119 @@ for (const mode of ["roleplay", "conversation"] as const) {
       await request.delete(`/api/chats/${chat.id}`);
     }
   });
+
+  test(`/send stores macros resolved like a normal send in ${mode} (#7585)`, async ({ page, request }) => {
+    const persona = await (await request.post("/api/characters/personas", { data: { name: "Pat Persona" } })).json();
+    const response = await request.post("/api/chats", {
+      data: { name: "Send macros", mode, personaId: persona.id },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const chat = (await response.json()) as { id: string };
+    // Hold the persona list, as on a slow first load: /send must wait for it, not store "User" for {{user}}.
+    // A message without macros must not wait.
+    let releasePersonas = () => {};
+    const personasHeld = new Promise<void>((resolve) => (releasePersonas = resolve));
+    await page.route("**/api/characters/personas/list", async (route) => {
+      await personasHeld;
+      await route.continue();
+    });
+    try {
+      await openChat(page, chat.id, {
+        chatHelpSeenModes: ["roleplay", "conversation"],
+        enterToSendRP: true,
+        enterToSendConvo: true,
+      });
+      const stored = async () =>
+        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as any[])
+          .filter((message) => message.role === "user")
+          .map((message) => message.content as string);
+      const composer = page.locator("textarea[data-chat-composer]");
+      await composer.fill("/send Plain hello.");
+      await composer.press("Enter");
+      await expect.poll(stored).toEqual(["Plain hello."]);
+      await composer.fill("/send Pick {{random::red::green}}, I am {{user}}.");
+      await composer.press("Enter");
+      await expect(composer).toHaveValue("");
+      releasePersonas();
+      await expect.poll(async () => (await stored())[1]).toMatch(/^Pick (red|green), I am Pat Persona\.$/u);
+      await expect(page.locator('[data-message-role="user"]').last()).toContainText((await stored())[1]!);
+    } finally {
+      releasePersonas();
+      await request.delete(`/api/chats/${chat.id}`);
+      await request.delete(`/api/characters/personas/${persona.id}`);
+    }
+  });
+
+  test(`/send posts the composer's attachment and reply like Send in ${mode}`, async ({ page, request }) => {
+    const response = await request.post("/api/chats", { data: { name: "Send attachments", mode } });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const chat = (await response.json()) as { id: string };
+    const replied = await (
+      await request.post(`/api/chats/${chat.id}/messages`, { data: { role: "assistant", content: "Bring the map." } })
+    ).json();
+    try {
+      await openChat(page, chat.id, {
+        chatHelpSeenModes: ["roleplay", "conversation"],
+        enterToSendRP: true,
+        enterToSendConvo: true,
+      });
+      const input = page.locator(".chat-input-container");
+      // Only Conversation offers Reply; Roleplay has no reply target to keep.
+      const reply = { messageId: replied.id as string, name: "Mira", content: "Bring the map." };
+      if (mode === "conversation") {
+        await page.evaluate(
+          async ({ chatId, reply }) => {
+            const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+            useChatStore.getState().setReplyDraft(chatId, reply);
+          },
+          { chatId: chat.id, reply },
+        );
+        await expect(input.getByRole("button", { name: "Cancel reply", exact: true })).toBeVisible();
+      }
+      await input.locator('input[type="file"]').setInputFiles({
+        name: "map-note.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("North gate."),
+      });
+      await expect(input.getByText("map-note.txt", { exact: true })).toBeVisible();
+      const composer = page.locator("textarea[data-chat-composer]");
+      await composer.fill("/send Here it is.");
+      await composer.press("Enter");
+      const posted = async () =>
+        ((await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as any[]).filter(
+          (message) => message.role === "user",
+        );
+      await expect.poll(async () => (await posted()).length).toBe(1);
+      const [message] = await posted();
+      expect(message.content).toBe("Here it is.");
+      expect(extra(message.extra).attachments).toEqual([
+        expect.objectContaining({ type: "text/plain", name: "map-note.txt" }),
+      ]);
+      if (mode === "conversation") expect(extra(message.extra).replyTo).toEqual(reply);
+      await expect(input.getByText("map-note.txt", { exact: true })).toHaveCount(0);
+      await expect(input.getByRole("button", { name: "Cancel reply", exact: true })).toHaveCount(0);
+
+      // A file with no text posts on its own, as Post only posts it, instead of vanishing.
+      await input.locator('input[type="file"]').setInputFiles({
+        name: "gate-key.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("Brass."),
+      });
+      await expect(input.getByText("gate-key.txt", { exact: true })).toBeVisible();
+      // The Send button, since Enter on "/send" picks the command from the list in Roleplay.
+      await composer.fill("/send");
+      await input.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(async () => (await posted()).length).toBe(2);
+      const fileOnly = (await posted()).find((candidate) => candidate.id !== message.id);
+      expect(fileOnly.content).toBe("");
+      expect(extra(fileOnly.extra).attachments).toEqual([
+        expect.objectContaining({ type: "text/plain", name: "gate-key.txt" }),
+      ]);
+      await expect(input.getByText("gate-key.txt", { exact: true })).toHaveCount(0);
+    } finally {
+      await request.delete(`/api/chats/${chat.id}`);
+    }
+  });
 }
 
 test("Roleplay interruptions trim the latest message and restore its original safely", async ({

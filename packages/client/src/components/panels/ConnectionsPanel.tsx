@@ -3,6 +3,7 @@ import { useLibraryOrder } from "../../hooks/use-library-order";
 import { useLibraryFolderDrag } from "../../hooks/use-library-folder-drag";
 import { type InsertEdge } from "../../lib/library-order";
 import { DecisionDefaultControl } from "../connections/DecisionDefaultControl";
+import { EmbeddingDefaultControl } from "../connections/EmbeddingDefaultControl";
 import { DecisionModelModal } from "../modals/DecisionModelModal";
 // ──────────────────────────────────────────────
 // Panel: API Connections (polished, with folders)
@@ -58,6 +59,7 @@ import {
   type GameAudioPurpose,
   type SidecarSpeechModelId,
   type SidecarSpeechRuntimeDiagnostics,
+  isChatProvider,
 } from "@marinara-engine/shared";
 import { confirmNonEmptyFolderDelete, showConfirmDialog } from "../../lib/app-dialogs";
 import {
@@ -135,6 +137,7 @@ const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; 
   xai: CONNECTION_ICON_COLORS,
   arli: CONNECTION_ICON_COLORS,
   zai: CONNECTION_ICON_COLORS,
+  deepseek: CONNECTION_ICON_COLORS,
   custom: CONNECTION_ICON_COLORS,
   image_generation: CONNECTION_ICON_COLORS,
   video_generation: CONNECTION_ICON_COLORS,
@@ -1066,14 +1069,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const languageConnections = useMemo(
-    () =>
-      connectionsList.filter(
-        (connection) =>
-          connection.provider !== "image_generation" &&
-          connection.provider !== "video_generation" &&
-          connection.provider !== "audio" &&
-          connection.provider !== "decision",
-      ),
+    () => connectionsList.filter((connection) => isChatProvider(connection.provider)),
     [connectionsList],
   );
   const imageConnections = useMemo(
@@ -1306,6 +1302,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
             emptyHint={gameAudioHint("music")}
           />
+          <EmbeddingDefaultControl connections={languageConnections} />
           <DecisionDefaultControl />
         </div>
       </SmoothFolderContent>

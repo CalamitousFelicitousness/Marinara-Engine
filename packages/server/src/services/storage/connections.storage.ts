@@ -8,7 +8,9 @@ import { newId, now } from "../../utils/id-generator.js";
 import { encryptApiKey, decryptApiKey } from "../../utils/crypto.js";
 import {
   MAX_PINNED_MODELS,
+  isChatProvider,
   parsePinnedModels,
+  supportsSubscriptionUsageWidget,
   type CreateConnectionInput,
   type GameAudioPurpose,
 } from "@marinara-engine/shared";
@@ -52,6 +54,11 @@ async function findAudioConnectionByRoleFlag(db: DB, field: RoleFlagField) {
   const row = rows[0] ?? null;
   if (!row) return null;
   return withDecryptedKey(row);
+}
+
+/** Decision connections never become the main connection, a random pick or an agent fallback. */
+function takesChatDefaults(provider: string): boolean {
+  return provider !== "decision";
 }
 
 /** One model in a saved provider list: display and limit fields only, never credentials. */
@@ -336,18 +343,20 @@ export function createConnectionsStorage(db: DB) {
           input.provider === "decision" && input.credentialsFromConnectionId ? "" : (input.apiKey ?? ""),
         ),
         managementTokenEncrypted: encryptApiKey(input.provider === "nanogpt" ? (input.managementToken ?? "") : ""),
-        showUsageWidget: String(input.provider === "nanogpt" && (input.showUsageWidget ?? false)),
+        showUsageWidget: String(supportsSubscriptionUsageWidget(input.provider) && (input.showUsageWidget ?? false)),
+        showUsageFiveHour: String(input.showUsageFiveHour ?? true),
+        showUsageWeekly: String(input.showUsageWeekly ?? true),
         profileImportReviewRequired: "false",
         model: input.model ?? "",
         pinnedModels: JSON.stringify(parsePinnedModels(input.pinnedModels ?? [])),
         savedModels: null,
         imagePath: input.imagePath ?? null,
         maxContext: input.maxContext ?? 128000,
-        isDefault: String(input.provider !== "decision" && (input.isDefault ?? false)),
+        isDefault: String(takesChatDefaults(input.provider) && (input.isDefault ?? false)),
         fallbackForMain: String(providerCategory === "language" && (input.fallbackForMain ?? false)),
-        useForRandom: String(input.provider !== "decision" && (input.useForRandom ?? false)),
+        useForRandom: String(takesChatDefaults(input.provider) && (input.useForRandom ?? false)),
         defaultForAgents: String(input.defaultForAgents ?? false),
-        fallbackForAgents: String(input.provider !== "decision" && (input.fallbackForAgents ?? false)),
+        fallbackForAgents: String(takesChatDefaults(input.provider) && (input.fallbackForAgents ?? false)),
         enableCaching: String(input.enableCaching ?? false),
         anthropicExtendedCacheTtl: String(input.anthropicExtendedCacheTtl ?? false),
         cachingAtDepth: input.cachingAtDepth ?? 5,
@@ -365,6 +374,7 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationQuality: input.imageGenerationQuality ?? "auto",
         videoGenerationSource: input.videoGenerationSource ?? null,
         videoService: input.videoService ?? null,
+        videoPromptInstructions: input.videoPromptInstructions ?? null,
         audioSource: input.audioSource ?? null,
         decisionSource: input.decisionSource ?? null,
         credentialsFromConnectionId: input.provider === "decision" ? (input.credentialsFromConnectionId ?? null) : null,
@@ -387,7 +397,7 @@ export function createConnectionsStorage(db: DB) {
       };
       await db.transaction(async (tx) => {
         // If this is set as default, unset others.
-        if (input.isDefault && input.provider !== "decision") {
+        if (input.isDefault && takesChatDefaults(input.provider)) {
           await tx.update(apiConnections).set({ isDefault: "false" });
           values.fallbackForMain = "false";
         }
@@ -408,7 +418,7 @@ export function createConnectionsStorage(db: DB) {
             }),
           );
         }
-        if (input.fallbackForAgents && input.provider !== "decision") {
+        if (input.fallbackForAgents && takesChatDefaults(input.provider)) {
           Object.assign(
             values,
             await enforceRoleFlagExclusivity(tx, {
@@ -511,10 +521,10 @@ export function createConnectionsStorage(db: DB) {
       if (data.showUsageWidget !== undefined) {
         updateFields.showUsageWidget = String(data.showUsageWidget);
       }
-      if (effectiveProvider !== "nanogpt") {
-        updateFields.managementTokenEncrypted = encryptApiKey("");
-        updateFields.showUsageWidget = "false";
-      }
+      if (data.showUsageFiveHour !== undefined) updateFields.showUsageFiveHour = String(data.showUsageFiveHour);
+      if (data.showUsageWeekly !== undefined) updateFields.showUsageWeekly = String(data.showUsageWeekly);
+      if (effectiveProvider !== "nanogpt") updateFields.managementTokenEncrypted = encryptApiKey("");
+      if (!supportsSubscriptionUsageWidget(effectiveProvider)) updateFields.showUsageWidget = "false";
       if (data.model !== undefined) updateFields.model = data.model;
       if (data.pinnedModels !== undefined)
         updateFields.pinnedModels = JSON.stringify(parsePinnedModels(data.pinnedModels));
@@ -592,6 +602,9 @@ export function createConnectionsStorage(db: DB) {
       if (data.videoService !== undefined) {
         updateFields.videoService = data.videoService;
       }
+      if (data.videoPromptInstructions !== undefined) {
+        updateFields.videoPromptInstructions = data.videoPromptInstructions;
+      }
       if (data.audioSource !== undefined) {
         updateFields.audioSource = data.audioSource;
       }
@@ -646,13 +659,13 @@ export function createConnectionsStorage(db: DB) {
       if (data.treatAsLocalEndpoint !== undefined) {
         updateFields.treatAsLocalEndpoint = String(data.treatAsLocalEndpoint);
       }
-      if (effectiveProvider === "decision") {
+      if (!takesChatDefaults(effectiveProvider)) {
         updateFields.isDefault = "false";
         updateFields.useForRandom = "false";
         updateFields.fallbackForAgents = "false";
       }
       await db.transaction(async (tx) => {
-        if (shouldClearDefault && effectiveProvider !== "decision") {
+        if (shouldClearDefault && takesChatDefaults(effectiveProvider)) {
           await tx.update(apiConnections).set({ isDefault: "false" });
           updateFields.fallbackForMain = "false";
         }
@@ -675,7 +688,7 @@ export function createConnectionsStorage(db: DB) {
             }),
           );
         }
-        if (shouldClearAgentFallbacks && effectiveProvider !== "decision") {
+        if (shouldClearAgentFallbacks && takesChatDefaults(effectiveProvider)) {
           Object.assign(
             updateFields,
             await enforceRoleFlagExclusivity(tx, {
@@ -762,6 +775,7 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationQuality: source.imageGenerationQuality,
         videoGenerationSource: source.videoGenerationSource,
         videoService: source.videoService,
+        videoPromptInstructions: source.videoPromptInstructions,
         audioSource: source.audioSource,
         decisionSource: source.decisionSource,
         credentialsFromConnectionId: source.credentialsFromConnectionId,
@@ -777,6 +791,8 @@ export function createConnectionsStorage(db: DB) {
         maxRequestsPerMinute: source.maxRequestsPerMinute,
         managementTokenEncrypted: source.managementTokenEncrypted,
         showUsageWidget: source.showUsageWidget,
+        showUsageFiveHour: source.showUsageFiveHour,
+        showUsageWeekly: source.showUsageWeekly,
         claudeFastMode: source.claudeFastMode,
         treatAsLocalEndpoint: source.treatAsLocalEndpoint,
         createdAt: timestamp,
@@ -795,15 +811,7 @@ export function createConnectionsStorage(db: DB) {
       // The pool is drawn as the live chat LLM — media connections can never
       // serve a chat turn, so they are excluded even if a row was flagged
       // before its provider changed.
-      return rows
-        .filter(
-          (r: any) =>
-            r.provider !== "decision" &&
-            r.provider !== "audio" &&
-            r.provider !== "image_generation" &&
-            r.provider !== "video_generation",
-        )
-        .map((r: any) => withDecryptedKey(r));
+      return rows.filter((r: any) => isChatProvider(r.provider)).map((r: any) => withDecryptedKey(r));
     },
 
     async remove(id: string) {

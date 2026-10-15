@@ -18,6 +18,7 @@ import {
   normalizeTextForMatch,
   parseDiceNotation,
   rollParsedDice,
+  type MessageReply,
   type ParsedDiceNotation,
 } from "@marinara-engine/shared";
 
@@ -63,6 +64,10 @@ export interface SlashCommandContext {
     characterId?: string | null;
     extra?: Record<string, unknown>;
   }) => void | Promise<void>;
+  /** Prepare typed text as a normal send would store it: user-input regex, input translation and macros. */
+  prepareUserMessage: (text: string) => Promise<string>;
+  /** Whether the composer had files attached, which a posted user message carries (/send). */
+  hasComposerAttachments?: boolean;
   /** Invalidate chat queries to refresh the UI */
   invalidate: () => void;
   /** Invalidate the character detail cache after character-owned changes. */
@@ -90,6 +95,43 @@ export interface SlashCommandContext {
   availableCapabilityIds?: ReadonlySet<string>;
   /** Installed Conversation games that contribute manual slash launchers. */
   conversationGames?: readonly ConversationGameSlashContribution[];
+}
+
+/**
+ * A typed command runs after the composer is cleared. The user message it posts (/send) takes the
+ * composer's attachments and reply target with it, as Send does. Other messages are unchanged.
+ */
+export function withComposerReplyAndAttachments(
+  ctx: SlashCommandContext,
+  composer: {
+    replyTo?: MessageReply | null;
+    attachments: ReadonlyArray<{ type: string; data: string; name: string }>;
+  },
+): SlashCommandContext {
+  const { replyTo } = composer;
+  const attachments = composer.attachments.map(({ type, data, name }) => ({ type, data, filename: name, name }));
+  return {
+    ...ctx,
+    hasComposerAttachments: attachments.length > 0,
+    createMessage: async (data) => {
+      if (data.role !== "user") return ctx.createMessage(data);
+      // A reply picked while the command was preparing its text stays for the next message.
+      if (replyTo && useChatStore.getState().replyDrafts.get(ctx.chatId) === replyTo) {
+        useChatStore.getState().setReplyDraft(ctx.chatId, null);
+      }
+      try {
+        await ctx.createMessage({
+          ...data,
+          extra: { ...data.extra, ...(replyTo ? { replyTo } : {}), ...(attachments.length ? { attachments } : {}) },
+        });
+      } catch (error) {
+        if (replyTo && !useChatStore.getState().replyDrafts.has(ctx.chatId)) {
+          useChatStore.getState().setReplyDraft(ctx.chatId, replyTo);
+        }
+        throw error;
+      }
+    },
+  };
 }
 
 export interface ConversationGameSlashContribution {
@@ -714,8 +756,9 @@ const COMMANDS: SlashCommand[] = [
     local: true,
     async execute(args, ctx) {
       const content = stripSingleWrappingQuotePair(args);
-      if (!content) return { handled: true, feedback: "Usage: /send <message>" };
-      await ctx.createMessage({ role: "user", content, characterId: null });
+      // Files with no text post on their own, as Post only posts them.
+      if (!content && !ctx.hasComposerAttachments) return { handled: true, feedback: "Usage: /send <message>" };
+      await ctx.createMessage({ role: "user", content: await ctx.prepareUserMessage(content), characterId: null });
       return { handled: true };
     },
   },
@@ -1147,7 +1190,10 @@ const COMMANDS: SlashCommand[] = [
         };
       }
 
-      const { ms, timeStr, message } = parsed;
+      const { ms, timeStr } = parsed;
+      // The user's own typed words, stored as a normal send stores them, so the chat, the toast and
+      // the model read the same {{random}} pick and names.
+      const message = await ctx.prepareUserMessage(parsed.message);
       const chatId = ctx.chatId;
       const invalidate = ctx.invalidate;
 

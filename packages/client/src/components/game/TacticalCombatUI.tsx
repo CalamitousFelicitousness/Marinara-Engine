@@ -1,5 +1,6 @@
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { CombatAiControls } from "./CombatAiControls";
+import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 // ──────────────────────────────────────────────
 // Game: Tactical (grid) Combat UI
 //
@@ -46,16 +47,23 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
+import { boardCellArt, boardSliceStyle, useBoardArt } from "../../lib/board-art";
 import { audioManager } from "../../lib/game-audio";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useTacticalCombatStart, useTacticalCombatAction } from "../../hooks/use-game";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
 import {
   TERRAIN_DATA,
+  type TacticalTerrain,
   CLASS_PROFILES,
   getMovementRange,
   getTargetsInRange,
+  currentTacticalActor,
   forecastAttack,
+  hasLineOfSight,
+  reachFrom,
+  elevationAt,
   buildTacticalSummary,
   type CombatWeather,
   type Combatant,
@@ -69,6 +77,11 @@ import {
   type TacticalCoord,
   type TacticalBattlefieldBrief,
   type TacticalClass,
+  findCreatureArt,
+  creatureArtVariant,
+  type CreatureFacing,
+  type CreaturePack,
+  type CreaturePackCreature,
 } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -83,11 +96,15 @@ import {
   resolveTerrainIcon,
   ringColorFor,
   tileShadow,
+  heightWash,
 } from "../../lib/tactical-board-look";
 
 // ── Props ──
 
 interface TacticalCombatUIProps {
+  /** The setting's own words for the kinds of tile it names (worldgen W6d); the rest keep their
+   *  localized names. */
+  tileWords?: Partial<Record<TacticalTerrain, string>>;
   directed?: {
     state: TacticalCombatState;
     actorId?: string;
@@ -263,6 +280,7 @@ type UiMode =
 const DEFAULT_ITEM_NAME = "Potion";
 
 export function TacticalCombatUI({
+  tileWords,
   directed,
   chatId,
   party,
@@ -280,6 +298,15 @@ export function TacticalCombatUI({
   const { data: manifest } = useGameAssetManifest();
   const assets = manifest?.assets ?? null;
   const startMut = useTacticalCombatStart();
+  const playEventsRef = useRef<
+    | ((
+        events: TacticalEvent[],
+        finalState: TacticalCombatState,
+        preState: TacticalCombatState,
+        onSettled?: (final: TacticalCombatState) => void,
+      ) => void)
+    | null
+  >(null);
   const actionMut = useTacticalCombatAction();
   const updateMeta = useUpdateChatMetadata();
 
@@ -306,6 +333,24 @@ export function TacticalCombatUI({
 
   // Root element — the drag constraints boundary for the draggable inspect card.
   const rootRef = useRef<HTMLDivElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
+  // How tall the bar and the order are, for the game surface's floating controls to clear: one line on
+  // a wide screen, more where the bar wraps and the round is fought by initiative. The bar only mounts once
+  // the battle has loaded, so it is measured again when it appears.
+  const chromeShown = !starting && !startError && state != null;
+  useEffect(() => {
+    const chrome = chromeRef.current;
+    if (!chrome || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const write = () => root.style.setProperty("--tactical-chrome-height", `${chrome.offsetHeight}px`);
+    write();
+    const observer = new ResizeObserver(write);
+    observer.observe(chrome);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--tactical-chrome-height");
+    };
+  }, [chromeShown]);
 
   // Action-menu drag offset lives at component level so the card keeps its
   // position across unit selections (the card unmounts on deselect).
@@ -396,12 +441,27 @@ export function TacticalCombatUI({
           if (isCancelled()) return;
           // Engine does NOT set isPlayer — the client marks the persona's combatant.
           const playerId = playerCombatantId ?? party[0]?.id ?? null;
-          const marked: TacticalCombatState = {
-            ...res.state,
-            units: res.state.units.map((u) =>
+          const mark = (from: TacticalCombatState): TacticalCombatState => ({
+            ...from,
+            units: from.units.map((u) =>
               u.side === "party" && (playerId ? u.id === playerId : false) ? { ...u, isPlayer: true } : u,
             ),
-          };
+          });
+          const marked = mark(res.state);
+          // By initiative, whoever rolled ahead of the party has already gone: play those turns out from
+          // the board as it was laid out, then settle on the fight as it stands.
+          if (res.opening) {
+            const before = mark(res.opening.before);
+            setState(before);
+            // Kept as it will stand, so a refresh while the opening plays resumes this same fight. The
+            // battlefield is told now too: the opening turns move units, not the ground.
+            persistSnapshot(marked);
+            setStarting(false);
+            playSfx(SFX.start);
+            onBattlefieldReady?.(marked);
+            playEventsRef.current?.(res.opening.events, marked, before);
+            return;
+          }
           setState(marked);
           setStarting(false);
           persistSnapshot(marked);
@@ -455,13 +515,16 @@ export function TacticalCombatUI({
     () => TERRAIN_PALETTES[activeEnvironment ?? "default"] ?? TERRAIN_PALETTES.default,
     [activeEnvironment],
   );
+  // Board art (1.338 on Classic, as on the ruleset board since 1.333): its environment's board pack draws
+  // the ground, edges and raised rims; without one, the painted textures below.
+  const boardArt = useBoardArt(undefined, activeEnvironment);
   // Stronger palette tint over the painted textures when a themed environment applies.
   const tileTintAlpha =
     activeEnvironment && TERRAIN_PALETTES[activeEnvironment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
+  const liveBattlefield = liveState?.battlefield;
   const battlefieldSummary = useMemo(() => {
     const seed = liveState?.seed;
-    const size = liveState?.battlefield?.size;
-    const landmarks = liveState?.battlefield?.brief?.features?.length ?? 0;
+    const size = liveBattlefield?.size;
     const parts = [
       typeof seed === "number" ? localizeUi("ui.game.tacticalcombatui.seedValue1", { value1: seed }) : null,
       size
@@ -469,10 +532,15 @@ export function TacticalCombatUI({
             value1: localizeUi(battlefieldSizeLabelKey(size)),
           })
         : null,
-      localizeUi("ui.game.tacticalcombatui.landmarks", { count: landmarks }),
+      // A board painted for the place (worldgen W9g) is named; a generated one counts its landmarks.
+      liveBattlefield?.kind === "hand-made"
+        ? localizeUi("ui.game.tacticalcombatui.madeMapValue1", { value1: liveBattlefield.name })
+        : localizeUi("ui.game.tacticalcombatui.landmarks", {
+            count: liveBattlefield?.brief?.features?.length ?? 0,
+          }),
     ].filter((value): value is string => Boolean(value));
     return parts.join(" · ");
-  }, [liveState?.battlefield?.brief?.features?.length, liveState?.battlefield?.size, liveState?.seed, localizeUi]);
+  }, [liveBattlefield, liveState?.seed, localizeUi]);
 
   const selectedUnitId = ui.kind === "idle" ? null : ui.unitId;
   const selectedUnit = useMemo(
@@ -497,13 +565,17 @@ export function TacticalCombatUI({
       if (e.side !== "enemy" || e.hp <= 0) continue;
       const reach = [{ x: e.x, y: e.y }, ...getMovementRange(liveState, e.id)];
       for (const tile of reach) {
-        for (let dy = -e.attackRange.max; dy <= e.attackRange.max; dy++) {
-          for (let dx = -e.attackRange.max; dx <= e.attackRange.max; dx++) {
+        // One cell further for a ranged attack shot down from higher ground (combat C6b).
+        const far = e.attackRange.max + 1;
+        for (let dy = -far; dy <= far; dy++) {
+          for (let dx = -far; dx <= far; dx++) {
             const d = Math.abs(dx) + Math.abs(dy);
-            if (d < e.attackRange.min || d > e.attackRange.max) continue;
             const tx = tile.x + dx;
             const ty = tile.y + dy;
+            if (d < e.attackRange.min || d > reachFrom(liveState.grid, tile, { x: tx, y: ty }, e.attackRange.max))
+              continue;
             if (tx < 0 || ty < 0 || tx >= liveState.grid.width || ty >= liveState.grid.height) continue;
+            if (!hasLineOfSight(liveState.grid, tile, { x: tx, y: ty })) continue;
             keys.add(`${tx},${ty}`);
           }
         }
@@ -534,7 +606,7 @@ export function TacticalCombatUI({
           if (u.side === selectedUnit.side || u.hp <= 0) continue;
           const d = Math.abs(u.x - from.x) + Math.abs(u.y - from.y);
           const max = skill.range ?? Math.max(selectedUnit.attackRange.max, 2);
-          if (d >= 1 && d <= max) ids.push(u.id);
+          if (d >= 1 && d <= max && hasLineOfSight(stagedState.grid, from, u)) ids.push(u.id);
         }
         return new Set(ids);
       }
@@ -546,7 +618,7 @@ export function TacticalCombatUI({
         const isAlly = u.side === selectedUnit.side;
         if (wantAlly !== isAlly) continue;
         const d = Math.abs(u.x - from.x) + Math.abs(u.y - from.y);
-        if (d <= (skill.range ?? 2)) ids.push(u.id);
+        if (d <= (skill.range ?? 2) && hasLineOfSight(stagedState.grid, from, u)) ids.push(u.id);
       }
       return new Set(ids);
     }
@@ -562,7 +634,7 @@ export function TacticalCombatUI({
         )
           continue;
         const d = Math.abs(u.x - from.x) + Math.abs(u.y - from.y);
-        if (d <= 2) ids.push(u.id);
+        if (d <= 2 && hasLineOfSight(stagedState.grid, from, u)) ids.push(u.id);
       }
       return new Set(ids);
     }
@@ -578,7 +650,7 @@ export function TacticalCombatUI({
     if (ui.kind !== "target") return null;
     if (ui.action === "item") return null;
     if (ui.action === "skill" && ui.skill && ui.skill.type !== "attack") return null;
-    return forecastAttack(stagedState, selectedUnit.id, forecastTargetId);
+    return forecastAttack(stagedState, selectedUnit.id, forecastTargetId, ui.action === "skill" ? ui.skill : undefined);
   }, [stagedState, selectedUnit, forecastTargetId, ui]);
 
   const spawnPopup = useCallback(
@@ -608,7 +680,10 @@ export function TacticalCombatUI({
         }
         case "phase": {
           const tone: PhaseBanner["tone"] = ev.phase === "enemy" || /enemy/i.test(ev.text) ? "enemy" : "player";
-          setBanner({ text: ev.text, tone });
+          setBanner({
+            text: ev.message ? localizeUi(ev.message.key, { ...ev.message.params, defaultValue: ev.text }) : ev.text,
+            tone,
+          });
           break;
         }
         case "damage":
@@ -672,7 +747,7 @@ export function TacticalCombatUI({
           break;
       }
     },
-    [playSfx, spawnPopup],
+    [localizeUi, playSfx, spawnPopup],
   );
 
   // ── End-of-battle handoff ──
@@ -784,6 +859,12 @@ export function TacticalCombatUI({
   );
 
   // ── Reset transient UI selection ──
+  // Read by launchBattle, which is made before the player of events is (and calls it only once its
+  // start request answers, after this has run).
+  useEffect(() => {
+    playEventsRef.current = playEvents;
+  }, [playEvents]);
+
   const resetSelection = useCallback(() => {
     setUi({ kind: "idle" });
     setStagedMove(null);
@@ -812,7 +893,11 @@ export function TacticalCombatUI({
     actionMenuY.set(0);
     endedRef.current = false;
     const restartSeed = state?.seed;
-    const restartBattlefield = state ? (state.battlefield?.brief ?? null) : (battlefield ?? null);
+    const restartBattlefield = state
+      ? state.battlefield?.kind === "generated"
+        ? (state.battlefield.brief ?? null)
+        : null
+      : (battlefield ?? null);
     const restartEnvironment = state?.environment ?? environment ?? null;
     const restartFormation = state?.formation ?? formation ?? null;
     setState(null);
@@ -936,6 +1021,7 @@ export function TacticalCombatUI({
         unit.hp > 0 &&
         !unit.hasActed &&
         liveState.phase === "player" &&
+        (!liveState.initiative || currentTacticalActor(liveState)?.id === unit.id) &&
         (!directed || (directed.canAct && directed.actorId === unit.id))
       ) {
         playSfx(SFX.select);
@@ -1092,6 +1178,12 @@ export function TacticalCombatUI({
         .filter((r) => r.hp > 0)
     );
   }, [liveState, animUnits, stagedMove, selectedUnitId, optimisticMove]);
+  // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
+  const creaturePack = useCreaturePack();
+  const facings = useCreatureFacings(
+    renderUnits.map(({ unit, x, y }) => ({ id: unit.id, x, y, side: unit.side })),
+    String(liveState?.seed ?? ""),
+  );
 
   // ── Loading / error states (translucent so the scene shows through) ──
   if (starting) {
@@ -1147,6 +1239,8 @@ export function TacticalCombatUI({
   // stay visible-but-disabled during resolution instead of vanishing — dropped
   // clicks then read as "greyed out", not "the button disappeared".
   const playerPhase = liveState.phase === "player";
+  // By initiative (combat C6c): whose turn it is, and the order the round goes in.
+  const currentActor = currentTacticalActor(liveState);
 
   return (
     <div
@@ -1170,110 +1264,151 @@ export function TacticalCombatUI({
       {/* Crit flash overlay */}
       {critFlash && <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/25" />}
 
-      {/* Top bar: round/phase + controls */}
-      <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-black/40 px-3 py-2 backdrop-blur">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wide",
-              liveState.phase === "player"
-                ? "bg-[var(--primary)]/25 text-[var(--primary)]"
-                : "bg-[var(--destructive)]/25 text-[var(--destructive)]",
-            )}
-          >
-            {liveState.phase === "player"
-              ? localizeUi("ui.game.tacticalcombatui.playerPhase")
-              : localizeUi("ui.game.tacticalcombatui.enemyPhase")}
-          </span>
-          <span className="text-xs font-semibold text-white/60">
-            {localizeUi("ui.game.gamecombatui.round")} {liveState.round}
-          </span>
-          <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-white/40 sm:inline">
-            {liveState.difficulty}
-          </span>
-          <span
-            aria-label={localizeUi("ui.game.tacticalcombatui.battlefieldSummary", {
-              value1: battlefieldSummary,
-            })}
-            className="hidden text-[0.65rem] font-medium text-white/45 md:inline"
-          >
-            {battlefieldSummary}
-          </span>
-          {animating && (
-            <span className="flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[0.65rem] font-semibold text-white/70">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300 shadow-[0_0_6px_1px_rgba(252,211,77,0.7)]" />
-              {localizeUi("ui.game.tacticalcombatui.resolving")}
+      {/* The bar and the turn order, measured so the game's own floating controls (the map, the party,
+          the menu) sit below them rather than over the order. */}
+      <div
+        ref={chromeRef}
+        data-game-section="tactical-status"
+        className={cn(GAME_SECTION_CLASS, "z-20 flex shrink-0 flex-col")}
+      >
+        {/* Top bar: round/phase + controls */}
+        <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-black/40 px-3 py-2 backdrop-blur">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wide",
+                liveState.phase === "player"
+                  ? "bg-[var(--primary)]/25 text-[var(--primary)]"
+                  : "bg-[var(--destructive)]/25 text-[var(--destructive)]",
+              )}
+            >
+              {currentActor
+                ? localizeUi("ui.game.tacticalcombatui.unitsTurn", { name: currentActor.name })
+                : liveState.phase === "player"
+                  ? localizeUi("ui.game.tacticalcombatui.playerPhase")
+                  : localizeUi("ui.game.tacticalcombatui.enemyPhase")}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setShowThreat((v) => !v)}
-            className={cn(
-              "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-colors",
-              showThreat
-                ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--destructive)]"
-                : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10",
+            <span className="text-xs font-semibold text-white/60">
+              {localizeUi("ui.game.gamecombatui.round")} {liveState.round}
+            </span>
+            <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-white/40 sm:inline">
+              {liveState.difficulty}
+            </span>
+            <span
+              aria-label={localizeUi("ui.game.tacticalcombatui.battlefieldSummary", {
+                value1: battlefieldSummary,
+              })}
+              className="hidden text-[0.65rem] font-medium text-white/45 md:inline"
+            >
+              {battlefieldSummary}
+            </span>
+            {animating && (
+              <span className="flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[0.65rem] font-semibold text-white/70">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--warning)] shadow-[0_0_6px_1px_color-mix(in_srgb,var(--warning)_70%,transparent)]" />
+                {localizeUi("ui.game.tacticalcombatui.resolving")}
+              </span>
             )}
-            title={localizeUi("ui.game.tacticalcombatui.toggleEnemyThreatRange")}
-          >
-            {showThreat ? <Eye size={13} /> : <EyeOff size={13} />}
-            <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.threat")}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setLogOpen((v) => !v)}
-            className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10"
-            title={localizeUi("ui.game.tacticalcombatui.combatLog")}
-          >
-            <ScrollText size={13} />
-            <span className="hidden sm:inline">{localizeUi("ui.game.gamecombatui.log")}</span>
-          </button>
-          {!directed && (
+          </div>
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setRestartConfirm(true)}
-              disabled={animating}
+              onClick={() => setShowThreat((v) => !v)}
               className={cn(
-                "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10",
-                animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
+                "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-colors",
+                showThreat
+                  ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--destructive)]"
+                  : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10",
               )}
-              title={localizeUi("ui.game.tacticalcombatui.restartTheBattle")}
+              title={localizeUi("ui.game.tacticalcombatui.toggleEnemyThreatRange")}
             >
-              <RotateCcw size={13} />
-              <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.restart")}</span>
+              {showThreat ? <Eye size={13} /> : <EyeOff size={13} />}
+              <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.threat")}</span>
             </button>
-          )}
-          {playerPhase && (
-            <>
+            <button
+              type="button"
+              onClick={() => setLogOpen((v) => !v)}
+              className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10"
+              title={localizeUi("ui.game.tacticalcombatui.combatLog")}
+            >
+              <ScrollText size={13} />
+              <span className="hidden sm:inline">{localizeUi("ui.game.gamecombatui.log")}</span>
+            </button>
+            {!directed && (
               <button
                 type="button"
-                onClick={endTurn}
+                onClick={() => setRestartConfirm(true)}
                 disabled={animating}
                 className={cn(
-                  "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/30",
-                  animating && "cursor-not-allowed opacity-40 hover:bg-[var(--primary)]/20",
-                )}
-              >
-                {localizeUi("ui.game.tacticalcombatui.endTurn")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setFleeConfirm(true)}
-                disabled={animating}
-                className={cn(
-                  "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/60 transition-colors hover:bg-white/10",
+                  "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10",
                   animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
                 )}
-                title={localizeUi("ui.game.tacticalcombatui.fleeTheBattle")}
+                title={localizeUi("ui.game.tacticalcombatui.restartTheBattle")}
               >
-                <Flag size={13} />
-                <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.flee")}</span>
+                <RotateCcw size={13} />
+                <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.restart")}</span>
               </button>
-            </>
-          )}
+            )}
+            {playerPhase && (
+              <>
+                <button
+                  type="button"
+                  onClick={endTurn}
+                  disabled={animating}
+                  className={cn(
+                    "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/30",
+                    animating && "cursor-not-allowed opacity-40 hover:bg-[var(--primary)]/20",
+                  )}
+                >
+                  {localizeUi("ui.game.tacticalcombatui.endTurn")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFleeConfirm(true)}
+                  disabled={animating}
+                  className={cn(
+                    "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/60 transition-colors hover:bg-white/10",
+                    animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
+                  )}
+                  title={localizeUi("ui.game.tacticalcombatui.fleeTheBattle")}
+                >
+                  <Flag size={13} />
+                  <span className="hidden sm:inline">{localizeUi("ui.game.tacticalcombatui.flee")}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
+
+        {/* The round's order, by initiative: who has gone, whose turn it is, and who is still to come. */}
+        {liveState.initiative && (
+          <ol
+            aria-label={localizeUi("ui.game.tacticalcombatui.turnOrder")}
+            className="z-20 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-black/30 px-3 py-1.5"
+          >
+            {liveState.initiative.order.map((id) => {
+              const unit = liveState.units.find((u) => u.id === id);
+              if (!unit) return null;
+              const current = unit.id === currentActor?.id;
+              return (
+                <li
+                  key={id}
+                  aria-current={current ? "step" : undefined}
+                  className={cn(
+                    "shrink-0 rounded-md px-2 py-0.5 text-[0.65rem] font-semibold",
+                    unit.side === "party"
+                      ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                      : "bg-[var(--destructive)]/15 text-[var(--destructive)]",
+                    current && "ring-1 ring-current",
+                    (unit.hasActed || unit.hp <= 0) && !current && "opacity-45",
+                    unit.hp <= 0 && "line-through",
+                  )}
+                >
+                  {unit.name}
+                </li>
+              );
+            })}
+          </ol>
+        )}
       </div>
 
       {/* Battlefield */}
@@ -1305,6 +1440,16 @@ export function TacticalCombatUI({
                 const isMoveOrigin = !!stagedMove && !!selectedUnit && selectedUnit.x === x && selectedUnit.y === y;
                 const isInspected = inspectTile?.x === x && inspectTile?.y === y;
                 const icon = resolveTerrainIcon(activeEnvironment, terrain);
+                const height = elevationAt(liveState.grid, x, y);
+                const art = boardArt.board
+                  ? boardCellArt(
+                      boardArt,
+                      { x, y, terrain, height },
+                      (cx, cy) => liveState.grid.tiles[cy]?.[cx] ?? "plains",
+                      liveState.grid.width,
+                      liveState.grid.height,
+                    )
+                  : null;
                 return (
                   <button
                     type="button"
@@ -1315,30 +1460,65 @@ export function TacticalCombatUI({
                       isInspected && "ring-1 ring-white/70",
                     )}
                     style={{ backgroundColor: palette[terrain] + TILE_ALPHA, boxShadow: tileShadow(terrain) }}
-                    title={localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`)}
-                    aria-label={localizeUi("ui.game.tacticalcombatui.tileLabel", {
-                      terrain: localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`),
-                      row: y + 1,
-                      column: x + 1,
-                    })}
+                    title={tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`)}
+                    aria-label={localizeUi(
+                      height > 0 ? "ui.game.tacticalcombatui.tileLabelHeight" : "ui.game.tacticalcombatui.tileLabel",
+                      {
+                        terrain: tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`),
+                        height,
+                        row: y + 1,
+                        column: x + 1,
+                      },
+                    )}
                   >
-                    {/* Painted terrain texture (rotated per-tile for variety) */}
-                    <span
-                      className="pointer-events-none absolute inset-0"
-                      style={{
-                        backgroundImage: `url(${TILE_TEXTURES[terrain]})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        transform: `rotate(${((x * 7 + y * 13) % 4) * 90}deg) scale(1.03)`,
-                      }}
-                    />
-                    {/* Environment palette tint over the texture */}
-                    <span
-                      className="pointer-events-none absolute inset-0"
-                      style={{ backgroundColor: palette[terrain] + tileTintAlpha }}
-                    />
+                    {art?.ground ? (
+                      // The pack's ground, then its edge blocks over it, a quarter of a corner each.
+                      <>
+                        <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ground)} />
+                        {art.edges.map(({ quarter, slice }) => (
+                          <span
+                            key={quarter}
+                            className={cn(
+                              "pointer-events-none absolute h-1/2 w-1/2",
+                              quarter % 2 ? "left-1/2" : "left-0",
+                              quarter > 1 ? "top-1/2" : "top-0",
+                            )}
+                            style={boardSliceStyle(slice)}
+                          />
+                        ))}
+                        {art.rim && (
+                          <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.rim)} />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {/* Painted terrain texture (rotated per-tile for variety) */}
+                        <span
+                          className="pointer-events-none absolute inset-0"
+                          style={{
+                            backgroundImage: `url(${TILE_TEXTURES[terrain]})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            transform: `rotate(${((x * 7 + y * 13) % 4) * 90}deg) scale(1.03)`,
+                          }}
+                        />
+                        {/* Environment palette tint over the texture */}
+                        <span
+                          className="pointer-events-none absolute inset-0"
+                          style={{ backgroundColor: palette[terrain] + tileTintAlpha }}
+                        />
+                      </>
+                    )}
                     {/* Top-light depth gradient */}
                     <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/25" />
+                    {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
+                    {height > 0 && (
+                      <span className="pointer-events-none absolute inset-0" style={heightWash(height)}>
+                        <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
+                          {"▲".repeat(Math.min(height, 3))}
+                        </span>
+                      </span>
+                    )}
                     {/* Water shimmer (CSS only) */}
                     {terrain === "water" && (
                       <span
@@ -1380,15 +1560,36 @@ export function TacticalCombatUI({
           {/* Unit tokens (KO'd units exit-fade off the board) */}
           <AnimatePresence>
             {renderUnits.map(({ unit, x, y, hp, staged }) => {
+              // An enemy with no picture of its own is drawn with its creature art when the pack has it.
+              const creature =
+                unit.side === "enemy" && resolveSprite(unit.sprite).kind !== "url"
+                  ? findCreatureArt(creaturePack, { name: unit.name })
+                  : null;
               const isSel = selectedUnitId === unit.id;
               const isTarget = ui.kind === "target" && targetIds.has(unit.id);
               const isForecastTarget = forecastTargetId === unit.id;
-              const ready = !isSel && isPlayerPhase && unit.side === "party" && !unit.hasActed && !unit.hasMoved;
+              const ready =
+                !isSel &&
+                isPlayerPhase &&
+                unit.side === "party" &&
+                !unit.hasActed &&
+                !unit.hasMoved &&
+                (!liveState.initiative || unit.id === currentActor?.id);
               return (
                 <UnitToken
                   key={unit.id}
                   unit={unit}
                   hp={hp}
+                  art={
+                    creature && creaturePack
+                      ? {
+                          pack: creaturePack,
+                          creature,
+                          variant: creatureArtVariant(creature, String(liveState?.seed ?? ""), unit.id),
+                          facing: facings.get(unit.id) ?? "down",
+                        }
+                      : undefined
+                  }
                   gridW={gridW}
                   gridH={gridH}
                   x={x}
@@ -1485,12 +1686,14 @@ export function TacticalCombatUI({
           defaultController="manual"
           locked={!playerPhase || animating}
           onChange={(unitId, controller) => sendAction({ type: "control", unitId, controller })}
+          className={GAME_SECTION_CLASS}
         />
       )}
 
       {/* Inspect card (terrain + unit) — draggable within the battle surface. */}
       {inspectTile && !outcome && (
         <TileInspect
+          tileWords={tileWords}
           state={liveState}
           tile={inspectTile}
           onClose={() => setInspectTile(null)}
@@ -1507,7 +1710,11 @@ export function TacticalCombatUI({
             dragElastic={0}
             dragConstraints={rootRef}
             style={{ x: actionMenuX, y: actionMenuY }}
-            className="pointer-events-auto w-full max-w-md rounded-2xl border border-[var(--border)] bg-slate-900/85 p-3 shadow-2xl backdrop-blur-md sm:w-72"
+            data-game-section="tactical-actions"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "pointer-events-auto w-full max-w-md rounded-2xl border border-[var(--border)] bg-slate-900/85 p-3 shadow-2xl backdrop-blur-md sm:w-72",
+            )}
           >
             <div className="mb-2 flex cursor-grab items-center justify-between active:cursor-grabbing">
               <span className="flex min-w-0 items-center text-sm font-bold text-white">
@@ -1762,7 +1969,11 @@ export function TacticalCombatUI({
       {logOpen && (
         <div className="absolute inset-0 z-40 flex" onClick={() => setLogOpen(false)}>
           <div
-            className="ml-auto h-full w-full max-w-sm border-l border-[var(--border)] bg-slate-950/95 backdrop-blur"
+            data-game-section="tactical-log"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "ml-auto h-full w-full max-w-sm border-l border-[var(--border)] bg-slate-950/95 backdrop-blur",
+            )}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
@@ -1796,7 +2007,13 @@ export function TacticalCombatUI({
       {/* Flee confirm */}
       {fleeConfirm && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center">
+          <div
+            data-game-section="tactical-confirm"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center",
+            )}
+          >
             <Flag className="mx-auto mb-2 h-6 w-6 text-amber-300" />
             <p className="mb-4 text-sm text-white/90">
               {localizeUi("ui.game.tacticalcombatui.retreatFromThisBattleTheGmWillNarrateYour")}
@@ -1824,7 +2041,13 @@ export function TacticalCombatUI({
       {/* Restart confirm (patterned after the flee confirm) */}
       {restartConfirm && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center">
+          <div
+            data-game-section="tactical-confirm"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center",
+            )}
+          >
             <RotateCcw className="mx-auto mb-2 h-6 w-6 text-[var(--primary)]" />
             <p className="mb-4 text-sm text-white/90">
               {localizeUi("ui.game.tacticalcombatui.restartCurrentBattlefield")}
@@ -1929,6 +2152,8 @@ interface UnitTokenProps {
   ready: boolean;
   ariaLabel: string;
   onClick: () => void;
+  /** Its creature art, when the creature pack has it (design-game-creature-art.md). */
+  art?: { pack: CreaturePack; creature: CreaturePackCreature; variant: number; facing: CreatureFacing };
 }
 
 function UnitToken({
@@ -1945,6 +2170,7 @@ function UnitToken({
   ready,
   ariaLabel,
   onClick,
+  art,
 }: UnitTokenProps) {
   const left = ((x + 0.5) / gridW) * 100;
   const top = ((y + 0.5) / gridH) * 100;
@@ -1999,7 +2225,10 @@ function UnitToken({
           animation: ready ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
         }}
       >
-        {sprite.kind === "url" ? (
+        {art ? (
+          // The token is 0.9 of a cell: its art is drawn at the creature's own size, standing on the cell.
+          <CreatureArtFigure {...art} cellFraction={1 / 0.9} label={unit.name} />
+        ) : sprite.kind === "url" ? (
           <img src={sprite.value} alt={unit.name} className="h-full w-full rounded-full object-cover" />
         ) : sprite.kind === "emoji" ? (
           <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
@@ -2179,7 +2408,9 @@ function TileInspect({
   tile,
   onClose,
   constraintsRef,
+  tileWords,
 }: {
+  tileWords?: Partial<Record<TacticalTerrain, string>>;
   state: TacticalCombatState;
   tile: TacticalCoord;
   onClose: () => void;
@@ -2200,18 +2431,25 @@ function TileInspect({
       dragMomentum={false}
       dragElastic={0}
       dragConstraints={constraintsRef}
-      className="pointer-events-auto absolute left-2 top-24 z-20 w-44 rounded-xl border border-[var(--border)] bg-slate-900/95 p-2.5 text-xs shadow-xl backdrop-blur sm:left-4 sm:top-16"
+      data-game-section="tactical-inspect"
+      className={cn(
+        GAME_SECTION_CLASS,
+        "pointer-events-auto absolute left-2 top-24 z-20 w-44 rounded-xl border border-[var(--border)] bg-slate-900/95 p-2.5 text-xs shadow-xl backdrop-blur sm:left-4 sm:top-16",
+      )}
     >
       <div className="mb-1 flex cursor-grab items-center justify-between active:cursor-grabbing">
         <span className="flex items-center gap-1 font-bold text-white">
           <GripVertical className="h-3 w-3 text-white/40" />
-          {info.label}
+          {tileWords?.[terrain] ?? info.label}
         </span>
         <button type="button" onClick={onClose} className="text-white/40 hover:text-white">
           <X size={13} />
         </button>
       </div>
       <div className="flex gap-2 text-[0.65rem] text-white/60">
+        {elevationAt(state.grid, tile.x, tile.y) > 0 && (
+          <span>{localizeUi("ui.game.tileinspect.height", { height: elevationAt(state.grid, tile.x, tile.y) })}</span>
+        )}
         {info.impassable ? (
           <span className="font-semibold text-red-300/80">{localizeUi("ui.game.tileinspect.blocksWalking")}</span>
         ) : (

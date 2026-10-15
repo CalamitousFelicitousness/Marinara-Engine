@@ -24,6 +24,18 @@ type RateLimitRule = {
 
 const DEFAULT_RULE: RateLimitRule = { key: "default", limit: 600, windowMs: 60_000 };
 
+/** Quick answers call a model per request; a person asks a few per minute, never in a loop. */
+export const PROFESSOR_MARI_QUICK_RATE_LIMIT = {
+  max: 30,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
+/** Bulk "skip these agent updates" writes the package catalog; a person clicks it, not a script. */
+export const PACKAGE_UPDATE_DECLINE_RATE_LIMIT = {
+  max: 30,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const UPDATE_CHANNEL_RATE_LIMIT = {
   max: 30,
   timeWindow: 60_000,
@@ -34,8 +46,43 @@ export const AVATAR_STORAGE_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/** Avatar faces: a streaming reply asks at most once per 1.2 seconds (about 50 a minute); room for two tabs. */
+export const AVATAR_CLASSIFY_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const SPRITE_RENAME_RATE_LIMIT = {
   max: 60,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
+/**
+ * Tile packs: the overworld reads the list, the selection and one built-in pack per family from disk;
+ * saving, importing and removing write the store. A person browsing or editing packs stays far below
+ * this; a scripted loop does not.
+ */
+export const GAME_TILE_PACKS_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
+/**
+ * The world library: listing, reading and editing kept worlds, and making or importing one, which compiles
+ * a whole world. A person building worlds stays far below this; a scripted loop does not.
+ */
+export const GAME_WORLDS_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
+/**
+ * Rulesets and creature packs: reading a package file, a ruleset's own files or the published schema, and
+ * filing or choosing a creature pack. A person importing or editing stays far below this; a scripted loop
+ * does not.
+ */
+export const GAME_RULESETS_RATE_LIMIT = {
+  max: 120,
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
@@ -148,6 +195,22 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
     },
   },
   {
+    pattern: /^\/api\/game-worlds(?:\/|$)/,
+    rule: {
+      key: "game-worlds",
+      limit: GAME_WORLDS_RATE_LIMIT.max,
+      windowMs: GAME_WORLDS_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
+    pattern: /^\/api\/game-tile-packs(?:\/|$)/,
+    rule: {
+      key: "game-tile-packs",
+      limit: GAME_TILE_PACKS_RATE_LIMIT.max,
+      windowMs: GAME_TILE_PACKS_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
     pattern: /^\/api\/backup(?:\/|$)/,
     rule: { key: "backup", limit: BACKUP_RATE_LIMIT.max, windowMs: BACKUP_RATE_LIMIT.timeWindow },
   },
@@ -157,6 +220,14 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
       key: "avatar-storage",
       limit: AVATAR_STORAGE_RATE_LIMIT.max,
       windowMs: AVATAR_STORAGE_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
+    pattern: /^\/api\/avatar-classify(?:\/|\?|$)/,
+    rule: {
+      key: "avatar-classify",
+      limit: AVATAR_CLASSIFY_RATE_LIMIT.max,
+      windowMs: AVATAR_CLASSIFY_RATE_LIMIT.timeWindow,
     },
   },
   {
@@ -201,6 +272,22 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
     },
   },
   { pattern: /^\/api\/haptic\/command(?:\?|$)/, rule: { key: "haptic-command", limit: 30, windowMs: 60_000 } },
+  {
+    pattern: /^\/api\/professor-mari\/quick\/(?:prompt|proposals\/[^/]+\/apply)(?:\?|$)/,
+    rule: {
+      key: "professor-mari-quick",
+      limit: PROFESSOR_MARI_QUICK_RATE_LIMIT.max,
+      windowMs: PROFESSOR_MARI_QUICK_RATE_LIMIT.timeWindow,
+    },
+  },
+  {
+    pattern: /^\/api\/capability-packages\/updates\/decline(?:\?|$)/,
+    rule: {
+      key: "package-update-decline",
+      limit: PACKAGE_UPDATE_DECLINE_RATE_LIMIT.max,
+      windowMs: PACKAGE_UPDATE_DECLINE_RATE_LIMIT.timeWindow,
+    },
+  },
   // One-shot LLM call per user click; keep it out of the 600/min default
   // class so a runaway loop can't burn API credits.
   {

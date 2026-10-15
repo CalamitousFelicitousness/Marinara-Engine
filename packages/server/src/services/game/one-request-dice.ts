@@ -558,12 +558,17 @@ function resolveRulesetSheetModifier(
 ): RollPlaceholderSheetModifier | null {
   // A pool ruleset's sheet numbers are counts of dice, not bonuses. Adding one to `2d6+NAME` would
   // put a number in a sentence that means something else entirely, so no name resolves at all.
-  if (ruleset.definition.resolution.kind === "dice-pool") return null;
+  if (ruleset.definition.resolution.kind !== "dice-sum") return null;
   const sheet = (ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank;
   if (/^prof(?:iciency)?$/i.test(name.trim())) {
     return ruleset.definition.resolution.proficiency ? { value: sheet.proficiencyBonus, source: "attribute" } : null;
   }
-  const target = matchRulesetCheckTarget(ruleset.definition, name);
+  const target = matchRulesetCheckTarget(
+    ruleset.definition,
+    name,
+    undefined,
+    ruleset.playerKey ? ruleset.builds.get(ruleset.playerKey) : undefined,
+  );
   if (!target) return null;
   return {
     value: rulesetCheckModifier(sheet, target),
@@ -597,7 +602,7 @@ export function buildGameSkillModifierView(context: SkillCheckModifierContext): 
     const { sheet, resolution } = context.ruleset.definition;
     // A pool ruleset resolves none of them, so it advertises none: a name the prompt offers and
     // the resolver then refuses is worse than a block that never mentions sheet modifiers.
-    if (resolution.kind === "dice-pool") return { skills: [], attributes: [] };
+    if (resolution.kind !== "dice-sum") return { skills: [], attributes: [] };
     const advertised = (names: string[]) =>
       names.filter((name) => name.length <= SHEET_NAME_MAX && isRollPlaceholderName(name)).slice(0, SHEET_NAMES_MAX);
     return {

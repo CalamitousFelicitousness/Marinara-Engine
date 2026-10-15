@@ -2542,6 +2542,85 @@ function flattenAgentConditionalMacrosInner(input: string, decodeTextEntities: b
   return result;
 }
 
+/** A condition, or `null` for an {{else}}, that compares only the character name and literals. */
+function characterOnlyCondition(condition: string | null): boolean {
+  return (
+    condition === null ||
+    (!condition.includes("{{") &&
+      parseConditionComparisons(condition).every(({ left, right }) =>
+        [left, right].every(
+          (operand) =>
+            operand === undefined ||
+            ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
+            stripOuterQuotes(operand) !== null,
+        ),
+      ))
+  );
+}
+
+/** The one character a condition such as `char == "Maukie"` names, or `null`. */
+function namedCharacter(condition: string | null): string | null {
+  const comparisons = condition === null ? [] : parseConditionComparisons(condition);
+  if (comparisons.length !== 1) return null;
+  const { left, operator, right } = comparisons[0]!;
+  if (!["=", "==", "is"].includes(operator) || right === undefined) return null;
+  const isCharacter = (operand: string) =>
+    ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand));
+  const name = isCharacter(left) ? stripOuterQuotes(right) : isCharacter(right) ? stripOuterQuotes(left) : null;
+  return name && !name.includes("{{") ? name : null;
+}
+
+/**
+ * Keep the text of every branch of each character-only condition, once and without its tags, for a reader
+ * who knows every character's part. With `nameReaders`, `{{char}}` in a branch for one character becomes that
+ * character's name, and a condition whose branch still names its reader another way stays as it is, like a
+ * condition on anything else, with its parts flattened inside. Branches no reader got together are joined
+ * with a space.
+ */
+export function flattenCharacterConditions(input: string, nameReaders = true, depth = 0): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  let result = "";
+  let cursor = 0;
+  let joined = false;
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) return result + input.slice(cursor);
+    if (start.start > cursor) joined = false;
+    result += input.slice(cursor, start.start);
+    const contents = block.branches.map(({ condition, contentStart, contentEnd }) => {
+      const name = nameReaders ? namedCharacter(condition) : null;
+      const content = input.slice(contentStart, contentEnd);
+      return name === null ? content : content.replace(/\{\{char(?:Name)?\}\}/giu, () => name);
+    });
+    const characterOnly = block.branches.every(
+      ({ condition }, index) =>
+        characterOnlyCondition(condition) &&
+        (!nameReaders ||
+          ![...CHARACTER_MACRO_NAMES].some((name) => contents[index]!.toLowerCase().includes(`{{${name}}}`))),
+    );
+    let tag = start.start;
+    for (const [index, branch] of block.branches.entries()) {
+      if (!characterOnly) result += input.slice(tag, branch.contentStart);
+      const text = flattenCharacterConditions(
+        characterOnly ? contents[index]! : input.slice(branch.contentStart, branch.contentEnd),
+        nameReaders,
+        depth + 1,
+      );
+      if (characterOnly && joined && text && !/\s$/u.test(result) && !/^\s/u.test(text)) result += " ";
+      result += text;
+      joined ||= characterOnly && !!text;
+      tag = branch.contentEnd;
+    }
+    if (!characterOnly) {
+      result += input.slice(tag, block.endEnd);
+      joined = false;
+    }
+    cursor = block.endEnd;
+  }
+  return result;
+}
+
 /**
  * Keep generated summaries inside their readers' scope without nesting duplicate character guards.
  * With `mark`, each part goes to `mark(text, itsReaders, depth)` instead of a character guard, and parts no
@@ -2577,19 +2656,7 @@ export function scopeCharacterSummary(
     result += wrap(input.slice(cursor, start.start));
     // Only character/literal conditions can be simplified now. Keep authored
     // variable conditions intact so changing a variable still changes visibility.
-    const characterOnly = block.branches.every(
-      ({ condition }) =>
-        condition === null ||
-        (!condition.includes("{{") &&
-          parseConditionComparisons(condition).every(({ left, right }) =>
-            [left, right].every(
-              (operand) =>
-                operand === undefined ||
-                ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
-                stripOuterQuotes(operand) !== null,
-            ),
-          )),
-    );
+    const characterOnly = block.branches.every(({ condition }) => characterOnlyCondition(condition));
     if (!characterOnly) result += wrap(input.slice(start.start, block.endEnd));
     else {
       let remaining = names;
@@ -2606,6 +2673,31 @@ export function scopeCharacterSummary(
     cursor = block.endEnd;
   }
   return result;
+}
+
+/**
+ * The names the character-only conditions in `input` compare the character with, as `scopeCharacterSummary`
+ * reads them, e.g. to keep the part of a character who left the chat.
+ */
+export function characterConditionNames(input: string, depth = 0): string[] {
+  const names = new Set<string>();
+  let cursor = 0;
+  while (depth < MAX_MACRO_RESOLUTION_DEPTH) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) break;
+    if (block.branches.every(({ condition }) => characterOnlyCondition(condition)))
+      for (const { condition, contentStart, contentEnd } of block.branches) {
+        for (const { left, right } of condition === null ? [] : parseConditionComparisons(condition))
+          for (const operand of [left, right]) {
+            const name = operand === undefined ? null : stripOuterQuotes(operand);
+            if (name) names.add(name);
+          }
+        for (const name of characterConditionNames(input.slice(contentStart, contentEnd), depth + 1)) names.add(name);
+      }
+    cursor = block.endEnd;
+  }
+  return [...names];
 }
 
 /**
@@ -2630,6 +2722,188 @@ export function markReaderVersions(
       return `${output.slice(0, start)}[Known only to ${who.join(", ")}: ${output.slice(start, end)}]${output.slice(end)}`;
     })
     .join("");
+}
+
+/**
+ * A line next to the text being rewritten: text, blank, the end of the whole summary (whose trailing space is
+ * trimmed), or text that carries on past the edge, on the same line.
+ */
+type SectionNeighbour = "text" | "blank" | "end" | "mid";
+
+const onlySpacesAndTabs = (text: string) => /^[ \t]*$/u.test(text);
+
+/** Whether `text` has a line break at `from`, after any spaces and tabs. */
+function startsWithLineBreak(text: string, from = 0): boolean {
+  while (text[from] === " " || text[from] === "\t") from++;
+  return text[from] === "\n";
+}
+
+/** Whether `text` ends with a line break, then only spaces and tabs. */
+function endsWithLineBreak(text: string): boolean {
+  const lastBreak = text.lastIndexOf("\n");
+  return lastBreak >= 0 && onlySpacesAndTabs(text.slice(lastBreak + 1));
+}
+
+/**
+ * Let each `{{#if}}` section that fills whole lines of a summary carry its own line breaks, so a section that
+ * renders nothing leaves no empty line however the summary is read: evaluated now, deferred per character,
+ * split per reader by `scopeCharacterSummary`, or flattened for the narrator. A section that renders reads as
+ * before. A section after a line of text leads with the line break before it, so the line after it keeps its
+ * own start; one that is a paragraph of its own also takes the blank lines before it, so a hidden one leaves
+ * one separator. A section with nothing but sections before it ends with the line break after it instead, and
+ * the blank lines after it when it starts a paragraph. Sections nested in a branch are rewritten with the line
+ * breaks that branch carries. Sections that share a line with other text stay as written, and so do a group
+ * block's `[` and `]` lines. Line endings become `\n` and comments go first, as reading drops them anyway.
+ * ponytail: a paragraph made only of several sections keeps one extra blank line when all of them hide, until
+ * the request, Peek Prompt and Advanced Memory collapse runs of blank lines into one. A summary made only of
+ * sections can keep a line break at its end in Individual mode. There, a section with no text before it also
+ * carries the next line's start inside its deferred token, so the Markdown heading guard and the XML indent
+ * miss that line. Each needs a separator that knows its neighbours if it matters.
+ */
+export function attachConditionalLineBreaks(input: string): string {
+  const lines = stripMacroComments(input.replace(/\r\n?/gu, "\n")).split("\n");
+  const rewritten: string[] = [];
+  for (let from = 0; from < lines.length;) {
+    let to = from;
+    while (to < lines.length && !["[", "]"].includes(lines[to]!.trim())) to++;
+    if (to > from)
+      rewritten.push(
+        attachSectionLineBreaks(
+          lines.slice(from, to).join("\n"),
+          from ? "text" : "blank",
+          to < lines.length ? "text" : "end",
+          0,
+        ),
+      );
+    if (to < lines.length) rewritten.push(lines[to]!);
+    from = to + 1;
+  }
+  return rewritten.join("\n");
+}
+
+function attachSectionLineBreaks(
+  input: string,
+  before: SectionNeighbour,
+  after: SectionNeighbour,
+  depth: number,
+): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  // Where the line holding `at` starts, and whether the line [from, to) reads as text.
+  const lineFrom = (at: number) => (at > 0 ? input.lastIndexOf("\n", at - 1) + 1 : 0);
+  const kindOf = (from: number, to: number): "text" | "blank" =>
+    (from === 0 && before === "mid") ||
+    (to === input.length && after === "mid") ||
+    !onlySpacesAndTabs(input.slice(from, to))
+      ? "text"
+      : "blank";
+  const textStart = input.length - input.trimStart().length;
+  const textEnd = input.trimEnd().length;
+  let result = "";
+  let cursor = 0;
+  let afterSection = 0; // where the text after the last section starts in `result`
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) break;
+    const { branches } = block;
+    // The tag before each branch, then {{/if}}.
+    const tags = [start.start, ...branches.map((branch) => branch.contentEnd)].map((from, index) =>
+      input.slice(from, branches[index]?.contentStart ?? block.endEnd),
+    );
+    const contents = branches.map((branch) => input.slice(branch.contentStart, branch.contentEnd));
+    const lineStart = lineFrom(start.start);
+    let lineEnd = block.endEnd;
+    while (input[lineEnd] === " " || input[lineEnd] === "\t") lineEnd++;
+    const indent = input.slice(lineStart, start.start);
+    const wholeLine =
+      onlySpacesAndTabs(indent) &&
+      (lineStart > 0 || before !== "mid") &&
+      (lineEnd === input.length ? after !== "mid" : input[lineEnd] === "\n");
+    // A section leads with the line break before it when a line of text precedes it, else it ends with the
+    // one after it, unless that only leads to the end of the summary.
+    const leads = wholeLine && lineStart > cursor && (before === "mid" || textStart < lineStart);
+    const trails = wholeLine && !leads && input[lineEnd] === "\n" && (after !== "end" || lineEnd < textEnd);
+    // A section with no line break to take stays as written, as one alone between a group block's brackets,
+    // which reading trims (#3435); at the end of the summary its branches still end their line, so a merged
+    // reply puts each version on a line of its own, and the final trim drops the last one.
+    if (!wholeLine || (!leads && !trails && after !== "end")) {
+      result += input.slice(cursor, start.start);
+      contents.forEach(
+        (content, index) => (result += tags[index] + attachSectionLineBreaks(content, "mid", "mid", depth + 1)),
+      );
+      result += tags.at(-1);
+      cursor = block.endEnd;
+      afterSection = result.length;
+      continue;
+    }
+    const nextLineEnd = input.indexOf("\n", lineEnd + 1);
+    const previous = lineStart === 0 ? before : kindOf(lineFrom(lineStart - 1), lineStart - 1);
+    const next =
+      lineEnd === input.length ? after : kindOf(lineEnd + 1, nextLineEnd === -1 ? input.length : nextLineEnd);
+    const firstBreak = input.indexOf("\n", start.end);
+    // Each branch's own lines, without the section's line breaks. Text on the {{#if}}'s line keeps its indent.
+    const lines = contents.map((content, index) => {
+      const onTagLine =
+        (firstBreak === -1 || firstBreak >= branches[index]!.contentStart) && !startsWithLineBreak(content);
+      let text = startsWithLineBreak(content) ? content.slice(content.indexOf("\n") + 1) : content;
+      if (endsWithLineBreak(text)) text = text.slice(0, text.lastIndexOf("\n"));
+      return !text.trim() ? "" : onTagLine ? indent + text : text;
+    });
+    // The section's lines with the line breaks it takes along: [from, to). Sections inside a branch are
+    // rewritten with those line breaks, so one that fills the branch takes them along when it hides.
+    let from = lineStart;
+    let to = lineEnd;
+    let texts: string[];
+    if (leads) {
+      from = lineStart - 1;
+      // A paragraph of its own also takes the blank lines before it, back to the last line of text.
+      if (previous === "blank" && next !== "text")
+        for (let at = from; ;) {
+          const blankStart = lineFrom(at);
+          if (kindOf(blankStart, at) === "text") {
+            from = at;
+            break;
+          }
+          if (blankStart === 0 || blankStart - 1 < cursor) break;
+          at = blankStart - 1;
+        }
+      texts = lines.map(
+        (text) => text && attachSectionLineBreaks(input.slice(from, lineStart) + text, "mid", next, depth + 1),
+      );
+    } else if (trails) {
+      to = lineEnd + 1;
+      // A section that starts a paragraph also takes the blank lines after it.
+      if (previous === "blank")
+        for (let blankEnd = input.indexOf("\n", to); blankEnd !== -1; blankEnd = input.indexOf("\n", to)) {
+          if (!onlySpacesAndTabs(input.slice(to, blankEnd))) break;
+          to = blankEnd + 1;
+        }
+      // The branch's last, empty line carries on into the line after the section.
+      const toLineEnd = input.indexOf("\n", to);
+      const carriesOn =
+        to === input.length
+          ? after
+          : kindOf(to, toLineEnd === -1 ? input.length : toLineEnd) === "text"
+            ? "mid"
+            : "blank";
+      texts = lines.map(
+        (text) => text && attachSectionLineBreaks(text + input.slice(lineEnd, to), previous, carriesOn, depth + 1),
+      );
+    } else texts = lines.map((text) => text && attachSectionLineBreaks(`${text}\n`, previous, "blank", depth + 1));
+    result += input.slice(cursor, from);
+    // `{{noop}}` keeps the section off a line of its own, so reading it does not trim a line break it carries,
+    // also where a merged reply reads the section apart from the text before it.
+    const lead = result.slice(afterSection);
+    if (onlySpacesAndTabs(lead.slice(lead.lastIndexOf("\n") + 1))) result += "{{noop}}";
+    if (startsWithLineBreak(texts[0]!)) texts[0] = `{{noop}}${texts[0]}`;
+    result += texts.map((text, index) => tags[index] + text).join("") + tags.at(-1);
+    cursor = to;
+    let rest = cursor;
+    while (input[rest] === " " || input[rest] === "\t") rest++;
+    if (endsWithLineBreak(texts.at(-1)!) && (rest === input.length || input[rest] === "\n")) result += "{{noop}}";
+    afterSection = result.length;
+  }
+  return result + input.slice(cursor);
 }
 
 function splitTopLevelDoubleColon(input: string): string[] {

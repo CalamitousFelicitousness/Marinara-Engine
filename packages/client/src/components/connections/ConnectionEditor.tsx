@@ -7,8 +7,9 @@ import {
   defaultDecisionTimeoutMs,
   resolveDecisionConnectionTimeoutMs,
   type DecisionSource,
+  isChatProvider,
 } from "@marinara-engine/shared";
-import { isLanguageGenerationConnection } from "../../lib/connection-filters";
+import { isConnectionFlagFalse, isLanguageGenerationConnection } from "../../lib/connection-filters";
 import { useEffectiveGenerationParameters } from "../../hooks/use-effective-generation-parameters";
 // ──────────────────────────────────────────────
 // Full-Page Connection Editor
@@ -27,7 +28,7 @@ import {
   useTestImageGeneration,
   useTestVideoGeneration,
   useDiagnoseClaudeSubscription,
-  useNanoGptSubscriptionUsage,
+  useSubscriptionUsage,
   useModelParameterCapabilities,
   useFetchModels,
   useSaveConnectionDefaults,
@@ -89,7 +90,7 @@ import {
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { decisionConnectionTestMessage } from "../../lib/decision-test-message";
 import { AtlasCloudModelOptions } from "./AtlasCloudModelOptions";
-import { NanoGptUsageWidget } from "./NanoGptUsageWidget";
+import { SubscriptionUsageWidget } from "./SubscriptionUsageWidget";
 import { SubscriptionCostPill } from "./SubscriptionCostPill";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { SettingsCheckbox, SettingsSwitch } from "../panels/settings/SettingControls";
@@ -109,6 +110,7 @@ import {
   IMAGE_GENERATION_SOURCES,
   CODEX_IMAGE_MODEL,
   ZAI_IMAGE_MODELS,
+  SPICYAPI_IMAGE_MODELS,
   VIDEO_GENERATION_SOURCES,
   inferImageSource,
   isOpenAIGptImageModel,
@@ -116,6 +118,8 @@ import {
   resolveOpenAIImageQuality,
   inferVideoSource,
   isLocalAuthProvider as isLocalAuthConnectionProvider,
+  hasPlanUsageWindows,
+  supportsSubscriptionUsageWidget,
   IMAGE_DEFAULTS_STORAGE_KEY,
   VIDEO_DEFAULTS_STORAGE_KEY,
   COMFYUI_SAMPLER_OPTIONS,
@@ -137,6 +141,7 @@ import {
   MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH,
   normalizeImagePromptInstructions,
   parseAudioConnectionSettings,
+  normalizeVideoPromptInstructions,
   parseConnectionImageCaptioningDefaults,
   type APIProvider,
   type AudioConnectionSettings,
@@ -261,24 +266,11 @@ function normalizeEndpointUrlInput(raw: string, label: string): { value: string;
 }
 
 function canProviderTreatAsLocalEndpoint(provider: APIProvider): boolean {
-  return (
-    provider !== "image_generation" &&
-    provider !== "video_generation" &&
-    provider !== "audio" &&
-    provider !== "decision" &&
-    !isLocalAuthConnectionProvider(provider)
-  );
+  return isChatProvider(provider) && !isLocalAuthConnectionProvider(provider);
 }
 
 function providerSupportsDirectEmbeddingConfig(provider: APIProvider): boolean {
-  return (
-    provider !== "image_generation" &&
-    provider !== "video_generation" &&
-    provider !== "audio" &&
-    provider !== "decision" &&
-    provider !== "anthropic" &&
-    !isLocalAuthConnectionProvider(provider)
-  );
+  return isChatProvider(provider) && provider !== "anthropic" && !isLocalAuthConnectionProvider(provider);
 }
 
 function normalizeConnectionMaxContext(provider: APIProvider, value: unknown): number {
@@ -346,6 +338,8 @@ export function ConnectionEditor() {
   const [localManagementToken, setLocalManagementToken] = useState("");
   const [clearStoredManagementTokenOnSave, setClearStoredManagementTokenOnSave] = useState(false);
   const [localShowUsageWidget, setLocalShowUsageWidget] = useState(false);
+  const [localShowUsageFiveHour, setLocalShowUsageFiveHour] = useState(true);
+  const [localShowUsageWeekly, setLocalShowUsageWeekly] = useState(true);
   const [localModel, setLocalModel] = useState("");
   const [localMaxContext, setLocalMaxContext] = useState(128000);
   const [localMaxParallelJobs, setLocalMaxParallelJobs] = useState(DEFAULT_MAX_PARALLEL_JOBS);
@@ -367,6 +361,7 @@ export function ConnectionEditor() {
   const [localImageGenerationQuality, setLocalImageGenerationQuality] = useState<ImageGenerationQuality>("auto");
   const [localVideoGenerationSource, setLocalVideoGenerationSource] = useState("");
   const [localVideoService, setLocalVideoService] = useState<string | null>(null);
+  const [localVideoPromptInstructions, setLocalVideoPromptInstructions] = useState("");
   const [localDecisionSource, setLocalDecisionSource] = useState<DecisionSource>("typesafe");
   const [localCredentialsFrom, setLocalCredentialsFrom] = useState("");
   const [localMaxStateTokens, setLocalMaxStateTokens] = useState(30000);
@@ -455,6 +450,8 @@ export function ConnectionEditor() {
     setLocalManagementToken(""); // never pre-fill (it's masked)
     setClearStoredManagementTokenOnSave(false);
     setLocalShowUsageWidget(c.showUsageWidget === "true" || c.showUsageWidget === true);
+    setLocalShowUsageFiveHour(!isConnectionFlagFalse(c.showUsageFiveHour));
+    setLocalShowUsageWeekly(!isConnectionFlagFalse(c.showUsageWeekly));
     setLocalModel(normalizeGrokCliEditorModel(provider, model));
     setLocalMaxContext(normalizeConnectionMaxContext(provider, c.maxContext));
     setLocalMaxParallelJobs(normalizeMaxParallelJobs(c.maxParallelJobs));
@@ -506,6 +503,7 @@ export function ConnectionEditor() {
     setLocalImageGenerationQuality(resolveOpenAIImageQuality(c.imageGenerationQuality, model));
     setLocalVideoGenerationSource(videoProviderSource);
     setLocalVideoService(videoDefaultsService);
+    setLocalVideoPromptInstructions((c.videoPromptInstructions as string) ?? "");
     setLocalDecisionSource((c.decisionSource as DecisionSource) ?? "typesafe");
     setLocalCredentialsFrom((c.credentialsFromConnectionId as string) ?? "");
     setLocalMaxStateTokens(Number(c.maxStateTokens ?? defaultDecisionStateTokens(c.decisionSource as string)));
@@ -697,7 +695,17 @@ export function ConnectionEditor() {
                             label: t("connections.mediaSources.zai.apiKeyLink"),
                             url: "https://z.ai/manage-apikey/apikey-list",
                           }
-                        : API_KEY_LINKS[localProvider];
+                        : localProvider === "deepseek"
+                          ? {
+                              label: t("connections.mediaSources.deepseek.apiKeyLink"),
+                              url: "https://platform.deepseek.com/api_keys",
+                            }
+                          : localProvider === "image_generation" && selectedImageService === "spicyapi"
+                            ? {
+                                label: t("connections.mediaSources.spicyapi.apiKeyLink"),
+                                url: "https://spicyapi.ai/console/keys",
+                              }
+                            : API_KEY_LINKS[localProvider];
 
   useEffect(() => {
     if (localProvider !== "image_generation" || !selectedImageDefaultsService) {
@@ -755,7 +763,9 @@ export function ConnectionEditor() {
 
   // Only NanoGPT reports a plan, and its usage route refuses anything else, so the
   // read is gated on the provider. It shares the usage meter's cache entry.
-  const subscriptionUsage = useNanoGptSubscriptionUsage(connectionDetailId, localProvider === "nanogpt").data ?? null;
+  const subscriptionReading = useSubscriptionUsage(connectionDetailId, localProvider === "nanogpt").data;
+  // Only NanoGPT readings carry plan coverage; Claude and ChatGPT plan windows have none.
+  const subscriptionUsage = subscriptionReading && "active" in subscriptionReading ? subscriptionReading : null;
 
   // Clear remote models when provider changes
   useEffect(() => {
@@ -853,6 +863,7 @@ export function ConnectionEditor() {
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
+      videoPromptInstructions: isVideoProvider ? normalizeVideoPromptInstructions(localVideoPromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? effectiveImageGenerationQuality : "auto",
       videoGenerationSource: isVideoProvider ? selectedVideoProvider || null : null,
       videoService: isVideoProvider
@@ -893,7 +904,9 @@ export function ConnectionEditor() {
       payload.apiKey = "";
     }
     // NanoGPT management token: scoped to nanogpt, and only sent when retyped.
-    payload.showUsageWidget = localProvider === "nanogpt" && localShowUsageWidget;
+    payload.showUsageWidget = supportsSubscriptionUsageWidget(localProvider) && localShowUsageWidget;
+    payload.showUsageFiveHour = localShowUsageFiveHour;
+    payload.showUsageWeekly = localShowUsageWeekly;
     if (localProvider !== "nanogpt") {
       payload.managementToken = "";
     } else if (localManagementToken.trim()) {
@@ -976,6 +989,8 @@ export function ConnectionEditor() {
     localManagementToken,
     clearStoredManagementTokenOnSave,
     localShowUsageWidget,
+    localShowUsageFiveHour,
+    localShowUsageWeekly,
     localModel,
     localMaxContext,
     localMaxParallelJobs,
@@ -995,6 +1010,7 @@ export function ConnectionEditor() {
     localImageService,
     localImageEndpointId,
     localImagePromptInstructions,
+    localVideoPromptInstructions,
     effectiveImageGenerationQuality,
     localMaxTokensOverride,
     localClaudeFastMode,
@@ -1140,6 +1156,7 @@ export function ConnectionEditor() {
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
+      videoPromptInstructions: isVideoProvider ? normalizeVideoPromptInstructions(localVideoPromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? effectiveImageGenerationQuality : "auto",
       comfyuiWorkflow:
         isImageProvider || (isVideoProvider && (videoProvider === "comfyui" || videoProvider === "swarmui"))
@@ -1192,6 +1209,7 @@ export function ConnectionEditor() {
     selectedImageService,
     localImageEndpointId,
     localImagePromptInstructions,
+    localVideoPromptInstructions,
     effectiveImageGenerationQuality,
     localComfyuiWorkflow,
     localClaudeFastMode,
@@ -1488,6 +1506,77 @@ export function ConnectionEditor() {
   const isNanoGptProvider = localProvider === "nanogpt";
   const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
   const supportsDirectEmbeddingConfig = providerSupportsDirectEmbeddingConfig(localProvider);
+  // The usage switch, the plan window switches and the meter, shared by the
+  // NanoGPT, Claude (Subscription) and OpenAI (ChatGPT) blocks below.
+  const showsPlanUsageWindows = hasPlanUsageWindows(localProvider);
+  const usageWidgetControls = (
+    <>
+      <div className="rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)]">
+        <label className="flex cursor-pointer items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={localShowUsageWidget}
+            onChange={(e) => {
+              setLocalShowUsageWidget(e.target.checked);
+              markDirty();
+            }}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">
+              {localizeUi("ui.connections.connectioneditor.showSubscriptionUsage")}
+            </span>
+            <span className="mt-0.5 block text-[0.625rem] text-[var(--muted-foreground)]">
+              {localizeUi(
+                isClaudeSubscriptionProvider
+                  ? "ui.connections.connectioneditor.showClaudePlanUsageHelp"
+                  : isOpenAIChatGPTProvider
+                    ? "ui.connections.connectioneditor.showChatgptPlanUsageHelp"
+                    : "ui.connections.connectioneditor.showSubscriptionUsageHelp",
+              )}
+            </span>
+          </span>
+        </label>
+        {showsPlanUsageWindows && localShowUsageWidget && (
+          <div className="mt-2 ml-[1.625rem] flex flex-wrap gap-x-5 gap-y-1.5">
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={localShowUsageFiveHour}
+                onChange={(e) => {
+                  setLocalShowUsageFiveHour(e.target.checked);
+                  markDirty();
+                }}
+                className="h-3.5 w-3.5 shrink-0 accent-[var(--primary)]"
+              />
+              {localizeUi("ui.connections.connectioneditor.planFiveHourWindow")}
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={localShowUsageWeekly}
+                onChange={(e) => {
+                  setLocalShowUsageWeekly(e.target.checked);
+                  markDirty();
+                }}
+                className="h-3.5 w-3.5 shrink-0 accent-[var(--primary)]"
+              />
+              {localizeUi("ui.connections.connectioneditor.planWeeklyWindow")}
+            </label>
+          </div>
+        )}
+      </div>
+
+      {localShowUsageWidget && connectionDetailId && !dirty && (
+        <SubscriptionUsageWidget connectionId={connectionDetailId} />
+      )}
+      {localShowUsageWidget && dirty && (
+        <p className="rounded-xl bg-[var(--secondary)] px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)]">
+          {localizeUi("ui.connections.connectioneditor.saveToLoadSubscriptionUsage")}
+        </p>
+      )}
+    </>
+  );
   const canTreatAsLocalEndpoint = canProviderTreatAsLocalEndpoint(localProvider);
   const modelFetchSourceLabel = isGrokSubscriptionProvider ? "Grok CLI" : "API";
   const modelFetchButtonLabel = isGrokSubscriptionProvider ? "Fetch Models from Grok CLI" : "Fetch Models from API";
@@ -1751,6 +1840,9 @@ export function ConnectionEditor() {
             </div>
           )}
 
+          {/* ── Claude (Subscription) — plan usage ── */}
+          {isClaudeSubscriptionProvider && <div className="space-y-3">{usageWidgetControls}</div>}
+
           {/* ── OpenAI (ChatGPT) — prerequisites notice ── */}
           {isOpenAIChatGPTProvider && (
             <div className="rounded-xl bg-sky-400/5 px-3 py-2.5 ring-1 ring-sky-400/30">
@@ -1778,6 +1870,9 @@ export function ConnectionEditor() {
               </p>
             </div>
           )}
+
+          {/* ── OpenAI (ChatGPT) — plan usage ── */}
+          {isOpenAIChatGPTProvider && <div className="space-y-3">{usageWidgetControls}</div>}
 
           {/* ── Grok CLI (Subscription) — prerequisites notice ── */}
           {isGrokSubscriptionProvider && (
@@ -2124,34 +2219,7 @@ export function ConnectionEditor() {
                     </a>
                   </FieldGroup>
 
-                  <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)]">
-                    <input
-                      type="checkbox"
-                      checked={localShowUsageWidget}
-                      onChange={(e) => {
-                        setLocalShowUsageWidget(e.target.checked);
-                        markDirty();
-                      }}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">
-                        {localizeUi("ui.connections.connectioneditor.showSubscriptionUsage")}
-                      </span>
-                      <span className="mt-0.5 block text-[0.625rem] text-[var(--muted-foreground)]">
-                        {localizeUi("ui.connections.connectioneditor.showSubscriptionUsageHelp")}
-                      </span>
-                    </span>
-                  </label>
-
-                  {localShowUsageWidget && connectionDetailId && !dirty && (
-                    <NanoGptUsageWidget connectionId={connectionDetailId} />
-                  )}
-                  {localShowUsageWidget && dirty && (
-                    <p className="rounded-xl bg-[var(--secondary)] px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)]">
-                      {localizeUi("ui.connections.connectioneditor.saveToLoadSubscriptionUsage")}
-                    </p>
-                  )}
+                  {usageWidgetControls}
                 </div>
               )}
 
@@ -2259,7 +2327,9 @@ export function ConnectionEditor() {
                               ? t("connections.mediaSources.arli.imageDescription")
                               : src.id === "codex_chatgpt"
                                 ? t("connections.mediaSources.codexChatgpt.imageDescription")
-                                : src.description;
+                                : src.id === "spicyapi"
+                                  ? t("connections.mediaSources.spicyapi.imageDescription")
+                                  : src.description;
                   return (
                     <button
                       key={src.id}
@@ -2278,6 +2348,9 @@ export function ConnectionEditor() {
                         }
                         if (src.id === "fal" && selectedImageService !== "fal") {
                           setLocalModel("fal-ai/flux/schnell");
+                        }
+                        if (src.id === "spicyapi" && selectedImageService !== "spicyapi") {
+                          setLocalModel(SPICYAPI_IMAGE_MODELS[0]!.id);
                         }
                         if (src.id === "codex_chatgpt" && selectedImageService !== "codex_chatgpt") {
                           // The hidden Base URL and API key fields must not keep another service's values.
@@ -2887,6 +2960,25 @@ export function ConnectionEditor() {
             </FieldGroup>
           )}
 
+          {isVideoGenerationProvider && (
+            <FieldGroup
+              label={localizeUi("ui.connections.connectioneditor.videoPromptingInstructions")}
+              icon={<Sparkles size="0.875rem" className="text-[var(--marinara-chat-chrome-button-text-active)]" />}
+              help={localizeUi("ui.connections.connectioneditor.videoPromptingInstructionsHelp")}
+            >
+              <textarea
+                value={localVideoPromptInstructions}
+                maxLength={MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH}
+                onChange={(event) => {
+                  setLocalVideoPromptInstructions(event.target.value);
+                  markDirty();
+                }}
+                placeholder={localizeUi("ui.connections.connectioneditor.videoPromptingInstructionsPlaceholder")}
+                className="w-full min-h-[96px] resize-y rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-2 focus:ring-[var(--ring)]"
+              />
+            </FieldGroup>
+          )}
+
           {supportsGptImageQuality && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.gptImageQuality")}
@@ -3234,11 +3326,7 @@ export function ConnectionEditor() {
                           {((allConnections ?? []) as Record<string, unknown>[])
                             .filter(
                               (connection) =>
-                                connection.id !== connectionDetailId &&
-                                connection.provider !== "image_generation" &&
-                                connection.provider !== "video_generation" &&
-                                connection.provider !== "audio" &&
-                                connection.provider !== "decision",
+                                connection.id !== connectionDetailId && isChatProvider(connection.provider),
                             )
                             .map((connection) => (
                               <option key={connection.id as string} value={connection.id as string}>
@@ -3566,14 +3654,7 @@ export function ConnectionEditor() {
                     </option>
                   )}
                   {((allConnections ?? []) as Record<string, unknown>[])
-                    .filter(
-                      (c) =>
-                        c.id !== connectionDetailId &&
-                        c.provider !== "image_generation" &&
-                        c.provider !== "video_generation" &&
-                        c.provider !== "audio" &&
-                        c.provider !== "decision",
-                    )
+                    .filter((c) => c.id !== connectionDetailId && isChatProvider(c.provider))
                     .map((c) => (
                       <option key={c.id as string} value={c.id as string}>
                         {c.name as string}

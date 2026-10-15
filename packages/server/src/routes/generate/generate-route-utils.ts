@@ -3,6 +3,9 @@ import type { ChatMessage } from "../../services/llm/base-provider.js";
 import {
   GENERATION_PARAMETER_SEND_KEYS,
   SUMMARY_TAIL_MESSAGES,
+  compileChatSummaryEntries,
+  normalizeChatSummaryEntries,
+  type ChatSummaryEntry,
   applyTrackerFieldLocksToGameStatePatch,
   characterTrackerLockPrefix,
   customTrackerFieldLockPrefix,
@@ -42,7 +45,11 @@ import {
   hasSpeakerTag,
 } from "@marinara-engine/shared";
 import { wrapContent } from "../../services/prompt/format-engine.js";
-import { parseSceneManualOverrides, parseStoredRulesetLive } from "../../services/storage/game-state.storage.js";
+import {
+  parseSceneManualOverrides,
+  parseStoredRulesetClocks,
+  parseStoredRulesetLive,
+} from "../../services/storage/game-state.storage.js";
 import {
   appendReadableAttachmentsToContent,
   extractFileAttachmentInputs,
@@ -852,6 +859,65 @@ export function computeSummaryHideIds(args: {
     .map((message) => message.id);
 }
 
+/**
+ * Hide or show a chat's summarised messages when `next` turns "Hide summarised messages" on or off
+ * compared with `current`. Turning it on hides each enabled entry's messages, except the recent tail,
+ * and records them in the entry's `hiddenMessageIds`; turning it off shows only those again. Returns
+ * the summary keys to save with `next`, or nothing when the setting does not change. The caller holds
+ * the chat's metadata queue and saves the result in the same write.
+ */
+export async function summaryHidingPatch(
+  storage: {
+    listMessages(chatId: string): Promise<Array<{ id: string; extra?: unknown }>>;
+    bulkSetHiddenFromAI(chatId: string, messageIds: string[], hidden: boolean): Promise<string[]>;
+  },
+  chatId: string,
+  current: Record<string, unknown>,
+  next: Record<string, unknown>,
+): Promise<{ summaryEntries?: ChatSummaryEntry[]; summary?: string | null }> {
+  const hide = next.hideSummarisedMessages === true;
+  if ((current.hideSummarisedMessages === true) === hide) return {};
+
+  const entries = normalizeChatSummaryEntries(next.summaryEntries, {
+    legacySummary: typeof next.summary === "string" ? next.summary : null,
+  });
+  const now = new Date().toISOString();
+  let nextEntries: ChatSummaryEntry[];
+
+  if (hide) {
+    const allMessages = await storage.listMessages(chatId);
+    const tail = resolveRoleplaySummaryTail(next.summaryTailMessages);
+    nextEntries = [];
+    for (const entry of entries) {
+      if (!entry.enabled || !entry.messageIds?.length) {
+        nextEntries.push(entry);
+        continue;
+      }
+      const eligibleToHide = computeSummaryHideIds({ messages: allMessages, entryMessageIds: entry.messageIds, tail });
+      const hiddenMessageIds =
+        eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(chatId, eligibleToHide, true) : [];
+      const ownedHiddenMessageIds = Array.from(new Set([...(entry.hiddenMessageIds ?? []), ...hiddenMessageIds]));
+      nextEntries.push(
+        ownedHiddenMessageIds.length > 0
+          ? { ...entry, hiddenMessageIds: ownedHiddenMessageIds, updatedAt: now }
+          : entry,
+      );
+    }
+  } else {
+    const summaryOwnedHiddenIds = Array.from(new Set(entries.flatMap((entry) => entry.hiddenMessageIds ?? [])));
+    if (summaryOwnedHiddenIds.length > 0) {
+      await storage.bulkSetHiddenFromAI(chatId, summaryOwnedHiddenIds, false);
+    }
+    nextEntries = entries.map((entry) => {
+      if (!entry.hiddenMessageIds?.length) return entry;
+      const { hiddenMessageIds: _hiddenMessageIds, ...rest } = entry;
+      return { ...rest, updatedAt: now };
+    });
+  }
+
+  return { summaryEntries: nextEntries, summary: compileChatSummaryEntries(nextEntries) };
+}
+
 /** Return the one-based range covered by selected messages in the full chat order. */
 export function computeSummaryMessageRange(
   allMessages: readonly { id: string }[],
@@ -866,6 +932,37 @@ export function computeSummaryMessageRange(
     startIndex: Math.min(...selectedIndexes),
     endIndex: Math.max(...selectedIndexes),
   };
+}
+
+/**
+ * Resolve a summary range between two zero-based chat positions (either order, -1 when a message was not
+ * found) to the messages it covers, skipping hidden-from-AI ones, plus its one-based range for the entry.
+ * Returns an error (with a stable code for the client) instead when the range is unusable or every message in it
+ * is hidden.
+ */
+export function selectSummaryRangeMessages<T extends { id: string; extra?: unknown }>(
+  allMessages: T[],
+  startIndex: number,
+  endIndex: number,
+):
+  | { messages: T[]; rangeStartIndex: number; rangeEndIndex: number }
+  | { error: string; code: "notFound" | "outside" | "tooLarge" | "hidden" } {
+  if (startIndex === -1 || endIndex === -1) {
+    return { error: "Summary range messages were not found in this chat", code: "notFound" };
+  }
+  if (startIndex < 0 || endIndex < 0 || startIndex >= allMessages.length || endIndex >= allMessages.length) {
+    return { error: "Summary range is outside this chat's message history", code: "outside" };
+  }
+  const from = Math.min(startIndex, endIndex);
+  const to = Math.max(startIndex, endIndex);
+  if (to - from + 1 > 500) {
+    return { error: "Summary ranges cannot include more than 500 messages", code: "tooLarge" };
+  }
+  const messages = allMessages.slice(from, to + 1).filter((message) => !isMessageHiddenFromAI(message));
+  if (messages.length === 0) {
+    return { error: "No non-hidden messages available for the requested summary range", code: "hidden" };
+  }
+  return { messages, rangeStartIndex: from + 1, rangeEndIndex: to + 1 };
 }
 
 /**
@@ -2024,6 +2121,7 @@ export function parseGameStateRow(row: Record<string, unknown>): GameState {
     fieldLocks,
     hiddenTrackerFields,
     rulesetLive: parseStoredRulesetLive(row.rulesetLive),
+    rulesetClocks: parseStoredRulesetClocks(row.rulesetClocks),
     createdAt: row.createdAt as string,
   };
 }

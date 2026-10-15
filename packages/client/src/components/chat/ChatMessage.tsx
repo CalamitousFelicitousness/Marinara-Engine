@@ -42,6 +42,7 @@ import { useCharacterSummaries, useChatGalleryFilenameIndex } from "../../hooks/
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import { PendingTypingDots } from "./PendingTypingDots";
 import { ChatImagePreview } from "./ChatImagePreview";
+import { ChatVideoAttachment, isAttachmentHiddenByImageText, isVideoAttachment } from "./ChatVideoAttachment";
 import { recordClientRuntimeEvent } from "../../lib/client-runtime-diagnostics";
 import { isDiceRollResult, readRoleplayDiceRolls } from "../../lib/dice-roll-result";
 import { DiceMessageContent, diceRollReplacesMessageContent } from "./ConversationMessageShared";
@@ -60,6 +61,7 @@ import {
   Eye,
   Search,
   ScrollText,
+  AlertTriangle,
   Brain,
   Languages,
   Volume2,
@@ -1006,6 +1008,12 @@ interface ChatMessageProps {
   /** Runs the agents deferred by a multiswipe run against the currently active swipe. */
   onFinalizeMultiSwipe?: (messageId: string) => void;
   onEdit?: (messageId: string, content: string) => void | Promise<void>;
+  /** N1: this message's reply failed — renders the quiet "Failed · Retry" line. */
+  failedReply?: boolean;
+  failedReplyReason?: string;
+  onRetryFailedReply?: () => void;
+  /** R2: the reply checkup's quiet line, set only on the reply it describes. */
+  replyCheckup?: ReactNode;
   onSetActiveSwipe?: (messageId: string, index: number) => void;
   onToggleConversationStart?: ToggleConversationStart;
   memoryStartCharacterIds?: string[];
@@ -1897,6 +1905,10 @@ export const ChatMessage = memo(function ChatMessage({
   onRegenerate,
   onFinalizeMultiSwipe,
   onEdit,
+  failedReply,
+  failedReplyReason,
+  onRetryFailedReply,
+  replyCheckup,
   onSetActiveSwipe,
   onToggleConversationStart,
   memoryStartCharacterIds,
@@ -2211,6 +2223,7 @@ export const ChatMessage = memo(function ChatMessage({
     } else {
       if (!hasTTSContent) return;
       void ttsService.speakSequence(ttsVoiceRequests, message.id, {
+        chatId: message.chatId,
         progressive: ttsConfig?.progressivePlayback,
         concurrency: ttsConfig?.generationConcurrency,
         policy: resolveTTSSynthesisPolicy(ttsConfig),
@@ -3466,13 +3479,27 @@ export const ChatMessage = memo(function ChatMessage({
   const hasVnMediaTarget = visualNovel && !!visualNovelMediaTarget;
   const renderRoleplayImage = (image: ReactNode, key: number) =>
     hasVnMediaTarget ? createPortal(image, visualNovelMediaTarget!, `${message.id}:${key}`) : image;
+  // Text that is an image link already shows that picture; only videos still show below it.
+  const textIsImageUrl = IMAGE_URL_RE.test(message.content.trim());
+  const skipAttachment = (att: any) => att.roleplaySound === true || isAttachmentHiddenByImageText(att, textIsImageUrl);
   const roleplayAttachments = isRoleplay &&
     !editing &&
     extra.attachments?.length > 0 &&
-    !IMAGE_URL_RE.test(message.content.trim()) && (
+    extra.attachments.some((att: any) => !skipAttachment(att)) && (
       <div className={hasVnMediaTarget ? "contents" : "mt-1.5 flex flex-col items-center gap-2 px-3 pb-2"}>
         {extra.attachments.map((att: any, i: number) =>
-          att.roleplaySound === true ? null : att.type === "image" || att.type?.startsWith("image/") ? (
+          skipAttachment(att) ? null : isVideoAttachment(att) && att.url ? (
+            renderRoleplayImage(
+              <ChatVideoAttachment
+                key={att.videoId ?? att.url}
+                src={att.url}
+                prompt={att.prompt}
+                onRemove={hasVnMediaTarget ? undefined : () => handleRemoveAttachment(i)}
+                className={hasVnMediaTarget ? "pointer-events-auto" : undefined}
+              />,
+              i,
+            )
+          ) : att.type === "image" || att.type?.startsWith("image/") ? (
             renderRoleplayImage(
               <div
                 key={i}
@@ -4338,6 +4365,25 @@ export const ChatMessage = memo(function ChatMessage({
 
             <MessageMarkIndicators message={message} className="px-1" />
 
+            {!isUser && replyCheckup && <div className="px-1">{replyCheckup}</div>}
+
+            {isUser && failedReply && (
+              <p className="mari-send-failed" role="alert" title={failedReplyReason}>
+                <AlertTriangle size="0.8rem" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="mari-send-failed__text bg-transparent p-0 text-start"
+                  onClick={() => failedReplyReason && toast(failedReplyReason)}
+                >
+                  {localizeUi("ui.chat.chatmessage.failedReply")}
+                </button>
+                <span aria-hidden="true">·</span>
+                <button type="button" onClick={onRetryFailedReply} className="mari-link">
+                  {localizeUi("ui.chat.chatmessage.retryFailedReply")}
+                </button>
+              </p>
+            )}
+
             {!messageControlsAbove && roleplayMessageControls}
           </div>
         </div>
@@ -4770,10 +4816,17 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
 
           {/* Attachments (illustrations, selfies, uploaded files) */}
-          {!editing && extra.attachments?.length > 0 && !IMAGE_URL_RE.test(message.content.trim()) && (
+          {!editing && extra.attachments?.some((att: any) => !skipAttachment(att)) && (
             <div className="mt-1.5 flex flex-col items-center gap-2 px-3 pb-2">
               {extra.attachments.map((att: any, i: number) =>
-                att.roleplaySound === true ? null : att.type === "image" || att.type?.startsWith("image/") ? (
+                skipAttachment(att) ? null : isVideoAttachment(att) && att.url ? (
+                  <ChatVideoAttachment
+                    key={att.videoId ?? att.url}
+                    src={att.url}
+                    prompt={att.prompt}
+                    onRemove={() => handleRemoveAttachment(i)}
+                  />
+                ) : att.type === "image" || att.type?.startsWith("image/") ? (
                   <div key={i} className="group/att relative inline-block">
                     <button
                       type="button"
@@ -4848,6 +4901,25 @@ export const ChatMessage = memo(function ChatMessage({
           )}
 
           <MessageMarkIndicators message={message} className="px-3" />
+
+          {!isUser && replyCheckup && <div className="px-3">{replyCheckup}</div>}
+
+          {isUser && failedReply && (
+            <p className="mari-send-failed" role="alert" title={failedReplyReason}>
+              <AlertTriangle size="0.8rem" aria-hidden="true" />
+              <button
+                type="button"
+                className="mari-send-failed__text bg-transparent p-0 text-start"
+                onClick={() => failedReplyReason && toast(failedReplyReason)}
+              >
+                {localizeUi("ui.chat.chatmessage.failedReply")}
+              </button>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={onRetryFailedReply} className="mari-link">
+                {localizeUi("ui.chat.chatmessage.retryFailedReply")}
+              </button>
+            </p>
+          )}
 
           {!messageControlsAbove && messageControls}
         </div>

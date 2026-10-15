@@ -1,6 +1,9 @@
 import { currentRoomGeneration, roomHostIdentity } from "../multiplayer/generation-policy.js";
 import {
   GAME_GM_BUILT_IN_PROMPT_TEMPLATES,
+  gameStoryFromMetadata,
+  gameWorldKitFromMetadata,
+  gameWorldBattlefields,
   normalizeAgentPromptTemplateOptions,
   normalizeTextForMatch,
   resolveGameSetupArtStylePrompt,
@@ -10,6 +13,7 @@ import {
   type GameMap,
   type GameNpc,
   type SessionSummary,
+  type GameWorld,
 } from "@marinara-engine/shared";
 import { buildGmSystemPrompt, type GmPromptContext } from "../game/gm-prompts.js";
 import { listPartySprites } from "../game/sprite.service.js";
@@ -148,6 +152,9 @@ export async function injectGameGmPromptRuntime(args: {
   chatId: string;
   chat: ChatLike;
   chatMetadata: Record<string, unknown>;
+  /** The game's world (worldgen W1), as `loadGameWorld` reads it. */
+  world: GameWorld | null;
+  ruleset?: GmPromptContext["ruleset"];
   characterIds: string[];
   chars: CharactersStore;
   chats: ChatsStore;
@@ -359,6 +366,8 @@ export async function injectGameGmPromptRuntime(args: {
         weather: latestSnapshot?.weather ?? null,
         timeOfDay: latestSnapshot?.time ?? null,
         presentNpcNames: presentNpcs,
+        // The setting's own scenes (worldgen W6d), so its places read as the kind of place they are.
+        scenes: gameWorldBattlefields(args.chatMetadata)?.scenes,
       };
       const hints = generatePerceptionHints(perceptionContext);
       if (hints.length > 0) {
@@ -369,8 +378,10 @@ export async function injectGameGmPromptRuntime(args: {
     /* non-fatal */
   }
 
+  const promptWorld = args.world;
   const gmCtx: GmPromptContext = {
     gameActiveState: gameActiveState as GameActiveState,
+    ruleset: args.ruleset,
     storyArc,
     plotTwists,
     map: gameMap,
@@ -391,7 +402,8 @@ export async function injectGameGmPromptRuntime(args: {
       gameActiveState === "combat" && resolvedCombatStyle === "tactical"
         ? summarizeTacticalBattlefield(args.chatMetadata.gameTacticalCombatSnapshot)
         : undefined,
-    genre: (setupConfig?.genre as string) || "fantasy",
+    // A game with a setting kit is never "fantasy" by default (worldgen W6f).
+    genre: (setupConfig?.genre as string) || gameWorldKitFromMetadata(args.chatMetadata)?.label || "fantasy",
     setting: (setupConfig?.setting as string) || "original",
     tone: (setupConfig?.tone as string) || "balanced",
     rating: (setupConfig?.rating as "sfw" | "nsfw") || "sfw",
@@ -427,6 +439,9 @@ export async function injectGameGmPromptRuntime(args: {
       typeof args.chatMetadata.gameSpecialInstructions === "string"
         ? args.chatMetadata.gameSpecialInstructions.trim()
         : null,
+    worldKit: gameWorldKitFromMetadata(args.chatMetadata),
+    world: promptWorld,
+    story: gameStoryFromMetadata(args.chatMetadata, promptWorld),
   };
 
   const builtGmPrompt = buildGmSystemPrompt(gmCtx);

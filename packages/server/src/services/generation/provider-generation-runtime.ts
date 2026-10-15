@@ -302,7 +302,7 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
   const providerReasoningEffort =
     runtime.enabledParameters?.reasoningEffort === false
       ? undefined
-      : runtime.reasoningEffort === null
+      : runtime.reasoningEffort === null && !resolvedEffort
         ? isCodex
           ? undefined
           : "none"

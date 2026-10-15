@@ -24,7 +24,7 @@ On a computer, click the **X** beside the layout tips (**Hide these tips for thi
 
 ## Changing how chat windows look
 
-Open **Settings > Appearance > App** and scroll to **Chat widget style** at the bottom of **App Style**. **Default** keeps the familiar Marinara look. **Dottore** combines icy blues and pale metal with technical lettering and cut corners; **Mari** pairs gemstone blues and warm gold with storybook lettering and arched frames. Both adapt to light and dark mode and style the movable buttons, windows and expandable sections in all three chat modes.
+Open **Settings > Appearance > App** and scroll to **Chat widget style** at the bottom of **App Style**. **Default** keeps the familiar Marinara look. **Dottore** combines icy blues and pale metal with technical lettering and cut corners; **Prof. Mari** pairs gemstone blues and warm gold with storybook lettering and arched frames. Both adapt to light and dark mode and style the movable buttons, windows and expandable sections in all three chat modes.
 
 Use **Font**, **Shape** and the three color pickers below the presets to mix things up. Fonts you have installed in Marinara appear in the font list too. Choosing a preset again resets the font, shape and custom colors. These choices do not move your windows or change your saved chat layouts. They are saved with your app preferences and sync to browsers connected to the same server.
 
@@ -138,7 +138,7 @@ A profile bundles this chat's connection, prompt preset, agents, tools, translat
 
 The bar has a row of small icon buttons with no text labels. Each button shows its name in a tooltip when you hover over it:
 
-- The disk icon (**Save current chat settings into this profile**) writes the current chat's settings into the selected profile.
+- The disk icon (**Save current chat settings into this profile**) writes the current chat's settings into the selected profile. If other chats use the profile, it asks whether to update them too.
 - The pencil icon (**Rename profile**) renames the selected profile.
 - The file-plus icon (**Save current chat settings as a new profile**) saves the current chat's settings as a new profile.
 - The down-arrow icon (**Import settings profile (.json)**) loads a profile from a `.json` file.

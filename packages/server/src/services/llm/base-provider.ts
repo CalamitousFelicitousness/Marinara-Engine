@@ -489,6 +489,23 @@ export function fitMessagesToContext(
     estimatedTokensAfter = estimateMessagesTokens(fittedMessages);
   }
 
+  // Keep the usual history/output passes above. Before cutting core system instructions, shorten
+  // a ruleset's optional reference; its prompt-safe text is one line, so it cannot close this block.
+  for (const message of fittedMessages) {
+    if (estimatedTokensAfter <= inputBudget) break;
+    if (message.role !== "system" || !message.content.includes("<ruleset_gm_reference>")) continue;
+    const reference = /(<ruleset_gm_reference>\nGame Master rules reference\n)([^\r\n]*)(\n<\/ruleset_gm_reference>)/u;
+    message.content = message.content.replace(reference, (_block, before: string, text: string, after: string) => {
+      const cut = " [GM rules reference cut for context limit]";
+      const budget = Math.max(
+        0,
+        estimateTextTokens(text) - (estimatedTokensAfter - inputBudget) - estimateTextTokens(cut) - 4,
+      );
+      return `${before}${sliceTextToTokenBudget(text, budget)}${cut}${after}`;
+    });
+    estimatedTokensAfter = estimateMessagesTokens(fittedMessages);
+  }
+
   let guard = 0;
   while (estimatedTokensAfter > inputBudget && guard < 12) {
     guard += 1;

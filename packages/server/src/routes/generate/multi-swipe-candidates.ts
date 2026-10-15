@@ -14,6 +14,7 @@ import {
   extractLeadingThinkingBlocks,
   MULTI_SWIPE_EXTRA_KEY,
   normalizeMultiSwipeCandidateCount,
+  splitAtSceneBreaks,
   type MultiSwipePendingMarker,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
@@ -114,6 +115,8 @@ export interface MultiSwipeSanitizeContext {
   } | null;
   trimIncompleteModelOutput: boolean;
   stripSpatialDirectives: boolean;
+  /** Keep only the text before the first scene break: a swipe of a split reply's earlier part. */
+  firstSceneOnly?: boolean;
 }
 
 export interface MultiSwipeSanitizedCandidate {
@@ -164,6 +167,11 @@ export function sanitizeMultiSwipeCandidate(raw: string, ctx: MultiSwipeSanitize
   if (prefill && content.startsWith(prefill)) {
     const afterPrefill = content.slice(prefill.length);
     if (afterPrefill.startsWith(prefill)) content = prefill + afterPrefill.slice(prefill.length);
+  }
+
+  if (ctx.firstSceneOnly && ctx.chatMode === "roleplay") {
+    const [firstPart] = splitAtSceneBreaks(content);
+    if (firstPart !== undefined) content = firstPart;
   }
 
   if (ctx.conversationCommandsEnabled && ctx.chatMode === "conversation") {

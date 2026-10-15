@@ -8,6 +8,7 @@ import { regressionTimeoutMs } from '../run-regressions.mjs';
 
 assert.equal(regressionTimeoutMs('scripts/regressions/server-signal-shutdown.regression.ts'), 270_000);
 assert.equal(regressionTimeoutMs('scripts/regressions/restart-supervisor.regression.ts'), 90_000);
+assert.equal(regressionTimeoutMs('scripts/regressions/ruleset-combat-director.regression.ts'), 180_000);
 assert.equal(regressionTimeoutMs('scripts/regressions/prompt.regression.ts'), 30_000);
 
 // An absolute path through a linked directory must still run the CLI, not exit successfully

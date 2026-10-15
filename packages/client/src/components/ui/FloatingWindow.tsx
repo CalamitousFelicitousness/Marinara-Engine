@@ -46,6 +46,7 @@ import {
   type WindowLayout,
 } from "../../lib/floating-window-layout";
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
+import { isBrowserExtensionUi } from "../../lib/chat-floating-ui-events";
 import { CHAT_VISUAL_VIEWPORT_CHANGE_EVENT } from "../../hooks/use-visual-viewport-chat-bottom";
 import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { DrawerHostContext, type DrawerHost } from "./drawer-host";
@@ -633,6 +634,8 @@ export function FloatingWindow({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (rootRef.current?.contains(target)) return;
+      // A browser extension's own UI, such as a Grammarly suggestion card, is not a press elsewhere in the app.
+      if (isBrowserExtensionUi(target)) return;
       // The window's own toggle closes it on click; closing here too would let that click reopen it.
       if (target.closest(`[data-window-opener="${id}"]`)) return;
       if (target.closest(".mari-window, [data-chat-help-overlay], [role='dialog'][aria-modal='true']")) return;

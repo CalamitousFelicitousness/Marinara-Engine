@@ -183,6 +183,12 @@ export function tileShadow(terrain: TacticalTerrain): string {
   return "inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -3px 5px rgba(0,0,0,0.35)";
 }
 
+/** Raised ground (combat C6b): one lighter wash a level, so higher cells read brighter. Nothing on level
+ *  ground. */
+export function heightWash(height: number): { backgroundColor: string } | undefined {
+  return height > 0 ? { backgroundColor: `rgba(255,255,255,${(0.08 * Math.min(height, 3)).toFixed(2)})` } : undefined;
+}
+
 // ~0.88 alpha suffix so terrain colours stay readable but the scene shows through.
 export const TILE_ALPHA = "e0";
 

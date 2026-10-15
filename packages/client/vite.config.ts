@@ -56,6 +56,8 @@ function resolveBuildCommit() {
 const BUILD_COMMIT = resolveBuildCommit();
 
 function manualChunks(id: string) {
+  // Narrative dice add another result card shape; keep the shared dice UI out of GameSurface's budget.
+  if (id.endsWith("/components/dice/AnimatedSkillCheckResult.tsx")) return "skill-check-result";
   if (id.endsWith("/components/game/game-narration-format.ts")) return "game-narration-format";
   if (id.endsWith("/components/game/GameNarrationVisuals.tsx")) return "game-narration-visuals";
   if (id.endsWith("/lib/game-tag-parser.ts")) return "game-tag-parser";
@@ -67,10 +69,30 @@ function manualChunks(id: string) {
   // invents, rather than weight on the game tag parser's chunk, which takes the rest of the shared code.
   if (/\/shared\/(?:dist|src)\/features\/rulesets\/(?:item-book|invented-items)\.(?:js|ts)$/u.test(id))
     return "ruleset-items";
+  // So is the world a game is set in (its kit, places, people, history and story), which grows with
+  // every part of worldgen, rather than weight on the game tag parser's chunk.
+  if (/\/shared\/(?:dist|src)\/features\/world\//u.test(id)) return "game-world";
+  // So is the sheet a ruleset builds (its fields, derived values and the math behind them), which grows
+  // with every part of a sheet a ruleset can describe.
+  if (/\/shared\/(?:dist|src)\/features\/rulesets\/(?:sheet-builder|sheet-math)\.(?:js|ts)$/u.test(id))
+    return "ruleset-sheet-rules";
+  // The ruleset sheet grows with every part of a sheet a ruleset can describe, and the art the game draws
+  // from board, icon and portrait packs is shared by several screens: each is its own chunk rather than
+  // weight on GameSurface's budget.
+  if (id.endsWith("/components/game/GameRulesetSheet.tsx")) return "game-ruleset-sheet";
+  if (/\/lib\/(?:board-art|board-art-cells|art-pack)\.ts$/u.test(id) || id.endsWith("/components/game/ArtIcon.tsx"))
+    return "game-art";
   if (!id.includes("/node_modules/")) return undefined;
   // Ignore checkout names, but keep pnpm peer suffixes so React and its consumers stay together.
   // Removing those suffixes splits eager React imports across chunks and creates startup cycles.
   id = id.slice(id.search(/\/(?:\.pnpm|node_modules)\//u));
+
+  // Avatar renderer libraries load only with an avatar renderer's lazy chunk (features/avatars), never in
+  // vendor-misc, which the entry imports. three's core build is its own chunk to stay under the budget.
+  if (/\/node_modules\/three\/build\/three\.core\./u.test(id)) return "vendor-three-core";
+  if (/\/node_modules\/three\//u.test(id)) return "vendor-three";
+  if (/\/node_modules\/@pixiv\//u.test(id)) return "vendor-three-vrm";
+  if (/\/node_modules\/(?:mesh-avatar|fflate)\//u.test(id)) return "vendor-mesh-avatar";
 
   // Keep dynamically selected Lucide glyphs in small alphabetical chunks
   // instead of pulling the complete icon catalog into one eager vendor file.
@@ -176,13 +198,32 @@ export default defineConfig({
             // Intentionally exclude html so index.html is not precached and does not interfere with the PWA stale-version/update flow.
             globPatterns: ["**/*.{js,css,json,png,svg,ico,woff2}"],
             navigateFallback: null,
-            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand.
-            globIgnores: ["**/sprites/**", "logo.png", "logo-splash.gif"],
+            // Keep the offline shell lean. Large decorative sprites and splash art are fetched on demand, and
+            // avatar renderers and their libraries load only where an avatar agent is used (features/avatars).
+            globIgnores: [
+              "**/sprites/**",
+              "logo.png",
+              "logo-splash.gif",
+              "**/{pngtuber,mesh-avatar,vrm}-renderer-*.js",
+              "**/vendor-three*.js",
+              "**/vendor-mesh-avatar*.js",
+            ],
             navigateFallbackAllowlist: [],
             runtimeCaching: [
               {
                 urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith("/api/"),
                 handler: "NetworkOnly",
+              },
+              // M16: a Mari pack downloads once, on first use, and works offline after that. Sprite URLs
+              // carry MARI_SPRITE_VERSION (mari-work-animations.ts), so replaced art is a new cache key.
+              {
+                urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith("/sprites/mari/"),
+                handler: "CacheFirst",
+                options: {
+                  cacheName: "mari-sprites",
+                  // Every pack's sheets plus the old versions left after a sprite version bump.
+                  expiration: { maxEntries: 200, maxAgeSeconds: 2_592_000 },
+                },
               },
             ],
           },

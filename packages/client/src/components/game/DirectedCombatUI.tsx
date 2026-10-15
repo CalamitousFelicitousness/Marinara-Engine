@@ -1,20 +1,32 @@
 import { CombatAiControls } from "./CombatAiControls";
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { useEffect, useMemo, useRef, type ComponentProps } from "react";
-import type { CombatDecisionOption, RulesetDefinition, TacticalBattlefieldBrief } from "@marinara-engine/shared";
+import type {
+  CombatDecisionOption,
+  RulesetDefinition,
+  TacticalBattlefieldBrief,
+  TacticalTerrain,
+} from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import { useDirectedCombat } from "../../hooks/use-directed-combat";
 import { GameCombatUI } from "./GameCombatUI";
 import { RulesetCombatBoard } from "./RulesetCombatBoard";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
+import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
 import { cn } from "../../lib/utils";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 
 type Props = ComponentProps<typeof GameCombatUI> & {
   anchor: string;
   style: "classic" | "tactical" | "ruleset";
   environment?: string;
+  /** The battlefield the scene is laid out like (worldgen W6d), for the board's colours; the server is
+   *  sent the scene's own word and lays it out itself. */
+  environmentLike?: string;
+  /** The setting's own words for the board's tiles (worldgen W6d). */
+  tileWords?: Partial<Record<TacticalTerrain, string>>;
   formation?: string;
   battlefield?: TacticalBattlefieldBrief;
   /** The rules the game is pinned to, for a fight the ruleset resolves. It is what names budgets,
@@ -97,9 +109,13 @@ export function DirectedCombatUI(props: Props) {
     optionId: string,
     targetIds: string[],
     payWith?: string,
-    cell?: { to?: { x: number; y: number }; at?: { x: number; y: number } },
+    cell?: RulesetCellChoice,
     style?: string,
     mode?: string,
+    amount?: number,
+    alters?: string[],
+    spares?: string[],
+    heightens?: string,
   ) =>
     send({
       type: "ruleset",
@@ -110,12 +126,23 @@ export function DirectedCombatUI(props: Props) {
       ...(mode ? { mode } : {}),
       ...(cell?.to ? { to: cell.to } : {}),
       ...(cell?.at ? { at: cell.at } : {}),
+      ...(cell?.toward ? { toward: cell.toward } : {}),
+      ...(cell?.side ? { side: cell.side } : {}),
+      ...(cell?.ring ? { ring: true } : {}),
+      ...(cell?.also?.length ? { also: cell.also } : {}),
+      ...(cell?.wall ? { wall: cell.wall } : {}),
+      ...(cell?.carries?.length ? { carries: cell.carries } : {}),
+      ...(amount !== undefined ? { amount } : {}),
+      ...(alters?.length ? { alters } : {}),
+      ...(alters?.length && spares ? { spares } : {}),
+      ...(alters?.length && heightens ? { heightens } : {}),
     });
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {s.style === "tactical" && s.tactical ? (
           <TacticalCombatUI
+            tileWords={props.tileWords}
             chatId={props.chatId}
             party={s.party}
             enemies={s.enemies}
@@ -146,7 +173,7 @@ export function DirectedCombatUI(props: Props) {
             units={[...s.party, ...s.enemies]}
             budgetLabel={budgetLabel}
             defenseLabel={defenseLabel}
-            environment={props.environment}
+            environment={board.grid?.scene ?? props.environmentLike ?? props.environment}
             busy={busy}
             onChoose={choose}
             onFlee={() => send({ type: "flee" })}
@@ -157,6 +184,7 @@ export function DirectedCombatUI(props: Props) {
                 defaultController="ai"
                 locked={busy}
                 onChange={(unitId, controller) => send({ type: "control", unitId, controller })}
+                className={GAME_SECTION_CLASS}
               />
             }
           />
@@ -193,7 +221,9 @@ export function DirectedCombatUI(props: Props) {
       <CombatWeatherSummary weather={s.weather} tactical={s.style === "tactical"} />
       <section
         aria-label={t("game.combat.director.title")}
+        data-game-section="combat-director"
         className={cn(
+          GAME_SECTION_CLASS,
           "shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)]",
           // A ruleset fight's log scrolls inside its own box, so this strip stays short and the
           // stage keeps the room its two rows need.

@@ -350,6 +350,8 @@ try {
     delete summed.catalogs;
     // And the loot tables, whose items were in those catalogs.
     delete summed.items.lootTables;
+    // And the smith's stock, which is rolled from one of them.
+    for (const seller of summed.items.market?.sellers ?? []) delete seller.stock;
     delete summed.sheet.lists;
     delete summed.gm.sheetSummary.lists;
     // And with the lists goes the one that adds levels to the track, and a summed roll has no per-die

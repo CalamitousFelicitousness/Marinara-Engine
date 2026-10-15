@@ -23,6 +23,8 @@ import {
   ShieldCheck,
   TriangleAlert,
   Dices,
+  Grid3x3,
+  Upload,
   AppWindow,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +43,8 @@ import {
   useCapabilityAgentRegistry,
   useCapabilityCatalog,
   useImportRuleset,
+  useImportRulesetPackage,
+  readRulesetPackage,
   useInstalledCapabilityPackages,
   useInstalledRulesets,
   useRemoveRuleset,
@@ -55,10 +59,12 @@ import {
   getFolderImportEntries,
   isAgentConfigDeleted,
   isRetiredBuiltInAgentId,
+  isRulesetPackageFile,
   normalizeAgentPhaseForType,
   parseRulesetDefinition,
   RULESET_LOCAL_NAMESPACE,
   RULESET_MAX_BYTES,
+  RULESET_PACKAGE_FILE_MAX_BYTES,
   type CustomAgentCapability,
   type AgentCategory,
   type RulesetDefinition,
@@ -99,12 +105,20 @@ import { AgentArtwork } from "../agents/AgentArtwork";
 import { AgentModeFilter, type AgentModeFilterValue } from "../agents/AgentModeFilter";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import type { TilePack } from "@marinara-engine/shared";
+import { ApiError, api } from "../../lib/api-client";
+import { downloadJsonFile } from "../../lib/download-json";
+import {
+  useChooseTilePack,
+  useImportTilePack,
+  useRemoveTilePack,
+  useTilePackLibrary,
+} from "../../hooks/use-overworld-view";
 import type { TFunction } from "i18next";
 import { Modal } from "../ui/Modal";
 import { RulesetImportReviewModal } from "../agents/RulesetImportReviewModal";
 import { clearActiveChatResourceDrag, writeChatResourceDragPayload } from "../../lib/chat-resource-drag";
 import { ChatResourceActionButton } from "../chat/ChatResourceActionButton";
-import { ApiError } from "../../lib/api-client";
 
 type JsonRecord = Record<string, unknown>;
 type NormalizedAgentImport = NonNullable<ReturnType<typeof normalizeAgentImportEntry>>;
@@ -115,7 +129,14 @@ type PendingAgentImport = {
 };
 /** A ruleset file waiting for the user to confirm it. The text is kept verbatim, because the server
  *  stores the bytes the user actually chose, not a re-serialization of the parsed document. */
-type PendingRulesetImport = { definition: RulesetDefinition; rulesetId: string; text: string };
+type PendingRulesetImport = {
+  definition: RulesetDefinition;
+  rulesetId: string;
+  text: string;
+  /** A ruleset package file (a parsed `.ruleset.json`), imported whole; with each catalog file's entry count. */
+  packageFile?: Record<string, unknown>;
+  catalogs?: Record<string, number>;
+};
 const AGENT_GRADIENT_SURFACE =
   "mari-panel-gradient-surface mari-panel-gradient--agents text-[var(--mari-panel-gradient-text)]";
 const AGENT_GRADIENT_BUTTON = "mari-panel-gradient-button mari-panel-gradient--agents";
@@ -248,6 +269,7 @@ export function AgentsPanel() {
   const createAgent = useCreateAgent();
   const importAgent = useImportAgent();
   const importRuleset = useImportRuleset();
+  const importRulesetPackage = useImportRulesetPackage();
   const removeRuleset = useRemoveRuleset();
   const { data: agentImportPolicy, isLoading: agentImportPolicyLoading } = useAgentImportPolicy();
   const deleteAgent = useDeleteAgent();
@@ -974,9 +996,11 @@ export function AgentsPanel() {
         setAgentImportError(agentImportsDisabledHelp);
         return;
       }
-      if (file.size > RULESET_MAX_BYTES) {
+      if (file.size > RULESET_PACKAGE_FILE_MAX_BYTES) {
         setAgentImportError(
-          localizeUi("game.ruleset.import.tooLarge", { limit: Math.round(RULESET_MAX_BYTES / 1024) }),
+          localizeUi("game.ruleset.import.packageTooLarge", {
+            limit: RULESET_PACKAGE_FILE_MAX_BYTES / 1024 / 1024,
+          }),
         );
         return;
       }
@@ -987,13 +1011,45 @@ export function AgentsPanel() {
         setAgentImportError(localizeUi("game.ruleset.import.unreadable"));
         return;
       }
-      let parsed: ReturnType<typeof parseRulesetDefinition>;
+      let document: unknown;
       try {
-        parsed = parseRulesetDefinition(JSON.parse(text));
+        document = JSON.parse(text);
       } catch {
         setAgentImportError(localizeUi("game.ruleset.import.notJson"));
         return;
       }
+      // A package file (`.ruleset.json`, with its catalog files) is read by the Engine, keeping nothing,
+      // and reviewed like a ruleset file.
+      if (isRulesetPackageFile(document)) {
+        const packageFile = document as Record<string, unknown>;
+        try {
+          const read = await readRulesetPackage(packageFile);
+          const parsed = parseRulesetDefinition(JSON.parse(read.ruleset ?? ""));
+          if (!parsed.ok) throw new Error(parsed.issues.slice(0, 3).join("; "));
+          setRulesetImportFailure(null);
+          setPendingRulesetImport({
+            definition: parsed.definition,
+            rulesetId: read.rulesetId,
+            text: read.ruleset ?? "",
+            packageFile,
+            catalogs: read.catalogs,
+          });
+        } catch (error) {
+          setAgentImportError(
+            localizeUi("game.ruleset.import.invalid", {
+              issues: error instanceof Error ? error.message : localizeUi("game.ruleset.import.failed"),
+            }),
+          );
+        }
+        return;
+      }
+      if (file.size > RULESET_MAX_BYTES) {
+        setAgentImportError(
+          localizeUi("game.ruleset.import.tooLarge", { limit: Math.round(RULESET_MAX_BYTES / 1024) }),
+        );
+        return;
+      }
+      const parsed = parseRulesetDefinition(document);
       if (!parsed.ok) {
         setAgentImportError(
           localizeUi("game.ruleset.import.invalid", { issues: parsed.issues.slice(0, 3).join("; ") }),
@@ -1021,7 +1077,9 @@ export function AgentsPanel() {
     setAgentImportSuccess(null);
     setRulesetImportFailure(null);
     try {
-      const result = await importRuleset.mutateAsync(pending.text);
+      const result = pending.packageFile
+        ? await importRulesetPackage.mutateAsync(pending.packageFile)
+        : await importRuleset.mutateAsync(pending.text);
       setPendingRulesetImport(null);
       setAgentImportSuccess(
         localizeUi(result.status === "added" ? "game.ruleset.import.added" : "game.ruleset.import.unchanged", {
@@ -1035,7 +1093,7 @@ export function AgentsPanel() {
       // without picking the file again.
       setRulesetImportFailure(error instanceof Error ? error.message : localizeUi("game.ruleset.import.failed"));
     }
-  }, [importRuleset, localizeUi, pendingRulesetImport]);
+  }, [importRuleset, importRulesetPackage, localizeUi, pendingRulesetImport]);
 
   const confirmAndRemoveRuleset = useCallback(
     async (rulesetId: string, name: string) => {
@@ -1242,7 +1300,8 @@ export function AgentsPanel() {
         ref={rulesetImportInputRef}
         type="file"
         // By extension only: the Agent import input beside this one is the panel's JSON-typed input.
-        accept=".json"
+        // A ruleset comes as its file, or as a package file (`.ruleset.json`) with its catalog files.
+        accept=".ruleset.json,.json"
         className="hidden"
         onChange={(event) => void handleRulesetFileSelected(event)}
       />
@@ -1771,6 +1830,8 @@ export function AgentsPanel() {
         </PanelSection>
       )}
 
+      <TilePacksSection />
+
       {selectionMode && (
         <SelectionActionBar
           placement="panel"
@@ -1909,8 +1970,12 @@ export function AgentsPanel() {
         installedVersions={
           installedRulesets.find((entry) => entry.definition.id === pendingRulesetImport?.rulesetId)?.versions ?? []
         }
-        importing={importRuleset.isPending}
+        importing={importRuleset.isPending || importRulesetPackage.isPending}
         failure={rulesetImportFailure}
+        catalogs={(pendingRulesetImport?.definition.catalogs ?? []).map((catalog) => ({
+          label: catalog.label,
+          count: catalog.entries?.length ?? pendingRulesetImport?.catalogs?.[catalog.id] ?? 0,
+        }))}
         onCancel={() => setPendingRulesetImport(null)}
         onConfirm={() => void handleConfirmRulesetImport()}
       />
@@ -2151,5 +2216,137 @@ function PanelSection({
       </div>
       {open && <div className="mt-1 flex flex-col gap-1">{children}</div>}
     </div>
+  );
+}
+
+// ── Tile packs (worldgen W9a): what each setting family's overworld and towns are drawn with ──
+
+const TILE_PACK_FAMILIES = new Set(["fantasy", "wuxia", "modern", "jazz_age", "scifi", "wasteland"]);
+
+function TilePacksSection() {
+  const { t } = useUiTranslation();
+  const { data: library } = useTilePackLibrary();
+  const choose = useChooseTilePack();
+  const importPack = useImportTilePack();
+  const removePack = useRemoveTilePack();
+  const fileRef = useRef<HTMLInputElement>(null);
+  if (!library) return null;
+  const families = [...new Set([...library.builtIn, ...library.packs.map((pack) => pack.family)])];
+  const familyLabel = (family: string) =>
+    TILE_PACK_FAMILIES.has(family) ? t(`game.tilePacks.family.${family}`) : family;
+  const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const result = await importPack.mutateAsync(await file.text());
+      toast.success(
+        result.status === "unchanged"
+          ? t("game.tilePacks.importUnchanged", { name: result.pack.name })
+          : t("game.tilePacks.imported", { name: result.pack.name }),
+      );
+      for (const note of result.notes.slice(0, 3)) toast.info(note);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("game.tilePacks.importFailed"));
+    }
+  };
+  const onExport = async (packId: string, name: string) => {
+    try {
+      const { pack } = await api.get<{ pack: TilePack }>(`/game-tile-packs/pack?id=${encodeURIComponent(packId)}`);
+      downloadJsonFile(pack, `${name.replace(/[^\w.-]+/g, "_")}.tilepack.json`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("game.tilePacks.exportFailed"));
+    }
+  };
+  const onRemove = async (packId: string, name: string) => {
+    const confirmed = await showConfirmDialog({
+      title: t("game.tilePacks.removeNamed", { name }),
+      message: t("game.tilePacks.removeConfirm", { name }),
+      confirmLabel: t("game.tilePacks.remove"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    try {
+      await removePack.mutateAsync(packId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("game.tilePacks.removeFailed"));
+    }
+  };
+
+  return (
+    <PanelSection
+      title={t("game.tilePacks.title")}
+      icon={<Grid3x3 size="0.8125rem" />}
+      action={
+        <button
+          className="mari-chrome-control mari-chrome-control--small shrink-0 p-1.5"
+          title={t("game.tilePacks.import")}
+          aria-label={t("game.tilePacks.import")}
+          disabled={importPack.isPending}
+          onClick={() => fileRef.current?.click()}
+        >
+          <Upload size="0.75rem" />
+        </button>
+      }
+    >
+      <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} />
+      {families.map((family) => (
+        <div key={family} className="flex items-center gap-2.5 rounded-xl p-2">
+          <span className="min-w-0 flex-1 truncate text-sm">{familyLabel(family)}</span>
+          <select
+            value={library.selection[family] ?? ""}
+            onChange={(event) => choose.mutate({ family, packId: event.target.value || null })}
+            className="mari-chrome-field h-8 max-w-[55%] appearance-none py-0 pl-2.5 pr-7 text-[0.6875rem]"
+            aria-label={t("game.tilePacks.chooseFor", { family: familyLabel(family) })}
+          >
+            <option value="">
+              {library.builtIn.includes(family) ? t("game.tilePacks.builtIn") : t("game.tilePacks.plain")}
+            </option>
+            {library.packs
+              .filter((pack) => pack.family === family)
+              .map((pack) => (
+                <option key={pack.id} value={pack.id}>
+                  {t("game.tilePacks.packVersion", { name: pack.name, version: pack.version })}
+                </option>
+              ))}
+          </select>
+        </div>
+      ))}
+      {library.packs.map((pack) => (
+        <div
+          key={pack.id}
+          className="group relative flex items-center gap-2.5 rounded-xl p-2 transition-all hover:bg-[var(--sidebar-accent)]"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--secondary)] text-[var(--muted-foreground)]">
+            <Grid3x3 size="1rem" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{pack.name}</div>
+            <div className="mt-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
+              {t(pack.tilePackVersion === 2 ? "game.tilePacks.imagePackFor" : "game.tilePacks.packFor", {
+                family: familyLabel(pack.family),
+                version: pack.version,
+              })}
+            </div>
+          </div>
+          <button
+            className="mari-chrome-control mari-chrome-control--small shrink-0 p-1.5"
+            title={t("game.tilePacks.export")}
+            aria-label={t("game.tilePacks.exportNamed", { name: pack.name })}
+            onClick={() => void onExport(pack.id, pack.name)}
+          >
+            <Download size="0.75rem" />
+          </button>
+          <button
+            className="mari-chrome-control mari-chrome-control--small shrink-0 p-1.5"
+            title={t("game.tilePacks.remove")}
+            aria-label={t("game.tilePacks.removeNamed", { name: pack.name })}
+            onClick={() => void onRemove(pack.id, pack.name)}
+          >
+            <Trash2 size="0.75rem" />
+          </button>
+        </div>
+      ))}
+    </PanelSection>
   );
 }

@@ -53,7 +53,6 @@ import {
   resolveReviewedImagePromptSubmission,
 } from "../services/image/image-prompt-review.js";
 import { buildBackgroundProviderPrompt } from "../services/game/game-asset-generation.js";
-import { runImageGenerationRequest } from "../services/image/image-generation-queue.js";
 import { generateIllustratorImageVariants } from "../services/image/illustrator-image-variants.js";
 import { persistGeneratedImageToEntityGalleries } from "../services/image/generated-image-entity-gallery.js";
 import { deleteChatGalleryImageEverywhere } from "../services/image/chat-gallery-cascade-deletion.js";
@@ -82,6 +81,11 @@ import {
   resolveGalleryVideoSourceExchange,
 } from "../services/video/prompt-context.js";
 import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../services/video/scene-video-prompt-review.js";
+import {
+  attachVideoToMessage,
+  buildChatVideoAttachment,
+  resolveChatVideoAnchor,
+} from "../services/video/chat-video-messages.js";
 import {
   buildRoleplayVideoDirectionMessages,
   resolveRoleplayVideoDirection,
@@ -794,6 +798,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         referenceImagePrompt: galleryImage.prompt ?? "",
         characterNames,
         setting: buildRoleplayVideoSettingLine(chat, meta, videoRuntime.promptLimits.artStyle),
+        videoPromptInstructions: videoConn.videoPromptInstructions,
       });
       const [systemMessage, userMessage] = directionMessages;
       const debugOverrideEnabled = input.debugMode === true || isDebugAgentsEnabled();
@@ -812,7 +817,11 @@ export async function galleryRoutes(app: FastifyInstance) {
           enableCaching: promptRuntime.enableCaching,
           anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
         });
-        promptDraft = resolveRoleplayVideoDirection(result.content, videoRuntime.promptLimits.finalPrompt);
+        // A sentence of the connection's instructions the director copied word for word is not video-model text.
+        promptDraft = removeCopiedPromptGuidance(
+          resolveRoleplayVideoDirection(result.content, videoRuntime.promptLimits.finalPrompt),
+          [videoConn.videoPromptInstructions],
+        );
       } catch (err) {
         logger.warn(err, "[gallery/roleplay-video-director] Failed to plan animation for chat %s", input.chatId);
         const message =
@@ -863,6 +872,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     const videoFallback = await resolveVideoConnectionFallback(connections, videoConnectionId);
 
     return {
+      chatMode: chat.mode,
       videoConnectionId,
       galleryImage,
       videoRuntime,
@@ -1119,8 +1129,16 @@ export async function galleryRoutes(app: FastifyInstance) {
       logDebugOverride(debugOverrideEnabled, message, ...args);
     };
     const sceneVideos = createGameSceneVideosStorage(app.db);
-    const { videoConnectionId, galleryImage, videoRuntime, durationSeconds, aspectRatio, prompt, videoFallback } =
-      prepared;
+    const {
+      chatMode,
+      videoConnectionId,
+      galleryImage,
+      videoRuntime,
+      durationSeconds,
+      aspectRatio,
+      prompt,
+      videoFallback,
+    } = prepared;
     const {
       source,
       serviceHint,
@@ -1200,7 +1218,21 @@ export async function galleryRoutes(app: FastifyInstance) {
 
       await chats.patchMetadata(input.chatId, () => ({ sceneLastVideoId: row.id }));
       logger.info("[gallery/generate-scene-video] saved video %s for chat %s", row.id, input.chatId);
-      return { video: serializeSceneVideo(row) };
+      const video = serializeSceneVideo(row);
+      // Shown inline under the newest reply, chosen now rather than before generating: the user may have sent
+      // or swiped a message meanwhile. Game Mode keeps its clips in the gallery only. The video is saved by now,
+      // so a failure to find or update the reply still reports success, with no messageId.
+      let messageId: string | null = null;
+      try {
+        const anchor = chatMode === "game" ? null : resolveChatVideoAnchor(await chats.listMessages(input.chatId));
+        if (anchor) {
+          await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video));
+          messageId = anchor.messageId;
+        }
+      } catch (attachErr) {
+        logger.warn(attachErr, "[gallery/generate-scene-video] Failed to attach video %s to a message", row.id);
+      }
+      return { video, messageId };
     } catch (err) {
       if (savedFilePath && !metadataSaved) {
         await removeSavedVideoFromDisk(savedFilePath).catch((cleanupErr) => {
@@ -1478,29 +1510,22 @@ export async function galleryRoutes(app: FastifyInstance) {
     }
 
     try {
-      const imageConnectionQueueKey = imageConn.id?.trim() || `${imageServiceHint}:${imageBaseUrl}:${imageModel}`;
       const imageResults = await generateIllustratorImageVariants({
         count: meta.illustratorImagesPerGeneration,
         generate: () =>
-          runImageGenerationRequest({
-            connectionKey: imageConnectionQueueKey,
-            queue: input.queueImageGenerationRequests,
+          generateImage(imageSource, imageBaseUrl, imageConn.apiKey || "", imageServiceHint, {
+            prompt: providerPrompt,
+            negativePrompt: providerNegativePrompt || undefined,
+            model: imageModel,
+            width,
+            height,
+            imageEndpointId: imageConn.imageEndpointId || undefined,
+            comfyWorkflow: imageConn.comfyuiWorkflow || undefined,
+            imageDefaults,
+            quality: resolveConnectionImageQuality(imageConn),
+            referenceImages,
             signal: selfieAbortSignal,
-            task: () =>
-              generateImage(imageSource, imageBaseUrl, imageConn.apiKey || "", imageServiceHint, {
-                prompt: providerPrompt,
-                negativePrompt: providerNegativePrompt || undefined,
-                model: imageModel,
-                width,
-                height,
-                imageEndpointId: imageConn.imageEndpointId || undefined,
-                comfyWorkflow: imageConn.comfyuiWorkflow || undefined,
-                imageDefaults,
-                quality: resolveConnectionImageQuality(imageConn),
-                referenceImages,
-                signal: selfieAbortSignal,
-                fallback: imageFallback,
-              }),
+            fallback: imageFallback,
           }),
         onVariantError: (error, index) =>
           logger.warn(error, "[gallery/selfie] Variant %d failed for chat %s", index + 1, chatId),
@@ -1637,34 +1662,25 @@ export async function galleryRoutes(app: FastifyInstance) {
     let savedFilePath: string | null = null;
     let metadataSaved = false;
     try {
-      const connectionKey =
-        context.imageConnection.id?.trim() ||
-        `${context.imageServiceHint}:${context.imageBaseUrl}:${context.imageModel}`;
-      const generated = await runImageGenerationRequest({
-        connectionKey,
-        queue: true,
-        signal,
-        task: () =>
-          generateImage(
-            context.imageSource,
-            context.imageBaseUrl,
-            context.imageConnection.apiKey || "",
-            context.imageServiceHint,
-            {
-              prompt: compiledPrompt.prompt,
-              negativePrompt: compiledPrompt.negativePrompt || undefined,
-              model: context.imageModel,
-              width: compiledPrompt.width,
-              height: compiledPrompt.height,
-              imageEndpointId: context.imageConnection.imageEndpointId || undefined,
-              comfyWorkflow: context.imageConnection.comfyuiWorkflow || undefined,
-              imageDefaults: context.imageDefaults,
-              quality: resolveConnectionImageQuality(context.imageConnection),
-              signal,
-              fallback: context.imageFallback,
-            },
-          ),
-      });
+      const generated = await generateImage(
+        context.imageSource,
+        context.imageBaseUrl,
+        context.imageConnection.apiKey || "",
+        context.imageServiceHint,
+        {
+          prompt: compiledPrompt.prompt,
+          negativePrompt: compiledPrompt.negativePrompt || undefined,
+          model: context.imageModel,
+          width: compiledPrompt.width,
+          height: compiledPrompt.height,
+          imageEndpointId: context.imageConnection.imageEndpointId || undefined,
+          comfyWorkflow: context.imageConnection.comfyuiWorkflow || undefined,
+          imageDefaults: context.imageDefaults,
+          quality: resolveConnectionImageQuality(context.imageConnection),
+          signal,
+          fallback: context.imageFallback,
+        },
+      );
       const filePath = saveImageToDisk(chatId, generated.base64, generated.ext);
       savedFilePath = filePath;
       const image = await storage.create({

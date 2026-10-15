@@ -107,6 +107,7 @@ import { extname } from "path";
 import { pipeline } from "stream/promises";
 import { newId } from "../utils/id-generator.js";
 import { createReplyFallbackNotifier } from "./generate/fallback-notification.js";
+import { removeAvatarOwner } from "../services/avatars/storage.js";
 import {
   findGalleryRowByFilename,
   galleryFileHasReferences,
@@ -768,7 +769,17 @@ async function buildNativeCharacterExport(
   };
 }
 
-export function buildCompatibleCharacterExport(data: any, sprites: Array<{ filename: string; data: string }> = []) {
+/**
+ * `keepOnboarding` is for the Compatible PNG route only. The PNG is the file
+ * authors hand around, so a Marinara user importing it should still get the
+ * card's onboarding; other front-ends ignore the unknown extension key. The
+ * Compatible JSON export deliberately omits it, so that stays a clean V2 card.
+ */
+export function buildCompatibleCharacterExport(
+  data: any,
+  sprites: Array<{ filename: string; data: string }> = [],
+  { keepOnboarding = false }: { keepOnboarding?: boolean } = {},
+) {
   // Compatible cards carry no gallery, so baked greeting images go back to their web links.
   data = data ? restoreBakedGreetingImages(data) : data;
   const extensions = { ...parseCharacterDataRecord(data?.extensions) };
@@ -786,6 +797,7 @@ export function buildCompatibleCharacterExport(data: any, sprites: Array<{ filen
     delete extensions[key];
   }
   delete extensions.characterSheetImageId;
+  if (!keepOnboarding) delete extensions.onboarding;
   extensions.useCharacterSheetAsReference = false;
   if (sprites.length > 0) {
     extensions.marinara = {
@@ -1599,6 +1611,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       collectAvatarPaths: () => collectCharacterAvatarPaths(app.db, [id]),
       mutateReferences: () => storage.remove(id),
     });
+    await removeAvatarOwner({ ownerType: "character", ownerId: id }).catch((err) =>
+      logger.warn(err, "Failed to remove the avatar model of deleted character %s", id),
+    );
     // Cascade the character's Noodle presence, otherwise its account and posts stay
     // in the timeline forever as a ghost (issue #4295).
     try {
@@ -2409,7 +2424,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!sprites) {
       return reply.status(413).send({ error: "Sprite collection exceeds compatible PNG export limits" });
     }
-    const v2Envelope = buildCompatibleCharacterExport(charData, sprites);
+    const v2Envelope = buildCompatibleCharacterExport(charData, sprites, { keepOnboarding: true });
     const charaBase64 = Buffer.from(JSON.stringify(v2Envelope), "utf-8").toString("base64");
 
     // Read avatar image or create a minimal 1x1 transparent PNG fallback
@@ -2769,6 +2784,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       collectAvatarPaths: () => collectPersonaAvatarPaths(app.db, [id]),
       mutateReferences: () => storage.removePersona(id),
     });
+    await removeAvatarOwner({ ownerType: "persona", ownerId: id }).catch((err) =>
+      logger.warn(err, "Failed to remove the avatar model of deleted persona %s", id),
+    );
     for (const image of galleryImages) {
       await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     }

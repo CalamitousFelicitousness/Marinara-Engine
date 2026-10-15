@@ -42,7 +42,7 @@ import {
 } from "../../hooks/use-lorebooks";
 import { useFeatureEnabled } from "../../hooks/use-feature-settings";
 import { useCharacters, usePersonas } from "../../hooks/use-characters";
-import { useConnections } from "../../hooks/use-connections";
+import { useConnections, useDefaultEmbeddingConnection } from "../../hooks/use-connections";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { useSpatialContext } from "../../hooks/use-spatial-context";
 import { showConfirmDialog } from "../../lib/app-dialogs";
@@ -123,6 +123,8 @@ import { Modal } from "../ui/Modal";
 // ──────────────────────────────────────────────
 const FOLDER_COLLAPSE_KEY_PREFIX = "lorebook-folder-collapsed:";
 const LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY = "marinara:lorebook-vectorize-connection-id";
+/** Stored for an explicit "No semantic search", so the embedding default does not replace it on the next visit. */
+const LOREBOOK_VECTORIZE_NONE = "none";
 
 function closestElementFromPoint(x: number, y: number, selector: string) {
   const element = document.elementFromPoint(x, y);
@@ -1128,6 +1130,15 @@ export function LorebookEditor() {
     initialEntryIdRef.current = null;
     jumpToEntry(entryId);
   }, [entries, isLoading, jumpToEntry]);
+  // F7: a deep link (e.g. the reply checkup's "lorebook budget" row) asked for a specific Overview field.
+  const initialFieldRef = useRef(useUIStore.getState().lorebookDetailInitialField);
+  useEffect(() => {
+    const field = initialFieldRef.current;
+    if (!field || isLoading || activeTab !== "overview") return;
+    initialFieldRef.current = null;
+    const target = contentRef.current?.querySelector<HTMLElement>(`[data-lorebook-field="${CSS.escape(field)}"]`);
+    if (target) scrollToElement(target);
+  }, [activeTab, isLoading, contentRef, scrollToElement]);
   const entryNameById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry.name])), [entries]);
   const activeChatForTest = useMemo(
     () =>
@@ -2503,7 +2514,7 @@ export function LorebookEditor() {
                       className="mari-editor-field h-10 w-full px-3 py-2.5 text-sm"
                     />
                   </div>
-                  <div>
+                  <div data-lorebook-field="token-budget">
                     <label className="mb-1.5 flex items-center gap-1 text-xs font-medium">
                       {localizeUi("ui.lorebooks.lorebookeditor.tokenBudget")}{" "}
                       <HelpTooltip
@@ -3203,11 +3214,20 @@ function VectorizeSection({
   const { t: localizeUi } = useUiTranslation();
   const queryClient = useQueryClient();
   const { data: rawConnections } = useConnections();
+  const { data: defaultEmbedding } = useDefaultEmbeddingConnection();
+  // Once the user picks, even "No semantic search", the default must not snap back in.
+  const userPickedConnectionRef = useRef(false);
   const sidecarModelDownloaded = useSidecarStore((s) => s.modelDownloaded);
   const sidecarModelDisplayName = useSidecarStore((s) => s.modelDisplayName);
   const fetchSidecarStatus = useSidecarStore((s) => s.fetchStatus);
   const connections = useMemo(
-    () => (rawConnections ?? []) as Array<{ id: string; name: string; embeddingModel?: string }>,
+    () =>
+      (rawConnections ?? []) as Array<{
+        id: string;
+        name: string;
+        embeddingModel?: string;
+        embeddingConnectionId?: string | null;
+      }>,
     [rawConnections],
   );
   const sidecarEmbeddingConnections = useMemo(() => {
@@ -3223,7 +3243,8 @@ function VectorizeSection({
   const embeddingConnections = useMemo(
     () => [
       ...sidecarEmbeddingConnections,
-      ...connections.filter((c) => typeof c.embeddingModel === "string" && c.embeddingModel.trim()),
+      // A connection can also get its embedding model from its Embedding Connection; the server resolves it.
+      ...connections.filter((c) => c.embeddingModel?.trim() || c.embeddingConnectionId?.trim()),
     ],
     [connections, sidecarEmbeddingConnections],
   );
@@ -3270,21 +3291,33 @@ function VectorizeSection({
     if (selectedConnectionId || embeddingConnections.length === 0) return;
     try {
       const storedConnectionId = window.localStorage.getItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY);
+      if (storedConnectionId === LOREBOOK_VECTORIZE_NONE) return;
       if (storedConnectionId && embeddingConnections.some((connection) => connection.id === storedConnectionId)) {
         setSelectedConnectionId(storedConnectionId);
+        return;
       }
     } catch {
       // localStorage is optional; the picker still works for this session.
     }
-  }, [embeddingConnections, selectedConnectionId]);
+    // Nothing remembered: start on the app-wide default, so entries share the vector space chats query.
+    const defaultId = defaultEmbedding?.connectionId;
+    if (
+      !userPickedConnectionRef.current &&
+      defaultId &&
+      embeddingConnections.some((connection) => connection.id === defaultId)
+    ) {
+      setSelectedConnectionId(defaultId);
+    }
+  }, [defaultEmbedding?.connectionId, embeddingConnections, selectedConnectionId]);
 
   const handleConnectionChange = (nextConnectionId: string) => {
+    userPickedConnectionRef.current = true;
     setSelectedConnectionId(nextConnectionId);
     try {
       if (nextConnectionId) {
         window.localStorage.setItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY, nextConnectionId);
       } else {
-        window.localStorage.removeItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY);
+        window.localStorage.setItem(LOREBOOK_VECTORIZE_CONNECTION_STORAGE_KEY, LOREBOOK_VECTORIZE_NONE);
       }
     } catch {
       // localStorage is optional; keep the in-memory selection.
@@ -3318,7 +3351,6 @@ function VectorizeSection({
       try {
         const res = await api.post(`/lorebooks/${lorebookId}/vectorize`, {
           connectionId: selectedConnectionId,
-          model: conn?.embeddingModel ?? "",
           onlyMissing: mode === "missing",
         });
         const data = res as { vectorized: number; total?: number; skipped?: number };
@@ -3499,7 +3531,8 @@ function VectorizeSection({
               <option value="">{localizeUi("ui.lorebooks.vectorizesection.noSemanticSearch")}</option>
               {embeddingConnections.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.embeddingModel})
+                  {c.name}
+                  {c.embeddingModel?.trim() ? <> ({c.embeddingModel})</> : null}
                 </option>
               ))}
             </select>

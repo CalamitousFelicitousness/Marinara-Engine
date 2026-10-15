@@ -34,6 +34,8 @@ onlyBuiltDependencies:
   - protobufjs
 
 allowBuilds:
+  # Its only install script is a no-op echo; pnpm 10's onlyBuiltDependencies skips it the same way.
+  '@google/genai': false
   esbuild: true
   onnxruntime-node: true
   protobufjs: true

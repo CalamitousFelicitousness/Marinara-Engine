@@ -43,7 +43,7 @@ for (const model of ["gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol"]) {
       await expect(defaults).toBeChecked();
       const reasoning = page.getByText("Reasoning Effort", { exact: true }).locator("../../..");
       const off = reasoning.getByRole("button", { name: "Off", exact: true });
-      const maximum = reasoning.getByRole("button", { name: "max", exact: true });
+      const maximum = reasoning.getByRole("button", { name: "Max", exact: true });
       for (const [button, effort] of [
         [off, null],
         [maximum, "maximum"],

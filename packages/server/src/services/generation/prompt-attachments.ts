@@ -6,6 +6,8 @@ export type PromptAttachment = {
   name?: string | null;
   prompt?: string | null;
   galleryId?: string | null;
+  /** Character who sent a Conversation selfie; older selfies lack it. */
+  characterName?: string | null;
   imageCaption?: string | null;
   imageCaptionConnectionId?: string | null;
   imageCaptionModel?: string | null;
@@ -42,6 +44,14 @@ export function parseExtra(extra: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/**
+ * A Conversation selfie the character sent. Selfies are the only generated images saved as
+ * `selfie_*` with type "image"; Illustrator images share that type but stay hidden from the model.
+ */
+export function isSentSelfieAttachment(attachment: PromptAttachment): boolean {
+  return attachment.type === "image" && !!attachment.filename?.startsWith("selfie_");
 }
 
 export function getAttachmentFilename(attachment: PromptAttachment): string {

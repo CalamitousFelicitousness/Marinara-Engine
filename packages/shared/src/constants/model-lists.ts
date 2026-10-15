@@ -122,9 +122,17 @@ export function resolveProviderReasoningEffort(args: {
   model: string;
   reasoningEffort: StoredReasoningEffort | undefined;
 }): ProviderReasoningEffort {
+  const providerLower = args.provider.toLowerCase();
+  // Argon cannot turn thinking off; without a level it thinks at Google's default, medium, so name that level.
+  if (
+    (!args.reasoningEffort || args.reasoningEffort === "none") &&
+    (providerLower === "google" || providerLower === "google_vertex") &&
+    isGeminiArgonModel(args.model)
+  ) {
+    return "medium";
+  }
   if (!args.reasoningEffort || args.reasoningEffort === "none") return null;
   const modelLower = args.model.toLowerCase();
-  const providerLower = args.provider.toLowerCase();
 
   const xaiUsesAutoReasoning =
     (providerLower === "xai" && isXaiAutoReasoningModel(modelLower)) ||
@@ -145,6 +153,9 @@ export function resolveProviderReasoningEffort(args: {
     isOpenAIGpt6Model(modelLower) ||
     isOpenAIGpt56Model(modelLower) ||
     isNativeAnthropicAdaptiveOnly ||
+    // DeepSeek takes max for every chat model; xhigh is not one of its levels, so maximum maps to max rather than
+    // collapsing to high.
+    providerLower === "deepseek" ||
     (providerLower === "zai" && isZaiMaxReasoningEffortModel(modelLower));
 
   if (args.reasoningEffort === "maximum") {
@@ -156,7 +167,42 @@ export function resolveProviderReasoningEffort(args: {
   if (args.reasoningEffort === "xhigh") {
     return supportsXhigh ? "xhigh" : "high";
   }
+  // DeepSeek accepts medium for compatibility but serves it as high, so mapping it here keeps the offered levels
+  // honest: without this, "Medium" and "High" would be two buttons that send a different value yet behave the same.
+  if (providerLower === "deepseek" && args.reasoningEffort === "medium") return "high";
   return args.reasoningEffort;
+}
+
+/** Gemini 3 and later set thinking with `thinkingLevel`; Gemini 2.5 and older take `thinkingBudget`. */
+export function isGeminiThinkingLevelModel(model: string): boolean {
+  return /gemini-(?:[3-9]|[1-9]\d)(?!\d)/i.test(model);
+}
+
+/**
+ * Gemini 4 Argon takes thinking levels low to high only and cannot turn thinking off. Its sampler, penalty and prefill
+ * rules are shared with the newer Flash models (isGeminiStrictRequestModel).
+ * https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+ * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
+ */
+export function isGeminiArgonModel(model: string): boolean {
+  return /(?:^|\/)gemini-4-argon(?:$|-)/i.test(model);
+}
+
+/** Any Gemini model id, bare or with a router prefix such as OpenRouter's `google/`. */
+export function isGeminiModel(model: string): boolean {
+  return /(?:^|\/)gemini-/i.test(model);
+}
+
+/**
+ * Gemini models that ignore temperature, top-p and top-k and reject frequency and presence penalties and a request
+ * ending on a model turn (a prefill): Argon, 3.5 Flash-Lite and 3.6 to 3.8 Flash. OpenRouter variants such as
+ * `:online` count too.
+ * https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.6
+ * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash-lite
+ * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-6-flash (also 3-7, 3-8)
+ */
+export function isGeminiStrictRequestModel(model: string): boolean {
+  return /(?:^|\/)gemini-(?:4-argon|3\.5-flash-lite|3\.[6-8]-flash)(?:$|[-:])/i.test(model);
 }
 
 export function isXaiConfigurableReasoningModel(model: string): boolean {
@@ -374,8 +420,10 @@ export const OPENAI_CHATGPT_MODELS: KnownModel[] = [
 // ── Google AI Studio (from #model_google_select) ──
 
 export const GOOGLE_MODELS: KnownModel[] = [
-  // Gemini 3.8
+  // Gemini 3.8. New Google and Vertex connections start on the first entry, so keep a widely available Flash here.
   { id: "gemini-3.8-flash", name: "gemini-3.8-flash", context: 1000000, maxOutput: 65536 },
+  // Gemini 4. Argon needs a paid tier and, on Vertex, the global, us or eu location.
+  { id: "gemini-4-argon", name: "gemini-4-argon", context: 1000000, maxOutput: 65536 },
   // Gemini 3.7
   { id: "gemini-3.7-flash", name: "gemini-3.7-flash", context: 1000000, maxOutput: 65536 },
   // Gemini 3.6
@@ -606,11 +654,12 @@ export const GROQ_MODELS: KnownModel[] = [
 
 // DeepSeek (from #model_deepseek_select)
 export const DEEPSEEK_MODELS: KnownModel[] = [
+  // The current names. `deepseek-v4-flash` is a legacy alias of `deepseek-flash`
+  // and still resolves, while deepseek-chat / deepseek-coder / deepseek-reasoner
+  // were retired on 2026-07-24.
+  { id: "deepseek-flash", name: "deepseek-flash", context: 1_000_000, maxOutput: 384_000 },
   { id: "deepseek-v4-pro", name: "deepseek-v4-pro", context: 1_000_000, maxOutput: 384_000 },
-  { id: "deepseek-v4-flash", name: "deepseek-v4-flash", context: 1_000_000, maxOutput: 384_000 },
-  { id: "deepseek-chat", name: "deepseek-chat", context: 131072, maxOutput: 8192 },
-  { id: "deepseek-coder", name: "deepseek-coder", context: 131072, maxOutput: 8192 },
-  { id: "deepseek-reasoner", name: "deepseek-reasoner", context: 131072, maxOutput: 8192 },
+  { id: "deepseek-v4-flash", name: "deepseek-v4-flash (legacy alias)", context: 1_000_000, maxOutput: 384_000 },
 ];
 
 // Xiaomi MiMo (available through OAI-compatible aggregators and direct APIs)
@@ -856,6 +905,13 @@ export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
     requiresApiKey: true,
   },
   {
+    id: "spicyapi",
+    name: "SpicyAPI",
+    description: "Uncensored image models from SpicyAPI's catalog.",
+    defaultBaseUrl: "https://api.spicyapi.ai/api/v1",
+    requiresApiKey: true,
+  },
+  {
     id: "pollinations",
     name: "Pollinations",
     description: "Free, no-key-needed image generation via Pollinations AI.",
@@ -942,6 +998,12 @@ export const FAL_IMAGE_MODELS: KnownModel[] = [
   { id: "fal-ai/flux/dev", name: "FLUX.1 Dev (fal.ai)", context: 0, maxOutput: 0 },
 ];
 
+export const SPICYAPI_IMAGE_MODELS: KnownModel[] = [
+  { id: "alibaba/z-image-spicy-pro/text-to-image", name: "Z-Image Spicy Pro (SpicyAPI)", context: 0, maxOutput: 0 },
+  { id: "bytedance/seedream-5.0-pro/text-to-image", name: "Seedream 5.0 Pro (SpicyAPI)", context: 0, maxOutput: 0 },
+  { id: "alibaba/qwen-image-2.1/text-to-image", name: "Qwen Image 2.1 (SpicyAPI)", context: 0, maxOutput: 0 },
+];
+
 export const ATLAS_CLOUD_VIDEO_MODELS: KnownModel[] = [
   { id: "google/veo3.1/text-to-video", name: "Veo 3.1 Text to Video (Atlas Cloud)", context: 0, maxOutput: 0 },
   { id: "google/veo3.1/image-to-video", name: "Veo 3.1 Image to Video (Atlas Cloud)", context: 0, maxOutput: 0 },
@@ -1017,6 +1079,7 @@ const IMAGE_GEN_MODELS: KnownModel[] = [
   { id: "venice-sd35", name: "Venice SD3.5", context: 0, maxOutput: 0 },
   ...ZAI_IMAGE_MODELS,
   ...FAL_IMAGE_MODELS,
+  ...SPICYAPI_IMAGE_MODELS,
   ...ATLAS_CLOUD_IMAGE_MODELS,
   // NovelAI
   { id: "nai-diffusion-3", name: "NAI Diffusion 3 (Anime V3)", context: 0, maxOutput: 0 },
@@ -1119,6 +1182,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
     m === "zai" ||
     m === "atlas" ||
     m === "fal" ||
+    m === "spicyapi" ||
     m === "comfyui" ||
     m === "swarmui" ||
     m === "automatic1111" ||
@@ -1129,6 +1193,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
   }
   if (m === "drawthings") return "automatic1111";
   if (hostname === "fal.run") return "fal";
+  if (isProviderHost(hostname, "spicyapi.ai")) return "spicyapi";
   if (isProviderHost(hostname, "nano-gpt.com")) return "nanogpt";
   if (isProviderHost(hostname, "openrouter.ai")) return "openrouter";
   if (isProviderHost(hostname, "x.ai")) return "xai";
@@ -1175,6 +1240,7 @@ export const MODEL_LISTS: Record<APIProvider, KnownModel[]> = {
   xai: XAI_MODELS,
   arli: [], // Arli AI — models fetched dynamically via the /models endpoint
   zai: ZAI_MODELS,
+  deepseek: DEEPSEEK_MODELS,
   // Seed OAI-compatible endpoints with the OpenAI catalog; remote /models still merge on top.
   custom: [...OPENAI_MODELS, ...ZAI_MODELS],
   image_generation: IMAGE_GEN_MODELS,

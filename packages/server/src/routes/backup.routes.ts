@@ -45,6 +45,7 @@ import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createThemesStorage } from "../services/storage/themes.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { loadFeatureSettings } from "../services/features/feature-settings.js";
+import { TRIPO_API_KEY_SETTING } from "../services/avatars/generation/tripo-key.js";
 import {
   canReparentFolder,
   isStockMarinaraUniversalPreset,
@@ -95,6 +96,7 @@ const BACKUP_DIRS = [
   "storage",
   "avatars",
   "sprites",
+  "avatar-models",
   "backgrounds",
   "gallery",
   "game-scene-videos",
@@ -698,6 +700,10 @@ export function sanitizeProfileTableRows(tableName: string, rows: Array<Record<s
     // The saved model list is a cache the provider can rebuild, like Noodle fan activity above, so
     // it stays out of portable profiles. Pinned models are settings and travel with the row.
     return rows.map((row) => ({ ...row, apiKeyEncrypted: "", managementTokenEncrypted: "", savedModels: null }));
+  }
+  if (tableName === "app_settings") {
+    // The Tripo API key stays on this install too, like the connection keys blanked above.
+    return rows.filter((row) => row.key !== TRIPO_API_KEY_SETTING);
   }
   if (tableName === "agent_configs") {
     return rows.map((row) => redactAgentSecrets(row));

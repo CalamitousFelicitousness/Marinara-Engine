@@ -110,7 +110,8 @@ for (const key of ["enterEditMode", "exitEditMode", "enterTrackerEditMode", "exi
   assert.equal(typeof en[`ui.trackerPanel.trackersidebarheader.${key}`], "string", `${key} is localized`);
   assert.equal(header.includes(key), true, `the toolbar uses ${key}`);
 }
-for (const retired of ["enterAddMode", "exitAddMode", "enterTrackerAddMode", "exitTrackerAddMode"]) {
+// enterTrackerAddMode/exitTrackerAddMode stay: upstream's Trackers window (TrackerWindowCharacters) reads them.
+for (const retired of ["enterAddMode", "exitAddMode"]) {
   assert.equal(
     `ui.trackerPanel.trackersidebarheader.${retired}` in en,
     false,

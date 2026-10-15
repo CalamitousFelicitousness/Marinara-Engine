@@ -1,4 +1,4 @@
-import { useMemo, type ComponentProps } from "react";
+import { useMemo, type ComponentProps, type ReactNode } from "react";
 import type { Message, SpriteSide } from "@marinara-engine/shared";
 import { ConversationPackageWindows, ConversationView } from "./ConversationView";
 import { ChatCommonOverlays } from "./ChatCommonOverlays";
@@ -54,6 +54,13 @@ type ConversationSurfaceProps = {
   onRegenerate: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
   onFinalizeMultiSwipe?: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void;
+  /** N1: the user message whose reply failed, if any — drives the "Failed · Retry" line. */
+  failedReplyMessageId?: string | null;
+  failedReplyReason?: string;
+  onRetryFailedReply?: () => void;
+  /** R2: the reply that gets the checkup's quiet line, and the line itself. */
+  replyCheckupMessageId?: string | null;
+  replyCheckup?: ReactNode;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleHiddenFromAI: (messageId: string, current: boolean) => void;
   onPeekPrompt: (messageId?: string) => void;
@@ -120,6 +127,11 @@ export function ChatConversationSurface({
   onRegenerate,
   onFinalizeMultiSwipe,
   onEdit,
+  failedReplyMessageId,
+  failedReplyReason,
+  onRetryFailedReply,
+  replyCheckupMessageId,
+  replyCheckup,
   onSetActiveSwipe,
   onToggleHiddenFromAI,
   onPeekPrompt,
@@ -188,6 +200,11 @@ export function ChatConversationSurface({
           onRegenerate={onRegenerate}
           onFinalizeMultiSwipe={onFinalizeMultiSwipe}
           onEdit={onEdit}
+          failedReplyMessageId={failedReplyMessageId}
+          failedReplyReason={failedReplyReason}
+          onRetryFailedReply={onRetryFailedReply}
+          replyCheckupMessageId={replyCheckupMessageId}
+          replyCheckup={replyCheckup}
           onSetActiveSwipe={onSetActiveSwipe}
           onToggleHiddenFromAI={onToggleHiddenFromAI}
           onPeekPrompt={onPeekPrompt}

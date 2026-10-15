@@ -175,6 +175,8 @@ type AdvancedMemoryAction =
       action: "settings";
       settings:
         Partial<AdvancedMemorySettings> | ((current: AdvancedMemorySettings) => Partial<AdvancedMemorySettings>);
+      /** Shows the prompts of any work the change starts, such as writing character recollections. */
+      debugMode?: boolean;
     }
   | {
       action: "initialize";
@@ -183,6 +185,8 @@ type AdvancedMemoryAction =
       sceneId?: string;
       /** Fix: repair every flagged scene in one run. */
       fixAll?: boolean;
+      /** Find scenes again between these message numbers. */
+      range?: { start: number; end: number };
     }
   | { action: "cancel" | "reindex" | "reset" }
   | {
@@ -212,7 +216,10 @@ export function useAdvancedMemoryAction(chatId: string) {
                   ).settings,
                 )
               : request.settings;
-          return api.patch<AdvancedMemoryStatus>(`${base}/settings`, settings);
+          return api.patch<AdvancedMemoryStatus>(
+            `${base}/settings`,
+            request.debugMode ? { ...settings, debugMode: true } : settings,
+          );
         }
         case "record":
           return api.patch<AdvancedMemoryStatus>(`${base}/records/${request.recordId}`, request.patch);
@@ -224,6 +231,7 @@ export function useAdvancedMemoryAction(chatId: string) {
             debugMode: request.debugMode,
             sceneId: request.sceneId,
             fixAll: request.fixAll,
+            range: request.range,
           });
         case "import":
           return api.post<AdvancedMemoryStatus>(`${base}/import`, request.envelope);

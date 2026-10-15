@@ -19,6 +19,7 @@
     "dev:client": "pnpm build:shared && pnpm --filter @marinara-engine/client dev",
     "build": "pnpm clean:stale-client && pnpm --filter @marinara-engine/shared build && pnpm --filter @marinara-engine/server --filter @marinara-engine/client --parallel run build",
     "build:shared": "pnpm --filter @marinara-engine/shared build",
+    "art:overworld": "node scripts/art/build-overworld-tiles.mjs",
     "build:server": "pnpm --filter @marinara-engine/server build",
     "build:client": "pnpm build:shared && pnpm --filter @marinara-engine/client build",
     "check": "pnpm clean:stale-client && pnpm impeccable:check && pnpm dev-ports:check && pnpm localization:check && pnpm format:check && pnpm lint && pnpm check:e2e-types && pnpm check:token-estimation-types && pnpm build",

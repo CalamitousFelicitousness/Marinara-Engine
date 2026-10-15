@@ -32,6 +32,8 @@ export function regressionTimeoutMs(relativePath) {
   if (relativePath === 'scripts/regressions/scene-package-origin.regression.ts') return 60_000;
   // Two slow Decision recall passes (5.5 s each) prove that each has its own time limit.
   if (relativePath === 'scripts/regressions/advanced-memory-recall-shortlist.regression.ts') return 60_000;
+  // Hundreds of complete d20 and dice-pool fights: about a minute locally, over 100 s in slow containers.
+  if (relativePath === 'scripts/regressions/ruleset-combat-director.regression.ts') return 180_000;
   return FILE_TIMEOUT_MS;
 }
 
@@ -149,6 +151,9 @@ function regressionEnvironment(scratchDir) {
     MARINARA_ENV_FILE: path.join(scratchDir, '.env'),
     DATA_DIR: dataDir,
     FILE_STORAGE_DIR: path.join(dataDir, 'storage'),
+    // Overworld games are locked by default; the lanes that make worlds run with them on, and the lock's own
+    // checks turn them off themselves.
+    MARINARA_OVERWORLD_GAMES: process.env.MARINARA_OVERWORLD_GAMES ?? 'true',
   };
 }
 

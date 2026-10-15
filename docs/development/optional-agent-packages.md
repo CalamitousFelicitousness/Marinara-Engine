@@ -247,9 +247,10 @@ const vectors = await embeddings.embed(texts, signal);
 // Store/compare embeddings.spaceId with persisted vectors; do not mix embedding spaces.
 ```
 
-The returned host has `spaceId`, `label`, and `embed(texts, signal?)`. Resolution uses the
-configured embedding source and falls back to the built-in local MiniLM embedder when
-none is available or configuration resolution fails. `embed` can return `null`; empty
+The returned host has `spaceId`, `label`, and `embed(texts, signal?, inputType?)` (see
+capability API 1.68 for the input type). Resolution uses the configured embedding source
+and falls back to the built-in local MiniLM embedder when none is available or
+configuration resolution fails. `embed` can return `null`; empty
 batches, more than 128 texts, or more than 200,000 combined characters are refused. A
 new host does not re-embed existing vectors, so a package must handle a changed `spaceId`
 before comparing new vectors with stored ones.
@@ -599,7 +600,27 @@ The user's **Decision model** answers yes/no and choice statements about the rec
 
 An agent prompt template shipped by a package can use decision statements exactly as a user's custom agent does: `{{#if decision:"..."}}` and `{{#if decision_choice:"..." == "..."}}`. The Engine finds them in the template, asks them before the agent runs (after the reply, for a post-processing agent), and resolves the template with the answers. No capability API version is involved. See [Conditional Prompts](../prompts/conditional-prompts.md#asking-the-decision-model) for the syntax and the wording advice, and [Creating Custom Agents](../agents/custom-agents.md#decision-statements-in-the-agents-prompt) for how agent phases read them.
 
-Package runtime code has no way to ask the Decision model directly yet. That needs a capability API method and a version bump of its own.
+Package server code can also ask the user's configured Decision model bounded yes/no and Choice questions about context the package supplies, through `api.runtime.decisions.evaluate(...)`. It uses the same Decision model as agent activation questions and prompt conditionals (a managed local model or a Decision connection) and never exposes keys or Engine internals. `decisions` is optional and needs no newer capability API or permission: check `typeof api.runtime.decisions?.evaluate === "function"` and fall back on older Engines.
+
+```ts
+const result = await api.runtime.decisions?.evaluate({
+  messages: [{ role: "user", content: "The tavern falls silent as the stranger draws a blade." }],
+  questions: [
+    { id: "danger", question: "Someone is about to be attacked." },
+    { id: "mood", question: "The mood of the scene is", options: ["calm", "tense", "festive"] },
+  ],
+  // Optional: pass `signal` to cancel and `debugMode: true` to log the Decision prompt.
+});
+// null: no Decision model is configured, or it gave no answer (unreachable, timed out or cancelled).
+if (result && (result.answers.danger ?? 0) >= result.threshold) {
+  // ...
+}
+```
+
+- `messages` is the package's own context, oldest first (at most 200 messages and 200,000 characters; a message `name` is at most 100 characters). The oldest messages are dropped to fit the model.
+- Each `question` is at most 500 characters; ids must be unique. A Choice question has at least two `options`, and its answer is one of them or `"none of these"`.
+- One request may ask for at most the user's **Decision statements per turn** limit of answers; each Choice option counts once, plus one. An invalid request throws a `TypeError`.
+- `answers` holds the probability of yes per yes/no question, and a question missing from it was not answered. Compare it with `threshold`, the model's own operating point: probabilities are not comparable across Decision models.
 
 Design every use for a user with no Decision model. A statement with no answer reads as no, so the `{{else}}` branch, or nothing, must be a sensible default. Write for "a Decision model", rather than requiring Jev: local chat models and other supported backends use the same syntax, but can give different answers. See [Thresholds](../connections/decision-models.md#thresholds) and [Limits and cost](../prompts/conditional-prompts.md#limits-and-cost) before relying on a particular score, request count or cached answer.
 
@@ -968,7 +989,8 @@ a reserved asset of their own, one file per catalog:
 `catalogs/<id>.json` is a reserved asset family: the file name is the catalog's own id, so the
 Engine finds the file from the ruleset alone and no catalog can name another one's file. A catalog
 asset is hash-pinned in `files[]` like every other declared asset, only ever ships beside the
-`ruleset.json` that declares it, and is refused on its declared size above 1 MB before it is read.
+`ruleset.json` that declares it, and is refused on its declared size above 2 MB before it is read (1 MB before Capability API
+1.340; a package with a catalog file over 1 MB declares 1.340).
 Its contents go through the same checks the inline entries go through, against the same sheet, so a
 catalog can never write a row the sheet could not hold. Up to 12 catalogs per ruleset and 2000
 entries per catalog.
@@ -1020,7 +1042,8 @@ This is not a soft seam. A ruleset package does nothing on an Engine that cannot
 manifest that lists `ruleset.json` must declare Capability API 1.20, and an older Engine refuses the
 install cleanly.
 
-The Engine refuses the asset on its declared size above 256 KB before reading it, re-verifies it
+The Engine refuses the asset on its declared size above 512 KB before reading it (256 KB before Capability
+API 1.340; a package whose ruleset is over 256 KB declares 1.340), re-verifies it
 against the install-time hash, and validates it with the strict shared schema
 (`packages/shared/src/schemas/ruleset.schema.ts`). A file it cannot use is dropped with one log line
 that names the package and the first few `path: message` problems. Two packages that declare the same
@@ -1032,6 +1055,73 @@ own rules, exactly as before. A pin the install cannot honour (the package is go
 definition is older than the pinned version) is reported as unavailable and never reinterpreted as
 another ruleset. The pin is matched on the ruleset id and on the package that supplied it, so
 another package claiming the same id does not take over an existing game.
+
+### Capability API 1.73: the avatar agents
+
+The Engine hosts the two avatar agents, `2d-avatars` (PNGTuber sprites and mesh avatars) and
+`3d-avatars` (VRM models). Their packages stay thin: an agent definition each, default prompts,
+locales and the catalog entry. The Engine owns everything else: per-owner storage under
+`DATA_DIR/avatar-models/`, import, the lazy-loaded renderers, the setup on each agent's Agent editor
+page, the stream director, the expression classifier and the generation routes. The shared contract
+is `packages/shared/src/types/avatars.ts` (its schemas are in `schemas/avatars.schema.ts`), and the
+client half is `packages/client/src/features/avatars/contract.ts`. The user guide is
+[`docs/agents/avatars.md`](../agents/avatars.md).
+
+There is no new manifest field. An avatar package declares schema version 2 and Capability API 1.73,
+so an Engine without these surfaces refuses the install instead of listing an agent that shows
+nothing. The change that introduced 1.73 shipped these surfaces as inert stubs, so the packages are
+published, even to the preview catalog, only once the Engine's setup, stage and a renderer are on
+`staging`. The 2D agent's generation prompts ship as the `avatarGenerationTemplates` prompt template
+collection in its `defaultSettings`, with the ids in `AVATAR_PROMPT_TEMPLATE_IDS`; the Agent editor
+merges and resets them like any other built-in template collection.
+
+### Capability API 1.72: an Experience's map pack
+
+A `game-surface` package that sets up through the Game wizard (`gameSurface.setup`, 1.18) can ship a
+map pack with schema version 2 and Capability API 1.72: its own setting kit, ready-made worlds built
+with that kit, and its own tile pack. Each is the share file Game Mode and Pixelforge already read and
+write (a `.worldkit.json`, `.world.json` files and a `.tilepack.json`), and each is also a declared,
+hash-pinned asset.
+
+```json
+{
+  "gameSurface": {
+    "setup": {},
+    "mapPack": {
+      "kit": "map/riverlands.worldkit.json",
+      "worlds": ["map/upriver.world.json", "map/downriver.world.json"],
+      "tiles": "map/riverlands.tilepack.json"
+    }
+  },
+  "assets": {
+    "paths": [
+      "map/riverlands.worldkit.json",
+      "map/upriver.world.json",
+      "map/downriver.world.json",
+      "map/riverlands.tilepack.json"
+    ]
+  }
+}
+```
+
+`worlds` (at most 32) and `tiles` are optional. A world file may carry its world's story script
+(worldgen W10), which ships with the map as part of it. A world file of version 2 also carries the
+world's `snapshot`, the world as it was made (W11): an Engine whose world generator has changed since
+reads the world from it, exactly as it was made, so a pack keeps working across Engine updates. Write
+the files from a game's or library world's **Download** (or `GET /api/game/:chatId/world/file`), which
+include it. A pack file is still at most 2 MB, so a world whose file is larger (a big world's snapshot)
+cannot ship in a pack. With the Experience on, a new game is locked
+to the pack's kit; if the pack ships worlds, the player picks one of them (story included) and makes
+no other. Turning the
+Experience off gives the player's own choices back. `POST /api/game/create` holds a game to the same
+lock. The game keeps its kit and world like any game, so it plays on if the package is removed, and
+draws its overworld and towns with the pack's tiles while the package is installed.
+
+The Engine reads the files through the verified asset path (declared size at most 2 MB each, hash
+re-checked) and checks them as it checks share files. A pack is refused whole, with the reason, when a
+file does not read, when a world was made with another kit or does not fit it, or when its bytes are
+not the ones installed; the Experience then cannot start a game. A ruleset is never part of a map
+pack: an Experience that needs its own rules ships a separate ruleset package.
 
 ### Capability API 1.18: keep Experience setup in the Game wizard
 
@@ -1085,6 +1175,60 @@ summary.
 Use the existing startup-readiness declaration independently when the world must
 be prepared before the opening turn. Declare API 1.18 as the package minimum;
 older hosts cannot interpret this setup declaration.
+
+### Capability API 1.71: read messages as agents read them
+
+In Roleplay, a message can carry whispers that are not part of its `content`. Every agent the Engine
+runs reads them, and a package that reads the chat itself can now read the same text. Each record
+from `persistence.listMessages(chatId)` gets `agentContent`: the message as Engine agents read it.
+Each whisper sits at its place, marked `[Private whisper to <name>: …]`, and a message that is only
+a whisper reads as its whispers. A document a character hands over, such as a letter, follows the
+message. The player's private notes are left out.
+
+`agentContent` is there only in Roleplay chats. It is missing in other modes and in a hosted
+multiplayer room, where everyone sees what agents write. `content` never changes: it is still the
+public text. `extra` doesn't change either: it is the message's saved data, with every whisper in it,
+in every mode. Never show text built from it to players or characters a whisper was not for.
+
+```ts
+const messages = await api.runtime.persistence.listMessages(chatId);
+const history = messages.map((message) => message.agentContent ?? message.content);
+```
+
+It is a soft seam: older Engines leave the field out, so a package that reads
+`agentContent ?? content` does not need to declare 1.71. It needs the `chat-read` permission, like
+`listMessages`. Whispers are private: anything a package writes from them, such as a note or a memory,
+can reach characters the whisper was not for.
+
+### Capability API 1.68: embed search queries as queries
+
+`embeddings.embed(texts, signal?, inputType?)` takes a third argument: pass `"query"` for search
+text, such as a recall query. Texts default to `"document"`. Some embedding models expect a prefix
+on queries, and some also on documents: e5 and nomic-embed-text use one of each, and Snowflake
+Arctic Embed v2 prefixes only queries. The Engine adds the right one. Recall is weaker when a query
+is embedded as a document. Other models, including the built-in MiniLM embedder, get no prefix
+either way. The input type does not change `spaceId`, so stored vectors stay comparable and nothing
+needs re-embedding.
+
+```ts
+const embeddings = await api.runtime.resolveEmbeddings();
+const [queryVector] = (await embeddings.embed([query], signal, "query")) ?? [];
+const memoryVectors = await embeddings.embed(memoryTexts, signal); // documents
+```
+
+It is a soft seam: an older Engine ignores the third argument, so a package can always pass it and
+does not need to declare 1.68. Pass the input type as the third argument, never in an options
+object: an older Engine hands the second argument straight to the provider as an abort signal.
+
+### Capability API 1.67: open a character in the editor
+
+The browser view gets `openCharacter(characterId, { tab })`. It opens the character editor, on the
+given tab when there is one, so a package can send the user to a card field it reads. Older Engines
+do not have it: check that `openCharacter` exists before you show the link.
+
+```ts
+if (typeof props.openCharacter === "function") props.openCharacter(characterId, { tab: "convo" });
+```
 
 ### Capability API 1.66: scenes from package threads
 
@@ -1169,7 +1313,11 @@ runs one when the user asks for it.
 export async function activate({ api }) {
   api.registerService("mari-actions:my-package", {
     list: () => [
-      { name: "add-idea", summary: "Give a Creator an idea for a post.", inputs: { accountId: "The Creator.", text: "The idea." } },
+      {
+        name: "add-idea",
+        summary: "Give a Creator an idea for a post.",
+        inputs: { accountId: "The Creator.", text: "The idea." },
+      },
     ],
     run: async (name, input, { signal }) => {
       const parsed = schemas[name]?.safeParse(input);

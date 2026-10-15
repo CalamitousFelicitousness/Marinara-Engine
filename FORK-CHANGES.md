@@ -346,7 +346,7 @@ refusal is a model that says its price varies: the two NanoGPT rows carry `note:
 sentinel. Zero is a real price and renders as free; negative never renders.
 
 A price is also the wrong thing to show where a plan already covers the call. The allowance comes
-from upstream's NanoGPT usage feature (#6686, `useNanoGptSubscriptionUsage`), and
+from upstream's subscription usage feature (#6686, `useSubscriptionUsage`, NanoGPT readings only), and
 `isCoveredBySubscription` in `lib/model-cost.ts` reads a model as covered instead of priced only
 while that usage reports the subscription active, the model row says `subscriptionIncluded`, and
 any reported quota has tokens left, so the price returns once the allowance is gone.
@@ -815,6 +815,12 @@ tool-call generations are single-candidate for the same class of reason. Convers
 `<ooc>` blocks, and spatial directives inside candidates 2..N are stripped and logged, never
 executed, since finalize replays agents rather than commands. Per-candidate agent execution (the
 opt-in "re-roll agents on every swipe" mode) is not implemented.
+
+Upstream's Advanced Memory splits a new Roleplay reply at scene and POV breaks into one message per
+part (#7481, `save-generated-reply.ts`). A multiswipe turn is not split, because its alternatives
+are swipes of one message: `generate.routes.ts` passes `advancedMemoryEnabled && !isMultiSwipe`
+to `saveGeneratedReply`. A swipe of a split reply's earlier part keeps only the text before the
+first break; candidates 2..N do the same through the sanitizer's `firstSceneOnly`.
 
 New files: `packages/shared/src/utils/multi-swipe.ts`,
 `packages/server/src/routes/generate/multi-swipe-candidates.ts` (the candidate loop, the gating
@@ -1523,6 +1529,61 @@ Patches to upstream files: `packages/client/src/components/chat/ChatBranchesPane
 and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
+
+### Sync with upstream, 2026-10-15
+
+2479 upstream commits (153 PRs) over six days, merge base `f17f1c1f6`, through `c7a34b8cf`. v2.5.0
+and storage format 7 on both sides. 1529 upstream-changed files, 101 overlapping fork changes, 35
+conflicts, one merge; no release tag in the range to split at.
+
+Upstream moved code the fork patches into new modules, so three conflicts resolved to upstream's
+side plus a port:
+
+- **Omnibar and Professor Mari overhaul.** `HomeProfessorMariChat.tsx` is upstream's file; the
+  attachment removal by key moved into `mari/use-mari-message-actions.ts`. The settings search
+  catalog moved to `lib/settings-registry.ts`, which now carries the fork's `multi-swipe-max`,
+  `tracker-text-size` and `message-controls-above` entries with their `settings.search.*` keys.
+- **`generate.routes.ts` split into `generate/*` (#7573).** The fork's speaker-tag unwrap moved to
+  `reply-text-cleanup.ts`; `onRequestBody` rides `runToolRounds`' `requestOptions`; the parameter
+  trace is set on the result of `buildGenerationInfoExtra`. Multiswipe candidates reuse the fitted
+  `maxContextForSend`.
+- **Split replies.** See the Multiswipe section for how multiswipe and #7481 combine.
+
+Losses with no conflict marker, all fixed in the merge:
+
+- `ConnectionEditor.tsx` called `useNanoGptSubscriptionUsage`, renamed to `useSubscriptionUsage`,
+  whose readings now include Claude and ChatGPT plan windows without an `active` field.
+- The chat panel's effort and verbosity buttons read upstream's raw level labels; they now go
+  through `generationLevelLabel` like upstream's editor.
+- Chat profiles synced `chatParameters` to follower chats but not `chatParameterOverrides`.
+- `ChatArea`'s TTS autoplay lost the fork's fast first chunk on the speaker-extractor fallback and
+  was missing upstream's `chatId` for avatar lip sync.
+- The Character Tracker card's new Generate portrait button is threaded through
+  `FeaturedCharacterCardSlot`.
+- `ui.store.ts` migrate: upstream still deletes `trackerPanelWidth`, the fork's saved width; the
+  delete is dropped.
+
+`package.json#pnpm` is unchanged. Upstream's Pi runtime brings `@google/genai`, whose only install
+script is a no-op echo; `allowBuilds` sets it to `false`, which is what pnpm 10 does with it.
+
+Lanes adapted to the fork's shapes: `chat-profile-followers` seeds the sampler value as a
+`chatParameterOverrides` Override (a profile strips it from `chatParameters`) and checks the
+overrides travel with the parameters; `tracker-edit-mode` no longer counts the Trackers window's
+`enterTrackerAddMode`/`exitTrackerAddMode` keys as retired. TTS autoplay's dead-engine check moved
+ahead of request preparation, which keeps `roleplay-streaming`'s pinned shape and skips the speaker
+extractor when the engine is down.
+
+Regression suite after the merge, app stopped: 935/943. The eight failures are the six known ones
+(`launcher/update`, `decision-sidecar-runtime`, `gallery-previews`, `lorebook-images`,
+`server-signal-shutdown`, `multiplayer-peer-server-security`) and two new upstream lanes that cannot
+run on Windows (`mari-appearance-pack` passes a URL pathname to `sharp`; `zip-reader` sets
+`GIT_CONFIG_GLOBAL` to `\\.\nul`). `capability-agent-runtime` and `ruleset-combat-director` failed
+only under full-suite load and pass alone.
+
+Playwright, desktop: 37 of 38 tests in the merge-touched specs pass (attachment removal, Author's
+Notes, reply checkup, roleplay commands with upstream's `/send` tests, avatar setup). The failure,
+the malformed private whisper in `roleplay-commands.e2e.ts:845`, fails the same way on a clean
+`upstream/staging` worktree.
 
 ### Sync with upstream, 2026-10-09
 
@@ -2936,7 +2997,7 @@ Removal is `DELETE /chats/:chatId/messages/:messageId/attachments/:key`, where t
 shared `messageAttachmentKey` (FNV-1a of the attachment's type and content). In the same queue,
 `removeActiveSwipeAttachment` drops the first match from the active swipe and the message mirror,
 and a key with no match changes nothing. The remove buttons in `ChatMessage.tsx`,
-`ConversationMessage.tsx` and `HomeProfessorMariChat.tsx` all call it. Upstream PATCHed the
+`ConversationMessage.tsx` and Professor Mari's `mari/use-mari-message-actions.ts` all call it. Upstream PATCHed the
 client's copy of the array to `/extra`, which dropped any attachment saved after the client last
 read the message; Professor Mari's copy also left out every attachment without a `data:` URL.
 
@@ -2957,7 +3018,7 @@ photo note at all.
 Patches to upstream files: `chats.routes.ts`, `chats.storage.ts`, `generate.routes.ts`,
 `generate/dry-run-route.ts`, `generate/generate-route-utils.ts`, `prompt-attachments.ts`,
 `ChatMessage.tsx`, `ConversationMessage.tsx`, `ConversationMessageActions.tsx`,
-`HomeProfessorMariChat.tsx`, `ChatInput.tsx`, `ConversationInput.tsx`, `use-chats.ts`,
+`mari/use-mari-message-actions.ts`, `ChatInput.tsx`, `ConversationInput.tsx`, `use-chats.ts`,
 `packages/shared/src/index.ts`, and `en.json` (5 keys). Covered by
 `scripts/regressions/message-attachments.regression.ts`, which also reads the Anthropic request
 bodies from both `/generate` and `/generate/dryRun` and fails on either route when its user-turn

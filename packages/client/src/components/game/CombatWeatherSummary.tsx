@@ -1,5 +1,7 @@
 import { combatWeatherEffects, type CombatWeather } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
+import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
+import { cn } from "../../lib/utils";
 
 /** Accepted battle rules, independent of the cosmetic weather-animation preference. */
 export function CombatWeatherSummary({ weather, tactical }: { weather?: CombatWeather; tactical: boolean }) {
@@ -25,7 +27,11 @@ export function CombatWeatherSummary({ weather, tactical }: { weather?: CombatWe
   ].filter(Boolean);
   return (
     <div
-      className="shrink-0 border-b border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)]"
+      data-game-section="combat-weather"
+      className={cn(
+        GAME_SECTION_CLASS,
+        "shrink-0 border-b border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)]",
+      )}
       aria-label={t("game.combat.weather.label")}
     >
       <span className="font-medium">{t(`game.combat.weather.type.${weather.type}`)}</span>

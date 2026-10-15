@@ -8,6 +8,9 @@
  *   - classifier calls go out at most every 1.2 s with a per-sentence cache; faces switch only on a 0.45 score
  *     with a 0.15 lead, hold 2 s, need two neutral sentences, and relax 4 s after the reply unless the Expression
  *     Engine settled them; a reply that arrives whole is classified whole and spoken within 8 s;
+ *   - a more specific feeling inside the same emotion changes on a 0.45 score and holds 2 s on its own clock, so it
+ *     never delays the emotion; an emotion change takes its result's feeling, relaxing clears it, and Expression
+ *     Engine and Game Master labels carry the feeling they name when it belongs to their emotion;
  *   - text-to-speech audio drives the mouth while it plays; Game mode faces and mouths follow the Game Master's
  *     lines (a thought sets the face only) and never call the classifier; states are thinking, talking, listening
  *     and idle;
@@ -696,6 +699,168 @@ const scene = (id: string, names: string[]) => {
   assert.equal(asks.length, 2, "never again once the server cannot run the model");
   Date.now = realNow;
   keywordTier.dispose();
+}
+
+// ── Specific feelings inside an emotion ──
+{
+  const FEELINGS: Array<[RegExp, AvatarEmotion, number, AvatarClassification["feeling"]]> = [
+    [/giggles/u, "happy", 0.8, "amusement"],
+    [/thanks/u, "happy", 0.7, "gratitude"],
+    [/sobs/u, "sad", 0.7, null],
+    [/frets/u, "sad", 0.4, "nervousness"],
+    [/regrets/u, "sad", 0.7, "remorse"],
+    [/wonders/u, "neutral", 0.9, "curiosity"],
+  ];
+  const feelingAnswer = (text: string): AvatarClassification => {
+    const [, emotion, weight, feeling] = FEELINGS.find(([pattern]) => pattern.test(text)) ?? [
+      null,
+      "neutral",
+      0.6,
+      null,
+    ];
+    const scores = { neutral: 1 - weight, happy: 0, angry: 0, sad: 0, relaxed: 0, surprised: 0, [emotion]: weight };
+    return { emotion, weight, scores, feeling };
+  };
+  const id = "director-feelings";
+  const sent: Array<{ at: number; text: string }> = [];
+  const feelings = director.createAvatarDirector(
+    { chatId: id, mode: "roleplay", reducedMotion: false },
+    {
+      classify: async (request) => {
+        for (const text of request.texts) sent.push({ at: t, text });
+        return { results: request.texts.map(feelingAnswer), tier: "local-model" as const, model: "stub", latencyMs: 1 };
+      },
+      prepareModel,
+    },
+  );
+  feelings.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  let alice = feelings.frame("alice", t);
+  const play = async (ms: number) => {
+    const end = t + ms;
+    while (t < end) {
+      t += 16;
+      alice = feelings.frame("alice", t);
+      await flush();
+    }
+  };
+  const until = async (what: string, test: () => boolean, maxMs = 4_000) => {
+    const deadline = t + maxMs;
+    while (!test()) {
+      assert.ok(t < deadline, `timed out waiting for ${what}`);
+      await play(16);
+    }
+    return t;
+  };
+  let text = "";
+  const tell = (sentence: string) => {
+    text = `${text}${sentence} `;
+    store().setStreamBuffer(text, id);
+  };
+  const begin = () => {
+    text = "";
+    store().setAbortController(id, new AbortController());
+  };
+  const finish = () => {
+    store().clearStreamBuffer(id);
+    store().setAbortController(id, null);
+  };
+
+  begin();
+  tell("Alice giggles.");
+  const amusedAt = await until("happy with amusement", () => alice.emotion === "happy");
+  assert.equal(alice.feeling, "amusement", "a new emotion comes with its result's feeling");
+
+  tell("Alice thanks you.");
+  const gratefulAt = await until("gratitude", () => alice.feeling === "gratitude");
+  const thanksSentAt = sent.find((entry) => entry.text.includes("thanks"))!.at;
+  assert.ok(thanksSentAt < amusedAt + 2_000, "the new feeling was read while the first one was still holding");
+  assert.ok(gratefulAt - amusedAt >= 2_000, "a new feeling waits until the current one has held 2 s");
+  assert.equal(alice.emotion, "happy");
+
+  tell("Alice sobs.");
+  const sadAt = await until("the sad face", () => alice.emotion === "sad");
+  assert.ok(sadAt - gratefulAt < 2_000, "a feeling change never holds the next emotion change");
+  assert.equal(alice.feeling, null, "the new emotion takes its result's feeling, here none");
+
+  tell("Alice frets.");
+  await play(2_500);
+  assert.equal(alice.feeling, null, "a weak feeling is not enough to change it");
+  tell("Alice regrets it.");
+  await until("remorse", () => alice.feeling === "remorse");
+  tell("Alice sobs again.");
+  await play(2_500);
+  assert.deepEqual([alice.emotion, alice.feeling], ["sad", "remorse"], "a result with no feeling keeps the feeling");
+
+  finish();
+  await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
+  assert.equal(alice.feeling, null, "relaxing clears the feeling");
+  await play(2_500);
+
+  begin();
+  tell("Alice wonders.");
+  await until("curiosity", () => alice.feeling === "curiosity");
+  assert.equal(alice.emotion, "neutral", "a calm face can have a feeling too");
+  finish();
+  const calmEnd = t;
+  await until("plain calm", () => alice.feeling === null, 7_000);
+  assert.ok(t - calmEnd >= 4_000, "a calm face with a feeling relaxes like any other, no sooner than 4 s");
+  assert.equal(alice.emotion, "neutral");
+
+  // Expression Engine picks: the label's feeling when it belongs to the label's emotion.
+  feelings.pushExpressionPicks([{ ownerId: "alice", expression: "embarrassed" }]);
+  await play(16);
+  assert.deepEqual(
+    [alice.emotion, alice.label, alice.feeling],
+    ["happy", "embarrassed", "embarrassment"],
+    "a pick names its feeling",
+  );
+  feelings.pushExpressionPicks([{ ownerId: "alice", expression: "kind_of_happy" }]);
+  await play(16);
+  assert.deepEqual(
+    [alice.emotion, alice.feeling],
+    ["happy", null],
+    "a feeling of another emotion (caring) is left out",
+  );
+
+  // A pick from the last reply gives way to a newer feeling of the same emotion, whether the feeling lands at once
+  // or waits out the pick's 2 s hold.
+  const { buildPngtuberLayersFromSprites, pickPngtuberLayerKey } =
+    await import("../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.js");
+  const head = buildPngtuberLayersFromSprites(
+    ["neutral", "happy", "smirk", "gratitude"].map((expression) => ({ expression })),
+  )!;
+  for (const holdMs of [2_500, 0]) {
+    feelings.pushExpressionPicks([{ ownerId: "alice", expression: "smirk" }]);
+    await play(16);
+    assert.equal(pickPngtuberLayerKey(head, alice), "smirk");
+    await play(holdMs);
+    begin();
+    tell("Alice thanks you.");
+    await until("gratitude after a pick", () => alice.feeling === "gratitude");
+    assert.deepEqual([alice.emotion, alice.label], ["happy", null], "the earlier pick's label gives way");
+    assert.equal(pickPngtuberLayerKey(head, alice), "gratitude", "the talking head shows the new feeling's face");
+    finish();
+    await play(16);
+  }
+  feelings.dispose();
+
+  // Game Master lines: a feeling's own name no longer reads as neutral.
+  const gm = director.createAvatarDirector(
+    { chatId: "director-feelings-game", mode: "game", reducedMotion: false },
+    { classify: async () => Promise.reject(new Error("unused")) },
+  );
+  gm.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  const gmFace = (expression: string) => {
+    gm.pushGameLine({ speakerName: "Alice", ownerId: "alice", expression, text: "Well." });
+    t += 16;
+    const frame = gm.frame("alice", t);
+    return [frame.emotion, frame.feeling];
+  };
+  assert.deepEqual(gmFace("amused"), ["happy", "amusement"]);
+  assert.deepEqual(gmFace("pride"), ["happy", "pride"], "pride is happy, not neutral");
+  assert.deepEqual(gmFace("scared"), ["surprised", "fear"]);
+  assert.deepEqual(gmFace("angry"), ["angry", null]);
+  gm.dispose();
 }
 
 // A swipe in an Individual group gets no group_turn from the server; use-generate names the swiped member as the

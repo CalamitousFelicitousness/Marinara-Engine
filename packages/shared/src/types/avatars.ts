@@ -8,7 +8,7 @@
 // the generation routes. Live2D is intentionally unsupported: its licence needs Live2D's review and
 // a separate agreement even for free open-source apps, and its runtime cannot be bundled.
 // Developer notes: docs/development/optional-agent-packages.md, "Capability API 1.73: the avatar agents".
-import { normalizeSpriteLookupToken } from "../utils/sprite-labels.js";
+import { normalizeSpriteExpressionKey, normalizeSpriteLookupToken } from "../utils/sprite-labels.js";
 
 // ── Agents ──
 
@@ -45,6 +45,10 @@ export interface AvatarFrameInput {
   /** The sprite expression label behind the emotion when one is known (an Expression Engine or Game Master
    *  pick). A PNGTuber setup shows that exact layer set when it has one; other renderers ignore it. */
   label?: string | null;
+  /** The more specific feeling inside `emotion` (AVATAR_FEELING_EMOTIONS), only ever one whose emotion is this
+   *  frame's. A PNGTuber setup shows its face when it has one (`feelingMap`), else the emotion's face; other
+   *  renderers ignore it. */
+  feeling?: AvatarExtraFeeling | null;
   /** Mouth shape right now, or null when the mouth rests. */
   viseme: AvatarViseme | null;
   /** 0..1 mouth opening from the speech clock (streamed text) or the TTS audio level. */
@@ -96,6 +100,117 @@ export interface AvatarEmotionWeight {
   /** 0..1: how much of the emotion the label carries. */
   weight: number;
 }
+
+// ── Feelings: the 28 the emotion classifier detects ──
+
+/** The GoEmotions labels the streaming emotion classifier scores, in the model's order. Each belongs to one of
+ *  the six emotions (AVATAR_FEELING_EMOTIONS), which is all 3D and mesh avatars show. */
+export const AVATAR_FEELINGS = [
+  "admiration",
+  "amusement",
+  "anger",
+  "annoyance",
+  "approval",
+  "caring",
+  "confusion",
+  "curiosity",
+  "desire",
+  "disappointment",
+  "disapproval",
+  "disgust",
+  "embarrassment",
+  "excitement",
+  "fear",
+  "gratitude",
+  "grief",
+  "joy",
+  "love",
+  "nervousness",
+  "optimism",
+  "pride",
+  "realization",
+  "relief",
+  "remorse",
+  "sadness",
+  "surprise",
+  "neutral",
+] as const;
+export type AvatarFeeling = (typeof AVATAR_FEELINGS)[number];
+
+/** The emotion each feeling belongs to and how much of it the feeling carries. */
+export const AVATAR_FEELING_EMOTIONS: Readonly<Record<AvatarFeeling, AvatarEmotionWeight>> = Object.freeze({
+  admiration: { emotion: "happy", weight: 0.6 },
+  amusement: { emotion: "happy", weight: 1 },
+  anger: { emotion: "angry", weight: 1 },
+  annoyance: { emotion: "angry", weight: 0.6 },
+  approval: { emotion: "relaxed", weight: 0.4 },
+  caring: { emotion: "relaxed", weight: 0.8 },
+  confusion: { emotion: "surprised", weight: 0.4 },
+  curiosity: { emotion: "neutral", weight: 1 },
+  desire: { emotion: "happy", weight: 0.5 },
+  disappointment: { emotion: "sad", weight: 0.7 },
+  disapproval: { emotion: "angry", weight: 0.5 },
+  disgust: { emotion: "angry", weight: 0.6 },
+  embarrassment: { emotion: "happy", weight: 0.4 },
+  excitement: { emotion: "happy", weight: 0.9 },
+  fear: { emotion: "surprised", weight: 0.8 },
+  gratitude: { emotion: "happy", weight: 0.7 },
+  grief: { emotion: "sad", weight: 1 },
+  joy: { emotion: "happy", weight: 1 },
+  love: { emotion: "relaxed", weight: 1 },
+  nervousness: { emotion: "sad", weight: 0.5 },
+  optimism: { emotion: "happy", weight: 0.6 },
+  pride: { emotion: "happy", weight: 0.6 },
+  realization: { emotion: "surprised", weight: 0.5 },
+  relief: { emotion: "relaxed", weight: 0.8 },
+  remorse: { emotion: "sad", weight: 0.7 },
+  sadness: { emotion: "sad", weight: 1 },
+  surprise: { emotion: "surprised", weight: 1 },
+  neutral: { emotion: "neutral", weight: 1 },
+});
+
+/** The 23 feelings a talking head (PNGTuber) can give a face of its own, grouped by their emotion in
+ *  AVATAR_EMOTIONS order. The other five (neutral, joy, anger, sadness, surprise) are the main faces
+ *  themselves. A feeling without its own face shows its emotion's face. */
+export const AVATAR_EXTRA_FEELINGS = [
+  "curiosity",
+  "admiration",
+  "amusement",
+  "desire",
+  "embarrassment",
+  "excitement",
+  "gratitude",
+  "optimism",
+  "pride",
+  "annoyance",
+  "disapproval",
+  "disgust",
+  "disappointment",
+  "grief",
+  "nervousness",
+  "remorse",
+  "approval",
+  "caring",
+  "love",
+  "relief",
+  "confusion",
+  "fear",
+  "realization",
+] as const satisfies readonly AvatarFeeling[];
+export type AvatarExtraFeeling = (typeof AVATAR_EXTRA_FEELINGS)[number];
+
+export function isAvatarExtraFeeling(value: unknown): value is AvatarExtraFeeling {
+  return typeof value === "string" && (AVATAR_EXTRA_FEELINGS as readonly string[]).includes(value);
+}
+
+/** The talking head's faces grouped by emotion: each main face, then the extra feelings that fall back to it. */
+export const AVATAR_FACE_GROUPS: ReadonlyArray<readonly [AvatarEmotion, ...AvatarExtraFeeling[]]> = AVATAR_EMOTIONS.map(
+  (emotion) =>
+    [
+      emotion,
+      ...AVATAR_EXTRA_FEELINGS.filter((feeling) => AVATAR_FEELING_EMOTIONS[feeling].emotion === emotion),
+    ] as const,
+);
 
 export const SPRITE_EXPRESSION_AVATAR_EMOTIONS: Readonly<Record<SpriteExpressionLabel, AvatarEmotionWeight>> =
   Object.freeze({
@@ -229,7 +344,75 @@ export function mapSpriteExpressionToAvatarEmotion(label: string | null | undefi
   for (const [stem, emotion, weight] of AVATAR_EMOTION_STEMS) {
     if (token.includes(stem)) return { emotion, weight };
   }
+  // A feeling's own name or word (`gratitude`, `smug`) carries that feeling's emotion.
+  const feeling = mapSpriteExpressionToAvatarFeeling(label);
+  return feeling ? { ...AVATAR_FEELING_EMOTIONS[feeling] } : null;
+}
+
+/** Other words for each extra feeling, matched as whole words of a sprite label. Each one either maps to no
+ *  emotion through the stems above or to its feeling's own emotion, so a feeling's face never contradicts the
+ *  emotion picked for the same label. */
+const AVATAR_FEELING_SYNONYMS: Readonly<Record<AvatarExtraFeeling, readonly string[]>> = {
+  curiosity: ["curious", "interested", "intrigued", "wondering", "thinking", "pondering"],
+  admiration: ["admiring", "awe", "impressed", "starstruck"],
+  amusement: ["amused", "laughing", "laugh", "giggle", "chuckle", "funny", "smirk"],
+  desire: ["longing", "yearning", "lust", "lustful", "seductive", "flirty"],
+  embarrassment: ["embarrassed", "blushing", "blush", "flustered", "shy", "sheepish", "awkward"],
+  excitement: ["excited", "eager", "thrilled", "hyped"],
+  gratitude: ["grateful", "thankful", "thanks"],
+  optimism: ["optimistic", "hopeful", "hope"],
+  pride: ["proud", "smug", "confident", "triumphant"],
+  annoyance: ["annoyed", "irritated", "grumpy", "frustrated", "pout"],
+  disapproval: ["disapproving", "skeptical", "unimpressed", "disdain"],
+  disgust: ["disgusted", "grossed_out", "revolted", "eww"],
+  disappointment: ["disappointed", "letdown", "dejected"],
+  grief: ["grieving", "crying", "sobbing", "weeping", "heartbroken", "mourning", "devastated"],
+  nervousness: ["nervous", "anxious", "worried", "concerned", "uneasy", "tense"],
+  remorse: ["remorseful", "guilty", "guilt", "apologetic", "sorry", "ashamed", "regret"],
+  approval: ["approving", "nod", "thumbs_up", "agree"],
+  caring: ["care", "gentle", "kind", "sympathetic", "comforting"],
+  love: ["loving", "in_love", "affection", "affectionate", "adoring", "heart_eyes"],
+  relief: ["relieved", "phew"],
+  confusion: ["confused", "puzzled", "perplexed", "huh"],
+  fear: ["scared", "afraid", "frightened", "terrified", "horrified", "panic", "panicked"],
+  realization: ["realizing", "epiphany", "aha", "eureka"],
+};
+
+interface FeelingMatch {
+  feeling: AvatarExtraFeeling;
+  /** The feeling's own name 1, another word for it 0.8. */
+  confidence: number;
+}
+
+/** Lookup token → the feeling it names. */
+const AVATAR_FEELING_WORDS: ReadonlyMap<string, FeelingMatch> = new Map(
+  AVATAR_EXTRA_FEELINGS.flatMap((feeling) => [
+    ...AVATAR_FEELING_SYNONYMS[feeling].map((word): [string, FeelingMatch] => [
+      normalizeSpriteLookupToken(word),
+      { feeling, confidence: 0.8 },
+    ]),
+    [feeling, { feeling, confidence: 1 }] as [string, FeelingMatch],
+  ]),
+);
+
+/** The feeling a label names: the whole label first, then each of its words. Never part of a word, so
+ *  `scarecrow`, `careful` and `fearless` name nothing. */
+function matchSpriteFeeling(label: string): FeelingMatch | null {
+  const key = normalizeSpriteExpressionKey(label).replace(/_?\d+$/u, "");
+  if (!key) return null;
+  const whole = AVATAR_FEELING_WORDS.get(normalizeSpriteLookupToken(key));
+  if (whole) return whole;
+  for (const word of key.split("_")) {
+    const found = AVATAR_FEELING_WORDS.get(word);
+    if (found) return found;
+  }
   return null;
+}
+
+/** The extra feeling a sprite expression label (or a Game Master expression) names, by the feeling's own name
+ *  or another word for it (`scared` → fear), or null. Labels are normalized like sprite lookups. */
+export function mapSpriteExpressionToAvatarFeeling(label: string | null | undefined): AvatarExtraFeeling | null {
+  return typeof label === "string" ? (matchSpriteFeeling(label)?.feeling ?? null) : null;
 }
 
 // ── Kinds and owners ──
@@ -301,6 +484,28 @@ export function detectSpriteEmotionBindings(labels: readonly string[]): AvatarEx
   return map;
 }
 
+/** Faces for the extra feelings (PNGTuber only), keyed by feeling; targets are layer keys. An absent feeling
+ *  shows its emotion's face, and so does a `null` target the user chose. */
+export type AvatarFeelingMap = Partial<Record<AvatarExtraFeeling, AvatarExpressionBinding>>;
+
+/** Binds each extra feeling a sprite label names (mapSpriteExpressionToAvatarFeeling) to the best such label:
+ *  the feeling's own name before another word for it, the first label on a tie. A label whose own emotion is
+ *  another one (`crying_laughing` is happy, so never the grief face) is skipped. Feelings no label names are
+ *  left out, so they show their emotion's face. */
+export function detectSpriteFeelingBindings(labels: readonly string[]): AvatarFeelingMap {
+  const map: AvatarFeelingMap = {};
+  for (const label of labels) {
+    const match = matchSpriteFeeling(label);
+    if (!match) continue;
+    const emotion = mapSpriteExpressionToAvatarEmotion(label)?.emotion;
+    if (emotion && emotion !== AVATAR_FEELING_EMOTIONS[match.feeling].emotion) continue;
+    if (match.confidence > (map[match.feeling]?.confidence ?? 0)) {
+      map[match.feeling] = { target: label, source: "sprite-label", confidence: match.confidence };
+    }
+  }
+  return map;
+}
+
 // ── Stored files ──
 
 /** Name of the per-owner settings file. */
@@ -359,6 +564,8 @@ export interface PngtuberAvatarData {
   layers: Record<string, PngtuberLayerSet>;
   /** Emotion and blink bindings; targets are keys of `layers`. */
   expressionMap: AvatarExpressionMap;
+  /** Faces for the extra feelings; targets are keys of `layers`. Optional: setups saved before it had none. */
+  feelingMap?: AvatarFeelingMap;
   motion: PngtuberMotion;
   /** Built from the owner's sprites, imported from a PNGTuber Plus `.save`, or generated. */
   source: "sprites" | "pngtuber-plus" | "generated";
@@ -579,6 +786,9 @@ export interface AvatarClassification {
   /** 0..1 confidence of `emotion`. */
   weight: number;
   scores: Record<AvatarEmotion, number>;
+  /** The more specific feeling the text shows, only ever one whose emotion is `emotion`, or null. Missing from
+   *  older servers' answers. */
+  feeling?: AvatarExtraFeeling | null;
 }
 
 export interface AvatarClassifyResponse {

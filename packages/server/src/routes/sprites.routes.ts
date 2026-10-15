@@ -2,7 +2,14 @@
 // Routes: Character Sprite Upload, List & Serving
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
-import { isOpenAIGptImageModel, isOpenAIGptImage2Model, supportsOpenAIImageCustomSize } from "@marinara-engine/shared";
+import {
+  isOpenAIGptImageModel,
+  isOpenAIGptImage2Model,
+  normalizeSpriteExpressionKey,
+  supportsOpenAIImageCustomSize,
+  type AvatarEmotion,
+  type AvatarExtraFeeling,
+} from "@marinara-engine/shared";
 import AdmZip from "adm-zip";
 import { execFile } from "child_process";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, statSync, readFileSync } from "fs";
@@ -177,6 +184,8 @@ type SpriteGenerateSheetBody = {
   /** Optional style-profile override for the bake (#5095); absent keeps the
    *  active-profile resolution unchanged. */
   styleProfileId?: string | null;
+  /** Faces for a 2D avatar's talking head: open eyes and a closed mouth in every face. */
+  talkingHeadFaces?: boolean;
 };
 
 type SpriteGenerateAnimatedBody = Omit<
@@ -221,6 +230,7 @@ type SpritePromptPlan = {
   matte: SpriteChromaMatte;
   nativeTransparentPng: boolean;
   backgroundContract: string;
+  talkingHeadFaces: boolean;
   sheetWidth: number;
   sheetHeight: number;
   cellWidth: number;
@@ -583,6 +593,82 @@ function withSpriteBackgroundContract(prompt: SpriteCompiledPrompt, plan: Sprite
     negativePrompt: [
       prompt.negativePrompt,
       "white background, off-white background, gray background, checkerboard background, fake transparency, transparency grid, textured background, gradient background, scenery, floor line, cast shadow, contact shadow, color spill, visible grid lines, panel borders, separator lines",
+    ]
+      .filter(Boolean)
+      .join(", "),
+  };
+}
+
+/** How each talking-head face looks with open eyes and closed lips. Unasked, models draw amusement, excitement,
+ *  fear, grief and disgust with an open mouth, shut eyes or teeth, and can't draw vague labels such as approval
+ *  or realization at all. */
+export const TALKING_HEAD_FACE_LOOKS: Readonly<Record<AvatarEmotion | AvatarExtraFeeling, string>> = Object.freeze({
+  neutral: "calm resting face, relaxed brows, eyes open and looking ahead, lips closed in a relaxed line",
+  happy: "warm closed-lip smile with lifted cheeks, bright open eyes, relaxed brows",
+  angry: "glare under lowered, drawn-together brows, lips pressed shut, tense jaw",
+  sad: "brows tilted up at the inner ends, open eyes with a lowered gaze, closed mouth turned down at the corners",
+  relaxed: "peaceful, content look, soft brows, calm open eyes, faint closed-lip smile",
+  surprised: "eyes wide open, brows raised high, lips closed",
+  curiosity: "interested look, one brow raised, head tilted slightly, attentive open eyes, lips closed",
+  admiration: "eyes bright and wide with interest, brows lifted, soft closed-lip smile, looking up a little",
+  amusement: "playful closed-lip grin with lifted cheeks, bright, merry open eyes, relaxed brows",
+  desire:
+    "wistful, longing look, soft open eyes gazing slightly aside, brows gently raised, small hopeful closed-lip smile",
+  embarrassment:
+    "flushed pink cheeks, open eyes glancing aside, brows raised in the middle, small awkward closed-lip smile",
+  excitement: "eyes wide and sparkling, brows high, big closed-lip smile with lifted cheeks",
+  gratitude: "warm thankful look, brows softly raised, open eyes slightly glistening, gentle closed-lip smile",
+  optimism: "hopeful look, bright open eyes looking slightly upward, brows lifted, confident closed-lip smile",
+  pride: "chin raised, self-assured open-eyed gaze, relaxed brows, satisfied closed-lip smile",
+  annoyance: "flat, unimpressed stare under slightly lowered brows, eyes still fully open, lips pressed to one side",
+  disapproval:
+    "stern look, brows drawn together and slightly lowered, open eyes, lips pressed into a thin line, chin slightly raised",
+  disgust: "nose wrinkled, brows lowered, head pulled back slightly, closed lips pulled down at one corner",
+  disappointment:
+    "brows tilted up at the inner ends, open eyes with a dropped gaze, closed mouth turned down, slight slump",
+  grief:
+    "deep sorrow, brows pulled up at the inner ends, open eyes glistening with tears, closed trembling lips turned down",
+  nervousness:
+    "uneasy look, brows raised and drawn together, open eyes glancing sideways, lips pressed in a tight wavy line, a bead of sweat",
+  remorse:
+    "guilty look, head slightly bowed, brows tilted up at the inner ends, open eyes looking down, lips pressed together",
+  approval: "calm, confident look, steady open-eyed gaze, relaxed brows, small closed-lip smile",
+  caring: "gentle, tender look, brows softly raised, warm open eyes, soft closed-lip smile, head tilted slightly",
+  love: "affectionate soft gaze with open eyes, light blush on the cheeks, gentle closed-lip smile",
+  relief: "brows relaxed and slightly raised, shoulders lowered, open eyes, soft closed-lip smile",
+  confusion:
+    "puzzled look, one brow raised and the other lowered, head tilted, open eyes, lips closed and pushed to one side",
+  fear: "eyes very wide with the whites showing, brows raised and pulled together, lips pressed tightly shut, tense shoulders",
+  realization: 'eyes widening slightly, brows lifting, lips closed, a sudden "I see" look',
+});
+
+/** A talking head's blink and talk pictures close the eyes and open the mouth of each face, so every face
+ *  has to start with open eyes and a closed mouth. Unasked, models draw "happy" as a closed-eye smile and
+ *  "angry" and "surprised" with an open mouth, and the swap then changes nothing. Added after the prompt is compiled,
+ *  like the background contract, so the tag compiler can't drop it. The faces asked for get their look; a custom
+ *  label gets none. */
+export function withTalkingHeadFaceContract(
+  prompt: SpriteCompiledPrompt,
+  plan: Pick<SpritePromptPlan, "talkingHeadFaces"> & { expressions?: readonly string[] },
+  expressions: readonly string[] = plan.expressions ?? [],
+): SpriteCompiledPrompt {
+  if (!plan.talkingHeadFaces) return prompt;
+
+  const rule = `MANDATORY TALKING-HEAD FACES: in every face both eyes are fully open with the irises visible, and the lips are closed. Show each feeling with the eyebrows, the shape of the open eyes and the cheeks: a happy face smiles with open eyes and closed lips, an angry face glares under lowered brows with its lips pressed shut, and a surprised face has wide-open eyes and raised brows with a closed mouth. Never draw a closed-eye smile (^_^), a wink, eyes squeezed shut, an open-mouth laugh, gasp or shout, gritted or bared teeth, or any visible teeth. Separate blinking and talking pictures are made from these faces later.`;
+  const looks = expressions.flatMap((label) => {
+    const key = normalizeSpriteExpressionKey(label) as keyof typeof TALKING_HEAD_FACE_LOOKS;
+    return Object.hasOwn(TALKING_HEAD_FACE_LOOKS, key)
+      ? [`${formatSpriteLabelForPrompt(label)}: ${TALKING_HEAD_FACE_LOOKS[key]}`]
+      : [];
+  });
+
+  return {
+    prompt: [prompt.prompt, looks.length > 0 ? `${rule}\nDraw each face like this: ${looks.join("; ")}.` : rule].join(
+      "\n\n",
+    ),
+    negativePrompt: [
+      prompt.negativePrompt,
+      "closed eyes, eyes shut, closed-eye smile, ^_^, winking, squinting, open mouth, parted lips, laughing, gasping, shouting, gritted teeth, bared teeth, visible teeth, tongue out",
     ]
       .filter(Boolean)
       .join(", "),
@@ -1059,7 +1145,7 @@ async function buildSpritePromptPlan(
     prompt = await loadPrompt(promptOverridesStorage, SPRITES_EXPRESSION_SHEET, {
       cols,
       rows,
-      expressionCount: expressions.length,
+      expressionCount: cols * rows,
       expressionList,
       appearance: trimmedAppearance,
       sheetWidth,
@@ -1082,6 +1168,7 @@ async function buildSpritePromptPlan(
     matte,
     nativeTransparentPng,
     backgroundContract: spriteBackgroundContract(backgroundOptions),
+    talkingHeadFaces: body.talkingHeadFaces === true && body.spriteType !== "full-body",
     sheetWidth,
     sheetHeight,
     cellWidth,
@@ -1731,7 +1818,11 @@ export async function spritesRoutes(app: FastifyInstance) {
             plan.promptOverrides.get(spritePromptReviewId("expression", plan.spriteType, expression)),
             compiledPrompt,
           );
-          const finalPrompt = withSpriteBackgroundContract(reviewedPrompt.value, plan);
+          const finalPrompt = withTalkingHeadFaceContract(
+            withSpriteBackgroundContract(reviewedPrompt.value, plan),
+            plan,
+            [expression],
+          );
           const previewSize = resolveImagePromptReviewSize({
             connection: conn,
             prompt: finalPrompt.prompt,
@@ -1766,10 +1857,13 @@ export async function spritesRoutes(app: FastifyInstance) {
     );
     const reviewedPrompt = resolveSpritePromptOverride(plan.promptOverrides.get(sheetPromptId), compiledPrompt);
     const finalPrompt = withFullBodyCompositionContract(
-      withSpriteBackgroundContract(
-        withSpriteSheetLayoutContract(reviewedPrompt.value, plan, {
-          reviewedOverride: reviewedPrompt.overridden,
-        }),
+      withTalkingHeadFaceContract(
+        withSpriteBackgroundContract(
+          withSpriteSheetLayoutContract(reviewedPrompt.value, plan, {
+            reviewedOverride: reviewedPrompt.overridden,
+          }),
+          plan,
+        ),
         plan,
       ),
       plan.spriteType,
@@ -2056,10 +2150,13 @@ export async function spritesRoutes(app: FastifyInstance) {
       compiledSheetPrompt,
     );
     const sheetPrompt = withFullBodyCompositionContract(
-      withSpriteBackgroundContract(
-        withSpriteSheetLayoutContract(reviewedSheetPrompt.value, plan, {
-          reviewedOverride: reviewedSheetPrompt.overridden,
-        }),
+      withTalkingHeadFaceContract(
+        withSpriteBackgroundContract(
+          withSpriteSheetLayoutContract(reviewedSheetPrompt.value, plan, {
+            reviewedOverride: reviewedSheetPrompt.overridden,
+          }),
+          plan,
+        ),
         plan,
       ),
       plan.spriteType,
@@ -2190,7 +2287,11 @@ export async function spritesRoutes(app: FastifyInstance) {
                   plan.promptOverrides.get(spritePromptReviewId("expression", plan.spriteType, expression)),
                   compiledExpressionPrompt,
                 );
-                const finalExpressionPrompt = withSpriteBackgroundContract(reviewedExpressionPrompt.value, plan);
+                const finalExpressionPrompt = withTalkingHeadFaceContract(
+                  withSpriteBackgroundContract(reviewedExpressionPrompt.value, plan),
+                  plan,
+                  [expression],
+                );
 
                 const targetSize = 1024;
                 const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {

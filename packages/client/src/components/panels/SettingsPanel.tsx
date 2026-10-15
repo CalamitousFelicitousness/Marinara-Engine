@@ -38,6 +38,8 @@ import {
   SETTINGS_SECTIONS,
   isOmnibarSettingsTarget,
   searchSettings,
+  settingsControlDescription,
+  settingsControlLabel,
   type SettingsSearchResult,
   type SettingsSectionId,
   type SettingsSectionMeta,
@@ -1519,7 +1521,7 @@ export function SettingsPanel() {
   mountedSettingsTabs.add(settingsTab);
 
   const activeSections = SETTINGS_SECTIONS.filter((section) => section.tab === settingsTab);
-  const searchResults = searchSettings(settingsSearch, localize);
+  const searchResults = searchSettings(settingsSearch, localize, t);
 
   const jumpToSection = useCallback(
     (section: SettingsSectionMeta) => {
@@ -1633,10 +1635,12 @@ export function SettingsPanel() {
                 {searchResults.map((result) => {
                   const section = result.section;
                   const tab = TABS.find((entry) => entry.id === section.tab);
-                  const label = localize(result.type === "control" ? result.control.label : section.label);
-                  const description = localize(
-                    result.type === "control" ? result.control.description : section.description,
-                  );
+                  const label =
+                    result.type === "control" ? settingsControlLabel(result.control, t) : localize(section.label);
+                  const description =
+                    result.type === "control"
+                      ? settingsControlDescription(result.control, t)
+                      : localize(section.description);
                   return (
                     <button
                       key={`${result.type}-${result.type === "control" ? result.control.id : section.id}`}

@@ -22,7 +22,7 @@ import {
 } from "./fixtures/avatar-2d-fixtures.js";
 
 const { avatarKindDataSchema, isAvatarFilePath } = await import("../../packages/shared/src/index.js");
-const { pngtuberImporter, PNGTUBER_MAX_OUTPUT_SIDE } =
+const { bindPngtuberCostumes, pngtuberImporter, PNGTUBER_MAX_OUTPUT_SIDE } =
   await import("../../packages/server/src/services/avatars/formats/pngtuber.js");
 const { mavatarImporter, countMeshAvatarGridPoints, MESH_AVATAR_MAX_GRID_POINTS } =
   await import("../../packages/server/src/services/avatars/formats/mavatar.js");
@@ -143,6 +143,11 @@ assert.deepEqual(await pixel(picture(plus.data.layers.costume_2!.base), 8, 22), 
 assert.deepEqual(plus.data.expressionMap.happy, { target: "costume_2", source: "name-match", confidence: 1 });
 assert.deepEqual(plus.data.expressionMap.neutral, { target: "costume_1", source: "preset", confidence: 1 });
 assert.deepEqual(plus.data.expressionMap.angry, { target: null, source: "missing", confidence: 0 });
+assert.deepEqual(
+  plus.data.feelingMap,
+  { embarrassment: { target: "costume_2", source: "name-match", confidence: 0.8 } },
+  "a costume's own picture names a more specific feeling too (Happy blush)",
+);
 assert.equal(plus.data.source, "pngtuber-plus");
 assert.ok(
   plus.warnings.some((warning) => /no picture saved/u.test(warning)),
@@ -153,6 +158,24 @@ assert.ok(
   "animated layers are reported",
 );
 assert.ok(avatarKindDataSchema.safeParse({ pngtuber: plus.data }).success, "the result is a valid PNGTuber setup");
+{
+  // Costumes by the names of their own pictures: a costume that only an extra feeling names is not left over.
+  const shared = { sprite: { name: "body" } };
+  const costume = (number: number, name: string) => ({
+    number,
+    members: [shared, { sprite: { name } }],
+    hasTalk: false,
+    hasBlink: false,
+  });
+  const costumes = [costume(1, "eyes"), costume(2, "happy eyes"), costume(3, "grateful eyes"), costume(4, "fear eyes")];
+  const bound = bindPngtuberCostumes(costumes as never);
+  assert.equal(bound.expressionMap.happy?.target, "costume_2", "the plain happy picture wins the main face");
+  assert.deepEqual(bound.feelingMap, {
+    gratitude: { target: "costume_3", source: "name-match", confidence: 0.8 },
+    fear: { target: "costume_4", source: "name-match", confidence: 1 },
+  });
+  assert.equal(bound.unbound, 0, "every costume shows some feeling, so the import doesn't warn");
+}
 
 // A clipping sprite (`clipped`) shows its children only inside its own picture.
 const clip = await importFile(

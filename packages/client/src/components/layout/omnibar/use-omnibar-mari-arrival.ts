@@ -17,7 +17,7 @@ import { getChatCharacterIds } from "../../../lib/chat-macros";
 import { buildMariArrival, isMariReplyFailure, mariThreadContextFor } from "../../../lib/mari-arrival";
 import type { OmnibarNamedRow } from "../../../lib/omnibar-entity-rows";
 import type { createOmnibarContext } from "../../../lib/omnibar-search";
-import { getOmnibarSettingsDestinations } from "../../../lib/omnibar-settings";
+import { getOmnibarSettingsDestinations, localizeOmnibarSettingTitle } from "../../../lib/omnibar-settings";
 import { useLocalizedUiText } from "../../../localization/use-localized-ui-text";
 import type { useChatStore } from "../../../stores/chat.store";
 import type { useUIStore } from "../../../stores/ui.store";
@@ -120,8 +120,8 @@ export function useOmnibarMariArrival({
                 : undefined;
     const destinations = getOmnibarSettingsDestinations();
     const destinationTitle = (id: string) => {
-      const title = destinations.find((destination) => destination.id === id)?.title;
-      return title ? localize(title) : null;
+      const destination = destinations.find((candidate) => candidate.id === id);
+      return destination ? localizeOmnibarSettingTitle(destination, localize, t) : null;
     };
     return buildMariArrival(omnibarContext, {
       t,

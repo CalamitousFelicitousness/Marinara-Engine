@@ -5,6 +5,8 @@
  *     false positives;
  *   - the classifier answers with keywords until the local model is ready, then averages the model with the
  *     keywords, caches per text, falls back per text (uncached), and stays on keywords in Lite mode;
+ *   - each result names the more specific feeling inside its emotion when one stands out: a keyword's, else the
+ *     model's strongest label of that emotion when it reaches its threshold;
  *   - only a prepare request for a Roleplay chat with an avatar agent on downloads or loads the model; classifying
  *     never does; the status the agents' pages show follows the download; an interrupted file is replaced;
  *   - the route validates the request, sits in its own rate-limit bucket, and never logs user text above debug.
@@ -15,6 +17,7 @@ import { createRequire } from "node:module";
 
 const {
   AVATAR_EMOTIONS,
+  AVATAR_FEELINGS,
   EXPRESSION_KEYWORD_NEUTRAL_CANDIDATES,
   classifyExpressionKeywords,
   detectExpressionKeyword,
@@ -120,6 +123,23 @@ for (const result of [strong, mild, mixed, classifyExpressionKeywords("The door 
   assert.ok(Math.abs(sumOf(result.scores) - 1) < 1e-9, "scores sum to 1");
   assert.deepEqual(Object.keys(result.scores).sort(), [...AVATAR_EMOTIONS].sort());
 }
+// The feeling is the first matching word group's that belongs to the winning emotion.
+const keywordFeelings: Array<[string, string, string | null]> = [
+  ["She laughs.", "happy", "amusement"],
+  ["She blushes and smiles.", "happy", "embarrassment"],
+  ["She smiles.", "happy", null],
+  ["She blushes.", "neutral", null],
+  ["She is scared.", "surprised", "fear"],
+  ["I love you.", "relaxed", "love"],
+  ["She is crying.", "sad", "grief"],
+  ["He is nervous.", "neutral", null],
+  // "I think" is too common to name curiosity; the model tier reads that feeling instead.
+  ["I think you're right.", "neutral", null],
+];
+for (const [text, emotion, feeling] of keywordFeelings) {
+  const result = classifyExpressionKeywords(text);
+  assert.deepEqual([result.emotion, result.feeling], [emotion, feeling], `${JSON.stringify(text)} reads as ${feeling}`);
+}
 
 // ── Lite mode keeps the keyword tier ──
 process.env.MARINARA_LITE = "true";
@@ -144,6 +164,8 @@ const fakeModel = {
       throw new Error("model crashed");
     }
     if (text.includes("prince")) return { surprise: 0.9, curiosity: 0.3, neutral: 0.2 };
+    if (text.includes("proud")) return { pride: 0.99, admiration: 0.35, neutral: 0.1 };
+    if (text.includes("zeta")) return { embarrassment: 0.5, neutral: 0.3 };
     if (text.includes("miss him")) return { sadness: 0.7, grief: 0.2, neutral: 0.3 };
     return { neutral: 0.95, joy: 0.05 };
   },
@@ -184,6 +206,51 @@ assert.deepEqual(again.results[0], ready.results[0]);
 const keywordsOnly = await classifier.classifyAvatarEmotions({ texts: ["Something new."], tier: "keywords" });
 assert.equal(keywordsOnly.tier, "keywords", "a caller can ask for the instant tier only");
 assert.equal(modelCalls.length, callsBefore);
+
+assert.deepEqual(
+  ready.results.map((result) => result.feeling),
+  [null, "amusement", null, null],
+  "a plain label (surprise, sadness) tops its emotion: no specific feeling",
+);
+const proud = await classifier.classifyAvatarEmotions({
+  texts: ["I'm so proud of you.", "She laughs. I'm so proud of you."],
+  tier: "local-model",
+});
+assert.deepEqual(
+  proud.results.map((result) => [result.emotion, result.feeling]),
+  [
+    ["happy", "pride"],
+    ["happy", "amusement"],
+  ],
+  "the model's strongest feeling of the emotion, unless a keyword names one of the same emotion",
+);
+const proudCalls = modelCalls.length;
+const proudAgain = await classifier.classifyAvatarEmotions({ texts: ["I'm so proud of you."], tier: "local-model" });
+assert.equal(modelCalls.length, proudCalls);
+assert.deepEqual(proudAgain.results[0], proud.results[0], "the cached answer keeps its feeling");
+
+assert.deepEqual(Object.keys(classifier.GO_EMOTION_THRESHOLDS).sort(), [...AVATAR_FEELINGS].sort(), "every label");
+const feelingCases: Array<[Record<string, number>, string, string | null]> = [
+  [{ pride: 0.99, admiration: 0.35 }, "happy", "pride"],
+  [{ joy: 0.6, amusement: 0.1 }, "happy", null],
+  [{ embarrassment: 0.5, neutral: 0.3 }, "neutral", null],
+  [{ embarrassment: 0.5, neutral: 0.3 }, "happy", "embarrassment"],
+  [{ pride: 0.2, joy: 0.1 }, "happy", null],
+  [{ fear: 0.9, toString: 5 }, "surprised", "fear"],
+];
+for (const [scores, emotion, feeling] of feelingCases) {
+  assert.equal(
+    classifier.avatarFeelingFromModel(scores, emotion),
+    feeling,
+    `${JSON.stringify(scores)} inside ${emotion} is ${feeling}`,
+  );
+}
+const shy = await classifier.classifyAvatarEmotions({ texts: ["The zeta line."], tier: "local-model" });
+assert.deepEqual(
+  [shy.results[0]?.emotion, shy.results[0]?.feeling],
+  ["neutral", null],
+  "a feeling whose emotion loses to neutral is not shown",
+);
 
 failNext = true;
 const fallback = await classifier.classifyAvatarEmotions({ texts: ["Tears fall. A brand new line."] });

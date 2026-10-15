@@ -45,6 +45,7 @@ A character or persona with expression sprites already has a PNGTuber avatar: it
 
 - **Talking and blinking pictures.** Add sprites named after a face with `_talk` for the open mouth and `_blink` for closed eyes, for example `happy_talk` and `happy_blink`, and `happy_blink_talk` for both. `_talking`, `_speak`, `_mouth_open`, `_blinking` and `_eyes_closed` work too. A face without them still hops while it talks.
 - **Face for each feeling.** Choose which face shows for Neutral, Happy, Angry, Sad, Relaxed and Surprised. **Resting face** uses the Neutral face. When the Expression Engine or the Game Master picks a sprite you have, that exact face shows.
+- **More feelings.** Under **Face for each feeling**, open **More feelings** to choose a face for 23 more specific feelings, grouped under the six: Curiosity under Neutral; Admiration, Amusement, Desire, Embarrassment, Excitement, Gratitude, Optimism and Pride under Happy; Annoyance, Disapproval and Disgust under Angry; Disappointment, Grief, Nervousness and Remorse under Sad; Approval, Caring, Love and Relief under Relaxed; and Confusion, Fear and Realization under Surprised. They are optional. Each one uses its main feeling's face until you pick another. A sprite named after one of them, such as `fear`, `amusement` or a word like `scared` or `laughing`, is used for it without any setup.
 - **Movement.** **Hop while talking** and **Hop height** set the PNGTuber-style bounce. **Time between blinks** is the average; each blink comes a little sooner or later, so it never looks mechanical. With reduced motion turned on in your device, the avatar does not hop or breathe, but its face and mouth still change.
 - **Sprites show as they are.** A sprite drawn on a background shows with it, and your sprite files are never changed. For faces without a background, use [Faces from the avatar](#faces-from-the-avatar).
 - **Use my sprites** saves the sprites as the avatar's faces. Choosing a face or changing the movement saves it too. **Update from sprites** picks up sprites you added later and keeps the faces you chose for each feeling. After an import, choose **Remove** to go back to your sprites.
@@ -147,6 +148,8 @@ Avatars react on their own; there is nothing to set up for this part.
 - The face goes back to calm only after two calm sentences in a row.
 - About four seconds after the reply ends, the face relaxes back to calm.
 
+A PNGTuber avatar with faces for [more feelings](#pngtuber-sprites) can also show the more specific feeling a sentence reads as, such as Amusement while it is happy. That face follows the same rules: it needs a clear reading and stays for at least two seconds, and a feeling without its own face shows its main feeling's face. Expression Engine and Game Master picks work the same way: when the avatar has no face with the picked name, such as `scared`, it shows that feeling's face, here Fear. 3D and mesh avatars show the six feelings only.
+
 **How the mood is read.** Your chat connection is not asked. Your chat text stays with your own Marinara Engine and is never sent to an outside service.
 
 - A built-in word list answers at once, everywhere, and knows common mood words in several languages.
@@ -180,7 +183,7 @@ On the **2D Avatars** page in the Agent editor, choose a character or persona, t
 
 ### Faces from the avatar
 
-**Make faces from the avatar** makes faces without a background, also for a character or persona with no sprites yet. It opens sprite generation, the same one as in the character and persona editors, with the avatar checked as the reference. It offers the avatar's six feelings, Neutral, Happy, Angry, Sad, Relaxed and Surprised, so each feeling gets its own face. It draws new expression sprites from the avatar on a plain color, removes that color, and saves them as the character's or persona's sprites. A new sprite replaces the one with the same name, so rename it in the last step to keep the old one. It needs an avatar and an image generation connection.
+**Make faces from the avatar** makes faces without a background, also for a character or persona with no sprites yet. It opens sprite generation, the same one as in the character and persona editors, with the avatar checked as the reference. It starts with the six main faces, Neutral, Happy, Angry, Sad, Relaxed and Surprised, and offers 23 more feelings, such as Pride, Grief and Realization. Each extra feeling sits in the row of the main face it shows until it has its own face. Choose **All faces** for all 29, **Main faces** for the six, or any faces you like. The faces are drawn in batches, main faces first, with as many in each picture as the grid holds; older GPT Image models draw one face per picture. A picture that fails is tried again once; if it fails again, the run stops with **Retry picture**, and **Cancel** keeps the faces already made. With **Expose media prompts before sending** on, you review the prompts for every picture at once before the first is sent. Every face is drawn with open eyes and a closed mouth, so its blink and talk pictures have something to close and open. It draws new expression sprites from the avatar on a plain color, removes that color, and saves them as the character's or persona's sprites. A new sprite replaces the one with the same name, so rename it in the last step to keep the old one. It needs an avatar and an image generation connection.
 
 ### Blink and talk pictures
 
@@ -215,7 +218,7 @@ You don't have to make anything to start. A character or persona with expression
 
 ### Your own sprites
 
-1. Draw one picture for each feeling, all the same size and with the character in the same place. Name each after its feeling: `neutral`, `happy`, `angry`, `sad`, `relaxed` and `surprised`. Names that contain a feeling word work too, such as `smile`, `cry`, `calm` or `shock`.
+1. Draw one picture for each feeling, all the same size and with the character in the same place. Name each after its feeling: `neutral`, `happy`, `angry`, `sad`, `relaxed` and `surprised`. Names that contain a feeling word work too, such as `smile`, `cry`, `calm` or `shock`. For the optional [more feelings](#pngtuber-sprites), add pictures named after them too, such as `amusement`, `fear` or `gratitude`.
 2. For a moving mouth, draw the same picture with only the mouth open and add `_talk` to its name, for example `happy_talk`. For blinking, close only the eyes and add `_blink`; with both, add `_blink_talk`. A feeling without these pictures still hops while it talks.
 3. Add the pictures on the **Sprites** tab of the character or persona, under **Facial Expressions**. **Upload Folder** adds a whole folder and names each sprite after its file. See [Character Sprites](../characters/sprites.md).
 4. Chats with 2D Avatars on show them right away. To change the face for a feeling or the movement, see [PNGTuber sprites](#pngtuber-sprites).
@@ -223,7 +226,7 @@ You don't have to make anything to start. A character or persona with expression
 ### PNGTuber Plus
 
 1. Build the avatar from separate layers. Set the open mouth to show only while talking and the closed mouth only while quiet. Set the closed eyes to show only while blinking and the open eyes only while not blinking.
-2. For each feeling, make a costume that swaps the eyes or the mouth, and name those pictures after the feeling, for example `angry eyes.png` or `happy_mouth.png`. Costume 1 is the resting face.
+2. For each feeling, make a costume that swaps the eyes or the mouth, and name those pictures after the feeling, for example `angry eyes.png` or `happy_mouth.png`. The more specific feelings work the same way, for example `fear eyes.png`. Costume 1 is the resting face.
 3. Save the avatar to get a `.save` file.
 4. Open **2D Avatars** in **Agents**, choose the character or persona, then **PNGTuber sprites** and **Import PNGTuber Plus save**. Choose a face for any feeling the names did not cover.
 

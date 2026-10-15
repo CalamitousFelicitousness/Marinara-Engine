@@ -86,6 +86,7 @@ import {
   SETTINGS_SECTIONS,
   SETTINGS_TABS,
   isOmnibarSettingsTarget,
+  searchSettings,
 } from "../../packages/client/src/lib/settings-registry.js";
 import {
   getCharacterDisplayIdentity,
@@ -989,6 +990,34 @@ assert.equal(
   settingsDestinations.length,
   SETTINGS_TABS.length + SETTINGS_SECTIONS.length + SETTINGS_SEARCHABLE_CONTROLS.length,
 );
+
+// Every registry control resolves its copy through en.json keys, and search matches the translated text as
+// well as the English text and aliases.
+{
+  const english = JSON.parse(
+    readFileSync(new URL("../../packages/client/src/localization/locales/en.json", import.meta.url), "utf8"),
+  ) as Record<string, string>;
+  for (const control of SETTINGS_SEARCHABLE_CONTROLS) {
+    assert.equal(english[control.labelKey], control.label, `${control.id} labelKey matches its English label`);
+    assert.equal(
+      english[control.descriptionKey],
+      control.description,
+      `${control.id} descriptionKey matches its English description`,
+    );
+  }
+  const control = SETTINGS_SEARCHABLE_CONTROLS.find((entry) => entry.id === "hide-chat-help-button");
+  assert.ok(control, "hide-chat-help-button exists");
+  const translated = (key: string, fallback: string) =>
+    key === control.labelKey ? "Ocultar boton de ayuda" : key === control.descriptionKey ? "Quita la ayuda." : fallback;
+  const ids = (query: string) =>
+    searchSettings(query, (text) => text, translated).flatMap((result) =>
+      result.type === "control" ? [result.control.id] : [],
+    );
+  assert.ok(ids("ocultar boton").includes(control.id), "search matches the translated label");
+  assert.ok(ids("quita la").includes(control.id), "search matches the translated description");
+  assert.ok(ids("hide chat help").includes(control.id), "search still matches the English label");
+  assert.ok(ids("tutorial").includes(control.id), "search still matches aliases");
+}
 
 assert.equal(inferProfessorMariCommandCenterCapability("make Luna's greeting shorter"), "edit");
 assert.equal(inferProfessorMariCommandCenterCapability("make a new character"), "create");

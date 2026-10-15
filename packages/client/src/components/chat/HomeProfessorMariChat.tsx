@@ -2357,11 +2357,12 @@ export function HomeProfessorMariChat({
         context: submittedContext,
         localMessageId,
       })?.then((loaded) => {
-        if (!localMessageId || !loaded || findSavedUserMessage(loaded, messageText)) return;
+        // Your newest saved question, even behind a reply the server saved after the stream dropped.
+        if (!localMessageId || !loaded || loaded.findLast((m) => m.role === "user")?.content === messageText) return;
         // The server refused before it saved your message (no admin secret, a 401/403, a dead connection),
-        // so the reload took your bubble away. Give it back in the composer to edit or send again.
-        setDraft((current) => (current.trim() ? current : text));
-        setAttachments((current) => (current.length > 0 ? current : submittedAttachments));
+        // so the reload took your bubble away. Give it back in the composer, ahead of anything typed since.
+        setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
+        setAttachments((current) => [...submittedAttachments, ...current]);
         setRecoveryState((current) => current && { ...current, inComposer: true });
       });
     } finally {
@@ -2457,7 +2458,7 @@ export function HomeProfessorMariChat({
     if (!target?.text) return;
     setHandoffContext(target.context);
     // Your message went back to the composer: send it from there, edits included.
-    if (recovery?.inComposer) {
+    if (recovery?.inComposer && (draft.trim() || attachments.length > 0)) {
       void handleSubmit(undefined, undefined, target.context);
       return;
     }

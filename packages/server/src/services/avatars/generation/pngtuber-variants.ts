@@ -458,7 +458,19 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
   );
   const config = await updateAvatarConfig(request.owner, (current) => {
     // An owner without a saved setup shows the one built from the sprites; start from it.
-    const start = current?.kinds.pngtuber ?? spriteBuiltPngtuber(allSprites);
+    const built = spriteBuiltPngtuber(allSprites);
+    const saved = current?.kinds.pngtuber ?? built;
+    // A sprite face added since the setup was saved starts from its sprite-built set, so the `_blink` or
+    // `_talk` sprite it already has stays next to the new picture.
+    const start = saved && {
+      ...saved,
+      layers: {
+        ...Object.fromEntries(
+          [...sets.keys()].flatMap((key) => (built?.layers[key] ? [[key, built.layers[key]]] : [])),
+        ),
+        ...saved.layers,
+      },
+    };
     const kept = [...sets.values()].map((set) => {
       const existing = start?.layers[set.key]?.base;
       const keepOthers =

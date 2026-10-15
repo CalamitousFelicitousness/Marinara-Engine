@@ -253,8 +253,10 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
     );
   }, []);
   const setKept = useCallback((id: string, kept: boolean) => update(id, { kept }), [update]);
+  /** Keeps every new picture among `ids` (the ones shown). */
   const keepAll = useCallback(
-    () => setItems((current) => current.map((item) => (item.draft ? { ...item, kept: true } : item))),
+    (ids: ReadonlySet<string>) =>
+      setItems((current) => current.map((item) => (item.draft && ids.has(item.id) ? { ...item, kept: true } : item))),
     [],
   );
   const removeSaved = useCallback(

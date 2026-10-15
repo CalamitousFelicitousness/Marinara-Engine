@@ -135,8 +135,9 @@ export interface TalkingHeadFace {
 }
 
 /** The faces the talking head shows for the six feelings, in feeling order, each once with every feeling
- *  that shows it: the face the renderer picks (pickPngtuberLayerKey), or, while the saved setup has no face
- *  for a feeling the user didn't choose, the sprite face made for it since (saving its pictures adds it).
+ *  that shows it: the face the renderer picks (pickPngtuberLayerKey), or, while a setup made from sprites has
+ *  no face for a feeling the user didn't choose, the sprite face made for it since (saving its pictures adds
+ *  it). A PNGTuber Plus import keeps its own faces: sprites never join it this way.
  *  ponytail: faces reached only by an exact Expression Engine or Game Master label aren't listed; a collapsed
  *  "Other faces" group is the upgrade. */
 export function talkingHeadFaces(
@@ -149,7 +150,10 @@ export function talkingHeadFaces(
   for (const emotion of AVATAR_EMOTIONS) {
     const binding = shown.expressionMap[emotion];
     const fresh = fromSprites?.expressionMap[emotion]?.target;
-    const unbound = binding?.source !== "user" && !(binding?.target && Object.hasOwn(shown.layers, binding.target));
+    const unbound =
+      shown.source !== "pngtuber-plus" &&
+      binding?.source !== "user" &&
+      !(binding?.target && Object.hasOwn(shown.layers, binding.target));
     const key =
       unbound && fresh && Object.hasOwn(fromSprites!.layers, fresh) ? fresh : pickPngtuberLayerKey(shown, { emotion });
     if (!key) continue;

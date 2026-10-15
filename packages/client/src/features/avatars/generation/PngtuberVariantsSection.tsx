@@ -110,7 +110,19 @@ export function PngtuberVariantsSection({
   }, [config, spriteList]);
   const itemsById = useMemo(() => new Map(job.items.map((item) => [item.id, item])), [job.items]);
   const busy = job.running || preparing.pending;
-  const kept = useMemo(() => job.items.filter((item) => item.kept && item.draft), [job.items]);
+  // Only pictures of the faces listed count: a face can drop out of the list (a new sprite takes its
+  // feeling), and its unseen pictures must not be kept or saved.
+  const shownIds = useMemo(
+    () =>
+      new Set(
+        faces.flatMap(({ label }) =>
+          label ? AVATAR_PNGTUBER_VARIANTS.map((variant) => variantJobId(label, variant)) : [],
+        ),
+      ),
+    [faces],
+  );
+  const drafts = useMemo(() => job.items.filter((item) => item.draft && shownIds.has(item.id)), [job.items, shownIds]);
+  const kept = useMemo(() => drafts.filter((item) => item.kept), [drafts]);
   const savedPicture = (ref: AvatarImageRef | undefined) =>
     ref ? resolveAvatarImage(owner, config ?? { updatedAt: "" }, spriteList, ref) : null;
   // Slots with no picture yet, saved, provided or made: what "Make" fills.
@@ -274,12 +286,10 @@ export function PngtuberVariantsSection({
                           <span className="text-[0.625rem] text-[var(--muted-foreground)]">
                             {t("avatars.generation.waiting")}
                           </span>
-                        ) : error ? (
-                          <p className="p-1 text-center text-[0.625rem] text-[var(--foreground)]">{error}</p>
                         ) : null
                       }
                     >
-                      {picture && error && <p className="text-[0.625rem] text-[var(--foreground)]">{error}</p>}
+                      {error && <p className="break-words text-[0.625rem] text-[var(--foreground)]">{error}</p>}
                       {idle && (
                         <div className="flex flex-wrap gap-1">
                           {item?.draft && (
@@ -338,12 +348,12 @@ export function PngtuberVariantsSection({
         })}
       </ul>
 
-      {job.items.some((item) => item.draft) && (
+      {drafts.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={job.keepAll}
-            disabled={!job.items.some((item) => item.draft && !item.kept)}
+            onClick={() => job.keepAll(shownIds)}
+            disabled={!drafts.some((item) => !item.kept)}
             className="inline-flex min-h-9 items-center rounded-xl px-3 py-2 text-xs ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] active:scale-95 disabled:opacity-50"
           >
             {t("avatars.generation.keepAll")}

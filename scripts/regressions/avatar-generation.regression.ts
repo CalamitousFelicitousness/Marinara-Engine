@@ -22,7 +22,8 @@
  * The picture is drawn here from SVG, so no binary fixture is committed and no paid provider is called.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -61,8 +62,10 @@ const {
   mergePngtuberVariants,
   pngtuberSpriteFamily,
   pngtuberVariantFilePath,
+  savePngtuberVariants,
   spriteBuiltPngtuber,
 } = await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
+const { readAvatarConfig } = await import("../../packages/server/src/services/avatars/storage.js");
 const { avatarGenerationRoutes } = await import("../../packages/server/src/routes/avatar-generation.routes.js");
 
 const sharp = await getSharp();
@@ -487,6 +490,49 @@ async function dotCentre(png: Buffer) {
         `an edit that keeps the picture lines up with a ${width}x${height} sprite on ${model}: ${before} -> ${after}`,
       );
     }
+
+    // A soft pixel inside a cut-out (as an AI background remover leaves over the face) is shown in its own
+    // colour, not blended with the white backdrop, so an edit that keeps it gives back the same colour.
+    echoCanvas = { width: 1024, height: 1024 };
+    const soft = await sharp({
+      create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 400, height: 400, channels: 4, background: { r: 20, g: 20, b: 40, alpha: 200 / 255 } },
+          })
+            .png()
+            .toBuffer(),
+          left: 312,
+          top: 312,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const softEdit = await drawAvatarImageEdit({
+      image: image("gpt-image-2"),
+      prompt: "Keep it.",
+      source: { label: "soft", png: soft, width: 1024, height: 1024, transparent: true, hash: "" },
+      debug: false,
+      logLabel: "soft",
+    });
+    const [r, g, b, a] = await rgbaAt(softEdit, 512, 512);
+    assert.ok(
+      Math.abs(r! - 20) <= 2 && Math.abs(g! - 20) <= 2 && Math.abs(b! - 40) <= 2 && Math.abs(a! - 200) <= 1,
+      `a soft inside pixel keeps its colour: ${[r, g, b, a]}`,
+    );
+    // The ChatGPT route asks for a new composition unless told the reference already is the canvas.
+    const contextSource = readFileSync(
+      new URL("../../packages/server/src/services/avatars/generation/generation-context.ts", import.meta.url),
+      "utf8",
+    );
+    const editFunction = contextSource.slice(contextSource.indexOf("export async function drawAvatarImageEdit"));
+    assert.match(
+      editFunction.slice(0, editFunction.indexOf("\n}\n")),
+      /referenceIsCanvas: true/u,
+      "avatar edits tell providers the reference already is the canvas",
+    );
   } finally {
     (logger as { warn: unknown }).warn = warn;
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -648,6 +694,30 @@ async function dotCentre(png: Buffer) {
     "nor drawn for it",
   );
   assert.equal((await post("/pngtuber-variants/save", { owner, images: [keptHappy] })).statusCode, 400);
+
+  // A sprite face added after the setup was saved keeps its own blink sprite when a talk picture is saved.
+  {
+    const later = { ownerType: "character", ownerId: "V1StGXR8_Z5jdHi6B-myZ" } as const;
+    const dir = join(dataDir, "sprites", later.ownerId);
+    mkdirSync(dir, { recursive: true });
+    const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+    writeFileSync(join(dir, "neutral.png"), sourcePng);
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "neutral", variant: "eyes-closed", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    assert.equal((await readAvatarConfig(later))?.kinds.pngtuber?.source, "generated");
+    writeFileSync(join(dir, "relaxed.png"), sourcePng);
+    writeFileSync(join(dir, "relaxed_blink.png"), sourcePng);
+    await savePngtuberVariants({
+      owner: later,
+      images: [{ label: "relaxed", variant: "mouth-open", image: picture, sourceHash: hash(sourcePng) }],
+    });
+    const relaxed = (await readAvatarConfig(later))?.kinds.pngtuber?.layers.relaxed;
+    assert.deepEqual(relaxed?.eyesClosed, { source: "sprite", label: "relaxed_blink" }, "its blink sprite stays");
+    assert.deepEqual(relaxed?.mouthOpen, { source: "file", path: "pngtuber/relaxed-mouth-open.png" });
+    assert.ok((await readAvatarConfig(later))?.kinds.pngtuber?.layers.neutral?.eyesClosed, "the earlier face stays");
+  }
   const garbage = await post("/mesh-rig/save", { owner, archive: Buffer.from("not a zip").toString("base64") });
   assert.equal(garbage.statusCode, 422, "a kept archive is checked by the 2D importer like an upload");
   assert.equal((await app.inject({ method: "GET", url: "/api/avatar-generation/mesh-rig" })).statusCode, 404);

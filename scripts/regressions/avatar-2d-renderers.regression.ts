@@ -161,6 +161,17 @@ assert.equal(
     ],
     "without a saved setup the sprites are the talking head, feelings without a face on the resting face",
   );
+  assert.deepEqual(
+    layers
+      .talkingHeadFaces({ ...saved, source: "pngtuber-plus" }, fresh, labelFor)
+      .map((entry) => [entry.key, entry.emotions]),
+    [
+      ["neutral", ["neutral", "angry", "sad"]],
+      ["smile", ["happy", "relaxed"]],
+      ["imported", ["surprised"]],
+    ],
+    "a PNGTuber Plus import keeps its own faces: no sprite face joins it",
+  );
   assert.deepEqual(layers.talkingHeadFaces(null, null, labelFor), [], "no setup and no sprites, no faces");
 }
 

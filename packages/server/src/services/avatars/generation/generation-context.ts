@@ -379,12 +379,20 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
     .png()
     .toBuffer();
   // A cut-out goes on plain white: providers read its see-through pixels as black, which hides dark
-  // clothes and hair and gets the whole picture redrawn. Its own outline is put back afterwards.
+  // clothes and hair and gets the whole picture redrawn. Only the mostly see-through pixels turn white;
+  // the others keep their own colour, since blending a soft inside pixel with white would come back
+  // lighter than the face it swaps with. Its own outline is put back afterwards.
   // ponytail: white hides a very pale outline the same way; pick the backdrop from the sprite's colours if
   // that shows up.
-  const reference = request.source.transparent
-    ? await sharp(placed).flatten({ background: "#ffffff" }).png().toBuffer()
-    : placed;
+  let reference = placed;
+  if (request.source.transparent) {
+    const { data, info } = await sharp(placed).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (let index = 0; index < data.length; index += 4) if (data[index + 3]! < 128) data.fill(255, index, index + 3);
+    reference = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+      .removeAlpha()
+      .png()
+      .toBuffer();
+  }
   logDebugOverride(
     request.debug,
     "[debug/avatar-generation] %s image prompt (%dx%d):\n%s\nnegative: %s",

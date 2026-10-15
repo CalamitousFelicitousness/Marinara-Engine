@@ -635,6 +635,8 @@ interface RulesetDamageInput {
   seals?: true;
   /** Not even with a rest, only something that unseals (1.203): a clay golem's Slam. */
   lasting?: true;
+  /** Passed on by a condition (1.354, 1.356), so never passed on again. */
+  passedOn?: true;
   /** It never takes the target below this much health (1.235): Harm's 1. */
   leavesAtLeast?: number;
 }
@@ -728,7 +730,7 @@ function applyDamage(
   }
   // Somebody it holds by a condition that takes a share of what it is dealt (1.354): a rug of
   // smothering's Damage Transfer, half of it onto whom it smothers.
-  const sharer = dealt > 0 ? harmSharer(ctx, target) : undefined;
+  const sharer = dealt > 0 && !input.passedOn ? harmSharer(ctx, target) : undefined;
   const passed = sharer ? dealt - Math.floor(dealt * (1 - sharer.share)) : 0;
   dealt -= passed;
   const toTemp = Math.min(before.temp, dealt);
@@ -795,8 +797,27 @@ function applyDamage(
       rolls: [],
       flat: passed,
       amount: passed,
+      passedOn: true,
     });
     afterBlow(ctx, sharer.holder, shared, false);
+  }
+  // Whoever bonded to it takes the same (1.356): Warding Bond's caster.
+  if (dealt > 0 && !input.passedOn) {
+    for (const entry of [...target.tracked]) {
+      const rule = ctx.combat.conditions?.find((one) => one.condition === entry.condition);
+      const bonded = rule?.copiesHarmToSource && entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+      if (!bonded || bonded.id === target.id || bonded.defeated) continue;
+      const copied = applyDamage(ctx, bonded, {
+        ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+        label: ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition,
+        ...(input.damageType ? { damageType: input.damageType } : {}),
+        rolls: [],
+        flat: dealt,
+        amount: dealt,
+        passedOn: true,
+      });
+      afterBlow(ctx, bonded, copied, false);
+    }
   }
   if (dealt > 0) {
     const kinds = ctx.blowTypes.get(target.id) ?? new Set<string>();

@@ -94957,6 +94957,10 @@
                 ],
                 "additionalProperties": false
               },
+              "copiesHarmToSource": {
+                "type": "boolean",
+                "const": true
+              },
               "regenerates": {
                 "type": "object",
                 "properties": {

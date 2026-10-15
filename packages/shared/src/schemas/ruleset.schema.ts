@@ -9477,6 +9477,11 @@ const combatConditionSchema = z
       .object({ share: z.number().gt(0).lt(1) })
       .strict()
       .optional(),
+    /** Whoever put it on takes the same damage its holder is dealt, after the holder's own
+     *  resistances, and then their own (Capability API 1.356): 5e's Warding Bond, "each time it takes
+     *  damage, you take the same amount of damage". Damage passed on this way is never passed on
+     *  again. */
+    copiesHarmToSource: z.literal(true).optional(),
     /** What its holder regains as each of their own turns starts (Capability API 1.346). */
     regenerates: regenerationSchema.optional(),
     /** Left at 1 instead of dropping to 0 while it holds (Capability API 1.347): Relentless Rage. */

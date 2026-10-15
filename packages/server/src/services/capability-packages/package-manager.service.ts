@@ -2180,6 +2180,16 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
 }
 
 /** A floor under defense (1.353): a modifier to defense with `atLeast`. */
+/** Harm copied to a condition's source (1.356): Warding Bond. */
+function carriesCopiedHarm356(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCopiedHarm356(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.copiesHarmToSource !== undefined) return true;
+  return featureValues(record).some((one) => carriesCopiedHarm356(one, depth + 1));
+}
+
 /** A face rolled again (1.355): a condition's or a level's `rerollsFace`. */
 function carriesRerollsFace355(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5354,6 +5364,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Harm copied to whoever put a condition on, 1.356.
+  if (
+    !declaresApi(356) &&
+    (carriesCopiedHarm356(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCopiedHarm356(document)))
+  ) {
+    return "A ruleset whose condition copies its holder's harm to whoever put it on (copiesHarmToSource) requires schemaVersion 2 and capabilityApi 1.356 or newer";
+  }
   // A face rolled again, 1.355.
   if (
     !declaresApi(355) &&

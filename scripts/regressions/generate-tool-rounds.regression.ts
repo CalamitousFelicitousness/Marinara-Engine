@@ -179,4 +179,31 @@ const lookupCall = { id: "c1", type: "function" as const, function: { name: "loo
   assert.equal(outcome.fullResponse, "The end. ");
 }
 
+// (e) A Game tool plan runs once without a provider request or usage; its results go before the prefill.
+{
+  let usageRecords = 0;
+  const { ctx, calls, executed } = setup([], {
+    chatMode: "game",
+    maxToolRounds: 1,
+    gameToolPlan: { toolCalls: [lookupCall] } as ToolRoundsContext["gameToolPlan"],
+    assistantPrefillInjected: true,
+    initialMessages: [
+      { role: "user", content: "Go." },
+      { role: "assistant", content: "Prefill" },
+    ],
+    recordUsage: () => {
+      usageRecords += 1;
+    },
+  });
+  const outcome = await runToolRounds(ctx, "");
+  assert.equal(calls.length, 0, "the plan is executed, not requested again");
+  assert.equal(usageRecords, 0, "the planning pass owns its usage");
+  assert.deepEqual(executed, [["lookup({})"]]);
+  assert.equal(outcome.aborted, false);
+  if (!outcome.aborted) {
+    assert.equal(outcome.narratorMessages.at(-1)?.content, "Prefill");
+    assert.match(String(outcome.narratorMessages.at(-2)?.content), /^The engine ran a separate tool-planning pass/);
+  }
+}
+
 console.info("Generate tool-rounds regression passed.");

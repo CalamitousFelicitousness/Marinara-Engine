@@ -1539,8 +1539,8 @@ export async function galleryRoutes(app: FastifyInstance) {
       let messageId: string | null = null;
       try {
         const anchor = resolveChatVideoAnchor(await chats.listMessages(chatId));
-        if (anchor) {
-          await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video));
+        // Reported only when the clip really landed on the reply (it may have been deleted meanwhile).
+        if (anchor && (await attachVideoToMessage(chats, anchor, buildChatVideoAttachment(video)))) {
           messageId = anchor.messageId;
         }
       } catch (attachErr) {

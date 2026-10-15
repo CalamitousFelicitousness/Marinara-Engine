@@ -79,6 +79,23 @@ try {
     selected.participantCharacterIds,
     "The model cannot override explicit participants",
   );
+  // Models often slip on JSON (an unquoted key, single quotes, a trailing comma); the plan is still read.
+  providerContent = `{
+  name: 'Scene: Library',
+  "description": "A library.",
+  "scenario": "Find a book.",
+  "firstMessage": "Welcome.",
+}`;
+  const repaired = await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+    promptPreferences: { pov: "third_person", tense: "past", ...selected },
+  });
+  assert.equal(repaired.error, undefined, "a slightly broken JSON plan is repaired");
+  assert.equal(repaired.plan?.name, "Scene: Library");
+  assert.equal(repaired.plan?.scenario, "Find a book.");
+  providerContent = JSON.stringify(plan);
   const sent = requests
     .at(-1)!
     .messages.map((m) => m.content)

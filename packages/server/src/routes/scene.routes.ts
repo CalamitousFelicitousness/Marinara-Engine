@@ -8,6 +8,7 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
 import { logger, logDebugOverride } from "../lib/logger.js";
+import { tryParseJsonRecord } from "../lib/json-repair.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { readdirSync, existsSync } from "fs";
 import { join, extname } from "path";
@@ -1281,22 +1282,14 @@ export async function sceneRoutes(app: FastifyInstance) {
 
     let parsed: any;
     try {
-      let cleaned = raw.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "");
+      const cleaned = raw.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "");
       const first = cleaned.indexOf("{");
       const last = cleaned.lastIndexOf("}");
       if (first === -1 || last === -1) throw new Error("No JSON object found in model response");
-      let jsonStr = cleaned.substring(first, last + 1);
-      // Try parsing directly first
-      try {
-        parsed = JSON.parse(jsonStr);
-      } catch {
-        // Recovery: fix common LLM JSON issues
-        // 1. Remove trailing commas before } or ]
-        jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
-        // 2. Replace unescaped newlines inside string values
-        jsonStr = jsonStr.replace(/(["'])([^"']*?)\n([^"']*?)\1/g, (_, q, a, b) => `${q}${a}\\n${b}${q}`);
-        parsed = JSON.parse(jsonStr);
-      }
+      const jsonStr = cleaned.substring(first, last + 1);
+      // The shared repair handles what models get wrong (unquoted or single-quoted keys, trailing commas, comments,
+      // raw line breaks in strings); the strict parse below still reports a plan that can't be saved.
+      parsed = tryParseJsonRecord(jsonStr) ?? JSON.parse(jsonStr);
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "Unknown error";
       logger.error(e, "[scene/plan] Failed to parse LLM response as JSON");
